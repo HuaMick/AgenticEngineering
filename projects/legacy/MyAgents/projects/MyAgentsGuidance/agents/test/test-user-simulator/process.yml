@@ -1,0 +1,70 @@
+process:
+  goal: |
+    Test user stories using only project documentation (agent-blind-test). Validate that journeys
+    are completable with zero prior knowledge in both local and Docker environments.
+
+  loop_definitions:
+    reference: "assets/definitions/agent-loops.yml"
+    description: "Loop types (documentation-loop, test-fix-loop) defined in agent-loops.yml"
+    # NOTE: Do not duplicate loop definitions here - see agent-loops.yml for full definitions
+
+  inputs:
+    - location: "agents/test/test-user-simulator/inputs.yml"
+      description: "Core test user simulator agent inputs and guidelines"
+
+  outputs: []
+
+  steps:
+    - |
+      ## CRITICAL: FUNCTIONAL TESTING REQUIRED ##
+      Apply functional_testing_requirement per inputs.yml:
+      - Execute ACTUAL commands specified in journey steps
+      - Do NOT substitute with --help validation
+      - Verify ACTUAL outcomes, not just help text
+      - Complete validation checklist before reporting PASS
+    - |
+      VALIDATE CONTEXT per agent_blind_test definition in inputs.yml:
+      - ONLY allowed inputs: docs/README.md, docs/ARCHITECTURE.md, user story definition
+      - User story definition includes: persona, starting_state, journey steps, success_criteria
+      - If ANY additional inputs provided, IMMEDIATELY FAIL and report excessive context
+    - |
+      Parse your assigned USER STORY from the prompt per user_story definition in inputs.yml:
+      - Note persona, starting_state, journey steps (WHAT not HOW), success_criteria
+      - Discover HOW from documentation and self-discovery
+      - For US-INSTALL-* stories: pay attention to installation-specific validation
+    - |
+      Read project README and architecture documentation.
+      Use ONLY these documents and self-discovery to complete the journey.
+    - |
+      Execute user story journey in LOCAL environment:
+      - Follow journey steps in order
+      - Use only documentation and self-discovery
+      - Record pass/fail for each step
+      - Note documentation gaps or unclear instructions
+    - |
+      Execute SAME journey in DOCKER environment per multi_environment_testing in inputs.yml:
+      - Use shared pre-built Docker image (myagents-test)
+      - Docker command pattern: docker run --rm myagents-test <command>
+      - Record pass/fail for each step
+      - Note differences between local and Docker behavior
+    - |
+      Report test results:
+      - If executing in test-fix-loop context:
+        * Update live plan with failures per failure_reporting_structure in inputs.yml
+        * Format: user_story_id, step, failure_type, description, user_impact, tested_environments, etc.
+      - Always report to orchestration agent
+      - Include documentation gaps per documentation_gap definition in inputs.yml
+
+  guidelines:
+    # Core guidelines: See assets/guidelines/ (context-minimisation.yml, testing.yml)
+    # Core definitions: See assets/definitions/ (user-stories.yml, strategy-*.yml)
+    # User simulator specifics: See inputs.yml for agent_blind_test, user_story, multi_environment_testing, documentation_gap, functional_testing_requirement, failure_reporting_structure
+    - |
+      NEVER debug or fix issues you find. Report failures to the orchestration agent.
+    - |
+      Fail immediately if excessive context is provided - this is mandatory per agent_blind_test.
+    - |
+      Test BOTH local AND Docker environments per multi_environment_testing in inputs.yml.
+      Differences between them are important findings.
+    - |
+      Execute ACTUAL commands per functional_testing_requirement - NO --help-only validation.

@@ -1,0 +1,55 @@
+process:
+  goal: "Review and approve/reject implementation plans."
+
+  loop_context:
+    participates_in: ['planner-loop']
+    loop_definition: 'assets/definitions/agent-loops.yml#planner-loop'
+    max_iterations: 5
+    note: "Reviewer provides feedback for planner-teach to address in iterative refinement cycles"
+
+  inputs:
+    - location: "agents/planner/planner-reviewer/inputs.yml"
+      description: "Core reviewer planner agent inputs and guidelines"
+
+  steps:
+    - "Review all inputs. Locate the plan files in the provided live plan folder (`live/`)."
+    - |
+      Verify plan structure using the following approval checklist:
+
+      PLAN STRUCTURE CHECKLIST (each criterion must pass):
+      - [ ] Plan has unique name at root level (plan_name field)
+      - [ ] Worktree path is absolute and correct (worktree field)
+      - [ ] Branch name matches worktree naming convention (branch field)
+      - [ ] Plan objective clearly states what will be improved
+
+      INPUTS CHECKLIST:
+      - [ ] All context files listed at file-level (no directory-only references)
+      - [ ] Each input has location and description fields
+      - [ ] Referenced files exist in the repository or worktree
+
+      SUCCESS CRITERIA CHECKLIST:
+      - [ ] Each phase has measurable success criteria
+      - [ ] Success criteria include user-focused validation (experience-driven checks)
+      - [ ] Technical validation criteria are verifiable (see success-criteria-teacher.yml in inputs)
+      - [ ] Criteria define observable outcomes, not implementation details
+
+      TASK STRUCTURE CHECKLIST:
+      - [ ] Each task specifies exact target file(s) to edit
+      - [ ] Agent types are correctly allocated by category (planner/teacher/build/test)
+      - [ ] Operations are properly ordered (CREATE before UPDATE, dependencies respected)
+      - [ ] Each task has concrete acceptance criteria
+
+      PATTERN ALIGNMENT CHECKLIST:
+      - [ ] Tasks follow Domain → Workflow → Entrypoint patterns where applicable
+      - [ ] Phase dependencies are explicitly declared
+      - [ ] All mandatory loops included (audit-test-fix after cleanup, etc.)
+    - |
+      Decision:
+      - APPROVE: If all checklist items pass and the plan is ready for execution.
+      - REJECT: If any checklist items fail. Provide specific feedback for the planner agents to fix, referencing which checklist items failed and why.
+    - "Report decision and feedback."
+
+  guidelines:
+    - "Only reject plans with genuine structural issues or missing critical information."
+    - "Ensure context routing is file-level so builder agents don't need to do discovery work."
+    - "Validate that all mandatory loops (like audit-test-fix) are included where required."

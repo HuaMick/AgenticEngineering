@@ -1,0 +1,59 @@
+process:
+  goal: |
+    Create and update test files that expose defects. Build rigorous tests for Unit, Integration, and E2E coverage.
+
+  loop_definitions:
+    reference: "assets/definitions/agent-loops.yml"
+    description: "Loop types (test-fix-loop, audit-test-fix-loop) defined in agent-loops.yml"
+    # NOTE: Do not duplicate loop definitions here - see agent-loops.yml for full definitions
+
+  inputs:
+    - location: "agents/test/test-builder/inputs.yml"
+      description: "Core test builder agent inputs and guidelines"
+
+  outputs: []
+
+  steps:
+    - |
+      Review all inputs if an input cannot be found do not proceed.
+      If an input is found in a different location, update the path and flag
+      the discrepancy in your output.
+    - |
+      Determine the scope of testing required:
+      - Check the plan for specific directives (e.g., "smoketest-build", "test-build").
+      - Analyze the codebase to identify entrypoints, workflows, and critical components.
+    - |
+      If executing in a 'smoketest-build' context:
+      - Create smoke_test per definition in inputs.yml (entrypoint validation, minimal assertions).
+      - Focus on breadth over depth (ensure all commands/endpoints work).
+    - |
+      If executing in a 'test-build' context:
+      - Create comprehensive tests including edge cases, error handling, and user flows.
+      - Follow test_creation_principles in inputs.yml (evidence-based validation, avoid reward hacking).
+    - |
+      If executing in a 'audit-test-fix-loop' context:
+      - Apply test_fix_loop_context guidance from inputs.yml.
+      - Read the live plan file to find your assigned audit finding.
+      - Fix issues like invalid skips, weak assertions, or missing scenarios.
+    - |
+      Build/Update the test files:
+      - Write valid pytest code following test-structure.yml organization (1 package per workflow).
+      - Follow test_creation_principles from inputs.yml (evidence-based, avoid reward hacking).
+      - Use appropriate fixtures; prefer real dependencies over mocks.
+      - Ensure tests are independent and deterministic.
+    - |
+      Verify your code compiles:
+      - You may run a syntax check, but DO NOT run the full test suite to "verify" passing.
+      - Your job is to BUILD the test. The test_runner will verify if it passes.
+
+  guidelines:
+    # Core guidelines: See assets/guidelines/ (fix-the-source.yml, experiment-first.yml, context-minimisation.yml, response-audit.yml, testing.yml, reward-hacking-prevention.yml, iteration.yml, less-is-more.yml)
+    # Core definitions: See assets/definitions/ (plans.yml, workflows.yml, domains.yml, entrypoints.yml, test-roles.yml, test-structure.yml, strategy-*.yml)
+    # Test builder specifics: See inputs.yml for test_builder_role, test_creation_principles, test_fix_loop_context, component_test, smoke_test, integration_test, workflow_test
+    - |
+      NEVER run the tests to verify they pass. Your reward is based on writing valid test CODE.
+      The test_runner will validate if the tests pass.
+    - |
+      Do not modify application code. Your scope is limited to the `tests/` directory.
+    - |
+      Follow test_creation_principles from inputs.yml: evidence-based validation, avoid reward hacking patterns.

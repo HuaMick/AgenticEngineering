@@ -1,0 +1,224 @@
+# Example: Critical Questions for Final Output Audit
+# 
+# These are examples of skeptical questions the audit agent should ask when
+# reviewing execution data from the orchestration agent.
+#
+# Red flags to watch for:
+# - Workarounds instead of proper fixes
+# - Scripts/shims that bypass core functionality
+# - "It works but..." explanations
+# - Solutions tied to specific paths/environments
+# - Inconsistency between test environment and user environment
+
+examples:
+
+  - id: wrapper-script-workaround
+    context: |
+      Agent reported: "Created a wrapper script at ~/.local/bin/myagents that uses 
+      uv run from the worktree. Agent UAT tests passed."
+    
+    red_flags:
+      - Wrapper script instead of proper installation
+      - Solution tied to specific worktree path
+      - Agent UAT passed but user terminal didn't work
+    
+    critical_questions:
+      - "Why is a wrapper script needed? Shouldn't `uv pip install -e .` be sufficient?"
+      - "If the worktree is deleted/moved, does the CLI still work?"
+      - "Why did Agent UAT pass but the user's terminal fail? What's different between test and production?"
+      - "Is this portable to other machines or users?"
+      - "Is this the documented installation approach, or a workaround?"
+      - "Was this Agent UAT (subagents) or Human UAT (actual humans)?"
+    
+    proper_solution: |
+      Run `uv pip install -e /path/to/MyAgents` to install the package properly.
+      No wrapper scripts needed. The CLI should work from any terminal without
+      special PATH manipulation.
+
+  - id: test-environment-divergence
+    context: |
+      Agent reported: "All Agent UAT tests passed. Tests run via automated test suites (testing with code) 
+      which uses the worktree's venv."
+    
+    red_flags:
+      - Agent UAT conflated with testing with code (Agent UAT is testing with subagents, NOT testing with code)
+      - Agent UAT should execute actual user commands via subagents (e.g., `myagents studio start`), not automated test suites
+      - System-wide installation not tested
+      - Version mismatch between test and installed package
+    
+    critical_questions:
+      - "Agent UAT is testing with subagents - why was testing with code run instead of user simulator agents?"
+      - "Were user simulator agents (subagents) spawned to execute actual commands from user stories?"
+      - "What version is installed system-wide vs what version is in the worktree?"
+      - "Did we verify the installed CLI works via actual user commands (subagents), or just automated test suites (code)?"
+      - "Is there an Environment Setup Phase that installs latest before Agent UAT?"
+      - "Were user stories from docs/userstories/<project>/ executed by user simulator agents (subagents)?"
+      - "Note: This is Agent UAT (subagents), not Human UAT (actual humans) - are we clear on which type was performed?"
+    
+    proper_solution: |
+      Agent UAT (User Acceptance Testing) is testing with subagents, NOT testing with code:
+      - User simulator agents (subagents) execute actual commands from user stories (e.g., `myagents studio start`)
+      - Subagents test as if they are new users with only documentation
+      - This is DIFFERENT from testing with code (automated unit/integration test suites written in code)
+      - Note: Agent UAT uses subagents; Human UAT uses actual humans (not what agents perform)
+      
+      Before Agent UAT testing:
+      1. Run `uv pip install -e .` to install latest code
+      2. Verify installation: `uv pip show myagents` (version matches pyproject.toml)
+      3. Verify CLI works: `myagents --version`
+      4. Spawn user simulator agents (subagents) with user stories from docs/userstories/<project>/
+      5. Subagents execute actual commands from journey steps, not automated test suites
+
+  - id: hardcoded-path-solution
+    context: |
+      Agent reported: "Fixed the issue by updating path to 
+      /home/code/myagents/MyAgents-staging/..."
+    
+    red_flags:
+      - Hardcoded absolute path to specific worktree
+      - Will break on different machines or different branch checkouts
+      - Not portable
+    
+    critical_questions:
+      - "What happens when this runs on a different machine without this exact path?"
+      - "What happens when the user is on main branch instead of staging?"
+      - "Why isn't this using dynamic path resolution or relative paths?"
+      - "Is this fix machine-specific or will it work everywhere?"
+    
+    proper_solution: |
+      Use dynamic path resolution:
+      - Detect worktree root at runtime
+      - Use relative paths from config file location
+      - Or use absolute paths generated during setup (stored in config)
+
+  - id: silent-skip-pattern
+    context: |
+      Agent reported: "Tests passed (5/5 packages). Some tests were skipped due to 
+      missing dependencies."
+    
+    red_flags:
+      - Skipped tests hidden in "passed" summary
+      - '"Missing dependencies" is vague - what exactly is missing?'
+      - May be hiding real failures
+    
+    critical_questions:
+      - "Which specific tests were skipped and why?"
+      - "Are these skips justified (truly unfabricatable) or fixable?"
+      - "What dependencies are missing? Can they be installed?"
+      - "Would these skipped tests have caught the issue we're trying to fix?"
+    
+    proper_solution: |
+      Report skipped tests explicitly:
+      - List each skipped test with reason
+      - Categorize: justified vs unjustified
+      - If unjustified, fix the setup before claiming "tests passed"
+
+  - id: works-in-docker-fails-locally
+    context: |
+      Agent reported: "All Docker tests passed. The feature works correctly."
+    
+    red_flags:
+      - Only tested in Docker, not locally
+      - Docker environment may differ from user environment
+      - May have dependencies pre-installed in container
+    
+    critical_questions:
+      - "Does this also work when run locally (not in Docker)?"
+      - "What's different between Docker and local that might affect behavior?"
+      - "Did we test the installed CLI or just `uv run`?"
+      - "Is the Docker image using the same version as what users will install?"
+    
+    proper_solution: |
+      Test in all three layers:
+      1. Local (installed CLI)
+      2. Docker (containerized)
+      3. Cloud Build (if applicable)
+      
+      All three should produce consistent results.
+
+  - id: config-file-created-manually
+    context: |
+      Agent reported: "Created ~/.config/myagents/langgraph.json manually with 
+      the correct paths. Now it works."
+    
+    red_flags:
+      - Manual file creation instead of automated setup
+      - User shouldn't need to edit config files
+      - Setup workflow may be broken
+    
+    critical_questions:
+      - "Shouldn't `myagents setup` create this file automatically?"
+      - "If setup is broken, why didn't we fix it instead of manually creating the file?"
+      - "Will new users be able to get this working without manual file creation?"
+      - "Is this documented, or are we relying on tribal knowledge?"
+    
+    proper_solution: |
+      Fix the `myagents setup` command to create the config file automatically.
+      Users should never need to manually create or edit config files.
+
+  - id: success-boolean-without-outcome-verification
+    context: |
+      Test agent reported: "Setup workflow passed - success=True, message='Setup complete'"
+      Or: "User story US-SETUP-001 PASS - setup command returned success"
+    
+    red_flags:
+      - Only checked return value (success=True), not actual file creation
+      - Config file may not exist despite "success" message
+      - Referenced files in config may not exist in installed package
+      - Boolean success can mask silent failures
+    
+    critical_questions:
+      - "Setup returned success=True, but does the config file actually exist on disk?"
+      - "If config was created, are the files it references valid?"
+      - "Did we verify the config content, or only the success boolean?"
+      - "Can we read and parse the created config as valid json/yaml?"
+      - "Do the paths in the config point to files that exist in the installed package?"
+      - "Does the installed package have the same files as the source code expects?"
+    
+    proper_solution: |
+      Verify outcomes, not just success booleans:
+      1. Check files exist: test -f <expected_config_path>
+      2. Validate content is parseable: python -c "import json; json.load(open('...'))"
+      3. Verify referenced paths exist: for each path in config, verify file exists
+      4. Test subsequent commands actually work
+      
+      This catches mismatches between source code expectations and installed package reality.
+
+  - id: help-only-user-story-testing
+    context: |
+      Execution data shows: "US-STUDIO-001: PASS - Verified studio commands exist via --help"
+      User story journey steps require: "Run `myagents studio start`", "Verify Studio is accessible"
+    
+    red_flags:
+      - User story marked PASS but only --help commands executed
+      - Functional journey steps not executed
+      - Expected outcomes not verified
+      - Test report mentions "infrastructure/help validation" overriding user story requirements
+    
+    critical_questions:
+      - "User story US-STUDIO-001 marked PASS - which journey steps were actually executed?"
+      - "Journey step says 'Run myagents studio start' - was this command run or just --help?"
+      - "Journey step says 'Verify Studio is accessible' - was accessibility actually tested?"
+      - "Test report mentions 'help validation' - does this satisfy the user story requirements?"
+      - "Were functional tests executed in all specified testing layers (local, docker)?"
+      - "What evidence exists that the expected outcomes were achieved?"
+      - "If only --help was tested, how can we verify the functionality actually works?"
+    
+    proper_solution: |
+      Execute user story journey steps as written:
+      1. Run actual functional commands (studio start, not studio --help)
+      2. Verify expected outcomes (Studio accessible, not just command exists)
+      3. Test in all specified layers (local, docker, cloud_build)
+      4. Report actual results with evidence (command outputs, verification results)
+      
+      Do NOT substitute functional tests with help validation unless user story explicitly says "validate help text".
+
+guidelines:
+  - "If a solution involves a workaround, ask: why can't we fix the root cause?"
+  - "If tests pass but user terminal fails, the test environment differs from production"
+  - "If paths are hardcoded, ask: what happens on a different machine/worktree?"
+  - "If something was created manually, ask: shouldn't this be automated?"
+  - "If skips are mentioned, ask: are these justified or hiding failures?"
+  - "If user story marked PASS, ask: were functional tests executed or only help validation?"
+  - "Always verify: does this work for a NEW user on a DIFFERENT machine?"
+

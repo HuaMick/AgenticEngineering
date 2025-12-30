@@ -1,0 +1,113 @@
+guideline:
+  name: "Validation Strategy"
+  description: |
+    Defines when and how to validate work outcomes using mechanical verification versus
+    semantic assessment, and when to use Direct Verification versus delegating to specialized agents.
+
+    This guideline helps agents choose the appropriate validation approach based on the nature
+    of what needs to be verified.
+
+  inputs:
+    - location: "assets/definitions/agent-types.yml"
+      description: "Defines agent types (build, audit, documentation) for delegation patterns"
+
+  rules:
+    - rule: "Validation Types"
+      description: |
+        Distinguish between mechanical and semantic validation to choose the appropriate verification method.
+      justification: |
+        Different validation types require different approaches. Mechanical checks are objective and
+        can be automated with simple commands. Semantic checks require domain expertise and judgment.
+      execution_pattern:
+        - "Identify what needs to be validated (exit codes, file existence, implementation correctness, etc.)"
+        - "Classify as mechanical (objective, automatable) or semantic (requires expertise/judgment)"
+        - "Apply appropriate validation method based on classification"
+      characteristics:
+        - "Mechanical validation: Exit codes, file existence, syntax validation, build success"
+        - "Mechanical validation uses: Direct bash commands, test scripts, linters"
+        - "Semantic validation: Implementation correctness, test coverage quality, domain logic accuracy"
+        - "Semantic validation uses: Specialized agents with domain expertise"
+
+    - rule: "Direct Verification vs Agent Delegation"
+      description: |
+        Use Direct Verification for objective checks. When acceptance criteria require judgment (quality, completeness, logic), you MUST spawn an agent.
+      justification: |
+        Direct Verification (file checks, syntax validation, exit codes) is faster and simpler for mechanical checks. Agents provide specialized
+        knowledge and judgment for complex assessments that require understanding context and intent.
+      execution_pattern:
+        - "Ask: Can this be verified with a simple command or exit code check?"
+        - "If yes → Use Direct Verification (e.g., test -f, grep, syntax checker)"
+        - "If no → Ask: Does this require domain expertise or judgment?"
+        - "If yes → MUST spawn appropriate specialized agent"
+      characteristics:
+        - "Direct Verification is preferred for: File operations, exit code checks, syntax validation, grep patterns"
+        - "Agent delegation is preferred for: Code review, test quality assessment, architectural decisions"
+        - "Example (Direct Verification): 'Verify file exists' → use test -f <path>, not a test-audit agent"
+        - "Example (agent): 'Review test coverage quality' → spawn test-audit agent"
+        - "Semantic requirements in Acceptance Criteria always override plan-level verification method shortcuts"
+
+    - rule: "Agent Delegation Patterns"
+      description: |
+        Apply standard patterns for delegating validation work to specialized agents based on the problem type.
+      justification: |
+        Consistent delegation patterns ensure the right agent type handles each category of issue,
+        leveraging specialized capabilities and established workflows.
+      execution_pattern:
+        - "Identify the issue category (test failure, documentation gap, code quality, etc.)"
+        - "Match to delegation pattern based on issue type"
+        - "Spawn appropriate agent with clear context and expected outcome"
+      characteristics:
+        - "Test failures → Spawn build agents (via test-fix-loop pattern)"
+        - "Skipped tests → Spawn audit agents to investigate, then build agents if fixes needed"
+        - "Test quality concerns → Spawn audit agents (via audit-test-fix-loop pattern)"
+        - "Code issues → Spawn build agents"
+        - "Documentation gaps → Spawn documentation agents"
+        - "Unknown issues → Investigate to determine appropriate agent type, then spawn"
+
+  examples:
+    good:
+      - description: "Mechanical validation using bash for objective verification"
+        example: |
+          # Verifying a build artifact exists after compilation
+          step:
+            description: "Verify build output exists"
+            bash: "test -f /path/to/build/output.jar && echo 'Build artifact found'"
+
+      - description: "Semantic validation delegating to specialized agent"
+        example: |
+          # Assessing test coverage quality requires expertise
+          step:
+            description: "Review test coverage quality"
+            spawn:
+              agent_type: "test-audit"
+              context: "Analyze test coverage for completeness and edge cases"
+
+      - description: "Agent delegation pattern for test failures"
+        example: |
+          # Test failed - spawn build agent to fix
+          step:
+            description: "Fix failing unit tests"
+            spawn:
+              agent_type: "build"
+              context: "3 unit tests failing in UserService - fix implementation"
+
+    bad:
+      - description: "Using agent for simple mechanical check"
+        example: |
+          # Overkill - spawning agent just to check if file exists
+          step:
+            description: "Verify config file exists"
+            spawn:
+              agent_type: "test-audit"
+              context: "Check if config.yml file exists"
+
+      - description: "Using bash for semantic validation requiring expertise"
+        example: |
+          # Cannot assess quality with simple command
+          step:
+            description: "Verify test quality"
+            bash: "grep -c 'assert' tests/*.py"
+
+  related_guidelines:
+    - location: "assets/guidelines/iteration.yml"
+      description: "Iteration guideline uses validation strategy to verify work outcomes before proceeding"

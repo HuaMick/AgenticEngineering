@@ -1,0 +1,52 @@
+Workflows are orchestrations of domains.
+Each file should represent a single workflow.
+Workflows should only focus on the orchestration of domain logic: they should import
+domains and call their methods to achieve the objective.
+
+Workflows should have a single entrypoint with parameters that allow the workflow to handle
+multiple use cases.
+
+Workflows can support multiple entrypoints/options that mutate their process, allowing
+a single workflow to handle multiple CLI commands or use cases through configuration
+options rather than separate implementations.
+
+Example from this project:
+```
+backend/services/agents/src/workflows/
+  agent_orchestration.py
+
+# agent_orchestration.py
+from domains.planner_agent import PlannerAgent
+from domains.build_agent import BuildAgent
+
+def orchestrate_build_workflow(task: str, context: dict):
+    """Main workflow for orchestrating agent-based builds"""
+    planner = PlannerAgent()
+    plan = planner.create_plan(task=task, context=context)
+
+    builder = BuildAgent()
+    result = builder.execute_plan(plan=plan)
+
+    return result
+```
+
+Example of workflow with multiple options:
+```
+# health_check_workflow.py
+def run_health_check(mode: str = "auto", verbose: bool = False, **options):
+    """
+    Run health check workflow with different modes.
+
+    Options:
+    - mode: "cli_check" | "project_check" | "full_check" | "auto"
+    - verbose: Show detailed output
+    """
+    if mode == "cli_check":
+        return check_cli_health(**options)
+    elif mode == "project_check":
+        return check_project_health(**options)
+    elif mode == "full_check":
+        return full_health_check(**options)
+    else:  # auto
+        return auto_detect_and_check(**options)
+```

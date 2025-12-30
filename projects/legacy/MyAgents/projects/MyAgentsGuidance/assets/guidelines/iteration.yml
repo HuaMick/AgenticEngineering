@@ -1,0 +1,130 @@
+guideline:
+  name: "Iteration Patterns"
+  description: |
+    Guidelines for agent behavior during iterative build-test-fix cycles.
+    These patterns ensure that iterations remain focused, efficient, and 
+    validated against real outcomes.
+
+  inputs:
+    - location: "assets/definitions/iteration-approach.yml"
+      description: "Small-change bias and layered iteration principles"
+    - location: "assets/definitions/agent-loops.yml"
+      description: "Core iterative execution patterns and exit conditions"
+
+  rules:
+    - rule: "Test-fix-loop behavior"
+      description: |
+        During active development, prioritize real user experience over pure code 
+        correctness. Builders must act as users to validate their own changes.
+      justification: |
+        User simulation catches integration issues and UX gaps that unit tests miss.
+      execution_pattern:
+        - "Build agent implements minimal components to meet success criteria"
+        - "Build agent simulates user experience by executing entrypoints and running code"
+        - "Test agent validates functionality through user acceptance criteria"
+        - "If tests fail or user simulation reveals issues, build agent fixes"
+        - "Repeat until user simulation passes and acceptance criteria met"
+      characteristics:
+        - "Builder agents must execute entrypoints and run code as a user would"
+        - "Success criteria validated through actual usage simulation"
+        - "Fast feedback loop through real execution, not just test assertions"
+
+    - rule: "Audit-test-fix-loop behavior"
+      description: |
+        After development, focus on test integrity and quality. This phase 
+        validates the tests themselves, not just the code.
+      justification: |
+        Tests must be validated to ensure they actually verify requirements and
+        don't just report success without doing intended work (reward hacking).
+      execution_pattern:
+        - "Audit agent reviews existing tests for reward hacking patterns"
+        - "Audit agent validates test quality and coverage"
+        - "If issues found, test agent fixes tests based on audit findings"
+        - "Build agent fixes code if tests reveal actual bugs"
+      characteristics:
+        - "Detects reward hacking (tests that pass but don't validate requirements)"
+        - "Ensures tests actually verify success criteria"
+        - "Reviews outcome verification (not just success booleans)"
+
+    - rule: "Documentation loop behavior"
+      description: |
+        Validate and improve documentation through blind testing iterations.
+      justification: |
+        Documentation is only proven usable when an agent can complete a journey 
+        using only the provided docs.
+      execution_pattern:
+        - "Agent attempts user journey with only documentation"
+        - "Agent reports any documentation gaps or ambiguities"
+        - "Documentation agent fixes issues"
+
+    - rule: "Cleaner voting loop behavior"
+      description: |
+        Build consensus before making destructive cleanup changes.
+      justification: |
+        Multiple perspectives reduce false positives when identifying overengineering.
+      execution_pattern:
+        - "Spawn multiple cleaner agents independently"
+        - "Each agent votes on overengineering presence"
+        - "If consensus reached, identify specific issues"
+        - "Execute cleanup only if multiple agents agree"
+
+    - rule: "Exploration loop behavior"
+      description: |
+        Iterative discovery to understand codebase or patterns before acting.
+      justification: |
+        Complex tasks require multiple rounds of discovery to avoid incorrect assumptions.
+      execution_pattern:
+        - "Explore codebase or gather information"
+        - "Analyze findings"
+        - "Determine if more exploration needed"
+
+  agent_context:
+    test_fix_loop:
+      context: |
+        When executing in a test-fix-loop context, the test-builder may be 
+        assigned to fix test quality issues:
+        - Read the live plan file for assigned failure_id or issue_id
+        - Focus on fixing ONLY your assigned test quality issue
+        - Update live plan to mark issue as resolved after fixing
+        - Do not attempt to fix other issues - each has its own builder agent
+
+    audit_test_fix_loop:
+      context: |
+        When executing in an audit-test-fix-loop context, the test-builder 
+        may be assigned to fix audit findings:
+        - Read the live plan file for assigned audit_finding_id or failure_id
+        - Focus on fixing ONLY your assigned audit finding
+        - Update live plan to mark finding as resolved after fixing
+        - Do not attempt to fix other findings - each has its own builder agent
+
+  examples:
+    good:
+      - description: "Test-fix-loop catching integration issue early"
+        example: |
+          Iteration 1: Build creates minimal components. Test FAILs with import error.
+          Iteration 2: Build adds missing import. Test PASSes.
+          Checkpoint: Commit working state.
+      - description: "Audit-test-fix-loop detecting reward hacking"
+        example: |
+          Iteration 1: Audit finds tests check success=True without verifying files.
+          Iteration 2: Test agent rewrites tests to verify actual file contents.
+          Result: Audit PASSes.
+      - description: "Documentation loop finding gaps"
+        example: |
+          Iteration 1: Agent FAILs - missing setup step. Fix: Add step.
+          Iteration 2: Agent FAILs - ambiguous instruction. Fix: Clarify.
+          Iteration 3: Agent PASSes.
+
+    bad:
+      - description: "Infinite loop without maximum iterations"
+        example: "No maximum iteration limit set; agent loops 50+ times on same failure."
+      - description: "Skipping audit phase"
+        example: "Build implements, tests PASS, but reward hacking in tests leads to production bug."
+      - description: "Not iterating when needed"
+        example: "Builder gives up after one iteration despite a clear fix being possible."
+
+  related_guidelines:
+    - location: "assets/guidelines/testing.yml"
+      description: "Testing behavioral standards"
+    - location: "assets/guidelines/reward-hacking-prevention.yml"
+      description: "Preventing gaming of success criteria"

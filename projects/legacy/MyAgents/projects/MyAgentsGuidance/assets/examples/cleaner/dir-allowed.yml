@@ -1,0 +1,171 @@
+# Directory Allowed Examples
+# Examples of directories and file locations that ARE allowed in the project structure
+# Used by cleaner agents to understand correct placement of files
+
+version: "1.0"
+category: "cleaner"
+created: "2025-12-13"
+purpose: "Examples of where different file types belong in the project structure"
+
+description: |
+  This example demonstrates the correct locations for different file types in the project.
+  When evaluating whether a file is in the "wrong location", compare against these patterns.
+  Files in these locations should NOT be flagged as wrong_location.
+
+markdown_files:
+  description: "Markdown files are only allowed in specific locations"
+
+  allowed_locations:
+    - location: "docs/**/*.md"
+      description: "Any markdown file within the docs/ folder"
+      examples:
+        - "docs/README.md"
+        - "docs/architecture/architecture.md"
+        - "docs/CICD_README.md"
+        - "docs/archive/old_design.md"
+      reason: "docs/ is the designated location for all project documentation"
+
+    - location: "**/README.md"
+      description: "README.md files can appear anywhere in the project"
+      examples:
+        - "README.md (root)"
+        - "src/myagents/README.md"
+        - "tests/README.md"
+        - "scripts/README.md"
+      reason: "READMEs provide context for their containing directory"
+      note: "Only README.md is allowed - other .md files must be in docs/"
+
+  good_examples:
+    - file: "docs/testing/test_strategy.md"
+      why_allowed: "Documentation file in docs/ folder"
+
+    - file: "docs/archive/completion_report_2025-12-01.md"
+      why_allowed: "Archived documentation in docs/archive/"
+
+    - file: "src/myagents/agents/README.md"
+      why_allowed: "README.md explaining the agents module"
+
+    - file: "README.md"
+      why_allowed: "Root README.md (often required by builds)"
+
+source_code_files:
+  description: "Python source files belong in src/ hierarchy"
+
+  allowed_locations:
+    - location: "src/**/*.py"
+      description: "All Python source code"
+      examples:
+        - "src/myagents/__init__.py"
+        - "assets/definitions/folder-structure.yml"
+        - "src/myagents/backend/server.py"
+      reason: "src-layout standard for installable packages"
+
+    - location: "tests/**/*.py"
+      description: "All test files"
+      examples:
+        - "tests/unit/test_agents.py"
+        - "tests/integration/test_api.py"
+        - "tests/conftest.py"
+      reason: "Separate tests from source code"
+
+    - location: "scripts/**/*.py"
+      description: "Utility scripts not part of the package"
+      examples:
+        - "scripts/migrate_config.py"
+        - "scripts/generate_manifest.py"
+      reason: "Scripts for development/maintenance, not part of installed package"
+
+configuration_files:
+  description: "Configuration files belong at appropriate hierarchy levels"
+
+  allowed_locations:
+    - location: "root-level configs"
+      description: "Project-wide configuration at root"
+      examples:
+        - "pyproject.toml"
+        - "package.json"
+        - ".gitignore"
+        - "Dockerfile"
+        - "docker-compose.yml"
+      reason: "Project-wide settings belong at root"
+
+    - location: "**/*/manifest.yml"
+      description: "Sub-agent manifest files (only in sub-agent directories, not at category root)"
+      examples:
+        - "planner/planner-build/manifest.yml"
+        - "cleaner/cleaner-core/manifest.yml"
+      reason: "Each sub-agent has its own manifest with folder structure definitions"
+
+    - location: "**/inputs.yml"
+      description: "Agent input definitions in agent directories"
+      examples:
+        - "planner/planner-build/inputs.yml"
+        - "cleaner/cleaner-core/inputs.yml"
+      reason: "Each sub-agent defines its own inputs (self-contained, no shared root inputs.yml)"
+
+examples_and_definitions:
+  description: "Where examples and definition files belong"
+
+  allowed_locations:
+    - location: "assets/examples/**/*.yml"
+      description: "Centralized examples repository"
+      examples:
+        - "assets/examples/planner/YYMMDDRepo_Branch/plan_live_build.yml"
+        - "assets/examples/planner/YYMMDDRepo_Branch/plan_live_test.yml"
+        - "assets/examples/planner/YYMMDDRepo_Branch/plan_live_audit_clean.yml"
+        - "assets/examples/cleaner/preserved-files.yml"
+        - "assets/examples/shared/overengineering.yml"
+      reason: "Examples are centralized in assets/examples to avoid duplication"
+
+    - location: "assets/definitions/*.yml"
+      description: "Shared definition files"
+      examples:
+        - "assets/definitions/plans.yml"
+        - "assets/definitions/domains.yml"
+        - "assets/definitions/workflows.yml"
+      reason: "Definitions shared across multiple agents in assets/definitions"
+
+    - location: "assets/guidelines/*.yml"
+      description: "Shared guideline files"
+      examples:
+        - "assets/guidelines/testing.yml"
+        - "assets/guidelines/safety.yml"
+        - "assets/guidelines/iteration.yml"
+      reason: "Guidelines shared across multiple agents in assets/guidelines"
+
+test_and_build_artifacts:
+  description: "Where build and test outputs belong (usually gitignored)"
+
+  allowed_locations:
+    - location: "**/__pycache__/"
+      description: "Python bytecode cache"
+      note: "Should be in .gitignore, but presence is normal"
+
+    - location: ".pytest_cache/"
+      description: "Pytest cache"
+      note: "Should be in .gitignore"
+
+    - location: "dist/"
+      description: "Build artifacts"
+      note: "Should be in .gitignore"
+
+    - location: ".venv/ or venv/"
+      description: "Virtual environments"
+      note: "Should be in .gitignore"
+
+usage:
+  when_to_use:
+    - "When evaluating whether a file is in the 'wrong_location'"
+    - "When comparing current file locations against project standards"
+    - "When validating cleanup targets before voting"
+
+  how_to_apply:
+    - "Check if file matches an allowed location pattern"
+    - "If file matches allowed pattern, do NOT flag as wrong_location"
+    - "If file does NOT match any allowed pattern, check dir-not-allowed.yml"
+    - "If file violates project structure, flag as wrong_location"
+
+  confidence_guidelines:
+    - "If file is in docs/ or is README.md: confidence 5 (clearly allowed)"
+    - "If file matches allowed pattern: confidence 5 (clearly allowed)"
+    - "If file is in unusual location: check dir-not-allowed.yml before flagging"
