@@ -1,0 +1,77 @@
+# ==============================================================================
+# Cloud Build - MyAgentsFrontend PR Validation (Free Tier)
+# ==============================================================================
+# Optimized for GCP free tier: 120 build-minutes/day on e2-medium
+# Runs: Lint (flutter analyze) + Unit tests (flutter test)
+# Trigger: Pull Requests to main branch
+# ==============================================================================
+
+steps:
+  # ==============================================================================
+  # 1. Build Docker Image (with caching)
+  # ==============================================================================
+  - name: 'gcr.io/cloud-builders/docker'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "=== Building Flutter test image ==="
+        # Try to pull cached image
+        docker pull gcr.io/$PROJECT_ID/${_IMAGE_NAME}:latest || true
+
+        # Build with cache
+        docker build \
+          -t gcr.io/$PROJECT_ID/${_IMAGE_NAME}:pr-$BUILD_ID \
+          --cache-from gcr.io/$PROJECT_ID/${_IMAGE_NAME}:latest \
+          -f Dockerfile.test \
+          .
+    id: 'build-image'
+
+  # ==============================================================================
+  # 2. Lint (flutter analyze - fail fast gate)
+  # ==============================================================================
+  - name: 'gcr.io/cloud-builders/docker'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "=== Running Flutter Analyze ==="
+        docker run --rm gcr.io/$PROJECT_ID/${_IMAGE_NAME}:pr-$BUILD_ID \
+          flutter analyze --no-fatal-infos --no-fatal-warnings
+    id: 'lint'
+    waitFor: ['build-image']
+
+  # ==============================================================================
+  # 3. Unit Tests (flutter test)
+  # ==============================================================================
+  - name: 'gcr.io/cloud-builders/docker'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "=== Running Flutter Tests ==="
+        docker run --rm gcr.io/$PROJECT_ID/${_IMAGE_NAME}:pr-$BUILD_ID \
+          flutter test --reporter expanded
+    id: 'unit-tests'
+    waitFor: ['lint']
+
+  # ==============================================================================
+  # 4. Push cached image (for future builds)
+  # ==============================================================================
+  - name: 'gcr.io/cloud-builders/docker'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "=== Pushing cached image ==="
+        docker tag gcr.io/$PROJECT_ID/${_IMAGE_NAME}:pr-$BUILD_ID gcr.io/$PROJECT_ID/${_IMAGE_NAME}:latest
+        docker push gcr.io/$PROJECT_ID/${_IMAGE_NAME}:latest || true
+    id: 'push-cache'
+    waitFor: ['unit-tests']
+
+substitutions:
+  _IMAGE_NAME: 'myagentsfrontend-test'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_MEDIUM  # FREE TIER: 120 min/day
