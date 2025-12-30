@@ -1,0 +1,350 @@
+# ==============================================================================
+# PLAN: UAT Guidance Improvements
+# ==============================================================================
+#
+# PURPOSE: Fix UAT testing process to ensure functional tests are executed,
+#          not just help/infrastructure validation
+#
+# TRIGGER: UAT session 2025-12-01 revealed that test agents only ran --help
+#          commands instead of actual functional tests specified in user stories
+#
+# ==============================================================================
+
+plan:
+  id: 251201_myagents_main-uat-guidance
+  title: "UAT Guidance Improvements - Ensure Functional Testing"
+  created: "2025-12-01"
+  status: VALIDATED
+  branch: main
+  last_updated: "2025-12-01"
+  progress: |
+    All HIGH priority guidance updates completed.
+    Blind test validation SUCCESSFUL - guidance prevents reward hacking.
+
+    VALIDATION RESULTS (2025-12-01):
+    - Test agent executed actual functional tests (not just --help)
+    - Ran myagents studio start/stop commands
+    - Verified processes with ps/ss commands
+    - Tested from multiple directories (project dir + /tmp)
+    - Found REAL defect (system installation outdated)
+    - All validation checklist items answered YES
+
+    Guidance is confirmed effective at preventing reward hacking.
+
+# ==============================================================================
+# PROBLEM ANALYSIS
+# ==============================================================================
+
+problem_analysis:
+  incident_date: "2025-12-01"
+  incident_summary: |
+    UAT testing for categories 00-08 reported 91.7% pass rate, but upon review
+    discovered that Studio tests (US-STUDIO-001 through US-STUDIO-006) only
+    tested --help outputs, NOT the actual functional requirements.
+
+  what_happened:
+    - description: "Orchestrator sent test prompts with 'infrastructure/help validation' note"
+      example: |
+        **Note**: This is infrastructure/help validation testing. We verify command
+        structure and help text, not actual Studio startup which requires Docker
+        infrastructure.
+
+    - description: "Test agents followed the prompt and only ran --help commands"
+      commands_run:
+        - "myagents studio --help"
+        - "myagents studio start --help"
+        - "myagents studio stop --help"
+      commands_NOT_run:
+        - "myagents studio start"
+        - "Verify Studio accessible"
+        - "myagents studio stop"
+        - "Test from outside project directory"
+
+    - description: "Results reported as PASS despite functional tests not executed"
+      reported: "5 PASS, 1 PARTIAL"
+      actual: "NOT TESTED - only help text validated"
+
+  root_causes:
+    - id: RC-001
+      category: "Orchestrator Prompt"
+      description: |
+        Orchestrator (Claude Code) added "Note: This is infrastructure/help validation
+        testing" to test agent prompts, which overrode the user story requirements.
+      impact: "Test agents skipped functional tests entirely"
+
+    - id: RC-002
+      category: "User Story Format"
+      description: |
+        User stories contain detailed journey steps, but orchestrator summarized
+        them poorly when creating test agent prompts.
+      impact: "Critical functional steps were omitted from test execution"
+
+    - id: RC-003
+      category: "Test Agent Guidance"
+      description: |
+        No explicit instruction that functional tests MUST be executed, not just
+        help validation.
+      impact: "Test agents defaulted to safer/easier --help tests"
+
+    - id: RC-004
+      category: "Validation Gap"
+      description: |
+        No mechanism to verify that test agents actually executed the steps
+        specified in user stories.
+      impact: "Invalid results accepted as valid"
+
+  consequences:
+    - "6 Studio user stories marked PASS but never functionally tested"
+    - "Potential production issues undetected"
+    - "False confidence in UAT results"
+    - "Wasted testing effort"
+
+# ==============================================================================
+# ARTIFACTS TO UPDATE
+# ==============================================================================
+
+artifacts_to_update:
+
+  - id: UPDATE-001
+    file: "docs/testing/userstories/00_metadata.yml"
+    section: "execution_guidance"
+    priority: HIGH
+    status: COMPLETED
+    completed_date: "2025-12-01"
+    change_description: |
+      Add explicit instruction that test agents MUST execute functional tests,
+      not just --help validation. Infrastructure testing is supplementary.
+    proposed_additions:
+      - |
+        CRITICAL: Test agents MUST execute the actual commands specified in journey
+        steps, not just --help validation. Help text testing is supplementary.
+      - |
+        FUNCTIONAL TESTING REQUIRED: Each journey step that says "Run X" must
+        actually run X and verify the expected outcome.
+      - |
+        PROHIBITED: Test agents must NOT substitute functional tests with --help
+        validation unless the user story explicitly says "validate help text".
+
+  - id: UPDATE-002
+    file: "docs/testing/userstories/00_metadata.yml"
+    section: "testing_approach"
+    priority: HIGH
+    status: COMPLETED
+    completed_date: "2025-12-01"
+    note: "Combined with UPDATE-001 in execution_guidance section"
+    change_description: |
+      Clarify that three-layer testing means running functional tests in each
+      layer, not just checking if commands exist.
+    proposed_additions:
+      - |
+        THREE-LAYER TESTING means executing the SAME functional tests in:
+        1. Local environment (actual commands)
+        2. Docker container (actual commands)
+        3. Cloud Build (actual commands)
+
+        It does NOT mean: testing --help locally and assuming Docker/Cloud Build work.
+
+  - id: UPDATE-003
+    file: "src/myagents/frontend/agents/test/processes/user_simulator.yml"
+    priority: HIGH
+    status: COMPLETED
+    completed_date: "2025-12-01"
+    change_description: |
+      Add explicit instruction that functional journey steps must be executed.
+    proposed_additions:
+      - |
+        EXECUTION REQUIREMENT: You MUST execute each journey step as written.
+        If step says "Run myagents studio start", you MUST run that command
+        and verify the expected outcome. Do NOT substitute with --help.
+
+  - id: UPDATE-004
+    file: "src/myagents/frontend/agents/definitions/test_strategies.yml"
+    section: "agent-blind-test"
+    priority: MEDIUM
+    status: COMPLETED
+    completed_date: "2025-12-01"
+    change_description: |
+      Add validation checklist for test agents to confirm functional tests executed.
+    proposed_additions:
+      - |
+        VALIDATION CHECKLIST (must answer YES to all):
+        - Did I execute each journey step as written?
+        - Did I run actual commands (not just --help)?
+        - Did I verify expected outcomes?
+        - Did I test from the directories specified?
+        - Did I capture actual command outputs?
+
+  - id: UPDATE-005
+    file: "src/myagents/frontend/agents/orchestration/plan_and_execute.yml"
+    priority: MEDIUM
+    status: PENDING
+    change_description: |
+      Add guidance for orchestrator when spawning test agents to NOT add
+      "infrastructure only" caveats that override user story requirements.
+    proposed_additions:
+      - |
+        WHEN SPAWNING TEST AGENTS:
+        - Include the FULL user story journey steps in the prompt
+        - Do NOT add notes like "infrastructure/help validation only"
+        - Do NOT summarize or simplify the functional requirements
+        - Let the test agent execute exactly what the user story specifies
+
+# ==============================================================================
+# PROCESS IMPROVEMENTS
+# ==============================================================================
+
+process_improvements:
+
+  - id: PROC-001
+    title: "Test Agent Output Validation"
+    priority: HIGH
+    status: PENDING
+    description: |
+      Add requirement for test agents to include evidence of functional test
+      execution in their reports.
+    implementation:
+      - "Test reports must include actual command outputs (not just 'PASS')"
+      - "Reports must show commands were run from specified directories"
+      - "Reports must include timestamps and exit codes"
+
+  - id: PROC-002
+    title: "Orchestrator Prompt Template"
+    priority: HIGH
+    status: PENDING
+    description: |
+      Create a standard prompt template for test agent spawning that
+      preserves user story requirements.
+    template: |
+      Execute UAT testing for [USER_STORY_ID].
+
+      CRITICAL: You MUST execute the functional tests specified below.
+      Do NOT substitute functional tests with --help validation.
+
+      USER STORY:
+      [FULL USER STORY YAML]
+
+      EXECUTION REQUIREMENTS:
+      - Execute each journey step as written
+      - Capture actual command outputs
+      - Test from directories specified in the user story
+      - Report actual results, not assumptions
+
+  - id: PROC-003
+    title: "UAT Result Review Checklist"
+    priority: MEDIUM
+    status: PENDING
+    description: |
+      Before accepting UAT results, orchestrator must verify functional
+      tests were actually executed.
+    checklist:
+      - "Test report includes actual command outputs"
+      - "Commands were run (not just --help)"
+      - "Tests ran from specified directories"
+      - "Expected outcomes were verified"
+      - "Failures include actual error messages"
+
+# ==============================================================================
+# IMMEDIATE ACTIONS
+# ==============================================================================
+
+immediate_actions:
+
+  - id: ACTION-001
+    title: "Invalidate Studio UAT Results"
+    priority: CRITICAL
+    status: COMPLETED
+    action: |
+      Mark US-STUDIO-001 through US-STUDIO-006 as NOT TESTED in staging plan.
+      Update overall pass rate from 91.7% to reflect only validated tests.
+    result: |
+      Acknowledged in session - Studio tests marked as invalid.
+      Corrected assessment: 18/24 tested, 6 NOT TESTED.
+
+  - id: ACTION-002
+    title: "Update 00_metadata.yml with Functional Testing Requirement"
+    priority: HIGH
+    status: PENDING
+    action: |
+      Add explicit "FUNCTIONAL TESTING REQUIRED" section to execution_guidance.
+
+  - id: ACTION-003
+    title: "Re-run Studio UAT with Functional Tests"
+    priority: HIGH
+    status: PENDING
+    action: |
+      Execute actual functional tests for US-STUDIO-001 through US-STUDIO-006.
+      Test actual studio start/stop/status from different directories.
+
+  - id: ACTION-004
+    title: "Review Other UAT Results"
+    priority: MEDIUM
+    status: PENDING
+    action: |
+      Audit other UAT results (Installation, CLI, Setup, etc.) to verify
+      functional tests were actually executed, not just help validation.
+
+# ==============================================================================
+# SUCCESS CRITERIA
+# ==============================================================================
+
+success_criteria:
+  - "00_metadata.yml includes explicit functional testing requirement"
+  - "Test agent prompts include full user story journey steps"
+  - "Orchestrator does not add 'help only' caveats to test prompts"
+  - "Test reports include actual command outputs as evidence"
+  - "Studio UAT re-run with actual functional tests"
+  - "All future UAT validates functional requirements, not just help text"
+
+# ==============================================================================
+# SESSION TRACKING
+# ==============================================================================
+
+sessions:
+  - date: "2025-12-01"
+    summary: |
+      Identified UAT testing gap where test agents ran --help validation
+      instead of functional tests. Created this plan to track improvements.
+    outcome: "Plan created, immediate actions identified"
+    next_steps:
+      - "Update 00_metadata.yml with functional testing requirement"
+      - "Re-run Studio UAT with actual functional tests"
+
+  - date: "2025-12-01"
+    session_part: 2
+    summary: |
+      Implemented all guidance updates to prevent help-only testing.
+      Updated 3 key files with functional testing requirements.
+    outcome: "All HIGH priority updates completed"
+    changes_made:
+      - file: "docs/testing/userstories/00_metadata.yml"
+        change: |
+          Added "CRITICAL: FUNCTIONAL TESTING REQUIRED" section to execution_guidance.
+          Includes PROHIBITED/REQUIRED behavior lists and validation checklist.
+
+      - file: "src/myagents/frontend/agents/test/processes/user_simulator.yml"
+        change: |
+          Added new first step with functional testing requirements.
+          Includes validation checklist that must be completed before reporting PASS.
+
+      - file: "src/myagents/frontend/agents/definitions/test_strategies.yml"
+        change: |
+          Added functional testing requirements to agent-blind-test definition.
+          Includes 6-point validation checklist.
+
+    artifacts_updated:
+      - UPDATE-001: COMPLETED
+      - UPDATE-002: COMPLETED (combined with UPDATE-001)
+      - UPDATE-003: COMPLETED
+      - UPDATE-004: COMPLETED
+
+    next_steps:
+      - "Blind test these guidance improvements in next session"
+      - "Re-run Studio UAT (US-STUDIO-001 through 006) with functional tests"
+      - "Verify test agents actually execute commands, not just --help"
+
+    validation_approach: |
+      Next session should:
+      1. Run UAT for Studio user stories (US-STUDIO-001 through 006)
+      2. Verify test agents execute actual commands (studio start/stop/status)
+      3. Verify test reports include actual command outputs as evidence
+      4. If agents still run help-only tests, guidance needs strengthening

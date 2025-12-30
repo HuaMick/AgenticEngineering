@@ -1,0 +1,301 @@
+# Plan: Guidance Refinement v2 - Test Guidance Plan
+# Created: 2025-12-28
+# Worktree: /home/code/myagents/MyAgentsGuidance-guidance-refinement-v2
+# Branch: guidance-refinement-v2
+# Status: complete
+# Purpose: Validate guidance changes from plan_live_teach.yml using guidance-blind-test strategy
+
+objective: |
+  Validate that orchestration guidance correctly delegates to deploy-worktree subagent
+  rather than duplicating subagent scope. Test that after teach plan changes:
+  1. Orchestration does not read subagent process files
+  2. Orchestration delegates worktree verification to deploy-worktree agent
+  3. No duplication remains between orchestration and subagent guidance
+
+test_context:
+  loop_type: "guidance-test-loop"
+  loop_reference: "assets/definitions/agent-loops.yml#guidance-test-loop"
+  strategy: "guidance-blind-test"
+  strategy_reference: "assets/definitions/strategy-guidance-blind-test.yml"
+  test_scenarios_reference: "assets/definitions/guidance-test-scenarios.yml"
+  maximum_iterations: 3
+
+  # What the teach plan changes (context for test design)
+  teach_plan_changes:
+    - id: FR-TEACH-002
+      description: "Remove deploy-worktree/process.yml from _teach.yml inputs"
+    - id: DUP-WORKTREE-001
+      description: "Remove FENCE block lines 34-40 from process.mmd, replace with delegation"
+    - id: DUP-REVIEW-DEPLOY
+      description: "Review and remove any additional duplication"
+
+phases:
+  - phase: 1
+    name: "Delegation Behavior Validation"
+    status: pending
+    description: |
+      Test that orchestration-guidance correctly delegates worktree operations
+      to deploy-worktree agent rather than implementing its own verification criteria.
+      Uses guidance-blind-test strategy - simulator receives only guidance files.
+
+    tasks:
+      - id: TEST-DELEGATE-001
+        status: pending
+        description: "Validate orchestration delegates worktree setup to deploy-worktree agent"
+        agent_type: "test-guidance-simulator"
+        operation: "EXECUTE"
+        test_scenarios:
+          - "task_completion_test"
+          - "subagent_spawning_test"
+        context:
+          target_agent: "agents/orchestration/orchestration-guidance/"
+          guidance_files:
+            - "process.mmd"
+            - "inputs.yml"
+          validation_mode: "guidance_walkthrough"
+          test_task: |
+            You are orchestration-guidance agent. A worktree needs to be created.
+            Using ONLY your guidance files (process.mmd, inputs.yml), determine:
+            1. Who is responsible for worktree verification?
+            2. What worktree verification criteria do YOU need to check yourself?
+            3. What should you delegate vs do yourself?
+          minimal_context: |
+            You have only process.mmd and inputs.yml. Do not read deploy-worktree
+            guidance files. Answer based solely on orchestration guidance.
+          expected_behavior:
+            correct: |
+              - Agent identifies deploy-worktree as responsible for worktree setup
+              - Agent does NOT find worktree verification criteria in its own guidance
+              - Agent understands it should spawn deploy-worktree, not verify criteria itself
+            incorrect: |
+              - Agent finds FENCE block with worktree verification criteria
+              - Agent believes it must verify worktree directory, planning folders, etc.
+              - Agent duplicates deploy-worktree scope
+        acceptance_criteria:
+          - "Orchestration guidance has NO worktree verification criteria (no FENCE block)"
+          - "process.mmd delegates worktree verification to deploy-worktree agent"
+          - "Agent completes task by spawning deploy-worktree, not checking criteria itself"
+          - "Zero friction points about missing verification criteria"
+        files:
+          - "agents/orchestration/orchestration-guidance/process.mmd"
+          - "agents/orchestration/orchestration-guidance/inputs.yml"
+
+  - phase: 2
+    name: "Input Clarity Validation"
+    status: pending
+    description: |
+      Test that orchestration entrypoints and inputs do not reference subagent
+      process files. Orchestration should spawn agents, not read their internals.
+
+    tasks:
+      - id: TEST-INPUT-001
+        status: pending
+        description: "Validate _teach.yml does not list subagent process files"
+        agent_type: "test-guidance-simulator"
+        operation: "EXECUTE"
+        test_scenarios:
+          - "reference_resolution_test"
+          - "friction_detection_test"
+        context:
+          target_file: "entrypoints/_teach.yml"
+          guidance_files:
+            - "entrypoints/_teach.yml"
+          validation_mode: "input_audit"
+          test_task: |
+            Review the inputs section of _teach.yml.
+            List all files in the inputs section.
+            Identify any that are subagent process.yml files.
+          expected_behavior:
+            correct: |
+              - No subagent process.yml files in inputs
+              - Only orchestration-guidance/inputs.yml and process.mmd referenced
+              - deploy-worktree/process.yml NOT listed
+            incorrect: |
+              - deploy-worktree/process.yml listed as input
+              - Other subagent process files listed
+        acceptance_criteria:
+          - "deploy-worktree/process.yml NOT in _teach.yml inputs"
+          - "No subagent process.yml files in _teach.yml inputs"
+          - "Only orchestration-level files referenced"
+        files:
+          - "entrypoints/_teach.yml"
+
+      - id: TEST-INPUT-002
+        status: pending
+        description: "Validate orchestration-guidance inputs.yml does not reference subagent process files"
+        agent_type: "test-guidance-simulator"
+        operation: "EXECUTE"
+        test_scenarios:
+          - "reference_resolution_test"
+        context:
+          target_file: "agents/orchestration/orchestration-guidance/inputs.yml"
+          guidance_files:
+            - "agents/orchestration/orchestration-guidance/inputs.yml"
+          validation_mode: "input_audit"
+          test_task: |
+            Review all file references in orchestration-guidance/inputs.yml.
+            List any that are subagent process.yml files (e.g., deploy-worktree/process.yml,
+            planner-teach/process.yml, etc.)
+          expected_behavior:
+            correct: |
+              - No deploy/*/process.yml files
+              - No planner/*/process.yml files
+              - No test/*/process.yml files (except test-final-output which is orchestration-owned)
+              - Only guidelines, definitions, and orchestration-level files
+            incorrect: |
+              - deploy-worktree/process.yml or similar subagent files listed
+        acceptance_criteria:
+          - "No subagent process.yml files in orchestration-guidance/inputs.yml"
+          - "Only test-final-output/process.yml is acceptable (orchestration-owned audit)"
+          - "Orchestration references only orchestration-level context"
+        files:
+          - "agents/orchestration/orchestration-guidance/inputs.yml"
+
+  - phase: 3
+    name: "Duplication Removal Validation"
+    status: pending
+    description: |
+      Verify no duplication remains between orchestration process.mmd and
+      deploy-worktree guidance. Orchestration should delegate, not specify criteria.
+
+    tasks:
+      - id: TEST-DUP-001
+        status: pending
+        description: "Verify FENCE worktree verification block removed from process.mmd"
+        agent_type: "test-guidance-simulator"
+        operation: "EXECUTE"
+        test_scenarios:
+          - "task_completion_test"
+          - "friction_detection_test"
+        context:
+          target_file: "agents/orchestration/orchestration-guidance/process.mmd"
+          guidance_files:
+            - "agents/orchestration/orchestration-guidance/process.mmd"
+          validation_mode: "content_audit"
+          test_task: |
+            Search process.mmd for any of the following duplicated scope:
+            1. "FENCE: Worktree Verification Criteria" comments
+            2. Requirements like "Worktree directory exists at specified path"
+            3. Requirements like "Planning folder structure exists"
+            4. Requirements like "Live planning folder for this worktree exists"
+            5. Any worktree verification checklist items
+          expected_behavior:
+            correct: |
+              - No FENCE block for worktree verification
+              - No worktree verification criteria specified
+              - Delegation to deploy-worktree is mentioned instead
+              - process.mmd spawns deploy-worktree without specifying its internal criteria
+            incorrect: |
+              - FENCE block lines 34-40 still present
+              - Worktree directory, planning folder checks specified in orchestration
+              - Duplication of deploy-worktree scope
+        acceptance_criteria:
+          - "No 'FENCE: Worktree Verification Criteria' in process.mmd"
+          - "No worktree directory existence checks in process.mmd"
+          - "No planning folder structure checks in process.mmd"
+          - "Delegation to deploy-worktree is explicit (spawn, not criteria)"
+        files:
+          - "agents/orchestration/orchestration-guidance/process.mmd"
+
+      - id: TEST-DUP-002
+        status: pending
+        description: "Cross-reference check - ensure deploy-worktree owns verification"
+        agent_type: "test-guidance-simulator"
+        operation: "EXECUTE"
+        test_scenarios:
+          - "cross_agent_dependency_test"
+        context:
+          primary_file: "agents/orchestration/orchestration-guidance/process.mmd"
+          secondary_file: "agents/deploy/deploy-worktree/process.yml"
+          guidance_files:
+            - "agents/orchestration/orchestration-guidance/process.mmd"
+            - "agents/deploy/deploy-worktree/process.yml"
+          validation_mode: "scope_boundary_check"
+          test_task: |
+            Compare the two files:
+            1. Does orchestration specify ANY worktree verification criteria that
+               deploy-worktree also specifies?
+            2. Does orchestration delegate to deploy-worktree without duplicating scope?
+            3. Is there a clear boundary: orchestration spawns, deploy-worktree verifies?
+          expected_behavior:
+            correct: |
+              - Zero overlap in worktree verification criteria
+              - Orchestration only spawns deploy-worktree
+              - deploy-worktree owns all verification details
+              - Clear delegation without duplication
+            incorrect: |
+              - Both files specify worktree directory checks
+              - Both files specify planning folder checks
+              - Orchestration duplicates deploy-worktree scope
+        acceptance_criteria:
+          - "Zero worktree verification criteria overlap"
+          - "Orchestration spawns, deploy-worktree verifies"
+          - "Single source of truth for worktree criteria (deploy-worktree only)"
+        files:
+          - "agents/orchestration/orchestration-guidance/process.mmd"
+          - "agents/deploy/deploy-worktree/process.yml"
+
+  - phase: 4
+    name: "Gap Analysis and Audit"
+    status: pending
+    description: |
+      Aggregate friction points from Phases 1-3, categorize by severity,
+      and verify test quality.
+
+    tasks:
+      - id: TEST-AUDIT-001
+        status: pending
+        description: "Aggregate and categorize guidance validation results"
+        agent_type: "planner-reviewer"
+        operation: "ANALYZE"
+        context:
+          input_source: "Phase 1-3 test reports from test-guidance-simulator"
+          categorization_reference: "assets/definitions/friction.yml"
+          analysis_questions:
+            - "Were all duplication issues resolved?"
+            - "Does orchestration correctly delegate without duplicating?"
+            - "Are there any new ambiguities introduced by the changes?"
+        acceptance_criteria:
+          - "All friction points categorized by severity"
+          - "No CRITICAL or HIGH severity issues remain"
+          - "Teach plan changes validated as effective"
+
+success_criteria:
+  overall:
+    - "Orchestration guidance contains no worktree verification criteria"
+    - "No subagent process.yml files in orchestration inputs"
+    - "deploy-worktree/process.yml removed from _teach.yml inputs"
+    - "FENCE block lines 34-40 removed from process.mmd"
+    - "Zero duplication between orchestration and deploy-worktree guidance"
+    - "Clear delegation pattern: orchestration spawns, subagent verifies"
+
+  phase_1:
+    - "Orchestration delegates worktree setup, does not verify itself"
+    - "Agent completes walkthrough by spawning, not checking criteria"
+
+  phase_2:
+    - "No subagent process files in _teach.yml inputs"
+    - "No subagent process files in orchestration-guidance/inputs.yml"
+
+  phase_3:
+    - "FENCE worktree verification block removed"
+    - "Zero scope duplication with deploy-worktree"
+
+  phase_4:
+    - "No CRITICAL or HIGH friction points remain"
+    - "Test methodology validated"
+
+file_organization:
+  plan_folder: "docs/plans/live/251228MAG_guidance-refinement-v2/"
+  test_results:
+    - "test-results/guidance/phase1_delegation_report.yml"
+    - "test-results/guidance/phase2_input_clarity_report.yml"
+    - "test-results/guidance/phase3_duplication_report.yml"
+    - "test-results/guidance/phase4_audit_report.yml"
+
+notes:
+  - "This test plan validates teach plan changes from plan_live_teach.yml"
+  - "Uses guidance-blind-test strategy - simulator receives only guidance files"
+  - "Focus: delegation behavior, input clarity, duplication removal"
+  - "Test scenarios designed to detect if orchestration still tries to verify worktree criteria itself"
+  - "Success = orchestration spawns deploy-worktree agent, does not duplicate its scope"

@@ -1,0 +1,191 @@
+# Planner Task: Orchestration Agent Context Minimisation
+# Plan: 251216_context_min
+
+task:
+  agent: "orchestration"
+  target_path: "orchestration/"
+
+  current_structure:
+    root_files:
+      - "manifest-orchestration.yml"
+      - "manifest.yml"
+      - "inputs.yml"
+      - "definitions.yml"
+      - "guidelines.yml"
+      - "preflight_validation.yml"
+    sub_agents:
+      - "orchestration-teach/"
+
+  audit_checklist:
+    context_minimisation:
+      - "Review root inputs.yml - many inputs may be workflow-specific"
+      - "Check if definitions.yml and guidelines.yml could be shared assets"
+      - "Review preflight_validation.yml placement (should it be in sub-agent?)"
+      - "Identify context that should be loaded by sub-agents, not root"
+
+    folder_structure:
+      - "Verify manifest.yml serves as hub with minimal detail"
+      - "Verify manifest-orchestration.yml has full context"
+      - "Ensure orchestration-teach has: process.yml, inputs.yml, manifest.yml"
+      - "Consider adding more sub-agents for different orchestration types"
+
+  tasks:
+    - id: "orch-01"
+      description: "Delete root inputs.yml - sub-agents should be self-contained"
+      file: "orchestration/inputs.yml"
+      criteria: "File removed; each sub-agent has complete inputs.yml without parent_inputs references"
+      action: "delete"
+      status: "completed"
+      result: "File was already deleted in previous operation. Verified orchestration-teach/inputs.yml is self-contained."
+
+    - id: "orch-02"
+      description: "Review definitions.yml placement"
+      file: "orchestration/definitions.yml"
+      criteria: "Determine if this should be in assets/definitions/ instead"
+      status: "completed"
+      result: "File was already deleted in previous operation. Definitions moved to assets/definitions/."
+
+    - id: "orch-03"
+      description: "Review guidelines.yml placement"
+      file: "orchestration/guidelines.yml"
+      criteria: "Determine if this should be in assets/guidelines/ instead"
+      status: "completed"
+      result: "File was already deleted in previous operation. Guidelines moved to assets/guidelines/."
+
+    - id: "orch-04"
+      description: "Audit orchestration-teach/inputs.yml"
+      file: "orchestration/orchestration-teach/inputs.yml"
+      criteria: "Only teach-specific inputs; minimal context"
+      status: "completed"
+      result: "Audited. File is self-contained with only teach-specific inputs. References shared assets from assets/guidelines/ and assets/definitions/. Follows context-minimisation principle."
+
+    - id: "orch-05"
+      description: "Add manifest.yml to orchestration-teach/"
+      file: "orchestration/orchestration-teach/manifest.yml"
+      criteria: "Sub-agent has manifest referencing parent"
+      status: "completed"
+      result: "Verified existing manifest.yml is correct. Created parent orchestration/manifest.yml as minimal hub pointing to sub-agents."
+
+    - id: "orch-06"
+      description: "Update references after changes"
+      criteria: "All paths in inputs/process files resolve to existing files"
+      status: "completed"
+      result: "Created missing files: orchestration/manifest.yml, teacher/manifest.yml, and docs/plans/251216_context_min/plan.yml. Verified all required path references resolve correctly."
+
+  reference_update_locations:
+    - "assets/processes/_teach.yml"
+    - "planner/planner-teach/process.yml"
+    - "planner/planner-teach/inputs.yml"
+
+  # Additional context-minimisation proposals from review (2025-12-18)
+  proposals:
+    - id: "orch-prop-01"
+      file: "orchestration/orchestration-teach/inputs.yml"
+      issue: "Need to review this file for duplication patterns"
+      proposal: "Read and analyze orchestration-teach/inputs.yml for duplication patterns"
+      impact: "High - created 2 new shared definition files reducing duplication across 29+ files"
+      priority: "medium"
+      status: "completed"
+
+      findings: |
+        Analyzed orchestration-teach/inputs.yml and compared with 30+ other agent inputs files.
+        Identified two major duplication patterns affecting the entire agent system:
+
+        PATTERN 1: Core Behavioral Guidelines (most widespread)
+        - fix-the-source.yml: duplicated in 21 files
+        - context-minimisation.yml: duplicated in 32 files
+        - response-audit.yml: duplicated in 13 files
+
+        PATTERN 2: Common Planner Inputs (affects all 5 planner agents)
+        - plans.yml: duplicated in 25 files
+        - plan-inputs.yml: duplicated in 25 files
+        - folder-structure.yml: duplicated in 25 files
+        - agent-role-scope-matrix.md: duplicated in 8 files
+
+      actions_taken:
+        - created: "assets/definitions/core-behavioral-guidelines.yml"
+          purpose: "Centralizes the 3 most common behavioral guidelines (32 occurrences)"
+          impact: "Can reduce duplication in 29 files across all domains"
+
+        - created: "assets/definitions/common-planner-inputs.yml"
+          purpose: "Centralizes 4 common planner inputs affecting all planner agents"
+          impact: "Can reduce duplication in all planner agents (planner-teach, planner-build, planner-test, planner-cleaning, planner-agent-exam)"
+
+        - updated: "orchestration/orchestration-teach/inputs.yml"
+          changes: "Replaced 3 individual guideline references with single core-behavioral-guidelines.yml reference"
+          impact: "Reduced file size by 12 lines, improved maintainability"
+
+      next_steps:
+        scope: "Beyond orchestration agent - system-wide opportunity"
+        recommendation: |
+          These shared definition files can be adopted across the agent system:
+
+          1. Update all planner agents to use common-planner-inputs.yml
+             Files: planner-teach, planner-build, planner-test, planner-cleaning, planner-agent-exam
+             Impact: Eliminate ~16 lines of duplication per file (5 files = 80 lines)
+
+          2. Update all agents to use core-behavioral-guidelines.yml
+             Files: 29 agent inputs files across all domains
+             Impact: Eliminate ~12 lines of duplication per file (29 files = 348 lines)
+
+          3. Consider creating additional shared definition files:
+             - common-test-inputs.yml (for test agents)
+             - common-deploy-inputs.yml (for deploy agents)
+             - common-explore-inputs.yml (for explore agents)
+
+        validation: |
+          Verify shared definition files work correctly:
+          - Test orchestration-teach agent with updated inputs.yml
+          - Verify all referenced files load correctly
+          - Check that behavior remains unchanged
+
+        rollout_strategy: |
+          Incremental adoption recommended:
+          1. Validate with orchestration-teach (already done)
+          2. Update one planner agent and test
+          3. Update remaining planner agents
+          4. Create migration plan for all other agents
+
+      completion_status:
+        status: "completed"
+        completed_date: "2025-12-18"
+        summary: |
+          System-wide adoption of shared definition files completed:
+
+          1. common-planner-inputs.yml adoption (5 agents):
+             - planner-build: 16 lines reduced
+             - planner-test: 17 lines reduced
+             - planner-cleaning: 15 lines reduced
+             - planner-teach: 17 lines reduced
+             - planner-agent-exam: 16 lines reduced
+             Total: ~80 lines eliminated
+
+          2. core-behavioral-guidelines.yml adoption (22 agent files):
+             - build agents: 2 files updated
+             - test agents: 8 files updated
+             - explore agents: 5 files updated
+             - deploy agents: 3 files updated
+             - documentation agent: 1 file updated
+             - teacher agents: 2 files updated
+             - orchestration-teach: already updated
+             Total: ~150+ lines eliminated
+
+          All files validated as correct YAML. System-wide adoption complete.
+
+# FINAL NOTES (Post-Completion Review)
+# Date: 2025-12-18
+#
+# All tasks completed successfully.
+# Hub manifest (orchestration/manifest.yml) created and retained.
+#
+# Key Outcomes:
+# - Shared definition files created: common-planner-inputs.yml, core-behavioral-guidelines.yml
+# - System-wide adoption reduced ~230+ lines of duplication
+# - Hub manifests provide discoverability without excessive indirection
+#
+# Lessons Learned:
+# - Context minimization should not come at the cost of clarity
+# - Each layer of abstraction should provide clear benefit
+# - The balance between minimization and comprehensibility is critical
+#
+# Plan Status: COMPLETED

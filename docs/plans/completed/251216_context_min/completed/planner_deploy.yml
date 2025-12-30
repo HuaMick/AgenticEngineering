@@ -1,0 +1,125 @@
+# Planner Task: Deploy Agent Context Minimisation
+# Plan: 251216_context_min
+
+task:
+  agent: "deploy"
+  target_path: "deploy/"
+
+  current_structure:
+    root_files:
+      - "manifest-deploy.yml"
+      - "manifest.yml"
+      - "definitions.yml"
+    sub_agents:
+      - "deploy-cicd/"
+      - "deploy-packaging/"
+      - "deploy-worktree/"
+
+  audit_checklist:
+    context_minimisation:
+      - "Review manifest-deploy.yml (18KB) for unnecessary context"
+      - "Check definitions.yml - should it be in assets/definitions/"
+      - "Review sub-agent inputs for over-specification"
+
+    folder_structure:
+      - "Verify manifest.yml serves as hub with minimal detail"
+      - "Verify manifest-deploy.yml has full context (but review size)"
+      - "MISSING: Root inputs.yml for shared deploy context"
+      - "Ensure each sub-agent has: process.yml, inputs.yml, manifest.yml"
+
+  tasks:
+    - id: "deploy-01"
+      description: "Audit manifest-deploy.yml for context minimisation"
+      file: "deploy/manifest-deploy.yml"
+      criteria: "Large file (18KB) reduced to essential context"
+      status: "completed"
+      result: "Reduced from 19KB/412 lines to 5KB/79 lines (74% reduction)"
+
+    - id: "deploy-02"
+      description: "Review definitions.yml placement"
+      file: "deploy/definitions.yml"
+      criteria: "Determine if this should be in assets/definitions/ instead"
+      status: "completed"
+      result: "Kept as-is. Files already in assets/definitions/. definitions.yml serves as documentation of which definitions this agent uses."
+
+    - id: "deploy-03"
+      description: "Delete root inputs.yml - sub-agents should be self-contained"
+      file: "deploy/inputs.yml"
+      criteria: "File removed; each sub-agent has complete inputs.yml without parent_inputs references"
+      action: "delete"
+      status: "completed"
+      previous_result: "Was: Created 6KB inputs.yml - now being removed per context-minimisation"
+      result: "File already deleted. Verified all sub-agents (deploy-cicd, deploy-packaging, deploy-worktree) have complete inputs.yml files without parent_inputs references. Deploy directory now contains only sub-agent folders with self-contained configurations."
+
+    - id: "deploy-04"
+      description: "Audit deploy-cicd folder structure"
+      file: "deploy/deploy-cicd/"
+      criteria: "Has process.yml, inputs.yml, manifest.yml"
+      status: "completed"
+      result: "Verified: process.yml (3.8K), inputs.yml (7.8K), manifest.yml (121 bytes)"
+
+    - id: "deploy-05"
+      description: "Audit deploy-packaging folder structure"
+      file: "deploy/deploy-packaging/"
+      criteria: "Has process.yml, inputs.yml, manifest.yml"
+      status: "completed"
+      result: "Verified: process.yml (3.2K), inputs.yml (6.8K), manifest.yml (102 bytes)"
+
+    - id: "deploy-06"
+      description: "Audit deploy-worktree folder structure"
+      file: "deploy/deploy-worktree/"
+      criteria: "Has process.yml, inputs.yml, manifest.yml"
+      status: "completed"
+      result: "Verified: process.yml (2.3K), inputs.yml (6.0K), manifest.yml (120 bytes)"
+
+    - id: "deploy-07"
+      description: "Update references after changes"
+      criteria: "All paths in inputs/process files resolve to existing files"
+      status: "completed"
+      result: "Updated _new_worktree.yml to reference deploy-worktree/process.yml and inputs.yml instead of non-existent deploy/processes/worktree_management.yml"
+
+  reference_update_locations:
+    - "assets/processes/_new_worktree.yml"
+
+  # Additional context-minimisation proposals from review (2025-12-18)
+  proposals:
+    - id: "deploy-prop-01"
+      file: "deploy/deploy-cicd/inputs.yml"
+      issue: "Inline definitions for CI/CD concepts (lines 114-215) could be extracted to shared definition files"
+      proposal: "Create assets/definitions/cicd-validation.yml for cloudbuild/dockerfile/pytest validation patterns"
+      impact: "Remove ~2000 tokens from inputs.yml, make CI/CD patterns reusable"
+      priority: "low"
+      status: "skipped"
+      note: "These are very specific to deploy-cicd, extraction may not improve reusability"
+      result: "Skipped per plan note. CI/CD validation patterns are domain-specific to deploy-cicd and unlikely to be reused by other agents. Keeping inline provides better context for this specialized agent."
+
+    - id: "deploy-prop-02"
+      file: "deploy/deploy-packaging/inputs.yml"
+      issue: "Inline 'packaging' and 'build_artifacts' definitions (lines 100-127) reference existing definition files but duplicate content"
+      proposal: "Replace inline definitions with direct references to assets/definitions/packaging.yml and build-artifacts.yml"
+      impact: "Remove ~300 tokens of redundant explanation"
+      priority: "high"
+      status: "completed"
+      result: "Replaced inline definitions with references. Reduced from 28 lines to 4 lines (~300 tokens saved). Now references assets/definitions/packaging.yml and assets/definitions/build-artifacts.yml directly."
+
+    - id: "deploy-prop-03"
+      file: "deploy/deploy-packaging/inputs.yml"
+      issue: "Inline 'gcp_artifact_registry' definition (lines 146-162) duplicates content from gcp-artifact-registry.yml"
+      proposal: "Replace with reference to assets/definitions/gcp-artifact-registry.yml"
+      impact: "Remove ~200 tokens of duplication"
+      priority: "high"
+      status: "completed"
+      result: "Replaced inline definition with reference. Reduced from 17 lines to 2 lines (~200 tokens saved). Now references assets/definitions/gcp-artifact-registry.yml directly."
+
+    - id: "deploy-prop-04"
+      file: "deploy/"
+      issue: "Missing root-level manifest.yml for deploy agent family"
+      proposal: "Create deploy/manifest.yml as hub file pointing to deploy-cicd, deploy-packaging, deploy-worktree sub-agents"
+      impact: "Improve discoverability, align with hub-and-spoke architecture"
+      priority: "medium"
+      status: "completed"
+      result: "Created deploy/manifest.yml (71 lines) as hub file. Includes agent_family, description, all 3 sub-agents with full metadata, routing guidelines with selection criteria, and shared principles. Aligns with hub-and-spoke pattern used by build/ and planner/ agent families."
+
+final_notes:
+  - date: "2025-12-18"
+    note: "All tasks completed. Hub manifest (deploy/manifest.yml) created successfully in deploy-prop-04 and retained."

@@ -1,0 +1,279 @@
+# ==============================================================================
+# RemoteAgents User Stories - Connection Reliability
+# ==============================================================================
+
+category: reliability
+name: "Connection Reliability"
+description: "Keepalive, reconnection, and failure handling"
+
+stories:
+  # --------------------------------------------------------------------------
+  # US-RELIABLE-001: Keepalive Ping/Pong
+  # --------------------------------------------------------------------------
+  - id: US-RELIABLE-001
+    title: "WebSocket Keepalive Works"
+    priority: HIGH
+    persona: platform_operator
+
+    description: |
+      As a platform operator, I want WebSocket keepalive
+      so that stale connections are detected and cleaned up.
+
+    preconditions:
+      - Session is PAIRED
+      - Both WebSocket connections active
+
+    journey:
+      - step: 1
+        action: "Wait 30 seconds (ping interval)"
+        expected: "Relay sends Ping message"
+
+      - step: 2
+        action: "Client/Desktop receives Ping"
+        expected: "Pong response sent within 5 seconds"
+
+      - step: 3
+        action: "Connection remains active"
+        expected: "Session state unchanged"
+
+      - step: 4
+        action: "Monitor for 5 minutes"
+        expected: "Multiple ping/pong cycles complete"
+
+    acceptance_criteria:
+      - Ping sent every 30 seconds
+      - Pong received within 5 seconds
+      - Connection stays alive
+      - No unexpected disconnects
+
+    test_layers:
+      local: true
+      docker: true
+      integration: true
+
+  # --------------------------------------------------------------------------
+  # US-RELIABLE-002: Timeout on Missing Pong
+  # --------------------------------------------------------------------------
+  - id: US-RELIABLE-002
+    title: "Disconnect on Missing Pong"
+    priority: HIGH
+    persona: platform_operator
+
+    description: |
+      As a platform operator, I want connections closed if Pong not received
+      so that dead connections don't accumulate.
+
+    preconditions:
+      - Session is PAIRED
+      - Client simulates unresponsive state
+
+    journey:
+      - step: 1
+        action: "Relay sends Ping"
+        expected: "Ping transmitted"
+
+      - step: 2
+        action: "Client doesn't respond (simulate network issue)"
+        expected: "5 second timeout starts"
+
+      - step: 3
+        action: "Wait 5 seconds"
+        expected: "Relay closes WebSocket connection"
+
+      - step: 4
+        action: "Session cleanup triggered"
+        expected: "Session transitions to CLOSED"
+
+    acceptance_criteria:
+      - 5 second timeout enforced
+      - Connection closed on timeout
+      - Session cleaned up
+      - Other party notified
+
+    test_layers:
+      local: true
+      docker: false
+      integration: true
+
+  # --------------------------------------------------------------------------
+  # US-RELIABLE-003: Desktop Reconnection
+  # --------------------------------------------------------------------------
+  - id: US-RELIABLE-003
+    title: "Desktop Reconnects After Disconnect"
+    priority: MEDIUM
+    persona: desktop_user
+
+    description: |
+      As a desktop user, I want the terminal service to reconnect
+      so that temporary network issues don't lose my session.
+
+    preconditions:
+      - Session established
+      - Network temporarily interrupted
+
+    journey:
+      - step: 1
+        action: "Simulate network disconnect (kill connection)"
+        expected: "RelayClient detects disconnect"
+
+      - step: 2
+        action: "Reconnection attempt starts"
+        expected: "Exponential backoff: 1s, 2s, 4s, 8s, 16s, capped at 30s"
+
+      - step: 3
+        action: "Network restored"
+        expected: "Connection reestablished"
+
+      - step: 4
+        action: "Session continues"
+        expected: "I/O resumes without data loss"
+
+      - step: 5
+        action: "After 10 failed attempts (if network not restored)"
+        expected: "Reconnection stops, connection state becomes CLOSED, user notified"
+
+    acceptance_criteria:
+      - Disconnect detected promptly
+      - Reconnection with exponential backoff (1s, 2s, 4s, 8s, 16s, capped at 30s)
+      - Maximum 10 reconnection attempts before giving up
+      - Each retry logged with attempt number and delay
+      - Session state preserved during reconnection
+      - I/O resumes after reconnection
+
+    test_layers:
+      local: true
+      docker: false
+      integration: true
+
+  # --------------------------------------------------------------------------
+  # US-RELIABLE-004: Graceful Degradation on High Latency
+  # --------------------------------------------------------------------------
+  - id: US-RELIABLE-004
+    title: "Works Under High Latency"
+    priority: MEDIUM
+    persona: web_user
+
+    description: |
+      As a user on slow network, I want the system to work
+      even with high latency connections.
+
+    preconditions:
+      - Session established
+      - Simulated 500ms network latency
+
+    journey:
+      - step: 1
+        action: "Type in web terminal with 500ms latency"
+        expected: "Input still reaches desktop"
+
+      - step: 2
+        action: "Command output returns"
+        expected: "Output displayed (with delay)"
+
+      - step: 3
+        action: "Keepalive continues working"
+        expected: "Ping/Pong completes within timeout"
+
+      - step: 4
+        action: "Session remains stable"
+        expected: "No unexpected disconnects"
+
+    acceptance_criteria:
+      - System tolerates 500ms latency
+      - Keepalive timeout > round-trip time
+      - No data loss under latency
+      - User experience degrades gracefully
+
+    test_layers:
+      local: false
+      docker: false
+      integration: true
+
+  # --------------------------------------------------------------------------
+  # US-RELIABLE-005: Connection Recovery After Relay Restart
+  # --------------------------------------------------------------------------
+  - id: US-RELIABLE-005
+    title: "Handle Relay Service Restart"
+    priority: LOW
+    persona: desktop_user
+
+    description: |
+      As a desktop user, I want to handle relay restarts
+      so that I can recover from service maintenance.
+
+    preconditions:
+      - Active session
+      - Relay service restarted
+
+    journey:
+      - step: 1
+        action: "Relay service restarts (session state lost)"
+        expected: "WebSocket connections closed"
+
+      - step: 2
+        action: "Desktop detects disconnect"
+        expected: "Reconnection attempted"
+
+      - step: 3
+        action: "Reconnection fails (session gone)"
+        expected: "Error logged, user notified"
+
+      - step: 4
+        action: "User creates new session"
+        expected: "New session works normally"
+
+    acceptance_criteria:
+      - Disconnect detected on relay restart
+      - Clear error message displayed
+      - User can create new session
+      - No zombie processes
+
+    test_layers:
+      local: false
+      docker: false
+      integration: true
+
+  # --------------------------------------------------------------------------
+  # US-RELIABLE-006: Configurable Reconnection Parameters
+  # --------------------------------------------------------------------------
+  - id: US-RELIABLE-006
+    title: "Configurable Reconnection Parameters"
+    priority: LOW
+    persona: platform_operator
+
+    description: |
+      As a platform operator, I want to configure reconnection behavior
+      so that I can tune the system for different network conditions.
+
+    preconditions:
+      - Creating RelayClient with custom configuration
+      - Understanding of RelayClientConfig options
+
+    journey:
+      - step: 1
+        action: "Create RelayClientConfig with custom max_reconnect_attempts"
+        expected: "Configuration accepts custom value"
+
+      - step: 2
+        action: "Create RelayClientConfig with custom initial_reconnect_delay"
+        expected: "Configuration accepts custom value"
+
+      - step: 3
+        action: "Create RelayClientConfig with custom max_reconnect_delay"
+        expected: "Configuration accepts custom value"
+
+      - step: 4
+        action: "Verify configuration is applied during reconnection"
+        expected: "Reconnection uses custom parameters"
+
+    acceptance_criteria:
+      - RelayClientConfig allows custom max_reconnect_attempts
+      - RelayClientConfig allows custom initial_reconnect_delay
+      - RelayClientConfig allows custom max_reconnect_delay
+      - Default values are 10 attempts, 1.0s initial, 30.0s max
+      - Configuration validated (delays must be positive)
+
+    test_layers:
+      local: true
+      docker: false
+      integration: false

@@ -1,0 +1,342 @@
+# MyAgents UAT Testing Plan - Staging Environment
+# Created: 2025-11-29
+# Purpose: UAT testing loop with user simulation agents
+# Base: 251126_myagents_staging.yml (completed CI/CD improvements)
+
+name: UAT Testing - Staging CI/CD Validation
+status: completed
+created_date: 2025-11-29
+worktree: /home/code/myagents/MyAgents-staging
+liveplan: /home/code/myagents/docs/plans/live/251129_uat_staging.yml
+
+# ==============================================================================
+# CONTEXT FROM STAGING PLAN
+# ==============================================================================
+
+context:
+  source_plan: /home/code/myagents/docs/plans/live/251126_myagents_staging.yml
+  completed_features:
+    - Dockerfile.test uv.sources sed pattern fix
+    - pytest-testmon for selective test execution
+    - Test suite consolidation (file_operations, git_operations)
+    - Config simplification (removed fallback patterns)
+    - Docker structure fix for Agent-GCPtoolkit path
+  previous_uat_results:
+    grade: "B+"
+    passed: 10
+    failed: 2
+  target_grade: "A"
+
+# ==============================================================================
+# UAT TEST SCENARIOS
+# ==============================================================================
+
+uat_scenarios:
+  - id: UAT-001
+    name: Fresh Developer Setup
+    description: "New developer clones repo and runs tests following only README"
+    user_persona: "Junior developer, no MyAgents experience"
+
+  - id: UAT-002
+    name: CI/CD Pipeline Execution
+    description: "Developer pushes code and observes CI/CD pipeline behavior"
+    user_persona: "Developer with basic git knowledge"
+
+  - id: UAT-003
+    name: Test Execution Modes
+    description: "Developer runs tests in unit, quick, and full modes"
+    user_persona: "QA engineer testing different scopes"
+
+  - id: UAT-004
+    name: Docker Development Workflow
+    description: "Developer builds and runs containers locally"
+    user_persona: "Backend developer familiar with Docker"
+
+  - id: UAT-005
+    name: Testmon Selective Testing
+    description: "Developer makes changes and runs testmon-filtered tests"
+    user_persona: "Experienced developer optimizing test runs"
+
+# ==============================================================================
+# PHASES
+# ==============================================================================
+
+phases:
+  # ========================================
+  # UAT TEST PHASE - User Simulation Agents
+  # ========================================
+  - name: UAT Test Phase
+    execution_groups:
+      - execution: test-fix-loop
+        name: User Simulation Testing
+        agents:
+          # Parallel user simulator agents - one per UAT scenario
+          - type: test
+            count: 5
+            process: src/myagents/frontend/agents/test/processes/user_simulator.yml
+            inputs:
+              - /home/code/myagents/MyAgents-staging/docs/README.md
+              - /home/code/myagents/MyAgents-staging/docs/architecture/architecture.md
+            guidance: |
+              Test Strategy: agent-blind-test (user simulation)
+              Test Process: Execute user_simulator.yml - discover and test using only documentation
+
+              USER SIMULATION SCENARIOS (distribute across 5 agents):
+
+              Agent 1 - UAT-001 Fresh Developer Setup:
+              Persona: Junior developer, first time with MyAgents
+              Starting State: Fresh clone of MyAgents-staging branch
+              Test Journey:
+              1. Read README.md (follow instructions exactly as written)
+              2. Discover how to install dependencies (look for pipx, uv, or pip instructions)
+              3. Discover how to run tests (look for pytest or test commands)
+              4. Execute test command with defaults
+              5. Verify tests pass or report clear errors
+              Expected Outcome: Tests run successfully following docs alone
+              Report As Failure: Missing/unclear instructions, unexpected errors
+
+              Agent 2 - UAT-002 CI/CD Pipeline:
+              Persona: Developer with basic git knowledge
+              Starting State: Working copy of MyAgents-staging
+              Test Journey:
+              1. Read CI/CD documentation (look for CICD_README.md or similar)
+              2. Understand what triggers CI/CD (push, PR, etc.)
+              3. Verify Dockerfile.test builds correctly locally
+              4. Check coverage thresholds are documented
+              Expected Outcome: Clear CI/CD documentation, Docker builds work
+              Report As Failure: Missing CI/CD docs, build failures, unclear thresholds
+
+              Agent 3 - UAT-003 Test Execution Modes:
+              Persona: QA engineer testing different scopes
+              Starting State: Dependencies installed
+              Test Journey:
+              1. Discover test execution modes (unit, quick, full)
+              2. Run unit tests: verify fast execution
+              3. Run quick tests: verify moderate scope
+              4. Check for costly test markers and gating
+              Expected Outcome: All modes work, clear mode selection docs
+              Report As Failure: Mode failures, unclear mode documentation
+
+              Agent 4 - UAT-004 Docker Workflow:
+              Persona: Backend developer with Docker experience
+              Starting State: Docker installed, repo cloned
+              Test Journey:
+              1. Find Docker build instructions
+              2. Build development containers
+              3. Verify Agent-GCPtoolkit path is correct in container
+              4. Run tests inside container
+              Expected Outcome: Containers build and run correctly
+              Report As Failure: Build failures, path issues, missing instructions
+
+              Agent 5 - UAT-005 Testmon Selective Testing:
+              Persona: Experienced developer optimizing test runs
+              Starting State: Working test environment
+              Test Journey:
+              1. Find testmon documentation
+              2. Run full test suite once (baseline)
+              3. Make small change to one file
+              4. Run with testmon to verify selective execution
+              5. Verify only affected tests run
+              Expected Outcome: Testmon correctly identifies and runs affected tests
+              Report As Failure: Full suite runs despite no changes, missing testmon docs
+
+              Failure Reporting Format:
+              Add failures to live plan under uat_failures with structure:
+              - scenario_id: UAT-XXX
+              - step: Which step in journey failed
+              - failure_type: "documentation_gap", "unexpected_error", "unclear_instructions"
+              - description: What went wrong
+              - user_impact: How this affects the user persona
+              - recommendation: What should be fixed
+            success_criteria:
+              - All 5 UAT scenarios pass following documentation only
+              - Zero documentation gaps preventing task completion
+              - Clear error messages when things go wrong
+              - Grade improvement from B+ to A (12/12 scenarios)
+
+          # Dynamic build agents to fix any failures
+          - type: build
+            count: "n = total failures"
+            inputs:
+              - /home/code/myagents/MyAgents-staging/docs/README.md
+              - /home/code/myagents/MyAgents-staging/docs/architecture/architecture.md
+              - /home/code/myagents/MyAgents-staging/docs/CICD_README.md
+              - /home/code/myagents/MyAgents-staging/Dockerfile.test
+              - /home/code/myagents/MyAgents-staging/pyproject.toml
+            guidance: |
+              Context: User simulator agents have identified UAT failures.
+              Each build agent fixes ONE specific failure.
+
+              Instructions:
+              1. Read live plan at /home/code/myagents/docs/plans/live/251129_uat_staging.yml
+              2. Find your assigned failure (orchestration agent will specify)
+              3. Determine fix type:
+                 - Documentation gap: Update README, CICD_README, or add new docs
+                 - Code issue: Fix Dockerfile, pyproject.toml, or source code
+                 - Configuration: Update test markers, pytest config, etc.
+              4. Fix the specific issue identified
+              5. Mark failure as resolved in live plan
+
+              Fix Categories:
+              - Documentation fixes: Add missing instructions, clarify existing text
+              - Docker fixes: Path corrections, build optimizations
+              - Test config fixes: Marker updates, scope definitions
+              - Testmon fixes: Configuration or documentation updates
+
+              Why this matters: Each failure represents a gap in user experience.
+            success_criteria:
+              - User can complete scenario following docs alone
+              - Related scenarios still work (no regression)
+              - Fix verified by re-running user simulation
+
+# ==============================================================================
+# RESULTS (populated during execution)
+# ==============================================================================
+
+uat_failures:
+  - scenario_id: UAT-001
+    step: "Understanding how to set up development environment"
+    failure_type: documentation_gap
+    description: "README.md and architecture.md do not contain setup instructions. Developer must guess Makefile commands."
+    user_impact: "Junior developer cannot get started without guessing or exploring non-documented files"
+    recommendation: "Add Getting Started guide with step-by-step setup instructions"
+    severity: critical
+
+  - scenario_id: UAT-001
+    step: "Finding test execution instructions"
+    failure_type: documentation_gap
+    description: "Neither documentation file explains how to run tests"
+    user_impact: "Developer cannot complete basic testing workflow without exploring source files"
+    recommendation: "Document test commands in setup guide"
+    severity: high
+
+  - scenario_id: UAT-002
+    step: "Verify Dockerfile.test can be built locally"
+    failure_type: documentation_gap
+    description: "CICD_README.md documents Cloud Build but lacks local Docker build instructions"
+    user_impact: "Developer cannot verify Docker builds locally before pushing"
+    recommendation: "Add Local Testing section to CICD_README.md"
+    severity: medium
+
+  - scenario_id: UAT-003
+    step: "Run unit tests"
+    failure_type: unclear_instructions
+    description: "pytest.ini defines unit marker but no tests use it (all 504 deselected)"
+    user_impact: "QA engineer expecting unit tests finds none"
+    recommendation: "Remove unused marker or document why not used"
+    severity: low
+
+  - scenario_id: UAT-004
+    step: "Docker build with default WORKTREE_NAME"
+    failure_type: build_failure
+    description: "Dockerfile has ARG WORKTREE_NAME=MyAgents-test-refactor-3 hardcoded but actual worktree is MyAgents-staging"
+    user_impact: "Build fails immediately with confusing errors"
+    recommendation: "Update default ARG to match current worktree or document --build-arg requirement"
+    severity: critical
+
+  - scenario_id: UAT-004
+    step: "Incorrect build context"
+    failure_type: documentation_gap
+    description: "Documentation doesn't specify build must run from parent directory, not within worktree"
+    user_impact: "Backend developer wastes time troubleshooting path errors"
+    recommendation: "Update manual-testing.md with correct build context instructions"
+    severity: high
+
+  - scenario_id: UAT-005
+    step: "Find testmon documentation"
+    failure_type: documentation_gap
+    description: "Zero documentation for pytest-testmon despite being installed and providing 88% time savings"
+    user_impact: "Experienced developer cannot discover this optimization capability"
+    recommendation: "Add testmon section to docs/testing/README.md with usage examples"
+    severity: medium
+
+uat_results:
+  iteration_1:
+    total_scenarios: 5
+    passed: 1
+    partial_pass: 1
+    failed: 3
+    grade: "C+"
+    summary:
+      UAT-001: "FAIL - Missing setup documentation"
+      UAT-002: "PARTIAL PASS - CI/CD docs good but missing local Docker build"
+      UAT-003: "PASS - Test modes work (minor: unused unit marker)"
+      UAT-004: "FAIL - Docker build fails due to hardcoded paths"
+      UAT-005: "FAIL - Testmon undocumented despite 88% speedup"
+
+  iteration_2_post_fix:
+    total_scenarios: 5
+    passed: 5
+    failed: 0
+    grade: "A"
+    summary:
+      UAT-001: "PASS - getting-started.md created with comprehensive setup guide"
+      UAT-002: "PASS - Local Docker Testing section added to CICD_README.md"
+      UAT-003: "PASS - Test organization documented in tests/README.md"
+      UAT-004: "PASS - Dockerfile.test WORKTREE_NAME fixed, build context documented"
+      UAT-005: "PASS - Testmon section added to docs/testing/README.md"
+
+execution_log:
+  - timestamp: "2025-11-29T12:00:00Z"
+    action: "Spawned 5 user simulation agents in parallel"
+  - timestamp: "2025-11-29T12:05:00Z"
+    action: "All agents completed - aggregating results (C+ grade)"
+  - timestamp: "2025-11-29T12:06:00Z"
+    action: "Updated live plan with failures"
+  - timestamp: "2025-11-29T12:10:00Z"
+    action: "Spawned 5 build agents in parallel to fix failures"
+  - timestamp: "2025-11-29T12:15:00Z"
+    action: "All build agents completed - fixes applied"
+  - timestamp: "2025-11-29T12:20:00Z"
+    action: "Re-ran UAT verification - grade improved to A"
+
+# ==============================================================================
+# FIXES APPLIED
+# ==============================================================================
+
+fixes_applied:
+  - id: FIX-001
+    target: UAT-001
+    action: "Created docs/guides/getting-started.md (8.8KB, 405 lines)"
+    files_changed:
+      - /home/code/myagents/MyAgents-staging/docs/guides/getting-started.md (NEW)
+      - /home/code/myagents/MyAgents-staging/docs/README.md (updated links)
+    status: verified
+
+  - id: FIX-002
+    target: UAT-002
+    action: "Added Section 8: Local Docker Testing to CICD_README.md"
+    files_changed:
+      - /home/code/myagents/MyAgents-staging/docs/CICD_README.md
+    status: verified
+
+  - id: FIX-003
+    target: UAT-003
+    action: "Documented workflow-based test organization in tests/README.md"
+    files_changed:
+      - /home/code/myagents/MyAgents-staging/tests/README.md
+    status: verified
+
+  - id: FIX-004
+    target: UAT-004
+    action: "Fixed Dockerfile.test WORKTREE_NAME default, documented build context"
+    files_changed:
+      - /home/code/myagents/MyAgents-staging/Dockerfile.test
+      - /home/code/myagents/MyAgents-staging/docs/testing/manual-testing.md
+    status: verified
+
+  - id: FIX-005
+    target: UAT-005
+    action: "Added Selective Testing with Testmon section to docs/testing/README.md"
+    files_changed:
+      - /home/code/myagents/MyAgents-staging/docs/testing/README.md
+    status: verified
+
+  - id: FIX-006
+    target: "Documentation consistency"
+    action: "Updated outdated worktree references and test counts"
+    files_changed:
+      - /home/code/myagents/MyAgents-staging/docs/testing/README.md (consolidated)
+      - /home/code/myagents/MyAgents-staging/docs/testing/manual-testing.md (generic worktree)
+      - /home/code/myagents/MyAgents-staging/docs/testing/fresh_environment_test_guide.md (generic worktree)
+    status: verified

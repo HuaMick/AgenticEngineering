@@ -1,0 +1,1106 @@
+name: RemoteAgents Shared Contracts
+worktree: /home/code/myagents/RemoteAgents
+branch: shared-contracts
+status: ready_for_uat
+liveplan: /home/code/myagents/docs/plans/live/251203_remoteagents_shared-contracts.yml
+completedplan: /home/code/myagents/docs/plans/completed/251203_remoteagents_shared-contracts.yml
+
+description: |
+  Establish the foundational protocol contracts and cryptographic interfaces for RemoteAgents.
+  This defines Pydantic message models, crypto type interfaces, and test vectors that all other
+  services depend on. Critical path blocker for all downstream worktrees.
+
+objectives:
+  - Define Pydantic protocol message models for all RemoteAgents communication
+  - Establish crypto interface types (keys, encryption, signatures) without implementation
+  - Create comprehensive test vectors for protocol validation
+  - Document message flow patterns and state transitions
+  - Ensure type safety and serialization compatibility with Flutter client
+
+dependencies:
+  requires: []
+  blocks:
+    - relay-service
+    - terminal-service
+    - crypto-impl
+    - cli-integration
+
+success_criteria:
+  - All protocol messages defined as Pydantic models with validation
+  - Crypto interface types documented with clear contracts
+  - Test vectors cover all message types and error cases
+  - Messages serialize/deserialize correctly to JSON
+  - Type hints provide full IDE support for downstream services
+
+phases:
+  # ========================================
+  # BUILD PHASE - Protocol Infrastructure
+  # ========================================
+  - name: Build Phase - Protocol Infrastructure
+    execution_groups:
+      # Sequential: Base infrastructure needed before specific message types
+      - execution: sequential
+        agents:
+          # Create base protocol directory structure and base classes
+          - type: builder
+            inputs:
+              - /home/code/myagents/RemoteAgents/src/agent_remote/__init__.py
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/__init__.py
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/protocol/__init__.py
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/protocol/base.py
+            guidance: |
+              Context: All protocol messages share common patterns: type discriminator for routing,
+              timestamp for ordering, JSON serialization. Base classes eliminate duplication and
+              ensure consistency. This foundation must exist before defining specific message types.
+
+              Instructions:
+              1. Create directory structure:
+                 - /home/code/myagents/RemoteAgents/src/agent_remote/__init__.py (empty module marker)
+                 - /home/code/myagents/RemoteAgents/src/agent_remote/shared/__init__.py (empty module marker)
+                 - /home/code/myagents/RemoteAgents/src/agent_remote/shared/protocol/__init__.py (will export message types later)
+              2. Create base.py with Pydantic base classes:
+                 - RemoteAgentMessage: Base for all messages with type field and to_json()/from_json()
+                 - TimestampedMessage: Adds timestamp field with auto-population (time.time())
+                 - SessionMessage: Adds session_id field with UUID validation
+              3. Add utility functions:
+                 - bytes_to_base64(data: bytes) -> str
+                 - base64_to_bytes(data: str) -> bytes
+                 - generate_session_id() -> str (UUID4)
+                 - generate_pairing_code() -> str (6 char random alphanumeric uppercase)
+              4. Create type registry infrastructure for message deserialization:
+                 - MESSAGE_TYPES: Dict[str, Type[RemoteAgentMessage]] mapping type strings to classes
+                 - deserialize_message(json_str: str) -> RemoteAgentMessage (uses type field to dispatch)
+              5. Add comprehensive docstrings explaining base class usage patterns
+
+              Why this matters: Base infrastructure ensures all messages have consistent serialization
+              and validation. Type registry enables safe deserialization without eval().
+            success_criteria:
+              - Base classes provide consistent interface for all message types
+              - Timestamp auto-populates on message creation
+              - Type registry infrastructure ready for message registration
+              - Base64 utilities handle bytes fields correctly
+              - UUID validation works for session IDs
+
+  # ========================================
+  # BUILD PHASE - Protocol Message Definitions
+  # ========================================
+  - name: Build Phase - Protocol Messages
+    execution_groups:
+      # Parallel execution: Different message categories can be defined simultaneously
+      - execution: parallel
+        agents:
+          # Terminal protocol messages
+          - type: builder
+            inputs:
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/protocol/__init__.py
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/protocol/base.py
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/protocol/terminal_messages.py
+            guidance: |
+              Context: Terminal messages handle PTY input/output streaming, terminal resizing, and
+              session lifecycle. These must serialize efficiently for WebSocket transport and support
+              binary data (terminal output can contain control codes, colors, etc.).
+
+              Instructions:
+              1. Define Pydantic models in terminal_messages.py inheriting from base classes:
+                 - TerminalOutput(SessionMessage, TimestampedMessage): {type: "terminal.output", session_id, data: bytes, timestamp}
+                 - TerminalInput(SessionMessage, TimestampedMessage): {type: "terminal.input", session_id, data: bytes, timestamp}
+                 - TerminalResize(SessionMessage): {type: "terminal.resize", session_id, rows: int, cols: int}
+                 - TerminalClose(SessionMessage): {type: "terminal.close", session_id, reason: str}
+              2. Use Pydantic validators:
+                 - data must be bytes (use base64_to_bytes/bytes_to_base64 from base.py)
+                 - rows/cols must be positive integers (min=1, max=1000)
+                 - session_id inherits UUID validation from SessionMessage base class
+              3. Add JSON serialization using base class to_json()/from_json() methods
+              4. Register message types in MESSAGE_TYPES registry from base.py
+              5. Export message types in __init__.py
+
+              Files to reference:
+              - base.py: Base classes and utility functions
+              - __init__.py: Export all terminal message types
+
+              Why this matters: Terminal messages are high-frequency (every keystroke, output line).
+              Efficient serialization and strict validation prevent protocol errors.
+            success_criteria:
+              - All terminal message types serialize to/from JSON correctly
+              - Bytes fields handle binary data without corruption
+              - Validation rejects invalid session_ids, dimensions, timestamps
+              - Messages include type discriminator for routing
+              - Messages registered in MESSAGE_TYPES registry
+
+          # Session protocol messages
+          - type: builder
+            inputs:
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/protocol/__init__.py
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/protocol/base.py
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/protocol/session_messages.py
+            guidance: |
+              Context: Session messages handle pairing flow between desktop and web client.
+              Desktop creates session, relay issues pairing code, client uses code to connect.
+              These messages contain cryptographic public keys (32 bytes each).
+
+              Instructions:
+              1. Define Pydantic models in session_messages.py inheriting from base classes:
+                 - SessionCreate(RemoteAgentMessage): {type: "session.create", desktop_public_key: bytes}
+                 - SessionCreated(SessionMessage): {type: "session.created", session_id, pairing_code: str}
+                 - SessionPair(RemoteAgentMessage): {type: "session.pair", pairing_code: str, client_public_key: bytes}
+                 - SessionPaired(SessionMessage): {type: "session.paired", session_id, desktop_public_key: bytes}
+                 - SessionClose(SessionMessage): {type: "session.close", session_id}
+              2. Validation rules using Pydantic validators:
+                 - public_key fields must be exactly 32 bytes (X25519 format)
+                 - pairing_code must match pattern: 6 uppercase alphanumeric characters
+                 - session_id inherits UUID validation from SessionMessage base class
+              3. Use base64 serialization from base.py for public_key bytes
+              4. Register message types in MESSAGE_TYPES registry
+              5. Export in __init__.py
+
+              Files to reference:
+              - base.py: Base classes, bytes serialization, session_id validation
+
+              Why this matters: Session messages establish the security context. Invalid keys or
+              malformed pairing codes break the entire pairing flow.
+            success_criteria:
+              - Public keys validate as exactly 32 bytes
+              - Pairing codes match required format (6 chars, uppercase alphanumeric)
+              - Session lifecycle messages complete pairing flow
+              - Invalid formats rejected with clear error messages
+              - Messages registered in MESSAGE_TYPES registry
+
+          # Relay protocol messages
+          - type: builder
+            inputs:
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/protocol/__init__.py
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/protocol/base.py
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/protocol/relay_messages.py
+            guidance: |
+              Context: Relay messages are the encrypted transport layer. All terminal and session
+              messages are wrapped in EncryptedBlob when transmitted through relay. Also includes
+              WebSocket keepalive (Ping/Pong) and error reporting.
+
+              Instructions:
+              1. Define Pydantic models in relay_messages.py inheriting from base classes:
+                 - EncryptedBlob(SessionMessage): {type: "relay.encrypted", session_id, sender: Literal["desktop", "client"],
+                                   payload: bytes, nonce: bytes}
+                 - Ping(TimestampedMessage): {type: "relay.ping", timestamp}
+                 - Pong(TimestampedMessage): {type: "relay.pong", timestamp}
+                 - Error(RemoteAgentMessage): {type: "relay.error", code: str, message: str, details: Optional[dict]}
+              2. Validation rules:
+                 - payload can be any size (encrypted terminal/session message)
+                 - nonce must be exactly 24 bytes (NaCl box requirement)
+                 - sender must be "desktop" or "client" enum (use Literal type hint)
+                 - error codes use namespaced format: "SESSION_EXPIRED", "INVALID_KEY", etc.
+              3. Add base64 serialization for payload and nonce bytes using base.py utilities
+              4. Define error code constants (SESSION_EXPIRED, PAIRING_FAILED, CRYPTO_ERROR, etc.)
+              5. Register message types in MESSAGE_TYPES registry
+              6. Export in __init__.py
+
+              Files to reference:
+              - base.py: Base classes, bytes serialization, timestamp handling
+
+              Why this matters: EncryptedBlob is the only message type that crosses the untrusted
+              network. Nonce format is critical for NaCl cryptographic safety.
+            success_criteria:
+              - EncryptedBlob validates nonce as exactly 24 bytes
+              - Sender enum restricts to desktop/client only
+              - Error codes provide structured error reporting
+              - Ping/Pong enable WebSocket keepalive
+              - Messages registered in MESSAGE_TYPES registry
+
+  # ========================================
+  # BUILD PHASE - Crypto Interface Types
+  # ========================================
+  - name: Build Phase - Crypto Interfaces
+    execution_groups:
+      - execution: sequential
+        agents:
+          # Crypto interface definitions
+          - type: builder
+            inputs:
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/__init__.py
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/crypto/__init__.py
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/crypto/types.py
+            guidance: |
+              Context: Crypto interfaces define the contract for encryption/decryption without
+              specifying implementation. This allows PyNaCl (Python) and pinenacl (Flutter) to
+              implement the same interface, ensuring interoperability. This is INTERFACE ONLY - no
+              implementation code.
+
+              Instructions:
+              1. Create directory structure:
+                 - /home/code/myagents/RemoteAgents/src/agent_remote/shared/crypto/__init__.py
+              2. Define Python Protocol classes in types.py (using typing.Protocol):
+                 - KeyPair: Protocol with properties public_key: bytes, private_key: bytes
+                 - CryptoBox: Protocol with methods:
+                   * encrypt(plaintext: bytes, their_public_key: bytes) -> tuple[bytes, bytes]  # returns (nonce, ciphertext)
+                   * decrypt(ciphertext: bytes, nonce: bytes, their_public_key: bytes) -> bytes
+              3. Define type aliases for clarity:
+                 - PublicKey = bytes  # 32 bytes X25519
+                 - PrivateKey = bytes  # 32 bytes X25519
+                 - Nonce = bytes      # 24 bytes random
+                 - Ciphertext = bytes # encrypted data with Poly1305 MAC
+              4. Document expected formats in comprehensive docstrings:
+                 - Keys: X25519 format (32 bytes each)
+                 - Nonce: Random 24 bytes, must never be reused with same key pair
+                 - Ciphertext: Encrypted data + Poly1305 MAC (variable length)
+                 - Encryption algorithm: Curve25519-XSalsa20-Poly1305 (NaCl box)
+              5. Add factory interface:
+                 - CryptoProvider: Protocol with methods:
+                   * generate_keypair() -> KeyPair
+                   * create_box(keypair: KeyPair) -> CryptoBox
+              6. Export all interfaces and type aliases in __init__.py
+
+              Files to create:
+              - types.py: All Protocol definitions and type aliases
+              - __init__.py: Export public interface
+
+              Why this matters: Well-defined interfaces prevent implementation drift between Python
+              and Flutter. Protocol classes provide static type checking without runtime overhead.
+              These types will be referenced by relay, terminal, and crypto-impl worktrees.
+            success_criteria:
+              - All crypto operations defined as Protocol methods with clear signatures
+              - Type aliases clarify byte array purposes and sizes
+              - Docstrings document format requirements and constraints
+              - Interfaces can be implemented by both PyNaCl and pinenacl
+              - No implementation code present (types only)
+
+  # ========================================
+  # BUILD PHASE - Test Vectors
+  # ========================================
+  - name: Build Phase - Test Vectors
+    execution_groups:
+      - execution: sequential
+        agents:
+          # Test vector generation
+          - type: builder
+            inputs:
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/protocol/terminal_messages.py
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/protocol/session_messages.py
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/protocol/relay_messages.py
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/protocol/base.py
+              - /home/code/myagents/RemoteAgents/tests/shared/__init__.py
+              - /home/code/myagents/RemoteAgents/tests/shared/test_vectors.py
+              - /home/code/myagents/RemoteAgents/tests/shared/fixtures/protocol_vectors.json
+              - /home/code/myagents/RemoteAgents/tests/shared/fixtures/crypto_vectors.json
+            guidance: |
+              Context: Test vectors are known-good inputs/outputs that both Python and Flutter
+              implementations must produce identical results for. This ensures cross-platform
+              interoperability without needing live integration tests during development.
+
+              Instructions:
+              1. Create directory structure:
+                 - /home/code/myagents/RemoteAgents/tests/__init__.py
+                 - /home/code/myagents/RemoteAgents/tests/shared/__init__.py
+                 - /home/code/myagents/RemoteAgents/tests/shared/fixtures/ directory
+              2. Generate protocol test vectors in protocol_vectors.json:
+                 - Valid examples: One of each message type (TerminalOutput, TerminalInput, TerminalResize,
+                   TerminalClose, SessionCreate, SessionCreated, SessionPair, SessionPaired, SessionClose,
+                   EncryptedBlob, Ping, Pong, Error) with all fields populated
+                 - JSON serialization of each message with expected base64 encoding of bytes fields
+                 - Invalid examples that should fail validation:
+                   * Wrong UUID format for session_id
+                   * Invalid nonce length (not 24 bytes)
+                   * Invalid public key length (not 32 bytes)
+                   * Negative terminal dimensions
+                   * Invalid pairing code format
+              3. Generate crypto test vectors in crypto_vectors.json:
+                 - Known keypair (public + private keys as base64) for deterministic testing
+                 - Multiple plaintext messages with expected ciphertext (including nonce)
+                 - Round trip examples (plaintext -> encrypt -> decrypt -> plaintext)
+                 - Edge cases: empty message, max size message, unicode text
+              4. Create test_vectors.py pytest tests:
+                 - Load vectors from JSON files using json.load()
+                 - Test message deserialization from JSON matches expected structure
+                 - Test message serialization produces expected JSON
+                 - Test validation failures for invalid examples
+                 - Mark all tests with @pytest.mark.test_vectors for easy filtering
+              5. Add README.md in tests/shared/ documenting:
+                 - Purpose of test vectors
+                 - How to regenerate vectors if protocol changes
+                 - How Flutter team should use these vectors
+
+              Files to reference:
+              - All protocol message files to understand message structures
+              - base.py for serialization utilities
+
+              Why this matters: Test vectors are the contract between Python and Flutter. Both
+              teams can develop independently, then validate against shared vectors.
+            success_criteria:
+              - Protocol vectors cover all message types with valid and invalid examples
+              - Crypto vectors enable cross-platform validation
+              - Python pytest tests pass against all vectors
+              - Vectors documented with generation process for Flutter team
+
+  # ========================================
+  # ENVIRONMENT SETUP PHASE
+  # CRITICAL: Must run BEFORE test phase to ensure tests run against latest code
+  # ========================================
+  - name: Environment Setup Phase
+    execution_groups:
+      - execution: sequential
+        name: Prepare test environment
+        agents:
+          - type: builder
+            inputs:
+              - /home/code/myagents/RemoteAgents/pyproject.toml
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/__init__.py
+            guidance: |
+              Context: Test phase must run against the latest code version, not a stale installed version.
+              This phase prepares the test environment BEFORE test agents begin validation.
+
+              Instructions:
+              1. Install latest version locally for testing:
+                 - Run `uv pip install -e .` (editable install) from /home/code/myagents/RemoteAgents/
+                 - Verify installation: `uv pip show agent-remote` or check package is importable
+                 - Verify imports work: `python -c "from agent_remote.shared.protocol import *"`
+                 - Document installed version in live plan for reference
+              2. Verify test dependencies installed:
+                 - Run `uv pip install pytest` if not present
+                 - Verify pytest available: `pytest --version`
+              3. Verify environment readiness:
+                 - Protocol imports work
+                 - Crypto type imports work
+                 - Test fixtures directory exists
+
+              Why this matters: Prevents tests from running against stale installed versions that don't match
+              latest source code. Ensures test environment is properly configured.
+
+              Files to reference:
+              - pyproject.toml: Source version and dependencies
+            success_criteria:
+              - Latest code installed locally (editable install successful)
+              - Protocol modules importable from agent_remote.shared.protocol
+              - Crypto modules importable from agent_remote.shared.crypto
+              - Pytest available and working
+              - Environment ready for test phase
+
+  # ========================================
+  # TEST PHASE - Contract Validation
+  # ========================================
+  - name: Test Phase - Contract Validation
+    execution_groups:
+      - execution: test-fix-loop
+        name: Protocol and crypto contract validation
+        agents:
+          # Parallel test agents
+          - type: test
+            count: 5
+            inputs:
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/protocol/base.py
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/protocol/terminal_messages.py
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/protocol/session_messages.py
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/protocol/relay_messages.py
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/crypto/types.py
+              - /home/code/myagents/RemoteAgents/tests/shared/test_vectors.py
+              - /home/code/myagents/MyAgents-staging/src/myagents/frontend/agents/test/processes/test_runner.yml
+            guidance: |
+              Test Strategy: technical-spike (focused contract testing)
+              Test Process: Execute test_runner.yml process from MyAgents-staging test agent processes
+              Testing Layer: LOCAL (sufficient for pure Python contracts package - no Docker or infrastructure dependencies)
+              Reporting: Update live plan at /home/code/myagents/docs/plans/live/251203_remoteagents_shared-contracts.yml
+
+              Note: Docker layer not required for this package as it contains only Pydantic models
+              and Protocol definitions with no infrastructure dependencies.
+
+              Test Distribution (5 agents):
+
+              Agent 1 - Protocol message serialization:
+              - Test all terminal message types (TerminalOutput, TerminalInput, TerminalResize, TerminalClose) serialize to/from JSON
+              - Test bytes fields base64 encode/decode correctly without corruption
+              - Test timestamp auto-population on TimestampedMessage creation
+              - Test deserialization from JSON produces correct types with proper field values
+              - Test round trip: message -> JSON -> message produces equal object
+
+              Agent 2 - Protocol message validation:
+              - Test session_id validation (UUID format required, malformed UUIDs rejected)
+              - Test pairing_code validation (exactly 6 char uppercase alphanumeric, reject lowercase/special chars)
+              - Test public_key validation (exactly 32 bytes, reject shorter/longer)
+              - Test nonce validation (exactly 24 bytes for EncryptedBlob)
+              - Test enum validation (EncryptedBlob sender must be "desktop" or "client", reject other values)
+              - Test terminal dimensions validation (rows/cols positive integers 1-1000, reject negative/zero/too large)
+
+              Agent 3 - Session and relay message validation:
+              - Test SessionCreate, SessionCreated, SessionPair, SessionPaired, SessionClose message types
+              - Test EncryptedBlob, Ping, Pong, Error message types
+              - Test error code constants exist and follow namespacing (SESSION_EXPIRED, PAIRING_FAILED, etc.)
+              - Test message type discriminators ("terminal.output", "session.create", "relay.encrypted", etc.)
+
+              Agent 4 - Type registry and deserialization:
+              - Test MESSAGE_TYPES registry contains all message types (count should match defined messages)
+              - Test deserialize_message() correctly dispatches by type field for each message type
+              - Test unknown type field raises clear, specific error
+              - Test malformed JSON raises appropriate error with helpful message
+              - Test base class utilities (bytes_to_base64, base64_to_bytes, generate_session_id, generate_pairing_code)
+
+              Agent 5 - Test vectors validation:
+              - Run all test vector pytest tests with pytest -v tests/shared/test_vectors.py
+              - Validate protocol vectors match expected serialization for all message types
+              - Validate crypto vectors match expected format
+              - Validate invalid examples correctly fail validation
+              - Report any vector mismatches with specific expected vs actual differences
+
+              Failure Reporting:
+              Add to live plan under test_failures with structure:
+              - test_name: Name of failed test
+              - component: Which component failed (terminal_messages, session_messages, base, etc.)
+              - failure_description: What went wrong
+              - expected_behavior: What should have happened
+              - actual_behavior: What actually happened
+              - files_involved: List of files related to failure
+            success_criteria:
+              - All protocol messages serialize/deserialize correctly
+              - All validation rules enforce constraints
+              - Type registry enables safe deserialization
+              - All test vectors pass
+              - Zero test failures
+
+          # Dynamic build agents
+          - type: build
+            count: "n = total failures"
+            inputs:
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/protocol/base.py
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/protocol/terminal_messages.py
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/protocol/session_messages.py
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/protocol/relay_messages.py
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/crypto/types.py
+              - /home/code/myagents/RemoteAgents/tests/shared/test_vectors.py
+              - /home/code/myagents/RemoteAgents/tests/shared/fixtures/protocol_vectors.json
+              - /home/code/myagents/RemoteAgents/tests/shared/fixtures/crypto_vectors.json
+            guidance: |
+              Context: Test agents have identified contract validation failures. Each build agent
+              fixes one specific failure. Read failures from live plan.
+
+              Instructions:
+              1. Read live plan at /home/code/myagents/docs/plans/live/251203_remoteagents_shared-contracts.yml
+              2. Find assigned failure (orchestration agent will specify which one)
+              3. Determine root cause:
+                 - Validation failures: Incorrect or missing Pydantic validators
+                 - Serialization failures: Bug in base64 encoding/decoding
+                 - Type registry failures: Message type not registered or wrong type string
+                 - Test vector failures: Vector doesn't match actual implementation (regenerate or fix code)
+              4. Fix the specific issue:
+                 - Update Pydantic field validators or constraints
+                 - Fix base64 serialization utilities in base.py
+                 - Register message types in MESSAGE_TYPES
+                 - Regenerate test vectors if protocol changed, or fix implementation if vectors are correct
+              5. Mark failure as resolved in live plan
+
+              Files to modify based on failure type:
+              - base.py: Base class issues, utility functions, type registry
+              - terminal_messages.py: Terminal message validation/serialization
+              - session_messages.py: Session message validation/serialization
+              - relay_messages.py: Relay message validation/serialization
+              - types.py: Crypto interface definitions
+              - test_vectors.py: Test logic issues
+              - protocol_vectors.json / crypto_vectors.json: Test vector data
+
+              Why this matters: Contracts must be 100% correct before downstream services start.
+              Any bugs here propagate to relay-service, terminal-service, crypto-impl, and Flutter client.
+            success_criteria:
+              - Fixed test now passes
+              - No regression in related tests
+              - Contract remains clear and documented
+              - Fix addresses root cause, not just symptom
+
+  # ========================================
+  # CLEANUP PHASE
+  # Remove any temporary files or obsolete code from development
+  # ========================================
+  - name: Cleanup Phase
+    execution_groups:
+      - execution: sequential
+        name: Remove temporary development artifacts
+        agents:
+          - type: cleaner
+            inputs:
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/protocol/__init__.py
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/crypto/__init__.py
+              - /home/code/myagents/RemoteAgents/tests/shared/__init__.py
+            guidance: |
+              Context: Development may have created temporary files, debug code, or incomplete implementations.
+              This phase ensures the final contracts package is clean and production-ready.
+
+              Instructions:
+              1. Remove any temporary test files (*.tmp, *.bak, __pycache__ directories)
+              2. Remove any debug print statements or TODO comments marked for removal
+              3. Verify all __init__.py exports are intentional (no accidental exports)
+              4. Verify no commented-out code remains in production files
+              5. Ensure all protocol messages are properly registered in MESSAGE_TYPES
+              6. Verify test fixtures directory contains only necessary files
+
+              Files to check:
+              - All protocol/*.py files for cleanup
+              - All crypto/*.py files for cleanup
+              - tests/shared/ for any temporary fixtures
+
+              Why this matters: Clean contracts package ensures downstream services don't inherit
+              development artifacts or incomplete code.
+            success_criteria:
+              - No temporary files present in src/ or tests/
+              - No debug statements or TODO removal markers in code
+              - All exports in __init__.py are intentional
+              - MESSAGE_TYPES registry matches defined message types
+              - Test fixtures contain only production test data
+
+  # ========================================
+  # AUDIT PHASE (Audit-Test-Fix Loop)
+  # Validates cleanup didn't break functionality and catches test quality issues
+  # ========================================
+  - name: Audit Phase
+    execution_groups:
+      - execution: audit-test-fix-loop
+        name: Contract validation audit
+        agents:
+          # Audit agent
+          - type: audit
+            inputs:
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/protocol/base.py
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/protocol/terminal_messages.py
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/protocol/session_messages.py
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/protocol/relay_messages.py
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/crypto/types.py
+              - /home/code/myagents/RemoteAgents/tests/shared/test_vectors.py
+            guidance: |
+              Context: Testing and cleanup have been completed. This audit verifies test quality
+              and checks for reward hacking patterns where tests pass but implementation is incorrect.
+
+              Reporting: Update live plan at /home/code/myagents/docs/plans/live/251203_remoteagents_shared-contracts.yml
+
+              Audit Focus Areas:
+
+              1. Test Fairness:
+              - Do test vectors actually validate serialization or use shortcuts?
+              - Are validation tests checking actual constraints or just accepting any value?
+              - Do crypto interface tests verify contract compliance?
+              - Are error cases properly tested (not just happy path)?
+
+              2. Implementation Completeness:
+              - Are all 13 message types registered in MESSAGE_TYPES?
+              - Do all Protocol interfaces have complete method signatures?
+              - Are all validation rules enforced (not just documented)?
+              - Are base64 utilities handling edge cases (empty bytes, invalid base64)?
+
+              3. Cross-Platform Compatibility:
+              - Will test vectors produce identical results in Flutter/pinenacl?
+              - Are byte serialization formats consistent with NaCl standards?
+              - Are JSON field names consistent (snake_case vs camelCase)?
+
+              4. Reward Hacking Patterns:
+              - Tests that mock deserialization instead of testing it
+              - Tests with overly broad assertions (e.g., "result is not None")
+              - Missing tests for invalid inputs
+              - Tests that only check type, not value
+
+              Findings Reporting Format:
+              Add findings to live plan under audit_findings with structure:
+              - finding_type: "reward_hacking", "test_quality", "implementation_gap", "compatibility_issue"
+              - component: Component with issue
+              - description: What was found
+              - severity: "high", "medium", "low"
+              - recommendation: What should be fixed
+            success_criteria:
+              - All reward hacking patterns identified
+              - Implementation gaps documented with severity
+              - Cross-platform compatibility issues flagged
+              - Specific recommendations provided for each finding
+
+          # Test agent for audit validation
+          - type: test
+            inputs:
+              - /home/code/myagents/RemoteAgents/tests/shared/test_vectors.py
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/protocol/base.py
+              - /home/code/myagents/MyAgents-staging/src/myagents/frontend/agents/test/processes/test_runner.yml
+            guidance: |
+              Context: Audit has been completed. This testing validates that audit findings have been
+              addressed and performs final validation of the contracts.
+
+              Test Strategy: technical-spike (focused validation testing)
+              Test Process: Execute test_runner.yml process
+              Reporting: Update live plan with any remaining failures
+
+              Final Validation Test Scenarios:
+
+              1. Message Registration Verification:
+              - Verify all 13 message types are in MESSAGE_TYPES registry
+              - Verify deserialize_message() dispatches correctly for each type
+              - Verify unknown types raise clear errors
+
+              2. Validation Rule Enforcement:
+              - Test each validation rule with valid and invalid inputs
+              - Verify error messages are descriptive
+              - Test edge cases (boundary values)
+
+              3. Serialization Round-Trip:
+              - For each message type, create -> serialize -> deserialize -> compare
+              - Verify bytes fields survive round-trip without corruption
+              - Verify timestamps preserved correctly
+
+              4. Audit Finding Verification:
+              - Address each finding from audit phase
+              - Re-run affected tests after fixes
+              - Verify fixes don't cause regressions
+            success_criteria:
+              - All audit findings addressed
+              - All validation tests pass
+              - Serialization round-trips succeed for all message types
+              - Zero test failures
+
+          # Build agent for fixing audit issues
+          - type: build
+            count: "n = total failures"
+            inputs:
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/protocol/base.py
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/protocol/terminal_messages.py
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/protocol/session_messages.py
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/protocol/relay_messages.py
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/crypto/types.py
+              - /home/code/myagents/RemoteAgents/tests/shared/test_vectors.py
+            guidance: |
+              Context: Audit and testing have identified issues. Build agents fix issues ONLY if
+              failures are traced back to source code (not test quality issues).
+
+              Instructions:
+              1. Read live plan at /home/code/myagents/docs/plans/live/251203_remoteagents_shared-contracts.yml
+              2. Find your assigned failure/finding (orchestration agent will specify)
+              3. Determine root cause:
+                 - If audit found test quality issue: Fix tests first, then rerun tests
+                 - If test failure is due to bad test: Fix test, not source code
+                 - If test failure is due to source code bug: Fix source code
+              4. Mark issue as resolved in live plan after fixing
+
+              Fix Categories:
+              - Test fixes: Correct test assertions, add missing test cases
+              - Validation fixes: Add or correct Pydantic validators
+              - Registration fixes: Register missing message types in MESSAGE_TYPES
+              - Serialization fixes: Fix base64 encoding/decoding utilities
+              - Interface fixes: Complete Protocol method signatures
+
+              Why this matters: Fixing tests first prevents false negatives where bad tests mask real issues.
+            success_criteria:
+              - Test that previously failed now passes
+              - Related tests still pass (no regression)
+              - Issue root cause addressed (not just symptom)
+
+  # ========================================
+  # DOCUMENTATION PHASE
+  # ========================================
+  - name: Documentation Phase
+    execution_groups:
+      - execution: parallel
+        agents:
+          # Protocol documentation
+          - type: documentation
+            inputs:
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/protocol/base.py
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/protocol/terminal_messages.py
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/protocol/session_messages.py
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/protocol/relay_messages.py
+              - /home/code/myagents/RemoteAgents/tests/shared/fixtures/protocol_vectors.json
+              - /home/code/myagents/RemoteAgents/docs/protocol.md
+            guidance: |
+              Context: Protocol documentation enables Flutter team to implement compatible client
+              without needing to read Python code. Must be complete and unambiguous.
+
+              Instructions:
+              1. Create /home/code/myagents/RemoteAgents/docs/ directory
+              2. Create protocol.md with comprehensive protocol specification:
+
+                 A. Message Flow Patterns:
+                 - Session pairing flow: SessionCreate -> SessionCreated -> SessionPair -> SessionPaired
+                 - Terminal I/O flow: TerminalInput -> (processing) -> TerminalOutput
+                 - Terminal lifecycle: (pairing) -> TerminalInput/Output -> TerminalResize -> TerminalClose
+                 - Error handling: Any message can trigger Error response
+                 - Keepalive: Ping <-> Pong at regular intervals
+
+                 B. Each Message Type Documentation (all 13 types):
+                 For each: TerminalOutput, TerminalInput, TerminalResize, TerminalClose,
+                          SessionCreate, SessionCreated, SessionPair, SessionPaired, SessionClose,
+                          EncryptedBlob, Ping, Pong, Error
+                 Document:
+                 - Purpose: When and why this message is sent
+                 - Fields: Name, type, constraints, description
+                 - JSON example: Complete valid message as JSON
+                 - Validation rules: What makes message valid/invalid
+                 - Type discriminator: Exact string value (e.g., "terminal.output")
+
+                 C. Protocol Invariants:
+                 - session_id must be established (via SessionCreated) before terminal messages
+                 - nonce must be unique per EncryptedBlob (never reuse)
+                 - pairing_code valid for 5 minutes from SessionCreated
+                 - timestamp must be Unix epoch in seconds (float)
+                 - All bytes fields transported as base64 in JSON
+
+                 D. Test Vectors Section:
+                 - Reference protocol_vectors.json for validation
+                 - Include 2-3 complete message examples from vectors
+                 - Show valid and invalid examples
+
+                 E. State Diagrams:
+                 - Session lifecycle state machine (disconnected -> creating -> created -> pairing -> paired -> closed)
+                 - Terminal state machine (inactive -> active -> resizing -> closing -> closed)
+
+              Files to trace:
+              - All message files for accurate field definitions
+              - protocol_vectors.json for concrete examples
+
+              Why this matters: Flutter developers implement client from this documentation.
+              Ambiguity leads to incompatible implementations and protocol bugs.
+            success_criteria:
+              - All 13 message types fully documented with JSON examples
+              - State transitions clearly diagrammed
+              - Validation rules explicitly stated with examples
+              - JSON examples match actual serialization from test vectors
+              - Documentation enables implementation without reading Python code
+
+          # Crypto interface documentation
+          - type: documentation
+            inputs:
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/crypto/types.py
+              - /home/code/myagents/RemoteAgents/tests/shared/fixtures/crypto_vectors.json
+              - /home/code/myagents/RemoteAgents/docs/crypto.md
+            guidance: |
+              Context: Crypto documentation specifies exact format for keys, nonces, and ciphertext.
+              Python uses PyNaCl, Flutter uses pinenacl - both must produce identical results.
+
+              Instructions:
+              1. Create crypto.md with comprehensive crypto specification:
+
+                 A. Key Formats:
+                 - X25519 public key: 32 bytes, derived from private key via Curve25519
+                 - X25519 private key: 32 bytes, random generation
+                 - Base64 encoding for JSON transport
+                 - Key generation: Use cryptographically secure random for private key
+
+                 B. Encryption Format (NaCl Box):
+                 - Algorithm: Curve25519-XSalsa20-Poly1305 (NaCl public-key authenticated encryption)
+                 - Nonce: 24 bytes, random, MUST be unique per message with same key pair
+                 - Encryption output: (nonce: 24 bytes, ciphertext: variable length with Poly1305 MAC)
+                 - Transport: Both nonce and ciphertext transported separately as base64 in EncryptedBlob
+
+                 C. Security Properties:
+                 - Authenticated encryption: Can't modify ciphertext without detection (Poly1305 MAC)
+                 - Forward secrecy: Future compromise doesn't reveal past messages (ephemeral keys recommended)
+                 - Nonce uniqueness: CRITICAL - reusing nonce with same keypair breaks security
+
+                 D. Test Vectors:
+                 - Reference crypto_vectors.json for cross-platform validation
+                 - Known keypair (base64 encoded)
+                 - Multiple plaintext + ciphertext pairs with nonces
+                 - Round-trip examples showing encrypt/decrypt
+                 - Edge cases: empty message, unicode text, large messages
+
+                 E. Implementation Guidance:
+                 - Python: Use PyNaCl library (nacl.public.Box, nacl.public.PrivateKey)
+                 - Flutter: Use pinenacl package (identical API to PyNaCl)
+                 - Code examples:
+                   * Key generation in both languages
+                   * Encryption in both languages
+                   * Decryption in both languages
+                   * Nonce generation best practices
+
+                 F. Type Interface Reference:
+                 - Document KeyPair, CryptoBox, CryptoProvider Protocol definitions
+                 - Show method signatures and expected behavior
+                 - Explain type aliases (PublicKey, PrivateKey, Nonce, Ciphertext)
+
+              Files to trace:
+              - types.py for exact interface definitions
+              - crypto_vectors.json for test examples
+
+              Why this matters: Encryption must be bitwise-identical between Python and Flutter
+              or messages can't be decrypted. Detailed spec prevents implementation drift.
+            success_criteria:
+              - Key formats specified with exact byte layouts and generation process
+              - Encryption process documented step-by-step with algorithm details
+              - Test vectors provided with examples for cross-platform validation
+              - Code examples provided for both Python (PyNaCl) and Flutter (pinenacl)
+              - Security properties and constraints clearly stated
+              - Type interfaces documented with method signatures
+
+          # Integration guide documentation
+          - type: documentation
+            inputs:
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/protocol/__init__.py
+              - /home/code/myagents/RemoteAgents/src/agent_remote/shared/crypto/__init__.py
+              - /home/code/myagents/RemoteAgents/tests/shared/README.md
+              - /home/code/myagents/RemoteAgents/docs/protocol.md
+              - /home/code/myagents/RemoteAgents/docs/crypto.md
+              - /home/code/myagents/RemoteAgents/README.md
+            guidance: |
+              Context: Integration documentation helps downstream services (relay, terminal, Flutter)
+              use these shared contracts correctly. Also documents test vector usage.
+
+              Instructions:
+              1. Update tests/shared/README.md with test vector documentation:
+                 - Purpose of test vectors for cross-platform validation
+                 - How to run test vectors: pytest -v tests/shared/test_vectors.py
+                 - How to regenerate vectors if protocol changes
+                 - How Flutter team should use vectors in their tests
+                 - Vector file formats (protocol_vectors.json, crypto_vectors.json)
+
+              2. Create RemoteAgents/README.md with project overview:
+                 - Project purpose: Shared contracts for RemoteAgents protocol
+                 - Repository structure:
+                   * src/agent_remote/shared/protocol/ - Protocol message definitions
+                   * src/agent_remote/shared/crypto/ - Crypto interface types
+                   * tests/shared/ - Test vectors and validation tests
+                   * docs/ - Protocol and crypto specifications
+                 - Critical path blocker: This package blocks relay-service, terminal-service, crypto-impl, cli-integration
+                 - Dependencies: None (foundational package)
+                 - Downstream consumers: relay-service, terminal-service, crypto-impl worktrees, Flutter client
+                 - Quick start: How to install and use protocol messages
+                 - Testing: How to run test vectors
+                 - Documentation links: protocol.md, crypto.md
+
+              3. Add usage examples to README.md:
+                 - Creating and serializing a message
+                 - Deserializing a message using type registry
+                 - Working with test vectors
+                 - Implementing crypto interfaces
+
+              Files to reference:
+              - __init__.py exports to show public API
+              - Test vector files to explain structure
+              - protocol.md and crypto.md for documentation links
+
+              Why this matters: Clear integration documentation reduces downstream confusion
+              and ensures contracts are used correctly.
+            success_criteria:
+              - Test vector documentation explains purpose and usage
+              - README provides clear project overview and quick start
+              - Usage examples demonstrate common operations
+              - Documentation cross-references are correct
+              - Flutter team has clear guidance on using contracts
+
+# ==============================================================================
+# TRACKING SECTIONS
+# ==============================================================================
+
+test_failures: []
+# All previous test failures have been resolved (2025-12-04)
+# Resolution summary:
+#   - Fixed nonce lengths in crypto_vectors.json (25 bytes -> 24 bytes)
+#   - Regenerated all ciphertext values with correct nonces and consistent keypairs
+#   - Fixed keypair consistency (public keys now correctly derived from private keys)
+#   - Fixed test_crypto_vectors_metadata bug (protocol_vectors -> crypto_vectors)
+#   - All 41 tests now passing
+
+audit_findings: []
+
+# ==============================================================================
+# ENVIRONMENT SETUP STATUS
+# ==============================================================================
+
+environment_setup:
+  status: completed
+  timestamp: 2025-12-04
+  virtual_environment: /home/code/myagents/RemoteAgents/.venv
+  package_version: agent-remote 0.1.0
+  installation_type: editable
+  installation_location: /home/code/myagents/RemoteAgents
+  installed_dependencies:
+    runtime:
+      - fastapi>=0.115.0
+      - uvicorn[standard]>=0.32.0
+      - websockets>=13.0
+      - pynacl>=1.5.0
+      - ptyprocess>=0.7.0
+      - pydantic>=2.0.0
+    testing:
+      - pytest==9.0.1
+      - pytest-asyncio==1.3.0
+      - pytest-cov==7.0.0
+  verified_imports:
+    - agent_remote.shared.protocol (base, terminal_messages, session_messages, relay_messages)
+    - agent_remote.shared.crypto (types)
+  test_fixtures_available:
+    - /home/code/myagents/RemoteAgents/tests/shared/fixtures/protocol_vectors.json
+    - /home/code/myagents/RemoteAgents/tests/shared/fixtures/crypto_vectors.json
+  environment_ready: true
+  notes: |
+    - Virtual environment created at .venv in RemoteAgents directory
+    - Package installed in editable mode using pip install -e .
+    - All protocol and crypto modules importable successfully
+    - Test fixtures directory exists with protocol and crypto vectors
+    - Pytest 9.0.1 installed and working
+    - Environment is ready for test phase
+
+# ==============================================================================
+# PLANNER LOOP METADATA
+# ==============================================================================
+
+planner_loop:
+  status: approved
+  last_updated: 2025-12-04
+  changes_applied:
+    - Added Environment Setup Phase before Test Phase
+    - Added Testing Layer specification to Test Phase (LOCAL only)
+    - Added Cleanup Phase after Test Phase
+    - Added Audit Phase with audit-test-fix-loop after Cleanup Phase
+  approved_by: reviewer_planner
+  notes: |
+    Plan approved with mandatory phases added per definitions.yml:
+    - Environment Setup Phase ensures tests run against latest code
+    - Cleanup Phase ensures clean repository before audit
+    - Audit-Test-Fix Loop catches reward hacking and test quality issues
+    Build phases were already well-structured with proper file-level inputs,
+    detailed guidance, and measurable success criteria.
+
+# ==============================================================================
+# UAT READINESS STATUS
+# ==============================================================================
+
+uat_readiness:
+  status: passed
+  timestamp: 2025-12-04
+  uat_completed: 2025-12-04
+
+  phases_completed:
+    - name: Build Phase - Protocol Infrastructure
+      status: completed
+      deliverables:
+        - /home/code/myagents/RemoteAgents/src/agent_remote/shared/protocol/base.py
+        - /home/code/myagents/RemoteAgents/src/agent_remote/shared/protocol/__init__.py
+
+    - name: Build Phase - Protocol Messages
+      status: completed
+      deliverables:
+        - /home/code/myagents/RemoteAgents/src/agent_remote/shared/protocol/terminal_messages.py
+        - /home/code/myagents/RemoteAgents/src/agent_remote/shared/protocol/session_messages.py
+        - /home/code/myagents/RemoteAgents/src/agent_remote/shared/protocol/relay_messages.py
+
+    - name: Build Phase - Crypto Interfaces
+      status: completed
+      deliverables:
+        - /home/code/myagents/RemoteAgents/src/agent_remote/shared/crypto/types.py
+        - /home/code/myagents/RemoteAgents/src/agent_remote/shared/crypto/__init__.py
+
+    - name: Build Phase - Test Vectors
+      status: completed
+      deliverables:
+        - /home/code/myagents/RemoteAgents/tests/shared/test_vectors.py
+        - /home/code/myagents/RemoteAgents/tests/shared/fixtures/protocol_vectors.json
+        - /home/code/myagents/RemoteAgents/tests/shared/fixtures/crypto_vectors.json
+        - /home/code/myagents/RemoteAgents/tests/shared/README.md
+
+    - name: Environment Setup Phase
+      status: completed
+
+    - name: Test Phase - Contract Validation
+      status: completed
+      test_results:
+        total_tests: 41
+        passed: 41
+        failed: 0
+
+    - name: Cleanup Phase
+      status: completed
+      findings:
+        - No TODO comments in production code
+        - No debug print statements
+        - No debug breakpoints
+        - MESSAGE_TYPES registry contains all 13 message types
+
+    - name: Audit Phase
+      status: completed
+      findings:
+        - Test fairness: Tests use real assertions and value comparisons
+        - No reward hacking patterns detected
+        - Invalid case tests check for proper validation failures
+        - Crypto tests actually decrypt using PyNaCl
+
+    - name: Documentation Phase
+      status: completed
+      deliverables:
+        - /home/code/myagents/RemoteAgents/docs/protocol.md
+        - /home/code/myagents/RemoteAgents/docs/crypto.md
+        - /home/code/myagents/RemoteAgents/README.md (updated)
+
+  success_criteria_met:
+    - criterion: "All protocol messages defined as Pydantic models with validation"
+      status: met
+      evidence: "13 message types defined in terminal_messages.py, session_messages.py, relay_messages.py"
+
+    - criterion: "Crypto interface types documented with clear contracts"
+      status: met
+      evidence: "KeyPair, CryptoBox, CryptoProvider Protocol classes in types.py, documented in docs/crypto.md"
+
+    - criterion: "Test vectors cover all message types and error cases"
+      status: met
+      evidence: "41 tests covering valid examples, invalid examples, edge cases, and crypto operations"
+
+    - criterion: "Messages serialize/deserialize correctly to JSON"
+      status: met
+      evidence: "Serialization roundtrip tests pass for all message types"
+
+    - criterion: "Type hints provide full IDE support for downstream services"
+      status: met
+      evidence: "All Protocol classes use @runtime_checkable, all message classes fully typed"
+
+  uat_scope:
+    - "Protocol message serialization/deserialization"
+    - "Validation rules enforcement for all fields"
+    - "MESSAGE_TYPES registry and deserialize_message() function"
+    - "Test vector compatibility with expected values"
+    - "Crypto interface contracts (no implementation testing - interfaces only)"
+    - "Documentation accuracy and completeness"
+
+  notes: |
+    All build, test, cleanup, audit, and documentation phases are complete.
+    UAT COMPLETED SUCCESSFULLY on 2025-12-04.
+
+    Key accomplishments:
+    - All 13 protocol message types implemented and registered
+    - 3 crypto Protocol interfaces defined (KeyPair, CryptoBox, CryptoProvider)
+    - 41 tests passing (protocol + crypto vectors)
+    - Comprehensive documentation (protocol.md, crypto.md, README.md)
+    - Test vectors fixed (nonce lengths corrected, keypairs made consistent)
+
+    UAT Results:
+    - All 13 message types serialize/deserialize correctly (roundtrip verified)
+    - All validation rules enforced (8 invalid cases tested and rejected)
+    - MESSAGE_TYPES registry complete with all 13 message types
+    - Crypto interfaces properly defined with runtime_checkable decorators
+    - Documentation comprehensive and accurate
+    - Test suite passes (41/41 tests)
+
+# ==============================================================================
+# UAT COMPLETION REPORT
+# ==============================================================================
+
+uat_completion:
+  status: passed
+  completed_at: 2025-12-04
+
+  validation_summary:
+    message_types_tested: 13
+    message_types_passed: 13
+    validation_rules_tested: 8
+    validation_rules_passed: 8
+    test_suite_total: 41
+    test_suite_passed: 41
+
+  checks_performed:
+    - name: "MESSAGE_TYPES registry completeness"
+      status: passed
+      details: "All 13 message types registered"
+
+    - name: "Serialization roundtrip for all messages"
+      status: passed
+      details: "All 13 message types serialize and deserialize correctly"
+
+    - name: "Validation rules enforcement"
+      status: passed
+      details: "8 invalid input tests all correctly rejected"
+
+    - name: "Crypto interface definitions"
+      status: passed
+      details: "KeyPair, CryptoBox, CryptoProvider protocols defined with runtime_checkable"
+
+    - name: "Test suite execution"
+      status: passed
+      details: "41/41 tests pass"
+
+    - name: "Documentation completeness"
+      status: passed
+      details: "protocol.md, crypto.md, README.md all comprehensive"
+
+  recommendation: "APPROVED - shared-contracts package ready for downstream consumers (relay-service, terminal-service, crypto-impl)"

@@ -1,0 +1,314 @@
+# ==============================================================================
+# RemoteAgents User Stories - Deployment & Configuration
+# ==============================================================================
+
+category: deployment
+name: "Deployment & Configuration"
+description: "Docker deployment and environment configuration"
+
+stories:
+  # --------------------------------------------------------------------------
+  # US-DEPLOY-001: Docker Container Deployment
+  # --------------------------------------------------------------------------
+  - id: US-DEPLOY-001
+    title: "Docker Container Deployment"
+    priority: CRITICAL
+    persona: platform_operator
+
+    description: |
+      As a platform operator, I want to deploy the relay service as a Docker container
+      so that I can run it in production environments with consistent behavior.
+
+    preconditions:
+      - Docker installed on target system
+      - Dockerfile exists at project root
+      - Source code available for building
+
+    journey:
+      - step: 1
+        action: "Build Docker image from Dockerfile"
+        command: "docker build -t agent-relay:latest ."
+        expected: |
+          Image builds successfully
+          Python 3.11-slim base image used
+          Dependencies installed via pip install -e .
+
+      - step: 2
+        action: "Run container with environment variables"
+        command: "docker run -d -p 8080:8080 --name agent-relay agent-relay:latest"
+        expected: |
+          Container starts successfully
+          Port 8080 exposed and accessible
+          Relay service listens on 0.0.0.0:8080
+
+      - step: 3
+        action: "Verify service health check"
+        command: "docker inspect --format='{{.State.Health.Status}}' agent-relay"
+        expected: |
+          Health check runs every 30s with 10s timeout
+          /health endpoint responds successfully
+          Status shows 'healthy' after start-period
+
+      - step: 4
+        action: "View container logs"
+        command: "docker logs agent-relay"
+        expected: |
+          Logs visible via docker logs command
+          Log level INFO by default
+          Service startup messages visible
+
+    acceptance_criteria:
+      - Docker image builds from Dockerfile
+      - Container runs with python -m agent_remote.services.relay.api.server
+      - HEALTHCHECK verifies /health endpoint every 30s
+      - Port 8080 exposed and accessible
+      - Container logs available via docker logs
+      - Service starts within healthcheck start-period (5s)
+
+    test_layers:
+      local: false
+      docker: true
+      integration: true
+
+  # --------------------------------------------------------------------------
+  # US-DEPLOY-002: Environment Variable Configuration
+  # --------------------------------------------------------------------------
+  - id: US-DEPLOY-002
+    title: "Environment Variable Configuration"
+    priority: HIGH
+    persona: platform_operator
+
+    description: |
+      As a platform operator, I want to configure the relay service via environment variables
+      so that I can customize behavior without code changes.
+
+    preconditions:
+      - Docker container built and ready to run
+
+    journey:
+      - step: 1
+        action: "Set RELAY_HOST to configure listen address"
+        command: "docker run -e RELAY_HOST=127.0.0.1 agent-relay:latest"
+        expected: "Service listens only on specified host address"
+
+      - step: 2
+        action: "Set RELAY_PORT to change listening port"
+        command: "docker run -p 9090:9090 -e RELAY_PORT=9090 agent-relay:latest"
+        expected: "Service listens on port 9090 instead of default 8080"
+
+      - step: 3
+        action: "Set LOG_LEVEL to configure logging verbosity"
+        command: "docker run -e LOG_LEVEL=DEBUG agent-relay:latest"
+        expected: |
+          More verbose logging enabled
+          Debug messages appear in logs
+          Log output shows DEBUG level messages
+
+      - step: 4
+        action: "Set CLEANUP_INTERVAL for session cleanup timing"
+        command: "docker run -e CLEANUP_INTERVAL=30 agent-relay:latest"
+        expected: "Session cleanup runs every 30 seconds instead of default 60"
+
+      - step: 5
+        action: "Provide invalid environment values"
+        expected: |
+          Service handles invalid values gracefully
+          Falls back to defaults or shows clear error
+          Container doesn't crash on invalid config
+
+    acceptance_criteria:
+      - RELAY_HOST controls listen address (default 0.0.0.0)
+      - RELAY_PORT controls service port (default 8080)
+      - LOG_LEVEL controls logging verbosity (default INFO)
+      - CLEANUP_INTERVAL controls session cleanup timing (default 60s)
+      - Invalid values handled gracefully with defaults or errors
+      - Configuration changes reflected in service behavior
+
+    test_layers:
+      local: false
+      docker: true
+      integration: true
+
+  # --------------------------------------------------------------------------
+  # US-DEPLOY-003: docker-compose Testing
+  # --------------------------------------------------------------------------
+  - id: US-DEPLOY-003
+    title: "docker-compose Testing Environment"
+    priority: HIGH
+    persona: platform_operator
+
+    description: |
+      As a platform operator, I want to use docker-compose for testing
+      so that I can run integration tests with isolated network environments.
+
+    preconditions:
+      - docker-compose.test.yml exists in project
+      - Docker Compose installed
+
+    journey:
+      - step: 1
+        action: "Start all services with docker-compose up"
+        command: "docker-compose -f docker-compose.test.yml up -d"
+        expected: |
+          relay service starts on port 8080
+          terminal-mock service starts
+          agent-network bridge network created
+
+      - step: 2
+        action: "Verify service discovery via DNS"
+        command: "docker exec agent-relay ping terminal-mock"
+        expected: |
+          Services discover each other by name
+          DNS resolution works on agent-network
+          Containers communicate over bridge network
+
+      - step: 3
+        action: "Verify network isolation"
+        expected: |
+          Services only accessible within agent-network
+          Network isolation prevents external access
+          Bridge driver provides network separation
+
+      - step: 4
+        action: "Test health checks"
+        command: "docker-compose -f docker-compose.test.yml ps"
+        expected: |
+          relay shows healthy status
+          Health check runs every 10s with 5s timeout
+          3 retries configured before unhealthy
+
+      - step: 5
+        action: "Clean up with docker-compose down"
+        command: "docker-compose -f docker-compose.test.yml down"
+        expected: |
+          All containers stopped and removed
+          agent-network removed
+          No resource leaks
+
+    acceptance_criteria:
+      - docker-compose up starts relay and terminal-mock services
+      - Services discover each other via DNS on agent-network
+      - Network isolation works correctly with bridge driver
+      - Health checks run with 10s interval, 5s timeout, 3 retries
+      - restart policy set to unless-stopped
+      - docker-compose down cleans up all resources
+
+    test_layers:
+      local: false
+      docker: true
+      integration: true
+
+  # --------------------------------------------------------------------------
+  # US-DEPLOY-004: Production Deployment Patterns
+  # --------------------------------------------------------------------------
+  - id: US-DEPLOY-004
+    title: "Production Deployment Patterns"
+    priority: MEDIUM
+    persona: platform_operator
+
+    description: |
+      As a platform operator, I want the relay service to follow production best practices
+      so that I can deploy it reliably in production environments.
+
+    preconditions:
+      - Container built and tested
+      - Production environment available (Kubernetes/ECS)
+
+    journey:
+      - step: 1
+        action: "Test graceful shutdown on SIGTERM"
+        command: "docker stop agent-relay"
+        expected: |
+          Service receives SIGTERM signal
+          Graceful shutdown initiated
+          Active connections closed cleanly
+          Container stops within timeout
+
+      - step: 2
+        action: "Verify no data loss on restart"
+        command: "docker restart agent-relay"
+        expected: |
+          Container restarts successfully
+          Service state recovered appropriately
+          No data corruption or loss
+
+      - step: 3
+        action: "Test Kubernetes/ECS compatibility"
+        expected: |
+          Container follows 12-factor app principles
+          Configuration via environment variables
+          Logs to stdout/stderr for aggregation
+          Health check endpoint compatible with orchestrators
+
+      - step: 4
+        action: "Verify non-root user (aspirational)"
+        expected: |
+          Note: Currently runs as root user
+          Future enhancement to run as non-root
+          Security best practice not yet implemented
+
+    acceptance_criteria:
+      - Graceful shutdown on SIGTERM
+      - No data loss on container restart
+      - Compatible with Kubernetes liveness/readiness probes
+      - Compatible with ECS health checks
+      - Logs to stdout/stderr for container logging
+      - Configuration via environment variables only
+      - Note: non-root user is aspirational, not yet implemented
+
+    test_layers:
+      local: false
+      docker: true
+      integration: true
+
+  # --------------------------------------------------------------------------
+  # US-DEPLOY-005: Multi-Architecture Builds
+  # --------------------------------------------------------------------------
+  - id: US-DEPLOY-005
+    title: "Multi-Architecture Container Builds"
+    priority: LOW
+    persona: platform_operator
+
+    description: |
+      As a platform operator, I want to build containers for multiple architectures
+      so that I can deploy on both amd64 and arm64 platforms.
+
+    preconditions:
+      - Docker buildx available
+      - Multi-platform build support configured
+
+    journey:
+      - step: 1
+        action: "Check if multi-arch build is implemented"
+        expected: |
+          Note: This is likely aspirational
+          Current Dockerfile doesn't specify platforms
+          Would require buildx configuration
+
+      - step: 2
+        action: "Build for amd64 platform"
+        command: "docker buildx build --platform linux/amd64 -t agent-relay:amd64 ."
+        expected: "Image builds successfully for amd64"
+
+      - step: 3
+        action: "Build for arm64 platform"
+        command: "docker buildx build --platform linux/arm64 -t agent-relay:arm64 ."
+        expected: "Image builds successfully for arm64"
+
+      - step: 4
+        action: "Test on target platforms"
+        expected: |
+          amd64 image runs on x86_64 systems
+          arm64 image runs on ARM systems (Apple Silicon, etc)
+
+    acceptance_criteria:
+      - Support for linux/amd64 platform
+      - Support for linux/arm64 platform
+      - Images run correctly on target architectures
+      - Note: Implementation may be aspirational
+      - Would require docker buildx and CI/CD changes
+
+    test_layers:
+      local: false
+      docker: true
+      integration: false

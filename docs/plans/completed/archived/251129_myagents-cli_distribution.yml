@@ -1,0 +1,408 @@
+# ==============================================================================
+# LIVE PLAN: CLI Distribution & Installation Fix
+# ==============================================================================
+# Created: 2025-11-29
+# Worktree: /home/code/myagents/MyAgents-cli_distribution
+# Status: PLANNING
+#
+# PURPOSE:
+#   Fix critical CLI installation architecture issues that make myagents
+#   non-distributable. Ensure myagents can be installed from any worktree
+#   with proper isolation and work as a system-wide command.
+#
+# ARCHITECTURAL DECISIONS:
+#   1. DISTRIBUTABLE PACKAGE: myagents should be installable via pip/pipx
+#   2. WORKTREE ISOLATION: Installing from any worktree should work identically
+#   3. PYPI DEPENDENCIES: Use published PyPI packages, not local paths
+#   4. INSTALLATION TESTING: Add UAT coverage for installation process
+#
+# ==============================================================================
+
+name: CLI Distribution & Installation Fix
+worktree: /home/code/myagents/MyAgents-cli_distribution
+liveplan: /home/code/myagents/docs/plans/live/251129_myagents-cli_distribution.yml
+completedplan: /home/code/myagents/docs/plans/completed/251129_myagents-cli_distribution.yml
+branch: cli-distribution
+status: completed
+note: agent-gcptoolkit on GCP Artifact Registry is intentional (internal use only)
+
+# ==============================================================================
+# PROBLEM STATEMENT
+# ==============================================================================
+
+problem:
+  summary: |
+    The system myagents CLI is broken due to three compounding architectural issues
+    that create a "house of cards" installation. These issues bypassed multiple 
+    agent testing loops because agents test features, not installation.
+
+  root_causes:
+    - id: RC-1
+      severity: critical
+      title: "Broken Script Shebang"
+      detail: |
+        /usr/local/bin/myagents has shebang #!/home/code/myagents/MyAgents/.venv/bin/python3
+        Points to worktree-specific venv instead of system Python.
+        CLI only works "by accident" when that venv happens to be active.
+      evidence:
+        - "cat /usr/local/bin/myagents shows: #!/home/code/myagents/MyAgents/.venv/bin/python3"
+        - "Running myagents from /home/code/myagents gives 'No langgraph.json found' error"
+
+    - id: RC-2
+      severity: critical
+      title: "Editable Install Points to Deleted Worktree"
+      detail: |
+        pip show myagents shows: Editable project location: /home/code/myagents/MyAgents-packaging-001
+        direct_url.json references file:///home/code/myagents/MyAgents-packaging-001
+        But MyAgents-packaging-001 WAS DELETED - directory does not exist.
+        Even with fixed shebang, Python can't find the myagents module.
+      evidence:
+        - "pip show myagents -> Editable project location: /home/code/myagents/MyAgents-packaging-001"
+        - "ls /home/code/myagents/MyAgents-packaging-001 -> Directory does not exist"
+
+    - id: RC-3
+      severity: high
+      title: "Local Path Dependency Blocks Distribution"
+      detail: |
+        pyproject.toml uses [tool.uv.sources] with path = "../Agent-GCPtoolkit"
+        This works ONLY in uv workspace context.
+        Standard pip install and pipx install fail completely.
+        agent-gcptoolkit IS published on PyPI (0.1.0, 0.1.1) - this is dev convenience only.
+      evidence:
+        - "pyproject.toml line 30-31: [tool.uv.sources] agent-gcptoolkit = { path = '../Agent-GCPtoolkit' }"
+        - "pipx install fails with dependency resolution error"
+
+    - id: RC-4
+      severity: medium
+      title: "Installation Documentation Mixes Methods"
+      detail: |
+        README.md documents `uv sync && pip install -e .`
+        This creates worktree-specific installs that break when used globally.
+        No separation between end-user installation and development installation.
+      evidence:
+        - "README.md mixes uv sync with pip install -e ."
+        - "No dedicated section for end-user vs developer installation"
+
+# ==============================================================================
+# AGENT TESTING GAP ANALYSIS
+# ==============================================================================
+
+testing_gaps:
+  summary: |
+    These issues bypassed multiple agent testing loops because the testing
+    architecture assumes a working CLI and tests features, not installation.
+
+  gaps:
+    - id: GAP-1
+      title: "User Stories Assume cli_installed: true"
+      detail: |
+        Every user story in userstories.yml starts with cli_installed: true.
+        No user story tests the installation process itself.
+        Tests assume working CLI and test features, not installation.
+      fix: "Add US-INSTALL-* user stories that test installation from scratch"
+
+    - id: GAP-2
+      title: "Docker Testing Masks System Installation Issues"
+      detail: |
+        Docker tests use freshly-built containers where CLI is installed correctly.
+        Container builds from source each time with no stale editable installs.
+        Container shebang is correct for container's Python.
+        This masks system installation issues.
+      fix: "Add installation validation step that runs outside Docker context"
+
+    - id: GAP-3
+      title: "Audit Process Doesn't Cover Installation Artifacts"
+      detail: |
+        audit.yml reviews skip patterns, silent failures, reward hacking.
+        But doesn't audit system installation state, shebang correctness,
+        editable install metadata, or cross-worktree dependencies.
+      fix: "Add system health validation to audit process or create pre-flight check"
+
+    - id: GAP-4
+      title: "No Clean Slate Installation Test"
+      detail: |
+        Testing architecture assumes development context.
+        No test that: starts from clean system, runs pip install, verifies CLI works.
+      fix: "Add clean slate installation user story"
+
+# ==============================================================================
+# ARCHITECTURAL DECISIONS
+# ==============================================================================
+
+decisions:
+  - id: DECISION-1
+    title: "Distributable Package"
+    chosen: "Option B: Distributable Package"
+    rationale: |
+      myagents should work as a system-wide tool installable via pip or pipx.
+      Users should be able to run `pip install myagents` and have it work.
+      Development convenience should not break distribution.
+    implications:
+      - Remove [tool.uv.sources] path override for agent-gcptoolkit
+      - Use PyPI version: agent-gcptoolkit>=0.1.0
+      - Support pip install myagents and pipx install myagents
+      - Separate dev vs user installation documentation
+
+  - id: DECISION-2
+    title: "Testing Gap Coverage"
+    chosen: "Add Installation User Stories"
+    rationale: |
+      The root cause is that installation is untested.
+      Adding US-INSTALL-* user stories will catch these issues.
+      These stories should test fresh install via pip and CLI from anywhere.
+    implications:
+      - Add user stories for fresh pip install
+      - Add user stories for fresh pipx install
+      - Test CLI works from any directory after install
+
+  - id: DECISION-3
+    title: "Worktree Discipline"
+    chosen: "Policy + Documentation"
+    rationale: |
+      Installing system-wide from worktrees creates fragile state.
+      Document that system installs should use main branch or PyPI.
+      Development should use worktree venvs, not system Python.
+    implications:
+      - Document worktree lifecycle and installation implications
+      - Never install system-wide from worktrees
+      - Use venv for development installs
+
+# ==============================================================================
+# PHASES
+# ==============================================================================
+
+phases:
+  # ========================================
+  # PHASE 1: IMMEDIATE FIX
+  # ========================================
+  - name: Immediate Fix
+    execution_groups:
+      - execution: sequential
+        name: Fix broken system installation
+        agents:
+          - type: builder
+            inputs:
+              - /home/code/myagents/MyAgents-cli_distribution/pyproject.toml
+              - /home/code/myagents/MyAgents-cli_distribution/README.md
+            guidance: |
+              Context: The current pyproject.toml uses [tool.uv.sources] to override
+              agent-gcptoolkit with a local path. This breaks pip/pipx installation.
+              
+              Instructions:
+              1. In pyproject.toml, REMOVE the [tool.uv.sources] section entirely:
+                 ```
+                 [tool.uv.sources]
+                 agent-gcptoolkit = { path = "../Agent-GCPtoolkit", editable = true }
+                 ```
+              2. Keep the dependency in [project.dependencies] as: "agent-gcptoolkit"
+                 This will resolve from PyPI (versions 0.1.0, 0.1.1 exist).
+              3. For DEVELOPMENT, document using uv workspace:
+                 - uv creates its own dependency resolution
+                 - uv.sources is for development only, not distribution
+              4. Update README.md with separate sections:
+                 - "End User Installation": pip install myagents (or pipx)
+                 - "Developer Installation": uv sync (uses workspace)
+              
+              Why this matters: Removing uv.sources makes the package distributable
+              while developers can still use local agent-gcptoolkit via uv workspace.
+            success_criteria:
+              - pip install /path/to/MyAgents-cli_distribution succeeds
+              - myagents --version works after pip install
+              - No [tool.uv.sources] section in pyproject.toml
+              - README documents both end-user and developer installation
+
+  # ========================================
+  # PHASE 2: SYSTEM CLEANUP
+  # ========================================
+  - name: System Cleanup
+    execution_groups:
+      - execution: sequential
+        name: Clean broken system installation
+        agents:
+          - type: builder
+            inputs: []
+            guidance: |
+              Context: Current system has broken myagents installation pointing
+              to deleted worktree. Must clean and reinstall.
+              
+              Instructions (execute in order):
+              1. pip uninstall -y myagents
+              2. Verify /usr/local/bin/myagents is removed
+              3. pip install --force-reinstall /home/code/myagents/MyAgents-cli_distribution
+              4. Verify: myagents --version works from any directory
+              5. Verify: cat /usr/local/bin/myagents shows correct shebang
+              
+              Verification:
+              - cd /tmp && myagents --version
+              - cd ~ && myagents --version
+              - cd /home/code/myagents && myagents --version
+              
+              If any verification fails, investigate and report to live plan.
+            success_criteria:
+              - pip uninstall completes without error
+              - pip install completes without error
+              - myagents --version works from /tmp, ~, and project directories
+              - Shebang points to system Python (not worktree venv)
+
+  # ========================================
+  # PHASE 3: TEST-FIX-LOOP (Component + User Flow Testing)
+  # ========================================
+  - name: Test Phase
+    execution_groups:
+      - execution: test-fix-loop
+        name: Installation and CLI validation testing
+        agents:
+          # Component tests
+          - type: test
+            count: 3
+            inputs:
+              - /home/code/myagents/MyAgents-cli_distribution/src/myagents/frontend/agents/test/processes/test_runner.yml
+              - /home/code/myagents/MyAgents-cli_distribution/src/myagents/frontend/agents/test/definitions.yml
+            guidance: |
+              Test Strategy: technical-spike
+              Test Process: Execute test_runner.yml
+              
+              Component Test Distribution:
+              
+              Agent 1 - pyproject.toml validation:
+              - Verify [tool.uv.sources] section is REMOVED
+              - Verify agent-gcptoolkit is in dependencies (plain, no path)
+              - Verify pip install works in isolated environment
+              
+              Agent 2 - CLI installation validation:
+              - pip install myagents in fresh venv
+              - Verify myagents --version works
+              - Verify myagents --help works without langgraph.json
+              - Verify shebang is correct (points to venv Python)
+              
+              Agent 3 - Directory independence:
+              - After install, cd to /tmp and run myagents commands
+              - Verify global commands work without langgraph.json
+              - Verify project commands give clear error when not in project
+            success_criteria:
+              - pyproject.toml has no [tool.uv.sources]
+              - pip install succeeds in isolated environment
+              - CLI works from any directory after install
+              - Shebang is correct after install
+
+          # User flow tests (using updated user stories)
+          - type: test
+            count: 3
+            inputs:
+              - /home/code/myagents/MyAgents-cli_distribution/docs/README.md
+              - /home/code/myagents/MyAgents-cli_distribution/docs/architecture/architecture.md
+              - /home/code/myagents/MyAgents-cli_distribution/src/myagents/frontend/agents/test/processes/user_simulator.yml
+            guidance: |
+              Test Strategy: agent-blind-test
+              Test Process: Execute user_simulator.yml
+              
+              Use the NEW installation user stories:
+              - US-INSTALL-001: Fresh pip installation
+              - US-INSTALL-002: CLI from non-project directory
+              - US-INSTALL-003: Developer workflow isolation
+              
+              These test the installation process itself, not just features.
+              Report any documentation gaps or unclear instructions.
+            success_criteria:
+              - Fresh installation succeeds following docs alone
+              - CLI works from any directory after install
+              - Developer workflow remains isolated to worktree
+
+          # Dynamic build agents for failures
+          - type: build
+            count: "n = total failures"
+            inputs:
+              - /home/code/myagents/MyAgents-cli_distribution/pyproject.toml
+              - /home/code/myagents/MyAgents-cli_distribution/README.md
+              - /home/code/myagents/MyAgents-cli_distribution/src/myagents/frontend/cli/entry.py
+            guidance: |
+              Fix failures found by test agents. Each build agent gets ONE failure.
+              
+              Common fixes:
+              - pyproject.toml: Remove uv.sources if still present
+              - README.md: Add/clarify installation documentation
+              - entry.py: Fix CLI behavior for non-project directories
+            success_criteria:
+              - Test that previously failed now passes
+              - No regression in other tests
+
+  # ========================================
+  # PHASE 4: AUDIT-TEST-FIX LOOP
+  # ========================================
+  - name: Audit Phase
+    execution_groups:
+      - execution: audit-test-fix-loop
+        name: Installation architecture validation
+        agents:
+          - type: audit
+            inputs:
+              - /home/code/myagents/MyAgents-cli_distribution/src/myagents/frontend/agents/test/processes/audit.yml
+              - /home/code/myagents/MyAgents-cli_distribution/pyproject.toml
+              - /home/code/myagents/MyAgents-cli_distribution/README.md
+            guidance: |
+              Audit Process: Execute audit.yml
+              
+              Audit Focus:
+              1. Verify [tool.uv.sources] is completely removed
+              2. Verify no other local path dependencies exist
+              3. Verify installation documentation is clear and complete
+              4. Check for any remaining worktree-specific references
+              5. Validate that new installation user stories are comprehensive
+              
+              Flag any remaining distribution blockers.
+            success_criteria:
+              - No local path dependencies found
+              - Installation documentation is complete
+              - No worktree-specific references in package
+
+          - type: test
+            inputs:
+              - /home/code/myagents/MyAgents-cli_distribution/src/myagents/frontend/agents/test/processes/test_runner.yml
+            guidance: |
+              Final validation after audit findings addressed.
+              
+              Run full test suite to verify no regressions.
+              Specifically test installation user stories again.
+            success_criteria:
+              - All tests pass
+              - Installation user stories pass
+              - No regressions
+
+  # ========================================
+  # PHASE 5: DOCUMENTATION
+  # ========================================
+  - name: Documentation Phase
+    execution_groups:
+      - execution: sequential
+        name: Update installation documentation
+        agents:
+          - type: documentation
+            inputs:
+              - /home/code/myagents/MyAgents-cli_distribution/README.md
+              - /home/code/myagents/MyAgents-cli_distribution/docs/guides/getting-started.md
+            guidance: |
+              Update documentation to clearly separate:
+              
+              1. END USER INSTALLATION:
+                 - pip install myagents (from PyPI when published)
+                 - pip install /path/to/MyAgents (from source)
+                 - pipx install myagents (isolated)
+              
+              2. DEVELOPER INSTALLATION:
+                 - git clone + uv sync
+                 - Uses uv workspace for local agent-gcptoolkit
+                 - Never install system-wide from worktrees
+              
+              3. WORKTREE DISCIPLINE:
+                 - Worktrees are for development, not system installs
+                 - System installs should use main branch or PyPI
+                 - Development venvs are isolated to worktree
+              
+              4. VERIFICATION:
+                 - How to verify installation works
+                 - Expected behavior from various directories
+            success_criteria:
+              - Clear separation of end-user vs developer installation
+              - Worktree discipline documented
+              - Verification steps included
+

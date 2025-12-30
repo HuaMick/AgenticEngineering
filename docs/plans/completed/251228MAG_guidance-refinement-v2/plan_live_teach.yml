@@ -1,0 +1,95 @@
+# Plan: Guidance Refinement v2 - Orchestration Duplication Review
+# Created: 2025-12-28
+# Worktree: /home/code/myagents/MyAgentsGuidance-guidance-refinement-v2
+# Branch: guidance-refinement-v2
+# Status: complete
+
+objective: |
+  Review orchestration-guidance/process.mmd for duplication with subagent guidance.
+  Ensure single source of truth - orchestration should delegate, not duplicate.
+
+target_file: agents/orchestration/orchestration-guidance/process.mmd
+
+phases:
+  - phase: 1
+    name: "Fix orchestration input clarity"
+    status: complete
+    tasks:
+      - id: FR-TEACH-002
+        status: complete
+        severity: HIGH
+        category: role_boundary_ambiguity
+        file: entrypoints/_teach.yml
+        issue: |
+          deploy-worktree/process.yml listed as input causes confusion.
+          Orchestrator reads subagent process and does it themselves.
+          This duplicates the subagent and creates ambiguity.
+        fix: |
+          Remove subagent process files from orchestration inputs.
+          Orchestrator should spawn agents, not read their internals.
+          Also audit for other rogue inputs that duplicate subagent guidance.
+        audit_scope:
+          - entrypoints/_teach.yml
+          - agents/orchestration/orchestration-guidance/inputs.yml
+        acceptance_criteria:
+          - deploy-worktree/process.yml removed from _teach.yml inputs
+          - No subagent process files listed in orchestration inputs
+          - Orchestration inputs reference only orchestration-level context
+        assigned_to: teacher-update-guidance
+
+  - phase: 2
+    name: "Review orchestration-subagent duplication"
+    status: complete
+    tasks:
+      - id: DUP-WORKTREE-001
+        status: complete
+        severity: HIGH
+        category: duplicated_subagent_scope
+        file: agents/orchestration/orchestration-guidance/process.mmd
+        lines: 34-40
+        issue: |
+          process.mmd lines 34-40 contain "FENCE: Worktree Verification Criteria".
+          This duplicates deploy-worktree agent scope.
+          Orchestration should delegate worktree verification to the agent,
+          not specify its own criteria.
+        fix: |
+          Remove FENCE block (lines 34-40) from process.mmd.
+          Replace with delegation reference: "Spawn deploy-worktree agent to handle
+          worktree setup and verification per its internal criteria."
+        acceptance_criteria:
+          - Lines 34-40 removed from process.mmd
+          - Delegation to deploy-worktree agent is explicit
+          - No worktree verification criteria remain in orchestration guidance
+        assigned_to: teacher-update-guidance
+
+      - id: DUP-REVIEW-DEPLOY
+        status: complete
+        severity: MEDIUM
+        category: duplication_review
+        description: |
+          Review deploy category for additional duplication between
+          orchestration process.mmd and deploy-worktree agent guidance.
+        scope:
+          target: agents/orchestration/orchestration-guidance/process.mmd
+          compare_with: agents/deploy/deploy-worktree/process.yml
+        acceptance_criteria:
+          - Document any additional duplicated sections
+          - Propose specific line removals or delegation rewrites
+          - No generic "spawn agents" without clear scope
+        assigned_to: teacher-update-guidance
+        result: |
+          Review completed. No additional duplication found beyond DUP-WORKTREE-001.
+          Analysis confirmed:
+          - Line 29 (SpawnDeployWorktree): Proper delegation node
+          - Line 32 (VerifyWorktree): Orchestration state label, not duplicated criteria
+          - Lines 41-42 (WorktreeValid decision): Flow control, appropriate at orchestration level
+          - Lines 34-40 (FENCE block): Only duplication - already tracked as DUP-WORKTREE-001
+          Orchestration correctly delegates worktree operations without specifying
+          procedural details for workspace files, planning scaffolding, or git operations.
+
+notes:
+  - "Strict NO CODE policy - context engineering only"
+  - "Focus on reducing duplication, not adding enforcement language"
+  - "FR-TEACH-004 removed: orchestration-policy.yml already loaded via orchestration-guidance/inputs.yml (line 16-17)"
+  - "Phase 3 removed: teacher guidance bloat unrelated to process.mmd duplication objective"
+  - "DUP-REVIEW-ALL removed: over-scoped; replaced with specific DUP-REVIEW-DEPLOY task"

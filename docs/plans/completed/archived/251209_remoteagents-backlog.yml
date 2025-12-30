@@ -1,0 +1,1106 @@
+# Live Plan: RemoteAgents Non-MVP Backlog Features
+# Worktree: /home/code/myagents/RemoteAgents-backlog
+# Created: 2025-12-09
+
+name: RemoteAgents Non-MVP Backlog Features
+worktree: /home/code/myagents/RemoteAgents-backlog
+branch: 251209_remoteagents-backlog
+status: completed
+completed_at: 2025-12-10
+
+description: |
+  Implementation of non-MVP features for the Python backend (RemoteAgents).
+  Features from backlog_remoteagents.yml prioritized by dependencies and value.
+
+  MVP prerequisite: Terminal and relay services must be working before
+  implementing these enhancements.
+
+objectives:
+  - Implement session recovery/reconnection (B5 - medium priority) - PRIMARY FOCUS
+  - Add TTS integration for conversation mode (B1 - low priority) - DEFERRED
+  - Evaluate Redis for session persistence (B2 - low priority) - DEFERRED
+  - Consider push notifications when mobile app ready (B3 - low priority) - DEFERRED
+
+# Backlog items from backlog_remoteagents.yml:
+#
+# B5-SESSION-RECOVERY: Auto-reconnection with state recovery (PRIMARY FOCUS)
+#    - Preserve terminal history
+#    - Resume encryption context
+#    - Handle partial message delivery
+#    - Graceful reconnection without data loss
+#    Priority: medium, Depends on: MVP terminal + relay (COMPLETE)
+#
+# B1-CONVERSATION-TTS: Backend support for voice conversation with Claude
+#    - Detect Claude response completion
+#    - Extract response for TTS processing
+#    - TTS API integration (OpenAI/ElevenLabs)
+#    Priority: low, Depends on: MVP terminal service
+#
+# B2-SESSION-PERSISTENCE: Redis session storage
+#    - Multi-instance relay support
+#    - Session recovery after restart
+#    - Horizontal scaling
+#    Priority: low, Depends on: MVP relay service
+#
+# B3-PUSH-NOTIFICATIONS: Mobile push via FCM
+#    - Background notifications when Claude responds
+#    Priority: low, Depends on: Mobile app
+#
+# B4-LOAD-BALANCING: Multi-relay load balancing
+#    - Session affinity, shared storage, health checks
+#    Priority: very_low (single relay handles 45k+ connections)
+#
+# B6-MULTI-USER-SESSIONS: Multiple users per session
+#    - Access control, permissions, conflict resolution
+#    Priority: very_low (single user is primary use case)
+
+phases:
+  # ========================================
+  # PHASE 1: DOMAIN LAYER - Session Recovery Entities
+  # ========================================
+  - name: Domain Layer - Session Recovery Entities
+    description: |
+      Create domain entities and value objects for session recovery state.
+      This phase establishes the core domain model for tracking reconnection
+      state, terminal history, and encryption context.
+    execution_groups:
+      - execution: parallel
+        name: Session recovery domain entities
+        agents:
+          # Create RecoveryState value object and enums
+          - type: builder
+            inputs:
+              - /home/code/myagents/RemoteAgents-backlog/src/agent_remote/services/relay/domains/session_manager/value_objects.py
+            guidance: |
+              Context: Session recovery requires tracking reconnection state, message sequence,
+              and disconnection timestamps. We need value objects to model this recovery state
+              within the existing SessionManager domain.
+
+              Instructions:
+              1. Add RecoveryState enum with values:
+                 - CONNECTED: Normal operation, no recovery needed
+                 - DISCONNECTED: Peer disconnected, recovery possible
+                 - RECOVERING: Reconnection in progress, replaying messages
+                 - RECOVERY_FAILED: Recovery timeout or unrecoverable error
+              2. Add DisconnectionReason enum with values:
+                 - NETWORK_ERROR: Network interruption (recoverable)
+                 - CLIENT_CLOSED: Clean client disconnect (recoverable)
+                 - TIMEOUT: Keepalive timeout (recoverable)
+                 - PROTOCOL_ERROR: Protocol violation (not recoverable)
+                 - SESSION_EXPIRED: Pairing code expired (not recoverable)
+              3. Create RecoveryMetadata value object with fields:
+                 - last_message_sequence: int (last message sent/received)
+                 - disconnected_at: Optional[float] (Unix timestamp)
+                 - recovery_state: RecoveryState
+                 - disconnection_reason: Optional[DisconnectionReason]
+                 - reconnection_attempts: int (counter for retry logic)
+              4. Add validation:
+                 - disconnected_at must be positive timestamp
+                 - reconnection_attempts must be non-negative
+                 - recovery_state transitions follow state machine rules
+              5. Follow existing patterns in value_objects.py (PairingCode, SessionId, etc.)
+
+              Files to modify:
+              - value_objects.py: Add RecoveryState, DisconnectionReason, RecoveryMetadata
+
+              Why this matters: Value objects provide type-safe, validated domain concepts
+              that can be reused across entities, workflows, and protocol messages.
+
+            success_criteria:
+              - RecoveryState enum defined with all required states
+              - DisconnectionReason enum defined with all required reasons
+              - RecoveryMetadata value object validates fields correctly
+              - Value objects follow existing patterns in the file
+
+          # Extend Session entity with recovery capabilities
+          - type: builder
+            inputs:
+              - /home/code/myagents/RemoteAgents-backlog/src/agent_remote/services/relay/domains/session_manager/entities.py
+              - /home/code/myagents/RemoteAgents-backlog/src/agent_remote/services/relay/domains/session_manager/value_objects.py
+            guidance: |
+              Context: The Session entity currently tracks pairing state but not recovery state.
+              We need to extend it to support disconnection tracking, recovery state management,
+              and reconnection logic while preserving existing functionality.
+
+              Instructions:
+              1. Add recovery-related fields to Session.__init__():
+                 - desktop_recovery: RecoveryMetadata (desktop connection recovery state)
+                 - client_recovery: RecoveryMetadata (client connection recovery state)
+                 - terminal_history: list[bytes] (buffered terminal output for replay)
+                 - max_history_bytes: int (default 1MB, limit history buffer size)
+              2. Add domain methods:
+                 - mark_desktop_disconnected(reason: DisconnectionReason) -> None
+                   - Store disconnection timestamp and reason
+                   - Transition desktop_recovery to DISCONNECTED state
+                   - Clear desktop_ws but preserve encryption keys
+                 - mark_client_disconnected(reason: DisconnectionReason) -> None
+                   - Same as desktop, but for client
+                 - can_recover(peer_role: PeerRole) -> bool
+                   - Check if recovery is possible (within timeout, recoverable reason)
+                   - Recovery timeout: 5 minutes from disconnected_at
+                 - start_recovery(peer_role: PeerRole, ws_connection: Any) -> None
+                   - Transition to RECOVERING state
+                   - Store new WebSocket connection
+                   - Increment reconnection_attempts
+                 - complete_recovery(peer_role: PeerRole) -> None
+                   - Transition to CONNECTED state
+                   - Reset reconnection_attempts
+                 - fail_recovery(peer_role: PeerRole, reason: str) -> None
+                   - Transition to RECOVERY_FAILED state
+                   - Store failure reason
+              3. Add history management methods:
+                 - buffer_terminal_output(data: bytes) -> None
+                   - Append to terminal_history
+                   - Enforce max_history_bytes limit (drop oldest messages)
+                 - get_terminal_history() -> list[bytes]
+                   - Return buffered history for replay
+                 - clear_terminal_history() -> None
+                   - Clear history buffer (called after successful replay)
+              4. Update existing methods:
+                 - close(): Clear terminal_history buffer
+                 - connect_desktop(), pair_client(): Initialize recovery metadata to CONNECTED
+              5. Add domain exceptions:
+                 - RecoveryNotPossibleException(session_id, peer_role, reason)
+                 - RecoveryTimeoutException(session_id, peer_role, disconnected_at)
+
+              Files to modify:
+              - entities.py: Extend Session entity with recovery methods
+
+              Why this matters: Session entity encapsulates all recovery business logic,
+              ensuring state transitions are validated and recovery rules are enforced.
+
+            success_criteria:
+              - Session entity tracks recovery state for both peers independently
+              - Disconnection methods preserve encryption keys for reconnection
+              - can_recover() validates timeout and reason correctly
+              - Terminal history buffer respects max_history_bytes limit
+              - Domain exceptions provide clear error context
+
+      # Sequential group: Terminal history domain model
+      - execution: sequential
+        name: Terminal history domain entities
+        agents:
+          # Create TerminalHistoryBuffer value object
+          - type: builder
+            inputs:
+              - /home/code/myagents/RemoteAgents-backlog/src/agent_remote/services/terminal/domains/pty_manager/value_objects.py
+            guidance: |
+              Context: PTY sessions need to buffer terminal output for replay during recovery.
+              This buffer must handle size limits, message ordering, and efficient replay.
+
+              Instructions:
+              1. Create TerminalHistoryBuffer value object with:
+                 - messages: list[tuple[int, bytes]] (sequence number, data pairs)
+                 - max_bytes: int (maximum buffer size in bytes)
+                 - current_bytes: int (current buffer size)
+                 - next_sequence: int (next sequence number to assign)
+              2. Add methods:
+                 - append(data: bytes) -> int
+                   - Add message with sequence number
+                   - Return assigned sequence number
+                   - Enforce max_bytes limit by dropping oldest messages
+                   - Update current_bytes
+                 - get_messages_since(sequence: int) -> list[tuple[int, bytes]]
+                   - Return all messages after given sequence number
+                   - Used for partial replay during recovery
+                 - get_all_messages() -> list[tuple[int, bytes]]
+                   - Return complete history
+                 - clear() -> None
+                   - Reset buffer
+                 - get_oldest_sequence() -> Optional[int]
+                   - Return sequence number of oldest buffered message
+                   - None if buffer empty
+              3. Add validation:
+                 - max_bytes must be positive (minimum 64KB, maximum 10MB)
+                 - Enforce FIFO ordering when dropping old messages
+
+              Files to modify:
+              - value_objects.py: Add TerminalHistoryBuffer value object
+
+              Why this matters: Encapsulates history buffering logic with proper validation
+              and size management, preventing memory issues.
+
+            success_criteria:
+              - TerminalHistoryBuffer enforces size limits correctly
+              - get_messages_since() returns only messages after given sequence
+              - Oldest messages dropped when buffer exceeds max_bytes
+              - Sequence numbers assigned monotonically
+
+          # Extend PTYSession entity with recovery support
+          - type: builder
+            inputs:
+              - /home/code/myagents/RemoteAgents-backlog/src/agent_remote/services/terminal/domains/pty_manager/entities.py
+              - /home/code/myagents/RemoteAgents-backlog/src/agent_remote/services/terminal/domains/pty_manager/value_objects.py
+            guidance: |
+              Context: PTYSession needs to track terminal output history for recovery.
+              Must integrate with TerminalHistoryBuffer while preserving existing functionality.
+
+              Instructions:
+              1. Add history_buffer field to PTYSession:
+                 - history_buffer: Optional[TerminalHistoryBuffer]
+                 - Only initialized if session is recoverable
+              2. Update PTYSession.create() factory method:
+                 - Add optional recoverable: bool parameter (default False)
+                 - Initialize history_buffer if recoverable=True
+                 - Use default max_bytes=1MB for buffer
+              3. Add domain methods:
+                 - record_output(data: bytes) -> Optional[int]
+                   - Call history_buffer.append() if buffer exists
+                   - Return sequence number or None
+                 - get_history_since(sequence: int) -> list[tuple[int, bytes]]
+                   - Delegate to history_buffer.get_messages_since()
+                   - Raise exception if history_buffer is None
+                 - is_recoverable() -> bool
+                   - Return whether session supports recovery (has history_buffer)
+              4. No changes to existing state machine (STARTING -> RUNNING -> TERMINATED)
+
+              Files to modify:
+              - entities.py: Extend PTYSession with history buffer
+
+              Why this matters: PTYSession controls whether history is recorded,
+              enabling recovery to be opt-in per session.
+
+            success_criteria:
+              - PTYSession only records history when recoverable=True
+              - record_output() returns sequence numbers correctly
+              - get_history_since() throws clear error if session not recoverable
+              - Existing PTY lifecycle unchanged
+
+  # ========================================
+  # PHASE 2: PROTOCOL LAYER - Recovery Messages
+  # ========================================
+  - name: Protocol Layer - Recovery Messages
+    description: |
+      Define protocol messages for reconnection handshake and history replay.
+      These messages enable clients to signal reconnection intent and receive
+      missed terminal output.
+    execution_groups:
+      - execution: parallel
+        name: Recovery protocol messages
+        agents:
+          # Add session recovery messages
+          - type: builder
+            inputs:
+              - /home/code/myagents/RemoteAgents-backlog/src/agent_remote/shared/protocol/session_messages.py
+              - /home/code/myagents/RemoteAgents-backlog/src/agent_remote/shared/protocol/base.py
+            guidance: |
+              Context: Clients need protocol messages to reconnect to existing sessions
+              and request missed terminal output. These messages extend the session lifecycle.
+
+              Instructions:
+              1. Add SessionReconnect message (SessionMessage base):
+                 - type: "session.reconnect"
+                 - session_id: str (UUID, inherited from SessionMessage)
+                 - peer_role: Literal["desktop", "client"] (who is reconnecting)
+                 - last_sequence_received: int (last message sequence peer received)
+                 - public_key: bytes (X25519 key to verify identity, 32 bytes)
+                 - Validates: peer_role is valid, public_key is 32 bytes, sequence >= 0
+              2. Add SessionReconnected message (SessionMessage base):
+                 - type: "session.reconnected"
+                 - session_id: str (UUID, inherited)
+                 - success: bool (whether reconnection succeeded)
+                 - recovery_state: str (RECOVERING, CONNECTED, RECOVERY_FAILED)
+                 - missed_messages_count: int (number of messages to replay)
+                 - error_message: Optional[str] (if success=False, why recovery failed)
+              3. Add SessionHistoryReplay message (SessionMessage base):
+                 - type: "session.history_replay"
+                 - session_id: str (UUID, inherited)
+                 - sequence: int (message sequence number)
+                 - total_messages: int (total messages in replay)
+                 - current_index: int (0-based index in replay sequence)
+                 - data: bytes (base64-encoded terminal output)
+                 - Validates: sequence >= 0, current_index < total_messages
+              4. Follow existing patterns:
+                 - Use Pydantic validators for all fields
+                 - Use field_validator for custom validation
+                 - Use field_serializer for bytes -> base64
+                 - Register in MESSAGE_TYPES dict
+                 - Add docstrings with examples
+
+              Files to modify:
+              - session_messages.py: Add SessionReconnect, SessionReconnected, SessionHistoryReplay
+
+              Why this matters: Protocol messages define the contract between client and server
+              for recovery handshake and history replay.
+
+            success_criteria:
+              - SessionReconnect validates peer identity with public key
+              - SessionReconnected indicates success/failure and recovery state
+              - SessionHistoryReplay properly sequences replay messages
+              - All messages registered in MESSAGE_TYPES
+
+          # Add terminal recovery messages
+          - type: builder
+            inputs:
+              - /home/code/myagents/RemoteAgents-backlog/src/agent_remote/shared/protocol/terminal_messages.py
+              - /home/code/myagents/RemoteAgents-backlog/src/agent_remote/shared/protocol/base.py
+            guidance: |
+              Context: Terminal messages need sequence numbers for tracking delivery
+              and detecting message loss during reconnection.
+
+              Instructions:
+              1. Extend TerminalOutput message:
+                 - Add sequence: Optional[int] field (None for non-recoverable sessions)
+                 - Validates: sequence >= 0 if present
+                 - Backward compatible: existing messages without sequence still work
+              2. Extend TerminalInput message:
+                 - Add sequence: Optional[int] field (None for non-recoverable sessions)
+                 - Validates: sequence >= 0 if present
+              3. Add TerminalHistoryRequest message (SessionMessage base):
+                 - type: "terminal.history_request"
+                 - session_id: str (UUID, inherited)
+                 - last_sequence_received: int (client's last received sequence)
+                 - Validates: sequence >= 0
+              4. Maintain backward compatibility:
+                 - Existing TerminalOutput/Input without sequence field still parse
+                 - Use Optional[int] to make sequence field optional
+                 - Add docstring notes about recovery vs non-recovery modes
+
+              Files to modify:
+              - terminal_messages.py: Extend TerminalOutput, TerminalInput, add TerminalHistoryRequest
+
+              Why this matters: Message sequencing enables detection of lost messages
+              and replay of correct history during recovery.
+
+            success_criteria:
+              - TerminalOutput and TerminalInput have optional sequence field
+              - Backward compatible with existing messages without sequence
+              - TerminalHistoryRequest enables client-driven history requests
+              - All validators enforce non-negative sequence numbers
+
+  # ========================================
+  # PHASE 3: INFRASTRUCTURE LAYER - State Persistence
+  # ========================================
+  - name: Infrastructure Layer - State Persistence
+    description: |
+      Implement in-memory persistence for recovery state. This phase adds
+      recovery state tracking to existing repositories without external dependencies.
+    execution_groups:
+      - execution: sequential
+        name: Repository recovery support
+        agents:
+          # Extend SessionRepository with recovery queries
+          - type: builder
+            inputs:
+              - /home/code/myagents/RemoteAgents-backlog/src/agent_remote/services/relay/domains/session_manager/repository.py
+            guidance: |
+              Context: SessionRepository needs to support recovery-specific queries
+              for finding sessions by recovery state and cleaning up expired sessions.
+
+              Instructions:
+              1. Add abstract methods to SessionRepository interface:
+                 - get_sessions_by_recovery_state(state: RecoveryState) -> list[Session]
+                   - Return all sessions in given recovery state
+                   - Used for recovery timeout cleanup
+                 - get_disconnected_sessions_older_than(timestamp: float) -> list[Session]
+                   - Return sessions disconnected before given timestamp
+                   - Used for recovery timeout enforcement (5 minute window)
+                 - update_session_recovery(session: Session) -> None
+                   - Update only recovery-related fields (optimization)
+                   - Alternative to full update() for recovery state changes
+              2. No implementation changes needed (interface only)
+              3. Add docstrings explaining use cases for each method
+
+              Files to modify:
+              - repository.py: Add abstract methods to SessionRepository interface
+
+              Why this matters: Repository interface defines contract for persistence
+              layer without coupling to implementation details.
+
+            success_criteria:
+              - New abstract methods added to repository interface
+              - Docstrings explain recovery use cases
+              - No implementation code (interface only)
+
+          # Implement recovery methods in InMemoryRepository
+          - type: builder
+            inputs:
+              - /home/code/myagents/RemoteAgents-backlog/src/agent_remote/services/relay/infrastructure/in_memory_repository.py
+              - /home/code/myagents/RemoteAgents-backlog/src/agent_remote/services/relay/domains/session_manager/repository.py
+              - /home/code/myagents/RemoteAgents-backlog/src/agent_remote/services/relay/domains/session_manager/entities.py
+            guidance: |
+              Context: InMemoryRepository stores sessions in dict. We need to implement
+              recovery query methods efficiently without degrading existing performance.
+
+              Instructions:
+              1. Implement get_sessions_by_recovery_state():
+                 - Iterate _sessions dict
+                 - Filter by desktop_recovery.recovery_state or client_recovery.recovery_state
+                 - Return matching sessions
+              2. Implement get_disconnected_sessions_older_than():
+                 - Iterate _sessions dict
+                 - Check desktop_recovery.disconnected_at and client_recovery.disconnected_at
+                 - Return sessions where either peer disconnected before timestamp
+              3. Implement update_session_recovery():
+                 - Validate session exists in _sessions
+                 - Update recovery-related fields only
+                 - Preserve existing session data
+              4. Maintain thread safety:
+                 - Use existing lock pattern if present
+                 - Ensure consistent reads/writes
+              5. Performance considerations:
+                 - O(n) iteration acceptable for in-memory implementation
+                 - Note: Redis implementation (B2) would use indexed queries
+
+              Files to modify:
+              - in_memory_repository.py: Implement recovery query methods
+
+              Why this matters: Implements recovery queries for cleanup and monitoring
+              without external dependencies.
+
+            success_criteria:
+              - Recovery query methods return correct results
+              - Thread-safe implementation (if repository uses locking)
+              - No performance regression for existing operations
+              - Efficient filtering logic
+
+  # ========================================
+  # PHASE 4: WORKFLOW LAYER - Recovery Orchestration
+  # ========================================
+  - name: Workflow Layer - Recovery Orchestration
+    description: |
+      Implement recovery orchestration in RelayWorkflow and TerminalWorkflow.
+      This phase coordinates reconnection handshake, history replay, and timeout cleanup.
+    execution_groups:
+      - execution: sequential
+        name: Relay recovery workflow
+        agents:
+          # Add reconnection methods to RelayWorkflow
+          - type: builder
+            inputs:
+              - /home/code/myagents/RemoteAgents-backlog/src/agent_remote/services/relay/workflows/relay_workflow.py
+              - /home/code/myagents/RemoteAgents-backlog/src/agent_remote/services/relay/domains/session_manager/entities.py
+              - /home/code/myagents/RemoteAgents-backlog/src/agent_remote/shared/protocol/session_messages.py
+            guidance: |
+              Context: RelayWorkflow orchestrates session lifecycle. We need to add
+              reconnection handling that validates peer identity, checks recovery window,
+              and coordinates history replay.
+
+              Instructions:
+              1. Add handle_reconnect() method:
+                 - Parameters: session_id, peer_role, last_sequence, public_key, ws_connection
+                 - Retrieve session from repository
+                 - Validate public key matches (desktop_public_key or client_public_key)
+                 - Call session.can_recover(peer_role)
+                 - If recoverable:
+                   - Call session.start_recovery(peer_role, ws_connection)
+                   - Calculate missed_messages_count
+                   - Return SessionReconnected(success=True, recovery_state=RECOVERING)
+                 - If not recoverable:
+                   - Return SessionReconnected(success=False, error_message=reason)
+                 - Wrap domain exceptions with workflow context
+              2. Add replay_terminal_history() method:
+                 - Parameters: session_id, peer_role, last_sequence
+                 - Retrieve session from repository
+                 - Get terminal history from session.get_terminal_history()
+                 - Filter messages after last_sequence
+                 - Yield SessionHistoryReplay messages for each message
+                 - Call session.complete_recovery(peer_role) after replay
+                 - Clear history buffer after successful replay
+              3. Add cleanup_expired_recovery_sessions() method:
+                 - Get sessions disconnected > 5 minutes ago via repository
+                 - For each session:
+                   - Call session.fail_recovery(reason="Recovery timeout")
+                   - Close session with close_session()
+                 - Schedule periodic cleanup (every 60 seconds)
+              4. Update handle_desktop_connect() and handle_client_pair():
+                 - Initialize recovery metadata to CONNECTED state
+              5. Update close_session():
+                 - Call mark_desktop_disconnected() or mark_client_disconnected()
+                 - Store DisconnectionReason based on close reason
+                 - Don't immediately delete session (allow recovery window)
+                 - Defer deletion to cleanup_expired_recovery_sessions()
+              6. Add workflow exceptions:
+                 - RecoveryNotAllowedException(session_id, reason)
+                 - InvalidRecoveryCredentialsException(session_id, peer_role)
+
+              Files to modify:
+              - relay_workflow.py: Add reconnection and recovery methods
+
+              Why this matters: RelayWorkflow enforces recovery rules and coordinates
+              multi-step recovery process.
+
+            success_criteria:
+              - handle_reconnect() validates peer identity with public key
+              - replay_terminal_history() delivers messages in correct sequence
+              - cleanup_expired_recovery_sessions() enforces 5-minute timeout
+              - close_session() preserves session for recovery window
+              - Recovery state transitions follow domain rules
+
+          # Add recovery support to TerminalWorkflow
+          - type: builder
+            inputs:
+              - /home/code/myagents/RemoteAgents-backlog/src/agent_remote/services/terminal/workflows/terminal_workflow.py
+              - /home/code/myagents/RemoteAgents-backlog/src/agent_remote/services/terminal/domains/pty_manager/entities.py
+            guidance: |
+              Context: TerminalWorkflow manages PTY sessions. We need to integrate
+              history recording and replay without impacting normal operation.
+
+              Instructions:
+              1. Update start_session() method:
+                 - Add optional recoverable: bool parameter (default False)
+                 - Pass recoverable to PTYSession.create()
+                 - Document that recoverable sessions buffer terminal output
+              2. Update _read_output() internal method:
+                 - After reading PTY output, call session.record_output(data)
+                 - Store returned sequence number with output
+                 - Pass sequence to output_callback: output_callback(session_id, data, sequence)
+              3. Add get_history_since() method:
+                 - Parameters: session_id, last_sequence
+                 - Retrieve session from repository
+                 - Call session.get_history_since(last_sequence)
+                 - Return list of (sequence, data) tuples
+                 - Raise SessionNotFoundError if session doesn't exist
+                 - Raise error if session not recoverable
+              4. Update output_callback signature:
+                 - Change from (session_id, data) to (session_id, data, sequence)
+                 - Update type alias: OutputCallback = Callable[[str, bytes, Optional[int]], None]
+                 - Document that sequence is None for non-recoverable sessions
+              5. No changes to stop_session() or resize()
+
+              Files to modify:
+              - terminal_workflow.py: Add history recording and replay
+
+              Why this matters: TerminalWorkflow records history transparently during
+              normal operation, enabling recovery without client awareness.
+
+            success_criteria:
+              - Terminal output buffered automatically when recoverable=True
+              - get_history_since() returns correct messages after given sequence
+              - output_callback receives sequence numbers
+              - No performance impact for non-recoverable sessions
+
+  # ========================================
+  # PHASE 5: SERVICE INTEGRATION - Wire Recovery into Services
+  # ========================================
+  - name: Service Integration - Wire Recovery into Services
+    description: |
+      Integrate recovery workflows into relay and terminal services. This phase
+      connects protocol handlers to workflow methods and adds reconnection endpoints.
+    execution_groups:
+      - execution: parallel
+        name: Service recovery integration
+        agents:
+          # Add reconnection handling to relay service
+          - type: builder
+            inputs:
+              - /home/code/myagents/RemoteAgents-backlog/src/agent_remote/services/relay/main.py
+              - /home/code/myagents/RemoteAgents-backlog/src/agent_remote/services/relay/workflows/relay_workflow.py
+              - /home/code/myagents/RemoteAgents-backlog/src/agent_remote/shared/protocol/session_messages.py
+            guidance: |
+              Context: Relay service handles WebSocket connections and routes messages.
+              We need to add handlers for SessionReconnect messages and integrate
+              recovery workflow methods.
+
+              Instructions:
+              1. Add message handler for SessionReconnect:
+                 - Receive SessionReconnect message
+                 - Extract session_id, peer_role, last_sequence, public_key, ws_connection
+                 - Call relay_workflow.handle_reconnect()
+                 - Send SessionReconnected response to client
+                 - If success=True:
+                   - Call relay_workflow.replay_terminal_history()
+                   - Send SessionHistoryReplay messages to client
+              2. Update session close handler:
+                 - Call mark_desktop_disconnected() or mark_client_disconnected()
+                 - Map WebSocket close reason to DisconnectionReason enum
+                 - Network errors -> NETWORK_ERROR
+                 - Clean close -> CLIENT_CLOSED
+                 - Timeout -> TIMEOUT
+                 - Invalid message -> PROTOCOL_ERROR
+              3. Add recovery cleanup task:
+                 - Start background task that calls cleanup_expired_recovery_sessions()
+                 - Run every 60 seconds
+                 - Cancel task on service shutdown
+              4. Update error handling:
+                 - Catch RecoveryNotAllowedException -> send SessionReconnected(success=False)
+                 - Catch InvalidRecoveryCredentialsException -> send Error(code=UNAUTHORIZED)
+              5. Add logging:
+                 - Log reconnection attempts with session_id and peer_role
+                 - Log recovery success/failure
+                 - Log cleanup of expired sessions
+
+              Files to modify:
+              - main.py (or appropriate service entry point): Add reconnection handlers
+
+              Why this matters: Relay service exposes recovery functionality to clients
+              via WebSocket protocol.
+
+            success_criteria:
+              - SessionReconnect messages handled correctly
+              - History replay delivers all missed messages
+              - Recovery cleanup runs periodically
+              - Disconnection reasons mapped correctly
+              - Comprehensive logging for debugging
+
+          # Update terminal service to use recoverable sessions
+          - type: builder
+            inputs:
+              - /home/code/myagents/RemoteAgents-backlog/src/agent_remote/services/terminal/main.py
+              - /home/code/myagents/RemoteAgents-backlog/src/agent_remote/services/terminal/workflows/terminal_workflow.py
+            guidance: |
+              Context: Terminal service manages PTY sessions. We need to enable
+              recoverable sessions and update output callback to include sequence numbers.
+
+              Instructions:
+              1. Update session creation:
+                 - Pass recoverable=True to terminal_workflow.start_session()
+                 - Document that all sessions are now recoverable by default
+              2. Update output callback implementation:
+                 - Modify callback to accept (session_id, data, sequence) signature
+                 - Include sequence in TerminalOutput message (if present)
+                 - Send TerminalOutput with sequence field populated
+              3. Add handler for TerminalHistoryRequest (if needed):
+                 - Call terminal_workflow.get_history_since()
+                 - Send TerminalOutput messages for each history entry
+                 - Include sequence numbers
+              4. No changes to PTY lifecycle (start/stop/resize)
+
+              Files to modify:
+              - main.py (or appropriate service entry point): Enable recoverable sessions
+
+              Why this matters: Terminal service generates sequenced output for recovery
+              without changing PTY management.
+
+            success_criteria:
+              - All terminal sessions created with recoverable=True
+              - TerminalOutput messages include sequence numbers
+              - Output callback signature updated correctly
+              - No changes to PTY lifecycle management
+
+  # ========================================
+  # PHASE 6: TESTING - Comprehensive Session Recovery Tests
+  # ========================================
+  - name: Testing - Comprehensive Session Recovery Tests
+    description: |
+      Comprehensive test coverage for B5-SESSION-RECOVERY including domain entities,
+      workflows, protocol messages, and end-to-end recovery scenarios. Tests validate
+      happy path, timeout expiry, invalid credentials, partial messages, buffer limits,
+      and protocol compatibility.
+    execution_groups:
+      - execution: test-fix-loop
+        name: Session recovery comprehensive testing
+        agents:
+          # Domain layer unit tests
+          - type: test
+            count: 4
+            inputs:
+              - /home/code/myagents/RemoteAgents-backlog/src/myagents/frontend/agents/test/processes/test_runner.yml
+              - /home/code/myagents/RemoteAgents-backlog/tests/services/relay/test_session_recovery_domain.py
+              - /home/code/myagents/RemoteAgents-backlog/src/agent_remote/services/relay/domains/session_manager/entities.py
+              - /home/code/myagents/RemoteAgents-backlog/src/agent_remote/services/relay/domains/session_manager/value_objects.py
+              - /home/code/myagents/RemoteAgents-backlog/src/agent_remote/services/terminal/domains/pty_manager/entities.py
+              - /home/code/myagents/RemoteAgents-backlog/src/agent_remote/services/terminal/domains/pty_manager/value_objects.py
+            guidance: |
+              Test Strategy: technical-spike (unit tests for domain entities)
+              Test Process: Execute test_runner.yml from src/myagents/frontend/agents/test/processes/
+              Reporting: Update live plan with structured failures under test_failures
+
+              Unit Test Scope (distribute across 4 agents):
+
+              Agent 1 - RecoveryMetadata and RecoveryState value objects:
+              - Test RecoveryState enum has all required values (CONNECTED, DISCONNECTED, RECOVERING, RECOVERY_FAILED)
+              - Test DisconnectionReason enum has all required values (NETWORK_ERROR, CLIENT_CLOSED, TIMEOUT, PROTOCOL_ERROR, SESSION_EXPIRED)
+              - Test RecoveryMetadata validates disconnected_at is positive timestamp
+              - Test RecoveryMetadata validates reconnection_attempts is non-negative
+              - Test RecoveryMetadata state transitions follow state machine rules
+              - Test RecoveryMetadata rejects invalid state transitions
+              - Test RecoveryMetadata creation with default values
+
+              Agent 2 - Session disconnection and recovery state management:
+              - Test mark_desktop_disconnected() transitions desktop_recovery to DISCONNECTED state
+              - Test mark_client_disconnected() transitions client_recovery to DISCONNECTED state
+              - Test disconnection preserves encryption keys (desktop_public_key, client_public_key)
+              - Test disconnection clears WebSocket connection but preserves session data
+              - Test can_recover() returns True within 5-minute window
+              - Test can_recover() returns False after 5-minute timeout expiry
+              - Test can_recover() returns False for non-recoverable DisconnectionReason (PROTOCOL_ERROR, SESSION_EXPIRED)
+              - Test can_recover() returns True for recoverable DisconnectionReason (NETWORK_ERROR, CLIENT_CLOSED, TIMEOUT)
+              - Test start_recovery() transitions to RECOVERING state and increments reconnection_attempts
+              - Test complete_recovery() transitions to CONNECTED state and resets reconnection_attempts
+              - Test fail_recovery() transitions to RECOVERY_FAILED state
+
+              Agent 3 - Terminal history buffer management:
+              - Test TerminalHistoryBuffer enforces max_bytes limit (1MB default)
+              - Test TerminalHistoryBuffer drops oldest messages when exceeding max_bytes
+              - Test TerminalHistoryBuffer maintains FIFO ordering when dropping messages
+              - Test TerminalHistoryBuffer.append() assigns monotonically increasing sequence numbers
+              - Test TerminalHistoryBuffer.get_messages_since() returns only messages after given sequence
+              - Test TerminalHistoryBuffer.get_messages_since() handles sequence not in buffer (returns empty or newer messages)
+              - Test TerminalHistoryBuffer.get_all_messages() returns complete history
+              - Test TerminalHistoryBuffer.clear() resets buffer completely
+              - Test TerminalHistoryBuffer.get_oldest_sequence() returns None when buffer empty
+              - Test TerminalHistoryBuffer validates max_bytes is within allowed range (64KB - 10MB)
+
+              Agent 4 - PTYSession history recording:
+              - Test PTYSession created with recoverable=True has history_buffer
+              - Test PTYSession created with recoverable=False has no history_buffer
+              - Test PTYSession.record_output() returns sequence numbers when recoverable=True
+              - Test PTYSession.record_output() returns None when recoverable=False
+              - Test PTYSession.get_history_since() returns correct messages when recoverable=True
+              - Test PTYSession.get_history_since() raises exception when recoverable=False
+              - Test PTYSession.is_recoverable() returns correct boolean
+              - Test PTYSession history buffer respects max_bytes limit (1MB)
+              - Test existing PTY lifecycle unchanged (STARTING -> RUNNING -> TERMINATED)
+
+              Failure Reporting Format:
+              Add failures to live plan under test_failures with structure:
+              - test_name: Name of failed test
+              - test_category: "domain_entities"
+              - component: Component being tested (e.g., "RecoveryMetadata", "Session", "TerminalHistoryBuffer")
+              - failure_description: What went wrong
+              - expected_behavior: What should have happened
+              - actual_behavior: What actually happened
+              - files_involved: List of files related to failure
+
+            success_criteria:
+              - All value object validation tests pass
+              - Recovery state machine transitions validated
+              - Timeout enforcement works correctly (5-minute window)
+              - Public key preservation verified during disconnection
+              - History buffer size limits enforced
+              - FIFO message dropping works correctly
+              - Sequence numbering is monotonic and correct
+
+          # Protocol layer unit tests
+          - type: test
+            count: 2
+            inputs:
+              - /home/code/myagents/RemoteAgents-backlog/src/myagents/frontend/agents/test/processes/test_runner.yml
+              - /home/code/myagents/RemoteAgents-backlog/tests/protocol/test_recovery_messages.py
+              - /home/code/myagents/RemoteAgents-backlog/src/agent_remote/shared/protocol/session_messages.py
+              - /home/code/myagents/RemoteAgents-backlog/src/agent_remote/shared/protocol/terminal_messages.py
+            guidance: |
+              Test Strategy: technical-spike (unit tests for protocol messages)
+              Test Process: Execute test_runner.yml from src/myagents/frontend/agents/test/processes/
+              Reporting: Update live plan with structured failures under test_failures
+
+              Protocol Test Scope (distribute across 2 agents):
+
+              Agent 1 - SessionReconnect and SessionReconnected messages:
+              - Test SessionReconnect message validates peer_role is "desktop" or "client"
+              - Test SessionReconnect validates public_key is exactly 32 bytes
+              - Test SessionReconnect validates last_sequence_received is non-negative
+              - Test SessionReconnect rejects invalid public_key length
+              - Test SessionReconnected message includes success boolean
+              - Test SessionReconnected includes recovery_state field
+              - Test SessionReconnected includes missed_messages_count
+              - Test SessionReconnected includes error_message when success=False
+              - Test SessionReconnected validates recovery_state is valid enum value
+              - Test SessionHistoryReplay validates sequence >= 0
+              - Test SessionHistoryReplay validates current_index < total_messages
+              - Test SessionHistoryReplay serializes data as base64
+              - Test SessionHistoryReplay includes sequence ordering fields
+
+              Agent 2 - TerminalOutput/Input sequence fields and backward compatibility:
+              - Test TerminalOutput accepts optional sequence field
+              - Test TerminalInput accepts optional sequence field
+              - Test TerminalOutput with sequence=None parses correctly (backward compatible)
+              - Test TerminalInput with sequence=None parses correctly (backward compatible)
+              - Test TerminalOutput validates sequence >= 0 when present
+              - Test TerminalInput validates sequence >= 0 when present
+              - Test TerminalHistoryRequest validates last_sequence_received >= 0
+              - Test all recovery messages registered in MESSAGE_TYPES dict
+              - Test message serialization/deserialization roundtrip
+              - Test backward compatibility: old messages without sequence still work
+
+              Failure Reporting Format:
+              Add failures to live plan under test_failures with structure:
+              - test_name: Name of failed test
+              - test_category: "protocol_messages"
+              - component: Message being tested (e.g., "SessionReconnect", "TerminalOutput")
+              - failure_description: What went wrong
+              - expected_behavior: What should have happened
+              - actual_behavior: What actually happened
+              - files_involved: List of files related to failure
+
+            success_criteria:
+              - All protocol message validation tests pass
+              - Public key validation enforced (32 bytes)
+              - Sequence number validation works
+              - Backward compatibility verified
+              - Message serialization/deserialization works
+              - All messages registered correctly
+
+          # Workflow layer integration tests
+          - type: test
+            count: 3
+            inputs:
+              - /home/code/myagents/RemoteAgents-backlog/src/myagents/frontend/agents/test/processes/test_runner.yml
+              - /home/code/myagents/RemoteAgents-backlog/tests/services/relay/test_recovery_workflow.py
+              - /home/code/myagents/RemoteAgents-backlog/src/agent_remote/services/relay/workflows/relay_workflow.py
+              - /home/code/myagents/RemoteAgents-backlog/src/agent_remote/services/terminal/workflows/terminal_workflow.py
+            guidance: |
+              Test Strategy: technical-spike (integration tests for workflows)
+              Test Process: Execute test_runner.yml from src/myagents/frontend/agents/test/processes/
+              Reporting: Update live plan with structured failures under test_failures
+
+              Integration Test Scope (distribute across 3 agents):
+
+              Agent 1 - RelayWorkflow reconnection handling:
+              - Test handle_reconnect() validates public key matches stored key
+              - Test handle_reconnect() rejects reconnection with wrong public key
+              - Test handle_reconnect() rejects reconnection for expired sessions (>5 minutes)
+              - Test handle_reconnect() rejects reconnection with invalid peer_role
+              - Test handle_reconnect() returns SessionReconnected(success=True) for valid reconnection
+              - Test handle_reconnect() returns SessionReconnected(success=False) for invalid reconnection
+              - Test handle_reconnect() transitions session to RECOVERING state
+              - Test handle_reconnect() calculates missed_messages_count correctly
+              - Test handle_reconnect() preserves encryption context during recovery
+
+              Agent 2 - RelayWorkflow history replay:
+              - Test replay_terminal_history() delivers messages in correct sequence order
+              - Test replay_terminal_history() filters messages by last_sequence correctly
+              - Test replay_terminal_history() sends SessionHistoryReplay messages with correct fields
+              - Test replay_terminal_history() includes sequence numbers in all replay messages
+              - Test replay_terminal_history() calls complete_recovery() after successful replay
+              - Test replay_terminal_history() clears history buffer after successful replay
+              - Test replay_terminal_history() handles empty history (no messages to replay)
+              - Test replay_terminal_history() handles partial replay (some messages already received)
+
+              Agent 3 - Recovery cleanup and timeout enforcement:
+              - Test cleanup_expired_recovery_sessions() closes sessions older than 5 minutes
+              - Test cleanup_expired_recovery_sessions() preserves sessions within 5-minute window
+              - Test cleanup_expired_recovery_sessions() calls fail_recovery() with timeout reason
+              - Test close_session() calls mark_desktop_disconnected() or mark_client_disconnected()
+              - Test close_session() maps WebSocket close codes to DisconnectionReason correctly
+              - Test close_session() preserves session for recovery window (doesn't delete immediately)
+              - Test cleanup runs periodically (every 60 seconds)
+              - Test TerminalWorkflow.get_history_since() returns correct messages
+              - Test TerminalWorkflow output_callback includes sequence numbers
+
+              Failure Reporting Format:
+              Add failures to live plan under test_failures with structure:
+              - test_name: Name of failed test
+              - test_category: "workflow_integration"
+              - component: Workflow being tested (e.g., "RelayWorkflow.handle_reconnect")
+              - failure_description: What went wrong
+              - expected_behavior: What should have happened
+              - actual_behavior: What actually happened
+              - files_involved: List of files related to failure
+
+            success_criteria:
+              - Public key validation enforced in reconnection workflow
+              - History replay delivers messages in correct order
+              - Timeout cleanup closes expired sessions
+              - Session preservation works during recovery window
+              - Disconnection reasons mapped correctly
+              - Encryption context preserved during recovery
+
+          # End-to-end recovery scenarios
+          - type: test
+            count: 6
+            inputs:
+              - /home/code/myagents/RemoteAgents-backlog/src/myagents/frontend/agents/test/processes/test_runner.yml
+              - /home/code/myagents/RemoteAgents-backlog/tests/integration/test_session_recovery_e2e.py
+              - /home/code/myagents/RemoteAgents-backlog/src/agent_remote/services/relay/main.py
+              - /home/code/myagents/RemoteAgents-backlog/src/agent_remote/services/terminal/main.py
+            guidance: |
+              Test Strategy: technical-spike (end-to-end recovery scenarios)
+              Test Process: Execute test_runner.yml from src/myagents/frontend/agents/test/processes/
+              Reporting: Update live plan with structured failures under test_failures
+
+              E2E Test Scope (distribute across 6 agents, covering all edge cases):
+
+              Agent 1 - Happy path: Desktop disconnects and reconnects within timeout:
+              - Start session with desktop and client paired
+              - Send terminal input, receive output with sequence numbers
+              - Disconnect desktop (simulate network error)
+              - Verify session enters DISCONNECTED state for desktop peer
+              - Terminal continues buffering output (client still connected)
+              - Wait 30 seconds (well within 5-minute timeout)
+              - Reconnect desktop with SessionReconnect message (valid public key)
+              - Verify SessionReconnected(success=True, recovery_state=RECOVERING)
+              - Verify SessionHistoryReplay messages deliver all buffered output
+              - Verify history includes correct sequence numbers
+              - Verify session transitions to CONNECTED after replay
+              - Continue sending terminal input/output (verify normal operation resumes)
+
+              Agent 2 - Timeout expiry: Desktop disconnects, waits >5 minutes, reconnection fails:
+              - Start session with desktop and client paired
+              - Disconnect desktop (simulate network error)
+              - Verify session enters DISCONNECTED state
+              - Wait 6 minutes (exceed 5-minute recovery timeout)
+              - Attempt reconnection with SessionReconnect message
+              - Verify SessionReconnected(success=False, error_message contains "timeout")
+              - Verify cleanup_expired_recovery_sessions() closed the session
+              - Verify session no longer exists in repository
+
+              Agent 3 - Invalid identity: Different public key attempts reconnection:
+              - Start session with desktop and client paired
+              - Disconnect desktop (simulate network error)
+              - Generate new X25519 key pair (different from original desktop key)
+              - Attempt reconnection with SessionReconnect using wrong public key
+              - Verify SessionReconnected(success=False, error_message contains "invalid credentials" or "unauthorized")
+              - Verify session remains in DISCONNECTED state (recovery failed)
+              - Verify original session data preserved (not corrupted by failed reconnection)
+
+              Agent 4 - Partial message delivery: Messages sent during disconnect are buffered and delivered:
+              - Start session with desktop and client paired
+              - Send 10 terminal input messages to establish baseline
+              - Disconnect client (simulate network error)
+              - Desktop continues sending terminal output (20 messages buffered)
+              - Verify messages buffered in terminal history (not lost)
+              - Reconnect client with SessionReconnect (last_sequence_received = sequence of 10th message)
+              - Verify SessionHistoryReplay delivers exactly 20 missed messages
+              - Verify messages delivered in correct sequence order
+              - Verify no duplicate messages (messages 1-10 not replayed)
+              - Continue session and verify no data loss
+
+              Agent 5 - History buffer limits: Large output doesn't crash the system:
+              - Start session with desktop and client paired
+              - Configure TerminalHistoryBuffer with max_bytes=1MB
+              - Disconnect client (simulate network error)
+              - Generate 2MB of terminal output (exceeds buffer limit)
+              - Verify buffer enforces 1MB limit (oldest messages dropped)
+              - Verify system remains stable (no crash or memory issues)
+              - Reconnect client
+              - Verify SessionHistoryReplay delivers most recent 1MB of output
+              - Verify oldest messages were dropped (FIFO)
+              - Verify get_oldest_sequence() reflects dropped messages
+
+              Agent 6 - Protocol compatibility: New messages work alongside existing messages:
+              - Start session with desktop and client paired
+              - Send TerminalOutput messages WITHOUT sequence field (old protocol)
+              - Verify messages parse correctly (backward compatible)
+              - Send TerminalOutput messages WITH sequence field (new protocol)
+              - Verify both message types work in same session
+              - Disconnect and reconnect client
+              - Verify recovery works even with mixed message types
+              - Verify sequence numbering only applied to messages with sequence field
+              - Verify old clients (sending messages without sequence) still work
+
+              Failure Reporting Format:
+              Add failures to live plan under test_failures with structure:
+              - test_name: Name of failed test
+              - test_category: "e2e_recovery"
+              - scenario: Which recovery scenario (e.g., "happy_path", "timeout_expiry", "invalid_identity")
+              - failure_description: What went wrong
+              - expected_behavior: What should have happened
+              - actual_behavior: What actually happened
+              - files_involved: List of files related to failure
+
+            success_criteria:
+              - Happy path reconnection works end-to-end (no data loss)
+              - Timeout expiry prevents stale reconnections (5-minute enforcement)
+              - Invalid public key rejected (security enforcement)
+              - Partial messages delivered correctly (no duplicates or gaps)
+              - History buffer limits enforced (no memory overflow)
+              - Protocol backward compatibility verified (old and new messages work)
+              - Session state consistent after all recovery scenarios
+
+          # Fix failures (dynamic build agents)
+          - type: build
+            count: "n = total failures"
+            inputs:
+              - /home/code/myagents/RemoteAgents-backlog/src/agent_remote/services/relay/domains/session_manager/entities.py
+              - /home/code/myagents/RemoteAgents-backlog/src/agent_remote/services/relay/domains/session_manager/value_objects.py
+              - /home/code/myagents/RemoteAgents-backlog/src/agent_remote/services/terminal/domains/pty_manager/entities.py
+              - /home/code/myagents/RemoteAgents-backlog/src/agent_remote/services/terminal/domains/pty_manager/value_objects.py
+              - /home/code/myagents/RemoteAgents-backlog/src/agent_remote/services/relay/workflows/relay_workflow.py
+              - /home/code/myagents/RemoteAgents-backlog/src/agent_remote/services/terminal/workflows/terminal_workflow.py
+              - /home/code/myagents/RemoteAgents-backlog/src/agent_remote/shared/protocol/session_messages.py
+              - /home/code/myagents/RemoteAgents-backlog/src/agent_remote/shared/protocol/terminal_messages.py
+              - /home/code/myagents/RemoteAgents-backlog/src/agent_remote/services/relay/main.py
+              - /home/code/myagents/RemoteAgents-backlog/src/agent_remote/services/terminal/main.py
+            guidance: |
+              Context: Test agents have identified failures across domain entities, workflows,
+              protocol messages, or end-to-end scenarios. Each build agent fixes ONE specific failure.
+
+              Instructions:
+              1. Read live plan at /home/code/myagents/docs/plans/live/251209_remoteagents-backlog.yml
+              2. Find your assigned failure (orchestration agent specifies which one)
+              3. Determine root cause based on test_category:
+                 - domain_entities: Fix Session, PTYSession, RecoveryMetadata, or TerminalHistoryBuffer logic
+                 - protocol_messages: Fix message validation, serialization, or backward compatibility
+                 - workflow_integration: Fix RelayWorkflow or TerminalWorkflow orchestration
+                 - e2e_recovery: May require fixes across multiple layers (workflow + protocol + domain)
+              4. Fix the specific issue identified in failure_description
+              5. Ensure related tests still pass (no regression)
+              6. Mark failure as resolved in live plan under test_failures
+
+              Common failure categories and fixes:
+              - State transitions: Fix Session.mark_*_disconnected(), start_recovery(), complete_recovery() logic
+              - History replay: Fix replay_terminal_history() filtering or sequencing
+              - Timeout enforcement: Fix can_recover() timestamp comparisons (5-minute window)
+              - Public key validation: Fix handle_reconnect() key comparison logic (must match exactly)
+              - Buffer limits: Fix TerminalHistoryBuffer FIFO dropping and max_bytes enforcement
+              - Protocol validation: Fix Pydantic validators in session_messages.py or terminal_messages.py
+              - Backward compatibility: Ensure Optional[int] sequence fields parse correctly when absent
+              - Disconnection reasons: Fix close_session() mapping of WebSocket codes to DisconnectionReason
+
+              Why this matters: Session recovery is critical for user experience. Each failure
+              represents a potential data loss or security vulnerability that must be fixed.
+
+            success_criteria:
+              - Failed test now passes
+              - Related tests still pass (no regression)
+              - Recovery logic works correctly for edge case
+              - Fix doesn't introduce new security vulnerabilities
+
+# Test failures will be added here by test agents during test-fix-loop execution
+# Format:
+# - test_name: string
+#   test_category: domain_entities | protocol_messages | workflow_integration | e2e_recovery
+#   component: string
+#   scenario: string (for e2e tests)
+#   failure_description: string
+#   expected_behavior: string
+#   actual_behavior: string
+#   files_involved: list[string]
+#   status: pending | in_progress | resolved
+test_failures: []
+
+# ========================================
+# COMPLETION SUMMARY
+# ========================================
+completion_summary:
+  date: 2025-12-10
+  commit: b720344
+  branch: 251209_remoteagents-backlog
+
+  implemented_features:
+    - B5-SESSION-RECOVERY: Auto-reconnection with state recovery (PRIMARY FOCUS - COMPLETE)
+
+  deferred_features:
+    - B1-CONVERSATION-TTS: Backend support for voice conversation (low priority)
+    - B2-SESSION-PERSISTENCE: Redis session storage (low priority)
+    - B3-PUSH-NOTIFICATIONS: Mobile push via FCM (low priority)
+    - B4-LOAD-BALANCING: Multi-relay load balancing (very low priority)
+    - B6-MULTI-USER-SESSIONS: Multiple users per session (very low priority)
+
+  test_results:
+    shared_tests: 76 passed
+    relay_tests: 106 passed
+    total_confirmed: 182+ passed
+
+  files_modified:
+    - src/agent_remote/services/relay/domains/session_manager/value_objects.py
+    - src/agent_remote/services/relay/domains/session_manager/entities.py
+    - src/agent_remote/services/relay/domains/session_manager/repository.py
+    - src/agent_remote/services/relay/infrastructure/in_memory_repository.py
+    - src/agent_remote/services/relay/workflows/relay_workflow.py
+    - src/agent_remote/services/relay/api/websockets.py
+    - src/agent_remote/services/relay/api/server.py
+    - src/agent_remote/services/terminal/domains/pty_manager/value_objects.py
+    - src/agent_remote/services/terminal/domains/pty_manager/entities.py
+    - src/agent_remote/services/terminal/workflows/terminal_workflow.py
+    - src/agent_remote/services/terminal/api/websockets.py
+    - src/agent_remote/shared/protocol/session_messages.py
+    - src/agent_remote/shared/protocol/terminal_messages.py
+    - tests/test_error_handling.py
+
+  key_features_implemented:
+    - 5-minute recovery window with automatic cleanup
+    - Identity verification via public key validation
+    - Message replay with sequence number tracking
+    - Terminal history buffering (1MB default limit)
+    - Background cleanup worker (60s interval)
+    - WebSocket reconnection endpoint (/ws/reconnect/{session_id})
+    - Recoverable sessions by default with sequence-numbered output
+
+  issues_fixed_during_testing:
+    - RecoveryMetadata instantiation (wrong parameter name: state -> recovery_state)
+    - Recovery state property access (.state -> .recovery_state)
+    - is_recoverable() method usage (moved to RecoveryMetadata)
+    - Test expectations updated for recoverable session behavior

@@ -1,0 +1,448 @@
+# Backlog Plan - Decentralized GitHub Issues Planning
+# Last Updated: 2025-01-25
+# Items for implementing decentralized planning with individual GitHub Issues tickets
+# Each agent task becomes its own issue that agents can read and update as they work
+
+# ==============================================================================
+# GITHUB ISSUES API INTEGRATION
+# ==============================================================================
+
+github_integration:
+  - id: GH-001
+    description: Create GitHub Issues API wrapper library
+    success_criteria:
+      - Python library wraps GitHub REST API for issues
+      - Functions for create, read, update, delete issues
+      - Functions for managing labels, comments, assignees, issue body updates
+      - Functions for updating checkboxes in issue body markdown
+      - Authentication via GitHub token (from secrets/GITHUB_TOKEN)
+      - Error handling for API rate limits and failures
+      - Retry logic for transient failures
+      - Unit tests verify API wrapper functions work correctly
+      - Documentation explains usage patterns
+    priority: high
+    dependencies: []
+    source: docs/research/github_ticketing_systems_research.md
+    effort: 4-5 hours
+    notes: |
+      Library should provide simple interface:
+      - create_issue(repo, title, body, labels, assignees=None)
+      - get_issue(repo, issue_number)
+      - update_issue(repo, issue_number, body=None, state=None, labels=None)
+      - update_issue_body(repo, issue_number, new_body)  # For checkbox updates
+      - add_comment(repo, issue_number, comment)
+      - list_issues(repo, filters)  # Filter by labels, assignees, state
+      - close_issue(repo, issue_number)
+      
+      Use PyGithub library or requests directly.
+      Handle authentication via GITHUB_TOKEN secret.
+      
+      Critical: Must support updating markdown checkboxes in issue body
+      (e.g., changing "- [ ]" to "- [x]") which requires parsing and reconstructing markdown.
+
+  - id: GH-002
+    description: Create GitHub issue templates for decentralized planning
+    success_criteria:
+      - Epic/Plan issue template created (.github/ISSUE_TEMPLATE/epic.yml)
+      - Phase issue template created (.github/ISSUE_TEMPLATE/phase.yml)
+      - Agent task issue template created (.github/ISSUE_TEMPLATE/agent_task.yml)
+      - Templates include structured sections (Guidance, Success Criteria, Tasks, Progress)
+      - Templates use markdown checkboxes for success criteria and tasks
+      - Templates include label placeholders for categorization (plan_id, phase, agent_type, status)
+      - Agent task template is self-contained (agents can discover all needed info)
+      - Documentation explains template usage and label conventions
+    priority: high
+    dependencies: []
+    source: docs/research/github_ticketing_systems_research.md
+    effort: 3-4 hours
+    notes: |
+      Template structure for decentralized planning:
+      
+      Epic Template (plan-level):
+      - Plan ID (in title and labels)
+      - Description
+      - Worktree path
+      - Phases overview (links to phase issues)
+      - Progress tracking (auto-updated by orchestration)
+      
+      Phase Template (phase-level):
+      - Phase name (in title and labels)
+      - Parent plan reference (label: plan_id)
+      - Execution groups overview
+      - Agent tasks overview (links to agent task issues)
+      - Progress tracking (auto-updated by orchestration)
+      
+      Agent Task Template (agent-level - MOST IMPORTANT):
+      - Agent type (in title and labels)
+      - Parent phase reference (label: phase)
+      - Input files (list of file paths)
+      - Guidance section (full context for agent)
+      - Success Criteria (checkboxes - agent updates these)
+      - Tasks (checkboxes - agent updates these)
+      - Progress section (agent updates with findings/work done)
+      - Notes section (agent adds comments here)
+      
+      Key: Agent task template must be self-contained so agents can work independently
+      by reading only their assigned issue.
+
+# ==============================================================================
+# AGENT WORKFLOW UPDATES
+# ==============================================================================
+
+agent_workflows:
+  - id: GH-003
+    description: Update planner agent to create decentralized GitHub Issues
+    success_criteria:
+      - Planner agent creates epic issue for new plans (one issue per plan)
+      - Planner agent creates phase issues for each phase (one issue per phase)
+      - Planner agent creates individual agent task issues (one issue per agent task)
+      - Each agent task issue is self-contained with all guidance and success criteria
+      - Issues use proper labels (plan_id, phase, agent_type, status, worktree)
+      - Issues reference parent issues via labels and body links
+      - Planner agent populates issue body with full context (guidance, inputs, success criteria)
+      - Planner agent sets up issue hierarchy correctly (epic → phase → agent task)
+      - Backward compatibility: can still create YAML plans if needed (flag-based)
+    priority: high
+    dependencies: [GH-001, GH-002]
+    source: docs/research/github_ticketing_systems_research.md
+    effort: 5-7 hours
+    notes: |
+      Planner agent process.yml needs updates:
+      - Replace YAML file creation with GitHub Issues API calls
+      - Create issues in order: epic → phases → agent tasks
+      - For each agent task issue, include:
+        * Full guidance section (from plan)
+        * All input file paths
+        * All success criteria as checkboxes
+        * All tasks as checkboxes
+        * Empty Progress section (agents will fill this)
+      - Use labels for filtering and grouping:
+        * plan_id: unique plan identifier
+        * phase: phase name
+        * agent_type: planner, build, test, cleaner, etc.
+        * status: pending, in_progress, blocked, done
+        * worktree: worktree path
+      - Create parent-child references via:
+        * Labels (plan_id, phase)
+        * Issue body links (#issue_number)
+      
+      Key principle: Each agent task issue must be independently readable and updatable.
+      Agents should not need to read parent issues to understand their task.
+
+  - id: GH-004
+    description: Update orchestration agent to discover and spawn from GitHub Issues
+    success_criteria:
+      - Orchestration agent queries GitHub Issues by plan_id label to find active plans
+      - Orchestration agent groups issues by phase label to determine execution order
+      - Orchestration agent reads agent task issues to determine what agents to spawn
+      - Orchestration agent passes issue number (not YAML path) to spawned agents
+      - Orchestration agent tracks progress by querying issue status and checkboxes
+      - Orchestration agent respects execution order (sequential vs parallel) from phase issues
+      - Orchestration agent handles test-fix-loops by querying agent issues for failures
+      - Orchestration agent updates phase/epic issues with roll-up progress
+      - Backward compatibility: can still read YAML plans if needed (flag-based)
+    priority: high
+    dependencies: [GH-001, GH-003]
+    source: docs/research/github_ticketing_systems_research.md
+    effort: 6-8 hours
+    notes: |
+      Orchestration agent start.yml needs updates:
+      - Replace YAML file reading with GitHub Issues API queries
+      - Query pattern:
+        * Get epic issue by plan_id label (or worktree label)
+        * Get phase issues by plan_id + phase labels, ordered by dependencies
+        * Get agent task issues by plan_id + phase + agent_type labels
+        * Filter by status: pending (not done)
+      - For each agent task issue:
+        * Extract issue number
+        * Pass issue number to spawned agent (not file path)
+        * Agent reads issue directly via API
+      - Track progress:
+        * Query issue status (open/closed)
+        * Query checkbox completion in issue body
+        * Roll up to phase/epic issues
+      - Handle test-fix-loops:
+        * Query test agent issues for failures (in Progress section)
+        * Create fix agent issues dynamically if needed
+        * Link fix issues to test issues
+      
+      Key change: Orchestration agent discovers work from issues, doesn't read YAML files.
+      Agents are assigned issue numbers, not file paths.
+
+  - id: GH-005
+    description: Update builder/test/cleaner agents to read and update their own GitHub Issues
+    success_criteria:
+      - Agents receive issue number (not file path) from orchestration agent
+      - Agents read assigned issue via GitHub API to extract all context
+      - Agents parse issue body markdown to extract guidance, success criteria, tasks, inputs
+      - Agents update issue checkboxes as work progresses (markdown parsing/updating)
+      - Agents add comments with findings and progress updates
+      - Agents update "Progress" section in issue body with work done
+      - Agents update labels (status:in_progress, status:blocked, status:done)
+      - Agents mark success criteria checkboxes complete when met
+      - Agents mark task checkboxes complete as they work
+      - Agents close issue when all criteria and tasks met
+      - Agents handle failures by updating Progress section (for test-fix-loops)
+      - All agent process.yml files updated to use issue-based workflow
+    priority: high
+    dependencies: [GH-001, GH-002, GH-004]
+    source: docs/research/github_ticketing_systems_research.md
+    effort: 8-10 hours
+    notes: |
+      Agent workflow updates (decentralized approach):
+      
+      Entry point: Agent receives issue number from orchestration agent
+      (e.g., "Work on issue #123" instead of "Read plan file X")
+      
+      Agent process:
+      1. Read issue via GitHub API using issue number
+      2. Parse issue body markdown to extract:
+         * Guidance section (full context)
+         * Success Criteria (checkboxes - [ ] or [x])
+         * Tasks (checkboxes - [ ] or [x])
+         * Input files (list of file paths)
+         * Progress section (current state)
+      3. Work on task:
+         * Update label: status:in_progress
+         * As work progresses, update checkboxes in body
+         * Add comments with findings/questions
+         * Update Progress section with work done
+      4. On completion:
+         * Mark all success criteria checkboxes complete
+         * Mark all task checkboxes complete
+         * Update label: status:done
+         * Close issue
+      
+      For test agents in test-fix-loops:
+      - Report failures in Progress section (structured format)
+      - Include failure_id, description, affected_files, test_scenario
+      - Build agents read failures from their assigned issue's Progress section
+      
+      Key principle: Agents are self-contained. They read their issue, work, and update it.
+      No need to read parent issues or YAML files.
+      
+      Files to update:
+      - frontend/agents/build/process.yml
+      - frontend/agents/test/process.yml
+      - frontend/agents/cleaner/process.yml
+      - frontend/agents/planner/processes/*.yml
+
+# ==============================================================================
+# MIGRATION AND VALIDATION
+# ==============================================================================
+
+migration:
+  - id: GH-006
+    description: Create migration script to convert existing YAML plans to GitHub Issues
+    success_criteria:
+      - Script reads YAML plan file from docs/plans/live/
+      - Script creates epic issue from plan metadata
+      - Script creates phase issues for each phase
+      - Script creates individual agent task issues for each agent
+      - Script preserves all guidance and success criteria in issue bodies
+      - Script sets correct labels (plan_id, phase, agent_type, worktree)
+      - Script creates parent-child references via labels and body links
+      - Script validates migration (all issues created correctly, all content preserved)
+      - Script handles both active and completed plans
+      - Documentation explains migration process and rollback procedure
+    priority: medium
+    dependencies: [GH-001, GH-002]
+    source: docs/research/github_ticketing_systems_research.md
+    effort: 4-5 hours
+    notes: |
+      Migration script should:
+      - Parse YAML plan structure (phases → execution_groups → agents)
+      - Map to GitHub Issues structure:
+        * Plan → Epic issue
+        * Phase → Phase issue
+        * Agent → Agent task issue (one issue per agent)
+      - Create issues in correct order (epic → phases → agent tasks)
+      - For each agent task issue, include:
+        * Full guidance from plan
+        * All success criteria as checkboxes
+        * All tasks as checkboxes
+        * Input files list
+        * Empty Progress section
+      - Set up parent-child references:
+        * Labels (plan_id, phase)
+        * Issue body links (#issue_number)
+      - Preserve all metadata via labels (worktree, status, etc.)
+      
+      Useful for migrating existing plans during transition.
+      Can run in dry-run mode to preview changes.
+
+  - id: GH-007
+    description: Create validation tests for GitHub Issues workflow
+    success_criteria:
+      - Tests verify issue creation workflow
+      - Tests verify issue reading workflow
+      - Tests verify issue updating workflow
+      - Tests verify label conventions work correctly
+      - Tests verify parent-child references work correctly
+      - Tests verify agent self-discovery from issue body
+      - Tests verify roll-up to live plan works correctly
+      - All tests pass consistently
+    priority: deferred
+    dependencies: [GH-003, GH-004, GH-005]
+    source: docs/research/github_ticketing_systems_research.md
+    effort: 4-5 hours
+    notes: |
+      Test scenarios:
+      - Create plan → verify epic issue created
+      - Create phase → verify phase issue created with correct labels
+      - Create agent task → verify agent issue created with correct references
+      - Agent reads issue → verify guidance and success criteria parsed correctly
+      - Agent updates issue → verify checkboxes, comments, labels updated
+      - Agent completes task → verify issue closed correctly
+      - Orchestration agent queries → verify roll-up works correctly
+    deferred_reason: |
+      Requires all agent workflow updates to be complete.
+      Validation ensures migration doesn't break existing functionality.
+
+  - id: GH-008
+    description: Prototype decentralized GitHub Issues workflow with one plan
+    success_criteria:
+      - Select one existing plan from docs/plans/live/ (e.g., 251124_folder_restructure.yml)
+      - Manually create GitHub Issues for plan structure (epic → phases → agent tasks)
+      - Test agent reading issue and extracting guidance (self-discovery)
+      - Test agent updating issue checkboxes and Progress section
+      - Test orchestration agent querying issues to discover work
+      - Test agent closing issue when complete
+      - Test roll-up to phase/epic issues
+      - Document findings and any issues discovered
+      - Validate decentralized approach works before full migration
+    priority: high
+    dependencies: []
+    source: docs/research/github_ticketing_systems_research.md
+    effort: 3-4 hours
+    notes: |
+      Prototype should validate decentralized planning:
+      - Can agents self-discover all instructions from their issue body?
+      - Can agents update issues effectively (checkboxes, comments, Progress)?
+      - Does issue hierarchy work via labels and links?
+      - Can orchestration agent discover work by querying issues?
+      - Is roll-up to phase/epic issues feasible?
+      - Can agents work independently without reading parent issues?
+      
+      Use manual issue creation first (via GitHub UI), then test with agents.
+      This validates the approach before building automation.
+      
+      Select a simple plan with 2-3 phases and 5-10 agent tasks.
+
+# ==============================================================================
+# ENHANCEMENTS (POST-MIGRATION)
+# ==============================================================================
+
+enhancements:
+  - id: GH-009
+    description: Add GitHub Actions automation for issue management
+    success_criteria:
+      - GitHub Action creates issues from plan templates
+      - GitHub Action updates issue status based on agent progress
+      - GitHub Action aggregates progress to epic issue
+      - GitHub Action handles issue lifecycle (create, update, close)
+      - Documentation explains automation setup
+    priority: deferred
+    dependencies: [GH-003, GH-004, GH-005]
+    source: docs/research/github_ticketing_systems_research.md
+    effort: 3-4 hours
+    notes: |
+      Automation can:
+      - Auto-create issues when plan is created
+      - Auto-update epic issue when agent issues complete
+      - Auto-close phases when all agent issues complete
+      - Auto-close plan when all phases complete
+      
+      Reduces manual overhead of issue management.
+    deferred_reason: |
+      Requires core migration to be complete and validated.
+      Automation is nice-to-have, not required for initial migration.
+
+  - id: GH-010
+    description: Add GitHub Projects v2 integration for visual planning
+    success_criteria:
+      - Create GitHub Project for each plan
+      - Add issues to project automatically
+      - Use custom fields for phase, agent_type, status
+      - Create views (board, table) for plan visualization
+      - Documentation explains project setup
+    priority: deferred
+    dependencies: [GH-003, GH-004]
+    source: docs/research/github_ticketing_systems_research.md
+    effort: 2-3 hours
+    notes: |
+      GitHub Projects v2 provides:
+      - Visual board view of plan progress
+      - Custom fields for filtering and grouping
+      - Roadmap view for phase planning
+      
+      Optional enhancement for better visualization.
+    deferred_reason: |
+      GitHub Issues alone is sufficient for core functionality.
+      Projects v2 adds visual layer but not required.
+      Can be added after core migration is complete.
+
+# ==============================================================================
+# SUMMARY
+# ==============================================================================
+
+summary:
+  total_items: 10
+  by_category:
+    github_integration: 2
+    agent_workflows: 3
+    migration: 2
+    validation: 1
+    enhancements: 2
+  worktree: github_issues
+  total_effort: 40-55 hours
+  notes: |
+    These items enable decentralized planning with individual GitHub Issues tickets.
+    Each agent task becomes its own issue that agents can read and update independently.
+    
+    **Decentralized Planning Approach:**
+    - Each agent task = one GitHub Issue
+    - Agents read their assigned issue to discover all context (guidance, success criteria, inputs)
+    - Agents update their issue as they work (checkboxes, comments, Progress section)
+    - Orchestration agent queries issues to discover what work needs to be done
+    - No centralized YAML files - planning is distributed across issues
+    
+    **Implementation Strategy:**
+    1. **Prototype First** (GH-008): Manually create issues for one plan, test agent workflows
+    2. **Build Foundation** (GH-001, GH-002): API wrapper and issue templates
+    3. **Update Agents** (GH-003, GH-004, GH-005): Planner creates issues, orchestration queries, agents update
+    4. **Migration** (GH-006): Script to convert existing YAML plans to issues
+    5. **Validation** (GH-007): Comprehensive tests for all workflows
+    6. **Enhancements** (GH-009, GH-010): Automation and visualization (optional)
+    
+    **Key Benefits:**
+    - **Decentralized**: Each agent works independently on their own issue
+    - **Self-discovery**: Agents read issue body to understand task (no file paths needed)
+    - **Real-time updates**: Agents update issues as they work (visible in GitHub UI)
+    - **Better visibility**: Progress visible in GitHub Issues UI, no need to read YAML files
+    - **Native integration**: Uses GitHub's built-in issue tracking (no third-party dependencies)
+    - **Scalable**: Can handle many parallel agent tasks without file conflicts
+    
+    **Key Changes from Current System:**
+    - Agents receive issue numbers (not YAML file paths)
+    - Agents read issues via GitHub API (not file system)
+    - Agents update issues directly (not YAML files)
+    - Orchestration queries issues to discover work (not reading YAML files)
+    - Planning distributed across issues (not centralized in YAML files)
+    
+    **Risks & Mitigations:**
+    - **GitHub API rate limits**: Implement retry logic and caching (GH-001)
+    - **Issue body parsing**: Use robust markdown parsing library (GH-001, GH-005)
+    - **Label conventions**: Document and enforce consistent labels (GH-002)
+    - **Migration complexity**: Start with prototype, then incremental migration (GH-008, GH-006)
+    - **Backward compatibility**: Keep YAML support during transition (GH-003, GH-004)
+    
+    **Priority Items:**
+    - High: GH-001, GH-002, GH-003, GH-004, GH-005, GH-008 (core functionality)
+    - Medium: GH-006, GH-007 (migration and validation)
+    - Low: GH-009, GH-010 (enhancements, can be deferred)
+
+
+
+
+

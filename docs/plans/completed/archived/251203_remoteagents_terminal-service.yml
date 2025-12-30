@@ -1,0 +1,308 @@
+name: RemoteAgents Terminal Service
+worktree: /home/code/myagents/RemoteAgents-terminal
+branch: terminal-service
+status: completed
+liveplan: /home/code/myagents/docs/plans/live/251203_remoteagents_terminal-service.yml
+completedplan: /home/code/myagents/docs/plans/completed/251203_remoteagents_terminal-service.yml
+
+description: |
+  Implement the PTY (pseudo-terminal) wrapper that manages Claude Code CLI sessions.
+  Handles process lifecycle, input/output streaming, and protocol translation between
+  PTY streams and RemoteAgents messages.
+
+objectives:
+  - Implement PTYManager domain for process lifecycle management
+  - Build TerminalWorkflow for CLI session handling
+  - Integrate ptyprocess for PTY spawning and I/O
+  - Implement bidirectional stream translation (PTY <-> protocol messages)
+  - Add cleanup and error handling for process termination
+
+dependencies:
+  requires:
+    - shared-contracts
+  blocks:
+    - cli-integration
+
+success_criteria:
+  - PTY spawns Claude Code CLI successfully
+  - Input streams from client to CLI correctly
+  - Output streams from CLI to client with proper formatting
+  - Process cleanup occurs on session termination
+  - Service passes integration tests with mock relay
+
+# ============================================================================
+# SESSION PROGRESS
+# ============================================================================
+session_progress:
+  last_session: "2024-12-05"
+  commit: "3fbe388"
+
+  completed_phases:
+    - name: "Setup Phase - Create Worktree"
+      status: completed
+      notes: |
+        - Worktree created at /home/code/myagents/RemoteAgents-terminal
+        - Branch terminal-service created
+        - VS Code workspace updated
+
+    - name: "Build Phase - PTYManager Domain"
+      status: completed
+      notes: |
+        - value_objects.py: TerminalDimensions, ProcessState, TerminalMode
+        - entities.py: PTYSession with state machine lifecycle
+        - repository.py: PTYRepository Protocol
+        - __init__.py: Clean public API exports
+
+    - name: "Build Phase - TerminalWorkflow"
+      status: completed
+      notes: |
+        - terminal_workflow.py: Full PTY orchestration
+        - Output callback pattern for async output delivery
+        - Session lifecycle management (start, input, resize, stop)
+
+    - name: "Build Phase - PTY Integration (Infrastructure)"
+      status: completed
+      notes: |
+        - in_memory_repository.py: Thread-safe InMemoryPTYRepository
+        - pty_spawner.py: PTYSpawner wrapping ptyprocess
+        - Async read/write support
+
+    - name: "Build Phase - CLI Entrypoint"
+      status: completed
+      notes: |
+        - cli.py: Click-based CLI (agent-remote-terminal command)
+        - Signal handling for graceful shutdown
+        - Pairing code display
+
+    - name: "Build Phase - Session Workflow"
+      status: completed
+      notes: |
+        - session_workflow.py: High-level session orchestration
+        - Relay API integration (session creation)
+        - KeyPair generation with PyNaCl
+
+    - name: "Build Phase - Relay Client"
+      status: completed
+      notes: |
+        - relay_client.py: WebSocket client for relay service
+        - E2E encryption/decryption with NaCl box
+        - Exponential backoff reconnection logic
+        - Keepalive ping/pong handling
+        - Async message callbacks (on_input, on_resize, on_close, on_error)
+        - SessionWorkflow integrated with relay client
+
+    - name: "Documentation Phase"
+      status: completed
+      notes: |
+        - terminal-service.md documentation created
+        - Architecture overview with ASCII diagrams
+        - Component descriptions
+        - E2E encryption details
+        - Configuration reference
+        - Troubleshooting guide
+
+  pending_phases:
+    - name: "Test Phase - Integration Testing"
+      status: in_progress
+      notes: |
+        Completed:
+        - test_relay_client.py with comprehensive unit tests
+        - Configuration tests
+        - Encryption roundtrip tests
+        - Message handling tests
+        - URL building tests
+
+        Still needed:
+        - PTY spawning end-to-end tests
+        - Claude Code CLI integration tests
+        - Full relay integration tests (mock relay server)
+
+  files_created:
+    - src/agent_remote/services/terminal/domains/pty_manager/value_objects.py
+    - src/agent_remote/services/terminal/domains/pty_manager/entities.py
+    - src/agent_remote/services/terminal/domains/pty_manager/repository.py
+    - src/agent_remote/services/terminal/domains/pty_manager/__init__.py
+    - src/agent_remote/services/terminal/infrastructure/__init__.py
+    - src/agent_remote/services/terminal/infrastructure/in_memory_repository.py
+    - src/agent_remote/services/terminal/infrastructure/pty_spawner.py
+    - src/agent_remote/services/terminal/infrastructure/relay_client.py
+    - src/agent_remote/services/terminal/workflows/terminal_workflow.py
+    - src/agent_remote/services/terminal/workflows/session_workflow.py
+    - src/agent_remote/services/terminal/workflows/__init__.py
+    - src/agent_remote/services/terminal/entrypoints/__init__.py
+    - src/agent_remote/services/terminal/entrypoints/cli.py
+    - docs/terminal-service.md
+    - tests/test_relay_client.py
+
+  dependencies_added:
+    - httpx>=0.27.0  # For relay API calls
+    - websockets>=13.0  # For relay WebSocket connection (already in deps)
+
+# ============================================================================
+# NEXT SESSION RECOMMENDATIONS
+# ============================================================================
+next_session:
+  priority: medium
+  recommended_actions:
+    - "Run full integration test suite with pytest"
+    - "Test end-to-end with actual Claude Code CLI"
+    - "Add mock relay server for integration tests"
+    - "Test reconnection scenarios"
+
+  context_for_next_session: |
+    The terminal service is now feature-complete with relay client integration (3fbe388).
+
+    Key files:
+    - /home/code/myagents/RemoteAgents-terminal/src/agent_remote/services/terminal/
+
+    What works:
+    - PTYManager domain (value objects, entities, repository)
+    - InMemoryPTYRepository with thread-safe operations
+    - PTYSpawner wrapping ptyprocess
+    - TerminalWorkflow orchestrating PTY lifecycle
+    - SessionWorkflow with full relay integration
+    - RelayClient with E2E encryption, reconnection, keepalive
+    - CLI entrypoint with Click
+    - Documentation in docs/terminal-service.md
+
+    What's left:
+    - Integration tests with mock relay server
+    - End-to-end testing with actual Claude Code CLI
+    - Test reconnection and error recovery scenarios
+
+# ============================================================================
+# ORIGINAL PHASES (for reference)
+# ============================================================================
+phases:
+  # ========================================
+  # SETUP PHASE - Worktree and Structure [COMPLETED]
+  # ========================================
+  - name: Setup Phase - Create Worktree
+    status: completed
+    execution_groups:
+      - execution: sequential
+        agents:
+          - type: builder
+            status: completed
+            inputs:
+              - /home/code/myagents/RemoteAgents/pyproject.toml
+              - /home/code/myagents/RemoteAgents/README.md
+            success_criteria:
+              - Worktree created at /home/code/myagents/RemoteAgents-terminal
+              - Branch terminal-service exists
+              - DDD directory structure created (domains/workflows/infrastructure/entrypoints)
+              - All __init__.py files present
+
+  # ========================================
+  # BUILD PHASE - Domain Layer (PTYManager) [COMPLETED]
+  # ========================================
+  - name: Build Phase - PTYManager Domain
+    status: completed
+    execution_groups:
+      - execution: sequential
+        agents:
+          - type: builder
+            status: completed
+            notes: "value_objects.py created with TerminalDimensions, ProcessState, TerminalMode"
+          - type: builder
+            status: completed
+            notes: "entities.py created with PTYSession and domain exceptions"
+          - type: builder
+            status: completed
+            notes: "repository.py created with PTYRepository Protocol"
+          - type: builder
+            status: completed
+            notes: "__init__.py exports all domain types"
+
+  # ========================================
+  # BUILD PHASE - Workflow Layer (TerminalWorkflow) [COMPLETED]
+  # ========================================
+  - name: Build Phase - TerminalWorkflow
+    status: completed
+    execution_groups:
+      - execution: sequential
+        agents:
+          - type: builder
+            status: completed
+            notes: "terminal_workflow.py with full PTY lifecycle orchestration"
+
+  # ========================================
+  # BUILD PHASE - Infrastructure Layer (PTY Integration) [COMPLETED]
+  # ========================================
+  - name: Build Phase - PTY Integration
+    status: completed
+    execution_groups:
+      - execution: parallel
+        agents:
+          - type: builder
+            status: completed
+            notes: "in_memory_repository.py with thread-safe operations"
+          - type: builder
+            status: completed
+            notes: "pty_spawner.py wrapping ptyprocess"
+      - execution: sequential
+        agents:
+          - type: builder
+            status: completed
+            notes: "relay_client.py with WebSocket, E2E encryption, reconnection"
+
+  # ========================================
+  # BUILD PHASE - Entrypoint (CLI) [COMPLETED]
+  # ========================================
+  - name: Build Phase - CLI Entrypoint
+    status: completed
+    execution_groups:
+      - execution: sequential
+        agents:
+          - type: builder
+            status: completed
+            notes: "cli.py with Click, signal handling, pairing code display"
+
+  # ========================================
+  # BUILD PHASE - Session Workflow [COMPLETED]
+  # ========================================
+  - name: Build Phase - Session Workflow
+    status: completed
+    execution_groups:
+      - execution: sequential
+        agents:
+          - type: builder
+            status: completed
+            notes: "session_workflow.py with relay API integration"
+
+  # ========================================
+  # TEST PHASE - Integration Testing [PENDING]
+  # ========================================
+  - name: Test Phase - Integration Testing
+    status: pending
+    execution_groups:
+      - execution: test-fix-loop
+        agents:
+          - type: test
+            count: 5
+            status: pending
+            guidance: |
+              Test Distribution (5 agents):
+              Agent 1 - PTY spawning and I/O
+              Agent 2 - Claude Code CLI spawning
+              Agent 3 - Terminal resize handling
+              Agent 4 - Relay integration (mock relay)
+              Agent 5 - Session lifecycle
+
+  # ========================================
+  # DOCUMENTATION PHASE [COMPLETED]
+  # ========================================
+  - name: Documentation Phase
+    status: completed
+    execution_groups:
+      - execution: sequential
+        agents:
+          - type: documentation
+            status: completed
+            guidance: |
+              Created terminal-service.md with:
+              - Architecture overview with diagrams
+              - Component descriptions
+              - E2E encryption details
+              - Configuration reference
+              - Troubleshooting guide

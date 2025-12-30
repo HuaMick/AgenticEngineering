@@ -1,0 +1,335 @@
+# ==============================================================================
+# RemoteAgents User Stories - Protocol & Message Types
+# ==============================================================================
+
+category: protocol
+name: "Protocol & Message Types"
+description: "Message registry, versioning, and protocol evolution"
+
+stories:
+  # --------------------------------------------------------------------------
+  # US-PROTOCOL-001: Message Type Registry
+  # --------------------------------------------------------------------------
+  - id: US-PROTOCOL-001
+    title: "Message Type Registry for Type-Safe Deserialization"
+    priority: HIGH
+    persona: platform_operator
+
+    description: |
+      As a platform operator, I want all message types registered in MESSAGE_TYPES
+      so that deserialization is type-safe and unknown messages are handled gracefully.
+
+    preconditions:
+      - base.py implements MESSAGE_TYPES registry
+      - relay_messages.py registers its message types
+      - deserialize_message() uses registry for routing
+
+    journey:
+      - step: 1
+        action: "Import protocol modules"
+        expected: |
+          All message types auto-register in MESSAGE_TYPES:
+          - MESSAGE_TYPES["relay.encrypted"] = EncryptedBlob
+          - MESSAGE_TYPES["relay.ping"] = Ping
+          - MESSAGE_TYPES["relay.pong"] = Pong
+          - MESSAGE_TYPES["relay.error"] = Error
+
+      - step: 2
+        action: "Deserialize known message type"
+        command: |
+          json_str = '{"type": "relay.ping", "timestamp": 1234567890.0}'
+          msg = deserialize_message(json_str)
+        expected: "Returns Ping instance with correct timestamp"
+
+      - step: 3
+        action: "Deserialize unknown message type"
+        command: |
+          json_str = '{"type": "unknown.message", "data": "test"}'
+          deserialize_message(json_str)
+        expected: |
+          Raises KeyError with helpful message:
+          "Unknown message type 'unknown.message'. Known types: [...]"
+
+      - step: 4
+        action: "Deserialize message without type field"
+        command: |
+          json_str = '{"data": "test"}'
+          deserialize_message(json_str)
+        expected: "Raises ValueError: 'Message missing required type field'"
+
+    acceptance_criteria:
+      - All message types registered in MESSAGE_TYPES on import
+      - deserialize_message() routes to correct class via registry
+      - Unknown message types raise KeyError (not crash)
+      - Error message lists all known message types
+      - No runtime errors on valid JSON with unknown type
+      - Registry is Dict[str, Type[RemoteAgentMessage]]
+
+    test_layers:
+      local: true
+      docker: false
+      integration: true
+
+  # --------------------------------------------------------------------------
+  # US-PROTOCOL-002: Backward Compatible Message Handling
+  # --------------------------------------------------------------------------
+  - id: US-PROTOCOL-002
+    title: "Backward Compatible Message Handling"
+    priority: HIGH
+    persona: platform_operator
+
+    description: |
+      As a platform operator, I want new message types to not break old clients
+      so that the protocol can evolve without forcing synchronized deployments.
+
+    preconditions:
+      - MESSAGE_TYPES registry supports dynamic registration
+      - Clients handle unknown message types gracefully
+
+    journey:
+      - step: 1
+        action: "New service version adds message type"
+        expected: |
+          New message type registered:
+          MESSAGE_TYPES["session.heartbeat"] = SessionHeartbeat
+
+      - step: 2
+        action: "Old client receives new message type"
+        expected: |
+          Client deserializes message but type not in registry
+          Client logs warning: "Unknown message type 'session.heartbeat', ignoring"
+          Client continues operating normally
+
+      - step: 3
+        action: "New client receives old message types"
+        expected: |
+          All legacy message types still registered
+          relay.encrypted, relay.ping, relay.pong, relay.error work correctly
+          No breaking changes to existing messages
+
+      - step: 4
+        action: "Check graceful degradation"
+        expected: |
+          When new feature unavailable, system continues with base functionality
+          No crashes or connection drops due to unknown messages
+
+    acceptance_criteria:
+      - New message types don't break old clients
+      - Old message types still work with new services
+      - Unknown messages logged but don't crash connection
+      - Graceful degradation when features unavailable
+      - Registry supports runtime additions (aspirational)
+      - Version field in messages may be aspirational
+
+    test_layers:
+      local: true
+      docker: false
+      integration: true
+
+  # --------------------------------------------------------------------------
+  # US-PROTOCOL-003: Error Code Namespace Consistency
+  # --------------------------------------------------------------------------
+  - id: US-PROTOCOL-003
+    title: "Error Code Namespace Consistency"
+    priority: MEDIUM
+    persona: platform_operator
+
+    description: |
+      As a platform operator, I want all error codes to follow CATEGORY_DESCRIPTION format
+      so that clients can handle errors programmatically and errors are debuggable.
+
+    preconditions:
+      - relay_messages.py defines error code constants
+      - Error message class includes code field
+
+    journey:
+      - step: 1
+        action: "Review error code constants"
+        expected: |
+          All error codes follow namespace pattern:
+          - Session: SESSION_EXPIRED, SESSION_NOT_FOUND, SESSION_ALREADY_EXISTS
+          - Pairing: PAIRING_FAILED, PAIRING_CODE_INVALID, PAIRING_CODE_EXPIRED
+          - Crypto: CRYPTO_ERROR, INVALID_KEY, DECRYPTION_FAILED, INVALID_NONCE
+          - Protocol: INVALID_MESSAGE, UNSUPPORTED_MESSAGE_TYPE, VALIDATION_FAILED
+          - Connection: CONNECTION_LOST, TIMEOUT
+          - General: INTERNAL_ERROR, UNAUTHORIZED
+
+      - step: 2
+        action: "Create Error message"
+        command: |
+          error = Error(
+            code=ERROR_SESSION_EXPIRED,
+            message="Session abc123 expired after 5 minutes",
+            details={"session_id": "abc123", "expired_at": "2025-12-10T10:00:00Z"}
+          )
+        expected: "Error message created with code, message, and details"
+
+      - step: 3
+        action: "Client handles error programmatically"
+        command: |
+          if error.code == ERROR_SESSION_EXPIRED:
+            reconnect_with_new_session()
+          elif error.code == ERROR_PAIRING_CODE_INVALID:
+            prompt_for_new_code()
+        expected: "Client routes error handling based on code constant"
+
+      - step: 4
+        action: "Check error details context"
+        expected: |
+          Error.details dict provides:
+          - Invalid values that caused error
+          - Session/connection identifiers
+          - Timestamps for debugging
+          - Stack traces for internal errors (optional)
+
+    acceptance_criteria:
+      - All error codes follow CATEGORY_DESCRIPTION format
+      - Error messages include code and human-readable message
+      - Client can handle errors programmatically via code
+      - Error details dict provides debugging context
+      - Error codes defined as constants (not magic strings)
+      - Constants prefixed with ERROR_ for clarity
+
+    test_layers:
+      local: true
+      docker: false
+      integration: true
+
+  # --------------------------------------------------------------------------
+  # US-PROTOCOL-004: Message Validation and Type Safety
+  # --------------------------------------------------------------------------
+  - id: US-PROTOCOL-004
+    title: "Message Validation and Type Safety"
+    priority: MEDIUM
+    persona: platform_operator
+
+    description: |
+      As a platform operator, I want Pydantic to validate all message fields
+      so that invalid messages are rejected before processing.
+
+    preconditions:
+      - All messages inherit from RemoteAgentMessage
+      - Pydantic validators defined for critical fields
+
+    journey:
+      - step: 1
+        action: "Validate session_id UUID format"
+        command: |
+          SessionMessage(session_id="invalid-uuid")
+        expected: "Raises ValidationError: 'session_id must be a valid UUID string'"
+
+      - step: 2
+        action: "Validate EncryptedBlob nonce length"
+        command: |
+          short_nonce = bytes_to_base64(b"short")  # Not 24 bytes
+          EncryptedBlob(
+            session_id=valid_uuid,
+            sender="desktop",
+            payload="base64data",
+            nonce=short_nonce
+          )
+        expected: |
+          Raises ValidationError:
+          "nonce must be exactly 24 bytes, got N bytes.
+          NaCl crypto_box requires 24-byte nonces"
+
+      - step: 3
+        action: "Validate required fields present"
+        command: |
+          Error(code="SESSION_EXPIRED")  # Missing message field
+        expected: "Raises ValidationError: Field required: message"
+
+      - step: 4
+        action: "Validate invalid base64 in payload"
+        command: |
+          EncryptedBlob(
+            session_id=valid_uuid,
+            sender="desktop",
+            payload="not!!!valid!!!base64",
+            nonce=valid_nonce
+          )
+        expected: "Pydantic accepts any string, validation on decode"
+
+      - step: 5
+        action: "Check type field validation"
+        command: |
+          Ping(type="wrong.type")
+        expected: "Pydantic validates Literal type, rejects wrong value"
+
+    acceptance_criteria:
+      - Pydantic validates all message fields at construction
+      - Type mismatches caught at deserialization
+      - Missing required fields rejected with clear error
+      - Invalid base64 rejected when decoded (nonce validation)
+      - session_id validated as UUID format
+      - Literal type fields enforce correct values
+      - ValidationError messages are clear and actionable
+
+    test_layers:
+      local: true
+      docker: false
+      integration: true
+
+  # --------------------------------------------------------------------------
+  # US-PROTOCOL-005: Protocol Documentation Generation
+  # --------------------------------------------------------------------------
+  - id: US-PROTOCOL-005
+    title: "Protocol Documentation Generation"
+    priority: LOW
+    persona: platform_operator
+
+    description: |
+      As a platform operator, I want message schemas extractable from Pydantic models
+      so that protocol documentation stays synchronized with implementation.
+
+    preconditions:
+      - All messages use Pydantic BaseModel
+      - Field descriptions documented via Field(..., description="...")
+
+    journey:
+      - step: 1
+        action: "Extract schema from message class"
+        command: |
+          schema = EncryptedBlob.model_json_schema()
+        expected: |
+          JSON Schema with fields:
+          - type: {"const": "relay.encrypted"}
+          - session_id: {"type": "string", "description": "UUID..."}
+          - sender: {"enum": ["desktop", "client"]}
+          - payload: {"type": "string", "description": "Base64..."}
+          - nonce: {"type": "string", "description": "Base64..."}
+
+      - step: 2
+        action: "Generate OpenAPI spec (aspirational)"
+        expected: |
+          Note: Full OpenAPI generation may be future enhancement
+          Current: Manual documentation references Pydantic models
+          Future: Automated OpenAPI/JSON Schema generation
+
+      - step: 3
+        action: "Review example messages in docstrings"
+        expected: |
+          All message classes have Examples section:
+          - EncryptedBlob.create() example
+          - Error message construction
+          - Ping/Pong RTT measurement
+
+      - step: 4
+        action: "Check protocol version documentation"
+        expected: |
+          Protocol version documented in module docstring
+          Current: No explicit version field in messages
+          Future: May add optional version field for compatibility
+
+    acceptance_criteria:
+      - Message schemas extractable via model_json_schema()
+      - Field descriptions present for all fields
+      - Example messages documented in docstrings
+      - Protocol version documented in module
+      - Note: OpenAPI/JSON Schema generation may be aspirational
+      - Manual documentation references match implementation
+
+    test_layers:
+      local: true
+      docker: false
+      integration: false

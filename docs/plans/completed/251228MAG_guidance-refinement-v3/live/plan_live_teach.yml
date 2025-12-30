@@ -1,0 +1,910 @@
+# Plan: Guidance Refinement v3 - Teaching Phase
+# Purpose: Mature orchestration-build/process.mmd to match orchestration-guidance/process.mmd detail level
+
+plan_name: "guidance-refinement-v3"
+worktree: "/home/code/myagents/MyAgentsGuidance-guidance-refinement-v3"
+branch: "guidance-refinement-v3"
+created: "2025-12-28"
+status: "completed"
+plan_type: "teach"
+
+objective: |
+  Refine the agents/orchestration/orchestration-build/process.mmd file to have the same
+  level of detail, structure, and documentation as the already-matured
+  agents/orchestration/orchestration-guidance/process.mmd.
+
+inputs:
+  - location: "agents/orchestration/orchestration-build/process.mmd"
+    description: "Target file to be matured"
+  - location: "agents/orchestration/orchestration-guidance/process.mmd"
+    description: "Exemplar file demonstrating target maturity level"
+  - location: "assets/definitions/agent-loops.yml"
+    description: "Loop definitions to be referenced"
+  - location: "assets/guidelines/orchestration-policy.yml"
+    description: "Orchestration policy for status management rules"
+  - location: "assets/guidelines/testing.yml"
+    description: "Testing guidelines for test planning loop"
+  - location: "assets/definitions/strategy-guidance-blind-test.yml"
+    description: "Strategy for blind guidance testing"
+
+# ============================================================================
+# MATURITY GAP ANALYSIS
+# ============================================================================
+# Comparing orchestration-build/process.mmd (81 lines) vs orchestration-guidance/process.mmd (190 lines)
+
+maturity_gaps:
+  gap_1_header_comments:
+    description: "Insufficient header comment block with metadata"
+    current_state: |
+      Target has basic header (lines 2-7):
+      - GOAL, PROFILE, OUTPUT, INPUT_PATH, GUIDELINE present
+      - Only 2 GUIDELINE references
+    exemplar_state: |
+      Exemplar has enhanced header (lines 1-9):
+      - Multiple GUIDELINE entries with explicit policy descriptions
+      - Includes "Strict NO CODE policy" for guidance orchestration
+      - Build orchestration needs equivalent "BUILD FOCUS" policy statement
+    gap: "Missing explicit build-specific policy statement in header comments"
+    priority: "MEDIUM"
+
+  gap_2_input_verification_comments:
+    description: "Missing inline comments explaining input verification behavior"
+    current_state: |
+      Target has basic flow (lines 11-17):
+      - LoadInputs --> ReviewInputs --> CheckInputs decision
+      - No comments explaining search/self-heal behavior
+    exemplar_state: |
+      Exemplar has detailed comments (lines 13-28):
+      - "Input Verification & Search Logic" section comment
+      - "If inputs are missing, attempt to self-heal by searching" comment
+      - "If found elsewhere, update paths to maintain continuity" comment
+      - "Critical failure: Stop and ask user if context cannot be resolved" comment
+      - "Proceed only when context is fully loaded and verified" comment
+    gap: "Missing explanatory comments for input verification self-healing behavior"
+    priority: "LOW"
+
+  gap_3_exploration_phase_documentation:
+    description: "Missing Exploration Phase documentation and subgraph"
+    current_state: |
+      Target has minimal exploration (lines 25-27):
+      - Single comment "Exploration Phase: Discovery before planning"
+      - ExplorePhase --> ExploreSynthesis (2 nodes only)
+      - No subgraph encapsulation
+      - No loop definition reference
+    exemplar_state: |
+      Exemplar has no explicit exploration phase (guidance doesn't need it)
+      BUT the target (build) correctly includes exploration for architecture discovery
+    gap: |
+      Exploration phase exists but needs:
+      - Subgraph encapsulation with proper header
+      - LOOP_DEFINITION reference to exploration-loop
+      - Comments explaining explore agents behavior
+      - MAX_ITERATIONS and ESCALATION documentation
+    priority: "HIGH"
+    build_specific: true
+
+  gap_4_planning_subgraph_header:
+    description: "Missing Planning & Review Subgraph header with phase separator"
+    current_state: |
+      Target has simple comment (line 29):
+      - "%% Planning Loop: Building a phased implementation plan"
+      - No section separator
+    exemplar_state: |
+      Exemplar has detailed header (lines 36-51):
+      - "%% ========================================"
+      - "%% PLANNING & REVIEW SUBGRAPH"
+      - "%% ========================================"
+      - Multi-line comment block explaining purpose
+      - FEEDBACK LOOP ENTRY POINTS documentation with line references
+    gap: "Missing section separator and feedback loop entry point documentation"
+    priority: "HIGH"
+
+  gap_5_dual_planning_loops:
+    description: "Single planning loop vs dual Implementation/Test planning loops"
+    current_state: |
+      Target has single loop (lines 30-37):
+      - One PlanningLoop decision node
+      - SpawnPlanner --> SpawnReviewer --> Approved decision
+      - No separation of implementation vs test planning
+    exemplar_state: |
+      Exemplar has dual loops (lines 57-107):
+      - Loop 1: Implementation Planning Loop (planner-teach)
+      - Loop 2: Test-Guidance Planning Loop (planner-test-guidance)
+      - Each loop has its own header comments with LOOP_DEFINITION, MAX_ITERATIONS, ESCALATION
+      - Viability check between loops
+    gap: |
+      Need to add:
+      - Build Implementation Planning Loop (planner-build)
+      - Build Test Planning Loop (planner-test or equivalent)
+      - Loop definition references for each
+      - Viability check between loops
+    priority: "CRITICAL"
+    build_specific: true
+
+  gap_6_loop_definition_references:
+    description: "Missing loop definition references and iteration limits"
+    current_state: |
+      Target has no loop definition references
+      - No LOOP_DEFINITION comments
+      - No MAX_ITERATIONS specified
+      - No ESCALATION policy documented
+    exemplar_state: |
+      Exemplar references loop definitions (lines 59-61, 135-137):
+      - "%% LOOP_DEFINITION: assets/definitions/agent-loops.yml#planner-loop"
+      - "%% MAX_ITERATIONS: 5 (per planner-loop definition)"
+      - "%% ESCALATION: If max iterations reached without approval, stop and Ask User with iteration context"
+    gap: "Need to add loop definition references for all loops in the build process"
+    priority: "HIGH"
+
+  gap_7_feedback_loop_documentation:
+    description: "Missing detailed feedback loop entry point documentation"
+    current_state: |
+      Target has minimal feedback documentation (lines 61-62, 69):
+      - UpdatePlanGaps -.->|Return to Planning| PlanningLoop
+      - FinalAudit -- "No" --> PlanningLoop
+      - Simple dotted line comment at end
+    exemplar_state: |
+      Exemplar has extensive documentation (lines 42-51, 63-69, 147-161):
+      - "FEEDBACK LOOP ENTRY POINTS" section with numbered list
+      - Line number references (line 113, line 146, line 139)
+      - "WALKTHROUGH FEEDBACK HANDLING" section
+      - Friction point categorization (CRITICAL/HIGH/MEDIUM/LOW)
+      - "GUIDANCE REPAIR LOOP" section with numbered behavior list
+    gap: |
+      Need to add for build process:
+      - Feedback loop entry point documentation
+      - Test failure handling with friction categorization
+      - CI/CD failure handling documentation
+      - Build-specific repair loop documentation
+    priority: "CRITICAL"
+
+  gap_8_implementation_phase_header:
+    description: "Missing Execution Phase header with section separator"
+    current_state: |
+      Target has simple comment (line 39):
+      - "%% Execution Phase: Build agents implement the plan"
+    exemplar_state: |
+      Exemplar has detailed header (lines 112-118):
+      - "%% ========================================"
+      - "%% EXECUTION PHASE: Implement Guidance Changes"
+      - "%% ========================================"
+      - Multi-line comment explaining prerequisites
+    gap: "Missing section separator and prerequisite documentation"
+    priority: "MEDIUM"
+
+  gap_9_implementation_loop_detail:
+    description: "Insufficient Implementation Loop documentation"
+    current_state: |
+      Target has basic loop (lines 42-47):
+      - "subgraph Implementation Loop"
+      - SpawnBuilders --> RunTests --> TestsPassed decision
+      - No inline comments
+      - No loop definition reference
+    exemplar_state: |
+      Exemplar has detailed execution (lines 118-127):
+      - SpawnTeachers --> ExecutePhases --> ImplIssues decision
+      - "Continuous monitoring for execution-time issues" comment
+      - "Fail-Fast & Recover" comment
+      - OffloadIssues --> UpdatePlan flow with return to planning
+    gap: |
+      Need to add for build process:
+      - test-fix-loop definition reference
+      - MAX_ITERATIONS for test-fix cycle
+      - Inline comments explaining builder behavior
+      - Fail-fast documentation for build failures
+    priority: "HIGH"
+    build_specific: true
+
+  gap_10_cicd_phase_documentation:
+    description: "Missing CI/CD Validation Phase header and documentation"
+    current_state: |
+      Target has basic CI/CD check (lines 49-53):
+      - CICDCheck decision --> SpawnDeploy --> CICDValid decision
+      - Single comment "CI/CD Validation (Conditional based on planner-build requirements)"
+      - No section header
+    exemplar_state: |
+      Exemplar has no explicit CI/CD phase (guidance doesn't deploy)
+      Build orchestration correctly includes CI/CD validation
+    gap: |
+      CI/CD phase exists but needs:
+      - Section separator "%% ========================================"
+      - "%% CI/CD VALIDATION PHASE" header
+      - Comments explaining CI/CD validation behavior
+      - deploy-cicd agent documentation
+      - Failure handling documentation
+    priority: "HIGH"
+    build_specific: true
+
+  gap_11_guidance_validation_phase:
+    description: "Insufficient Guidance Validation Phase documentation"
+    current_state: |
+      Target has basic guidance check (lines 55-62):
+      - GuidanceChanges decision --> GuidanceTest --> GuidanceSimulator
+      - Simple comment "Guidance Validation Phase: Test any new/updated guidance"
+      - No section separator
+    exemplar_state: |
+      Exemplar has detailed phase (lines 129-164):
+      - "%% ========================================"
+      - "%% GUIDANCE VALIDATION PHASE"
+      - "%% ========================================"
+      - GUIDELINE references to strategy-guidance-blind-test.yml
+      - LOOP_DEFINITION reference to guidance-test-loop
+      - MAX_ITERATIONS: 3
+      - ESCALATION policy
+      - PLAN STATUS UPDATE comment with reference to orchestration-policy.yml
+      - GUIDANCE REPAIR LOOP section with 5-step numbered behavior
+    gap: |
+      Need to add for build process:
+      - Section separator and header
+      - Loop definition and iteration limits
+      - Friction point categorization
+      - Repair loop documentation
+      - Status update documentation
+    priority: "HIGH"
+
+  gap_12_final_audit_phase:
+    description: "Missing Final Audit Phase header"
+    current_state: |
+      Target has basic audit (lines 64-69):
+      - SpawnFinalAudit --> FinalAudit decision
+      - Single comment "Final Audit"
+      - No section separator
+    exemplar_state: |
+      Exemplar has section header (lines 166-174):
+      - "%% ========================================"
+      - "%% FINAL AUDIT PHASE"
+      - "%% ========================================"
+      - "If audit fails, loop back to Planning & Review phase for correction" comment
+    gap: "Missing section separator and failure handling documentation"
+    priority: "MEDIUM"
+
+  gap_13_finalization_phase:
+    description: "Missing Finalization Phase header"
+    current_state: |
+      Target has basic end (lines 71-72):
+      - MoveCompleted --> End
+      - Copy comment at bottom
+    exemplar_state: |
+      Exemplar has section header (lines 176-181):
+      - "%% ========================================"
+      - "%% FINALIZATION"
+      - "%% ========================================"
+      - "Success: All criteria met. Finalize the work." comment
+    gap: "Missing section separator"
+    priority: "LOW"
+
+  gap_14_linkstyle_documentation:
+    description: "Insufficient linkStyle comment documentation"
+    current_state: |
+      Target has basic comment (lines 74-76):
+      - "%% Vertical feedback lines"
+      - linkStyle indices: 20,25,27,30
+    exemplar_state: |
+      Exemplar has detailed comment (lines 186-189):
+      - "%% Styling for feedback loops (return paths to Planning & Review)"
+      - "%% These dotted lines represent quality improvement cycles"
+      - linkStyle indices: 23,27,31
+    gap: "Missing explanation of what the dotted lines represent"
+    priority: "LOW"
+
+  gap_15_subgraph_naming:
+    description: "Inconsistent subgraph naming conventions"
+    current_state: |
+      Target subgraphs:
+      - "Planning" (line 32)
+      - "Implementation Loop" (line 42)
+    exemplar_state: |
+      Exemplar subgraphs:
+      - "Planning [\"Planning & Review Subgraph\"]" (line 55)
+    gap: "Subgraph naming should be descriptive with quoted display names"
+    priority: "LOW"
+
+# ============================================================================
+# IMPLEMENTATION PHASES
+# ============================================================================
+
+phases:
+  - phase: "phase_1_structure"
+    name: "Structural Enhancement"
+    description: "Add section separators and phase headers to match exemplar structure"
+    status: "completed"
+    priority: "HIGH"
+    agent_category: "teacher"
+    tasks:
+      - task: "Add Exploration Phase section header and separator"
+        file: "agents/orchestration/orchestration-build/process.mmd"
+        lines: "25-27"
+        agent_type: "teacher-update-guidance"
+        description: |
+          Add section separator before Exploration Phase:
+          %% ========================================
+          %% EXPLORATION PHASE
+          %% ========================================
+          %% LOOP_DEFINITION: assets/definitions/agent-loops.yml#exploration-loop
+          %% MAX_ITERATIONS: 3 (per exploration-loop definition)
+          %% ESCALATION: If max iterations reached, proceed with available context
+        acceptance_criteria:
+          - "Section separator added before exploration phase"
+          - "LOOP_DEFINITION reference added"
+          - "MAX_ITERATIONS documented"
+        status: "pending"
+
+      - task: "Add Planning & Review Subgraph header with feedback loop documentation"
+        file: "agents/orchestration/orchestration-build/process.mmd"
+        lines: "29-37"
+        agent_type: "teacher-update-guidance"
+        description: |
+          Add detailed header before Planning subgraph:
+          %% ========================================
+          %% PLANNING & REVIEW SUBGRAPH
+          %% ========================================
+          %% Both implementation and test plans must be approved before execution begins.
+          %%
+          %% FEEDBACK LOOP ENTRY POINTS:
+          %% This phase receives feedback from five downstream validation points:
+          %% 1. Test Failures: Build tests fail --> Update plan and re-plan
+          %% 2. CI/CD Failures: Pipeline fails --> Update plan and re-plan
+          %% 3. Guidance Test Failures: Walkthrough gaps --> Re-execute planning loops
+          %% 4. Final Audit Failures: Output quality issues --> Update plan and re-plan
+        acceptance_criteria:
+          - "Section separator added before planning subgraph"
+          - "FEEDBACK LOOP ENTRY POINTS documented with numbered list"
+          - "All return paths documented"
+        status: "pending"
+
+      - task: "Add Implementation Phase section header"
+        file: "agents/orchestration/orchestration-build/process.mmd"
+        lines: "39-47"
+        agent_type: "teacher-update-guidance"
+        description: |
+          Add section separator before Implementation Loop:
+          %% ========================================
+          %% IMPLEMENTATION PHASE: Build Agents Execute Plan
+          %% ========================================
+          %% LOOP_DEFINITION: assets/definitions/agent-loops.yml#test-fix-loop
+          %% MAX_ITERATIONS: 5 (per test-fix-loop definition)
+          %% ESCALATION: If max iterations reached without tests passing, stop and Ask User
+        acceptance_criteria:
+          - "Section separator added"
+          - "LOOP_DEFINITION reference to test-fix-loop"
+          - "MAX_ITERATIONS and ESCALATION documented"
+        status: "pending"
+
+      - task: "Add CI/CD Validation Phase section header"
+        file: "agents/orchestration/orchestration-build/process.mmd"
+        lines: "49-53"
+        agent_type: "teacher-update-guidance"
+        description: |
+          Add section separator before CI/CD checks:
+          %% ========================================
+          %% CI/CD VALIDATION PHASE
+          %% ========================================
+          %% Validate pipeline configuration if build changes affect CI/CD
+          %% deploy-cicd agent audits pipeline changes for correctness
+        acceptance_criteria:
+          - "Section separator added"
+          - "Purpose comment added"
+          - "deploy-cicd agent documented"
+        status: "pending"
+
+      - task: "Add Guidance Validation Phase section header"
+        file: "agents/orchestration/orchestration-build/process.mmd"
+        lines: "55-62"
+        agent_type: "teacher-update-guidance"
+        description: |
+          Add section separator before Guidance Validation:
+          %% ========================================
+          %% GUIDANCE VALIDATION PHASE
+          %% ========================================
+          %% LOOP_DEFINITION: assets/definitions/agent-loops.yml#guidance-test-loop
+          %% MAX_ITERATIONS: 3 (per guidance-test-loop definition)
+          %% ESCALATION: If max iterations reached without passing, stop and Ask User
+        acceptance_criteria:
+          - "Section separator added"
+          - "LOOP_DEFINITION reference to guidance-test-loop"
+          - "MAX_ITERATIONS and ESCALATION documented"
+        status: "pending"
+
+      - task: "Add Final Audit Phase section header"
+        file: "agents/orchestration/orchestration-build/process.mmd"
+        lines: "64-69"
+        agent_type: "teacher-update-guidance"
+        description: |
+          Add section separator before Final Audit:
+          %% ========================================
+          %% FINAL AUDIT PHASE
+          %% ========================================
+        acceptance_criteria:
+          - "Section separator added"
+        status: "pending"
+
+      - task: "Add Finalization Phase section header"
+        file: "agents/orchestration/orchestration-build/process.mmd"
+        lines: "71-72"
+        agent_type: "teacher-update-guidance"
+        description: |
+          Add section separator before finalization:
+          %% ========================================
+          %% FINALIZATION
+          %% ========================================
+          %% Success: All criteria met. Finalize the work.
+        acceptance_criteria:
+          - "Section separator added"
+          - "Success comment added"
+        status: "pending"
+
+  - phase: "phase_2_dual_planning_loops"
+    name: "Dual Planning Loop Implementation"
+    description: "Convert single planning loop to dual Implementation/Test planning loops"
+    status: "completed"
+    priority: "CRITICAL"
+    agent_category: "teacher"
+    depends_on: ["phase_1_structure"]
+    tasks:
+      - task: "Rename Planning subgraph and add descriptive name"
+        file: "agents/orchestration/orchestration-build/process.mmd"
+        lines: "32"
+        agent_type: "teacher-update-guidance"
+        description: |
+          Change: subgraph Planning
+          To: subgraph Planning ["Planning & Review Subgraph"]
+        acceptance_criteria:
+          - "Subgraph has descriptive quoted name"
+        status: "pending"
+
+      - task: "Add Build Implementation Planning Loop (Loop 1)"
+        file: "agents/orchestration/orchestration-build/process.mmd"
+        lines: "33-36"
+        agent_type: "teacher-update-guidance"
+        description: |
+          Replace current planning loop with Loop 1:
+          %% ----------------------------------------
+          %% LOOP 1: BUILD IMPLEMENTATION PLANNING LOOP
+          %% ----------------------------------------
+          %% LOOP_DEFINITION: assets/definitions/agent-loops.yml#planner-loop
+          %% MAX_ITERATIONS: 5 (per planner-loop definition)
+          %% ESCALATION: If max iterations reached without approval, stop and Ask User
+          %%
+          %% FEEDBACK HANDLING:
+          %% When returning from downstream failures:
+          %% - planner-build receives structured failure report
+          %% - Failure types: TEST_FAILURE, CICD_FAILURE, GUIDANCE_GAP, AUDIT_FAILURE
+          %% - planner-build updates plan to address root cause
+          %% - Plan must be re-approved by planner-reviewer before proceeding
+          PlanningReview --> BuildPlanningLoop{Build Implementation Planning Loop}
+
+          BuildPlanningLoop --> SpawnPlannerBuild[Spawn planner-build Agent]
+          SpawnPlannerBuild --> SpawnBuildReviewer[Spawn planner-reviewer Agent]
+
+          SpawnBuildReviewer --> BuildPlanApproved{Build Plan Approved?}
+          BuildPlanApproved -- "No: Refine" --> SpawnPlannerBuildFix[Spawn planner-build Agent]
+          SpawnPlannerBuildFix --> SpawnBuildReviewer
+        acceptance_criteria:
+          - "Loop 1 header comments added"
+          - "LOOP_DEFINITION reference added"
+          - "MAX_ITERATIONS and ESCALATION documented"
+          - "FEEDBACK HANDLING section added"
+          - "planner-build replaces generic planner"
+        status: "pending"
+
+      - task: "Add Build Test Planning Loop (Loop 2)"
+        file: "agents/orchestration/orchestration-build/process.mmd"
+        lines: "37"
+        agent_type: "teacher-update-guidance"
+        description: |
+          Add Loop 2 after Build Plan Approved:
+          %% ----------------------------------------
+          %% LOOP 2: BUILD TEST PLANNING LOOP
+          %% ----------------------------------------
+          %% This loop runs AFTER build planning is approved
+          %% Plans the test validation strategy for the build
+          %% GUIDELINE: assets/guidelines/testing.yml
+          %% GUIDELINE: assets/guidelines/user-story-testing.yml
+          BuildPlanApproved -- "Yes: Ready" --> TestPlanningLoop{Build Test Planning Loop}
+
+          TestPlanningLoop --> SpawnTestPlanner[Spawn planner-test Agent]
+          SpawnTestPlanner --> SpawnTestReviewer[Spawn planner-reviewer Agent]
+
+          SpawnTestReviewer --> TestPlanApproved{Test Plan Approved?}
+          TestPlanApproved -- "No: Refine" --> SpawnTestPlannerFix[Spawn planner-test Agent]
+          SpawnTestPlannerFix --> SpawnTestReviewer
+
+          %% Check for test planning failures that require returning to build planning
+          TestPlanApproved -- "Yes: Check Viability" --> TestPlanViable{Test Plan Viable?}
+
+          %% If test plan reveals build plan issues, return to build planning
+          TestPlanViable -- "No: Build Issues Found" --> UpdateBuildPlan[Update Build Plan]
+          UpdateBuildPlan -.->|Return to Loop 1| BuildPlanningLoop
+        acceptance_criteria:
+          - "Loop 2 header comments added"
+          - "GUIDELINE references added"
+          - "Test planning flow added"
+          - "Viability check between loops added"
+          - "Return path to Loop 1 documented"
+        status: "pending"
+
+      - task: "Update Planning subgraph exit to execution"
+        file: "agents/orchestration/orchestration-build/process.mmd"
+        agent_type: "teacher-update-guidance"
+        description: |
+          Connect approved test plan to execution phase:
+          TestPlanViable -- "Yes: Both Plans Ready" --> ExecutePhases[Execute Implementation Phases]
+        acceptance_criteria:
+          - "Exit from Planning subgraph connects to ExecutePhases"
+          - "Edge label indicates both plans are ready"
+        status: "pending"
+
+  - phase: "phase_3_exploration_subgraph"
+    name: "Exploration Phase Enhancement"
+    description: "Add exploration subgraph with loop definition and agent documentation"
+    status: "completed"
+    priority: "HIGH"
+    agent_category: "teacher"
+    depends_on: ["phase_1_structure"]
+    tasks:
+      - task: "Convert Exploration Phase to subgraph"
+        file: "agents/orchestration/orchestration-build/process.mmd"
+        lines: "26-27"
+        agent_type: "teacher-update-guidance"
+        description: |
+          Wrap exploration in subgraph with documentation:
+          subgraph Exploration ["Exploration Phase Subgraph"]
+              %% BEHAVIOR: Discover architecture before planning
+              %% - Spawn explore-codebase for existing code patterns
+              %% - Spawn explore-dependencies for external dependencies
+              %% - Spawn explore-tests for existing test patterns
+              %% - Synthesize findings into architectural context
+              ExplorePhase[Spawn Explore Agents] --> ExploreCodebase[explore-codebase]
+              ExplorePhase --> ExploreDeps[explore-dependencies]
+              ExplorePhase --> ExploreTests[explore-tests]
+              ExploreCodebase --> ExploreSynthesis[Synthesize Architectural Context]
+              ExploreDeps --> ExploreSynthesis
+              ExploreTests --> ExploreSynthesis
+          end
+        acceptance_criteria:
+          - "Exploration wrapped in subgraph"
+          - "BEHAVIOR comment explains purpose"
+          - "Multiple explore agents documented"
+          - "Synthesis node aggregates findings"
+        status: "pending"
+
+  - phase: "phase_4_implementation_loop_detail"
+    name: "Implementation Loop Enhancement"
+    description: "Add detailed documentation to Implementation Loop"
+    status: "completed"
+    priority: "HIGH"
+    agent_category: "teacher"
+    depends_on: ["phase_2_dual_planning_loops"]
+    tasks:
+      - task: "Enhance Implementation Loop subgraph with inline comments"
+        file: "agents/orchestration/orchestration-build/process.mmd"
+        lines: "42-47"
+        agent_type: "teacher-update-guidance"
+        description: |
+          Add detailed comments within Implementation Loop:
+          subgraph Implementation ["Implementation Loop Subgraph"]
+              %% BEHAVIOR: Build agents implement the approved plan
+              %% - build-python: Python implementation tasks
+              %% - build-flutter: Flutter/Dart implementation tasks
+              %% - test-runner: Execute tests after implementation
+              %%
+              %% FAIL-FAST: On test failure, categorize and handle:
+              %% - Unit test failure: Fix in current iteration
+              %% - Integration test failure: May require plan update
+              %% - E2E test failure: Escalate to planning phase
+              ExecutePhases --> SpawnBuilders[Spawn build-python/flutter agents]
+              SpawnBuilders --> RunTests[Spawn test-runner]
+              RunTests --> TestsPassed{Tests Passed?}
+              TestsPassed -- "No: Fix in Iteration" --> SpawnBuilders
+          end
+        acceptance_criteria:
+          - "BEHAVIOR comment explains builder agents"
+          - "FAIL-FAST section documents test failure handling"
+          - "Build agent types documented"
+        status: "pending"
+
+      - task: "Add test failure categorization and escalation path"
+        file: "agents/orchestration/orchestration-build/process.mmd"
+        agent_type: "teacher-update-guidance"
+        description: |
+          Add escalation path for severe test failures:
+          TestsPassed -- "No: Escalate" --> CategorizeTestFailure[Categorize Test Failure]
+          CategorizeTestFailure --> UpdatePlanTests[Update Plan with Test Failure Details]
+          UpdatePlanTests -.->|Return to Planning| PlanningReview
+        acceptance_criteria:
+          - "Test failure categorization node added"
+          - "Escalation path to planning documented"
+          - "Dotted line style for feedback loop"
+        status: "pending"
+
+  - phase: "phase_5_cicd_documentation"
+    name: "CI/CD Phase Documentation"
+    description: "Add comprehensive CI/CD validation phase documentation"
+    status: "completed"
+    priority: "HIGH"
+    agent_category: "teacher"
+    depends_on: ["phase_4_implementation_loop_detail"]
+    tasks:
+      - task: "Add CI/CD phase inline comments"
+        file: "agents/orchestration/orchestration-build/process.mmd"
+        lines: "49-53"
+        agent_type: "teacher-update-guidance"
+        description: |
+          Add detailed comments for CI/CD validation:
+          %% BEHAVIOR: Validate CI/CD pipeline changes
+          %% - deploy-cicd agent audits pipeline configuration
+          %% - Validates GitHub Actions, Docker, deployment scripts
+          %% - On failure: Categorize issue and route appropriately
+          %%
+          %% FAILURE HANDLING:
+          %% - Configuration errors: Return to planning for fix
+          %% - Syntax errors: Fix in place, re-validate
+          %% - Integration issues: May require build plan update
+        acceptance_criteria:
+          - "BEHAVIOR comment explains deploy-cicd agent"
+          - "FAILURE HANDLING section documents response to failures"
+        status: "pending"
+
+      - task: "Add CI/CD failure categorization"
+        file: "agents/orchestration/orchestration-build/process.mmd"
+        agent_type: "teacher-update-guidance"
+        description: |
+          Enhance CI/CD failure path:
+          CICDValid -- "No: Categorize" --> CategorizeCICDFailure[Categorize CI/CD Failure]
+          CategorizeCICDFailure --> UpdatePlanCICD[Update Plan with CI/CD Issues]
+          UpdatePlanCICD -.->|Return to Planning| PlanningReview
+        acceptance_criteria:
+          - "CI/CD failure categorization added"
+          - "Return path documented with dotted line"
+        status: "pending"
+
+  - phase: "phase_6_guidance_repair_loop"
+    name: "Guidance Repair Loop Documentation"
+    description: "Add detailed Guidance Repair Loop documentation matching exemplar"
+    status: "completed"
+    priority: "CRITICAL"
+    agent_category: "teacher"
+    depends_on: ["phase_5_cicd_documentation"]
+    tasks:
+      - task: "Add Guidance Repair Loop section"
+        file: "agents/orchestration/orchestration-build/process.mmd"
+        lines: "61-62"
+        agent_type: "teacher-update-guidance"
+        description: |
+          Add detailed repair loop documentation:
+          %% ========================================
+          %% GUIDANCE REPAIR LOOP: Failing walkthrough tests trigger return to Planning
+          %% ========================================
+          %% BEHAVIOR: When test-guidance-simulator reports friction points:
+          %% 1. Categorize gaps by severity (CRITICAL/HIGH/MEDIUM/LOW)
+          %% 2. Route to appropriate handler based on gap type:
+          %%    - Build process issues: Return to Build Planning Loop (planner-build)
+          %%    - Test design issues: Return to Test Planning Loop (planner-test)
+          %%    - Guidance issues: Route through planner-teach
+          %% 3. Update plan with structured friction report
+          %% 4. Re-execute BOTH planning loops to ensure consistency
+          %% 5. Track iteration count against guidance-test-loop max_iterations (3)
+          %% ========================================
+          GuidancePassed -- "No: Gaps Found" --> CategorizeGuidanceGaps[Categorize Friction Points]
+          CategorizeGuidanceGaps --> RouteToHandler{Route by Gap Type}
+          RouteToHandler -- "Build Process" --> UpdatePlanBuild[Update Build Plan]
+          RouteToHandler -- "Test Design" --> UpdatePlanTest[Update Test Plan]
+          RouteToHandler -- "Guidance" --> UpdatePlanGuidance[Update Guidance Plan]
+          UpdatePlanBuild -.->|Return to Planning| PlanningReview
+          UpdatePlanTest -.->|Return to Planning| PlanningReview
+          UpdatePlanGuidance -.->|Return to Planning| PlanningReview
+        acceptance_criteria:
+          - "GUIDANCE REPAIR LOOP section header added"
+          - "5-step numbered BEHAVIOR documented"
+          - "Friction point categorization (CRITICAL/HIGH/MEDIUM/LOW) documented"
+          - "Routing by gap type documented"
+          - "All return paths shown as dotted lines"
+        status: "pending"
+
+      - task: "Add Plan Status Update comment"
+        file: "agents/orchestration/orchestration-build/process.mmd"
+        agent_type: "teacher-update-guidance"
+        description: |
+          Add status update documentation:
+          %% PLAN STATUS UPDATE: Consume test results and update plan task statuses
+          %% Reference: assets/guidelines/orchestration-policy.yml - Plan Status Management rule
+          %% This step ensures task statuses reflect test outcomes before evaluating overall build validity
+          GuidanceSimulator --> UpdateGuidanceStatuses[Update Plan Task Statuses from Test Results]
+          UpdateGuidanceStatuses --> GuidancePassed{Guidance Valid?}
+        acceptance_criteria:
+          - "PLAN STATUS UPDATE comment added"
+          - "Reference to orchestration-policy.yml added"
+          - "Status update node added before decision"
+        status: "pending"
+
+  - phase: "phase_7_final_polish"
+    name: "Final Polish and Consistency"
+    description: "Update linkStyle, verify syntax, ensure consistency"
+    status: "completed"
+    priority: "MEDIUM"
+    agent_category: "teacher"
+    depends_on: ["phase_6_guidance_repair_loop"]
+    tasks:
+      - task: "Update linkStyle comment and indices"
+        file: "agents/orchestration/orchestration-build/process.mmd"
+        lines: "74-76"
+        agent_type: "teacher-update-guidance"
+        description: |
+          Update linkStyle documentation:
+          %% Styling for feedback loops (return paths to Planning & Review)
+          %% These dotted lines represent quality improvement cycles:
+          %% - Test failure returns
+          %% - CI/CD failure returns
+          %% - Guidance gap returns
+          %% - Audit failure returns
+          classDef dashedstroke stroke-dasharray: 5 5;
+          linkStyle [updated indices] stroke:#888,stroke-width:2px,stroke-dasharray: 5 5;
+        acceptance_criteria:
+          - "LinkStyle comment explains what dotted lines represent"
+          - "All feedback loop types listed"
+          - "Link indices updated to match new graph structure"
+        status: "pending"
+
+      - task: "Add input verification inline comments"
+        file: "agents/orchestration/orchestration-build/process.mmd"
+        lines: "11-17"
+        agent_type: "teacher-update-guidance"
+        description: |
+          Add explanatory comments matching exemplar:
+          %% Input Verification & Search Logic: Ensure we have all necessary context
+          LoadInputs --> ReviewInputs[Review All Listed Inputs]
+          ReviewInputs --> CheckInputs{All Inputs Found?}
+
+          %% If inputs are missing, attempt to self-heal by searching
+          CheckInputs -- "No: Missing" --> SearchInputs[Search for Missing Inputs]
+          SearchInputs --> Found{Found?}
+
+          %% If found elsewhere, update paths to maintain continuity
+          Found -- "Yes: Update paths" --> UpdateRefs[Update References & Flag]
+          UpdateRefs --> ReviewInputs
+
+          %% Critical failure: Stop and ask user if context cannot be resolved
+          Found -- "No: Stop" --> AskUser((Ask User for Clarification))
+
+          %% Proceed only when context is fully loaded and verified
+          CheckInputs -- "Yes: Verified" --> SpawnDeployWorktree[Spawn deploy-worktree Agent]
+        acceptance_criteria:
+          - "Each decision path has explanatory comment"
+          - "Edge labels match exemplar style (e.g., 'No: Missing' vs 'No')"
+        status: "pending"
+
+      - task: "Verify mermaid syntax correctness"
+        file: "agents/orchestration/orchestration-build/process.mmd"
+        agent_type: "teacher-update-guidance"
+        description: |
+          Validate the complete mermaid flowchart:
+          - All node IDs are unique
+          - All subgraphs are properly closed
+          - All edges have valid source and target nodes
+          - linkStyle indices match actual edge count
+        acceptance_criteria:
+          - "Mermaid syntax is valid"
+          - "No duplicate node IDs"
+          - "All subgraphs properly closed"
+          - "linkStyle indices are correct"
+        status: "pending"
+
+      - task: "Count final line total and compare to exemplar"
+        file: "agents/orchestration/orchestration-build/process.mmd"
+        agent_type: "teacher-update-guidance"
+        description: |
+          Verify maturity level achieved:
+          - Target: ~180-200 lines (matching exemplar's 190 lines)
+          - All section headers present
+          - All loop definitions referenced
+          - All feedback loops documented
+        acceptance_criteria:
+          - "File has approximately 180-200 lines"
+          - "Structure matches exemplar organization"
+          - "All maturity gaps addressed"
+        status: "pending"
+
+  - phase: "validation"
+    name: "Validation Phase"
+    description: "Verify updated process.mmd matches exemplar maturity level"
+    status: "completed"
+    priority: "HIGH"
+    agent_category: "teacher"
+    depends_on: ["phase_7_final_polish"]
+    tasks:
+      - task: "Compare structure against exemplar checklist"
+        file: "agents/orchestration/orchestration-build/process.mmd"
+        agent_type: "teacher-update-guidance"
+        description: |
+          Verify all exemplar elements are present:
+          [ ] Header comments with GOAL, PROFILE, OUTPUT, GUIDELINE, INPUT_PATH
+          [ ] Section separators for each phase
+          [ ] Dual planning loops with LOOP_DEFINITION references
+          [ ] MAX_ITERATIONS and ESCALATION for each loop
+          [ ] FEEDBACK LOOP ENTRY POINTS documentation
+          [ ] Friction point categorization (CRITICAL/HIGH/MEDIUM/LOW)
+          [ ] GUIDANCE REPAIR LOOP section
+          [ ] PLAN STATUS UPDATE documentation
+          [ ] Descriptive subgraph names
+          [ ] LinkStyle documentation
+        acceptance_criteria:
+          - "All checklist items verified"
+          - "Structure matches exemplar pattern"
+        status: "pending"
+
+      - task: "Validate mermaid renders correctly"
+        agent_type: "teacher-update-guidance"
+        description: |
+          Test mermaid syntax renders without errors:
+          - Use mermaid CLI or online editor
+          - Verify all nodes and edges render
+          - Verify subgraphs display correctly
+        acceptance_criteria:
+          - "Mermaid renders without errors"
+          - "Graph is readable and well-organized"
+        status: "pending"
+
+      - task: "Verify build-specific elements are preserved"
+        file: "agents/orchestration/orchestration-build/process.mmd"
+        agent_type: "teacher-update-guidance"
+        description: |
+          Ensure build-specific elements not lost:
+          [ ] Exploration Phase (build-specific, not in guidance exemplar)
+          [ ] build-python/flutter agent references
+          [ ] test-runner integration
+          [ ] CI/CD Validation Phase (build-specific)
+          [ ] deploy-cicd agent reference
+        acceptance_criteria:
+          - "All build-specific elements preserved"
+          - "Build orchestration identity maintained"
+        status: "pending"
+
+# ============================================================================
+# SUCCESS CRITERIA
+# ============================================================================
+
+success_criteria:
+  user_validation:
+    - "Agent executing orchestration-build can follow the process diagram without confusion"
+    - "All loop definitions are referenced, enabling agents to find iteration limits"
+    - "Feedback loop entry points are clearly documented for error recovery"
+
+  technical_validation:
+    - "File has approximately 180-200 lines (up from 81)"
+    - "7 section headers with separators present"
+    - "All loop definitions referenced with MAX_ITERATIONS"
+    - "Mermaid syntax renders without errors"
+
+# ============================================================================
+# SUMMARY
+# ============================================================================
+
+summary:
+  total_gaps: 15
+  critical_gaps: 3
+  high_gaps: 7
+  medium_gaps: 3
+  low_gaps: 2
+
+  critical_items:
+    - "gap_5_dual_planning_loops: Single planning loop needs dual Implementation/Test loops"
+    - "gap_7_feedback_loop_documentation: Missing detailed feedback loop entry point documentation"
+    - "phase_6_guidance_repair_loop: Add Guidance Repair Loop with friction categorization"
+
+  build_specific_considerations:
+    - "Preserve Exploration Phase (not in guidance exemplar)"
+    - "Document build-python/flutter agents"
+    - "Document test-runner integration"
+    - "Add CI/CD Validation Phase documentation"
+    - "Document deploy-cicd agent"
+
+  expected_outcome: |
+    After completing all phases, orchestration-build/process.mmd will have:
+    - ~180-200 lines (up from 81)
+    - 7 section headers with separators
+    - 2 planning loops with full documentation
+    - 4+ loop definition references
+    - Complete feedback loop documentation
+    - Friction point categorization
+    - Build-specific agent documentation
+    - Full parity with orchestration-guidance/process.mmd maturity level

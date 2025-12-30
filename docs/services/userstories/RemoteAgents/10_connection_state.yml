@@ -1,0 +1,280 @@
+# ==============================================================================
+# RemoteAgents User Stories - Connection State Management
+# ==============================================================================
+
+category: connection_state
+name: "Connection State Management"
+description: "WebSocket connection lifecycle and state transitions"
+
+stories:
+  # --------------------------------------------------------------------------
+  # US-STATE-001: Connection lifecycle states
+  # --------------------------------------------------------------------------
+  - id: US-STATE-001
+    title: "Connection Lifecycle States"
+    priority: HIGH
+    persona: desktop_user
+
+    description: |
+      As a desktop developer, I want the relay client to follow a well-defined
+      state machine so that connection lifecycle is predictable and debuggable.
+
+    preconditions:
+      - RelayClient initialized with valid configuration
+      - Relay service is accessible
+
+    journey:
+      - step: 1
+        action: "Create RelayClient instance"
+        expected: "Initial state is DISCONNECTED"
+
+      - step: 2
+        action: "Call client.connect()"
+        expected: "State transitions to CONNECTING"
+
+      - step: 3
+        action: "WebSocket connection established"
+        expected: "State transitions to CONNECTED"
+
+      - step: 4
+        action: "Check client.state property"
+        expected: "Returns ConnectionState.CONNECTED"
+
+      - step: 5
+        action: "Check client.is_connected property"
+        expected: "Returns True"
+
+    acceptance_criteria:
+      - Initial state is DISCONNECTED
+      - connect() transitions DISCONNECTED -> CONNECTING -> CONNECTED
+      - State exposed via client.state property
+      - is_connected property returns boolean status
+      - Invalid transitions handled gracefully
+      - State changes logged with context
+
+    test_layers:
+      local: true
+      integration: true
+
+  # --------------------------------------------------------------------------
+  # US-STATE-002: State transitions on connection failure
+  # --------------------------------------------------------------------------
+  - id: US-STATE-002
+    title: "State Transitions on Connection Failure"
+    priority: HIGH
+    persona: desktop_user
+
+    description: |
+      As a desktop developer, I want connection failures to trigger
+      reconnection logic so that temporary network issues are handled
+      automatically.
+
+    preconditions:
+      - RelayClient configured with max_reconnect_attempts
+      - Relay service may be unreachable or flaky
+
+    journey:
+      - step: 1
+        action: "Call client.connect() when relay is down"
+        expected: "State transitions to CONNECTING"
+
+      - step: 2
+        action: "Connection attempt fails"
+        expected: "State transitions to RECONNECTING"
+
+      - step: 3
+        action: "Observe retry with exponential backoff"
+        expected: "Logs show 'Reconnecting in X.Xs (attempt N)'"
+
+      - step: 4
+        action: "Relay becomes available during retry"
+        expected: "State transitions to CONNECTED"
+
+      - step: 5
+        action: "Max reconnect attempts exceeded (if relay stays down)"
+        expected: |
+          State transitions to CLOSED
+          RelayConnectionError raised with 'Failed to connect after N attempts'
+
+    acceptance_criteria:
+      - CONNECTING -> RECONNECTING on initial failure
+      - Exponential backoff applied between attempts
+      - RECONNECTING -> CONNECTED on successful retry
+      - RECONNECTING -> CLOSED if max_reconnect_attempts exceeded
+      - State changes logged with timestamps
+      - Jitter applied to backoff to prevent thundering herd
+
+    test_layers:
+      local: true
+      integration: true
+
+  # --------------------------------------------------------------------------
+  # US-STATE-003: State visibility for debugging
+  # --------------------------------------------------------------------------
+  - id: US-STATE-003
+    title: "State Visibility for Debugging"
+    priority: MEDIUM
+    persona: platform_operator
+
+    description: |
+      As a platform operator, I want to inspect the relay client's connection
+      state so that I can debug connection issues and monitor system health.
+
+    preconditions:
+      - RelayClient instance exists
+      - Logging configured to capture debug messages
+
+    journey:
+      - step: 1
+        action: "Access client.state property"
+        expected: "Returns current ConnectionState enum value"
+
+      - step: 2
+        action: "Access client.is_connected property"
+        expected: "Returns boolean: True if CONNECTED, False otherwise"
+
+      - step: 3
+        action: "Review application logs"
+        expected: |
+          State transitions logged:
+          - 'Connecting to relay: {ws_url}'
+          - 'Connected to relay for session {session_id}'
+          - 'Reconnecting in X.Xs (attempt N)'
+          - 'Connection closed gracefully'
+
+      - step: 4
+        action: "Monitor state during network interruption"
+        expected: |
+          State transitions visible:
+          CONNECTED -> DISCONNECTED -> RECONNECTING -> CONNECTED
+
+    acceptance_criteria:
+      - Client exposes current state via .state property
+      - is_connected property provides simple boolean check
+      - All state transitions logged with context
+      - Logs include session_id for correlation
+      - Connection errors logged with details (timeout, refused, invalid status)
+      - Useful for monitoring and debugging production issues
+
+    test_layers:
+      local: true
+      integration: true
+
+  # --------------------------------------------------------------------------
+  # US-STATE-004: Graceful disconnect state handling
+  # --------------------------------------------------------------------------
+  - id: US-STATE-004
+    title: "Graceful Disconnect State Handling"
+    priority: MEDIUM
+    persona: desktop_user
+
+    description: |
+      As a desktop developer, I want to cleanly close the relay client
+      so that resources are released and no reconnection attempts occur.
+
+    preconditions:
+      - RelayClient in CONNECTED state
+      - Background tasks (receive_loop, keepalive_loop) are running
+
+    journey:
+      - step: 1
+        action: "Call client.close()"
+        expected: "State immediately transitions to CLOSED"
+
+      - step: 2
+        action: "Observe shutdown sequence"
+        expected: |
+          _shutdown_event is set
+          TerminalClose message sent to client
+          Background tasks cancelled cleanly
+          WebSocket connection closed
+
+      - step: 3
+        action: "Verify no reconnection attempts"
+        expected: "CLOSED state prevents _connect_with_retry() from running"
+
+      - step: 4
+        action: "Check resource cleanup"
+        expected: |
+          _receive_task cancelled
+          _keepalive_task cancelled
+          _ws closed and set to None
+          Log message: 'Relay client cleanup complete'
+
+      - step: 5
+        action: "Attempt to call close() again"
+        expected: "No-op (returns immediately if already CLOSED)"
+
+    acceptance_criteria:
+      - close() transitions any state to CLOSED immediately
+      - CLOSED state prevents reconnection attempts
+      - _shutdown_event prevents zombie connections
+      - Background tasks cancelled gracefully
+      - WebSocket closed properly
+      - Resources cleaned up completely
+      - Idempotent (can call close() multiple times safely)
+
+    test_layers:
+      local: true
+      integration: true
+
+  # --------------------------------------------------------------------------
+  # US-STATE-005: State persistence across reconnects
+  # --------------------------------------------------------------------------
+  - id: US-STATE-005
+    title: "State Persistence Across Reconnects"
+    priority: LOW
+    persona: desktop_user
+
+    description: |
+      As a desktop developer, I want the relay client to preserve session
+      context during reconnection so that encryption keys and session state
+      remain valid without re-pairing.
+
+    preconditions:
+      - RelayClient in CONNECTED state
+      - Client public key set via set_client_public_key()
+      - Encryption box (_box) configured
+
+    journey:
+      - step: 1
+        action: "Simulate connection drop (e.g., relay restart)"
+        expected: |
+          _handle_disconnect() triggered
+          State transitions to DISCONNECTED
+
+      - step: 2
+        action: "Observe automatic reconnection"
+        expected: |
+          _connect_with_retry() invoked
+          State transitions to RECONNECTING -> CONNECTED
+
+      - step: 3
+        action: "Verify encryption context preserved"
+        expected: |
+          _client_public_key still set
+          _box (encryption box) still configured
+          No re-pairing required
+
+      - step: 4
+        action: "Send terminal output after reconnect"
+        expected: |
+          send_output() succeeds
+          Data encrypted with existing box
+          Client receives decrypted output
+
+      - step: 5
+        action: "Verify session_id unchanged"
+        expected: "Reconnects to same /ws/desktop/{session_id}"
+
+    acceptance_criteria:
+      - RECONNECTING state preserves session context
+      - Encryption keys (_private_key, _client_public_key, _box) preserved
+      - No session re-pairing needed after reconnect
+      - session_id remains unchanged
+      - Successful reconnect resumes from same session state
+      - Terminal I/O continues seamlessly after reconnect
+
+    test_layers:
+      local: true
+      integration: true

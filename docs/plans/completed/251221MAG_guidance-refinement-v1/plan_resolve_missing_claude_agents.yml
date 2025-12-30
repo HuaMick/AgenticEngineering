@@ -1,0 +1,96 @@
+# Resolve Missing Claude Code Agent Definitions
+# This plan tracks the creation of missing runtime agent definitions in the .claude/agents directory.
+
+plan_name: "Resolve Missing Claude Code Agent Definitions"
+worktree: "/home/code/myagents/MyAgentsGuidance-guidance-refinement-v1"
+branch: "guidance-refinement-v1"
+created: "2025-12-22"
+status: "completed"
+objective: "Register missing agents in the Claude Code runtime to prevent AGENT_TYPE_MISMATCH errors during execution."
+
+# CONTEXT AND RATIONALE
+# ====================
+# During Phase 4 validation of the guidance-refinement-v1 plan, a critical gap was identified
+# between the MyAgents asset definitions and the Claude Code runtime environment.
+#
+# Specifically, the 'planner-test-guidance' and 'test-guidance-simulator' agents were fully
+# defined in the MyAgents structure (process.yml, inputs.yml, agent-categories.yml) but
+# were not registered as spawnable subagents in .claude/agents/.
+#
+# This led to:
+# - AGENT_TYPE_MISMATCH errors (FR-TEST-001)
+# - Inability to spawn subagents during the Guidance-Blind-Test simulations
+# - Broken orchestration flows despite guidance-level "completion"
+#
+# Action: Create the missing .md files in .claude/agents/ that point to the existing
+# MyAgents process files.
+
+inputs:
+  - location: "docs/plans/live/251221MAG_guidance-refinement-v1/session_issues.yml"
+    description: "Source of the FR-TEST-001 issue"
+  - location: ".claude/agents/planner-test-agent.md"
+    description: "Template for creating new agent definitions"
+  - location: "agents/planner/planner-test-guidance/process.yml"
+    description: "Process file for the missing planner-test-guidance agent"
+  - location: "agents/test/test-guidance-simulator/process.yml"
+    description: "Process file for the missing test-guidance-simulator agent"
+
+tasks:
+  - id: "mca-1.1"
+    description: "Create planner-test-guidance-agent.md in .claude/agents/"
+    agent_type: "teacher-update-assets"
+    operation: "CREATE"
+    status: "completed"
+    context:
+      target_file: ".claude/agents/planner-test-guidance-agent.md"
+      content: |
+        ---
+        name: planner-test-guidance-agent
+        description: Specialized agent for creating guidance validation tests using agent simulation.
+        model: sonnet
+        ---
+
+        ## Process Instructions
+        Read and execute the AI instructions process file located at:
+        `MyAgentsGuidance-guidance-refinement-v1/agents/planner/planner-test-guidance/process.yml`
+    acceptance_criteria:
+      - "File exists at .claude/agents/planner-test-guidance-agent.md"
+      - "Frontmatter correctly identifies the agent name"
+      - "Process path points to the correct process.yml in the current worktree"
+    files:
+      - ".claude/agents/planner-test-guidance-agent.md"
+
+  - id: "mca-1.2"
+    description: "Create test-guidance-simulator-agent.md in .claude/agents/"
+    agent_type: "teacher-update-assets"
+    operation: "CREATE"
+    status: "completed"
+    context:
+      target_file: ".claude/agents/test-guidance-simulator-agent.md"
+      content: |
+        ---
+        name: test-guidance-simulator-agent
+        description: Agent for executing tasks using only provided guidance to validate completeness.
+        model: sonnet
+        ---
+
+        ## Process Instructions
+        Read and execute the AI instructions process file located at:
+        `MyAgentsGuidance-guidance-refinement-v1/agents/test/test-guidance-simulator/process.yml`
+    acceptance_criteria:
+      - "File exists at .claude/agents/test-guidance-simulator-agent.md"
+      - "Frontmatter correctly identifies the agent name"
+      - "Process path points to the correct process.yml in the current worktree"
+    files:
+      - ".claude/agents/test-guidance-simulator-agent.md"
+
+success_criteria:
+  - "Both missing agents are registered in the .claude/agents/ directory"
+  - "Claude Code can successfully spawn these agents by name"
+  - "AGENT_TYPE_MISMATCH error is resolved for these agents"
+
+notes:
+  - "The agents were already physically created in the agents/ directory; only the Claude Code registration was missing."
+  - "Paths in the .md files must be absolute or relative to the workspace root."
+  - "Using sonnet model as standard for these specialized tasks."
+

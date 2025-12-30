@@ -1,0 +1,238 @@
+# MyAgents - Live Plan: Add search_files Tool
+# Created: 2025-11-24
+# Last Updated: 2025-11-24
+# Worktree: /home/code/myagents/MyAgents-search_files
+# Branch: myagents-search_files
+# Purpose: Add search_files tool to coding agent for file search (grep/find)
+
+session_date: 2025-11-24
+last_updated: 2025-11-24
+
+# ==============================================================================
+# PLAN METADATA
+# ==============================================================================
+
+name: Add search_files Tool to Coding Agent
+worktree: /home/code/myagents/MyAgents-search_files
+branch: myagents-search_files
+created: 2025-11-24
+status: completed
+
+description: |
+  Add search_files tool to the coding agent to enable file search capabilities (grep/find).
+  Currently, the coding agent has no file search capability, which is a documented limitation.
+  This tool will allow searching for text patterns in files and finding files by name patterns.
+
+objectives:
+  - Implement search_files methods in FileOperations domain
+  - Add search_files and find_files tools to file_tools.py
+  - Register tools in tool registry
+  - Add tests for search functionality
+  - Update documentation to reflect new capability
+
+liveplan: /home/code/myagents/docs/plans/live/251124_myagents-search_files.yml
+completedplan: /home/code/myagents/docs/plans/completed/251124_myagents-search_files.yml
+
+# ==============================================================================
+# PHASES
+# ==============================================================================
+
+phases:
+  - name: Implementation Phase
+    status: completed
+    depends_on: []
+    execution_groups:
+      - execution: sequential
+        name: Add Search Methods to FileOperations Domain
+        status: completed
+        agents:
+          - type: builder
+            inputs:
+              - /home/code/myagents/MyAgents-search_files/backend/services/agents/src/domains/file_operations/file_operations.py
+            guidance: |
+              Context: The FileOperations domain needs search capabilities. Add methods for searching text in files
+              and finding files by name patterns.
+              
+              Instructions:
+              1. Add search_in_files method to FileOperations class:
+                 - Method signature: search_in_files(self, pattern: str, directory: str = ".", file_pattern: str = "*") -> List[dict]
+                 - Search for text pattern in files matching file_pattern within directory
+                 - Use Path.rglob() or Path.glob() for recursive search
+                 - Validate directory path using validate_path()
+                 - For each matching file, search for pattern in content
+                 - Return list of dicts: [{"file": str, "line_number": int, "line": str}, ...]
+                 - Limit results (e.g., max 100 matches) to prevent excessive output
+                 - Handle binary files gracefully (skip or detect)
+              2. Add find_files method to FileOperations class:
+                 - Method signature: find_files(self, name_pattern: str, directory: str = ".") -> List[str]
+                 - Find files matching name_pattern (supports glob patterns like *.py)
+                 - Use Path.rglob() for recursive search
+                 - Validate directory path using validate_path()
+                 - Return list of relative file paths
+                 - Limit results (e.g., max 100 files) to prevent excessive output
+              3. Follow same security patterns as other methods (path validation, error handling)
+              
+              Why this matters: Enables the coding agent to search for content and find files, addressing a documented limitation.
+            success_criteria:
+              - search_in_files returns matches with file paths and line numbers when patterns found
+              - find_files returns list of file paths matching glob patterns
+              - Invalid paths (absolute, traversal) raise ValueError
+              - Results capped at reasonable limit (e.g., 100 items)
+
+          - type: builder
+            inputs:
+              - /home/code/myagents/MyAgents-search_files/backend/services/agents/src/tools/file_tools.py
+            guidance: |
+              Context: The file_tools.py module needs to expose search functionality as tools.
+              
+              Instructions:
+              1. Add search_in_files tool:
+                 - @tool decorated function: search_in_files(pattern: str, directory: str = ".", file_pattern: str = "*") -> str
+                 - Function docstring: "Search for text pattern in files. Returns matches with file paths and line numbers."
+                 - Use _get_file_ops() to get FileOperations instance
+                 - Call search_in_files method and format results as readable string
+                 - Add to ALL_TOOLS list
+              2. Add find_files tool:
+                 - @tool decorated function: find_files(name_pattern: str, directory: str = ".") -> str
+                 - Function docstring: "Find files matching name pattern (supports glob patterns like *.py)."
+                 - Use _get_file_ops() to get FileOperations instance
+                 - Call find_files method and format results as readable string
+                 - Add to ALL_TOOLS list
+              3. Update TOOLS_BY_NAME dict (automatic via ALL_TOOLS)
+              
+              Why this matters: Makes search functionality available to the LLM as tools.
+            success_criteria:
+              - get_tool_by_name("search_in_files") returns the search tool
+              - get_tool_by_name("find_files") returns the find tool
+              - len(ALL_TOOLS) increases from 3 to 5
+              - Tools return formatted string output suitable for LLM consumption
+
+  - name: Testing Phase
+    status: completed
+    depends_on:
+      - Implementation Phase
+    execution_groups:
+      - execution: sequential
+        name: Integration Tests
+        status: completed
+        agents:
+          - type: tester
+            inputs:
+              - /home/code/myagents/MyAgents-search_files/tests/integration/file_operations/test_domain.py
+              - /home/code/myagents/MyAgents-search_files/tests/integration/file_operations/test_tools.py
+              - /home/code/myagents/MyAgents-search_files/backend/services/agents/src/domains/file_operations/file_operations.py
+              - /home/code/myagents/MyAgents-search_files/backend/services/agents/src/tools/file_tools.py
+            guidance: |
+              Process: frontend/agents/test/processes/smoke_test.yml
+              Strategy: technical-spike
+
+              Context: Add minimal tests for new search_in_files and find_files functionality. Follow existing test
+              patterns in test files - use pytest fixtures (temp_dir, file_ops, setup_test_env) and @pytest.mark.integration.
+
+              Instructions:
+              1. Add tests to test_domain.py for FileOperations methods:
+                 - TestDomainSearchInFiles: Test pattern matching returns results, test path validation rejects invalid paths
+                 - TestDomainFindFiles: Test glob patterns work, test path validation rejects invalid paths
+              2. Add tests to test_tools.py for search tools:
+                 - Verify search_in_files and find_files are in ALL_TOOLS and TOOLS_BY_NAME
+                 - Test tools return formatted string output
+
+              Why this matters: Validates core search functionality works correctly with minimal test coverage.
+            success_criteria:
+              - pytest tests/integration/file_operations/ passes with all tests green
+              - Search methods have basic happy path and security validation tests
+              - Tools are registered and return string output
+
+  - name: Documentation Phase
+    status: completed
+    depends_on:
+      - Testing Phase
+    execution_groups:
+      - execution: sequential
+        name: Update Documentation
+        status: completed
+        agents:
+          - type: documentation
+            inputs:
+              - /home/code/myagents/MyAgents-search_files/docs/guides/usage.md
+              - /home/code/myagents/MyAgents-search_files/README.md
+            guidance: |
+              Context: The documentation currently lists "No file search (grep/find)" as a limitation.
+              We need to update documentation to reflect the new search capabilities.
+              
+              Instructions:
+              1. Update docs/guides/usage.md:
+                 - Remove "No file search (grep/find)" from limitations
+                 - Add search_in_files and find_files to available commands section
+                 - Add example usage of search tools
+                 - Document pattern matching capabilities
+              2. Update README.md:
+                 - Remove file search limitation from Coding Agent limitations section
+                 - Add search capabilities to Features section
+              
+              Why this matters: Keeps documentation accurate and helps users understand available capabilities.
+            success_criteria:
+              - "No file search (grep/find)" text removed from limitations sections
+              - Documentation contains example usage of search_in_files and find_files
+              - grep -r "No file search" returns no matches in docs/
+
+  - name: Environment Fix Phase
+    status: completed
+    depends_on:
+      - Documentation Phase
+    execution_groups:
+      - execution: sequential
+        name: Fix Test Environment Configuration
+        status: completed
+        agents:
+          - type: builder
+            inputs:
+              - /home/code/myagents/MyAgents-search_files/pyproject.toml
+            guidance: |
+              Context: Tests cannot run due to agent-gcptoolkit workspace configuration issue.
+              The pyproject.toml references agent-gcptoolkit as a workspace member but it doesn't
+              exist in this worktree. Need to investigate and fix this so tests can run.
+
+              Instructions:
+              1. Check if agent-gcptoolkit exists in the main worktree at /home/code/myagents/MyAgents/
+              2. If it exists in main, copy it to this worktree
+              3. If it doesn't exist anywhere, remove the agent-gcptoolkit dependency and workspace reference
+              4. The search_files feature doesn't use agent-gcptoolkit, so removing it won't break the feature
+              5. Verify the fix allows uv sync to work
+
+              Why this matters: Tests need to run to verify the search feature works correctly after merge.
+            success_criteria:
+              - uv sync completes without errors
+              - No "workspace member" errors in output
+              - Test environment can be initialized
+
+  - name: Verification Phase
+    status: completed
+    depends_on:
+      - Environment Fix Phase
+    execution_groups:
+      - execution: sequential
+        name: Run Final Tests
+        status: completed
+        agents:
+          - type: tester
+            inputs:
+              - /home/code/myagents/MyAgents-search_files/tests/integration/file_operations/test_domain.py
+              - /home/code/myagents/MyAgents-search_files/tests/integration/file_operations/test_tools.py
+            guidance: |
+              Process: frontend/agents/test/processes/smoke_test.yml
+              Strategy: technical-spike
+
+              Context: Run final verification tests after environment fix to ensure nothing broke from the merge.
+
+              Instructions:
+              1. Run pytest tests/integration/file_operations/
+              2. Verify all 67 tests pass
+              3. Confirm search_in_files and find_files tests pass
+
+              Why this matters: Final confirmation that merge didn't break the search feature.
+            success_criteria:
+              - pytest tests/integration/file_operations/ exits with code 0
+              - All tests pass (0 failures)
+              - Search feature tests specifically pass
+

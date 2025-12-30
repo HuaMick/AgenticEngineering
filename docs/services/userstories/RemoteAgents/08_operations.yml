@@ -1,0 +1,303 @@
+# ==============================================================================
+# RemoteAgents User Stories - Operations & Monitoring
+# ==============================================================================
+
+category: operations
+name: "Operations & Monitoring"
+description: "Logging, health checks, and operational monitoring"
+
+stories:
+  # --------------------------------------------------------------------------
+  # US-OPS-001: Configure Log Levels via Environment Variable
+  # --------------------------------------------------------------------------
+  - id: US-OPS-001
+    title: "Configure Log Levels via Environment Variable"
+    priority: HIGH
+    persona: platform_operator
+
+    description: |
+      As a platform operator, I want to configure logging levels via environment variable
+      so that I can control the verbosity of logs for debugging or production use.
+
+    preconditions:
+      - Relay service or terminal service is deployable
+      - LOG_LEVEL environment variable can be set
+
+    journey:
+      - step: 1
+        action: "Set LOG_LEVEL=DEBUG and start service"
+        expected: "Service logs detailed connection events and message handling"
+
+      - step: 2
+        action: "Create session and observe logs"
+        expected: |
+          Debug logs show:
+          - "RelayClient initialized for session {session_id}"
+          - "Received message: type={message_type}"
+          - "Decrypted message: type={inner_message_type}"
+          - "Sent pong response"
+
+      - step: 3
+        action: "Set LOG_LEVEL=INFO and restart service"
+        expected: |
+          Info logs show session lifecycle:
+          - "Connecting to relay: {ws_url}"
+          - "Connected to relay for session {session_id}"
+          - Connection state changes
+
+      - step: 4
+        action: "Set LOG_LEVEL=ERROR and restart service"
+        expected: "Only error messages are logged (relay errors, connection failures)"
+
+    acceptance_criteria:
+      - LOG_LEVEL environment variable controls logging verbosity
+      - DEBUG shows detailed message traces and state changes
+      - INFO shows session lifecycle and connection events
+      - WARNING shows connection timeouts and invalid status codes
+      - ERROR shows only critical failures
+      - Default LOG_LEVEL=INFO when not specified
+
+    test_layers:
+      local: true
+      docker: true
+      integration: true
+
+  # --------------------------------------------------------------------------
+  # US-OPS-002: Health Check Endpoint Monitoring
+  # --------------------------------------------------------------------------
+  - id: US-OPS-002
+    title: "Health Check Endpoint Monitoring"
+    priority: HIGH
+    persona: platform_operator
+
+    description: |
+      As a platform operator, I want health check endpoints on all services
+      so that monitoring tools and load balancers can verify service health.
+
+    preconditions:
+      - Relay service running on localhost:8080
+      - Monitoring tools available (curl, load balancer health checks)
+
+    journey:
+      - step: 1
+        action: "Query relay health endpoint"
+        command: "curl http://localhost:8080/health"
+        expected: |
+          HTTP 200 response with JSON:
+          {
+            "status": "healthy",
+            "repository": "InMemorySessionRepository(sessions=0)"
+          }
+
+      - step: 2
+        action: "Create sessions and query health again"
+        expected: "Repository statistics show active session count"
+
+      - step: 3
+        action: "Configure Docker HEALTHCHECK"
+        expected: |
+          Dockerfile contains:
+          HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3
+            CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health').read()"
+
+      - step: 4
+        action: "Verify container health status"
+        command: "docker ps --filter health=healthy"
+        expected: "Service container shows as healthy"
+
+    acceptance_criteria:
+      - GET /health returns 200 when service is operational
+      - Response includes service status indicator
+      - Response includes repository or session statistics
+      - Docker HEALTHCHECK uses /health endpoint
+      - Health checks run every 30 seconds
+      - Failed health checks trigger container restart after 3 retries
+
+    test_layers:
+      local: true
+      docker: true
+      integration: true
+
+  # --------------------------------------------------------------------------
+  # US-OPS-003: Structured Logging for Debugging
+  # --------------------------------------------------------------------------
+  - id: US-OPS-003
+    title: "Structured Logging for Debugging"
+    priority: MEDIUM
+    persona: platform_operator
+
+    description: |
+      As a platform operator, I want structured logging with contextual information
+      so that I can trace requests and debug issues efficiently.
+
+    preconditions:
+      - Service running with LOG_LEVEL=DEBUG
+      - Session created and active
+
+    journey:
+      - step: 1
+        action: "Create session and connect desktop client"
+        expected: |
+          Logs include session_id for tracing:
+          - "RelayClient initialized for session {session_id}"
+          - "Connected to relay for session {session_id}"
+
+      - step: 2
+        action: "Trigger connection state changes"
+        expected: |
+          Connection state transitions logged:
+          - "Connecting to relay: {ws_url}"
+          - "Connected to relay for session {session_id}"
+          - "Reconnecting in {delay}s (attempt {count})"
+
+      - step: 3
+        action: "Trigger error conditions"
+        expected: |
+          Error logs include error codes:
+          - "Relay error: [{error.code}] {error.message}"
+          - "Decryption failed: {exception}"
+          - "Error in receive loop: {exception}"
+
+      - step: 4
+        action: "Review log format"
+        expected: |
+          Log format includes:
+          - Timestamp: "2025-12-10 15:30:45"
+          - Logger name: "agent_remote.services.terminal.infrastructure.relay_client"
+          - Level: "INFO", "DEBUG", "ERROR"
+          - Message with context
+
+    acceptance_criteria:
+      - All logs include timestamp in ISO 8601 format
+      - Logger name identifies the module
+      - Session-related logs include session_id
+      - Connection logs include WebSocket URL
+      - Error logs include exception details with traceback
+      - Log format configured via logging.basicConfig()
+      - Format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+    test_layers:
+      local: true
+      docker: true
+      integration: false
+
+  # --------------------------------------------------------------------------
+  # US-OPS-004: Log Rotation and Retention
+  # --------------------------------------------------------------------------
+  - id: US-OPS-004
+    title: "Log Rotation and Retention"
+    priority: MEDIUM
+    persona: platform_operator
+
+    description: |
+      As a platform operator, I want logs written to stdout/stderr for container capture
+      so that I can use standard Docker logging drivers for rotation and aggregation.
+
+    preconditions:
+      - Service running in Docker container
+      - Docker logging driver configured (json-file, syslog, etc.)
+
+    journey:
+      - step: 1
+        action: "Verify logging configuration"
+        expected: |
+          Python logging configured for console output:
+          - logging.basicConfig() writes to stdout/stderr
+          - No local file handlers configured
+          - Follows 12-factor app principles
+
+      - step: 2
+        action: "Run container with json-file logging driver"
+        command: "docker run --log-driver json-file --log-opt max-size=10m --log-opt max-file=3"
+        expected: "Container logs captured and rotated by Docker"
+
+      - step: 3
+        action: "View container logs"
+        command: "docker logs {container_id}"
+        expected: "All application logs available via docker logs"
+
+      - step: 4
+        action: "Configure log aggregation"
+        expected: |
+          Logs compatible with:
+          - Docker json-file driver (with rotation)
+          - Syslog driver (for centralized logging)
+          - Fluentd/Logstash drivers (for aggregation)
+          - Cloud provider logging (CloudWatch, Stackdriver)
+
+    acceptance_criteria:
+      - All logs written to stdout/stderr (not files)
+      - No local file logging handlers configured
+      - Compatible with Docker logging drivers
+      - Supports log rotation via Docker --log-opt max-size
+      - Supports log retention via Docker --log-opt max-file
+      - Follows 12-factor app logging principles
+      - No disk I/O for logs within container
+
+    test_layers:
+      local: false
+      docker: true
+      integration: true
+
+  # --------------------------------------------------------------------------
+  # US-OPS-005: Performance Metrics Logging
+  # --------------------------------------------------------------------------
+  - id: US-OPS-005
+    title: "Performance Metrics Logging"
+    priority: LOW
+    persona: platform_operator
+
+    description: |
+      As a platform operator, I want performance metrics logged
+      so that I can monitor system performance and identify bottlenecks.
+
+    preconditions:
+      - Service running with INFO or DEBUG logging
+      - Sessions active with traffic
+
+    journey:
+      - step: 1
+        action: "Monitor connection establishment metrics"
+        expected: |
+          Logs show connection timing:
+          - "Connecting to relay: {ws_url}"
+          - "Connected to relay for session {session_id}"
+          - Reconnect delays: "Reconnecting in {delay}s (attempt {count})"
+
+      - step: 2
+        action: "Review session lifecycle timing"
+        expected: |
+          Startup logs show initialization timing:
+          - "Starting Agent Remote Relay Service"
+          - "Repository initialized: {repository}"
+          - "Cleanup worker started (interval: {interval}s)"
+          - "Relay service startup complete"
+
+      - step: 3
+        action: "Monitor keepalive intervals"
+        expected: |
+          Debug logs show keepalive timing:
+          - "Sent keepalive ping" (every 30 seconds)
+          - "Received pong" responses
+
+      - step: 4
+        action: "Review aspirational metrics"
+        expected: |
+          Future enhancements may include:
+          - Message throughput (messages/second)
+          - Encryption/decryption timing
+          - WebSocket message size statistics
+          - Session duration tracking
+
+    acceptance_criteria:
+      - Connection duration metrics logged implicitly (connect/disconnect timestamps)
+      - Reconnection attempt counts and delays logged
+      - Keepalive interval timing logged at DEBUG level
+      - Service startup/shutdown timing logged
+      - Note: Detailed throughput metrics are aspirational and not currently implemented
+      - Note: Message size and encryption timing are not currently tracked
+
+    test_layers:
+      local: true
+      docker: false
+      integration: false

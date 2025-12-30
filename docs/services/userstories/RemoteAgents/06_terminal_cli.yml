@@ -1,0 +1,178 @@
+# ==============================================================================
+# RemoteAgents User Stories - Terminal CLI
+# ==============================================================================
+
+category: terminal_cli
+name: "Terminal CLI"
+description: "Desktop terminal service CLI operations"
+
+stories:
+  # --------------------------------------------------------------------------
+  # US-CLI-001: Start Terminal Service
+  # --------------------------------------------------------------------------
+  - id: US-CLI-001
+    title: "Start Terminal CLI with Relay URL"
+    priority: CRITICAL
+    persona: desktop_user
+
+    description: |
+      As a desktop developer, I want to start the terminal CLI
+      so that I can create a remote session.
+
+    preconditions:
+      - Terminal service installed
+      - Relay service URL known
+
+    journey:
+      - step: 1
+        action: "Run: agent-remote-terminal --relay-url http://localhost:8080"
+        expected: "CLI starts without error"
+
+      - step: 2
+        action: "Observe output"
+        expected: |
+          Session ID displayed
+          Pairing code displayed prominently
+          Instructions for sharing code
+
+      - step: 3
+        action: "Terminal ready for input"
+        expected: "Claude Code CLI spawned in PTY"
+
+    acceptance_criteria:
+      - CLI accepts --relay-url argument
+      - Creates session on relay
+      - Displays pairing code clearly
+      - Spawns default command (claude)
+
+    test_layers:
+      local: true
+      docker: true
+      integration: true
+
+  # --------------------------------------------------------------------------
+  # US-CLI-002: Custom Command Execution
+  # --------------------------------------------------------------------------
+  - id: US-CLI-002
+    title: "Start Terminal with Custom Command"
+    priority: MEDIUM
+    persona: desktop_user
+
+    description: |
+      As a desktop developer, I want to specify a custom command
+      so that I can run different CLIs in the terminal.
+
+    preconditions:
+      - Terminal service installed
+
+    journey:
+      - step: 1
+        action: "Run: agent-remote-terminal --relay-url URL --command bash"
+        expected: "CLI starts with bash instead of claude"
+
+      - step: 2
+        action: "Verify command running"
+        expected: "bash prompt appears"
+
+      - step: 3
+        action: "Run: agent-remote-terminal --command 'python3 -i'"
+        expected: "Python REPL starts"
+
+    acceptance_criteria:
+      - --command argument accepted
+      - Custom command spawned in PTY
+      - Default is 'claude' if not specified
+      - Commands with arguments work
+
+    test_layers:
+      local: true
+      docker: true
+      integration: true
+
+  # --------------------------------------------------------------------------
+  # US-CLI-003: Custom Terminal Dimensions
+  # --------------------------------------------------------------------------
+  - id: US-CLI-003
+    title: "Start Terminal with Custom Dimensions"
+    priority: LOW
+    persona: desktop_user
+
+    description: |
+      As a desktop developer, I want to specify initial terminal dimensions
+      so that the PTY matches my expected size.
+
+    preconditions:
+      - Terminal service installed
+
+    journey:
+      - step: 1
+        action: "Run: agent-remote-terminal --relay-url URL --rows 50 --cols 150"
+        expected: "CLI starts with specified dimensions"
+
+      - step: 2
+        action: "Verify dimensions in PTY"
+        command: "stty size"
+        expected: "Returns '50 150'"
+
+      - step: 3
+        action: "Default dimensions if not specified"
+        expected: "24 rows, 80 cols"
+
+    acceptance_criteria:
+      - --rows and --cols arguments accepted
+      - PTY created with specified dimensions
+      - Defaults to 24x80 if not specified
+      - Dimensions reported correctly by stty
+
+    test_layers:
+      local: true
+      docker: false
+      integration: true
+
+  # --------------------------------------------------------------------------
+  # US-CLI-004: Graceful Shutdown on SIGINT
+  # --------------------------------------------------------------------------
+  - id: US-CLI-004
+    title: "Ctrl+C Gracefully Shuts Down"
+    priority: HIGH
+    persona: desktop_user
+
+    description: |
+      As a desktop developer, I want Ctrl+C to shut down cleanly
+      so that resources are properly released.
+
+    preconditions:
+      - Terminal CLI running
+      - Session active
+
+    journey:
+      - step: 1
+        action: "Press Ctrl+C"
+        expected: "SIGINT received by CLI"
+
+      - step: 2
+        action: "CLI initiates shutdown"
+        expected: |
+          SessionClose sent to relay
+          PTY process terminated
+          WebSocket closed
+
+      - step: 3
+        action: "CLI exits"
+        expected: "Exit code 0 (or 130 for SIGINT)"
+
+      - step: 4
+        action: "Verify cleanup"
+        expected: "No orphaned processes"
+
+    acceptance_criteria:
+      - SIGINT handled gracefully
+      - Relay notified of close
+      - PTY process terminated
+      - Resources cleaned up
+      - Clean exit
+
+    test_layers:
+      local: true
+      docker: true
+      integration: true

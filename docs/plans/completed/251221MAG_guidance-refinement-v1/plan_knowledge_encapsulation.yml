@@ -1,0 +1,235 @@
+# Knowledge Encapsulation Definition Plan
+# This plan tracks the creation of the knowledge-encapsulation definition and its integration into teacher agents.
+
+plan_name: "Implement Knowledge Encapsulation Definition"
+worktree: "/home/code/myagents/MyAgentsGuidance-guidance-refinement-v1"
+branch: "guidance-refinement-v1"
+created: "2025-12-22"
+objective: "Define knowledge encapsulation principle to help teachers identify when agents receive unnecessary system meta-knowledge."
+
+# CONTEXT AND RATIONALE
+# ====================
+# This concept emerged from analyzing the loop_context false failure in Phase 4 validation.
+# The broader principle: agents should only receive task-relevant knowledge.
+# System meta-knowledge (orchestration, position, workflow) should be encapsulated away.
+#
+# This generalizes beyond loops to any case where an agent is given information
+# it doesn't functionally need. Teachers can use this principle to spot:
+# - Loop awareness when orchestrator manages loops
+# - Parent/spawner identity when not needed for task
+# - Workflow position (what comes before/after)
+# - Strategic context (why this task matters to larger goal)
+#
+# Related to but distinct from:
+# - context-minimisation: focuses on AMOUNT of context
+# - knowledge-encapsulation: focuses on TYPE of context (meta vs task knowledge)
+# - signal-and-noise: focuses on discriminatory power
+# - role-separation: focuses on knowledge boundaries between roles
+
+inputs:
+  - location: "assets/definitions/context-minimisation.yml"
+    description: "Related concept - amount of context"
+  - location: "assets/definitions/signal-and-noise.yml"
+    description: "Related concept - discriminatory power"
+  - location: "assets/definitions/role-separation.yml"
+    description: "Related concept - knowledge boundaries between roles"
+  - location: "agents/planner/planner-teach/inputs.yml"
+    description: "Target for integration - planner-teach agent"
+  - location: "agents/teacher/teacher-process/inputs.yml"
+    description: "Target for integration - teacher-process agent"
+  - location: "agents/teacher/teacher-update-assets/inputs.yml"
+    description: "Target for integration - teacher-update-assets agent"
+
+phases:
+  - name: "phase-1-create-definition"
+    description: "Create knowledge-encapsulation.yml definition file with core principle and examples"
+    agent_category: "teacher"
+    success_criteria:
+      - "knowledge-encapsulation.yml exists at assets/definitions/"
+      - "Definition includes core principle and test question"
+      - "Examples of encapsulated vs required knowledge included"
+      - "Teacher application guidance included"
+      - "Related definitions referenced"
+
+    tasks:
+      - id: "1.1"
+        description: "Create assets/definitions/knowledge-encapsulation.yml"
+        agent_type: "teacher-update-assets"
+        operation: "CREATE"
+        context:
+          target_file: "assets/definitions/knowledge-encapsulation.yml"
+          current_state: "Definition file does not exist"
+          required_content: |
+            knowledge-encapsulation: |
+              The principle that agents should only receive task-relevant knowledge.
+              System meta-knowledge (orchestration, position, workflow) should be
+              encapsulated away unless functionally required.
+
+              Ask: "Can this agent complete its task without knowing this?"
+              If yes: encapsulate it (don't include).
+
+              Examples of encapsulated knowledge (DO NOT include):
+              - Loop participation (orchestrator manages iteration)
+              - Spawner identity (who called this agent)
+              - Workflow position (what runs before/after)
+              - Strategic context (why this task matters to the larger goal)
+
+              Examples of required knowledge (DO include):
+              - Input files to read
+              - Output format to produce
+              - Success criteria to meet
+              - Domain-specific constraints
+
+              Why encapsulate:
+              - Reduces noise (meta-knowledge dilutes attention)
+              - Enables reuse (agent works in any context)
+              - Prevents coupling (orchestrator changes don't require agent updates)
+              - Supports hyperfocus (agent only thinks about its task)
+
+              Teacher application:
+              When reviewing agent guidance, ask for each piece of information:
+              1. Does the agent need this to produce correct output?
+              2. Would removing this prevent task completion?
+              3. Is this about the task or about the system?
+
+              If answers are No/No/System - encapsulate it (remove from guidance).
+
+              Related: context-minimisation.yml, signal-and-noise.yml, role-separation.yml
+        acceptance_criteria:
+          - "File exists at assets/definitions/knowledge-encapsulation.yml"
+          - "Definition includes core principle and test question"
+          - "Examples of encapsulated vs required knowledge included"
+          - "Teacher application guidance included"
+        files:
+          - "assets/definitions/knowledge-encapsulation.yml"
+
+  - name: "phase-2-integrate-into-agents"
+    description: "Add knowledge-encapsulation.yml to teacher agent inputs"
+    agent_category: "teacher"
+    dependencies:
+      - "phase-1-create-definition"
+    success_criteria:
+      - "planner-teach/inputs.yml references knowledge-encapsulation.yml"
+      - "teacher-process/inputs.yml references knowledge-encapsulation.yml"
+      - "teacher-update-assets/inputs.yml references knowledge-encapsulation.yml"
+      - "All input files remain valid YAML"
+
+    tasks:
+      - id: "2.1"
+        description: "Add knowledge-encapsulation.yml to planner-teach/inputs.yml"
+        agent_type: "teacher-update-assets"
+        operation: "UPDATE"
+        context:
+          target_file: "agents/planner/planner-teach/inputs.yml"
+          section: "core_inputs"
+          current_state: "knowledge-encapsulation.yml not referenced"
+          required_changes:
+            - "Add entry to core_inputs section"
+            - "type: file"
+            - "path: assets/definitions/knowledge-encapsulation.yml"
+            - "description: Knowledge encapsulation principle - identify unnecessary meta-knowledge in agent guidance"
+            - "required: true"
+        acceptance_criteria:
+          - "planner-teach/inputs.yml references knowledge-encapsulation.yml"
+          - "File structure remains valid YAML"
+        files:
+          - "agents/planner/planner-teach/inputs.yml"
+
+      - id: "2.2"
+        description: "Add knowledge-encapsulation.yml to teacher-process/inputs.yml"
+        agent_type: "teacher-update-assets"
+        operation: "UPDATE"
+        context:
+          target_file: "agents/teacher/teacher-process/inputs.yml"
+          section: "core_inputs"
+          current_state: "knowledge-encapsulation.yml not referenced"
+          required_changes:
+            - "Add entry to core_inputs section"
+            - "type: file"
+            - "path: assets/definitions/knowledge-encapsulation.yml"
+            - "description: Knowledge encapsulation principle - identify unnecessary meta-knowledge in agent guidance"
+            - "required: true"
+        acceptance_criteria:
+          - "teacher-process/inputs.yml references knowledge-encapsulation.yml"
+          - "File structure remains valid YAML"
+        files:
+          - "agents/teacher/teacher-process/inputs.yml"
+
+      - id: "2.3"
+        description: "Add knowledge-encapsulation.yml to teacher-update-assets/inputs.yml"
+        agent_type: "teacher-update-assets"
+        operation: "UPDATE"
+        context:
+          target_file: "agents/teacher/teacher-update-assets/inputs.yml"
+          section: "core_inputs"
+          current_state: "knowledge-encapsulation.yml not referenced"
+          required_changes:
+            - "Add entry to core_inputs section"
+            - "type: file"
+            - "path: assets/definitions/knowledge-encapsulation.yml"
+            - "description: Knowledge encapsulation principle - identify unnecessary meta-knowledge in agent guidance"
+            - "required: true"
+        acceptance_criteria:
+          - "teacher-update-assets/inputs.yml references knowledge-encapsulation.yml"
+          - "File structure remains valid YAML"
+        files:
+          - "agents/teacher/teacher-update-assets/inputs.yml"
+
+  - name: "phase-3-verification"
+    description: "Verify definition exists and all agent inputs reference it correctly"
+    agent_category: "test"
+    dependencies:
+      - "phase-2-integrate-into-agents"
+    success_criteria:
+      - "All modified files are valid YAML"
+      - "All references resolve to existing files"
+      - "No broken links in inputs.yml files"
+
+    tasks:
+      - id: "3.1"
+        description: "Validate all definition and input file references"
+        agent_type: "test-final-output"
+        operation: "AUDIT"
+        context:
+          scope: "All modified definition and input files"
+          checks:
+            - "knowledge-encapsulation.yml exists and is well-formed"
+            - "planner-teach/inputs.yml references resolve correctly"
+            - "teacher-process/inputs.yml references resolve correctly"
+            - "teacher-update-assets/inputs.yml references resolve correctly"
+            - "All YAML files are syntactically valid"
+        acceptance_criteria:
+          - "Zero broken references"
+          - "Definition file complete with all required sections"
+          - "All input files reference the definition correctly"
+        files:
+          - "assets/definitions/knowledge-encapsulation.yml"
+          - "agents/planner/planner-teach/inputs.yml"
+          - "agents/teacher/teacher-process/inputs.yml"
+          - "agents/teacher/teacher-update-assets/inputs.yml"
+
+success_criteria:
+  user_validation:
+    - "Teachers can use principle to identify unnecessary meta-knowledge in agent guidance"
+    - "Definition is clear and actionable with practical examples"
+    - "Teacher agents have access to the definition through their inputs"
+
+  technical_validation:
+    - "knowledge-encapsulation.yml exists with complete definition and examples"
+    - "planner-teach agent has access to definition via inputs.yml"
+    - "teacher-process agent has access to definition via inputs.yml"
+    - "teacher-update-assets agent has access to definition via inputs.yml"
+    - "All references are valid and files are well-formed YAML"
+
+notes:
+  - "This definition emerged from the loop_context false failure analysis"
+  - "Generalizes beyond loops to any unnecessary system meta-knowledge"
+  - "Complements context-minimisation (amount) with focus on type of context"
+  - "Enables teachers to spot over-prescription in agent guidance"
+
+related_context:
+  origin: "docs/plans/live/251221MAG_guidance-refinement-v1/plan_remove_loop_context_test.yml"
+  related_definitions:
+    - "assets/definitions/context-minimisation.yml"
+    - "assets/definitions/signal-and-noise.yml"
+    - "assets/definitions/role-separation.yml"
