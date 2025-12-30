@@ -1,0 +1,35 @@
+# Flutter CI Dockerfile for MyAgentsFrontend
+# Build from repo root: docker build -f Dockerfile.test -t myagentsfrontend-test .
+
+FROM ghcr.io/cirruslabs/flutter:stable AS builder
+
+WORKDIR /app
+
+# Copy pubspec files first for dependency caching
+COPY pubspec.yaml pubspec.lock ./
+
+# Install dependencies (cached unless pubspec changes)
+RUN flutter pub get
+
+# Copy source code and configuration
+COPY lib ./lib
+COPY test ./test
+COPY web ./web
+COPY analysis_options.yaml ./
+
+# Pre-compile for faster test execution
+RUN flutter pub get --offline
+
+# Runtime stage
+FROM ghcr.io/cirruslabs/flutter:stable
+
+WORKDIR /app
+
+# Copy from builder
+COPY --from=builder /app ./
+
+# Verify Flutter installation
+RUN flutter doctor -v
+
+# Default command - run tests
+CMD ["flutter", "test"]
