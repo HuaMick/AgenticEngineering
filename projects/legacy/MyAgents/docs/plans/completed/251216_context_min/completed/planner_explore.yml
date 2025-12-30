@@ -1,0 +1,153 @@
+# Planner Task: Explore Agent Context Minimisation
+# Plan: 251216_context_min
+
+task:
+  agent: "explore"
+  target_path: "explore/"
+
+  current_structure:
+    root_files:
+      - "manifest-explore.yml"
+      - "manifest.yml"
+      - "inputs.yml"
+      - "definitions.yml"
+    sub_agents:
+      - "explore-architecture/"
+      - "explore-dependency/"
+      - "explore-feature/"
+      - "explore-synthesis/"
+      - "explore-test/"
+
+  audit_checklist:
+    context_minimisation:
+      - "Review root inputs.yml - is all context needed at root level?"
+      - "Review each sub-agent inputs.yml for unnecessary context"
+      - "Check if definitions.yml content could be loaded just-in-time"
+      - "Identify duplicated context between root and sub-agent inputs"
+
+    folder_structure:
+      - "Verify manifest.yml serves as hub with minimal detail"
+      - "Verify manifest-explore.yml has full context"
+      - "Ensure each sub-agent has: process.yml, inputs.yml"
+      - "Check for missing manifest.yml in sub-agent folders"
+
+  tasks:
+    - id: "explore-01"
+      description: "Delete root inputs.yml - sub-agents should be self-contained"
+      file: "explore/inputs.yml"
+      criteria: "File removed; each sub-agent has complete inputs.yml without parent_inputs references"
+      action: "delete"
+      status: "completed"
+      result: "Root inputs.yml file was already deleted or never existed. Verified no inputs.yml at root level."
+
+    - id: "explore-02"
+      description: "Audit explore-architecture/inputs.yml"
+      file: "explore/explore-architecture/inputs.yml"
+      criteria: "Only architecture-specific inputs; no duplicated root context"
+      status: "completed"
+      result: "COMPLIANT - Self-contained with architecture-specific definitions only. No parent_inputs references. All paths correct."
+
+    - id: "explore-03"
+      description: "Audit explore-dependency/inputs.yml"
+      file: "explore/explore-dependency/inputs.yml"
+      criteria: "Only dependency-specific inputs"
+      status: "completed"
+      result: "COMPLIANT - Self-contained with dependency-specific definitions only. No parent_inputs references. All paths correct."
+
+    - id: "explore-04"
+      description: "Audit explore-feature/inputs.yml"
+      file: "explore/explore-feature/inputs.yml"
+      criteria: "Only feature-specific inputs"
+      status: "completed"
+      result: "COMPLIANT - Self-contained with feature-specific definitions only. No parent_inputs references. All paths correct."
+
+    - id: "explore-05"
+      description: "Audit explore-test/inputs.yml"
+      file: "explore/explore-test/inputs.yml"
+      criteria: "Only test-specific inputs"
+      status: "completed"
+      result: "COMPLIANT - Self-contained with test-specific definitions only. No parent_inputs references. All paths correct."
+
+    - id: "explore-06"
+      description: "Add manifest.yml to each sub-agent folder"
+      criteria: "All sub-agents have manifest.yml referencing parent"
+      status: "completed"
+      result: "All 5 sub-agents (architecture, dependency, feature, synthesis, test) have manifest.yml files. No additions needed."
+
+    - id: "explore-07"
+      description: "Update references after changes"
+      criteria: "All paths in inputs/process files resolve to existing files"
+      status: "completed"
+      result: "Verified all references. Process file Explore.yml doesn't reference inputs.yml. All sub-agent inputs reference existing files."
+
+  reference_update_locations:
+    - "assets/processes/Explore.yml"
+
+  # Additional context-minimisation proposals from review (2025-12-18)
+  proposals:
+    - id: "explore-prop-01"
+      file: "explore/explore-architecture/inputs.yml"
+      issue: "Inline 'exploration_principles' definition (lines 101-124) appears unique but shares patterns with other explorers"
+      proposal: "Create assets/definitions/exploration-principles.yml with shared explorer guidelines (discover-first, context-min, parallel execution)"
+      impact: "Remove ~500 tokens across 5 explorer agents by consolidating shared principles"
+      priority: "medium"
+      status: "completed"
+      result: |
+        Created assets/definitions/exploration-principles.yml with comprehensive exploration principles
+        covering discovery-first approach, context minimization, parallel execution, scope boundaries,
+        and quality criteria. Updated all 5 explorer agent inputs.yml files to reference the shared
+        definition file. Removed inline exploration_principles definition from explore-architecture/inputs.yml.
+
+        Files created:
+        - assets/definitions/exploration-principles.yml
+
+        Files modified:
+        - explore/explore-architecture/inputs.yml
+        - explore/explore-dependency/inputs.yml
+        - explore/explore-feature/inputs.yml
+        - explore/explore-synthesis/inputs.yml
+        - explore/explore-test/inputs.yml
+
+        Token savings: Approximately 500+ tokens across 5 explorer agents by removing redundant
+        inline definitions and consolidating into single shared definition file.
+
+    - id: "explore-prop-02"
+      file: "explore/"
+      issue: "Missing root-level manifest.yml for explore agent family"
+      proposal: "Create explore/manifest.yml as hub file pointing to explore-architecture, explore-dependency, explore-feature, explore-synthesis, explore-test sub-agents"
+      impact: "Improve discoverability, align with hub-and-spoke architecture"
+      priority: "medium"
+      status: "completed"
+      result: |
+        Created explore/manifest.yml as hub file following the planner/manifest.yml pattern.
+        The manifest provides:
+        - Clear description of explore agent group purpose
+        - Complete listing of all 5 sub-agents with descriptions
+        - Routing guidelines for selecting appropriate explorer
+        - Reference to shared exploration principles
+        - Output structure documentation
+
+        Files created:
+        - explore/manifest.yml
+
+        The manifest improves discoverability and aligns the explore agent family with the
+        hub-and-spoke architecture pattern used by other agent families (planner, test, etc.).
+        This enables better navigation and understanding of the explorer agent ecosystem.
+
+final_note:
+  status: "plan_completed"
+  completion_date: "2025-12-18"
+  note: |
+    All tasks in this plan have been completed successfully. The explore agent family has been
+    restructured following context minimization principles with self-contained sub-agents.
+
+    POST-COMPLETION UPDATE:
+    The hub manifest file (explore/manifest.yml) created in explore-prop-02 was later deleted
+    as part of an over-abstraction cleanup. The hub-and-spoke manifest pattern was identified
+    as adding unnecessary indirection without sufficient value. Each sub-agent remains
+    self-contained with its own manifest.yml, but the root-level hub manifest was removed.
+
+    This decision aligns with the core principle of context minimization: only include
+    abstractions that provide clear value. The hub manifests added discoverability but
+    at the cost of additional maintenance overhead and cognitive load without sufficient
+    benefit for the agent system's current usage patterns.

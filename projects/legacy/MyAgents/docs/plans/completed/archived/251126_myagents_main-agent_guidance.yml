@@ -1,0 +1,474 @@
+# Comprehensive Agent Guidance Review - Main Branch
+# Created: 2025-11-26
+# Target: /home/code/myagents/MyAgents/src/myagents/frontend/agents
+# Purpose: Review all agent guidance for correctness, consistency, and improvements
+
+worktree: /home/code/myagents/MyAgents
+liveplan: /home/code/myagents/docs/plans/live/251126_myagents_main-agent_guidance.yml
+completedplan: /home/code/myagents/docs/plans/completed/251126_myagents_main-agent_guidance.yml
+
+# =============================================================================
+# REVIEW SCOPE
+# =============================================================================
+# Total files: 44 YAML files across 9 agent types
+# Agent types: orchestration, cleaner, planner, build, test, teacher, documentation, diagnostics, deploy
+
+review_scope:
+  agents_directory: /home/code/myagents/MyAgents/src/myagents/frontend/agents
+  total_files: 44
+  total_lines: 1791
+  agent_types:
+    - orchestration  # 4 files - Spawns and coordinates all sub-agents
+    - cleaner        # 5 files - Multi-agent voting for safe code cleanup
+    - planner        # 7 files - Creates phased implementation plans
+    - build          # 2 files - Implements code components
+    - test           # 8 files - Multiple test types (audit, service, builder, runner, user-simulator)
+    - teacher        # 3 files - Analyzes agent logs for friction patterns
+    - documentation  # 3 files - Creates/maintains minimal documentation
+    - diagnostics    # 3 files - Gathers system state information
+    - deploy         # 5 files - Handles packaging, CLI reinstallation, git worktree management
+
+# =============================================================================
+# ISSUES IDENTIFIED
+# =============================================================================
+issues_identified:
+
+  # CRITICAL: Path broken across 16+ files
+  critical:
+    - id: PATH-001
+      type: broken_path
+      severity: critical
+      description: "docs/architecture.md referenced in 16+ files but actual location is docs/architecture/architecture.md"
+      affected_files:
+        - src/myagents/frontend/agents/planner/processes/test.yml:19
+        - src/myagents/frontend/agents/planner/processes/build.yml:18
+        - src/myagents/frontend/agents/build/process.yml:12
+        - src/myagents/frontend/agents/deploy/processes/packaging.yml:12
+        - src/myagents/frontend/agents/deploy/manifest.yml:35
+        - src/myagents/frontend/agents/cleaner/process.yml:15
+        - src/myagents/frontend/agents/cleaner/processes/identify.yml:17
+        - src/myagents/frontend/agents/test/processes/user_simulator.yml:10
+        - src/myagents/frontend/agents/test/processes/user_simulator.yml:20
+        - src/myagents/frontend/agents/test/processes/user_simulator.yml:24
+        - src/myagents/frontend/agents/test/processes/audit.yml:15
+        - src/myagents/frontend/agents/test/processes/test_builder.yml:14
+        - src/myagents/frontend/agents/test/processes/service_test.yml:16
+        - src/myagents/frontend/agents/test/processes/test_runner.yml:13
+        - src/myagents/frontend/agents/documentation/process.yml:16
+        - src/myagents/frontend/agents/documentation/manifest.yml:2
+      current_value: "docs/architecture.md"
+      correct_value: "docs/architecture/architecture.md"
+      fix_type: minor  # Direct fix - just update paths
+      status: pending
+
+  # MINOR: Inconsistencies to review
+  minor:
+    - id: REF-001
+      type: unclear_reference
+      severity: minor
+      description: "Teacher.yml and Diagnostics.yml at root level are simple route references but purpose unclear"
+      affected_files:
+        - src/myagents/frontend/agents/Teacher.yml
+        - src/myagents/frontend/agents/Diagnostics.yml
+      status: pending
+      fix_type: review  # Needs review to determine if these should exist
+
+# =============================================================================
+# REVIEW PHASES
+# =============================================================================
+live-plans:
+  - id: AGENT-GUIDANCE-REVIEW-001
+    title: Comprehensive Agent Guidance Review
+    description: |
+      Review all agent guidance in main branch for:
+      1. Path correctness (critical - blocking agents)
+      2. Schema consistency (all files follow patterns)
+      3. Guidance clarity (specific, actionable, not vague)
+      4. Success criteria measurability
+      5. Input completeness (file-level, not directory-level)
+      6. Alignment with Maker framework patterns (voting, red-flagging)
+
+    phases:
+      # ========================================
+      # PHASE 1: FIX CRITICAL PATH ISSUES
+      # ========================================
+      - name: Critical Path Fixes
+        execution_groups:
+          - execution: sequential
+            name: Fix docs/architecture.md path references
+            agents:
+              - type: builder
+                inputs:
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/planner/processes/test.yml
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/planner/processes/build.yml
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/build/process.yml
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/deploy/processes/packaging.yml
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/deploy/manifest.yml
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/cleaner/process.yml
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/cleaner/processes/identify.yml
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/test/processes/user_simulator.yml
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/test/processes/audit.yml
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/test/processes/test_builder.yml
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/test/processes/service_test.yml
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/test/processes/test_runner.yml
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/documentation/process.yml
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/documentation/manifest.yml
+                guidance: |
+                  FIX: Update all references from "docs/architecture.md" to "docs/architecture/architecture.md"
+                  This is a direct find-and-replace across all affected files.
+                  The architecture file exists at docs/architecture/architecture.md but references point to wrong location.
+                success_criteria:
+                  - All 16 file references updated
+                  - No remaining references to docs/architecture.md (should be docs/architecture/architecture.md)
+                  - Path validated to exist in worktree
+
+      # ========================================
+      # PHASE 2: COMPREHENSIVE REVIEW
+      # Uses 3-agent voting block (Maker framework style)
+      # ========================================
+      - name: Comprehensive Guidance Review
+        execution_groups:
+          # 3-Agent voting block for each agent type
+          # First-to-ahead-by-3 voting: Accept when 3 agents agree
+          - execution: voting-block
+            name: Orchestration Agent Review
+            voting_threshold: 3  # 3/3 consensus required
+            red_flag_criteria:
+              - excessive_length: ">500 lines of suggested changes"
+              - incorrect_formatting: "Non-YAML output"
+              - scope_creep: "Suggests changes outside orchestration files"
+            agents:
+              - type: reviewer
+                count: 3  # 3 parallel reviewers for voting
+                inputs:
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/orchestration/start.yml
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/orchestration/manifest.yml
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/orchestration/guidelines.yml
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/orchestration/definitions.yml
+                guidance: |
+                  Review orchestration agent guidance for:
+                  1. PATH CORRECTNESS: Verify all input paths exist and are file-level (not directory)
+                  2. SCHEMA COMPLIANCE: Follow process/goal/inputs/outputs/steps/guidelines structure
+                  3. GUIDANCE SPECIFICITY: Is guidance actionable or too vague?
+                  4. SUCCESS CRITERIA: Are criteria measurable and outcome-focused?
+                  5. MAKER ALIGNMENT: Does it leverage voting/consensus patterns effectively?
+
+                  For each issue found, categorize as:
+                  - MINOR: Fix directly (path corrections, typos, formatting)
+                  - SIGNIFICANT: Report for voting (structural changes, new patterns, removals)
+
+                  Output format (YAML):
+                  minor_fixes: [list of direct fixes to apply]
+                  significant_changes: [list of changes requiring voting consensus]
+                  no_issues: [list of files with no issues]
+                success_criteria:
+                  - All 4 orchestration files reviewed
+                  - Issues categorized as minor vs significant
+                  - Specific line numbers provided for each issue
+
+          - execution: voting-block
+            name: Planner Agent Review
+            voting_threshold: 3
+            red_flag_criteria:
+              - excessive_length: ">500 lines of suggested changes"
+              - incorrect_formatting: "Non-YAML output"
+              - scope_creep: "Suggests changes outside planner files"
+            agents:
+              - type: reviewer
+                count: 3
+                inputs:
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/planner/manifest.yml
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/planner/definitions.yml
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/planner/processes/build.yml
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/planner/processes/test.yml
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/planner/processes/cleaning.yml
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/planner/processes/research.yml
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/planner/examples/plan_live.yml
+                guidance: |
+                  Review planner agent guidance for:
+                  1. PATH CORRECTNESS: Verify all input paths exist and are file-level
+                  2. EXAMPLE QUALITY: Does plan_live.yml demonstrate correct patterns?
+                  3. PROCESS COMPLETENESS: Are build/test/cleaning/research processes complete?
+                  4. GUIDANCE SPECIFICITY: Is guidance actionable?
+                  5. SUCCESS CRITERIA: Are criteria measurable?
+
+                  Output format (YAML):
+                  minor_fixes: [list of direct fixes to apply]
+                  significant_changes: [list of changes requiring voting consensus]
+                  no_issues: [list of files with no issues]
+                success_criteria:
+                  - All 7 planner files reviewed
+                  - Example files validated for correctness
+                  - Process files validated for completeness
+
+          - execution: voting-block
+            name: Test Agent Review
+            voting_threshold: 3
+            red_flag_criteria:
+              - excessive_length: ">500 lines of suggested changes"
+              - incorrect_formatting: "Non-YAML output"
+              - scope_creep: "Suggests changes outside test files"
+            agents:
+              - type: reviewer
+                count: 3
+                inputs:
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/test/manifest.yml
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/test/definitions.yml
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/test/processes/audit.yml
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/test/processes/service_test.yml
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/test/processes/test_runner.yml
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/test/processes/test_builder.yml
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/test/processes/user_simulator.yml
+                guidance: |
+                  Review test agent guidance for:
+                  1. PATH CORRECTNESS: Verify all input paths exist
+                  2. TEST STRATEGY ALIGNMENT: Do processes match test_strategies.yml definitions?
+                  3. REWARD HACKING DETECTION: Is audit.yml comprehensive for detecting reward hacking?
+                  4. USER SIMULATION QUALITY: Is user_simulator.yml realistic for blind testing?
+                  5. SUCCESS CRITERIA: Are criteria measurable?
+
+                  Output format (YAML):
+                  minor_fixes: [list of direct fixes to apply]
+                  significant_changes: [list of changes requiring voting consensus]
+                  no_issues: [list of files with no issues]
+                success_criteria:
+                  - All 8 test files reviewed
+                  - Test strategies validated
+                  - Reward hacking detection validated
+
+          - execution: voting-block
+            name: Cleaner Agent Review
+            voting_threshold: 3
+            red_flag_criteria:
+              - excessive_length: ">500 lines of suggested changes"
+              - incorrect_formatting: "Non-YAML output"
+              - scope_creep: "Suggests changes outside cleaner files"
+            agents:
+              - type: reviewer
+                count: 3
+                inputs:
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/cleaner/manifest.yml
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/cleaner/definitions.yml
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/cleaner/process.yml
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/cleaner/processes/identify.yml
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/cleaner/processes/execute.yml
+                guidance: |
+                  Review cleaner agent guidance for:
+                  1. PATH CORRECTNESS: Verify all input paths exist
+                  2. VOTING MECHANISM: Is 3-agent voting properly defined?
+                  3. SAFETY GUARDRAILS: Are preserved files clearly defined?
+                  4. ESCALATION PATH: Is user escalation for <3/3 votes clear?
+                  5. SUCCESS CRITERIA: Are criteria measurable?
+
+                  Output format (YAML):
+                  minor_fixes: [list of direct fixes to apply]
+                  significant_changes: [list of changes requiring voting consensus]
+                  no_issues: [list of files with no issues]
+                success_criteria:
+                  - All 5 cleaner files reviewed
+                  - Voting mechanism validated
+                  - Safety guardrails validated
+
+          - execution: voting-block
+            name: Remaining Agents Review
+            voting_threshold: 3
+            red_flag_criteria:
+              - excessive_length: ">500 lines of suggested changes"
+              - incorrect_formatting: "Non-YAML output"
+            agents:
+              - type: reviewer
+                count: 3
+                inputs:
+                  # Build agent
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/build/manifest.yml
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/build/process.yml
+                  # Teacher agent
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/teacher/manifest.yml
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/teacher/definitions.yml
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/teacher/process.yml
+                  # Documentation agent
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/documentation/manifest.yml
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/documentation/definitions.yml
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/documentation/process.yml
+                  # Diagnostics agent
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/diagnostics/manifest.yml
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/diagnostics/definitions.yml
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/diagnostics/process.yml
+                  # Deploy agent
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/deploy/manifest.yml
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/deploy/definitions.yml
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/deploy/processes/packaging.yml
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/deploy/processes/worktree_management.yml
+                  # Root reference files
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/Teacher.yml
+                  - /home/code/myagents/MyAgents/src/myagents/frontend/agents/Diagnostics.yml
+                guidance: |
+                  Review remaining agents (build, teacher, documentation, diagnostics, deploy) for:
+                  1. PATH CORRECTNESS: Verify all input paths exist
+                  2. SCHEMA COMPLIANCE: Follow standard structure
+                  3. GUIDANCE SPECIFICITY: Is guidance actionable?
+                  4. SUCCESS CRITERIA: Are criteria measurable?
+                  5. ROOT REFERENCES: What is purpose of Teacher.yml/Diagnostics.yml at root?
+
+                  Output format (YAML):
+                  minor_fixes: [list of direct fixes to apply]
+                  significant_changes: [list of changes requiring voting consensus]
+                  no_issues: [list of files with no issues]
+                success_criteria:
+                  - All 17 files reviewed
+                  - Root reference files clarified
+
+      # ========================================
+      # PHASE 3: VOTING AGGREGATION
+      # ========================================
+      - name: Voting Aggregation
+        execution_groups:
+          - execution: sequential
+            name: Aggregate voting results
+            agents:
+              - type: orchestrator
+                inputs:
+                  - /home/code/myagents/docs/plans/live/251126_myagents_main-agent_guidance.yml
+                guidance: |
+                  Aggregate voting results from all 3-agent blocks:
+
+                  CONSENSUS RULES (Maker-inspired first-to-ahead-by-k):
+                  - 3/3 agreement: AUTO-APPROVED for significant changes
+                  - 2/3 agreement: ESCALATE to user with majority recommendation
+                  - 1/3 or 0/3: REJECTED - do not surface to user
+
+                  RED-FLAG FILTERING:
+                  - Discard any response with excessive length (>500 lines changes)
+                  - Discard any response with incorrect formatting (non-YAML)
+                  - Discard any response with scope creep (changes outside assigned files)
+                  - Resample if all responses red-flagged
+
+                  OUTPUT STRUCTURE:
+                  - minor_fixes_to_apply: Changes to apply directly (paths, typos)
+                  - significant_changes_approved: 3/3 consensus changes for user review
+                  - significant_changes_majority: 2/3 majority changes requiring user decision
+                  - rejected_changes: Changes without consensus (not surfaced)
+                success_criteria:
+                  - All voting blocks aggregated
+                  - Consensus calculated for each change
+                  - Red-flagged responses filtered
+
+# =============================================================================
+# VOTING RESULTS (Populated after review execution)
+# =============================================================================
+voting_results:
+
+  # MINOR FIXES APPLIED (3/3 consensus - applied directly)
+  minor_fixes_applied:
+    - id: FIX-001
+      file: "src/myagents/frontend/agents/orchestration/guidelines.yml"
+      description: "Removed trailing 's' character at end of file (YAML syntax error)"
+      consensus: "3/3"
+      status: completed
+
+    - id: FIX-002
+      file: "14 files across agents directory"
+      description: "Fixed docs/architecture.md → docs/architecture/architecture.md path references"
+      consensus: "3/3"
+      status: completed
+
+  # SIGNIFICANT CHANGES - 3/3 CONSENSUS (for user awareness)
+  significant_changes_approved:
+    - id: SIG-001
+      file: "src/myagents/frontend/agents/planner/processes/research.yml"
+      type: "empty_file"
+      description: "research.yml is completely empty (0 bytes). Should either contain research process definition or be removed."
+      consensus: "3/3"
+      impact: "Planner agents cannot reference research process"
+      recommendation: "Either populate with research process definition or delete file"
+
+    - id: SIG-002
+      file: "src/myagents/frontend/agents/documentation/definitions.yml"
+      type: "placeholder_only"
+      description: "File contains only placeholder comment, no actual domain definitions"
+      consensus: "3/3"
+      impact: "Documentation agent lacks domain vocabulary"
+      recommendation: "Add definitions for documentation_quality, minimal_docs, discoverability, etc."
+
+  # SIGNIFICANT CHANGES - 2/3 MAJORITY (for user decision)
+  significant_changes_majority:
+    - id: MAJ-001
+      file: "src/myagents/frontend/agents/planner/processes/test.yml"
+      type: "broken_references"
+      description: |
+        Lines 105-108 reference non-existent test process files:
+        - smoke_test.yml (doesn't exist)
+        - agent_blind_test.yml (doesn't exist)
+        - end2end.yml (doesn't exist)
+        Actual test processes: audit.yml, service_test.yml, test_runner.yml, test_builder.yml, user_simulator.yml
+      consensus: "2/3"
+      reviewers_agreeing: [1, 2]
+      impact: "Planner agents following test.yml will reference files that don't exist"
+      recommendation: "Either create missing files OR update test.yml to reference actual test processes"
+
+    - id: MAJ-002
+      file: "src/myagents/frontend/agents/planner/examples/plan_live.yml"
+      type: "example_broken_references"
+      description: "plan_live.yml (the example used as source of truth) references smoke_test.yml and agent_blind_test.yml which don't exist"
+      consensus: "2/3"
+      reviewers_agreeing: [1, 2]
+      impact: "Example file propagates broken patterns to all planner processes"
+      recommendation: "Update example to use actual test process files"
+
+    - id: MAJ-003
+      file: "src/myagents/frontend/agents/test/manifest.yml"
+      type: "path_format"
+      description: |
+        Manifest paths use absolute paths (/home/code/myagents/...) instead of project-relative paths.
+        Some paths missing src/myagents/ prefix.
+      consensus: "2/3"
+      reviewers_agreeing: [2, 3]
+      impact: "Agent path guidance may be misleading"
+      recommendation: "Standardize to project-relative paths (src/myagents/...)"
+
+    - id: MAJ-004
+      file: "src/myagents/frontend/agents/documentation/manifest.yml"
+      type: "non_existent_paths"
+      description: |
+        References docs/setup.md and docs/configuration.md which don't exist.
+        Actual files may be at docs/guides/configuration.md or docs/README.md
+      consensus: "2/3"
+      reviewers_agreeing: [1, 3]
+      impact: "Documentation agent receives incorrect path guidance"
+      recommendation: "Update paths to actual file locations or remove non-existent entries"
+
+  # REJECTED CHANGES (<2/3 consensus - not surfacing to user)
+  rejected_changes:
+    - description: "Missing newlines at end of files"
+      consensus: "1/3"
+    - description: "Path format inconsistencies in start.yml"
+      consensus: "1/3"
+    - description: "Guidance definition duplication across files"
+      consensus: "1/3"
+    - description: "test_builder.yml syntax check vagueness"
+      consensus: "1/3"
+    - description: "Teacher process scope concerns"
+      consensus: "1/3"
+
+  # NO ISSUES FOUND
+  clean_reviews:
+    - agent: "cleaner"
+      files_reviewed: 5
+      consensus: "3/3 - All reviewers found NO ISSUES"
+      assessment: "Voting mechanism, safety guardrails, escalation paths all properly defined"
+
+# =============================================================================
+# EXECUTION STATUS
+# =============================================================================
+status:
+  phase: completed
+  current_step: voting_aggregation
+  completed_steps:
+    - critical_path_fixes
+    - orchestration_review
+    - planner_review
+    - test_review
+    - cleaner_review
+    - remaining_agents_review
+    - voting_aggregation
+  blocked_by: null

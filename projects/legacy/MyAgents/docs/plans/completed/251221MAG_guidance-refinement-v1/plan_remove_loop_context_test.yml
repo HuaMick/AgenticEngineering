@@ -1,0 +1,333 @@
+plan_name: "Remove Arbitrary loop_context Test Requirement"
+worktree: "/home/code/myagents/MyAgentsGuidance-guidance-refinement-v1"
+branch: "guidance-refinement-v1"
+created: "2025-12-22"
+objective: "Remove loop_context_test from guidance validation as it creates false HIGH severity failures for functionally correct agents"
+
+# CONTEXT AND RATIONALE
+# ====================
+# The loop_context_test in guidance-test-scenarios.yml requires all agents in loops
+# to have a loop_context section in their process.yml. This is a documentation-only
+# requirement that created false failures during Phase 4 validation.
+#
+# ROOT CAUSE ANALYSIS:
+# - Orchestrator manages all loop logic and passes iteration data to subagents
+# - Subagents don't functionally need to "know" they're in a loop
+# - The orchestrator injects what's needed (iteration data, context) into each spawn
+# - loop_context is documentation metadata, not a functional requirement
+# - Test is over-prescriptive and creates brittle coupling between orchestrator
+#   loop structure and subagent documentation
+#
+# EVIDENCE FROM VALIDATION REPORT:
+# - Phase 4 validation detected 2 HIGH severity gaps (planner-test-guidance, test-guidance-simulator)
+# - Both agents PASSED task_completion_test and reference_resolution_test
+# - Both agents are functionally correct - they execute their tasks successfully
+# - The ONLY failure was missing loop_context documentation sections
+# - Report states: "does not prevent agent execution. It affects guidance
+#   completeness and self-documentation, not functional capability"
+#
+# WHY THIS TEST IS INVALID:
+# 1. Loop participation is orchestrator-managed, not subagent-aware
+# 2. Subagents receive what they need via orchestrator injection
+# 3. Requiring loop_context creates false coupling - if orchestrator changes loop
+#    structure, all subagent documentation must update (brittle)
+# 4. Test confuses "loop participant" (in agent-loops.yml) with "loop-aware subagent"
+#    (needs loop_context in process.yml) - these are different concepts
+# 5. Generates false HIGH severity failures that don't indicate real problems
+#
+# DECISION:
+# Remove loop_context_test entirely. Keep loop_context as an OPTIONAL documentation
+# pattern for agents that genuinely need to understand loop mechanics, but don't
+# mandate or test it.
+
+inputs:
+  - location: "assets/definitions/guidance-test-scenarios.yml"
+    description: "Current test scenario definitions including loop_context_test"
+  - location: "agents/planner/planner-test-guidance/process.yml"
+    description: "Planner that references loop_context_test in test selection logic"
+  - location: "docs/plans/live/251221MAG_guidance-refinement-v1/test-results/phase4_validation_report.yml"
+    description: "Validation report showing loop_context_test false failures"
+  - location: "assets/definitions/agent-loops.yml"
+    description: "Loop definitions - orchestrator-managed loop patterns"
+  - location: "assets/definitions/guidance.yml"
+    description: "May need update to clarify loop_context is optional documentation"
+
+phases:
+  - name: "phase-1-remove-loop-context-test"
+    description: "Remove loop_context_test from test scenarios and planner logic"
+    agent_category: "cleaner"
+    success_criteria:
+      - "loop_context_test removed from guidance-test-scenarios.yml"
+      - "loop_context_test references removed from planner-test-guidance/process.yml"
+      - "Test scenario application rules updated (no longer conditional on loop_context_test)"
+      - "Documentation explains why test was removed"
+
+    tasks:
+      - id: "1.1"
+        description: "Remove loop_context_test from guidance-test-scenarios.yml"
+        agent_type: "cleaner"
+        operation: "DELETE"
+        context:
+          target_file: "assets/definitions/guidance-test-scenarios.yml"
+          sections_to_remove:
+            - "loop_context_test (lines 107-150)"
+            - "loop_context_test from test_scenario_application_rules.conditional_scenarios (lines 253-260)"
+          rationale: |
+            This test creates false HIGH severity failures for functionally correct agents.
+            Loop participation is orchestrator-managed - subagents receive what they need
+            via orchestrator injection. Requiring loop_context documentation creates brittle
+            coupling and confuses "loop participant" with "loop-aware subagent".
+          cleanup_notes:
+            - "Remove entire loop_context_test scenario definition (lines 107-150)"
+            - "Remove loop_context_test from conditional_scenarios mapping (lines 253-260)"
+            - "Keep loop_context as optional documentation pattern (not tested/mandated)"
+        acceptance_criteria:
+          - "loop_context_test scenario definition removed from test_scenarios section"
+          - "loop_context_test removed from test_scenario_application_rules.conditional_scenarios"
+          - "always_include section still has 3 core tests (task_completion, reference_resolution, friction_detection)"
+          - "File structure remains valid YAML"
+        files:
+          - "assets/definitions/guidance-test-scenarios.yml"
+
+      - id: "1.2"
+        description: "Remove loop_context_test from planner-test-guidance test selection logic"
+        agent_type: "teacher-process"
+        operation: "UPDATE"
+        context:
+          target_file: "agents/planner/planner-test-guidance/process.yml"
+          current_state: "Process.yml references loop_context_test in steps and guidelines sections"
+          lines_to_update:
+            - "Line 55: Remove 'Loop context test' from test scenario list"
+            - "Line 102: Remove loop_context_test from test_scenarios array"
+            - "Line 116: Remove loop_context_test from TEST SCENARIO SELECTION RULES"
+            - "Line 139: Remove loop_context_test from test scenario selection guidelines"
+          required_changes:
+            - "Remove loop_context_test from all enumerated test scenario lists"
+            - "Remove conditional logic: 'Include ONLY for agents that participate in loops'"
+            - "Keep task_completion_test, reference_resolution_test, subagent_spawning_test, friction_detection_test"
+            - "Update comments to clarify loop_context is optional documentation, not tested"
+        acceptance_criteria:
+          - "No references to loop_context_test remain in process.yml"
+          - "Test scenario selection rules updated (4 core tests remain)"
+          - "Process guidance still explains loop_context as optional documentation pattern"
+          - "File structure remains valid YAML"
+        files:
+          - "agents/planner/planner-test-guidance/process.yml"
+
+  - name: "phase-2-document-rationale"
+    description: "Document why loop_context_test was removed and clarify loop_context usage"
+    agent_category: "teacher"
+    success_criteria:
+      - "guidance-test-scenarios.yml includes comment explaining removal"
+      - "guidance.yml clarifies loop_context is optional documentation"
+      - "agent-loops.yml explains orchestrator-managed vs loop-aware subagents"
+    dependencies:
+      - "phase-1-remove-loop-context-test"
+
+    tasks:
+      - id: "2.1"
+        description: "Add removal rationale to guidance-test-scenarios.yml header"
+        agent_type: "teacher-update-assets"
+        operation: "UPDATE"
+        context:
+          target_file: "assets/definitions/guidance-test-scenarios.yml"
+          current_state: "Header explains test scenarios, but doesn't explain removed tests"
+          location: "After USAGE section, before test_scenarios section"
+          content_to_add: |
+            # REMOVED TESTS:
+            # - loop_context_test (removed 2025-12-22): This test required all loop participants
+            #   to have loop_context sections in process.yml. Removed because:
+            #   1. Loop logic is orchestrator-managed, not subagent-aware
+            #   2. Subagents receive iteration data via orchestrator injection
+            #   3. Test created false HIGH severity failures for functionally correct agents
+            #   4. Confused "loop participant" (in agent-loops.yml) with "loop-aware subagent"
+            #   5. Created brittle coupling - orchestrator loop changes require subagent doc updates
+            #
+            #   GUIDANCE: loop_context is now an OPTIONAL documentation pattern for agents that
+            #   genuinely need to document loop mechanics. It is not mandated or tested.
+        acceptance_criteria:
+          - "Removal rationale added to file header"
+          - "Explains orchestrator-managed vs loop-aware distinction"
+          - "Clarifies loop_context is now optional documentation"
+          - "File structure remains valid YAML"
+        files:
+          - "assets/definitions/guidance-test-scenarios.yml"
+
+      - id: "2.2"
+        description: "Clarify loop_context usage in guidance.yml"
+        agent_type: "teacher-update-assets"
+        operation: "UPDATE"
+        context:
+          target_file: "assets/definitions/guidance.yml"
+          current_state: "May contain guidance on loop_context as required field"
+          required_changes:
+            - "Clarify loop_context is OPTIONAL documentation metadata"
+            - "Distinguish orchestrator-managed loops (no loop_context needed) vs loop-aware agents (may use loop_context)"
+            - "Example: test-guidance-simulator MAY document loop_context for clarity, but it's not required"
+            - "Remove any mandate that loop participants must have loop_context"
+          guidance_principle: |
+            Loop context documentation is optional. Use loop_context when:
+            - Agent needs to understand iteration mechanics for its logic
+            - Documentation clarity benefits from explicit loop awareness
+            - Agent has special iteration-specific behavior
+
+            Do NOT use loop_context when:
+            - Orchestrator manages all loop logic and injects what's needed
+            - Agent is functionally unaware of being in a loop
+            - Loop participation is purely orchestrator-driven
+        acceptance_criteria:
+          - "guidance.yml clarifies loop_context is optional"
+          - "Provides clear criteria for when to use loop_context"
+          - "Removes any mandatory loop_context requirements"
+        files:
+          - "assets/definitions/guidance.yml"
+
+      - id: "2.3"
+        description: "Update agent-loops.yml to explain orchestrator-managed pattern"
+        agent_type: "teacher-update-assets"
+        operation: "UPDATE"
+        context:
+          target_file: "assets/definitions/agent-loops.yml"
+          current_state: "Defines loop types and participants, doesn't explain orchestrator-managed pattern"
+          section_to_enhance: "guidance-test-loop.participants section"
+          content_to_add: |
+            orchestrator_pattern:
+              description: |
+                Loops are orchestrator-managed. The orchestrator:
+                - Controls loop iteration logic and exit conditions
+                - Spawns subagents with iteration-specific context
+                - Aggregates results and determines next iteration
+                - Passes what each subagent needs (they don't need loop awareness)
+
+              subagent_awareness:
+                orchestrator_managed: "Subagent receives iteration data via spawn context - no loop_context needed"
+                loop_aware: "Subagent has iteration-specific logic - may document loop_context for clarity (optional)"
+
+              guidance_principle: |
+                Subagents listed as "participants" in agent-loops.yml are managed by the
+                orchestrator. They don't need loop_context sections unless they have
+                special iteration-aware logic that benefits from documentation clarity.
+        acceptance_criteria:
+          - "agent-loops.yml explains orchestrator-managed pattern"
+          - "Clarifies subagent awareness is optional, not required"
+          - "Distinguishes orchestrator responsibilities from subagent needs"
+        files:
+          - "assets/definitions/agent-loops.yml"
+
+  - name: "phase-3-update-validation-report"
+    description: "Update phase4_validation_report.yml to reflect test removal and invalidate false failures"
+    agent_category: "teacher"
+    success_criteria:
+      - "Validation report notes loop_context_test was removed"
+      - "HIGH severity failures downgraded to informational notes"
+      - "Report clarifies agents are functionally correct"
+    dependencies:
+      - "phase-2-document-rationale"
+
+    tasks:
+      - id: "3.1"
+        description: "Update validation report with test removal note"
+        agent_type: "teacher-update-assets"
+        operation: "UPDATE"
+        context:
+          target_file: "docs/plans/live/251221MAG_guidance-refinement-v1/test-results/phase4_validation_report.yml"
+          sections_to_update:
+            - "agent_1.test_results.loop_context_test"
+            - "agent_2.test_results.loop_context_test"
+            - "overall_summary.acceptance_criteria_status.loop_context"
+            - "overall_summary.systemic_issues"
+            - "recommendations"
+          required_changes:
+            - "Add note: 'TEST REMOVED 2025-12-22 - loop_context_test identified as invalid test creating false failures'"
+            - "Change status from 'FAIL' to 'TEST_REMOVED'"
+            - "Downgrade friction_category from 'HIGH' to 'INFORMATIONAL'"
+            - "Update overall verdict: Both agents pass all valid tests (task_completion, reference_resolution)"
+            - "Remove loop_context blockers from final_verdict.blockers"
+            - "Update ready_for_production to true (test was invalid, not agents)"
+          rationale_to_add: |
+            RESOLUTION: loop_context_test removed as invalid requirement. Test confused
+            orchestrator-managed loop participation with loop-aware subagent implementation.
+            Both agents are functionally correct - they successfully execute tasks and
+            PASSED all valid tests (task_completion, reference_resolution). False HIGH
+            severity failures were due to over-prescriptive documentation requirement.
+        acceptance_criteria:
+          - "Validation report reflects test removal"
+          - "Both agents marked as passing all valid tests"
+          - "FALSE HIGH severity failures downgraded to informational"
+          - "Production readiness updated (no blockers from invalid test)"
+          - "Systemic issues section explains test removal rationale"
+        files:
+          - "docs/plans/live/251221MAG_guidance-refinement-v1/test-results/phase4_validation_report.yml"
+
+  - name: "phase-4-verification"
+    description: "Verify all loop_context_test references removed and documentation updated"
+    agent_category: "test"
+    success_criteria:
+      - "No references to loop_context_test in guidance-test-scenarios.yml"
+      - "No references to loop_context_test in planner-test-guidance/process.yml"
+      - "All documentation updates complete"
+      - "Validation report reflects test removal"
+    dependencies:
+      - "phase-3-update-validation-report"
+
+    tasks:
+      - id: "4.1"
+        description: "Audit all modified files for completeness and consistency"
+        agent_type: "test-audit"
+        operation: "AUDIT"
+        context:
+          scope: "All files modified in phases 1-3"
+          checks:
+            - "guidance-test-scenarios.yml has no loop_context_test references"
+            - "planner-test-guidance/process.yml has no loop_context_test references"
+            - "Removal rationale documented in guidance-test-scenarios.yml"
+            - "guidance.yml clarifies loop_context is optional"
+            - "agent-loops.yml explains orchestrator-managed pattern"
+            - "Validation report updated with test removal notes"
+            - "All YAML files remain valid (no syntax errors)"
+          grep_patterns:
+            - "loop_context_test (should find 0 matches in test scenarios and planner)"
+            - "orchestrator-managed (should find new documentation)"
+            - "TEST_REMOVED (should find validation report updates)"
+        acceptance_criteria:
+          - "Zero references to loop_context_test in scenario definitions and planner"
+          - "All documentation updates present"
+          - "All YAML files valid"
+          - "Validation report reflects test removal"
+        files:
+          - "assets/definitions/guidance-test-scenarios.yml"
+          - "agents/planner/planner-test-guidance/process.yml"
+          - "assets/definitions/guidance.yml"
+          - "assets/definitions/agent-loops.yml"
+          - "docs/plans/live/251221MAG_guidance-refinement-v1/test-results/phase4_validation_report.yml"
+
+success_criteria:
+  user_validation:
+    - "loop_context_test no longer generates false HIGH severity failures"
+    - "Agents that work correctly don't fail guidance validation due to missing documentation"
+    - "loop_context remains available as optional documentation pattern"
+    - "Orchestrator-managed loop pattern clearly documented"
+
+  technical_validation:
+    - "loop_context_test removed from guidance-test-scenarios.yml"
+    - "planner-test-guidance no longer references loop_context_test"
+    - "Documentation clarifies orchestrator-managed vs loop-aware distinction"
+    - "Validation report updated to reflect test removal"
+    - "All modified files remain valid YAML"
+
+notes:
+  - "This plan removes an INVALID test that created false failures, not a valid requirement"
+  - "Loop participation is orchestrator-managed - subagents get what they need via injection"
+  - "loop_context remains available for agents that genuinely benefit from documenting loop mechanics"
+  - "Validation report showed both agents PASSED all valid tests - only failed invalid loop_context_test"
+  - "Removing this test prevents future false HIGH severity failures for functionally correct agents"
+  - "Cleaner agents used for removal, teacher agents for documentation updates"
+  - "Test audit phase ensures complete removal and consistency"
+
+related_context:
+  validation_evidence: "docs/plans/live/251221MAG_guidance-refinement-v1/test-results/phase4_validation_report.yml"
+  false_failures: "2 HIGH severity gaps - both were documentation-only, not functional issues"
+  orchestrator_pattern: "assets/definitions/agent-loops.yml - loops are orchestrator-managed"
+  affected_agents:
+    - "planner-test-guidance (passed task_completion and reference_resolution)"
+    - "test-guidance-simulator (passed task_completion and reference_resolution)"

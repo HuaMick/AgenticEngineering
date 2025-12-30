@@ -1,0 +1,228 @@
+# ==============================================================================
+# RemoteAgents User Stories - Relay API
+# ==============================================================================
+
+category: relay_api
+name: "Relay API"
+description: "REST and WebSocket API operations"
+
+stories:
+  # --------------------------------------------------------------------------
+  # US-API-001: Create Session Endpoint
+  # --------------------------------------------------------------------------
+  - id: US-API-001
+    title: "POST /api/sessions Creates Session"
+    priority: HIGH
+    persona: desktop_user
+
+    description: |
+      As a desktop developer, I want a REST endpoint to create sessions
+      so that I can initiate remote connections.
+
+    preconditions:
+      - Relay service running on localhost:8080
+
+    journey:
+      - step: 1
+        action: |
+          POST /api/sessions
+          Body: {"desktop_public_key": "<base64_key>"}
+        expected: "201 Created response"
+
+      - step: 2
+        action: "Parse response body"
+        expected: |
+          {
+            "session_id": "<uuid>",
+            "pairing_code": "<6-char-code>"
+          }
+
+      - step: 3
+        action: "Validate session_id format"
+        expected: "Valid UUID format"
+
+      - step: 4
+        action: "Validate pairing_code format"
+        expected: "6 alphanumeric characters"
+
+    acceptance_criteria:
+      - Returns 201 Created on success
+      - Response contains session_id (UUID)
+      - Response contains pairing_code (6 chars)
+      - Session created in repository
+
+    test_layers:
+      local: true
+      docker: true
+      integration: true
+
+  # --------------------------------------------------------------------------
+  # US-API-002: Get Session Status
+  # --------------------------------------------------------------------------
+  - id: US-API-002
+    title: "GET /api/sessions/{id} Returns Status"
+    priority: MEDIUM
+    persona: platform_operator
+
+    description: |
+      As a platform operator, I want to check session status
+      so that I can monitor active sessions.
+
+    preconditions:
+      - Session exists
+
+    journey:
+      - step: 1
+        action: "GET /api/sessions/{session_id}"
+        expected: "200 OK response"
+
+      - step: 2
+        action: "Parse response body"
+        expected: |
+          {
+            "state": "PAIRED",
+            "desktop_connected": true,
+            "client_connected": true,
+            "expires_at": "<timestamp>"
+          }
+
+      - step: 3
+        action: "Request non-existent session"
+        expected: "404 Not Found"
+
+    acceptance_criteria:
+      - Returns session state
+      - Shows connection status for both parties
+      - Shows expiry time for unpaired sessions
+      - 404 for non-existent sessions
+
+    test_layers:
+      local: true
+      docker: true
+      integration: true
+
+  # --------------------------------------------------------------------------
+  # US-API-003: Delete Session Endpoint
+  # --------------------------------------------------------------------------
+  - id: US-API-003
+    title: "DELETE /api/sessions/{id} Closes Session"
+    priority: MEDIUM
+    persona: platform_operator
+
+    description: |
+      As a platform operator, I want to force-close sessions
+      so that I can manage problem sessions.
+
+    preconditions:
+      - Session exists (any state)
+
+    journey:
+      - step: 1
+        action: "DELETE /api/sessions/{session_id}"
+        expected: "204 No Content response"
+
+      - step: 2
+        action: "Verify session removed"
+        expected: "GET returns 404"
+
+      - step: 3
+        action: "Verify WebSocket connections closed"
+        expected: "Desktop and client disconnected"
+
+    acceptance_criteria:
+      - Returns 204 on success
+      - Session removed from repository
+      - WebSocket connections closed
+      - 404 for non-existent sessions
+
+    test_layers:
+      local: true
+      docker: true
+      integration: true
+
+  # --------------------------------------------------------------------------
+  # US-API-004: Health Check Endpoint
+  # --------------------------------------------------------------------------
+  - id: US-API-004
+    title: "GET /health Returns Service Status"
+    priority: HIGH
+    persona: platform_operator
+
+    description: |
+      As a platform operator, I want a health check endpoint
+      so that I can monitor service availability.
+
+    preconditions:
+      - Relay service running
+
+    journey:
+      - step: 1
+        action: "GET /health"
+        expected: "200 OK response"
+
+      - step: 2
+        action: "Parse response body"
+        expected: |
+          {
+            "status": "healthy",
+            "repository": "ok"
+          }
+
+      - step: 3
+        action: "Use for load balancer health checks"
+        expected: "Consistent 200 responses"
+
+    acceptance_criteria:
+      - Returns 200 when healthy
+      - Includes repository status
+      - Fast response time (<100ms)
+      - Suitable for kubernetes probes
+
+    test_layers:
+      local: true
+      docker: true
+      integration: true
+
+  # --------------------------------------------------------------------------
+  # US-API-005: WebSocket Connection Upgrade
+  # --------------------------------------------------------------------------
+  - id: US-API-005
+    title: "WebSocket Endpoints Accept Connections"
+    priority: HIGH
+    persona: web_user
+
+    description: |
+      As a web client, I want WebSocket endpoints to work
+      so that I can establish real-time connections.
+
+    preconditions:
+      - Session created
+      - Valid session_id or pairing_code
+
+    journey:
+      - step: 1
+        action: "Connect to /ws/desktop/{session_id}"
+        expected: "WebSocket upgrade successful (101)"
+
+      - step: 2
+        action: "Connect to /ws/client/{pairing_code}"
+        expected: "WebSocket upgrade successful (101)"
+
+      - step: 3
+        action: "Connect with invalid ID"
+        expected: "Connection rejected (404)"
+
+      - step: 4
+        action: "Connect with expired code"
+        expected: "Connection rejected (410)"
+
+    acceptance_criteria:
+      - WebSocket upgrade works for valid IDs
+      - 404 for invalid session_id
+      - 410 for expired pairing_code
+      - CORS headers present for web clients
+
+    test_layers:
+      local: true
+      docker: true
+      integration: true

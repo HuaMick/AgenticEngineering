@@ -1,0 +1,207 @@
+# Planner Task: Build Agent Context Minimisation
+# Plan: 251216_context_min
+
+task:
+  agent: "build"
+  target_path: "build/"
+
+  current_structure:
+    root_files:
+      - "manifest-build.yml"
+      - "plan.yml"
+    note: "Missing root manifest.yml (hub)"
+    sub_agents:
+      - "build-flutter/"
+      - "build-python/"
+
+  audit_checklist:
+    context_minimisation:
+      - "Review manifest-build.yml for unnecessary context"
+      - "Check plan.yml placement (should it be in docs/plans/)"
+      - "Review sub-agent inputs for over-specification"
+
+    folder_structure:
+      - "MISSING: Root manifest.yml to serve as hub"
+      - "MISSING: Root inputs.yml for shared build context"
+      - "Ensure each sub-agent has: process.yml, inputs.yml, manifest.yml"
+
+  tasks:
+    - id: "build-01"
+      description: "Create root manifest.yml for build agent"
+      file: "build/manifest.yml"
+      criteria: "Hub file listing build-flutter and build-python"
+      status: "completed"
+      result: |
+        Created manifest.yml at build/manifest.yml.
+        Hub file includes:
+        - Agent family description and routing logic
+        - Sub-agent definitions (build-python, build-flutter)
+        - Shared principles (minimal_changes, verification_not_testing, iteration_approach, test_fix_loop)
+        - Selection criteria for routing based on project type
+
+    - id: "build-02"
+      description: "Delete root inputs.yml - sub-agents should be self-contained"
+      file: "build/inputs.yml"
+      criteria: "File removed; each sub-agent has complete inputs.yml"
+      action: "delete"
+      status: "completed"
+      result: |
+        No root inputs.yml file existed at build/inputs.yml.
+        Sub-agents are already self-contained with complete inputs.yml files:
+        - build-flutter/inputs.yml (8248 bytes, comprehensive Flutter build inputs)
+        - build-python/inputs.yml (7465 bytes, comprehensive Python build inputs)
+        No action required - structure already correct.
+
+    - id: "build-03"
+      description: "Review plan.yml placement"
+      file: "build/plan.yml"
+      criteria: "Determine if this should be in docs/plans/ instead"
+      status: "completed"
+      result: |
+        No plan.yml file exists at build/plan.yml.
+        The current_structure section in this plan mentioned it, but it was already removed.
+        Also checked for manifest-build.yml mentioned in current_structure - not found.
+        Build agent folder structure is clean with only sub-agent folders and new manifest.yml.
+
+    - id: "build-04"
+      description: "Audit build-flutter folder structure"
+      file: "build/build-flutter/"
+      criteria: "Has process.yml, inputs.yml, manifest.yml"
+      status: "completed"
+      result: |
+        build-flutter/ folder structure VERIFIED COMPLETE:
+        - inputs.yml: 8248 bytes (Flutter-specific inputs, guidelines, definitions)
+        - manifest.yml: 933 bytes (Flutter folder structure definitions)
+        - process.yml: 1937 bytes (Flutter build process with worktree detection)
+        All required files present and properly structured.
+
+    - id: "build-05"
+      description: "Audit build-python folder structure"
+      file: "build/build-python/"
+      criteria: "Has process.yml, inputs.yml, manifest.yml"
+      status: "completed"
+      result: |
+        build-python/ folder structure VERIFIED COMPLETE:
+        - inputs.yml: 7465 bytes (Python-specific inputs, guidelines, definitions)
+        - manifest.yml: 1498 bytes (Python folder structure definitions)
+        - process.yml: 2257 bytes (Python build process with worktree detection and execution testing)
+        All required files present and properly structured.
+
+    - id: "build-06"
+      description: "Update references after changes"
+      criteria: "All paths in inputs/process files resolve to existing files"
+      status: "completed"
+      result: |
+        Reviewed reference_update_locations:
+        1. assets/processes/_execute.yml
+           - No references to deleted build agent files
+           - References orchestration/manifest.yml (not found, but out of scope for this plan)
+        2. planner/planner-build/process.yml
+           - Correctly references planner-build/inputs.yml (exists)
+           - No changes needed
+        3. planner/planner-build/inputs.yml
+           - References architecture docs and example plans (all exist)
+           - No changes needed
+
+        No broken references to build agent files found. The new manifest.yml serves as
+        documentation/hub and doesn't need to be referenced by existing files.
+
+  reference_update_locations:
+    - "assets/processes/_execute.yml"
+    - "planner/planner-build/process.yml"
+    - "planner/planner-build/inputs.yml"
+
+  # Additional context-minimisation proposals from review (2025-12-18)
+  proposals:
+    - id: "build-prop-01"
+      file: "build/build-python/inputs.yml"
+      issue: "Inline 'builder_agent' definition duplicated in build-flutter/inputs.yml (lines 89-102)"
+      proposal: "Create assets/definitions/builder-role.yml and reference it from both build-python and build-flutter inputs"
+      impact: "Remove ~350 tokens of duplication, improve consistency"
+      priority: "high"
+      status: "completed"
+      result: |
+        Created assets/definitions/builder-role.yml containing
+        the builder agent role definition. Updated both build-python/inputs.yml and
+        build-flutter/inputs.yml to reference this shared definition file, removing ~350
+        tokens of duplication.
+
+    - id: "build-prop-02"
+      file: "build/build-python/inputs.yml"
+      issue: "Inline 'minimal_changes_principle' definition duplicated in build-flutter/inputs.yml (lines 104-114)"
+      proposal: "Already covered by assets/definitions/minimal-sufficient-change.yml - replace inline definition with file reference"
+      impact: "Remove ~280 tokens of duplication"
+      priority: "high"
+      status: "completed"
+      result: |
+        Updated both build-python/inputs.yml and build-flutter/inputs.yml to reference the
+        existing assets/definitions/minimal-sufficient-change.yml file instead of inline
+        minimal_changes_principle definition. Removed ~280 tokens of duplication.
+
+    - id: "build-prop-03"
+      file: "build/build-python/inputs.yml"
+      issue: "Inline 'iteration_approach' definition duplicated in build-flutter/inputs.yml (lines 116-125)"
+      proposal: "Create assets/definitions/iteration-approach.yml (or extend existing iteration.yml) and reference it"
+      impact: "Remove ~250 tokens of duplication"
+      priority: "high"
+      status: "completed"
+      result: |
+        Created assets/definitions/iteration-approach.yml
+        containing the iteration approach definition. Updated both build-python/inputs.yml
+        and build-flutter/inputs.yml to reference this shared definition file, removing
+        ~250 tokens of duplication.
+
+    - id: "build-prop-04"
+      file: "build/build-python/inputs.yml"
+      issue: "Inline 'component_verification' definition duplicated in build-flutter/inputs.yml (lines 127-137)"
+      proposal: "Create assets/definitions/component-verification.yml and reference it from both builders"
+      impact: "Remove ~300 tokens of duplication"
+      priority: "medium"
+      status: "completed"
+      result: |
+        Created assets/definitions/component-verification.yml
+        containing the component verification definition. Updated both build-python/inputs.yml
+        and build-flutter/inputs.yml to reference this shared definition file, removing
+        ~300 tokens of duplication.
+
+    - id: "build-prop-05"
+      file: "build/build-python/inputs.yml"
+      issue: "Inline 'test_fix_loop_context' definition duplicated in build-flutter/inputs.yml (lines 139-149)"
+      proposal: "Already covered by assets/guidelines/iteration.yml - reference the file instead of duplicating"
+      impact: "Remove ~320 tokens of duplication"
+      priority: "high"
+      status: "completed"
+      result: |
+        Updated both build-python/inputs.yml and build-flutter/inputs.yml to reference the
+        existing assets/guidelines/iteration.yml file instead of inline test_fix_loop_context
+        definition. The iteration.yml guideline contains comprehensive iteration patterns
+        including test-fix-loop. Removed ~320 tokens of duplication.
+
+    - id: "build-prop-06"
+      file: "build/manifest.yml"
+      issue: "Hub manifest repeats shared_principles that are already in sub-agent inputs (lines 46-66)"
+      proposal: "Remove shared_principles section - this content is already in sub-agents. Hub manifests should only contain routing and sub-agent discovery"
+      impact: "Remove ~400 tokens, align with hub-and-spoke pattern"
+      priority: "high"
+      status: "completed"
+      result: |
+        Removed the shared_principles section from build/manifest.yml. This content is now
+        properly located in the sub-agent inputs.yml files (via shared asset references).
+        The hub manifest now focuses solely on routing and sub-agent discovery, aligning
+        with the hub-and-spoke pattern. Removed ~400 tokens.
+
+final_note:
+  date: "2025-12-18"
+  note: |
+    Plan completed. All tasks and proposals executed successfully.
+
+    POST-COMPLETION UPDATE:
+    Hub manifests (including build/manifest.yml created in task build-01) were later deleted
+    as over-abstraction. The hub-and-spoke pattern with central manifest.yml files was
+    determined to add unnecessary complexity without sufficient benefit. Sub-agents
+    (build-python, build-flutter) remain self-contained with their own complete
+    inputs.yml, process.yml, and manifest.yml files.
+
+    The context minimisation work from proposals build-prop-01 through build-prop-06
+    remains valuable and active - shared definitions were moved to assets/definitions/
+    and are referenced by sub-agents, eliminating duplication while maintaining clarity.

@@ -1,0 +1,310 @@
+# Backlog Plan - RemoteAgents Future Features
+# Last Updated: 2025-12-10
+# Source: B5-SESSION-RECOVERY completion (251209_remoteagents-backlog.yml)
+# Status: backlog
+# Items deferred from RemoteAgents-backlog worktree after B5-SESSION-RECOVERY completion
+
+metadata:
+  created_date: 2025-12-10
+  source_plan: 251209_remoteagents-backlog.yml
+  source_commit: b720344
+  worktree: RemoteAgents-backlog
+  status: backlog
+  note: |
+    These features were identified during B5-SESSION-RECOVERY implementation and
+    deferred for future implementation based on priority and dependencies.
+
+# ==============================================================================
+# VOICE AND TTS FEATURES
+# ==============================================================================
+
+voice_features:
+  - id: B1-CONVERSATION-TTS
+    title: Backend support for voice conversation with Claude
+    description: |
+      Add Text-to-Speech (TTS) integration for conversation mode, enabling Claude
+      responses to be converted to audio output for voice-based interactions.
+
+    requirements:
+      - Detect Claude response completion in conversation flow
+      - Extract response text for TTS processing
+      - Integrate TTS API (OpenAI or ElevenLabs)
+      - Stream audio output to client
+      - Handle multi-turn conversations with TTS
+
+    success_criteria:
+      - Claude responses automatically converted to speech
+      - TTS audio streamed to client in real-time
+      - Support for conversation mode with voice output
+      - Configurable TTS provider (OpenAI/ElevenLabs)
+      - Low latency between response completion and audio playback
+
+    priority: low
+
+    dependencies:
+      - MVP terminal service (COMPLETE)
+      - Conversation mode working (prerequisite)
+      - TTS API credentials configured
+
+    effort: 6-8 hours
+
+    implementation_notes: |
+      - OpenAI TTS API: Simple integration, good quality
+      - ElevenLabs: Higher quality, more expensive
+      - Consider buffering strategy for streaming responses
+      - Handle response chunking for incremental TTS
+      - Add configuration for voice selection
+
+    deferred_reason: |
+      Voice conversation mode not yet implemented in terminal service.
+      TTS integration requires working conversation flow as prerequisite.
+      Low priority: Text-based interaction is primary use case.
+
+# ==============================================================================
+# SESSION PERSISTENCE AND SCALING
+# ==============================================================================
+
+persistence_features:
+  - id: B2-SESSION-PERSISTENCE
+    title: Redis session storage for persistence and multi-instance support
+    description: |
+      Replace in-memory session storage with Redis to enable session persistence
+      across restarts, multi-instance relay support, and horizontal scaling.
+
+    requirements:
+      - Redis session repository implementation
+      - Session serialization/deserialization
+      - Multi-instance relay support with shared state
+      - Session recovery after server restart
+      - Connection pool management
+      - Redis failover handling
+
+    success_criteria:
+      - Sessions persist across relay service restarts
+      - Multiple relay instances share session state
+      - Horizontal scaling supported (load balancing across relays)
+      - Session recovery works after Redis reconnection
+      - Performance comparable to in-memory storage
+      - Redis connection failures handled gracefully
+
+    priority: low
+
+    dependencies:
+      - MVP relay service (COMPLETE)
+      - B5-SESSION-RECOVERY (COMPLETE - provides recovery patterns)
+      - Redis server deployed and accessible
+      - Load balancer configured (if multi-instance)
+
+    effort: 8-12 hours
+
+    implementation_notes: |
+      - Use redis-py client library
+      - Implement SessionRepository interface with RedisSessionRepository
+      - Serialize Session entities to JSON/msgpack
+      - Use Redis pub/sub for session state synchronization across instances
+      - Add connection pool with retry logic
+      - Consider Redis Cluster for high availability
+      - Migration path from in-memory to Redis
+
+    deferred_reason: |
+      In-memory storage sufficient for single-instance deployments.
+      Current architecture handles session recovery without Redis (B5-SESSION-RECOVERY).
+      Multi-instance support not required yet - single relay handles 45k+ connections.
+      Defer until horizontal scaling becomes necessary.
+
+# ==============================================================================
+# MOBILE AND NOTIFICATION FEATURES
+# ==============================================================================
+
+mobile_features:
+  - id: B3-PUSH-NOTIFICATIONS
+    title: Mobile push notifications via Firebase Cloud Messaging (FCM)
+    description: |
+      Add push notification support for mobile clients, enabling background
+      notifications when Claude responds or terminal output is available.
+
+    requirements:
+      - FCM integration in relay service
+      - Mobile client FCM token registration
+      - Push notification triggers (Claude response, terminal output)
+      - Notification payload formatting
+      - Background notification delivery
+      - Notification preferences management
+
+    success_criteria:
+      - Mobile clients receive push notifications when Claude responds
+      - Notifications delivered in background (app not active)
+      - Notification includes response preview
+      - User can configure notification preferences
+      - Notification delivery reliable (>95% success rate)
+      - Battery-efficient implementation
+
+    priority: low
+
+    dependencies:
+      - Mobile app implemented
+      - FCM project configured
+      - Mobile client sends FCM registration token
+      - Relay service can identify mobile clients
+
+    effort: 4-6 hours
+
+    implementation_notes: |
+      - Use Firebase Admin SDK for sending notifications
+      - Store FCM tokens in session metadata
+      - Trigger notifications on:
+        - Claude response completion
+        - New terminal output (with rate limiting)
+        - Session state changes (pairing, disconnection)
+      - Add notification throttling to prevent spam
+      - Handle token refresh and expiration
+      - Support notification categories (response, system, error)
+
+    deferred_reason: |
+      Mobile app not yet implemented.
+      Push notifications require mobile client as prerequisite.
+      Desktop clients are primary focus currently.
+      Defer until mobile app development begins.
+
+# ==============================================================================
+# ADVANCED SCALING FEATURES (VERY LOW PRIORITY)
+# ==============================================================================
+
+advanced_scaling:
+  - id: B4-LOAD-BALANCING
+    title: Multi-relay load balancing with session affinity
+    description: |
+      Implement intelligent load balancing across multiple relay instances
+      with session affinity, shared storage, and health checks.
+
+    requirements:
+      - Session affinity (sticky sessions) for active connections
+      - Shared session storage (Redis or similar)
+      - Health check endpoints for relay instances
+      - Load balancer configuration (nginx/HAProxy)
+      - Graceful failover when relay instance fails
+      - Session migration between instances
+
+    success_criteria:
+      - Sessions distributed evenly across relay instances
+      - Active sessions maintain affinity to same relay
+      - Health checks detect failed instances
+      - Failover preserves session state (no data loss)
+      - Load balancing decision time < 10ms
+      - New sessions routed to least-loaded instance
+
+    priority: very_low
+
+    dependencies:
+      - B2-SESSION-PERSISTENCE (Redis for shared state)
+      - Multiple relay instances deployed
+      - Load balancer deployed (nginx/HAProxy/AWS ALB)
+
+    effort: 12-16 hours
+
+    implementation_notes: |
+      - Use consistent hashing for session affinity
+      - Implement health check endpoint: GET /health
+      - Load balancer strategies:
+        - Round-robin for new sessions
+        - Session affinity via session_id hash
+      - Graceful shutdown: drain existing sessions before stopping
+      - Consider using service mesh (Istio) for advanced routing
+
+    deferred_reason: |
+      Single relay instance handles 45k+ connections (WebSocket capacity).
+      Current scale doesn't require multiple relay instances.
+      Over-engineering for current usage patterns.
+      Very low priority: Defer until >40k concurrent sessions observed.
+
+  - id: B6-MULTI-USER-SESSIONS
+    title: Multiple users per session with access control
+    description: |
+      Enable multiple users to connect to the same session with role-based
+      access control, permissions management, and conflict resolution.
+
+    requirements:
+      - Multi-user session entity model
+      - Role-based access control (owner, editor, viewer)
+      - Permission enforcement (who can send input, resize terminal)
+      - Conflict resolution for concurrent input
+      - User presence tracking (who is connected)
+      - Audit log for multi-user actions
+
+    success_criteria:
+      - Multiple users connect to same session simultaneously
+      - Role-based permissions enforced (owner can kick users, etc)
+      - Input conflicts resolved gracefully (no garbled output)
+      - All users see same terminal output (synchronized)
+      - Presence indicators show active users
+      - Audit log records all user actions
+
+    priority: very_low
+
+    dependencies:
+      - MVP relay service (COMPLETE)
+      - B5-SESSION-RECOVERY (COMPLETE)
+      - User authentication/authorization system
+
+    effort: 16-24 hours
+
+    implementation_notes: |
+      - Extend Session entity with user_list: list[User]
+      - Add Role enum (OWNER, EDITOR, VIEWER)
+      - Permissions:
+        - OWNER: full control, kick users, change roles
+        - EDITOR: send input, resize terminal
+        - VIEWER: read-only, see output only
+      - Input queueing to prevent conflicts (FIFO)
+      - Broadcast output to all connected users
+      - Add SessionUserJoined, SessionUserLeft messages
+      - Presence heartbeat to detect disconnected users
+      - Consider operational transform for input synchronization
+
+    deferred_reason: |
+      Single user per session is primary use case.
+      Multi-user sessions add significant complexity.
+      No identified user demand for collaborative sessions.
+      Very low priority: Defer until users explicitly request feature.
+
+# ==============================================================================
+# SUMMARY
+# ==============================================================================
+
+summary:
+  total_items: 5
+  by_category:
+    voice_features: 1
+    persistence_features: 1
+    mobile_features: 1
+    advanced_scaling: 2
+  by_priority:
+    low: 3
+    very_low: 2
+  total_effort: 46-66 hours
+  notes: |
+    These features were deferred from B5-SESSION-RECOVERY plan because:
+    1. B1-CONVERSATION-TTS: Low priority, depends on conversation mode not yet implemented
+    2. B2-SESSION-PERSISTENCE: Low priority, single instance sufficient for current scale
+    3. B3-PUSH-NOTIFICATIONS: Low priority, depends on mobile app not yet implemented
+    4. B4-LOAD-BALANCING: Very low priority, single relay handles 45k+ connections
+    5. B6-MULTI-USER-SESSIONS: Very low priority, single user is primary use case
+
+    B5-SESSION-RECOVERY was successfully completed and provides:
+    - 5-minute recovery window with automatic cleanup
+    - Identity verification via public key validation
+    - Message replay with sequence number tracking
+    - Terminal history buffering (1MB default limit)
+
+    Future implementations should consider:
+    - B2-SESSION-PERSISTENCE as prerequisite for B4-LOAD-BALANCING
+    - B3-PUSH-NOTIFICATIONS only after mobile app exists
+    - B1-CONVERSATION-TTS only after conversation mode working
+    - B4 and B6 only if demand/scale requires them
+
+implementation_priority_order:
+  - B1-CONVERSATION-TTS (if conversation mode implemented)
+  - B2-SESSION-PERSISTENCE (if multi-instance needed)
+  - B3-PUSH-NOTIFICATIONS (if mobile app exists)
+  - B4-LOAD-BALANCING (if >40k concurrent sessions)
+  - B6-MULTI-USER-SESSIONS (if users request collaborative sessions)

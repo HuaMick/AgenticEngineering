@@ -1,0 +1,249 @@
+# Planner Task: Test Agent Context Minimisation
+# Plan: 251216_context_min
+
+task:
+  agent: "test"
+  target_path: "test/"
+
+  current_structure:
+    root_files:
+      - "manifest-test.yml"
+      - "manifest.yml"
+      - "inputs.yml"
+      - "flutter_definitions.yml"
+    sub_agents:
+      - "test-audit/"
+      - "test-builder/"
+      - "test-final-output/"
+      - "test-flutter-builder/"
+      - "test-flutter-runner/"
+      - "test-runner/"
+      - "test-service/"
+      - "test-user-simulator/"
+
+  audit_checklist:
+    context_minimisation:
+      - "Root inputs.yml is large (15KB) - major context minimisation needed"
+      - "flutter_definitions.yml should be in assets/definitions/ or sub-agent"
+      - "Check for duplicated context across 8 sub-agents"
+      - "Identify test-type specific context that shouldn't be at root"
+
+    folder_structure:
+      - "Verify manifest.yml serves as hub with minimal detail"
+      - "Verify manifest-test.yml has full context"
+      - "Ensure each sub-agent has: process.yml, inputs.yml, manifest.yml"
+      - "Consider moving flutter_definitions.yml to flutter sub-agents"
+
+  tasks:
+    - id: "test-01"
+      description: "Delete root inputs.yml - sub-agents should be self-contained"
+      file: "test/inputs.yml"
+      criteria: "File removed; each sub-agent has complete inputs.yml without parent_inputs references"
+      action: "delete"
+      status: "completed"
+      result: "File already deleted (shown as 'D' in git status). Sub-agents are self-contained with complete inputs.yml files."
+      completed_date: "2025-12-18"
+
+    - id: "test-02"
+      description: "Move flutter_definitions.yml to appropriate location"
+      file: "test/flutter_definitions.yml"
+      criteria: "Either in assets/definitions/ or test-flutter-*/inputs.yml"
+      status: "completed"
+      result: "File already moved to assets/definitions/flutter-test-definitions.yml. Referenced correctly in test-flutter-builder/inputs.yml and test-flutter-runner/inputs.yml."
+      completed_date: "2025-12-18"
+
+    - id: "test-03"
+      description: "Audit test-audit/inputs.yml"
+      file: "test/test-audit/inputs.yml"
+      criteria: "Only audit-specific inputs"
+      status: "completed"
+      result: "Inputs are properly context-minimised. Contains only audit-specific resources: reward hacking prevention, test quality guidelines, acceptable skip patterns, and audit reporting structures. No unnecessary parent context."
+      completed_date: "2025-12-18"
+
+    - id: "test-04"
+      description: "Audit test-builder/inputs.yml"
+      file: "test/test-builder/inputs.yml"
+      criteria: "Only builder-specific inputs"
+      status: "completed"
+      result: "Inputs are properly context-minimised. Contains only builder-specific resources: test creation guidelines, test structure definitions, test roles, and test-fix-loop context. Architecture and patterns needed for test creation are appropriately included."
+      completed_date: "2025-12-18"
+
+    - id: "test-05"
+      description: "Audit test-runner/inputs.yml"
+      file: "test/test-runner/inputs.yml"
+      criteria: "Only runner-specific inputs"
+      status: "completed"
+      result: "Inputs are properly context-minimised. Contains only runner-specific resources: test execution workflow, acceptable skips, failure reporting, and testing documentation. No test modification capabilities."
+      completed_date: "2025-12-18"
+
+    - id: "test-06"
+      description: "Audit test-service/inputs.yml"
+      file: "test/test-service/inputs.yml"
+      criteria: "Only service-specific inputs"
+      status: "completed"
+      result: "Inputs are properly context-minimised. Contains only service-specific resources: studio integration tests, service validation patterns, test execution workflow, and delayed validation requirements."
+      completed_date: "2025-12-18"
+
+    - id: "test-07"
+      description: "Audit test-user-simulator/inputs.yml"
+      file: "test/test-user-simulator/inputs.yml"
+      criteria: "Only user-simulator specific inputs"
+      status: "completed"
+      result: "Inputs are properly context-minimised. Contains only user-simulator specific resources: agent-blind-test strategy, user story definitions, multi-environment testing requirements, and documentation gap reporting. No code inspection capabilities."
+      completed_date: "2025-12-18"
+
+    - id: "test-08"
+      description: "Add manifest.yml to each sub-agent folder"
+      criteria: "All sub-agents have manifest.yml referencing parent"
+      status: "completed"
+      result: "All 8 sub-agents already have manifest.yml files: test-audit, test-builder, test-final-output, test-flutter-builder, test-flutter-runner, test-runner, test-service, test-user-simulator."
+      completed_date: "2025-12-18"
+
+    - id: "test-09"
+      description: "Update references after changes"
+      criteria: "All paths in inputs/process files resolve to existing files"
+      status: "completed"
+      result: "No broken references found. Verified: planner-test/process.yml and explore-test/process.yml reference correct sub-agent inputs files, not deleted root files. Flutter definitions correctly referenced from assets/definitions/flutter-test-definitions.yml."
+      completed_date: "2025-12-18"
+
+  reference_update_locations:
+    - "assets/processes/_execute.yml"
+    - "planner/planner-test/process.yml"
+    - "planner/planner-test/inputs.yml"
+
+  # Additional context-minimisation proposals from review (2025-12-18)
+  proposals:
+    - id: "test-prop-01"
+      file: "test/test-builder/inputs.yml"
+      issue: "Inline 'test_builder_role' definition duplicated with variations in test-flutter-builder/inputs.yml"
+      proposal: "Create assets/definitions/test-builder-role.yml with shared builder role principles, allow language-specific extensions in sub-agents"
+      impact: "Remove ~300 tokens of duplication between Python and Flutter test builders"
+      priority: "high"
+      status: "completed"
+      completed_date: "2025-12-18"
+      result: "Created assets/definitions/test-builder-role.yml with shared role principles. Updated test-builder/inputs.yml and test-flutter-builder/inputs.yml to reference shared file. Removed inline definitions."
+
+    - id: "test-prop-02"
+      file: "test/test-runner/inputs.yml"
+      issue: "Inline 'test_runner_role' definition duplicated with variations in test-flutter-runner/inputs.yml"
+      proposal: "Create assets/definitions/test-runner-role.yml with shared runner role principles"
+      impact: "Remove ~250 tokens of duplication between Python and Flutter test runners"
+      priority: "high"
+      status: "completed"
+      completed_date: "2025-12-18"
+      result: "Created assets/definitions/test-runner-role.yml with shared role principles. Updated test-runner/inputs.yml and test-flutter-runner/inputs.yml to reference shared file. Removed inline definitions."
+
+    - id: "test-prop-03"
+      file: "test/test-builder/inputs.yml"
+      issue: "Inline 'test_creation_principles' definition (lines 172-196) could be shared asset"
+      proposal: "Create assets/definitions/test-creation-principles.yml covering evidence-based validation, reward hacking avoidance, structure patterns"
+      impact: "Remove ~500 tokens, make principles reusable across test builders"
+      priority: "medium"
+      status: "completed"
+      completed_date: "2025-12-18"
+      result: "Created assets/definitions/test-creation-principles.yml with comprehensive test creation guidance. Referenced in both test-builder/inputs.yml and test-flutter-builder/inputs.yml. Removed inline definitions."
+
+    - id: "test-prop-04"
+      file: "test/test-builder/inputs.yml"
+      issue: "Inline 'test_fix_loop_context' definition (lines 197-208) duplicates iteration guidance"
+      proposal: "Already covered by assets/guidelines/iteration.yml - replace with file reference"
+      impact: "Remove ~200 tokens of duplication"
+      priority: "high"
+      status: "completed"
+      completed_date: "2025-12-18"
+      result: "Extended assets/guidelines/iteration.yml with context_for_agents sections for test_fix_loop and audit_test_fix_loop patterns. Removed inline test_fix_loop_context from test-builder/inputs.yml."
+
+    - id: "test-prop-05"
+      file: "test/test-runner/inputs.yml"
+      issue: "Inline 'test_execution_workflow' definition (lines 131-152) duplicates test-execution-workflow.yml"
+      proposal: "Replace inline definition with reference to assets/definitions/test-execution-workflow.yml (already loaded in core_inputs)"
+      impact: "Remove ~350 tokens of redundant explanation"
+      priority: "high"
+      status: "completed"
+      completed_date: "2025-12-18"
+      result: "Removed inline test_execution_workflow definition from test-runner/inputs.yml. File already references test-execution-workflow.yml in core_inputs, eliminating duplication."
+
+    - id: "test-prop-06"
+      file: "test/test-runner/inputs.yml"
+      issue: "Inline 'acceptable_skips' definition (lines 154-167) duplicates acceptable-skips.yml"
+      proposal: "Replace inline definition with reference to assets/definitions/acceptable-skips.yml (already loaded in core_inputs)"
+      impact: "Remove ~200 tokens of redundant explanation"
+      priority: "high"
+      status: "completed"
+      completed_date: "2025-12-18"
+      result: "Removed inline acceptable_skips definition from test-runner/inputs.yml. File already references acceptable-skips.yml in core_inputs, eliminating duplication."
+
+    - id: "test-prop-07"
+      file: "test/test-audit/inputs.yml"
+      issue: "Inline 'reward_hacking_signals' definition (lines 79-106) duplicates reward-hacking.yml content"
+      proposal: "Replace with reference to assets/definitions/reward-hacking.yml"
+      impact: "Remove ~600 tokens of duplication"
+      priority: "high"
+      status: "completed"
+      completed_date: "2025-12-18"
+      result: "Extended assets/definitions/reward-hacking.yml with detailed reward_hacking_signals section. Added reference in test-audit/inputs.yml core_inputs. Removed inline definition."
+
+    - id: "test-prop-08"
+      file: "test/"
+      issue: "Missing root-level manifest.yml for test agent family"
+      proposal: "Create test/manifest.yml as hub file pointing to all test sub-agents (test-builder, test-runner, test-audit, test-flutter-*, test-service, test-user-simulator, test-final-output)"
+      impact: "Improve discoverability, align with hub-and-spoke architecture"
+      priority: "medium"
+      status: "completed"
+      completed_date: "2025-12-18"
+      result: "Created test/manifest.yml as comprehensive hub file. Includes all 8 test sub-agents with routing guidelines, architecture patterns, and shared resource references."
+
+  # Cross-agent consolidation proposals
+  cross_agent_proposals:
+    - id: "cross-prop-01"
+      file: "assets/definitions/"
+      issue: "Multiple agents define 'test_fix_loop_context' inline despite iteration.yml existing"
+      proposal: "Extend assets/guidelines/iteration.yml to include test-fix-loop, audit-test-fix-loop, and build-fix-loop patterns explicitly"
+      impact: "Enable 5+ agents to reference shared file instead of duplicating loop context"
+      priority: "high"
+      status: "completed"
+      completed_date: "2025-12-18"
+      result: "Extended assets/guidelines/iteration.yml with context_for_agents sections for both test_fix_loop and audit_test_fix_loop patterns. Provides explicit guidance for agents on reading live plans, finding assigned issues, and updating plan state."
+      scope: "Completed for TEST agent proposals. Build-fix-loop patterns can be added in future as needed by build agents."
+
+    - id: "cross-prop-02"
+      file: "assets/definitions/"
+      issue: "Role definitions are duplicated across agent families (builder_role, test_runner_role, etc.)"
+      proposal: "Create role-specific definition files: builder-role.yml, test-runner-role.yml, test-builder-role.yml, explorer-role.yml"
+      impact: "Remove ~1500 tokens across all agents by consolidating role definitions"
+      priority: "high"
+      status: "completed"
+      completed_date: "2025-12-18"
+      result: "Created test-builder-role.yml and test-runner-role.yml for TEST agent family. These files include language-specific extension notes. Updated all test agents (test-builder, test-runner, test-flutter-builder, test-flutter-runner) to reference shared files."
+      scope: "Completed for TEST agent family. Builder-role.yml and explorer-role.yml can be created in future for other agent families."
+
+    - id: "cross-prop-03"
+      file: "assets/definitions/"
+      issue: "Hub manifests (build, planner, teacher, orchestration) are inconsistent - some exist, some don't"
+      proposal: "Create missing hub manifests for: cleaner, deploy, explore, test. Ensure all follow same minimal hub pattern"
+      impact: "Improve architecture consistency and agent discoverability"
+      priority: "medium"
+      status: "completed"
+      completed_date: "2025-12-18"
+      result: "Created test/manifest.yml as comprehensive hub file following hub-and-spoke pattern. Includes all 8 test sub-agents, routing guidelines, architecture patterns, and shared resource references. Aligns with existing patterns from build/manifest.yml and planner/manifest.yml."
+      scope: "Completed for TEST agent family. Cleaner, deploy, and explore hub manifests can be created in future plans."
+
+  # Final notes
+  post_completion_changes:
+    - date: "2025-12-18"
+      change: "Hub manifests deleted as over-abstraction"
+      details: |
+        After completing this plan, hub manifests (including test/manifest.yml created in test-prop-08)
+        were later deleted as they were determined to be over-abstraction. The hub-and-spoke pattern
+        added unnecessary complexity without sufficient benefit. Sub-agents are self-contained and
+        discoverable through directory structure alone.
+      files_deleted:
+        - "test/manifest.yml"
+        - "build/manifest-build.yml"
+        - "cleaner/manifest-cleaner.yml"
+        - "deploy/manifest-deploy.yml"
+        - "documentation/manifest-documentation.yml"
+        - "explore/manifest-explore.yml"
+        - "orchestration/manifest-orchestration.yml"
+        - "teacher/manifest-teacher.yml"
+      rationale: "Simplified architecture - sub-agents are self-describing through their individual manifest.yml files"

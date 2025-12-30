@@ -1,0 +1,330 @@
+# Backlog Plan: MyAgentsFrontend - Voice UI (Minimal Frontend)
+# Worktree: /home/code/myagents/MyAgentsFrontend-voice
+# Created: 2025-12-03
+# Updated: 2025-12-09 - Refactored to minimal UI only (backend logic moved to RemoteAgents)
+
+name: Voice UI (Minimal Frontend)
+worktree: /home/code/myagents/MyAgentsFrontend-voice
+branch: voice-feature
+status: backlog
+liveplan: /home/code/myagents/docs/plans/live/251203_myagentsfrontend_voice-feature.yml
+completedplan: /home/code/myagents/docs/plans/completed/251203_myagentsfrontend_voice-feature.yml
+
+description: |
+  Minimal voice UI for MyAgentsFrontend.
+  FRONTEND ONLY: Audio capture and visual feedback.
+  BACKEND HANDLES: Deepgram API integration, transcription (see RemoteAgents voice-backend plan).
+
+  This follows MyAgents architecture: minimal frontend, business logic in backend workflows.
+
+# ==============================================================================
+# ARCHITECTURE DECISION
+# ==============================================================================
+
+architecture:
+  principle: "Minimal frontend, backend workflows handle business logic"
+
+  frontend_responsibilities:
+    - VoiceButton UI widget (visual states, animations)
+    - VoiceState management (local UI state only)
+    - Audio capture (microphone → PCM chunks)
+    - Send audio frames via RelayClient (E2E encrypted)
+    - Receive and display transcripts from backend
+    - Permission handling (microphone)
+
+  backend_responsibilities:
+    - Deepgram API integration (API key protected server-side)
+    - Audio processing and streaming to Deepgram
+    - Transcript generation (interim + final)
+    - Voice session lifecycle management
+    - See: /home/code/myagents/docs/plans/backlog/251209_remoteagents_voice-backend.yml
+
+  data_flow: |
+    [Flutter VoiceButton]
+        → Press: Start audio capture
+        → Stream: Send VoiceAudioFrame via RelayClient (E2E encrypted)
+        → Receive: VoiceTranscript messages from backend
+        → Display: Show interim/final transcripts
+        → Release: Send VoiceControl(stop), receive final transcript
+
+dependencies:
+  requires:
+    - flutter-setup (existing)
+    - RemoteAgents voice-backend (new - must be built first or in parallel)
+  independent_of:
+    - core-crypto (reuse existing)
+    - core-networking (reuse existing RelayClient)
+    - terminal-display (voice is additive feature)
+    - pairing-ui (unrelated)
+
+success_criteria:
+  - Voice button captures audio on press/hold
+  - Audio frames sent via RelayClient (encrypted)
+  - Transcripts received and displayed in real-time
+  - Microphone permission handled gracefully
+  - Visual feedback for all states (idle, recording, transcribing, error)
+
+# ==============================================================================
+# BUILD PHASES
+# ==============================================================================
+
+phases:
+  - name: Build Phase
+    execution_groups:
+      # Sequential: State management first
+      - execution: sequential
+        agents:
+          - type: builder
+            inputs:
+              - /home/code/myagents/MyAgentsFrontend-voice/lib/features/voice/voice_state.dart
+            guidance: |
+              Context: VoiceState manages UI state for voice recording.
+              This is LOCAL UI STATE ONLY - no business logic.
+
+              Instructions:
+              1. Create lib/features/voice/voice_state.dart
+              2. Define VoiceState enum:
+                 - idle: Ready to record
+                 - requesting_permission: Awaiting microphone permission
+                 - recording: Actively capturing audio
+                 - processing: Waiting for final transcript from backend
+                 - success: Transcript received
+                 - error: Permission denied or backend error
+              3. Create VoiceController class (extends ChangeNotifier):
+                 - currentState: VoiceState
+                 - interimTranscript: String (live text from backend)
+                 - finalTranscript: String (completed text)
+                 - errorMessage: String
+                 - Methods: startRecording(), stopRecording(), reset()
+                 - onTranscriptReceived(String text, bool isFinal)
+              4. State transitions for UI feedback only
+              5. No Deepgram logic - backend handles transcription
+
+              Files to create:
+              - lib/features/voice/voice_state.dart
+            success_criteria:
+              - All UI states defined
+              - State transitions work correctly
+              - Controller notifies listeners on state change
+
+          - type: builder
+            inputs:
+              - /home/code/myagents/MyAgentsFrontend-voice/lib/features/voice/audio_capture.dart
+              - /home/code/myagents/MyAgentsFrontend-voice/lib/features/voice/voice_state.dart
+            guidance: |
+              Context: AudioCapture handles microphone recording.
+              Captures audio and provides stream for sending to backend.
+
+              Instructions:
+              1. Create lib/features/voice/audio_capture.dart
+              2. Use record package for microphone access:
+                 - Request microphone permission
+                 - Start/stop recording on demand
+                 - Provide Stream<Uint8List> of audio chunks
+              3. Audio configuration (match backend expectations):
+                 - Format: PCM16 (linear16)
+                 - Sample rate: 16000 Hz
+                 - Channels: mono (1)
+                 - Chunk size: 4096 bytes
+              4. Permission handling:
+                 - Request on first use
+                 - Update VoiceState on permission result
+                 - Handle denied gracefully with error message
+              5. Resource cleanup:
+                 - Dispose stream on stop
+                 - Release microphone
+
+              NO DEEPGRAM LOGIC - just capture raw audio for backend.
+
+              Files to create:
+              - lib/features/voice/audio_capture.dart
+            success_criteria:
+              - Microphone permission handled correctly
+              - Audio stream provides PCM16 chunks
+              - Resources cleaned up on stop
+
+          - type: builder
+            inputs:
+              - /home/code/myagents/MyAgentsFrontend-voice/lib/features/voice/voice_relay_handler.dart
+              - /home/code/myagents/MyAgentsFrontend-voice/lib/features/voice/voice_state.dart
+              - /home/code/myagents/MyAgentsFrontend-voice/lib/core/networking/relay_client.dart
+            guidance: |
+              Context: VoiceRelayHandler sends audio and receives transcripts via RelayClient.
+              This bridges audio capture to backend voice service.
+
+              Instructions:
+              1. Create lib/features/voice/voice_relay_handler.dart
+              2. Send voice messages via existing RelayClient:
+                 - VoiceControl(action: "start") when recording begins
+                 - VoiceAudioFrame(data: chunk) for each audio chunk
+                 - VoiceControl(action: "stop") when recording ends
+              3. Receive voice messages from RelayClient:
+                 - Listen for VoiceTranscript messages
+                 - Update VoiceController with interim/final transcripts
+                 - Handle VoiceStatus for error states
+              4. Message format (match backend protocol):
+                 - type: "voice.audio_frame" | "voice.transcript" | "voice.control" | "voice.status"
+                 - All messages E2E encrypted via existing MessageEnvelope
+              5. Error handling:
+                 - Connection errors → VoiceState.error
+                 - Backend errors → display error message
+
+              Files to create:
+              - lib/features/voice/voice_relay_handler.dart
+
+              Files to reference:
+              - lib/core/networking/relay_client.dart (existing)
+              - lib/core/crypto/message_envelope.dart (existing)
+            success_criteria:
+              - Audio frames sent via relay
+              - Transcripts received and parsed
+              - Errors handled gracefully
+
+          - type: builder
+            inputs:
+              - /home/code/myagents/MyAgentsFrontend-voice/lib/features/voice/voice_button.dart
+              - /home/code/myagents/MyAgentsFrontend-voice/lib/features/voice/voice_state.dart
+              - /home/code/myagents/MyAgentsFrontend-voice/lib/features/voice/audio_capture.dart
+              - /home/code/myagents/MyAgentsFrontend-voice/lib/features/voice/voice_relay_handler.dart
+            guidance: |
+              Context: VoiceButton is the UI widget for voice input.
+              Push-to-talk style (hold to record, release to send).
+
+              Instructions:
+              1. Create lib/features/voice/voice_button.dart
+              2. UI design (FAB style):
+                 - idle: Microphone icon, default color
+                 - recording: Red pulsing animation
+                 - processing: Loading spinner
+                 - success: Brief checkmark
+                 - error: Error icon with tooltip
+              3. Interaction:
+                 - onTapDown: Start AudioCapture, send VoiceControl(start)
+                 - onTapUp: Stop AudioCapture, send VoiceControl(stop)
+                 - onTapCancel: Cancel recording
+              4. Wire components:
+                 - Use VoiceController for state
+                 - Use AudioCapture for microphone
+                 - Use VoiceRelayHandler for backend communication
+              5. Transcript display:
+                 - Show interim transcript (optional overlay)
+                 - Final transcript via callback to parent
+              6. Callback:
+                 - onTranscriptComplete(String text): Parent sends to terminal
+
+              Files to create:
+              - lib/features/voice/voice_button.dart
+            success_criteria:
+              - Button responsive to press/release
+              - Visual states clear and animated
+              - Transcripts delivered via callback
+
+      # Parallel: Terminal integration and message types
+      - execution: parallel
+        agents:
+          - type: builder
+            inputs:
+              - /home/code/myagents/MyAgentsFrontend-voice/lib/features/remote_terminal/terminal_screen.dart
+              - /home/code/myagents/MyAgentsFrontend-voice/lib/features/voice/voice_button.dart
+            guidance: |
+              Context: Add VoiceButton to TerminalScreen.
+
+              Instructions:
+              1. Update terminal_screen.dart
+              2. Add VoiceButton as FAB (bottom-right)
+              3. Only show when connected to relay
+              4. Wire callback: onTranscriptComplete → send to terminal input
+              5. Handle permission/error states
+
+              Files to modify:
+              - lib/features/remote_terminal/terminal_screen.dart
+            success_criteria:
+              - VoiceButton appears on terminal screen
+              - Transcripts sent to terminal as input
+
+          - type: builder
+            inputs:
+              - /home/code/myagents/MyAgentsFrontend-voice/lib/core/crypto/message_envelope.dart
+            guidance: |
+              Context: Add voice message types to MessageType enum.
+
+              Instructions:
+              1. Update message_envelope.dart
+              2. Add to MessageType enum:
+                 - voiceAudioFrame
+                 - voiceTranscript
+                 - voiceControl
+                 - voiceStatus
+              3. Update message routing to handle new types
+
+              Files to modify:
+              - lib/core/crypto/message_envelope.dart
+            success_criteria:
+              - New message types defined
+              - Serialization/deserialization works
+
+  # ========================================
+  # TEST PHASE
+  # ========================================
+  - name: Test Phase
+    execution_groups:
+      - execution: test-fix-loop
+        name: Voice UI testing
+        agents:
+          - type: test
+            count: 3
+            guidance: |
+              Test voice UI components (not backend):
+
+              Agent 1 - State management:
+              - Test VoiceState transitions
+              - Test VoiceController notifications
+              - Test error state handling
+
+              Agent 2 - Audio capture:
+              - Test permission request (mock)
+              - Test audio stream format (16kHz, mono, PCM16)
+              - Test start/stop lifecycle
+
+              Agent 3 - UI and integration:
+              - Test VoiceButton renders all states
+              - Test press/release interaction
+              - Test transcript callback fires
+              - Test message sending via relay (mock)
+
+  # ========================================
+  # DOCUMENTATION PHASE
+  # ========================================
+  - name: Documentation Phase
+    execution_groups:
+      - execution: sequential
+        agents:
+          - type: documentation
+            guidance: |
+              Document voice UI feature:
+              1. Architecture: Frontend captures audio, backend transcribes
+              2. Setup: No API key needed in frontend (backend handles)
+              3. Usage: How to use voice button
+              4. Message protocol: Voice message types
+
+voice_test_failures: []
+
+# ==============================================================================
+# REMOVED FROM FRONTEND (Now in Backend)
+# ==============================================================================
+
+removed_from_frontend:
+  reason: "Following MyAgents architecture: minimal frontend, business logic in backend"
+  moved_to: /home/code/myagents/docs/plans/backlog/251209_remoteagents_voice-backend.yml
+
+  items_removed:
+    - name: DeepgramService
+      was: lib/features/voice/deepgram_service.dart
+      reason: "Deepgram API integration moved to backend to protect API key"
+
+    - name: API key management
+      was: lib/core/config/voice_config.dart, .env.example
+      reason: "API keys should be server-side only"
+
+    - name: Direct Deepgram streaming
+      reason: "Frontend only captures audio, backend handles transcription"

@@ -1,0 +1,359 @@
+# Future Features User Stories
+# Status: 2 implemented, 2 future
+
+# IMPLEMENTATION STATUS GUIDE:
+# - "status: implemented" = Feature is fully implemented in codebase
+# - "status: future" = Feature planned but not yet implemented
+# - "status: partial" = Feature partially implemented, see implementation_note
+
+user_stories:
+  # ============================================
+  # US-WS-001: WebSocket Connection (IMPLEMENTED)
+  # ============================================
+  - id: US-WS-001
+    name: "WebSocket Connection to Relay Server"
+    category: "connection"
+    persona: "User connecting to remote session"
+    priority: "critical"
+    status: implemented
+
+    implementation_note: |
+      FULLY IMPLEMENTED in lib/core/networking/relay_client.dart (500+ lines).
+
+      Implementation includes:
+      - WebSocket connection to relay server
+      - URL format: {protocol}://{relayUrl}/ws/client/{pairingCode}
+      - Auto-reconnect with exponential backoff (1s base, 60s max)
+      - Connection state management via ConnectionStateManager
+      - Message streaming via StreamController
+      - Error handling with error stream
+      - Graceful disconnect with cleanup
+
+      This was incorrectly marked as "future" when it has been implemented.
+
+    starting_state:
+      environment:
+        app_installed: true
+        platform: "web"
+        paired: true
+        relay_server_available: true
+
+    journey:
+      - step: 1
+        action: "Initiate connection with pairing code"
+        expected: "WebSocket connects to wss://{relayUrl}/ws/client/{pairingCode}"
+        failure_indicators:
+          - "Wrong URL format"
+          - "Connection not attempted"
+          - "Protocol not wss:// for production"
+
+      - step: 2
+        action: "Monitor connection state"
+        expected: |
+          State transitions:
+          - Initial connection: disconnected → connecting → connected
+          - Auto-reconnect: disconnected/error → reconnecting → connected
+        failure_indicators:
+          - "State not updated"
+          - "Listeners not notified"
+          - "Stuck in connecting state"
+          - "reconnecting state not used during auto-reconnect"
+
+      - step: 3
+        action: "Send and receive messages"
+        expected: "Messages sent through channel, received via messageStream"
+        failure_indicators:
+          - "Messages not sent"
+          - "Messages not received"
+          - "Stream errors"
+
+      - step: 4
+        action: "Disconnect intentionally"
+        expected: "Clean disconnect, state changes to disconnected, no auto-reconnect"
+        failure_indicators:
+          - "Auto-reconnect triggered on intentional disconnect"
+          - "Resources not cleaned up"
+          - "State not updated"
+
+    success_criteria:
+      - "WebSocket URL correctly built: {protocol}://{relayUrl}/ws/client/{pairingCode}"
+      - "localhost/127.0.0.1 uses ws://, production uses wss://"
+      - "ConnectionStateManager tracks state transitions"
+      - "messageStream broadcasts incoming messages"
+      - "errorStream broadcasts WebSocket errors"
+      - "Intentional disconnect prevents auto-reconnect"
+      - "Resources disposed properly (streams, channel)"
+
+    testing:
+      web: true
+      widget_test: false
+      integration_test: true
+      note: "Requires MockRelayServer for integration testing"
+
+    implementation_references:
+      - "lib/core/networking/relay_client.dart (main WebSocket client)"
+      - "lib/core/networking/relay_client.dart:133-144 (connect method)"
+      - "lib/core/networking/relay_client.dart:195-214 (_buildWebSocketUrl)"
+      - "lib/core/networking/connection_state.dart (state management)"
+
+  # ============================================
+  # US-CRYPT-001: Encrypted Communication (IMPLEMENTED)
+  # ============================================
+  - id: US-CRYPT-001
+    name: "End-to-End Encrypted Communication"
+    category: "security"
+    persona: "User with secure communication requirements"
+    priority: "critical"
+    status: implemented
+
+    implementation_note: |
+      FULLY IMPLEMENTED in lib/core/crypto/ directory.
+
+      Implementation includes:
+      - NaCl Box encryption (X25519-XSalsa20-Poly1305) via pinenacl package
+      - X25519 key pair generation (32-byte keys)
+      - Message encryption with automatic nonce generation
+      - Message decryption with MAC verification
+      - Message envelope format matching RemoteAgents protocol
+
+      Encryption format: Base64(nonce || ciphertext)
+      - nonce: 24 bytes (192 bits)
+      - ciphertext: variable length (includes 16-byte Poly1305 MAC)
+
+      This was incorrectly marked as "future" when it has been implemented.
+
+    starting_state:
+      environment:
+        app_installed: true
+        platform: "web"
+        paired: true
+        connection_status: "connected"
+
+    journey:
+      - step: 1
+        action: "Generate key pair for encryption"
+        expected: "KeyPair generated with 32-byte private and public keys"
+        failure_indicators:
+          - "Keys not generated"
+          - "Wrong key length"
+          - "Weak randomness"
+
+      - step: 2
+        action: "Encrypt outgoing message"
+        expected: "Message encrypted with NaClCrypto.encrypt(), format: Base64(nonce || ciphertext)"
+        failure_indicators:
+          - "Encryption fails"
+          - "Wrong format"
+          - "No nonce generated"
+
+      - step: 3
+        action: "Decrypt incoming message"
+        expected: "Message decrypted with NaClCrypto.decrypt(), MAC verified"
+        failure_indicators:
+          - "Decryption fails"
+          - "MAC verification skipped"
+          - "Wrong keys used"
+
+      - step: 4
+        action: "Create message envelope"
+        expected: |
+          MessageEnvelope.seal() creates:
+          {
+            "type": "<message_type>",
+            "payload": "<encrypted_base64>",
+            "sender_public_key": "<base64>",
+            "timestamp": "<iso8601>"
+          }
+        failure_indicators:
+          - "Wrong JSON format"
+          - "Missing fields"
+          - "Type not snake_case"
+
+    success_criteria:
+      - "KeyPair.generate() creates valid X25519 key pair (32 bytes each)"
+      - "NaClCrypto.encrypt() returns Base64(nonce || ciphertext)"
+      - "NaClCrypto.decrypt() verifies MAC and returns plaintext"
+      - "24-byte nonce automatically generated for each encryption"
+      - "Poly1305 MAC (16 bytes) included in ciphertext"
+      - "MessageEnvelope matches RemoteAgents protocol format"
+      - "Compatible with PyNaCl on server side"
+
+    testing:
+      web: true
+      widget_test: true
+      integration_test: true
+      note: "Integration test verifies compatibility with RemoteAgents server"
+
+    implementation_references:
+      - "lib/core/crypto/nacl_crypto.dart (X25519-XSalsa20-Poly1305 encryption)"
+      - "lib/core/crypto/key_pair.dart (X25519 key pair generation)"
+      - "lib/core/crypto/message_envelope.dart (protocol format)"
+      - "pubspec.yaml:13 (pinenacl: ^0.6.0)"
+
+  # ============================================
+  # US-XTERM-001: Terminal Emulation (FUTURE)
+  # ============================================
+  - id: US-XTERM-001
+    name: "xterm.js Terminal Emulation"
+    category: "terminal"
+    persona: "User interacting with remote terminal"
+    priority: "high"
+    status: future
+
+    implementation_note: |
+      NOT YET IMPLEMENTED.
+
+      Current state:
+      - xterm package (^4.0.0) declared in pubspec.yaml but NOT integrated
+      - terminal_screen.dart is placeholder only (27 lines)
+      - No terminal rendering, input handling, or ANSI support
+
+      Implementation needed:
+      1. Integrate xterm package into TerminalScreen
+      2. Connect xterm to RelayClient message streams
+      3. Handle terminal input → MessageType.terminalInput
+      4. Handle MessageType.terminalOutput → terminal display
+      5. Handle resize events → MessageType.resize
+      6. Support ANSI colors, cursor, scrollback
+
+      Dependencies:
+      - US-WS-001 (WebSocket) - IMPLEMENTED
+      - US-CRYPT-001 (Encryption) - IMPLEMENTED
+      - US-CONN-001/002/003 (Connection reliability) - IMPLEMENTED
+
+    starting_state:
+      environment:
+        app_installed: true
+        platform: "web"
+        paired: true
+        connection_status: "connected"
+
+    journey:
+      - step: 1
+        action: "Display terminal screen"
+        expected: "xterm.js terminal renders with cursor"
+        failure_indicators:
+          - "No terminal visible"
+          - "Placeholder text shown instead"
+          - "Terminal styling broken"
+
+      - step: 2
+        action: "Type keyboard input"
+        expected: "Input sent as MessageType.terminalInput via RelayClient"
+        failure_indicators:
+          - "Input not captured"
+          - "Input not sent"
+          - "Wrong message format"
+
+      - step: 3
+        action: "Receive terminal output"
+        expected: "Output from MessageType.terminalOutput rendered in terminal"
+        failure_indicators:
+          - "Output not displayed"
+          - "ANSI colors not rendered"
+          - "Characters garbled"
+
+      - step: 4
+        action: "Resize browser window"
+        expected: "Terminal resizes, MessageType.resize sent with new dimensions"
+        failure_indicators:
+          - "Terminal doesn't resize"
+          - "Resize message not sent"
+          - "Content clips or distorts"
+
+    success_criteria:
+      - "xterm package integrated and rendering"
+      - "Keyboard input captured and sent as terminalInput"
+      - "Terminal output received and rendered"
+      - "ANSI color codes rendered correctly"
+      - "Cursor visible and positioned correctly"
+      - "Scrollback buffer functional"
+      - "Terminal resize triggers resize message"
+      - "Focus management correct"
+
+    testing:
+      web: true
+      widget_test: true
+      integration_test: true
+
+    implementation_references:
+      - "lib/features/remote_terminal/terminal_screen.dart (to be enhanced)"
+      - "pubspec.yaml:14 (xterm: ^4.0.0)"
+      - "lib/core/networking/relay_client.dart (message sending)"
+
+  # ============================================
+  # US-VOICE-001: Voice Input (FUTURE)
+  # ============================================
+  - id: US-VOICE-001
+    name: "Voice Input for Terminal"
+    category: "accessibility"
+    persona: "User preferring voice input"
+    priority: "low"
+    status: future
+
+    implementation_note: |
+      NOT YET IMPLEMENTED.
+
+      Current state:
+      - deepgram_speech_to_text package (^2.0.0) declared in pubspec.yaml
+      - No voice input UI or integration
+
+      Implementation needed:
+      1. Add microphone button to terminal screen
+      2. Integrate Deepgram API for speech-to-text
+      3. Convert speech to terminal input
+      4. Handle partial transcripts for real-time feedback
+      5. Add visual indicator for recording state
+
+      Dependencies:
+      - US-XTERM-001 (xterm integration) - FUTURE
+      - Browser microphone permissions
+
+    starting_state:
+      environment:
+        app_installed: true
+        platform: "web"
+        paired: true
+        connection_status: "connected"
+        microphone_permission: true
+
+    journey:
+      - step: 1
+        action: "Click microphone button"
+        expected: "Recording starts, visual indicator shows active"
+        failure_indicators:
+          - "No microphone button"
+          - "Permission error"
+          - "No visual feedback"
+
+      - step: 2
+        action: "Speak command"
+        expected: "Speech converted to text, shown in terminal input area"
+        failure_indicators:
+          - "No transcription"
+          - "Poor accuracy"
+          - "Significant delay"
+
+      - step: 3
+        action: "Stop recording"
+        expected: "Final transcript sent as terminal input"
+        failure_indicators:
+          - "Input not sent"
+          - "Partial input lost"
+
+    success_criteria:
+      - "Microphone button visible on terminal screen"
+      - "Deepgram API integration functional"
+      - "Speech transcribed accurately"
+      - "Visual recording indicator present"
+      - "Graceful handling of permission denial"
+      - "Works with standard microphone inputs"
+
+    testing:
+      web: true
+      widget_test: false
+      integration_test: true
+      note: "Requires Deepgram API key and microphone access"
+
+    implementation_references:
+      - "pubspec.yaml:17 (deepgram_speech_to_text: ^2.0.0)"

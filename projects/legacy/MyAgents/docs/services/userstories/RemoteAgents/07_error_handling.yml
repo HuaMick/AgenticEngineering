@@ -1,0 +1,539 @@
+# ==============================================================================
+# RemoteAgents User Stories - Error Handling
+# ==============================================================================
+
+category: error_handling
+name: "Error Handling"
+description: "Error conditions and recovery - covers all 13+ error codes in protocol"
+
+stories:
+  # --------------------------------------------------------------------------
+  # US-ERROR-001: Invalid Pairing Code
+  # --------------------------------------------------------------------------
+  - id: US-ERROR-001
+    title: "Invalid Pairing Code Returns Error"
+    priority: HIGH
+    persona: web_user
+
+    description: |
+      As a web client user, I want clear error when entering wrong code
+      so that I know to check the code.
+
+    preconditions:
+      - Relay service running
+
+    journey:
+      - step: 1
+        action: "Connect to /ws/client/WRONG1"
+        expected: "WebSocket connection attempt"
+
+      - step: 2
+        action: "Relay validates pairing code"
+        expected: "Code not found in repository"
+
+      - step: 3
+        action: "Error returned"
+        expected: "404 Not Found error"
+
+      - step: 4
+        action: "User sees error message"
+        expected: "Clear message: 'Invalid pairing code'"
+
+    acceptance_criteria:
+      - 404 returned for invalid codes
+      - Clear error message provided
+      - Connection closed cleanly
+      - No server error/crash
+
+    test_layers:
+      local: true
+      docker: true
+      integration: true
+
+  # --------------------------------------------------------------------------
+  # US-ERROR-002: Expired Pairing Code
+  # --------------------------------------------------------------------------
+  - id: US-ERROR-002
+    title: "Expired Pairing Code Returns Error"
+    priority: HIGH
+    persona: web_user
+
+    description: |
+      As a web client user, I want clear error for expired codes
+      so that I know to request a new code.
+
+    preconditions:
+      - Session created >5 minutes ago
+      - Pairing code expired
+
+    journey:
+      - step: 1
+        action: "Connect to /ws/client/{expired_code}"
+        expected: "WebSocket connection attempt"
+
+      - step: 2
+        action: "Relay checks expiry"
+        expected: "Code has expired"
+
+      - step: 3
+        action: "Error returned"
+        expected: "410 Gone error"
+
+      - step: 4
+        action: "User sees error message"
+        expected: "Clear message: 'Pairing code has expired'"
+
+    acceptance_criteria:
+      - 410 Gone for expired codes
+      - Clear error message
+      - User advised to get new code
+      - Session cleanup triggered
+
+    test_layers:
+      local: true
+      docker: false
+      integration: true
+
+  # --------------------------------------------------------------------------
+  # US-ERROR-003: Already Paired Session
+  # --------------------------------------------------------------------------
+  - id: US-ERROR-003
+    title: "Second Pairing Attempt Rejected"
+    priority: MEDIUM
+    persona: web_user
+
+    description: |
+      As a platform operator, I want duplicate pairing rejected
+      so that sessions aren't hijacked.
+
+    preconditions:
+      - Session already PAIRED
+
+    journey:
+      - step: 1
+        action: "Second client connects with same pairing code"
+        expected: "WebSocket connection attempt"
+
+      - step: 2
+        action: "Relay checks session state"
+        expected: "Session already PAIRED"
+
+      - step: 3
+        action: "Error returned"
+        expected: "409 Conflict error"
+
+      - step: 4
+        action: "Second client disconnected"
+        expected: "Original session unaffected"
+
+    acceptance_criteria:
+      - 409 Conflict for already paired
+      - Original session continues
+      - Second client receives clear error
+      - No session state corruption
+
+    test_layers:
+      local: true
+      docker: false
+      integration: true
+
+  # --------------------------------------------------------------------------
+  # US-ERROR-004: PTY Spawn Failure
+  # --------------------------------------------------------------------------
+  - id: US-ERROR-004
+    title: "PTY Spawn Failure Handled"
+    priority: MEDIUM
+    persona: desktop_user
+
+    description: |
+      As a desktop developer, I want clear error if PTY can't spawn
+      so that I can fix the command.
+
+    preconditions:
+      - Terminal CLI running
+
+    journey:
+      - step: 1
+        action: "Run: agent-remote-terminal --command nonexistent_cmd"
+        expected: "PTY spawn attempted"
+
+      - step: 2
+        action: "PTYSpawner fails"
+        expected: "Command not found error"
+
+      - step: 3
+        action: "Error displayed to user"
+        expected: "Clear message about command failure"
+
+      - step: 4
+        action: "CLI exits cleanly"
+        expected: "Non-zero exit code"
+
+    acceptance_criteria:
+      - Spawn failures caught gracefully
+      - Clear error message displayed
+      - Session cleaned up
+      - No orphaned processes
+
+    test_layers:
+      local: true
+      docker: true
+      integration: true
+
+  # --------------------------------------------------------------------------
+  # US-ERROR-005: Malformed Message Rejected
+  # --------------------------------------------------------------------------
+  - id: US-ERROR-005
+    title: "Malformed Messages Don't Crash Service"
+    priority: MEDIUM
+    persona: platform_operator
+
+    description: |
+      As a platform operator, I want malformed messages rejected
+      so that the service remains stable.
+
+    preconditions:
+      - Session is PAIRED
+
+    journey:
+      - step: 1
+        action: "Send malformed JSON to relay"
+        expected: "Parsing error detected"
+
+      - step: 2
+        action: "Error message returned"
+        expected: "Error message with code and description (INVALID_MESSAGE or VALIDATION_FAILED)"
+
+      - step: 3
+        action: "Connection remains open"
+        expected: "Session not terminated"
+
+      - step: 4
+        action: "Valid messages still work"
+        expected: "Normal operation resumes"
+
+    acceptance_criteria:
+      - Malformed messages rejected gracefully
+      - INVALID_MESSAGE error code for JSON parse failures
+      - VALIDATION_FAILED error code for schema validation failures
+      - Error message sent to client
+      - Connection not closed for minor errors
+      - Service doesn't crash
+
+    test_layers:
+      local: true
+      docker: false
+      integration: true
+
+  # --------------------------------------------------------------------------
+  # US-ERROR-006: Network Disconnect During Send
+  # --------------------------------------------------------------------------
+  - id: US-ERROR-006
+    title: "Network Disconnect During Send Handled"
+    priority: LOW
+    persona: desktop_user
+
+    description: |
+      As a desktop developer, I want network issues handled
+      so that disconnects don't cause data corruption.
+
+    preconditions:
+      - Active session with I/O
+
+    journey:
+      - step: 1
+        action: "Simulate network disconnect during send"
+        expected: "WebSocket write fails"
+
+      - step: 2
+        action: "Error caught"
+        expected: "Connection marked as failed"
+
+      - step: 3
+        action: "Cleanup triggered"
+        expected: "Session closed, resources freed"
+
+      - step: 4
+        action: "Reconnection attempted"
+        expected: "Exponential backoff starts"
+
+    acceptance_criteria:
+      - Send failures caught
+      - No data corruption
+      - Resources cleaned up
+      - Reconnection logic triggered
+
+    test_layers:
+      local: false
+      docker: false
+      integration: true
+
+  # --------------------------------------------------------------------------
+  # US-ERROR-007: Session Expired Error
+  # --------------------------------------------------------------------------
+  - id: US-ERROR-007
+    title: "Expired Session Handling"
+    priority: HIGH
+    persona: desktop_user
+
+    description: |
+      As a desktop developer, I want clear error when session expires
+      so that I can reconnect with a fresh session.
+
+    preconditions:
+      - Session was PAIRED but has expired
+      - Desktop attempts to send message
+
+    journey:
+      - step: 1
+        action: "Desktop sends message to expired session"
+        expected: "Relay checks session validity"
+
+      - step: 2
+        action: "Relay detects expired session"
+        expected: "SESSION_EXPIRED error returned"
+
+      - step: 3
+        action: "Desktop receives error"
+        expected: "Session cleanup triggered on desktop"
+
+      - step: 4
+        action: "User notification"
+        expected: "Clear message: 'Session has expired, please reconnect'"
+
+    acceptance_criteria:
+      - SESSION_EXPIRED error code returned
+      - Desktop session cleanup triggered
+      - Clear user notification
+      - Connection closed cleanly
+      - No resource leaks
+
+    test_layers:
+      local: true
+      docker: false
+      integration: true
+
+  # --------------------------------------------------------------------------
+  # US-ERROR-008: Decryption Failed Error
+  # --------------------------------------------------------------------------
+  - id: US-ERROR-008
+    title: "Decryption Failure Handling"
+    priority: HIGH
+    persona: platform_operator
+
+    description: |
+      As a platform operator, I want decryption failures handled securely
+      so that cryptographic errors don't compromise the system.
+
+    preconditions:
+      - Session is PAIRED with encryption
+      - Message received with wrong key or corrupted data
+
+    journey:
+      - step: 1
+        action: "Encrypted message received"
+        expected: "Decryption attempted"
+
+      - step: 2
+        action: "Decryption fails"
+        expected: "DECRYPTION_FAILED error generated"
+
+      - step: 3
+        action: "Security response"
+        expected: "Connection may be closed for security"
+
+      - step: 4
+        action: "Both parties notified"
+        expected: "Clear crypto failure notification"
+
+    acceptance_criteria:
+      - DECRYPTION_FAILED error code returned
+      - Connection closed for security
+      - Both client and desktop notified
+      - Error logged with details (no sensitive data)
+      - Session terminated cleanly
+
+    test_layers:
+      local: true
+      docker: false
+      integration: true
+
+  # --------------------------------------------------------------------------
+  # US-ERROR-009: Unsupported Message Type
+  # --------------------------------------------------------------------------
+  - id: US-ERROR-009
+    title: "Unsupported Message Type Handling"
+    priority: MEDIUM
+    persona: platform_operator
+
+    description: |
+      As a platform operator, I want unknown message types handled gracefully
+      so that protocol extensions don't break existing sessions.
+
+    preconditions:
+      - Session is PAIRED
+      - Message with unknown type received
+
+    journey:
+      - step: 1
+        action: "Message with unknown type received"
+        expected: "Message handler lookup fails"
+
+      - step: 2
+        action: "Error returned"
+        expected: "UNSUPPORTED_MESSAGE_TYPE error or KeyError logged"
+
+      - step: 3
+        action: "Connection state"
+        expected: "Connection remains open (non-fatal error)"
+
+      - step: 4
+        action: "Error logging"
+        expected: "Client/desktop logs the unsupported type"
+
+    acceptance_criteria:
+      - UNSUPPORTED_MESSAGE_TYPE error returned
+      - Connection not closed (non-fatal)
+      - Clear error message with message type
+      - Error logged for debugging
+      - Session continues to function
+
+    test_layers:
+      local: true
+      docker: false
+      integration: true
+
+  # --------------------------------------------------------------------------
+  # US-ERROR-010: Timeout on Long Operations
+  # --------------------------------------------------------------------------
+  - id: US-ERROR-010
+    title: "Operation Timeout Handling"
+    priority: MEDIUM
+    persona: platform_operator
+
+    description: |
+      As a platform operator, I want long operations to timeout
+      so that resources aren't held indefinitely.
+
+    preconditions:
+      - Operation in progress
+      - Timeout threshold configured (e.g., connection_timeout: 10.0s)
+
+    journey:
+      - step: 1
+        action: "Operation started"
+        expected: "Timeout timer initiated"
+
+      - step: 2
+        action: "Operation exceeds timeout"
+        expected: "TIMEOUT error generated"
+
+      - step: 3
+        action: "Resource cleanup"
+        expected: "Resources freed, connection cleaned up"
+
+      - step: 4
+        action: "User notification"
+        expected: "Clear message advising retry"
+
+    acceptance_criteria:
+      - TIMEOUT error code returned
+      - Resources cleaned up properly
+      - Clear timeout notification
+      - User advised to retry
+      - No resource leaks
+
+    test_layers:
+      local: true
+      docker: false
+      integration: true
+
+  # --------------------------------------------------------------------------
+  # US-ERROR-011: Internal Server Error
+  # --------------------------------------------------------------------------
+  - id: US-ERROR-011
+    title: "Internal Error Handling"
+    priority: LOW
+    persona: platform_operator
+
+    description: |
+      As a platform operator, I want unexpected errors handled gracefully
+      so that debugging information is captured.
+
+    preconditions:
+      - Relay service running
+      - Unexpected server error occurs
+
+    journey:
+      - step: 1
+        action: "Unexpected error occurs"
+        expected: "Exception caught by error handler"
+
+      - step: 2
+        action: "Error response"
+        expected: "INTERNAL_ERROR returned with details dict"
+
+      - step: 3
+        action: "Connection handling"
+        expected: "Connection may be closed depending on severity"
+
+      - step: 4
+        action: "Error logging"
+        expected: "Full error logged for debugging (with stack trace)"
+
+    acceptance_criteria:
+      - INTERNAL_ERROR error code returned
+      - Details dict includes error context
+      - Full error logged server-side
+      - Connection closed if necessary
+      - No sensitive data leaked to client
+
+    test_layers:
+      local: true
+      docker: false
+      integration: true
+
+  # --------------------------------------------------------------------------
+  # US-ERROR-012: Unauthorized Access Attempt
+  # --------------------------------------------------------------------------
+  - id: US-ERROR-012
+    title: "Unauthorized Access Handling"
+    priority: MEDIUM
+    persona: platform_operator
+
+    description: |
+      As a platform operator, I want unauthorized access blocked
+      so that session security is maintained.
+
+    preconditions:
+      - Session exists
+      - Client attempts access without valid pairing
+
+    journey:
+      - step: 1
+        action: "Client attempts to access session"
+        expected: "Authorization check performed"
+
+      - step: 2
+        action: "Authorization fails"
+        expected: "UNAUTHORIZED error returned"
+
+      - step: 3
+        action: "Connection terminated"
+        expected: "Connection closed immediately"
+
+      - step: 4
+        action: "Security measures"
+        expected: "No session information leaked"
+
+    acceptance_criteria:
+      - UNAUTHORIZED error code returned
+      - Connection closed immediately
+      - No session information leaked
+      - Security event logged
+      - Clear error message to client
+
+    test_layers:
+      local: true
+      docker: false
+      integration: true
