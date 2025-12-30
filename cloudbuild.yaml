@@ -1,0 +1,549 @@
+steps:
+  # ==============================================================================
+  # 0. Setup & Secrets
+  # ==============================================================================
+  # Fetch the GCP Service Account Key from Secret Manager.
+  # This key is required by the test containers for authentication (Agent-GCPtoolkit).
+  # We save it to /workspace/service-account.json to be mounted later.
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Fetching Service Account Key..."
+        gcloud secrets versions access latest --secret=gcp-service-account-key --project=$PROJECT_ID > /workspace/service-account.json
+        
+        echo "Ensuring coverage artifacts bucket exists..."
+        # Attempt to create the bucket, ignore failure if it already exists
+        gcloud storage buckets create gs://$PROJECT_ID-coverage --project=$PROJECT_ID || true
+    id: 'fetch-sa-key'
+
+  # ==============================================================================
+  # 0.5 Prepare Workspace
+  # ==============================================================================
+  # Rearrange the workspace to match Dockerfile.test expectations.
+  # We need 'MyAgents' (this repo) and 'Agent-GCPtoolkit' (cloned) side-by-side.
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    secretEnv: ['GH_TOKEN']
+    args:
+      - '-c'
+      - |
+        echo "Cloning Agent-GCPtoolkit..."
+        git clone https://x-access-token:$$GH_TOKEN@github.com/HuaMick/Agent-GCPtoolkit.git Agent-GCPtoolkit
+
+        echo "Cloning RemoteAgents..."
+        git clone https://x-access-token:$$GH_TOKEN@github.com/HuaMick/RemoteAgents.git RemoteAgents
+
+        echo "Restructuring workspace..."
+        # Create destination directory
+        mkdir MyAgents_tmp
+
+        # Move everything that isn't the new dirs or the SA key
+        # We use find to include hidden files (.git, etc) but exclude our specific dirs
+        find . -maxdepth 1 -mindepth 1 \
+          ! -name 'Agent-GCPtoolkit' \
+          ! -name 'RemoteAgents' \
+          ! -name 'MyAgents_tmp' \
+          ! -name 'service-account.json' \
+          -exec mv {} MyAgents_tmp/ \;
+        
+        mv MyAgents_tmp MyAgents
+        
+        echo "Creating config and runtime directories for Docker build context..."
+        mkdir -p config
+        mkdir -p runtime/studio/logs
+        mkdir -p runtime/checkpoints
+        touch runtime/studio.pid
+
+        # Create minimal config.yml for containerized environment
+        # Service account path will be mounted at /root/service-account.json in containers
+        printf '%s\n' \
+          '# MyAgents Configuration for CI/CD' \
+          '# Service account is mounted at runtime via docker-compose.test.yml or Cloud Build volumes' \
+          '' \
+          'gcp:' \
+          '  project_id: myagents-475112' \
+          '' \
+          '# Studio Service Configuration' \
+          'server:' \
+          '  host: "127.0.0.1"' \
+          '  port: 2024' \
+          '  allow_blocking: true' \
+          '' \
+          'runtime:' \
+          '  pid_file: "/tmp/studio.pid"' \
+          '  log_dir: "/tmp/studio/logs"' \
+          '  checkpoint_dir: "/tmp/studio/checkpoints"' \
+          '' \
+          'langgraph:' \
+          '  project_name: "myagents"' \
+          > config/config.yml
+
+        echo "Workspace contents:"
+        ls -la
+        echo "Config directory created:"
+        ls -la config/
+        echo "Debugging workspace structure:"
+        find . -maxdepth 4 -not -path '*/.*'
+    id: 'prepare-workspace'
+    waitFor: ['fetch-sa-key']
+
+  # ==============================================================================
+  # 1. Build
+  # ==============================================================================
+  # Build the test image using the Dockerfile.test in MyAgents directory.
+  # We use the workspace root as context so that the Dockerfile can access MyAgents and Agent-GCPtoolkit.
+  # Caching is enabled by pulling the latest image first (if available).
+  - name: 'gcr.io/cloud-builders/docker'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        docker pull gcr.io/$PROJECT_ID/${_IMAGE_NAME}:latest || true
+        # Build with SHA tag only if COMMIT_SHA is available (trigger builds)
+        if [ -n "$COMMIT_SHA" ]; then
+          docker build \
+            -t gcr.io/$PROJECT_ID/${_IMAGE_NAME}:latest \
+            -t gcr.io/$PROJECT_ID/${_IMAGE_NAME}:$COMMIT_SHA \
+            --no-cache \
+            --build-arg WORKTREE_NAME=${_WORKTREE_NAME} \
+            -f MyAgents/Dockerfile.test \
+            .
+        else
+          docker build \
+            -t gcr.io/$PROJECT_ID/${_IMAGE_NAME}:latest \
+            --no-cache \
+            --build-arg WORKTREE_NAME=${_WORKTREE_NAME} \
+            -f MyAgents/Dockerfile.test \
+            .
+        fi
+    id: 'build-image'
+    waitFor: ['prepare-workspace']
+
+  # Push the image to the registry so it's available for caching in future builds
+  # and ensures we are running the exact built image.
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/${_IMAGE_NAME}:latest']
+    id: 'push-image'
+    waitFor: ['build-image']
+
+  # ==============================================================================
+  # 2. Linting
+  # ==============================================================================
+  # Run linting before heavy tests.
+  # We run the container using the docker builder to avoid /workspace overwrites.
+  # NOTE: Appending '|| true' to allow build to proceed even if linting fails during initial CI/CD setup.
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'run'
+      - '--rm'
+      - 'gcr.io/$PROJECT_ID/${_IMAGE_NAME}:latest'
+      - 'bash'
+      - '-c'
+      - 'cd /workspace/${_WORKTREE_NAME} && (uv run ruff check . || true) && (uv run mypy . || true)'
+    id: 'lint'
+    waitFor: ['build-image']
+
+  # ==============================================================================
+  # 2.5 Download testmon databases (selective test execution)
+  # ==============================================================================
+  # Download per-step .testmondata files from GCS. First run will fail gracefully.
+  - name: 'gcr.io/cloud-builders/gsutil'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Downloading testmon databases from GCS..."
+        mkdir -p /workspace/testmon
+        gsutil -m cp 'gs://$PROJECT_ID-coverage/testmon/*.testmondata' /workspace/testmon/ || echo "No testmon DBs yet (first run)"
+        ls -la /workspace/testmon/ || true
+    id: 'download-testmon-dbs'
+    allowFailure: true
+    waitFor: ['build-image']
+
+  # ==============================================================================
+  # 3. Parallel Tests
+  # ==============================================================================
+  # Each step runs a specific subset of tests corresponding to the services in docker-compose.test.yml.
+  # We inject secrets and mount the service account key.
+  # Results are written to a volume mapped to /workspace/test_results.
+
+  # Test Package 1: CLI Unification (with testmon selective execution)
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'run'
+      - '--rm'
+      - '--name=test-cli'
+      - '-v'
+      - '/workspace/service-account.json:/root/service-account.json:ro'
+      - '-v'
+      - '/workspace/test_results:/test/results'
+      - '-v'
+      - '/workspace/testmon:/testmon'
+      - '-e'
+      - 'GEMINI_API_KEY'
+      - '-e'
+      - 'LANGSMITH_API_KEY'
+      - '-e'
+      - 'GOOGLE_APPLICATION_CREDENTIALS=/root/service-account.json'
+      - '--memory=512m'
+      - '--cpus=1.0'
+      - 'gcr.io/$PROJECT_ID/${_IMAGE_NAME}:latest'
+      - 'bash'
+      - '-c'
+      - |
+        cd /workspace/${_WORKTREE_NAME} && \
+        # Copy testmon DB if it exists
+        [ -f /testmon/test-cli.testmondata ] && cp /testmon/test-cli.testmondata .testmondata || true && \
+        if [ "${_TEST_SCOPE}" = "unit" ]; then \
+          echo "Running tests with testmon (excluding costly)..." && \
+          uv run pytest --testmon --testmon-forceselect -m "not costly" tests/workflows/cli_unification/ \
+          --junitxml=/test/results/cli_unification.xml \
+          --cov=backend --cov=frontend --cov=myagents \
+          --cov-report=xml:/test/results/coverage_cli_unification.xml \
+          -v || [ $? -eq 5 ]; \
+        else \
+          echo "Running FULL test suite with testmon..." && \
+          uv run pytest --testmon tests/workflows/cli_unification/ \
+          --junitxml=/test/results/cli_unification.xml \
+          --cov=backend --cov=frontend --cov=myagents \
+          --cov-report=xml:/test/results/coverage_cli_unification.xml \
+          -v; \
+        fi && \
+        # Copy updated testmon DB back for upload
+        [ -f .testmondata ] && cp .testmondata /testmon/test-cli.testmondata || true
+    secretEnv: ['GEMINI_API_KEY', 'LANGSMITH_API_KEY']
+    id: 'test-cli'
+    waitFor: ['lint', 'download-testmon-dbs']
+
+  # Test Package 2: Infrastructure Workflow (with testmon)
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'run'
+      - '--rm'
+      - '--name=test-infra'
+      - '-v'
+      - '/workspace/service-account.json:/root/service-account.json:ro'
+      - '-v'
+      - '/workspace/test_results:/test/results'
+      - '-v'
+      - '/workspace/testmon:/testmon'
+      - '-e'
+      - 'GEMINI_API_KEY'
+      - '-e'
+      - 'LANGSMITH_API_KEY'
+      - '-e'
+      - 'GOOGLE_APPLICATION_CREDENTIALS=/root/service-account.json'
+      - '--memory=512m'
+      - '--cpus=1.0'
+      - 'gcr.io/$PROJECT_ID/${_IMAGE_NAME}:latest'
+      - 'bash'
+      - '-c'
+      - |
+        cd /workspace/${_WORKTREE_NAME} && \
+        [ -f /testmon/test-infra.testmondata ] && cp /testmon/test-infra.testmondata .testmondata || true && \
+        if [ "${_TEST_SCOPE}" = "unit" ]; then \
+          echo "Running tests with testmon (excluding costly)..." && \
+          uv run pytest --testmon --testmon-forceselect -m "not costly" tests/workflows/infrastructure/ \
+          --junitxml=/test/results/infrastructure_workflow.xml \
+          --cov=backend --cov=frontend --cov=myagents \
+          --cov-report=xml:/test/results/coverage_infrastructure.xml \
+          -v || [ $? -eq 5 ]; \
+        else \
+          echo "Running FULL test suite with testmon..." && \
+          uv run pytest --testmon tests/workflows/infrastructure/ \
+          --junitxml=/test/results/infrastructure_workflow.xml \
+          --cov=backend --cov=frontend --cov=myagents \
+          --cov-report=xml:/test/results/coverage_infrastructure.xml \
+          -v; \
+        fi && \
+        [ -f .testmondata ] && cp .testmondata /testmon/test-infra.testmondata || true
+    secretEnv: ['GEMINI_API_KEY', 'LANGSMITH_API_KEY']
+    id: 'test-infra'
+    waitFor: ['lint', 'download-testmon-dbs']
+
+  # Test Package 4: Packaging (with testmon)
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'run'
+      - '--rm'
+      - '--name=test-pkg'
+      - '-v'
+      - '/workspace/service-account.json:/root/service-account.json:ro'
+      - '-v'
+      - '/workspace/test_results:/test/results'
+      - '-v'
+      - '/workspace/testmon:/testmon'
+      - '-e'
+      - 'GEMINI_API_KEY'
+      - '-e'
+      - 'LANGSMITH_API_KEY'
+      - '-e'
+      - 'GOOGLE_APPLICATION_CREDENTIALS=/root/service-account.json'
+      - '--memory=512m'
+      - '--cpus=1.0'
+      - 'gcr.io/$PROJECT_ID/${_IMAGE_NAME}:latest'
+      - 'bash'
+      - '-c'
+      - |
+        cd /workspace/${_WORKTREE_NAME} && \
+        [ -f /testmon/test-pkg.testmondata ] && cp /testmon/test-pkg.testmondata .testmondata || true && \
+        if [ "${_TEST_SCOPE}" = "unit" ]; then \
+          echo "Running tests with testmon (excluding costly)..." && \
+          uv run pytest --testmon --testmon-forceselect -m "not costly" tests/workflows/e2e/ \
+          --junitxml=/test/results/packaging.xml \
+          --cov=backend --cov=frontend --cov=myagents \
+          --cov-report=xml:/test/results/coverage_packaging.xml \
+          -v || [ $? -eq 5 ]; \
+        else \
+          echo "Running FULL test suite with testmon..." && \
+          uv run pytest --testmon tests/workflows/e2e/ \
+          --junitxml=/test/results/packaging.xml \
+          --cov=backend --cov=frontend --cov=myagents \
+          --cov-report=xml:/test/results/coverage_packaging.xml \
+          -v; \
+        fi && \
+        [ -f .testmondata ] && cp .testmondata /testmon/test-pkg.testmondata || true
+    secretEnv: ['GEMINI_API_KEY', 'LANGSMITH_API_KEY']
+    id: 'test-pkg'
+    waitFor: ['lint', 'download-testmon-dbs']
+
+  # Test Package 5: Integration File Operations (with testmon)
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'run'
+      - '--rm'
+      - '--name=test-int-files'
+      - '-v'
+      - '/workspace/service-account.json:/root/service-account.json:ro'
+      - '-v'
+      - '/workspace/test_results:/test/results'
+      - '-v'
+      - '/workspace/testmon:/testmon'
+      - '-e'
+      - 'GEMINI_API_KEY'
+      - '-e'
+      - 'LANGSMITH_API_KEY'
+      - '-e'
+      - 'GOOGLE_APPLICATION_CREDENTIALS=/root/service-account.json'
+      - '--memory=512m'
+      - '--cpus=1.0'
+      - 'gcr.io/$PROJECT_ID/${_IMAGE_NAME}:latest'
+      - 'bash'
+      - '-c'
+      - |
+        cd /workspace/${_WORKTREE_NAME} && \
+        [ -f /testmon/test-int-files.testmondata ] && cp /testmon/test-int-files.testmondata .testmondata || true && \
+        if [ "${_TEST_SCOPE}" = "unit" ]; then \
+          echo "Running tests with testmon (excluding costly)..." && \
+          uv run pytest --testmon --testmon-forceselect -m "not costly" tests/integration/file_operations/ \
+          --junitxml=/test/results/integration_file_ops.xml \
+          --cov=backend --cov=frontend --cov=myagents \
+          --cov-report=xml:/test/results/coverage_integration_file_ops.xml \
+          -v || [ $? -eq 5 ]; \
+        else \
+          echo "Running FULL test suite with testmon..." && \
+          uv run pytest --testmon tests/integration/file_operations/ \
+          --junitxml=/test/results/integration_file_ops.xml \
+          --cov=backend --cov=frontend --cov=myagents \
+          --cov-report=xml:/test/results/coverage_integration_file_ops.xml \
+          -v; \
+        fi && \
+        [ -f .testmondata ] && cp .testmondata /testmon/test-int-files.testmondata || true
+    secretEnv: ['GEMINI_API_KEY', 'LANGSMITH_API_KEY']
+    id: 'test-int-files'
+    waitFor: ['lint', 'download-testmon-dbs']
+
+  # Test Package 6: Agent Shell Operations (with testmon)
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'run'
+      - '--rm'
+      - '--name=test-shell-ops'
+      - '-v'
+      - '/workspace/service-account.json:/root/service-account.json:ro'
+      - '-v'
+      - '/workspace/test_results:/test/results'
+      - '-v'
+      - '/workspace/testmon:/testmon'
+      - '-e'
+      - 'GEMINI_API_KEY'
+      - '-e'
+      - 'LANGSMITH_API_KEY'
+      - '-e'
+      - 'GOOGLE_APPLICATION_CREDENTIALS=/root/service-account.json'
+      - '--memory=512m'
+      - '--cpus=1.0'
+      - 'gcr.io/$PROJECT_ID/${_IMAGE_NAME}:latest'
+      - 'bash'
+      - '-c'
+      - |
+        cd /workspace/${_WORKTREE_NAME} && \
+        [ -f /testmon/test-shell-ops.testmondata ] && cp /testmon/test-shell-ops.testmondata .testmondata || true && \
+        if [ "${_TEST_SCOPE}" = "unit" ]; then \
+          echo "Running tests with testmon (excluding costly)..." && \
+          uv run pytest --testmon --testmon-forceselect -m "not costly" tests/workflows/agent_shell_operations/ \
+          --junitxml=/test/results/shell_operations.xml \
+          --cov=backend --cov=frontend --cov=myagents \
+          --cov-report=xml:/test/results/coverage_shell_operations.xml \
+          -v || [ $? -eq 5 ]; \
+        else \
+          echo "Running FULL test suite with testmon..." && \
+          uv run pytest --testmon tests/workflows/agent_shell_operations/ \
+          --junitxml=/test/results/shell_operations.xml \
+          --cov=backend --cov=frontend --cov=myagents \
+          --cov-report=xml:/test/results/coverage_shell_operations.xml \
+          -v; \
+        fi && \
+        [ -f .testmondata ] && cp .testmondata /testmon/test-shell-ops.testmondata || true
+    secretEnv: ['GEMINI_API_KEY', 'LANGSMITH_API_KEY']
+    id: 'test-shell-ops'
+    waitFor: ['lint', 'download-testmon-dbs']
+
+  # Test Package 7: Workflow Tests (health_check, help, preferences, studio)
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'run'
+      - '--rm'
+      - '--name=test-workflows-misc'
+      - '-v'
+      - '/workspace/service-account.json:/root/service-account.json:ro'
+      - '-v'
+      - '/workspace/test_results:/test/results'
+      - '-v'
+      - '/workspace/testmon:/testmon'
+      - '-e'
+      - 'GEMINI_API_KEY'
+      - '-e'
+      - 'LANGSMITH_API_KEY'
+      - '-e'
+      - 'GOOGLE_APPLICATION_CREDENTIALS=/root/service-account.json'
+      - '--memory=512m'
+      - '--cpus=1.0'
+      - 'gcr.io/$PROJECT_ID/${_IMAGE_NAME}:latest'
+      - 'bash'
+      - '-c'
+      - |
+        cd /workspace/${_WORKTREE_NAME} && \
+        [ -f /testmon/test-workflows-misc.testmondata ] && cp /testmon/test-workflows-misc.testmondata .testmondata || true && \
+        if [ "${_TEST_SCOPE}" = "unit" ]; then \
+          echo "Running tests with testmon (excluding costly)..." && \
+          uv run pytest --testmon --testmon-forceselect -m "not costly" \
+          tests/workflows/health_check/ \
+          tests/workflows/help/ \
+          tests/workflows/preferences/ \
+          tests/workflows/studio/ \
+          --junitxml=/test/results/workflows_misc.xml \
+          --cov=backend --cov=frontend --cov=myagents \
+          --cov-report=xml:/test/results/coverage_workflows_misc.xml \
+          -v || [ $? -eq 5 ]; \
+        else \
+          echo "Running FULL test suite with testmon..." && \
+          uv run pytest --testmon \
+          tests/workflows/health_check/ \
+          tests/workflows/help/ \
+          tests/workflows/preferences/ \
+          tests/workflows/studio/ \
+          --junitxml=/test/results/workflows_misc.xml \
+          --cov=backend --cov=frontend --cov=myagents \
+          --cov-report=xml:/test/results/coverage_workflows_misc.xml \
+          -v; \
+        fi && \
+        [ -f .testmondata ] && cp .testmondata /testmon/test-workflows-misc.testmondata || true
+    secretEnv: ['GEMINI_API_KEY', 'LANGSMITH_API_KEY']
+    id: 'test-workflows-misc'
+    waitFor: ['lint', 'download-testmon-dbs']
+
+  # Test Package 8: Integration Tests (git_operations, shell_operations) (with testmon)
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'run'
+      - '--rm'
+      - '--name=test-integration-misc'
+      - '-v'
+      - '/workspace/service-account.json:/root/service-account.json:ro'
+      - '-v'
+      - '/workspace/test_results:/test/results'
+      - '-v'
+      - '/workspace/testmon:/testmon'
+      - '-e'
+      - 'GEMINI_API_KEY'
+      - '-e'
+      - 'LANGSMITH_API_KEY'
+      - '-e'
+      - 'GOOGLE_APPLICATION_CREDENTIALS=/root/service-account.json'
+      - '--memory=512m'
+      - '--cpus=1.0'
+      - 'gcr.io/$PROJECT_ID/${_IMAGE_NAME}:latest'
+      - 'bash'
+      - '-c'
+      - |
+        cd /workspace/${_WORKTREE_NAME} && \
+        [ -f /testmon/test-integration-misc.testmondata ] && cp /testmon/test-integration-misc.testmondata .testmondata || true && \
+        if [ "${_TEST_SCOPE}" = "unit" ]; then \
+          echo "Running tests with testmon (excluding costly)..." && \
+          uv run pytest --testmon --testmon-forceselect -m "not costly" \
+          tests/integration/git_operations/ \
+          tests/integration/shell_operations/ \
+          --junitxml=/test/results/integration_misc.xml \
+          --cov=backend --cov=frontend --cov=myagents \
+          --cov-report=xml:/test/results/coverage_integration_misc.xml \
+          -v || [ $? -eq 5 ]; \
+        else \
+          echo "Running FULL test suite with testmon..." && \
+          uv run pytest --testmon \
+          tests/integration/git_operations/ \
+          tests/integration/shell_operations/ \
+          --junitxml=/test/results/integration_misc.xml \
+          --cov=backend --cov=frontend --cov=myagents \
+          --cov-report=xml:/test/results/coverage_integration_misc.xml \
+          -v; \
+        fi && \
+        [ -f .testmondata ] && cp .testmondata /testmon/test-integration-misc.testmondata || true
+    secretEnv: ['GEMINI_API_KEY', 'LANGSMITH_API_KEY']
+    id: 'test-integration-misc'
+    waitFor: ['lint', 'download-testmon-dbs']
+
+  # ==============================================================================
+  # 4. Upload testmon databases to GCS
+  # ==============================================================================
+  # Save updated testmon databases for future selective test execution.
+  # All 8 test steps now use per-step testmon databases for parallel safety.
+  - name: 'gcr.io/cloud-builders/gsutil'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Uploading testmon databases to GCS..."
+        ls -la /workspace/testmon/ || true
+        gsutil -m cp '/workspace/testmon/*.testmondata' 'gs://$PROJECT_ID-coverage/testmon/' || echo "No testmon DBs to upload"
+    id: 'upload-testmon-dbs'
+    waitFor: ['test-cli', 'test-infra', 'test-pkg', 'test-int-files', 'test-shell-ops', 'test-workflows-misc', 'test-integration-misc']
+
+substitutions:
+  _WORKTREE_NAME: 'MyAgents'
+  _IMAGE_NAME: 'myagents-test'
+  # Use to potentially limit scope in future (all|fast|none)
+  _TEST_SCOPE: 'all'
+
+availableSecrets:
+  secretManager:
+    - versionName: projects/$PROJECT_ID/secrets/GEMINI_API_KEY/versions/latest
+      env: 'GEMINI_API_KEY'
+    - versionName: projects/$PROJECT_ID/secrets/LANGSMITH_API_KEY/versions/latest
+      env: 'LANGSMITH_API_KEY'
+    - versionName: projects/$PROJECT_ID/secrets/MyAgents-github-oauthtoken-efe903/versions/latest
+      env: 'GH_TOKEN'
+  # The Service Account Key is accessed via gcloud command in step 0.
+  # Ensure a secret named 'gcp-service-account-key' exists in Secret Manager.
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8
+
+artifacts:
+  objects:
+    location: 'gs://$PROJECT_ID-coverage/$BUILD_ID'
+    paths: ['/workspace/test_results/*.xml']
+

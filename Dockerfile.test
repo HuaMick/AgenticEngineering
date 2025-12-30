@@ -1,0 +1,144 @@
+FROM python:3.12-slim AS builder
+
+# IMPORTANT: When building, you MUST specify the actual worktree name:
+#   docker build -f MyAgents-staging/Dockerfile.test --build-arg WORKTREE_NAME=MyAgents-staging -t myagents-test .
+# The build MUST be run from the parent directory (/home/code/myagents), not from within the worktree.
+# Default value is provided for convenience, but should be overridden based on your actual worktree.
+ARG WORKTREE_NAME=MyAgents-staging
+
+# Install only essential build tools
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv with retry logic for transient failures
+RUN for i in 1 2 3 4 5; do \
+        curl -LsSf https://astral.sh/uv/install.sh | sh && break || \
+        echo "Attempt $i failed, retrying in 5 seconds..." && sleep 5; \
+    done
+ENV PATH="/root/.local/bin:${PATH}"
+ENV UV_KEYRING_PROVIDER=subprocess
+
+WORKDIR /workspace/${WORKTREE_NAME}
+
+# Copy dependency definitions first (and README.md for setuptools)
+COPY ${WORKTREE_NAME}/pyproject.toml ${WORKTREE_NAME}/uv.lock ${WORKTREE_NAME}/README.md ./
+
+# Copy ONLY dependencies required for installation
+# Note: backend/ and frontend/ were moved to src/myagents/ in folder restructure
+#
+# IMPORTANT: Copy Agent-GCPtoolkit to SIBLING directory (/workspace/Agent-GCPtoolkit)
+# This mirrors the exact local filesystem structure:
+#   LOCAL:  /home/code/myagents/Agent-GCPtoolkit  (sibling of MyAgents-*)
+#   DOCKER: /workspace/Agent-GCPtoolkit           (sibling of MyAgents-*)
+#
+# This allows pyproject.toml's "../Agent-GCPtoolkit" path to resolve correctly
+# WITHOUT any sed hacks to rewrite paths.
+COPY Agent-GCPtoolkit/ /workspace/Agent-GCPtoolkit/
+
+# Copy RemoteAgents to SIBLING directory (required for MyAgents-remote branch)
+# This mirrors: LOCAL:  /home/code/myagents/RemoteAgents  (sibling of MyAgents-*)
+#               DOCKER: /workspace/RemoteAgents           (sibling of MyAgents-*)
+COPY RemoteAgents/ /workspace/RemoteAgents/
+
+COPY ${WORKTREE_NAME}/src/ ./src/
+
+# Install dependencies (this layer is cached unless pyproject/uv.lock/backend/gcp/frontend change)
+RUN uv sync --dev
+
+# NOW copy the rest of the code (frequently changing)
+COPY ${WORKTREE_NAME}/tests/ ./tests/
+COPY ${WORKTREE_NAME}/docs/ ./docs/
+COPY ${WORKTREE_NAME}/scripts/ ./scripts/
+COPY ${WORKTREE_NAME}/Makefile ./
+COPY ${WORKTREE_NAME}/pytest.ini ./
+
+# Create langgraph.json (v1.4 architecture: home directory is single source of truth)
+# This matches Cloud Build environment where langgraph.json is created, not copied
+RUN printf '%s\n' \
+    '{' \
+    '  "dependencies": [' \
+    '    "langgraph>=0.2.0",' \
+    '    "langchain-core",' \
+    '    "langchain-google-genai>=2.0.5",' \
+    '    "google-generativeai>=0.8.5",' \
+    '    "langsmith>=0.1.0"' \
+    '  ],' \
+    '  "graphs": {' \
+    '    "builder": "./src/myagents/backend/services/agents/workflows/builder_agent.py:create_builder_agent",' \
+    '    "coding": "./src/myagents/backend/services/agents/workflows/builder_agent.py:create_builder_agent"' \
+    '  },' \
+    '  "env": ".env"' \
+    '}' \
+    > langgraph.json
+
+# Create runtime and config directories (matches Cloud Build Step 0.5)
+# These directories are NOT copied from build context - they are created fresh
+# This ensures local Docker testing matches Cloud Build environment exactly
+RUN mkdir -p runtime/studio/logs runtime/checkpoints && \
+    touch runtime/studio.pid && \
+    mkdir -p config
+
+# Create minimal config files for containerized testing (matches Cloud Build)
+RUN printf '%s\n' \
+    '# MyAgents Configuration for CI/CD' \
+    '# Service account is mounted at runtime via docker-compose.test.yml or Cloud Build volumes' \
+    '' \
+    'gcp:' \
+    '  project_id: myagents-475112' \
+    '' \
+    '# Studio Service Configuration' \
+    'server:' \
+    '  host: "127.0.0.1"' \
+    '  port: 2024' \
+    '  allow_blocking: true' \
+    '' \
+    'runtime:' \
+    '  pid_file: "/tmp/studio.pid"' \
+    '  log_dir: "/tmp/studio/logs"' \
+    '  checkpoint_dir: "/tmp/studio/checkpoints"' \
+    '' \
+    'langgraph:' \
+    '  project_name: "myagents"' \
+    > config/config.yml
+
+# Build artifacts (using absolute path since Agent-GCPtoolkit is at /workspace/Agent-GCPtoolkit)
+RUN cd /workspace/Agent-GCPtoolkit && \
+    mkdir -p build-artifacts/dist && \
+    /workspace/${WORKTREE_NAME}/.venv/bin/python -m build --installer uv --outdir build-artifacts/dist
+
+# Runtime stage
+FROM python:3.12-slim
+
+# IMPORTANT: This ARG must match the builder stage value.
+# It should be passed via --build-arg when running docker build.
+ARG WORKTREE_NAME=MyAgents-staging
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git ca-certificates make \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV PYTHONUNBUFFERED=1
+
+# Copy venv and source from builder (mirroring local structure)
+COPY --from=builder /workspace/${WORKTREE_NAME}/.venv /workspace/${WORKTREE_NAME}/.venv
+COPY --from=builder /workspace/${WORKTREE_NAME} /workspace/${WORKTREE_NAME}
+COPY --from=builder /workspace/Agent-GCPtoolkit /workspace/Agent-GCPtoolkit
+COPY --from=builder /workspace/RemoteAgents /workspace/RemoteAgents
+COPY --from=builder /root/.local/bin/uv /usr/local/bin/uv
+COPY --from=builder /root/.local/bin/uvx /usr/local/bin/uvx
+
+ENV VIRTUAL_ENV=/workspace/${WORKTREE_NAME}/.venv
+ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
+
+WORKDIR /workspace/${WORKTREE_NAME}
+
+HEALTHCHECK --interval=5s --timeout=3s --start-period=5s --retries=3 \
+    CMD python -c "import pytest; import sys; sys.exit(0)" || exit 1
+
+# Create gcptoolkit config directory pointing to mounted service account
+# Service account is mounted at runtime via docker-compose.test.yml
+RUN mkdir -p /root/.config/agent-gcptoolkit && \
+    printf "authentication:\n  type: service_account\n  service_account_path: /root/service-account.json\ngcp:\n  project_id: myagents-475112\n" > /root/.config/agent-gcptoolkit/config.yml
+
+CMD ["/bin/bash"]
