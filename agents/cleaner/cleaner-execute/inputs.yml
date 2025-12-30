@@ -1,0 +1,45 @@
+# Cleaner-Execute Agent Inputs
+# Self-contained inputs for the execution-only cleaner agent
+# This agent ONLY executes approved cleanups - it does NOT identify new targets
+#
+# PURPOSE:
+# Execution agent removes ONLY unanimously approved targets (3/3 votes). Does NOT
+# identify new targets - only processes the approved list from voting aggregation.
+#
+# RESPONSIBILITIES:
+# - Read approved_targets list from live plan's cleaner_voting section
+# - Verify each approved target against preserved-files.yml (final safety check)
+# - Remove approved targets incrementally with commit checkpoints
+# - Run syntax checks and import validation after each removal
+# - Update execution results (completed vs failed targets) in live plan
+# - Rollback immediately on any issues
+
+# P1 ROLLOUT: Using reference layers to eliminate duplication
+
+agent_context:
+  category: "assets/definitions/agent-categories.yml#cleaner"
+  role: "cleaner-execute"
+
+inputs:
+  agent_type: "cleaner-execute"
+  version: "2.0-p1"  # Using reference layers
+
+  # Reference layers (transitive loading)
+  layers:
+    - type: layer
+      path: "assets/inputs/core-system.yml"
+      description: "Core system definitions (plans, domains, workflows, entrypoints, architecture)"
+      required: true
+
+    - type: layer
+      path: "assets/inputs/cleaner-shared.yml"
+      description: "Cleaner shared inputs (cleaner guidelines, voting system, manifest, preserved files, examples, overengineering, skipped tests)"
+      required: true
+
+    - type: layer
+      path: "assets/inputs/deploy-shared.yml"
+      description: "Deploy shared inputs (guidance, friction)"
+      required: true
+
+  # Agent-specific inputs (none - all inputs are in layers)
+  core_inputs: []

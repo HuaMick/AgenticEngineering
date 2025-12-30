@@ -1,0 +1,60 @@
+# Deploy Agent Hub Manifest
+# Orchestrates routing to deploy sub-agents based on task type
+
+agent:
+  name: "deploy"
+  type: "hub"
+  version: "1.0"
+
+category:
+  definition: "assets/definitions/agent-categories.yml#deploy"
+
+description: |
+  The deploy hub agent routes deployment tasks to specialized sub-agents:
+  - deploy-packaging: Package building and CLI installation
+  - deploy-cicd: CI/CD pipeline configuration and validation
+  - deploy-worktree: Git worktree and VS Code workspace management
+
+sub_agents:
+  - name: "deploy-packaging"
+    purpose: "Build packages and install CLI tools globally"
+    triggers:
+      - "build package"
+      - "install CLI"
+      - "rebuild"
+      - "reinstall"
+      - "package building"
+    scope: "Package building, wheel creation, CLI installation"
+
+  - name: "deploy-cicd"
+    purpose: "Maintain and validate CI/CD pipeline configuration"
+    triggers:
+      - "CI/CD"
+      - "cloudbuild"
+      - "pipeline"
+      - "Dockerfile.test"
+      - "docker-compose.test"
+      - "pytest.ini"
+    scope: "CI/CD configuration synchronization and validation"
+
+  - name: "deploy-worktree"
+    purpose: "Manage git worktrees and VS Code workspaces"
+    triggers:
+      - "worktree"
+      - "workspace"
+      - "branch"
+      - "code-workspace"
+    scope: "Git worktree operations and workspace file management"
+
+routing_logic: |
+  1. Analyze request keywords against sub-agent triggers
+  2. Route to most specific sub-agent match
+  3. If unclear, default to deploy-packaging for build/install tasks
+  4. Escalate to orchestrator if request spans multiple categories
+
+boundaries: |
+  Deploy agents handle infrastructure and deployment tooling.
+  They do NOT:
+  - Write application code (that's build agents)
+  - Create tests (that's test agents)
+  - Plan work (that's planner agents)

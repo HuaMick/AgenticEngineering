@@ -1,0 +1,162 @@
+# Deploy-Worktree Agent Inputs
+# Defines the files, directories, and context that the deploy-worktree agent needs
+# to manage git worktrees and VS Code workspace configuration.
+
+inputs:
+  agent_type: "deploy-worktree"
+  version: "2.0-p1"
+
+  agent_context:
+    category: "assets/definitions/agent-categories.yml#deploy"
+    role: "deploy-worktree"
+
+  # Reference layers (transitive loading)
+  layers:
+    - type: layer
+      path: "assets/inputs/core-system.yml"
+      description: "Core system definitions (plans, domains, workflows, entrypoints, architecture)"
+      required: true
+
+    - type: layer
+      path: "assets/inputs/core-guidelines.yml"
+      description: "Core guidelines (fix-the-source, context-minimisation, experiment-first, less-is-more, worktree-and-branching, testing, response-audit, safety)"
+      required: true
+
+    - type: layer
+      path: "assets/inputs/deploy-shared.yml"
+      description: "Deploy shared inputs (guidance, friction)"
+      required: true
+
+  # Agent-specific inputs
+  core_inputs:
+    # Deploy-worktree specific files
+    - type: file
+      path: "deploy/deploy-worktree/manifest.yml"
+      description: "Deploy-worktree agent manifest and metadata"
+      required: true
+
+    # VS Code workspace configuration
+    - type: file
+      path: "/home/code/myagents/myagents.code-workspace"
+      description: "VS Code workspace file that tracks all worktrees and repository folders"
+      required: true
+
+    # Planning and Environment Setup
+    - type: directory
+      path: "docs/plans/"
+      description: "Central location for all planning artifacts (live, backlog, completed)"
+      required: true
+
+    - type: file
+      path: "assets/definitions/plans.yml"
+      description: "Definition of plan types, folder structures, and naming conventions"
+      required: true
+
+    # Git repository information (dynamically determined)
+    - type: pattern
+      path: ".git/"
+      description: "Git repository metadata for worktree operations"
+      required: true
+
+  # Deploy-worktree specific terminology and definitions
+  # These definitions describe key concepts for worktree management
+  definitions:
+    git_worktree: |
+      Git worktrees allow multiple working directories from a single git repository.
+      Each worktree can have a different branch checked out, enabling parallel development
+      without switching branches in the main working directory.
+
+      Worktree structure in this project:
+      - /home/code/myagents/MyAgents - main branch (source of truth)
+      - /home/code/myagents/MyAgents-staging - staging branch
+      - /home/code/myagents/MyAgents-<branch> - feature branch worktrees
+
+      Similarly for other repositories:
+      - Agent-GCPtoolkit, RemoteAgents, MyAgentsFrontend
+
+      Commands:
+      - Create: git worktree add -b <branch> <path>
+      - List: git worktree list
+      - Remove: git worktree remove <path>
+
+    workspace_file: |
+      VS Code workspace file (myagents.code-workspace) is a JSON configuration that:
+      - Defines multiple folder roots for the workspace
+      - Configures git repository scanning for multi-repo support
+      - Maintains consistent naming: "RepoName (branch-name)"
+
+      Structure:
+      - folders: Array of {name, path} objects for each worktree
+      - settings.git.scanRepositories: Array of paths for git detection
+
+      When adding a new worktree:
+      1. Add folder entry with name format: "RepoName (branch-name)"
+      2. Add path to git.scanRepositories array
+      3. Preserve JSON formatting (tabs, trailing commas)
+
+    worktree_naming_convention: |
+      Worktree directories follow the pattern: <RepoName>-<branch-name>
+
+      Examples:
+      - MyAgents-staging (staging branch)
+      - MyAgents-cloud-deploy (cloud-deploy branch)
+      - Agent-GCPtoolkit-staging (staging branch)
+
+      Workspace folder names use: "<RepoName> (<branch-name>)"
+
+      Examples:
+      - "MyAgents (staging)"
+      - "MyAgents (cloud-deploy)"
+      - "Agent-GCPtoolkit (staging)"
+
+    branch_strategy: |
+      This project follows a structured branching strategy:
+
+      Main branch (/home/code/myagents/MyAgents):
+      - Source of truth for agent guidance and process definitions
+      - Production-ready code
+      - PRs to main trigger CI/CD
+
+      Staging branch (/home/code/myagents/MyAgents-staging):
+      - Pre-release integration testing
+      - All dev branches MUST merge to staging first
+
+      Feature branches (/home/code/myagents/MyAgents-<feature>):
+      - Development work for specific features
+      - Merge to staging, never directly to main
+
+      Workflow: feature → staging → main
+
+    worktree_operations: |
+      Creating a new worktree:
+      1. Determine repository root (git rev-parse --show-toplevel)
+      2. Choose branch name following conventions
+      3. Create worktree: git -C <main-repo-path> worktree add -b <branch> <worktree-path>
+      4. Verify creation: git worktree list
+      5. Update workspace file with new folder and git scan path
+      6. Validate JSON syntax
+
+      Safety checks:
+      - Verify worktree path doesn't already exist
+      - Ensure branch name doesn't conflict with existing branches
+      - Validate workspace file remains valid JSON after modification
+      - Confirm git operations succeed before updating workspace file
+
+    planning_scaffolding: |
+      Every new worktree requires a corresponding planning environment to track objectives and progress.
+      The scaffolding consists of a folder in docs/plans/live/ following the YYMMDDRepo_Branch pattern.
+
+      Each planning folder MUST contain two subdirectories:
+      - live/: For active phase files.
+      - completed/: For tracking finished work.
+
+      Placeholder files to be created:
+      1. live/plan_live_teach.yml: Primary active plan with metadata (name, worktree, branch, status: planning).
+      2. live/plan_live_test.yml: Empty placeholder for test phases.
+      3. live/plan_live_audit_clean.yml: Empty placeholder for cleanup and audit tasks.
+      4. completed/plan_completed.yml: Empty placeholder for tracking finished items.
+
+      Naming Convention (from plans.yml):
+      - Format: YYMMDD<RepoAbbreviation>_<BranchName>
+      - Repo Abbreviations: MA (MyAgents), GCP (Agent-GCPtoolkit), RA (RemoteAgents), FE (MyAgentsFrontend)
+      - Example: 251221MA_feature-abc

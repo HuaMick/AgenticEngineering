@@ -1,0 +1,179 @@
+process:
+  goal: |
+    Create a guidance test plan that validates agent guidance completeness through
+    walkthrough-based validation, ensuring agents can execute tasks using only
+    their guidance files (process.yml, inputs.yml, outputs.yml) without requiring
+    code inspection or codebase exploration.
+
+  loop_context:
+    participates_in: ['guidance-test-loop']
+    loop_definition: 'assets/definitions/agent-loops.yml#guidance-test-loop'
+    max_iterations: 3
+    role: "Create test plans for guidance validation"
+    iteration_strategy: |
+      - Iteration 1: Create initial walkthrough validation plan based on built agents
+      - Iteration 2+: Refine walkthrough tasks based on guidance gaps found by target agents
+      - Each iteration targets newly fixed guidance or agents needing validation
+    exit_conditions:
+      - "All walkthrough validations pass (reported by target agents)"
+      - "No guidance gaps identified"
+      - "Max iterations reached (escalate to human)"
+
+  loop_definitions:
+    reference: "assets/definitions/agent-loops.yml"
+    description: "Loop types (guidance-test-loop) defined in agent-loops.yml"
+    # NOTE: Do not duplicate loop definitions here - see agent-loops.yml for full definitions
+
+  inputs:
+    - location: "agents/planner/planner-test-guidance/inputs.yml"
+      description: "Core planner-test-guidance agent inputs and guidelines"
+    - location: "assets/definitions/guidance-test-scenarios.yml"
+      description: "Walkthrough validation scenarios and test structure"
+    - location: "assets/definitions/strategy-guidance-blind-test.yml"
+      description: "Blind test methodology for guidance validation"
+
+  outputs: []
+
+  steps:
+    - |
+      Review all inputs if an input cannot be found do not proceed.
+      If an input is found in a different location, update the path and flag
+      the discrepancy in your output.
+    - |
+      PLAN FOLDER STRUCTURE:
+      Plans are now organized in folders, not single files. The planning folder structure is:
+
+      docs/plans/live/YYMMDDRepo_Branch/
+        - live/plan_live_*.yml           (Active phase files, one per phase)
+        - completed/plan_completed.yml   (Completed items from all phases)
+
+      YOUR RESPONSIBILITIES:
+      - Read all other phase .yml files in `live/` to understand what was built (your test targets)
+      - Create/update `live/plan_live_test_guidance.yml` with your guidance test phases
+      - Move any completed items to `completed/plan_completed.yml` within the folder
+      - Output ONLY to `live/plan_live_test_guidance.yml` (do not modify other phase plans)
+    - |
+      Create guidance walkthrough validation plan following the guidance-blind-test strategy.
+      Reference test scenario definitions from assets/definitions/guidance-test-scenarios.yml for:
+      - Task completion test (can agent complete task with guidance only?)
+      - Reference resolution test (do all paths in inputs.yml resolve?)
+      - Loop context test (do loop participants have loop_context defined?)
+      - Subagent spawning test (can orchestrator spawn children successfully?)
+      - Friction detection test (are prerequisites and assumptions explicit?)
+
+      WALKTHROUGH VALIDATION APPROACH:
+      Reference assets/definitions/strategy-guidance-blind-test.yml for:
+      - Minimal context principle (guidance files only, no code access)
+      - Blind test constraints (no exploration beyond guidance)
+      - Friction reporting structure
+      - Validation checklist for guidance completeness
+
+      PLAN STRUCTURE REQUIREMENTS:
+      Reference the example test plan from inputs (`assets/examples/test/guidance-test-plan.yml`) for:
+      - Test phase structure with guidance-test-loop pattern
+      - File-level inputs for target agent guidance
+      - Detailed test scenario selection and task definitions
+      - Measurable success criteria for guidance validation
+      - Operation ordering and agent type allocation
+
+      INPUT SOURCE (what you're testing):
+      - Read all phase .yml files in `live/` from the planning folder to understand what agents were created/modified
+      - Identify target agents that need guidance validation
+      - Determine which test scenarios apply to each target agent
+
+      OUTPUT TARGET (where you write):
+      - Write your guidance test phases to `live/plan_live_test_guidance.yml` in the same planning folder
+      - This file contains ONLY guidance walkthrough validation phases, not implementation or build phases
+
+      DUMPING GROUND: Use additional subfolders (e.g., `test-results/guidance/`) to store agent artifacts
+      like test reports, gap analysis, or friction logs to avoid polluting shared spaces.
+    - |
+      The plan should include the following phases in this order:
+      1. Guidance walkthrough validation: Target agents review their own guidance
+      2. Gap analysis phase: Categorize detected gaps using friction.yml patterns
+      3. Audit phase: Review test quality and detect false positives
+      4. Documentation-loop: Update guidance based on findings
+
+      Reference inputs.yml for detailed phase requirements and test scenario definitions.
+
+      AVOID simulation and user story terminology - focus on walkthrough-based validation
+      where target agents directly review their own guidance for clarity and completeness.
+    - |
+      GUIDANCE WALKTHROUGH TASK STRUCTURE:
+      Each walkthrough task should spawn the target agent to review its own guidance.
+      Task structure:
+      - id: Unique task identifier (e.g., "1.1", "1.2")
+      - description: What is being validated (e.g., "Walkthrough validation of planner-test-guidance guidance")
+      - agent_type: "<target-agent-type>" (spawn the target agent to review itself)
+      - operation: "EXECUTE"
+      - context:
+          validation_mode: "guidance_walkthrough"
+          guidance_files_to_review:
+            - "process.yml"
+            - "inputs.yml"
+            - "outputs.yml"
+          test_scenarios:
+            - "task_completion_test"
+            - "reference_resolution_test"
+            - "friction_detection_test"
+            - "loop_context_test"  # Only if agent participates in loops
+            - "subagent_spawning_test"  # Only for orchestrator agents
+          walkthrough_task: "Minimal task definition to complete using guidance only"
+          constraints: "Use only guidance files - no code inspection or codebase exploration"
+          report_template: "assets/definitions/strategy-guidance-blind-test.yml#FRICTION_POINT"
+      - acceptance_criteria:
+          - "Agent completes walkthrough using guidance only"
+          - "All input paths resolve correctly"
+          - "No guidance gaps or broken references reported"
+          - "Friction report shows zero critical or high severity issues"
+      - files:
+          - "agents/<category>/<agent-name>/process.yml"
+          - "agents/<category>/<agent-name>/inputs.yml"
+          - "agents/<category>/<agent-name>/outputs.yml"
+    - |
+      TEST SCENARIO SELECTION RULES:
+      - task_completion_test: ALWAYS include for all agents
+      - reference_resolution_test: ALWAYS include for all agents
+      - friction_detection_test: ALWAYS include for all agents
+      - loop_context_test: Include ONLY for agents that participate in loops (check process.yml for loop_context)
+      - subagent_spawning_test: Include ONLY for orchestrator agents that spawn other agents
+
+      MINIMAL CONTEXT PRINCIPLE (from strategy-guidance-blind-test.yml):
+      - Walkthrough tasks should provide ONLY the goal, not implementation hints
+      - Target agent must discover all paths through guidance alone
+      - No access to codebase beyond guidance files (process.yml, inputs.yml, outputs.yml)
+      - No prior knowledge of agent implementation or codebase structure
+      - Report friction points when guidance is insufficient
+    - |
+      Provide the guidance walkthrough validation plan back to the main orchestration agent for execution.
+
+  guidelines:
+    # Core guidelines: See assets/guidelines/ (less-is-more.yml, iteration.yml, fix-the-source.yml, experiment-first.yml, context-minimisation.yml, worktree-and-branching.yml, response-audit.yml)
+    # Core definitions: See assets/definitions/ (plans.yml, guidance.yml, friction.yml, domains.yml, workflows.yml, entrypoints.yml)
+    # Test strategies and processes: See inputs.yml definitions section and assets/definitions/strategy-*.yml files
+    - |
+      For complex guidance changes, always include a guidance-test-loop with walkthrough validation.
+    - |
+      Test scenario selection (see assets/definitions/guidance-test-scenarios.yml for detailed definitions):
+      - task_completion_test: Validates agent can complete task with guidance only
+      - reference_resolution_test: Validates all paths in inputs.yml resolve correctly
+      - friction_detection_test: Validates prerequisites and assumptions are explicit
+      - loop_context_test: Validates loop participation metadata (conditional)
+      - subagent_spawning_test: Validates orchestrator can spawn children (conditional)
+    - |
+      Walkthrough validation strategy (see assets/definitions/strategy-guidance-blind-test.yml):
+      - Spawn target agents to review their own guidance files
+      - Provide minimal context (guidance files only, no code access)
+      - Target agent reports friction points when guidance is insufficient
+      - Friction categorized by severity (CRITICAL, HIGH, MEDIUM, LOW)
+      - Focus on broken references, missing context, and clarity issues
+    - |
+      When reviewing guidance test plans (as a reviewer planner agent):
+      - Reference assets/examples/test/guidance-test-plan.yml for valid structure patterns
+      - Verify test scenarios match agent capabilities (no subagent_spawning_test for non-orchestrators)
+      - CRITICAL: Verify minimal context principle is maintained (no implementation hints in walkthrough tasks)
+      - For plans testing orchestrators, verify subagent_spawning_test is included
+      - For plans testing loop participants, verify loop_context_test is included
+      - Ensure plans reference assets/definitions/guidance-test-scenarios.yml and strategy-guidance-blind-test.yml
+      - AVOID simulation and user story terminology - use walkthrough validation language
+      - Only reject plans with genuine structural issues or missing critical test scenarios

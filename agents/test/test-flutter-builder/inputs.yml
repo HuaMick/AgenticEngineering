@@ -1,0 +1,110 @@
+# Test Flutter Builder Agent Inputs Specification
+# This file defines the inputs for the Flutter test builder agent
+# Following context minimization principles - only Flutter testing essentials
+
+agent_context:
+  category: "assets/definitions/agent-categories.yml#test"
+  role: "test-flutter-builder"
+
+inputs:
+  agent_type: "test-flutter-builder"
+  version: "2.0-pilot"  # Using reference layers
+  project_type: flutter
+
+  # Reference layers (transitive loading)
+  layers:
+    - type: layer
+      path: "assets/inputs/core-guidelines.yml"
+      description: "Universal behavioral guidelines (fix-source, context-min, experiment-first, etc.)"
+      required: true
+
+    - type: layer
+      path: "assets/inputs/cleaner-shared.yml"
+      description: "Cleaner shared inputs (cleaner-shared-guidelines, voting-system, preserved-files, overengineering, skipped-test)"
+      required: true
+
+    - type: layer
+      path: "assets/inputs/test-shared.yml"
+      description: "Test category shared inputs (acceptable-skips, reward-hacking, test-builder-role, test-creation-principles, test-structure, testing-types)"
+      required: true
+
+  # Agent-specific inputs (only what's unique to test-flutter-builder)
+  core_inputs:
+    # Core guidelines relevant to test building
+    - type: file
+      path: "assets/definitions/strategy-user-simulation.yml"
+      description: "User simulation testing strategy"
+      required: true
+
+    - type: file
+      path: "assets/definitions/strategy-test-suite.yml"
+      description: "Test suite execution strategy"
+      required: true
+
+    # Flutter-specific resources (atomic files for context minimization)
+    - type: file
+      path: "assets/definitions/flutter-project-type.yml"
+      description: "Flutter project type definition"
+      required: true
+
+    - type: file
+      path: "assets/definitions/flutter-test-structure.yml"
+      description: "Flutter test file structure and naming conventions"
+      required: true
+
+    - type: file
+      path: "assets/definitions/flutter-test-roles.yml"
+      description: "Flutter test builder and runner role definitions"
+      required: true
+
+    - type: file
+      path: "agents/build/build-flutter/manifest.yml"
+      description: "Flutter project structure and folder organization"
+      required: true
+
+    # Live plan for failure reporting and state tracking
+    - type: pattern
+      path: "docs/plans/live/*/"
+      description: "Live plan folders for structured failure reporting and state tracking (folder-based structure)"
+      required: true
+
+  # Test builder specific terminology and role definition
+  # Note: Core definitions moved to shared asset files for context minimization
+  # - test_builder_role: assets/definitions/test-builder-role.yml (includes language-specific extensions)
+  # - test_creation_principles: assets/definitions/test-creation-principles.yml
+  definitions:
+    flutter_test_patterns: |
+      Flutter tests should follow these patterns:
+
+      1. File Organization:
+         - Test files named <source_file>_test.dart
+         - Mirror lib/ directory structure in test/
+         - Mocks go in test/mocks/
+
+      2. Test Structure:
+         - Use group() to organize related tests
+         - Use descriptive test names
+         - Test widget behavior, not implementation details
+
+      3. Common Test Types:
+         - Unit tests: Test individual functions and classes
+         - Widget tests: Test UI components with testWidgets()
+         - Integration tests: Test feature flows
+
+      4. Environment Awareness:
+         - Native Flutter: Full dart:io access, WebSocket works
+         - Docker: WebSocket localhost may fail (acceptable skip)
+         - CI/CD: Runs natively with full access
+
+    acceptable_flutter_skips: |
+      Only these test skips are acceptable for Flutter:
+
+      1. Platform-specific tests:
+         - Tests requiring Android/iOS/Web specific features
+         - Skip with platform check
+
+      2. WebSocket tests in Docker:
+         - Skip reason: "WebSocket localhost fails in Docker"
+         - These should run in CI/CD with native Flutter
+
+      Any other skips indicate a problem that needs fixing.

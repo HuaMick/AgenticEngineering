@@ -1,0 +1,118 @@
+process:
+  goal: |
+    Create cleanup, audit, and documentation phases for finalizing implementation.
+    These phases ensure code quality, validate test integrity, and document the final state.
+    Handles folder lifecycle transitions (copy to completed/ when appropriate).
+    Recognizes follow-on work scenarios (new phases added to existing plans).
+
+    OUTPUT STRUCTURE:
+    - Outputs ONLY to `live/plan_live_audit_clean.yml` within the plan folder
+    - Reads from all other phase .yml files in `live/` to understand completed work
+    - Moves completed items to `completed/plan_completed.yml` in the same folder
+
+  loop_definitions:
+    reference: "assets/definitions/agent-loops.yml"
+    description: "Loop types (audit-test-fix-loop, cleaner-voting-loop) defined in agent-loops.yml"
+    # NOTE: Do not duplicate loop definitions here - see agent-loops.yml for full definitions
+
+  inputs:
+    - location: "agents/planner/planner-cleaning/inputs.yml"
+      description: "Core planner agent inputs and guidelines"
+    - location: "docs/plans/live/YYMMDDRepo_Branch/"
+      description: "The live plan folder containing phase .yml files"
+
+  outputs:
+    - location: "docs/plans/live/YYMMDDRepo_Branch/live/plan_live_audit_clean.yml"
+      description: "Cleanup, audit, and documentation phases for the live plan"
+    - location: "docs/plans/live/YYMMDDRepo_Branch/completed/plan_completed.yml"
+      description: "Completed items moved from live plan phases"
+
+  steps:
+    - |
+      Review all inputs if an input cannot be found do not proceed.
+      If an input is found in a different location, update the path and flag
+      the discrepancy in your output.
+    - |
+      A planning folder should have been provided.
+      Read all other phase .yml files in `live/` to understand completed work.
+      Move any completed items to `completed/plan_completed.yml` in the same folder.
+    - |
+      Review the live plan phases and identify what work has been completed.
+      Determine what finalization phases are needed based on the implementation.
+    - |
+      Add finalization phases to `live/plan_live_audit_clean.yml` following the phase ordering defined in inputs.yml:
+      1. Cleanup Phase (if needed) - Reference inputs.yml cleanup_phase definition
+      2. Audit Phase (mandatory) - Reference inputs.yml audit_phase definition
+      3. User Story Validation Phase (mandatory) - Reference inputs.yml user_story_validation_phase definition
+      4. Documentation Phase (mandatory) - Reference inputs.yml documentation_phase definition
+
+      PLAN STRUCTURE REQUIREMENTS:
+      Reference the example live plan file from inputs (`live/plan_live_audit_clean.yml`) for:
+      - Phase structure and execution groups
+      - File-level inputs for context routing
+      - Detailed guidance patterns for orchestration agent
+      - Measurable success criteria patterns
+      - Operation ordering and agent type allocation
+
+      OUTPUT LOCATION:
+      - Write finalization phases to: `docs/plans/live/YYMMDDRepo_Branch/live/plan_live_audit_clean.yml`
+      - Move completed items to: `docs/plans/live/YYMMDDRepo_Branch/completed/plan_completed.yml`
+
+      DUMPING GROUND: Use additional subfolders (e.g., `audit-results/`, `analysis/`) to store agent artifacts
+      like audit reports, cleanup logs, or final documentation drafts to avoid polluting shared spaces.
+    - |
+      Determine folder lifecycle action based on plan completion status:
+
+      FOLDER LIFECYCLE TRANSITIONS:
+      Plans move through distinct stages that determine folder location:
+      - planning → active: Work begins in docs/plans/live/
+      - active → partially_completed: First completion triggers COPY to docs/plans/completed/
+      - partially_completed → partially_completed: Ongoing work updates both locations
+      - partially_completed → fully_completed: Final work triggers final COPY update
+
+      DECISION LOGIC FOR FOLDER ACTIONS:
+
+      SCENARIO 1 - Initial Completion (first phase completes):
+      - COPY entire plan folder to `docs/plans/completed/YYMMDDRepo_Branch/`
+      - KEEP original folder in `docs/plans/live/YYMMDDRepo_Branch/`
+      - Mark phase as completed in metadata
+      - Folder now exists in BOTH locations (partially_completed state)
+
+      SCENARIO 2 - Follow-On Work Added (new phases to existing plan):
+      - ADD new phase files to live/YYMMDDRepo_Branch/live/
+      - KEEP existing completed snapshot in docs/plans/completed/
+      - Document relationship in plan metadata (original work vs follow-on phases)
+      - Folder remains in partially_completed state
+
+      SCENARIO 3 - Follow-On Work Completes (subsequent phase finishes):
+      - UPDATE completed/YYMMDDRepo_Branch/ with new snapshot
+      - COPY newly completed phase files to completed/ folder
+      - KEEP folder active in docs/plans/live/ for potential future work
+      - Update metadata to track multiple completion iterations
+
+      SCENARIO 4 - Full Completion (all phases done, no more work planned):
+      - COPY final state to completed/YYMMDDRepo_Branch/
+      - KEEP folder in live/ unless user explicitly requests removal
+      - Mark plan as fully_completed in metadata
+      - Both folders continue to coexist
+
+      LIFECYCLE FENCE:
+      - NEVER move folders to archived/
+      - NEVER remove folders from live/ without user confirmation
+      - Only COPY operations are allowed (never MOVE)
+      - Only completed/ or live/ are valid locations for agent operations
+      - Archive decisions are user-only actions
+    - |
+      Report back to the orchestration agent that finalization phases have been added to plan_live_audit_clean.yml.
+
+  guidelines:
+    # Core guidelines: See assets/guidelines/ (less-is-more.yml, iteration.yml, fix-the-source.yml, experiment-first.yml, context-minimisation.yml, worktree-and-branching.yml, response-audit.yml)
+    # Core definitions: See assets/definitions/ (plans.yml, guidance.yml, friction.yml, domains.yml, workflows.yml, entrypoints.yml)
+    # Phase ordering and definitions: See inputs.yml definitions section (finalization_phases, cleanup_phase, audit_phase, user_story_validation_phase, documentation_phase)
+    - |
+      REFERENCE STRUCTURE:
+      - Use plan_live_audit_clean.yml as the authoritative example for phase structure
+      - Follow the same patterns for execution groups, inputs, guidance, and success criteria
+      - Ensure inputs are file-level (not directory-level)
+      - Provide detailed guidance for orchestration agent
+      - Define measurable success criteria

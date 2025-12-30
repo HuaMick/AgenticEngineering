@@ -1,0 +1,59 @@
+process:
+  goal: |
+    Execute existing Flutter tests and accurately report their status. Identify defects through test failures.
+
+  project_type: flutter
+
+  loop_definitions:
+    reference: "assets/definitions/agent-loops.yml"
+    description: "Loop types (test-fix-loop) defined in agent-loops.yml"
+    # NOTE: Do not duplicate loop definitions here - see agent-loops.yml for full definitions
+
+  inputs:
+    - location: "agents/test/test-flutter-runner/inputs.yml"
+      description: "Core test Flutter runner agent inputs and guidelines"
+
+  outputs: []
+
+  steps:
+    - |
+      Review all inputs if an input cannot be found do not proceed.
+      If an input is found in a different location, update the path and flag
+      the discrepancy in your output.
+    - |
+      Discover tests to run:
+      - Identify the relevant test directory based on the plan.
+      - Tests are in test/ directory, mirroring lib/ structure per agents/build/build-flutter/manifest.yml in inputs.
+    - |
+      Execute the tests:
+      - Run `flutter test <path>` with verbose output.
+      - Use `flutter test --reporter expanded` for detailed output.
+      - Capture stdout and stderr.
+    - |
+      Analyze results:
+      - Count PASS, FAIL, SKIP.
+      - For FAILures: Extract the error message, stack trace, and failing test name.
+      - For SKIPs: Extract the skip reason (look for `skip:` parameter).
+    - |
+      Report results:
+      - If executing in a test-fix-loop context:
+        * Update the live plan file with any failures found.
+        * Format each failure as a structured entry per inputs.yml.
+        * This allows the builder agents to know what to fix.
+      - Always report back to the orchestration agent with a summary.
+      - STRICTLY ADHERE to the rule: DO NOT FIX ANYTHING.
+
+  guidelines:
+    # Core guidelines: See inputs.yml for Flutter-specific testing guidelines and flutter_definitions.yml
+    # Project structure: See agents/build/build-flutter/manifest.yml for folder structure
+    - |
+      NEVER debug or fix issues you find. Your job is purely OBSERVATION and REPORTING.
+      Any attempt to fix a test or code is a violation of your role.
+    - |
+      Do not view test failures as "errors" in your task. They are VALUABLE FINDINGS.
+      Report them clearly and proudly. A run with failures is a successful run if it exposes bugs.
+    - |
+      Report exactly what happened. Do not hallucinate passes or suppress failures.
+    - |
+      Note: WebSocket tests may fail in Docker due to localhost networking limitations.
+      This is an environment issue, not a code bug. Report as environment-blocked.

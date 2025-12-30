@@ -1,0 +1,187 @@
+# Test-Service Agent Inputs Specification
+# This file defines the inputs needed for service-level integration testing
+# test-service validates backend services: lifecycle, stability, health checks
+
+agent_context:
+  category: "assets/definitions/agent-categories.yml#test"
+  role: "test-service"
+
+inputs:
+  agent_type: "test-service"
+  version: "2.0-pilot"  # Using reference layers
+
+  # Reference layers (transitive loading)
+  layers:
+    - type: layer
+      path: "assets/inputs/core-system.yml"
+      description: "Core system definitions (plans, domains, workflows, entrypoints, architecture)"
+      required: true
+
+    - type: layer
+      path: "assets/inputs/core-guidelines.yml"
+      description: "Universal behavioral guidelines (fix-source, context-min, experiment-first, etc.)"
+      required: true
+
+    - type: layer
+      path: "assets/inputs/test-shared.yml"
+      description: "Test category shared inputs (acceptable-skips, reward-hacking, test-builder-role, test-creation-principles, test-structure, testing-types)"
+      required: true
+
+  # Agent-specific inputs (only what's unique to test-service)
+  core_inputs:
+    # Service testing specific resources
+    - type: file
+      path: "assets/definitions/test-execution-workflow.yml"
+      description: "Standard test execution workflow for running service tests"
+      required: true
+
+    - type: file
+      path: "assets/definitions/studio-integration-tests.yml"
+      description: "Studio integration test requirements and expected tests"
+      required: true
+
+    - type: file
+      path: "assets/definitions/test-roles.yml"
+      description: "Test builder and runner role definitions"
+      required: true
+
+    # Live plan for failure reporting and state tracking
+    - type: pattern
+      path: "docs/plans/live/*/"
+      description: "Live plan folders for structured failure reporting and state tracking (folder-based structure)"
+      required: true
+
+    # Testing documentation for test execution
+    - type: file
+      path: "docs/testing/README.md"
+      description: "Quick reference for running tests"
+      required: true
+
+    - type: file
+      path: "docs/testing/LOCAL_TESTING.md"
+      description: "Detailed local and Docker testing guide"
+      required: false
+
+  # Guidelines that test-service agents should follow
+  guidelines:
+    - path: "assets/definitions/strategy-test-suite.yml"
+      description: "Test suite execution strategy for service validation"
+
+    - path: "assets/definitions/strategy-fresh-environment.yml"
+      description: "Fresh environment testing strategy"
+
+    - path: "assets/guidelines/iteration.yml"
+      description: "Iteration patterns including test-fix-loop"
+
+  # Service testing specific terminology and concepts
+  definitions:
+    test_runner: |
+      Agent responsible for executing tests, not modifying them.
+      Reports results without fixing failures directly.
+
+      Responsibilities:
+      - Execute tests using pytest or appropriate test framework
+      - Report PASS/FAIL/SKIP results accurately
+      - Document failures in live plan for builder agents to fix
+      - Start required services (e.g., Studio) before test execution
+
+      Constraints:
+      - CANNOT modify test files or application code
+      - Must report actual test outcomes, not desired outcomes
+
+    service_validation: |
+      Testing strategy focused on service lifecycle and stability validation.
+      Validates that backend services start correctly, remain stable, and respond
+      to health checks. This is infrastructure testing, not functional testing.
+
+      Focus areas:
+      - Service startup and initialization
+      - Health endpoint HTTP validation
+      - Service stability over time
+      - Log validation for critical errors
+      - Process lifecycle management
+
+      Not in scope:
+      - Feature functionality testing
+      - User acceptance testing
+      - UI/UX validation
+
+    test_execution_workflow: |
+      Standard workflow for running service integration tests:
+
+      1. Pre-Test Setup:
+         - Start LangGraph Studio service if not already running (myagents studio start)
+         - Wait for Studio to be ready (check health endpoint)
+         - Verify Studio is accessible before proceeding
+
+      2. Test Execution:
+         - Run pytest with appropriate flags
+         - Do NOT skip tests that require Studio service
+         - Studio integration tests should run successfully
+
+      3. Post-Test Cleanup:
+         - Stop Studio service after tests complete (myagents studio stop)
+         - Clean up any test artifacts
+
+      4. Expected Results:
+         - All tests should pass except acceptable skips
+         - 5 tests requiring GCP registry authentication (acceptable skip)
+         - 1 test requiring shellcheck (acceptable skip)
+         - Studio integration tests (10 tests) should PASS, not skip
+
+    studio_integration_tests: |
+      The following tests require LangGraph Studio service to be running:
+      - test_studio_health_endpoint
+      - test_studio_assistants_search
+      - test_studio_threads_get
+      - test_studio_assistants_get
+      - test_studio_stability_under_load
+      - test_studio_threads_create
+      - test_studio_delayed_validation
+      - test_studio_logs_no_errors
+      - test_studio_logs_no_type_errors
+      - test_studio_invalid_assistant_id
+
+      These tests should NOT be skipped. Start Studio before running tests.
+
+    acceptable_skips: |
+      Only the following test skips are acceptable:
+
+      1. Registry Authentication Tests (5 tests):
+         - Require GCP Artifact Registry credentials
+         - Skip reason: "Registry authentication packages not available"
+
+      2. Shellcheck Test (1 test):
+         - Requires shellcheck binary installed
+         - Skip reason: "shellcheck not found"
+
+      Any other skips indicate a problem that needs to be fixed.
+      Studio tests should NOT skip - start Studio first if they do.
+
+    failure_reporting: |
+      Structured format for documenting test failures in live plan.
+
+      Required fields:
+      - test_name: Name of the failing test
+      - component: Component or workflow being tested
+      - failure_description: What went wrong
+      - expected_behavior: What should have happened
+      - actual_behavior: What actually happened
+      - files_involved: Files that may need changes
+
+      Purpose: Enables dynamic spawning of builder agents with precise fix targets
+
+    delayed_validation: |
+      Service testing must account for initialization time.
+
+      Critical requirements:
+      - Wait 10+ seconds after service start before validation
+      - Make actual HTTP requests to health endpoints
+      - Check service status multiple times during test execution
+      - Review logs after delayed validation period
+      - Don't rely solely on port availability checks
+
+      Warning signs of insufficient validation:
+      - Tests pass immediately after service start
+      - Only process existence checked, no functional validation
+      - stdout/stderr redirected to DEVNULL (suppresses errors)

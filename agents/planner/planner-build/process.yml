@@ -1,0 +1,65 @@
+process:
+  goal: |
+    Create a phased implementation plan for completing the task using subagents.
+
+  loop_definitions:
+    reference: "assets/definitions/agent-loops.yml"
+    description: "Loop types (test-fix-loop, audit-test-fix-loop) defined in agent-loops.yml"
+    # NOTE: Do not duplicate loop definitions here - see agent-loops.yml for full definitions
+
+  inputs:
+    - location: "agents/planner/planner-build/inputs.yml"
+      description: "Core planner agent inputs and guidelines"
+
+  outputs: []
+
+  steps:
+    - |
+      Review all inputs if an input cannot be found do not proceed.
+      If an input is found in a different location, update the path and flag
+      the discrepancy in your output.
+    - |
+      A planning folder should have been provided (docs/plans/live/YYMMDDRepo_Branch/).
+      Ensure mandatory subfolders exist: `live/` and `completed/`.
+      Move any completed items to `completed/plan_completed.yml` within the folder.
+    - |
+      Review the objective and add IMPLEMENTATION phases to `live/plan_live_teach.yml` for completing the objective.
+      For each item gather context and check assumptions. Find where to source
+      the required context and add context routing to the plan so that other agents dont have to.
+
+      IMPORTANT: planner-build outputs ONLY to `live/plan_live_teach.yml` (build and environment setup phases).
+      Other planners handle test phases (planner-test) and audit/cleanup phases (planner-audit).
+
+      PLAN STRUCTURE REQUIREMENTS:
+      Reference the example live plan file from inputs (`live/plan_live_teach.yml`) for:
+      - Plan structure with unique name and worktree path at root level
+      - File-level inputs for context routing (enables parallel vs sequential execution determination)
+      - Detailed guidance and measurable success criteria patterns
+      - Operation ordering and agent type allocation
+
+      Success criteria MUST include user-focused validation:
+      - User acceptance tests - what does the user expect to be able to do?
+      - User simulation tests - how will the builder agent validate the user experience?
+      - Entrypoint execution - which CLI commands, API endpoints, or UI flows to test?
+      - Expected outcomes - what should the user see/experience when it works?
+
+      Architecture patterns for new code:
+      Reference architecture.md input for Domain → Workflow → Entrypoint pattern and separation of concerns.
+
+      DUMPING GROUND: Use additional subfolders (e.g., `analysis/`, `design-specs/`) to store agent artifacts
+      like .md analysis files, diagrams, or intermediate specs to avoid polluting shared spaces.
+
+  guidelines:
+    # Core guidelines: See assets/guidelines/ (less-is-more.yml, iteration.yml, fix-the-source.yml, experiment-first.yml, context-minimisation.yml, worktree-and-branching.yml, response-audit.yml)
+    # Core definitions: See assets/definitions/ (plans.yml, guidance.yml, friction.yml, domains.yml, workflows.yml, entrypoints.yml)
+    # Overengineering definition: See assets/definitions/overengineering.yml
+    - |
+      When reviewing plans (as a reviewer planner agent):
+      - Reference plan_live_teach.yml for valid context routing patterns.
+        File-level inputs are preferred for parallel execution determination, but directory-level guidance is also valid.
+      - Reference plan_live_teach.yml for correct operation ordering.
+      - Only reject plans with genuine structural issues or missing critical phases.
+      - Ensure inputs are file-level so agents don't need to do discovery work.
+
+      NOTE: CI/CD validation phase planning is handled by planner-test, not planner-build.
+      For plans that modify test structure, planner-test will include CI/CD validation.
