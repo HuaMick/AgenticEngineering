@@ -1,0 +1,49 @@
+# Docker Compose configuration for testing network disconnect scenarios
+# This sets up a relay service and a mock terminal container for integration testing
+
+version: '3.8'
+
+services:
+  # Relay service - WebSocket server for agent communication
+  relay:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: agent-relay
+    ports:
+      - "8080:8080"
+    environment:
+      - RELAY_HOST=0.0.0.0
+      - RELAY_PORT=8080
+      - LOG_LEVEL=INFO
+      - CLEANUP_INTERVAL=60
+    networks:
+      - agent-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health').read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+
+  # Terminal mock - Simulates a terminal service for testing
+  # This container can be disconnected from the network to test connection handling
+  terminal-mock:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: agent-terminal-mock
+    environment:
+      - LOG_LEVEL=DEBUG
+    networks:
+      - agent-network
+    # Keep container running without starting the relay server
+    # We just need it as a network endpoint for testing
+    command: ["tail", "-f", "/dev/null"]
+    restart: unless-stopped
+
+networks:
+  agent-network:
+    driver: bridge
+    name: agent-network
