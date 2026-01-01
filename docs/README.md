@@ -91,7 +91,7 @@ AgenticEngineering/
 │       ├── completed/         # Finished work (reference)
 │       └── backlog/           # Future work
 │
-├── projects/
+├── modules/
 │   ├── AgenticBackend/        # Backend services (future)
 │   ├── AgenticFrontend/       # Frontend UI (future)
 │   ├── AgenticGuidance/       # Guidance system (future)
@@ -149,7 +149,7 @@ CLI commands are documented here as they're codified from mature patterns.
 *(None yet—patterns still maturing)*
 
 ### Candidates (Based on Legacy Analysis)
-These patterns from `projects/legacy/MyAgents/` show high maturity and are candidates for CLI:
+These patterns from `modules/legacy/MyAgents/` show high maturity and are candidates for CLI:
 
 | Pattern | Maturity | Notes |
 |---------|----------|-------|
@@ -174,7 +174,7 @@ Until LangSmith is configured, friction analysis can be done manually via markdo
 
 ## Legacy Reference
 
-`projects/legacy/MyAgents/` contains the previous agent scaffolding system, preserved as reference:
+`modules/legacy/MyAgents/` contains the previous agent scaffolding system, preserved as reference:
 
 - **9 agent categories**: Build, Planner, Test, Cleaner, Explore, Teacher, Deploy, Documentation, Orchestration
 - **35 sub-agents**: Specialized agents that Claude Code's capabilities now subsume
