@@ -1,0 +1,189 @@
+# Test-Audit Agent Inputs
+# Context-minimised inputs for the test audit agent
+# This agent ONLY audits test quality - it does NOT run tests, build tests, or fix issues
+
+agent_context:
+  category: "assets/definitions/agent-categories.yml#test"
+  role: "test-audit"
+
+inputs:
+  agent_type: "test-audit"
+  version: "2.0-pilot"  # Using reference layers
+
+  # Reference layers (transitive loading)
+  layers:
+    - type: layer
+      path: "assets/inputs/core-system.yml"
+      description: "Core system definitions (plans, domains, workflows, entrypoints, architecture)"
+      required: true
+
+    - type: layer
+      path: "assets/inputs/core-guidelines.yml"
+      description: "Universal behavioral guidelines (fix-source, context-min, experiment-first, etc.)"
+      required: true
+
+    - type: layer
+      path: "assets/inputs/test-shared.yml"
+      description: "Test category shared inputs (acceptable-skips, reward-hacking, test-builder-role, test-creation-principles, test-structure, testing-types)"
+      required: true
+
+  # Agent-specific inputs (only what's unique to test-audit)
+  core_inputs:
+    # Audit-specific strategies
+    - type: file
+      path: "assets/definitions/strategy-multi-layer.yml"
+      description: "Multi-layer testing strategy for understanding testing approaches being audited"
+      required: true
+
+    - type: file
+      path: "assets/definitions/strategy-documentation-validation.yml"
+      description: "Documentation validation strategy for audit verification"
+      required: true
+
+    - type: file
+      path: "assets/definitions/signal-and-noise.yml"
+      description: "Signal vs noise definitions for context quality."
+      required: true
+
+    # Test package to audit (provided by orchestration)
+    - type: directory
+      path: "tests/workflows/{test_package}/"
+      description: "Specific test package directory to audit (provided by orchestration agent)"
+      required: true
+
+    # Test execution results (if available)
+    - type: directory
+      path: "test-results/"
+      description: "Test execution results directory containing JUnit XML files with skipped test information"
+      required: false
+
+  # Audit-specific terminology and concepts
+  # Note: Core definitions moved to shared asset files for context minimization
+  # - reward_hacking_signals: assets/definitions/reward-hacking.yml
+  definitions:
+    audit_role: |
+      As a test-audit agent:
+      - You ONLY audit test quality, you do NOT run or fix tests
+      - You detect reward hacking patterns in existing tests
+      - You validate skip patterns against acceptable-skips criteria
+      - You identify silent failures and weak assertions
+      - You flag structural issues and architectural violations
+      - You report findings to orchestration agent for coordination
+      - If you cannot find an input, STOP and report the issue
+
+    audit_checks: |
+      Key questions for test quality validation:
+
+      1. Outcome verification:
+         - Do tests verify actual outcomes or just check success flags?
+         - Do tests run actual commands or just validate help text?
+         - Do tests verify user-facing behavior or implementation details?
+
+      2. Evidence-based validation:
+         - Do tests produce concrete evidence (files, outputs, logs)?
+         - Or do they just report "success: true" without proof?
+
+      3. Real vs mocked dependencies:
+         - Do tests use real dependencies or create mocks?
+         - Would tests pass if functionality was removed?
+
+      4. Silent failure detection:
+         - Are errors logged or observable?
+         - Do failures bubble up to the user?
+         - Can failures reach monitoring systems?
+
+      5. Assertion quality:
+         - Are assertions specific or overly permissive?
+         - Do assertions verify correctness or just "not empty"?
+
+    skip_pattern_audit: |
+      Audit skip patterns against acceptable-skips criteria:
+
+      Acceptable skips (justified):
+      1. Registry Authentication Tests (5 tests):
+         - Require GCP Artifact Registry credentials
+         - Skip reason: "Registry authentication packages not available"
+
+      2. Shellcheck Test (1 test):
+         - Requires shellcheck binary installed
+         - Skip reason: "shellcheck not found"
+
+      Unjustified skips (fixable):
+      - Hardcoded paths (e.g., "/home/code/myagents/MyAgents-packaging-001")
+      - Missing dynamic path resolution
+      - Worktree-specific references
+      - "Installation script not found" (should be discoverable)
+      - "Repository not found" (should use proper discovery)
+      - Skips indicating broken test setup
+
+      For each skip found:
+      1. Extract skip condition and reason
+      2. Categorize: justified vs unjustified vs needs investigation
+      3. Document: test name, file, line, condition, reason, fix recommendation
+      4. Cross-reference with actual skipped tests from execution results
+
+    installation_architecture_validation: |
+      For installation-related test packages, validate system state assumptions:
+
+      1. Check pyproject.toml for local path dependencies:
+         - [tool.uv.sources] with path = "../..."
+         - These block pip/pipx installation
+         - Flag if present but not clearly documented as dev-only
+
+      2. Verify test assumptions about cli_installed:
+         - Tests that assume cli_installed: true won't catch installation bugs
+         - Flag if no tests verify the installation process itself
+
+      3. Check for worktree-specific references:
+         - Hardcoded paths like /home/code/myagents/MyAgents-<branch>
+         - Shebang references to worktree venvs
+         - Editable installs pointing to specific worktrees
+
+      This catches installation architecture issues that bypass normal testing.
+
+    structural_issues: |
+      File and folder structure validation within test package:
+
+      - Detect duplication (same test logic in multiple files)
+      - Identify architectural violations (tests in wrong locations)
+      - Flag files that appear to be in wrong packages
+
+      Report findings to orchestration agent - don't fix them yourself.
+
+    audit_reporting: |
+      Report findings specific to your assigned test package:
+
+      Required sections:
+      1. Package name and path
+      2. Skip pattern audit results:
+         - Unjustified skips (fixable issues)
+         - Justified skips (legitimate conditions)
+         - Needs investigation
+      3. Skipped test execution results:
+         - Tests that were skipped at runtime
+         - Skip messages and justifications
+         - Cross-referenced with code patterns
+      4. Test quality issues:
+         - Reward hacking patterns detected
+         - Silent failures found
+         - Weak or permissive assertions
+      5. Structural issues:
+         - Duplication
+         - Architectural violations
+      6. Installation/packaging issues (if applicable):
+         - Local path dependencies
+         - Worktree references
+         - Missing installation tests
+
+      Focus ONLY on your assigned package. Other packages have their own audit agents.
+
+    audit_constraints: |
+      CRITICAL audit agent constraints:
+
+      - NEVER debug or fix issues you find
+      - NEVER run tests yourself
+      - On failure, proceed with next test and report all failures
+      - Report findings to orchestration agent, not directly to user
+      - Emphasis investigation need, don't talk in absolutes
+      - Focus ONLY on assigned test package (other audits run in parallel)
+      - If inputs cannot be found, STOP and report the issue

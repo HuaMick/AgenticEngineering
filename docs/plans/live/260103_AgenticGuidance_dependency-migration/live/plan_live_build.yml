@@ -1,0 +1,367 @@
+# Dependency Migration - Build Phase
+# Phases 2-5: Migrate Agent Directories and Assets
+# Created: 2026-01-03
+#
+# PURPOSE: Migrate approved agents from legacy to AgenticGuidance module
+# based on audit findings in analysis/migration_manifest.yml
+#
+# DEPENDS ON: plan_live_audit.yml (audit phase must complete first)
+#
+# KEY PRINCIPLES:
+# 1. INPUTS: File-level from legacy and target locations
+# 2. GUIDANCE: Migration steps with path updates
+# 3. SUCCESS CRITERIA: Agents functional in new location
+
+worktree: "/home/code/AgenticEngineering"
+liveplan: "docs/plans/live/260103_AgenticGuidance_dependency-migration/live/plan_live_build.yml"
+completedplan: "docs/plans/live/260103_AgenticGuidance_dependency-migration/completed/plan_completed.yml"
+
+live-plans:
+  - id: DEPENDENCY-MIGRATION-BUILD-001
+    title: Migrate Agent Directories and Assets
+    description: |
+      Migrate approved agents (deploy, test, teacher) and assets (orchestration-policy.yml)
+      from legacy to AgenticGuidance module. Each migration includes path updates and
+      reference verification.
+
+    # Reference to audit phase
+    depends_on:
+      - plan_live_audit.yml
+      - analysis/migration_manifest.yml
+
+    phases:
+      # ========================================
+      # PHASE 2: DEPLOY AGENT MIGRATION
+      # ========================================
+      - name: Deploy Agent Migration
+        execution_groups:
+          - execution: sequential
+            name: Create deploy agent structure
+            agents:
+              - type: build
+                inputs:
+                  - docs/plans/live/260103_AgenticGuidance_dependency-migration/analysis/migration_manifest.yml
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/deploy/manifest.yml
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/deploy/deploy-worktree/manifest.yml
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/deploy/deploy-worktree/process.yml
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/deploy/deploy-worktree/inputs.yml
+                  - modules/AgenticGuidance/agents/manifest.yml
+                guidance: |
+                  Context: Migrate deploy-worktree agent to AgenticGuidance if approved in
+                  migration_manifest.yml. This agent handles worktree creation and plan scaffolding.
+
+                  Instructions:
+                  1. Read migration_manifest.yml to confirm deploy-worktree is approved for migration
+                  2. If NOT approved, skip this agent and document why
+                  3. Create directory structure:
+                     - modules/AgenticGuidance/agents/deploy/
+                     - modules/AgenticGuidance/agents/deploy/deploy-worktree/
+                  4. Copy files from legacy location:
+                     - manifest.yml (deploy category manifest)
+                     - deploy-worktree/manifest.yml
+                     - deploy-worktree/process.yml
+                     - deploy-worktree/inputs.yml
+                  5. Update paths in copied files:
+                     - Change "deploy/deploy-worktree/inputs.yml" to "agents/deploy/deploy-worktree/inputs.yml"
+                     - Update any absolute paths to use relative paths from module root
+                     - Update asset references (assets/definitions/..., assets/guidelines/...)
+                  6. Update modules/AgenticGuidance/agents/manifest.yml to include deploy category
+                  7. Verify no broken references in updated files
+
+                  Path update patterns:
+                  - Legacy: "deploy/deploy-worktree/inputs.yml"
+                  - New: "agents/deploy/deploy-worktree/inputs.yml"
+                success_criteria:
+                  - agents/deploy/ directory structure created
+                  - deploy-worktree agent files migrated
+                  - All internal paths updated to new location
+                  - Category manifest updated to include deploy
+                  - No broken file references
+
+      # ========================================
+      # PHASE 3: TEST AGENT MIGRATION
+      # ========================================
+      - name: Test Agent Migration
+        execution_groups:
+          - execution: parallel
+            name: Migrate approved test agents
+            agents:
+              # Agent 1: test-runner migration
+              - type: build
+                inputs:
+                  - docs/plans/live/260103_AgenticGuidance_dependency-migration/analysis/migration_manifest.yml
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/test-runner/process.yml
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/test-runner/inputs.yml
+                guidance: |
+                  Context: Migrate test-runner agent if approved in migration_manifest.yml.
+                  This agent executes Python tests and reports results.
+
+                  Instructions:
+                  1. Check migration_manifest.yml for test-runner disposition
+                  2. If MIGRATE:
+                     - Create modules/AgenticGuidance/agents/test/test-runner/
+                     - Copy process.yml and inputs.yml
+                     - Update paths: "test/test-runner/..." -> "agents/test/test-runner/..."
+                  3. If SKIP: Document reason and do nothing
+                  4. Update asset references in inputs.yml if present
+                success_criteria:
+                  - Migration decision documented
+                  - If migrated: files exist at agents/test/test-runner/
+                  - If migrated: paths updated correctly
+
+              # Agent 2: test-audit migration
+              - type: build
+                inputs:
+                  - docs/plans/live/260103_AgenticGuidance_dependency-migration/analysis/migration_manifest.yml
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/test-audit/process.yml
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/test-audit/inputs.yml
+                guidance: |
+                  Context: Migrate test-audit agent if approved in migration_manifest.yml.
+                  This agent reviews test quality and coverage.
+
+                  Instructions:
+                  1. Check migration_manifest.yml for test-audit disposition
+                  2. If MIGRATE:
+                     - Create modules/AgenticGuidance/agents/test/test-audit/
+                     - Copy process.yml and inputs.yml
+                     - Update paths: "test/test-audit/..." -> "agents/test/test-audit/..."
+                  3. If SKIP: Document reason
+                  4. Update asset references
+                success_criteria:
+                  - Migration decision documented
+                  - If migrated: files exist at agents/test/test-audit/
+                  - If migrated: paths updated correctly
+
+              # Agent 3: test-final-output migration
+              - type: build
+                inputs:
+                  - docs/plans/live/260103_AgenticGuidance_dependency-migration/analysis/migration_manifest.yml
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/test-final-output/process.yml
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/test-final-output/inputs.yml
+                guidance: |
+                  Context: Migrate test-final-output agent if approved.
+                  This agent validates final outputs of processes.
+
+                  Instructions:
+                  1. Check migration_manifest.yml for test-final-output disposition
+                  2. If MIGRATE:
+                     - Create modules/AgenticGuidance/agents/test/test-final-output/
+                     - Copy process.yml and inputs.yml
+                     - Update paths
+                  3. If SKIP: Document reason
+                success_criteria:
+                  - Migration decision documented
+                  - If migrated: files and paths correct
+
+              # Agent 4: test-guidance-simulator migration
+              - type: build
+                inputs:
+                  - docs/plans/live/260103_AgenticGuidance_dependency-migration/analysis/migration_manifest.yml
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/test-guidance-simulator/manifest.yml
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/test-guidance-simulator/process.yml
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/test-guidance-simulator/inputs.yml
+                guidance: |
+                  Context: Migrate test-guidance-simulator if approved.
+                  This agent simulates guidance execution for testing.
+
+                  Instructions:
+                  1. Check migration_manifest.yml for test-guidance-simulator disposition
+                  2. If MIGRATE:
+                     - Create modules/AgenticGuidance/agents/test/test-guidance-simulator/
+                     - Copy manifest.yml, process.yml, inputs.yml
+                     - Update paths
+                  3. If SKIP: Document reason
+                success_criteria:
+                  - Migration decision documented
+                  - If migrated: files and paths correct
+
+          # Create test category manifest after individual migrations
+          - execution: sequential
+            name: Create test category manifest
+            agents:
+              - type: build
+                inputs:
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/manifest.yml
+                  - modules/AgenticGuidance/agents/test/
+                  - modules/AgenticGuidance/agents/manifest.yml
+                guidance: |
+                  Context: Create test category manifest based on which agents were migrated.
+
+                  Instructions:
+                  1. Read legacy test/manifest.yml as template
+                  2. Create modules/AgenticGuidance/agents/test/manifest.yml with:
+                     - Only sub_agents that were actually migrated
+                     - Updated paths for AgenticGuidance structure
+                  3. Update modules/AgenticGuidance/agents/manifest.yml to include test category
+                  4. Ensure routing section references correct paths
+                success_criteria:
+                  - agents/test/manifest.yml created
+                  - Only migrated agents listed in sub_agents
+                  - Main agents manifest updated
+
+      # ========================================
+      # PHASE 4: TEACHER AGENT MIGRATION
+      # ========================================
+      - name: Teacher Agent Migration
+        execution_groups:
+          - execution: parallel
+            name: Migrate approved teacher agents
+            agents:
+              # Agent 1: teacher-update-guidance migration
+              - type: build
+                inputs:
+                  - docs/plans/live/260103_AgenticGuidance_dependency-migration/analysis/migration_manifest.yml
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/teacher/teacher-update-guidance/manifest.yml
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/teacher/teacher-update-guidance/process.yml
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/teacher/teacher-update-guidance/inputs.yml
+                guidance: |
+                  Context: Migrate teacher-update-guidance if approved.
+                  This agent analyzes agent logs and improves process.yml and inputs.yml files.
+
+                  Instructions:
+                  1. Check migration_manifest.yml for teacher-update-guidance disposition
+                  2. If MIGRATE:
+                     - Create modules/AgenticGuidance/agents/teacher/teacher-update-guidance/
+                     - Copy manifest.yml, process.yml, inputs.yml
+                     - Update paths: "teacher/..." -> "agents/teacher/..."
+                  3. If SKIP: Document reason
+                success_criteria:
+                  - Migration decision documented
+                  - If migrated: files exist at agents/teacher/teacher-update-guidance/
+
+              # Agent 2: teacher-update-assets migration
+              - type: build
+                inputs:
+                  - docs/plans/live/260103_AgenticGuidance_dependency-migration/analysis/migration_manifest.yml
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/teacher/teacher-update-assets/manifest.yml
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/teacher/teacher-update-assets/process.yml
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/teacher/teacher-update-assets/inputs.yml
+                guidance: |
+                  Context: Migrate teacher-update-assets if approved.
+                  This agent creates/updates shared assets (definitions, guidelines, examples).
+
+                  Instructions:
+                  1. Check migration_manifest.yml for teacher-update-assets disposition
+                  2. If MIGRATE:
+                     - Create modules/AgenticGuidance/agents/teacher/teacher-update-assets/
+                     - Copy manifest.yml, process.yml, inputs.yml
+                     - Update paths
+                  3. If SKIP: Document reason
+                success_criteria:
+                  - Migration decision documented
+                  - If migrated: files exist at agents/teacher/teacher-update-assets/
+
+          # Create teacher category manifest
+          - execution: sequential
+            name: Create teacher category manifest
+            agents:
+              - type: build
+                inputs:
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/teacher/manifest.yml
+                  - modules/AgenticGuidance/agents/teacher/
+                  - modules/AgenticGuidance/agents/manifest.yml
+                guidance: |
+                  Context: Create teacher category manifest based on which agents were migrated.
+
+                  Instructions:
+                  1. Read legacy teacher/manifest.yml as template
+                  2. Create modules/AgenticGuidance/agents/teacher/manifest.yml with:
+                     - Only sub_agents that were actually migrated
+                     - Note about teacher-plan if not implemented
+                  3. Update modules/AgenticGuidance/agents/manifest.yml to include teacher category
+                success_criteria:
+                  - agents/teacher/manifest.yml created
+                  - Only migrated agents listed
+                  - Main agents manifest updated
+
+      # ========================================
+      # PHASE 5: ASSETS MIGRATION
+      # ========================================
+      - name: Assets Migration
+        execution_groups:
+          - execution: sequential
+            name: Migrate missing referenced assets
+            agents:
+              - type: build
+                inputs:
+                  - docs/plans/live/260103_AgenticGuidance_dependency-migration/analysis/migration_manifest.yml
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/assets/guidelines/orchestration-policy.yml
+                  - modules/AgenticGuidance/assets/guidelines/
+                guidance: |
+                  Context: Migrate orchestration-policy.yml if it's referenced but missing.
+
+                  Instructions:
+                  1. Check migration_manifest.yml for assets_to_migrate list
+                  2. For orchestration-policy.yml:
+                     - Check if already exists at modules/AgenticGuidance/assets/guidelines/
+                     - If missing and approved for migration:
+                       - Copy from legacy location
+                       - Update any internal references if needed
+                  3. For any other missing assets in manifest:
+                     - Copy to appropriate location
+                     - Update references
+                  4. Verify all orchestration agent inputs can resolve their guideline references
+                success_criteria:
+                  - All assets_to_migrate items processed
+                  - orchestration-policy.yml present if required
+                  - No broken asset references in orchestration agents
+
+    # ========================================
+    # REFERENCE UPDATE PHASE
+    # ========================================
+      - name: Reference Updates
+        execution_groups:
+          - execution: sequential
+            name: Update cross-references
+            agents:
+              - type: build
+                inputs:
+                  - modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml
+                  - modules/AgenticGuidance/agents/orchestration/orchestration-build/inputs.yml
+                  - modules/AgenticGuidance/agents/planner/planner-test/inputs.yml
+                  - modules/AgenticGuidance/agents/planner/planner-guidance/inputs.yml
+                guidance: |
+                  Context: After migration, update references in existing agents to point to
+                  new locations of migrated agents and assets.
+
+                  Instructions:
+                  1. Read each inputs.yml file
+                  2. Search for references to:
+                     - deploy/deploy-worktree -> agents/deploy/deploy-worktree
+                     - test/* agents -> agents/test/*
+                     - teacher/* agents -> agents/teacher/*
+                     - Legacy asset paths
+                  3. Update references to new AgenticGuidance paths
+                  4. Ensure all referenced locations exist after migration
+                  5. Document any references that could not be resolved
+                success_criteria:
+                  - All orchestration inputs updated with new paths
+                  - All planner inputs updated with new paths
+                  - No broken references remain
+                  - Unresolvable references documented for follow-up
+
+    user_stories:
+      - story: "As a developer, I want migrated agents to work without modification"
+        validation: "All migrated agents have correct paths and references"
+        status: "must_validate"
+
+      - story: "As a maintainer, I want a single source of truth in AgenticGuidance"
+        validation: "No references point to legacy locations after migration"
+        status: "must_validate"
+
+    architecture_compliance:
+      pattern: "Agent directory structure"
+      verification:
+        - check: "Each agent has manifest, process, inputs"
+          files:
+            - modules/AgenticGuidance/agents/deploy/deploy-worktree/
+            - modules/AgenticGuidance/agents/test/*/
+            - modules/AgenticGuidance/agents/teacher/*/
+          criteria: "Each directory contains manifest.yml, process.yml, inputs.yml"
+
+        - check: "Category manifests list all sub-agents"
+          files:
+            - modules/AgenticGuidance/agents/deploy/manifest.yml
+            - modules/AgenticGuidance/agents/test/manifest.yml
+            - modules/AgenticGuidance/agents/teacher/manifest.yml
+          criteria: "sub_agents list matches actual directories"

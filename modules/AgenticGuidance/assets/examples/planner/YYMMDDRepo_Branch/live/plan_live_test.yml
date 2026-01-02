@@ -1,0 +1,436 @@
+# Example Live Plan Structure - Test Phase
+# Extracted from plan_live.yml v2.1
+# This file demonstrates the TEST phase of a live plan.
+#
+# TEST PHASE includes:
+# - Component Testing (smoke_test strategy with user-simulation-testing)
+# - User Flow Testing (user_simulator strategy with agent-blind-test)
+# - Dynamic build agents for fixing failures (test-fix-loop pattern)
+#
+# KEY PRINCIPLES:
+# 1. INPUTS: File-level (not directory-level) - provide specific files agents need
+# 2. GUIDANCE: Detailed and specific for orchestration agent to construct prompts
+# 3. SUCCESS CRITERIA: Measurable and outcome-focused
+# 4. EXECUTION: test-fix-loop pattern for iterative testing and fixing
+
+# Paths use relative format from repo root - orchestration provides specific folder
+worktree: "<repo_root>"  # e.g., /home/code/AgenticEngineering
+liveplan: "docs/plans/live/<YYMMDDRepo_Branch>/live/plan_live_test.yml"
+completedplan: "docs/plans/live/<YYMMDDRepo_Branch>/completed/plan_completed.yml"
+
+live-plans:
+  - id: EXAMPLE-PROJECT-001
+    title: Example Project - Package Simplification
+    description: Simplify package configuration to use single source of truth. Remove multi-tier discovery complexity.
+
+    phases:
+      # ========================================
+      # TEST PHASE (Component Testing + User Flow Testing)
+      # Uses test-fix-loop: Parallel test agents discover failures, dynamic build agents fix them
+      # ========================================
+      - name: Test Phase
+        execution_groups:
+          # Test-fix-loop execution group: Parallel test agents, then dynamic build agents
+          - execution: test-fix-loop
+            name: Component and user flow validation
+            agents:
+              # ========================================
+              # COMPONENT TESTING (smoke_test with user-simulation-testing)
+              # Multiple parallel agents test different components simultaneously
+              # ========================================
+              - type: test
+                count: 7
+                inputs:
+                  - frontend/agents/test/test-runner/process.yml
+                  - frontend/agents/assets/definitions/testing-types.yml
+                  - frontend/agents/assets/definitions/strategy-user-simulation.yml
+                  - frontend/agents/assets/definitions/strategy-test-suite.yml
+                  - backend/services/agents/src/workflows/health_check_workflow.py
+                  - backend/services/studio/src/domains/studio_manager/manager.py
+                  - backend/services/studio/src/workflows/studio_lifecycle.py
+                  - frontend/cli/myagents_cli.py
+                  - frontend/cli/entry.py
+                  - README.md
+                  - docs/configuration.md
+                guidance: |
+                  Test Strategy: user-simulation-testing (execute entrypoints and validate user experience)
+                  Test Process: Execute test-runner/process.yml from frontend/agents/test/
+                  Test Type: smoke_test (early validation of entrypoints and basic functionality)
+                  Reporting: Update live plan at docs/plans/live/<YYMMDDRepo_Branch>/live/plan_live_build.yml with structured failures
+
+                  CRITICAL PREREQUISITE: Version verification
+                  1. Check installed version: uv pip show myagents
+                  2. Compare with source version in pyproject.toml
+                  3. If versions differ: uv pip install -e /path/to/MyAgents
+                  4. Verify CLI accessible: which myagents && myagents --version
+                  5. Document tested version in live plan
+
+                  Context: The build phase has implemented a simplified architecture with single config source.
+                  This testing validates that the implementation works correctly from user perspective.
+
+                  COMPONENT TEST SCOPE (distribute across 7 agents):
+
+                  Agent 1 - Home directory config detection:
+                  - Execute: myagents health (or similar command that triggers config detection)
+                  - Verify: Config loaded from ~/.config/myagents/langgraph.json
+                  - Test: Run from different directories (~/, /tmp, project root)
+                  - Validate: Same config used regardless of working directory
+                  - Expected: Home directory config detected from any location
+                  - Failure indicator: Config not found, wrong config location, cwd-dependent behavior
+
+                  Agent 2 - Local config file exclusion:
+                  - Setup: Create local langgraph.json in project directory with different content
+                  - Execute: myagents commands from project directory
+                  - Verify: Local file ignored, home directory config used
+                  - Validate: No errors about conflicting configs
+                  - Expected: Local configs completely ignored
+                  - Failure indicator: Local config used, errors about multiple configs, confusion about precedence
+
+                  Agent 3 - StudioManager configuration loading:
+                  - Execute: myagents studio start
+                  - Verify: Studio reads config from ~/.config/myagents/langgraph.json
+                  - Validate: Studio operations use absolute paths from config
+                  - Test: Start studio from different directories
+                  - Expected: Studio works identically from any directory
+                  - Failure indicator: Studio fails from certain directories, relative path errors
+
+                  Agent 4 - CLI directory independence (home directory):
+                  - cd ~/
+                  - Execute: myagents chat, myagents studio start, myagents health
+                  - Verify: All commands work correctly
+                  - Validate: No local langgraph.json created in home directory
+                  - Expected: Commands execute successfully, find config automatically
+                  - Failure indicator: Commands fail, can't find config, create local files
+
+                  Agent 5 - CLI directory independence (project directory with local config):
+                  - Setup: Create local langgraph.json in project directory
+                  - cd /path/to/project
+                  - Execute: myagents commands
+                  - Verify: Local file ignored, home directory config used
+                  - Validate: Commands work identically to home directory test
+                  - Expected: Consistent behavior, local config ignored
+                  - Failure indicator: Different behavior, local config used, errors
+
+                  Agent 6 - CLI directory independence (arbitrary directory):
+                  - cd /tmp/random_test_dir
+                  - Execute: myagents commands
+                  - Verify: Commands work without any local config
+                  - Validate: Home directory config used automatically
+                  - Expected: Full functionality from arbitrary location
+                  - Failure indicator: Commands fail, require local config, path resolution errors
+
+                  Agent 7 - Absolute path resolution:
+                  - Verify: ~/.config/myagents/langgraph.json contains absolute paths
+                  - Execute: myagents commands that load graph definitions
+                  - Test: From multiple directories (home, /tmp, project)
+                  - Validate: Paths resolve correctly from all locations
+                  - Expected: No path resolution errors, graphs load successfully
+                  - Failure indicator: Relative path errors, "file not found", cwd-dependent behavior
+
+                  THREE TESTING LAYERS (all agents test all three):
+                  1. LOCAL TESTING: Execute commands directly on host machine
+                  2. DOCKER TESTING: Execute same commands in pre-built myagents-test container
+                     - Build if needed: docker build -f Dockerfile.test --build-arg WORKTREE_NAME=<worktree> -t myagents-test .
+                     - Run: docker run --rm myagents-test <command>
+                  3. CLOUD BUILD TESTING: Validate CI/CD pipeline (if applicable)
+                     - Note: Workspace restructuring in Cloud Build may cause different behavior
+                     - Document any Cloud Build-specific issues separately
+
+                  Test execution approach:
+                  1. Execute entrypoints as a user would (CLI commands, not code)
+                  2. Validate actual behavior, not implementation details
+                  3. Run tests in all three layers (local, Docker, Cloud Build if applicable)
+                  4. Capture actual command outputs as evidence
+                  5. Report failures immediately - don't try to fix
+
+                  FAILURE REPORTING FORMAT:
+                  Add failures to live plan under EXAMPLE-PROJECT-001.component_test_failures:
+                  - test_name: Name of failed test (e.g., "Agent 3 - StudioManager config loading")
+                  - component: Component being tested (e.g., "StudioManager")
+                  - layer: "local", "docker", or "cloud_build"
+                  - failure_description: What went wrong
+                  - expected_behavior: What should have happened
+                  - actual_behavior: What actually happened
+                  - command_executed: Exact command that failed
+                  - error_output: Error message or unexpected output
+                  - files_involved: List of files suspected to cause failure
+                  - reproducibility: "always", "intermittent", or "environment-specific"
+                success_criteria:
+                  - Zero component test failures across all layers
+                  - Commands work from any directory (tested: ~/, /tmp, project dirs)
+                  - Local configs ignored (tested with local file present)
+                  - Three-layer parity (local, Docker, Cloud Build behave identically)
+                  - No manual config file editing needed
+                  - Absolute paths resolve correctly from all locations
+
+              # ========================================
+              # USER FLOW TESTING (user_simulator with agent-blind-test)
+              # Agents follow user stories with only documentation access
+              # ========================================
+              - type: test
+                count: 3
+                inputs:
+                  - README.md
+                  - docs/SETUP.md
+                  - docs/configuration.md
+                  - docs/userstories/packaging/new_user_setup.yml
+                  - docs/userstories/packaging/migration_flow.yml
+                  - docs/userstories/packaging/work_from_anywhere.yml
+                  - frontend/agents/test/test-user-simulator/process.yml
+                guidance: |
+                  Test Strategy: agent-blind-test (follow documentation only, no code inspection)
+                  Test Process: Execute test-user-simulator/process.yml from frontend/agents/test/
+                  Test Type: user_simulator (validates user stories with only default documentation)
+                  Reporting: Update live plan at docs/plans/live/<YYMMDDRepo_Branch>/live/plan_live_build.yml with failures
+
+                  CRITICAL: This is testing with subagents, NOT testing with code.
+                  - Execute ACTUAL commands as users would (e.g., myagents studio start)
+                  - Do NOT substitute functional tests with --help validation
+                  - Verify ACTUAL outcomes, not just help text
+                  - Test in BOTH local AND Docker environments
+
+                  Context: Orchestration agent reads user story files from docs/userstories/packaging/
+                  and passes user story definitions to test agents. Each agent receives:
+                  - User story definition (persona, starting_state, journey, success_criteria)
+                  - Documentation only (README.md, SETUP.md, configuration.md)
+                  - NO access to source code or implementation details
+
+                  USER FLOW TEST SCENARIOS (distribute across 3 agents):
+
+                  Agent 1 - New user setup and verification:
+                  User Story: docs/userstories/packaging/new_user_setup.yml
+                  Persona: Junior developer, no prior MyAgents experience
+                  Starting State: Fresh system, no ~/.config/myagents/, currently in /tmp/test_user1
+                  User Goal: Install MyAgents and verify it works from anywhere
+
+                  Journey Steps:
+                  1. Read README.md to understand what MyAgents is
+                  2. Read SETUP.md to understand installation process
+                  3. Execute setup command as documented (e.g., myagents setup)
+                  4. Verify config created: ls ~/.config/myagents/langgraph.json
+                  5. Verify config contents: cat ~/.config/myagents/langgraph.json (check for absolute paths)
+                  6. cd ~/ and execute: myagents chat
+                  7. cd /tmp/other_dir and execute: myagents studio start
+                  8. cd /var/tmp and execute: myagents health
+                  9. Verify no local configs created: find . -name langgraph.json (should only find home directory)
+
+                  Expected Outcomes:
+                  - Setup command creates ~/.config/myagents/langgraph.json with absolute paths
+                  - Commands work from all tested directories (~/, /tmp, /var/tmp)
+                  - No local config files created in test directories
+                  - User can follow docs alone without external help
+
+                  Testing Layers:
+                  - Local: Execute commands on host machine
+                  - Docker: Execute same journey in myagents-test container
+
+                  Report As Failure:
+                  - Any documentation gap that prevents journey completion
+                  - Unclear or missing setup instructions
+                  - Commands that don't work from certain directories
+                  - Errors that aren't explained in documentation
+                  - Need for manual config file editing
+
+                  Agent 2 - Migration from local config architecture:
+                  User Story: docs/userstories/packaging/migration_flow.yml
+                  Persona: Existing user, has local langgraph.json in project directory
+                  Starting State: Old project at /tmp/old_project/ with local langgraph.json
+                  User Goal: Migrate to new architecture without breaking existing workflows
+
+                  Journey Steps:
+                  1. Read configuration.md section on migration (if it exists)
+                  2. cd /tmp/old_project/ (directory with local langgraph.json)
+                  3. Run: cat langgraph.json (document old config structure)
+                  4. Execute: myagents health
+                  5. Verify: Local config ignored, home config used
+                  6. Read migration instructions about removing local config
+                  7. Execute: rm langgraph.json (remove local config)
+                  8. Verify commands still work: myagents chat, myagents studio start
+                  9. cd to different directory and verify consistent behavior
+                  10. Document migration experience (was it clear? any issues?)
+
+                  Expected Outcomes:
+                  - Migration documentation exists and is clear
+                  - Local configs automatically ignored (no manual intervention)
+                  - Removing local config doesn't break functionality
+                  - User doesn't need to edit home config manually
+                  - Migration is non-disruptive
+
+                  Testing Layers:
+                  - Local: Execute commands on host machine
+                  - Docker: Execute same journey in container with mounted local config
+
+                  Report As Failure:
+                  - Missing or unclear migration documentation
+                  - Local configs NOT ignored (used instead of home config)
+                  - Manual config editing required
+                  - Broken functionality after migration
+                  - Errors without clear resolution steps
+
+                  Agent 3 - Work-from-anywhere validation:
+                  User Story: docs/userstories/packaging/work_from_anywhere.yml
+                  Persona: Developer working across multiple projects and directories
+                  Starting State: MyAgents configured (home directory config exists)
+                  User Goal: Verify commands work consistently from any directory
+
+                  Journey Steps:
+                  1. Read configuration.md to understand config location
+                  2. Verify config exists: cat ~/.config/myagents/langgraph.json
+                  3. Test from home directory:
+                     - cd ~/
+                     - myagents chat
+                     - myagents studio start && myagents studio status && myagents studio stop
+                  4. Test from Documents:
+                     - cd ~/Documents/
+                     - myagents health
+                  5. Test from /tmp:
+                     - cd /tmp/test_work_anywhere/
+                     - mkdir -p /tmp/test_work_anywhere && cd /tmp/test_work_anywhere
+                     - myagents chat
+                  6. Test from system directory (if accessible):
+                     - cd /var/tmp/ || cd /usr/local/ (use accessible system path)
+                     - myagents health
+                  7. Test from unrelated project:
+                     - mkdir -p /tmp/unrelated_project && cd /tmp/unrelated_project
+                     - myagents studio start
+                  8. Verify no local configs created:
+                     - find ~/Documents/ /tmp/test_work_anywhere/ /tmp/unrelated_project/ -name langgraph.json
+                     - Should return no results (only home config exists)
+
+                  Expected Outcomes:
+                  - All commands work from all directories
+                  - Same config used everywhere (verify in debug output if available)
+                  - No local langgraph.json files created
+                  - Consistent behavior across all locations
+                  - Documentation clearly explains this capability
+
+                  Testing Layers:
+                  - Local: Execute commands on host machine
+                  - Docker: Execute same journey in container (different paths)
+
+                  Report As Failure:
+                  - Commands fail from certain directories
+                  - Different behavior in different locations
+                  - Local config files created unexpectedly
+                  - Documentation doesn't explain work-from-anywhere capability
+                  - Inconsistent or confusing user experience
+
+                  VALIDATION CHECKLIST (must answer YES to all before reporting PASS):
+                  1. Did I execute each journey step as written (not just --help)?
+                  2. Did I run actual commands that produce real outcomes?
+                  3. Did I verify the expected outcomes occurred?
+                  4. Did I test from the directories specified in the user story?
+                  5. Did I capture actual command outputs as evidence?
+                  6. Did I test in BOTH local AND Docker environments?
+                  If ANY answer is NO, the test is INCOMPLETE, not PASS.
+
+                  USER FLOW FAILURE REPORTING FORMAT:
+                  Add failures to live plan under EXAMPLE-PROJECT-001.user_flow_failures:
+                  - flow_name: Name of user flow (e.g., "New user setup")
+                  - agent: Which agent (Agent 1, 2, or 3)
+                  - step: Which journey step failed (e.g., "Step 5: Verify config contents")
+                  - layer: "local", "docker", or "both"
+                  - failure_type: "documentation_gap", "unexpected_behavior", "unclear_instructions", "command_failure", "missing_feature"
+                  - description: What went wrong
+                  - expected: What user expected based on docs
+                  - actual: What actually happened
+                  - user_impact: How this affects user experience
+                  - recommendation: What docs/code should change
+                success_criteria:
+                  - All three user flows complete successfully in both local and Docker
+                  - New users complete setup following docs alone (Agent 1)
+                  - Migration completed without manual config changes (Agent 2)
+                  - All tested directories work identically (Agent 3)
+                  - Zero documentation gaps reported
+                  - Validation checklist passes for all agents (all YES)
+
+              # ========================================
+              # DYNAMIC BUILD AGENTS (test-fix-loop pattern)
+              # Spawned dynamically: count = number of failures found
+              # ========================================
+              - type: build
+                count: "n = total failures"
+                inputs:
+                  - backend/services/agents/src/workflows/setup_workflow.py
+                  - backend/services/agents/src/workflows/health_check_workflow.py
+                  - backend/services/studio/src/domains/studio_manager/manager.py
+                  - backend/services/studio/src/workflows/studio_lifecycle.py
+                  - frontend/cli/myagents_cli.py
+                  - frontend/cli/entry.py
+                  - README.md
+                  - docs/SETUP.md
+                  - docs/configuration.md
+                guidance: |
+                  Context: Test agents (both component and user flow) have identified failures.
+                  Each build agent is assigned ONE specific failure to fix.
+
+                  Orchestration agent responsibilities:
+                  1. Read live plan to get all failures (component_test_failures + user_flow_failures)
+                  2. Spawn one build agent per failure
+                  3. Assign specific failure to each agent
+                  4. Provide failure details in agent prompt
+
+                  Build agent instructions:
+                  1. Read assigned failure details from live plan
+                  2. Determine failure category:
+                     - Code bug: Implementation doesn't match requirements
+                     - Documentation gap: Docs missing, incorrect, or unclear
+                     - UX issue: Works but confusing or error-prone
+                     - Environment issue: Local works but Docker/Cloud Build fails
+                  3. Analyze root cause:
+                     - Which files are involved?
+                     - Is this a logic error, path issue, config problem?
+                     - Does this affect one layer or multiple layers?
+                  4. Implement fix based on category:
+                     - Code bugs: Modify implementation files
+                     - Documentation gaps: Update README.md, SETUP.md, configuration.md
+                     - UX issues: May require both code and doc changes
+                     - Environment issues: Fix Dockerfile or build process
+                  5. Verify fix locally:
+                     - Reproduce original failure
+                     - Apply fix
+                     - Verify failure resolved
+                     - Run related tests to check for regressions
+                  6. Update live plan:
+                     - Mark failure as resolved
+                     - Document what was changed
+                     - Note any related issues discovered
+
+                  FAILURE CATEGORIES AND FIX STRATEGIES:
+
+                  Component Test Failures:
+                  - Home directory detection: Fix detect_langgraph_path() logic in health_check_workflow.py
+                  - Local file exclusion: Update config loading to ignore local files
+                  - StudioManager config: Fix manager.py to use home directory path
+                  - CLI directory independence: Fix path resolution in entry.py, myagents_cli.py
+                  - Absolute path resolution: Update graph loading logic, validate paths
+                  - Layer parity: Fix Docker configuration or build process
+
+                  User Flow Failures:
+                  - Documentation gaps: Add missing steps to README.md, SETUP.md, configuration.md
+                  - Unclear instructions: Rewrite confusing sections with examples
+                  - Command failures: Fix implementation bugs causing user-facing errors
+                  - Missing features: Implement features implied by documentation
+                  - Migration issues: Add migration guide, update config handling
+
+                  Fix priority:
+                  1. HIGH: Command failures, missing features (blocks user)
+                  2. MEDIUM: Documentation gaps, unclear instructions (confuses user)
+                  3. LOW: UX improvements, cosmetic issues (annoys user)
+
+                  Testing after fix:
+                  - Execute the original failing test case
+                  - Verify it now passes
+                  - Run related test cases to check for regressions
+                  - Test in all affected layers (local, Docker, Cloud Build)
+                  - Document test results in live plan
+
+                  Why this matters: Systematic fixing ensures all failures are addressed without
+                  creating new issues. One agent per failure prevents conflicts and enables parallel fixing.
+                success_criteria:
+                  - Assigned failure is resolved (verified by re-running original test)
+                  - Fix doesn't break related functionality (regression testing)
+                  - Fix is minimal and targeted (no unnecessary changes)
+                  - Live plan updated with resolution details
+                  - If documentation fix: User can now complete journey following docs
+                  - If code fix: Test that previously failed now passes

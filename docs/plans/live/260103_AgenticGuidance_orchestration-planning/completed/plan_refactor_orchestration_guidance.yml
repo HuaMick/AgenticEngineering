@@ -1,0 +1,423 @@
+# Refactor Plan: orchestration-guidance to Delegate Planning to orchestration-planning
+# Created: 2026-01-03
+# Status: PLAN
+# Purpose: Extract embedded Planning & Review Subgraph from orchestration-guidance
+#          and delegate to the new orchestration-planning agent
+#
+# CONTEXT:
+# orchestration-guidance currently embeds its own Planning & Review Subgraph (lines 55-107)
+# that handles Implementation Planning Loop and Test-Guidance Planning Loop inline.
+# This violates separation of concerns and duplicates planning logic.
+#
+# With orchestration-planning becoming a standalone agent, orchestration-guidance should:
+# 1. Accept a pre-approved plan as input, OR
+# 2. Delegate to orchestration-planning if no approved plan is provided
+#
+# SOURCE: modules/AgenticGuidance/agents/orchestration/orchestration-guidance/process.mmd
+# PROPOSAL: docs/plans/live/260103_AgenticGuidance_orchestration-planning/plan_proposal.yml
+
+objective: "Refactor orchestration-guidance to delegate planning to orchestration-planning"
+
+status: PLAN
+
+target_file: "modules/AgenticGuidance/agents/orchestration/orchestration-guidance/process.mmd"
+
+# ============================================================
+# SECTION 1: WHAT TO REMOVE
+# ============================================================
+removal:
+  description: "Remove the embedded Planning & Review Subgraph (lines 55-107)"
+
+  lines_to_remove: "55-107"
+
+  specific_elements:
+    subgraph_declaration:
+      line: 55
+      content: 'subgraph Planning ["Planning & Review Subgraph"]'
+
+    implementation_planning_loop:
+      lines: "57-81"
+      description: |
+        The Implementation Planning Loop that spawns:
+        - planner-teach Agent
+        - planner-reviewer Agent
+        Loop for refinement until Implementation Plan is approved.
+
+    test_guidance_planning_loop:
+      lines: "82-107"
+      description: |
+        The Test-Guidance Planning Loop that spawns:
+        - planner-test-guidance Agent
+        - planner-reviewer Agent
+        Loop for refinement until Test Plan is approved.
+        Also handles viability check and return to implementation planning.
+
+    subgraph_end:
+      line: 107
+      content: "end"
+
+  comments_to_remove:
+    - "Lines 36-52: PLANNING & REVIEW SUBGRAPH documentation comments"
+    - "Lines 109-110: NOTE about Test Plan driving guidance-test-loop"
+
+  nodes_to_remove:
+    - "PlanningReview[Enter Planning & Review Phase]"
+    - "ImplPlanningLoop{Implementation Planning Loop}"
+    - "SpawnPlannerTeach[Spawn planner-teach Agent]"
+    - "SpawnImplReviewer[Spawn planner-reviewer Agent]"
+    - "ImplApproved{Implementation Plan Approved?}"
+    - "SpawnPlannerTeachFix[Spawn planner-teach Agent]"
+    - "TestPlanningLoop{Test-Guidance Planning Loop}"
+    - "SpawnTestPlanner[Spawn planner-test-guidance Agent]"
+    - "SpawnTestReviewer[Spawn planner-reviewer Agent]"
+    - "TestPlanApproved{Test Plan Approved?}"
+    - "SpawnTestPlannerFix[Spawn planner-test-guidance Agent]"
+    - "TestPlanViable{Test Plan Viable?}"
+    - "UpdateImplPlan[Update Implementation Plan]"
+
+  edges_to_remove:
+    - 'WorktreeValid -- "Yes: Verified" --> PlanningReview'
+    - "PlanningReview --> ImplPlanningLoop"
+    - "ImplPlanningLoop --> SpawnPlannerTeach"
+    - "All internal subgraph edges"
+    - 'TestPlanViable -- "Yes: Both Plans Ready" --> SpawnTeachers'
+
+# ============================================================
+# SECTION 2: WHAT TO ADD
+# ============================================================
+addition:
+  description: |
+    Add a planning delegation decision point that:
+    1. Checks if a pre-approved plan is provided as input
+    2. If yes: proceed directly to execution phase
+    3. If no: spawn orchestration-planning agent to create approved plan
+    4. Wait for orchestration-planning to complete and provide approved plan folder
+    5. Then proceed to execution phase
+
+  new_input_parameter:
+    name: "approved_plan_path"
+    description: "Optional path to pre-approved plan folder from orchestration-planning"
+    location: "inputs.yml"
+    type: "optional"
+    example: "docs/plans/live/260103_AG_task/approved/"
+
+  new_nodes:
+    - node: "CheckApprovedPlan{Pre-Approved Plan Provided?}"
+      description: "Decision point checking if approved_plan_path input exists"
+
+    - node: "LoadApprovedPlan[Load Approved Plan from Input Path]"
+      description: "Load the pre-approved plan folder when provided"
+
+    - node: "ValidatePlanFormat{Plan Format Valid?}"
+      description: "Validate the loaded plan has required structure"
+
+    - node: "SpawnOrchestrationPlanning[Spawn orchestration-planning Agent]"
+      description: "Delegate planning to orchestration-planning when no pre-approved plan"
+
+    - node: "WaitForApproval{Plan Approved?}"
+      description: "Wait for orchestration-planning to complete with approved plan"
+
+    - node: "ReceiveApprovedPlan[Receive Approved Plan Folder Path]"
+      description: "Accept the approved plan output from orchestration-planning"
+
+  new_edges:
+    - from: 'WorktreeValid -- "Yes: Verified"'
+      to: "CheckApprovedPlan"
+      description: "After worktree validation, check for pre-approved plan"
+
+    - from: 'CheckApprovedPlan -- "Yes: Has Approved Plan"'
+      to: "LoadApprovedPlan"
+      description: "Load existing approved plan"
+
+    - from: "LoadApprovedPlan"
+      to: "ValidatePlanFormat"
+      description: "Validate plan structure"
+
+    - from: 'ValidatePlanFormat -- "No: Invalid"'
+      to: "AskUser"
+      description: "Invalid plan format requires user intervention"
+
+    - from: 'ValidatePlanFormat -- "Yes: Valid"'
+      to: "SpawnTeachers"
+      description: "Proceed to execution with valid plan"
+
+    - from: 'CheckApprovedPlan -- "No: Needs Planning"'
+      to: "SpawnOrchestrationPlanning"
+      description: "Delegate to orchestration-planning"
+
+    - from: "SpawnOrchestrationPlanning"
+      to: "WaitForApproval"
+      description: "Wait for planning agent to complete"
+
+    - from: 'WaitForApproval -- "No: User Rejected/Cancelled"'
+      to: "AskUser"
+      description: "User intervention needed if planning fails/rejected"
+
+    - from: 'WaitForApproval -- "Yes: Approved"'
+      to: "ReceiveApprovedPlan"
+      description: "Receive output from orchestration-planning"
+
+    - from: "ReceiveApprovedPlan"
+      to: "SpawnTeachers"
+      description: "Proceed to execution phase"
+
+  new_comments:
+    location: "After WorktreeValid section (around line 35)"
+    content: |
+      %% ========================================
+      %% PLANNING DELEGATION
+      %% ========================================
+      %% orchestration-guidance accepts two modes:
+      %% MODE 1: Pre-approved plan provided via approved_plan_path input
+      %%   - Skip planning, proceed directly to execution
+      %%   - Used when orchestration-planning was invoked independently
+      %%
+      %% MODE 2: No pre-approved plan
+      %%   - Delegate to orchestration-planning agent
+      %%   - orchestration-planning handles:
+      %%     - Implementation Planning Loop (planner-teach + reviewer)
+      %%     - Test-Guidance Planning Loop (planner-test-guidance + reviewer)
+      %%     - Human approval gate
+      %%   - Receive approved plan folder path upon completion
+      %%
+      %% OUTPUT FROM orchestration-planning:
+      %%   - Approved plan folder with implementation and test phases
+      %%   - Plan status: approved
+      %%   - Ready for execution phase
+
+# ============================================================
+# SECTION 3: HANDOFF SPECIFICATION
+# ============================================================
+handoff:
+  description: "Define the contract between orchestration-planning and orchestration-guidance"
+
+  orchestration_planning_outputs:
+    approved_plan_folder:
+      description: "Path to the approved plan folder"
+      structure:
+        - "plan_implementation.yml: Approved implementation plan"
+        - "plan_test_guidance.yml: Approved test guidance plan"
+        - "metadata.yml: Plan approval metadata (timestamp, approver, iteration count)"
+      example_path: "docs/plans/live/260103_AG_task/"
+
+    plan_status:
+      description: "Status indicator that plan is approved"
+      value: "approved"
+
+    phase_files:
+      description: "Individual phase definition files"
+      content:
+        - "Each phase has status: approved"
+        - "Phase tasks defined with clear scope"
+        - "Dependencies between phases documented"
+
+  orchestration_guidance_inputs:
+    mode_1_pre_approved:
+      trigger: "approved_plan_path is provided in inputs"
+      action: "Load and validate plan, then execute"
+      validation_checks:
+        - "Plan folder exists"
+        - "plan_implementation.yml exists and has status: approved"
+        - "plan_test_guidance.yml exists and has status: approved"
+        - "All required phase files present"
+
+    mode_2_delegate:
+      trigger: "approved_plan_path is NOT provided in inputs"
+      action: "Spawn orchestration-planning and wait for output"
+      spawn_parameters:
+        - "Pass through: objective from orchestration-guidance inputs"
+        - "Pass through: worktree_path"
+        - "Pass through: context inputs"
+      wait_for:
+        - "orchestration-planning completion"
+        - "Human approval (happens within orchestration-planning)"
+        - "approved_plan_folder path output"
+
+  feedback_loop_handling:
+    description: |
+      Feedback loops that previously returned to PlanningReview must be updated.
+      These loops still exist but now return to orchestration-planning:
+      - Implementation Issues (line 127)
+      - Walkthrough Failures (line 164)
+      - Final Audit Failures (line 174)
+
+    updated_behavior:
+      implementation_issues:
+        old: "UpdatePlan -.->|Return to Planning & Review| PlanningReview"
+        new: "UpdatePlan -.->|Return to Planning| SpawnOrchestrationPlanning"
+        note: "Re-invoke orchestration-planning with issue context"
+
+      walkthrough_failures:
+        old: "UpdatePlanGaps -.->|Return to Planning & Review: Re-execute Both Loops| PlanningReview"
+        new: "UpdatePlanGaps -.->|Return to Planning| SpawnOrchestrationPlanning"
+        note: "Include gap categorization in planning context"
+
+      audit_failures:
+        old: "UpdatePlanIssues -.->|Return to Planning & Review| PlanningReview"
+        new: "UpdatePlanIssues -.->|Return to Planning| SpawnOrchestrationPlanning"
+        note: "Include audit issues in planning context"
+
+# ============================================================
+# SECTION 4: UPDATED FLOW DIAGRAM DESCRIPTION
+# ============================================================
+updated_flow_description:
+  overview: |
+    The refactored orchestration-guidance flow maintains the same overall structure
+    but replaces the embedded Planning & Review Subgraph with a cleaner delegation pattern.
+
+    Key changes:
+    1. Planning is no longer inline - it's delegated to orchestration-planning
+    2. Two entry modes: pre-approved plan OR delegate to planning
+    3. Human approval happens in orchestration-planning, not here
+    4. Feedback loops re-invoke orchestration-planning instead of inline subgraph
+
+  flow_phases:
+    1_input_verification:
+      description: "Load and verify context inputs"
+      nodes: "Start -> LoadInputs -> ReviewInputs -> CheckInputs"
+      unchanged: true
+
+    2_worktree_setup:
+      description: "Spawn deploy-worktree for isolation"
+      nodes: "SpawnDeployWorktree -> WorktreeValid"
+      unchanged: true
+
+    3_planning_delegation:
+      description: "NEW: Check for pre-approved plan or delegate"
+      nodes: |
+        WorktreeValid -> CheckApprovedPlan
+        CheckApprovedPlan -- "Has Plan" -> LoadApprovedPlan -> ValidatePlanFormat
+        CheckApprovedPlan -- "Needs Planning" -> SpawnOrchestrationPlanning -> WaitForApproval -> ReceiveApprovedPlan
+      new: true
+
+    4_execution_phase:
+      description: "Execute implementation phases"
+      nodes: "SpawnTeachers -> ExecutePhases -> ImplIssues"
+      unchanged: true
+      note: "Entry point unchanged, but arrives from planning delegation instead of inline subgraph"
+
+    5_guidance_validation:
+      description: "Execute test-guidance phases"
+      nodes: "ExecuteGuidanceTests -> SpawnGuidanceSim -> UpdateTestStatuses -> GuidancePassed"
+      unchanged: true
+
+    6_final_audit:
+      description: "Spawn audit and validate"
+      nodes: "SpawnAudit -> FinalAudit"
+      unchanged: true
+
+    7_finalization:
+      description: "Copy to completed and end"
+      nodes: "MoveCompleted -> End"
+      unchanged: true
+
+  feedback_loop_changes:
+    description: "All feedback loops now return to SpawnOrchestrationPlanning"
+    loops:
+      - name: "Implementation Issues"
+        old_target: "PlanningReview"
+        new_target: "SpawnOrchestrationPlanning"
+      - name: "Walkthrough Failures"
+        old_target: "PlanningReview"
+        new_target: "SpawnOrchestrationPlanning"
+      - name: "Audit Failures"
+        old_target: "PlanningReview"
+        new_target: "SpawnOrchestrationPlanning"
+
+# ============================================================
+# SECTION 5: INPUT FILE UPDATES
+# ============================================================
+input_file_updates:
+  file: "modules/AgenticGuidance/agents/orchestration/orchestration-guidance/inputs.yml"
+
+  additions:
+    - name: "approved_plan_path"
+      description: "Optional pre-approved plan folder path from orchestration-planning"
+      type: "optional"
+      example: "docs/plans/live/260103_task/"
+
+    - name: "orchestration_planning_ref"
+      description: "Reference to orchestration-planning agent location"
+      location: "agents/orchestration/orchestration-planning/"
+      note: "Required for spawning planning agent when delegation needed"
+
+# ============================================================
+# SECTION 6: SUCCESS CRITERIA
+# ============================================================
+success_criteria:
+  structural:
+    - id: SC-001
+      criterion: "Planning & Review Subgraph (lines 55-107) is completely removed"
+      verification: "No subgraph Planning block exists in process.mmd"
+
+    - id: SC-002
+      criterion: "New planning delegation nodes are present"
+      verification: "CheckApprovedPlan, SpawnOrchestrationPlanning, WaitForApproval nodes exist"
+
+    - id: SC-003
+      criterion: "inputs.yml includes optional approved_plan_path"
+      verification: "inputs.yml has approved_plan_path entry"
+
+  behavioral:
+    - id: SC-004
+      criterion: "Pre-approved plan mode works: given valid plan path, execution proceeds"
+      verification: "When approved_plan_path provided and valid, flow goes directly to SpawnTeachers"
+
+    - id: SC-005
+      criterion: "Delegation mode works: without plan path, orchestration-planning is spawned"
+      verification: "When no approved_plan_path, SpawnOrchestrationPlanning is invoked"
+
+    - id: SC-006
+      criterion: "Handoff contract honored: orchestration-planning output accepted correctly"
+      verification: "Approved plan folder from orchestration-planning loads and validates"
+
+  backward_compatibility:
+    - id: SC-007
+      criterion: "Existing feedback loops still function"
+      verification: "Implementation issues, walkthrough failures, audit failures all trigger re-planning"
+
+    - id: SC-008
+      criterion: "Execution phase unchanged: SpawnTeachers entry point preserved"
+      verification: "Post-planning flow (execution, validation, audit, finalization) unchanged"
+
+  documentation:
+    - id: SC-009
+      criterion: "Comments accurately describe new delegation behavior"
+      verification: "PLANNING DELEGATION comment block explains both modes"
+
+    - id: SC-010
+      criterion: "Feedback loop comments updated to reflect new target"
+      verification: "All -.-> edges have updated comments referencing SpawnOrchestrationPlanning"
+
+# ============================================================
+# IMPLEMENTATION NOTES
+# ============================================================
+implementation_notes:
+  ordering:
+    - "1. Update inputs.yml first (add approved_plan_path)"
+    - "2. Add new planning delegation nodes to process.mmd"
+    - "3. Remove Planning & Review Subgraph"
+    - "4. Update feedback loop edges"
+    - "5. Update comments"
+    - "6. Validate mermaid syntax"
+
+  mermaid_syntax_considerations:
+    - "Maintain consistent node styling"
+    - "Use same edge labeling patterns"
+    - "Preserve linkStyle declarations for dotted feedback loops"
+    - "Update linkStyle line numbers after removal"
+
+  dependencies:
+    - name: "orchestration-planning must exist"
+      status: "In progress (see plan_proposal.yml)"
+      note: "This refactor should follow orchestration-planning creation"
+
+  risks:
+    - risk: "Breaking existing orchestration-guidance invocations"
+      mitigation: "Default behavior (no approved_plan_path) maintains spawning pattern"
+
+    - risk: "Mermaid syntax errors after structural changes"
+      mitigation: "Validate with mermaid CLI or live preview"
+
+    - risk: "linkStyle line numbers become invalid"
+      mitigation: "Recalculate linkStyle indices after all edits"

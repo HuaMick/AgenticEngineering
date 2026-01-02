@@ -1,0 +1,120 @@
+user_stories:
+  # ============================================================================
+  # Infrastructure & CI/CD User Stories
+  # ============================================================================
+
+  - id: US-INFRA-001
+    name: "Cloud Build Environment Parity Testing"
+    category: "infrastructure"
+    persona: "CI/CD engineer validating Cloud Build configuration"
+    priority: "high"
+
+    # NOTE: This scenario addresses UAT bypass investigation findings.
+    # Cloud Build environment differs from local Docker testing.
+    # Reference: docs/plans/live/251126_myagents_staging.yml (uat_bypass_investigation)
+
+    starting_state:
+      environment:
+        repo_cloned: true
+        docker_installed: true
+        cloud_build_access: true
+        current_directory: "/home/code/myagents"
+      files_present:
+        - "MyAgents-staging/Dockerfile.test"
+        - "MyAgents-staging/cloudbuild.yaml"
+        - "Agent-GCPtoolkit/ (sibling directory)"
+      knowledge:
+        - "Understands Cloud Build workspace restructuring"
+        - "Has access to Cloud Build console"
+        - "Knows local Docker != Cloud Build environment"
+
+    journey:
+      - step: 1
+        action: "Read CICD_README.md Section 11: Cloud Build Environment"
+        expected: "Understand Cloud Build workspace structure and differences from local"
+        failure_indicators:
+          - "Cloud Build environment differences not documented"
+          - "Workspace restructuring not explained"
+          - "No Section 11 in CICD_README.md"
+
+      - step: 2
+        action: "Read cloudbuild.yaml Step 0.5: Prepare Workspace"
+        expected: "Understand workspace preparation steps (Agent-GCPtoolkit clone, runtime/ creation)"
+        failure_indicators:
+          - "Workspace preparation steps unclear"
+          - "runtime/ directory creation missing"
+          - "Agent-GCPtoolkit handling not documented"
+
+      - step: 3
+        action: "Simulate Cloud Build workspace preparation locally"
+        expected: "Create /tmp/cloudbuild-sim with Cloud Build structure"
+        failure_indicators:
+          - "Cannot simulate Cloud Build workspace"
+          - "No simulation script available"
+          - "Simulation instructions missing"
+
+      - step: 4
+        action: "Follow cloudbuild.yaml Step 0.5 manually in simulation directory"
+        expected: "Successfully create MyAgents/, Agent-GCPtoolkit/, runtime/ structure"
+        failure_indicators:
+          - "Step 0.5 commands don't work locally"
+          - "Directory structure doesn't match Cloud Build"
+          - "runtime/ creation fails"
+
+      - step: 5
+        action: "Build Dockerfile.test in simulated Cloud Build workspace"
+        expected: "Docker build succeeds with same context as Cloud Build"
+        failure_indicators:
+          - "Build fails with 'file does not exist' error"
+          - "COPY commands fail in simulated environment"
+          - "Build succeeds locally but would fail in Cloud Build"
+
+      - step: 6
+        action: "Compare simulated build with local Docker build"
+        expected: "Identify any environment-specific differences"
+        failure_indicators:
+          - "Cannot compare builds"
+          - "Environment differences not detected"
+
+      - step: 7
+        action: "Verify all Dockerfile.test COPY commands work in Cloud Build context"
+        expected: "All COPY commands (MyAgents-staging/, Agent-GCPtoolkit/, runtime/) succeed"
+        failure_indicators:
+          - "COPY runtime/ fails (file does not exist)"
+          - "COPY Agent-GCPtoolkit/ fails"
+          - "COPY MyAgents-staging/ fails"
+
+      - step: 8
+        action: "Run actual Cloud Build to validate parity"
+        expected: "Cloud Build succeeds, matches local simulation"
+        failure_indicators:
+          - "Cloud Build fails after local simulation succeeded"
+          - "Environment parity not achieved"
+
+    success_criteria:
+      - "Cloud Build environment differences clearly documented"
+      - "Local simulation matches Cloud Build workspace structure"
+      - "Docker build succeeds in both local simulation and Cloud Build"
+      - "All Dockerfile COPY commands work in Cloud Build context"
+      - "runtime/ directory created during workspace preparation"
+      - "Environment parity validated end-to-end"
+      - "No surprises - local testing catches Cloud Build issues"
+
+    testing:
+      local: true
+      cloud_build: true
+      requires_simulation: true
+      simulation_script: "scripts/test-cloudbuild-simulation.sh (if exists)"
+
+    documentation_references:
+      - "docs/CICD_README.md (Section 11: Cloud Build Environment)"
+      - "cloudbuild.yaml (Step 0.5: Prepare Workspace)"
+      - "Dockerfile.test"
+      - "docs/investigation_runtime_bypass_uat.yml"
+
+    reference:
+      investigation: "/home/code/myagents/docs/plans/live/251126_myagents_staging.yml"
+      section: "uat_bypass_investigation (lines 336-504)"
+      issue: "Cloud Build runtime/ directory issue bypassed comprehensive UAT"
+      recommendation: "UAT-IMP-001: Add Cloud Build environment parity UAT scenario"
+

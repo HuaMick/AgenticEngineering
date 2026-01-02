@@ -1,0 +1,103 @@
+user_stories:
+  # ============================================================================
+  # CLI Context & Configuration User Stories
+  # ============================================================================
+  
+  - id: US-CLI-CONTEXT-001
+    name: "CLI Context Behavior (Project vs Global Commands)"
+    category: "cli_context"
+    persona: "User understanding how CLI behaves in different directories"
+    priority: "high"
+
+    starting_state:
+      environment:
+        cli_installed: true
+        test_directories:
+          - "~/home/test-user"
+          - "/tmp/random_dir"
+          - "/home/code/myagents/MyAgents-staging (has langgraph.json)"
+      files_present:
+        - "langgraph.json (in project directory only)"
+      files_missing:
+        - "langgraph.json (in ~ and /tmp)"
+        - "~/.config/myagents/langgraph.json"
+
+    journey:
+      # Test 1: Global commands work anywhere
+      - step: 1
+        action: "Test global commands from home directory: cd ~/ && myagents --version && myagents --help"
+        expected: "Global commands work without langgraph.json"
+        failure_indicators:
+          - "Requires langgraph.json for global commands"
+          - "Commands fail"
+
+      - step: 2
+        action: "Test global commands from /tmp: cd /tmp && myagents --version && myagents --help"
+        expected: "Global commands work from any directory"
+        failure_indicators:
+          - "Different behavior in different directories"
+          - "Requires project context"
+
+      # Test 2: Project commands work in project directory
+      - step: 3
+        action: "cd to project directory with langgraph.json"
+        expected: "Directory contains langgraph.json"
+
+      - step: 4
+        action: "Run `myagents chat` (project command)"
+        expected: "Command works, uses local langgraph.json"
+        failure_indicators:
+          - "Command fails"
+          - "Uses wrong langgraph.json"
+
+      - step: 5
+        action: "Verify uses project's langgraph.json (not home directory)"
+        expected: "Local langgraph.json takes priority"
+        failure_indicators:
+          - "Uses home directory config instead"
+
+      # Test 3: Project commands fail outside project with clear error
+      - step: 6
+        action: "mkdir -p /tmp/random_dir && cd /tmp/random_dir"
+        expected: "In directory without langgraph.json"
+
+      - step: 7
+        action: "Run `myagents chat` (project command without project)"
+        expected: "Clear error: 'No langgraph.json found. Run from project directory or use myagents setup'"
+        failure_indicators:
+          - "Silent failure"
+          - "Unclear error message"
+          - "Module import error"
+          - "Shebang/path error"
+
+      - step: 8
+        action: "Verify error message is actionable"
+        expected: "Error tells user exactly what to do (mentions setup command)"
+        failure_indicators:
+          - "Error doesn't mention project directory"
+          - "Error doesn't mention setup command"
+          - "Error is hidden or unclear"
+
+    success_criteria:
+      - "Global commands (--help, --version) work from anywhere without langgraph.json"
+      - "Project commands work in project directory with langgraph.json"
+      - "Project commands fail outside project with clear, actionable error"
+      - "Error message mentions 'Run from project directory or use myagents setup'"
+      - "Local langgraph.json takes priority over home directory config"
+      - "Consistent behavior across all directories"
+      - "No silent fallbacks - errors are loud and helpful"
+
+    testing:
+      local: true
+      docker: true
+      docker_image: "myagents-test"
+      test_directories:
+        - "~/"
+        - "/tmp"
+        - "project directory"
+
+    documentation_references:
+      - "README.md"
+      - "docs/guides/configuration.md"
+      - "docs/guides/usage.md"
+

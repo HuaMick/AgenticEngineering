@@ -1,0 +1,111 @@
+objective: "Migrate user stories from legacy location to AgenticGuidance structure"
+action_id: ACTION_001
+status: PLANNING_COMPLETE
+
+source_analysis:
+  location: "modules/legacy/MyAgents/docs/services/userstories/"
+  inventory:
+    MyAgents:
+      file_count: 14
+      approx_lines: 2400
+      files:
+        - 00_metadata.yml
+        - 01_installation.yml
+        - 02_cli_basics.yml
+        - 03_setup.yml
+        - 04_cli_context.yml
+        - 05_chat.yml
+        - 06_studio.yml
+        - 07_preferences.yml
+        - 08_config.yml
+        - 09_secrets.yml
+        - 10_maintenance.yml
+        - 11_development.yml
+        - 12_advanced.yml
+        - 13_infrastructure.yml
+    MyAgentsFrontend:
+      file_count: 8
+      approx_lines: 1100
+      files:
+        - 00_metadata.yml
+        - 01_app_launch.yml
+        - 02_pairing.yml
+        - 03_terminal.yml
+        - 04_navigation.yml
+        - 05_build.yml
+        - 06_future_features.yml
+        - 07_connection_reliability.yml
+    RemoteAgents:
+      file_count: 12
+      approx_lines: 4100
+      files:
+        - 00_metadata.yml
+        - 01_session_management.yml
+        - 02_terminal_io.yml
+        - 03_encryption.yml
+        - 04_reliability.yml
+        - 05_relay_api.yml
+        - 06_terminal_cli.yml
+        - 07_error_handling.yml
+        - 08_operations.yml
+        - 09_deployment.yml
+        - 10_connection_state.yml
+        - 11_protocol.yml
+  totals:
+    files: 34
+    approx_lines: 7600
+
+target_recommendation:
+  location: "docs/userstories/"
+  rationale:
+    - "Definition file alignment: assets/definitions/user-stories.yml references docs/userstories/<project>/"
+    - "Workspace-level placement: User stories are cross-cutting test artifacts"
+    - "Consistency with new structure: Not module-specific"
+  alternatives_rejected:
+    - path: "modules/AgenticGuidance/assets/userstories/"
+      reason: "User stories are test validation artifacts, not guidance assets"
+    - path: "modules/AgenticGuidance/docs/userstories/"
+      reason: "Would make them module-specific rather than workspace-wide"
+
+migration_steps:
+  phase_1_create_structure:
+    - "mkdir -p docs/userstories/MyAgents"
+    - "mkdir -p docs/userstories/MyAgentsFrontend"
+    - "mkdir -p docs/userstories/RemoteAgents"
+
+  phase_2_copy_files:
+    - source: "modules/legacy/MyAgents/docs/services/userstories/MyAgents/*"
+      target: "docs/userstories/MyAgents/"
+    - source: "modules/legacy/MyAgents/docs/services/userstories/MyAgentsFrontend/*"
+      target: "docs/userstories/MyAgentsFrontend/"
+    - source: "modules/legacy/MyAgents/docs/services/userstories/RemoteAgents/*"
+      target: "docs/userstories/RemoteAgents/"
+
+  phase_3_update_references:
+    high_priority:
+      - file: "modules/AgenticGuidance/agents/planner/planner-test/inputs.yml"
+        line: 64
+        change: 'path: "docs/services/userstories/" -> path: "docs/userstories/"'
+      - file: "modules/AgenticGuidance/agents/planner/planner-test/manifest.yml"
+        line: 9
+        change: 'docs/services/userstories/<project>/ -> docs/userstories/<project>/'
+      - file: "modules/AgenticFrontend/README.md"
+        line: 79
+        change: 'docs/services/userstories/MyAgentsFrontend/ -> docs/userstories/MyAgentsFrontend/'
+    medium_priority:
+      - file: "docs/plans/completed/260102AG_migration/completed/plan_migrate.yml"
+        note: "Historical reference, may not need update"
+
+validation_criteria:
+  - criterion: "All 34 files migrated"
+    command: "find docs/userstories -name '*.yml' | wc -l"
+    expected: 34
+  - criterion: "Directory structure preserved"
+    command: "ls docs/userstories/"
+    expected: "MyAgents MyAgentsFrontend RemoteAgents"
+  - criterion: "AgenticGuidance references updated"
+    command: "grep -r 'docs/services/userstories' modules/AgenticGuidance/"
+    expected: "no matches"
+  - criterion: "No data loss"
+    command: "diff -r source target"
+    expected: "no differences in content"

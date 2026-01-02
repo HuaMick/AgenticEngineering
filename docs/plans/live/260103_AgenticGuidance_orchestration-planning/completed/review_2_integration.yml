@@ -1,0 +1,258 @@
+reviewer: "planner-reviewer-4"
+scope: "full integration check"
+iteration: 2
+status: CHANGES_REQUESTED
+
+chain_verification:
+  entrypoint_to_orchestration: valid
+  orchestration_delegation: valid
+  planner_routing: valid
+  manifest_consistency: invalid
+
+findings:
+  # ENTRYPOINT CHAIN VERIFICATION
+  - id: "EC-01"
+    component: "_plan.yml entrypoint"
+    path: "/home/code/AgenticEngineering/modules/AgenticGuidance/entrypoints/_plan.yml"
+    status: valid
+    detail: |
+      Entrypoint correctly references orchestration process:
+      - orchestration: "agents/orchestration/orchestration-planning/process.mmd"
+      - Steps clearly describe the planning workflow
+      - Output specification aligns with downstream consumers (_execute.yml, _teach.yml)
+
+  - id: "EC-02"
+    component: "orchestration-planning/process.mmd"
+    path: "/home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+    status: valid
+    detail: |
+      Process flowchart is well-structured:
+      - INPUT_PATH directive references inputs.yml
+      - Phase determination subgraph handles teach/build/test/cleanup phases
+      - Planning loops spawn correct planners (planner-guidance, planner-build, planner-test, planner-cleaning)
+      - Human approval gate is properly implemented
+      - Output phase reports plan location and next steps
+
+  # DELEGATION CHAIN VERIFICATION
+  - id: "DC-01"
+    component: "orchestration-build delegation"
+    path: "/home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-build/process.mmd"
+    status: valid
+    detail: |
+      orchestration-build correctly implements planning delegation:
+      - CheckPlanInput decision node checks for pre-approved plan
+      - "No: Need Planning" path spawns orchestration-planning (DelegatePlanning node)
+      - Handoff contract documented: produces plan.yml, phase_build.yml, phase_test.yml
+      - Failure feedback loops (TEST_FAILURE, CICD_FAILURE, GUIDANCE_GAP, AUDIT_FAILURE) route back to DelegatePlanning
+      - inputs.yml documents approved_plan_path, planning_objective, and failure_context inputs
+
+  - id: "DC-02"
+    component: "orchestration-guidance delegation"
+    path: "/home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-guidance/process.mmd"
+    status: valid
+    detail: |
+      orchestration-guidance correctly implements planning delegation:
+      - CheckApprovedPlan decision node checks for pre-approved plan
+      - "No: Needs Planning" path spawns orchestration-planning (SpawnOrchestrationPlanning node)
+      - Failure feedback loops route back to SpawnOrchestrationPlanning
+      - inputs.yml documents approved_plan_path and orchestration_planning_ref inputs
+
+  # PLANNER ROUTING VERIFICATION
+  - id: "PR-01"
+    component: "Planner sub-agents existence"
+    status: valid
+    detail: |
+      All planner sub-agents referenced in orchestration-planning/process.mmd exist:
+      - planner-guidance: /home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/planner-guidance/ (has process.yml)
+      - planner-build: /home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/planner-build/ (has process.yml)
+      - planner-test: /home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/planner-test/ (has process.yml)
+      - planner-cleaning: /home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/planner-cleaning/ (has process.yml)
+      - planner-reviewer: /home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/planner-reviewer/ (has process.yml)
+      - planner-guidance-testing: /home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/planner-guidance-testing/ (has process.yml)
+
+  - id: "PR-02"
+    component: "Planner manifest routing"
+    path: "/home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/manifest.yml"
+    status: valid
+    detail: |
+      Planner manifest correctly lists all sub-agents and routing logic:
+      - planner-build: Planning code implementation and build tasks
+      - planner-test: Planning test strategy and validation tasks
+      - planner-cleaning: Planning code cleanup and removal tasks
+      - planner-guidance: Planning agent guidance and process improvements
+      - planner-reviewer: Reviewing and approving implementation plans
+      - planner-guidance-testing: Planning guidance validation and completeness tests
+
+  # MANIFEST CONSISTENCY VERIFICATION
+  - id: "MC-01"
+    component: "agents/manifest.yml alignment"
+    path: "/home/code/AgenticEngineering/modules/AgenticGuidance/agents/manifest.yml"
+    status: valid
+    detail: |
+      Top-level manifest correctly references sub-manifests and lists all agents:
+      - planner category: lists all 6 planner sub-agents (matches planner/manifest.yml)
+      - orchestration category: lists orchestration-planning, orchestration-build, orchestration-guidance
+      - not_migrated section documents agents remaining in legacy
+
+  - id: "MC-02"
+    component: "orchestration/manifest.yml alignment"
+    path: "/home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/manifest.yml"
+    status: valid
+    detail: |
+      Orchestration manifest correctly documents:
+      - sub_agents: orchestration-planning, orchestration-build, orchestration-guidance
+      - routing_logic: Entry patterns for _plan.yml, _execute.yml, _teach.yml
+      - Delegation pattern: orchestration-build and orchestration-guidance can delegate to orchestration-planning
+
+  - id: "MC-03"
+    component: "agent-categories.yml missing orchestration-planning"
+    path: "/home/code/AgenticEngineering/modules/AgenticGuidance/assets/definitions/agent-categories.yml"
+    status: invalid
+    severity: medium
+    detail: |
+      The agent-categories.yml definition file lists orchestration sub-agents as:
+      - orchestrator
+      - orchestration-guidance
+      - orchestration-build
+
+      MISSING: orchestration-planning is NOT listed, though it exists and is actively referenced by:
+      - _plan.yml entrypoint
+      - orchestration-build/process.mmd
+      - orchestration-guidance/process.mmd
+      - agents/manifest.yml
+      - orchestration/manifest.yml
+
+  # ORPHANED REFERENCE CHECK
+  - id: "OR-01"
+    component: "deploy-worktree reference"
+    status: warning
+    severity: low
+    detail: |
+      orchestration-planning/inputs.yml references:
+      - agents/deploy/deploy-worktree/process.yml
+
+      This agent does NOT exist in AgenticGuidance module.
+      It exists only in legacy: modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/deploy/deploy-worktree/
+
+      This is documented in agents/manifest.yml under not_migrated section.
+      The reference path should either:
+      1. Use relative path to legacy, OR
+      2. Deploy agent should be migrated to AgenticGuidance
+
+      Impact: Low (documented as not_migrated, process still works via legacy reference)
+
+  - id: "OR-02"
+    component: "explore-* agent references"
+    status: warning
+    severity: low
+    detail: |
+      orchestration-build/process.mmd references explore agents:
+      - explore-codebase
+      - explore-dependencies
+      - explore-tests
+
+      These agents do NOT exist in AgenticGuidance module.
+      They are defined in agent-categories.yml under explore category but not migrated.
+
+      Impact: Low (explore category listed in not_migrated section)
+
+  - id: "OR-03"
+    component: "test-* agent references"
+    status: warning
+    severity: low
+    detail: |
+      orchestration-build and orchestration-guidance reference:
+      - test-guidance-simulator
+      - test-final-output
+
+      These agents do NOT exist in AgenticGuidance module.
+      They exist in legacy: modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/
+
+      Impact: Low (test category listed in not_migrated section)
+
+  # CIRCULAR REFERENCE CHECK
+  - id: "CR-01"
+    component: "No circular references detected"
+    status: valid
+    detail: |
+      Reference chain analysis:
+      - _plan.yml -> orchestration-planning (no return reference)
+      - orchestration-build -> orchestration-planning (delegation, returns approved plan)
+      - orchestration-guidance -> orchestration-planning (delegation, returns approved plan)
+      - orchestration-planning -> planner-* agents (spawning, no back-reference to orchestration)
+
+      Feedback loops in orchestration-build and orchestration-guidance are INTENTIONAL
+      re-planning cycles (not circular references) for quality improvement.
+
+approval_blockers:
+  - id: "AB-01"
+    severity: medium
+    issue: "agent-categories.yml missing orchestration-planning"
+    resolution: |
+      Add orchestration-planning to the orchestration sub_agents list in
+      /home/code/AgenticEngineering/modules/AgenticGuidance/assets/definitions/agent-categories.yml
+
+      Current:
+        sub_agents:
+          - orchestrator
+          - orchestration-guidance
+          - orchestration-build
+
+      Required:
+        sub_agents:
+          - orchestrator
+          - orchestration-planning
+          - orchestration-guidance
+          - orchestration-build
+
+non_blocking_recommendations:
+  - id: "NBR-01"
+    type: "documentation"
+    issue: "Legacy agent references should use explicit paths"
+    recommendation: |
+      In orchestration-planning/inputs.yml, change:
+        - location: "agents/deploy/deploy-worktree/process.yml"
+      To:
+        - location: "modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/deploy/deploy-worktree/process.yml"
+        - note: "Not yet migrated - see agents/manifest.yml#not_migrated"
+
+  - id: "NBR-02"
+    type: "consistency"
+    issue: "orchestrator vs orchestration-planning naming"
+    recommendation: |
+      agent-categories.yml lists 'orchestrator' but no agent by that exact name exists.
+      Consider whether 'orchestrator' should be renamed to 'orchestration-planning'
+      or if 'orchestrator' is a separate agent that needs to be created.
+
+summary: |
+  CHANGES_REQUESTED: One medium-severity issue requires resolution before approval.
+
+  Integration Analysis Summary:
+  - Entrypoint chain: VALID - _plan.yml correctly routes to orchestration-planning/process.mmd
+  - Delegation chain: VALID - Both orchestration-build and orchestration-guidance properly
+    delegate to orchestration-planning with clear handoff contracts
+  - Planner routing: VALID - All 6 planner sub-agents exist and are correctly spawned
+  - Manifest consistency: INVALID - agent-categories.yml is missing orchestration-planning
+
+  The orchestration-planning integration is well-designed with:
+  - Clear separation of concerns (planning vs execution)
+  - Proper feedback loops for quality improvement
+  - Well-documented handoff contracts
+  - Human-in-the-loop approval gates
+
+  The single blocking issue is straightforward to fix: add orchestration-planning to
+  agent-categories.yml. The legacy agent references are documented as not_migrated
+  and do not block the integration.
+
+files_reviewed:
+  - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/manifest.yml
+  - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/manifest.yml
+  - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/manifest.yml
+  - /home/code/AgenticEngineering/modules/AgenticGuidance/entrypoints/_plan.yml
+  - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd
+  - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml
+  - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-build/process.mmd
+  - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-build/inputs.yml
+  - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-guidance/process.mmd
+  - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-guidance/inputs.yml
+  - /home/code/AgenticEngineering/modules/AgenticGuidance/assets/definitions/agent-categories.yml

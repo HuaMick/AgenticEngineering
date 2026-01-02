@@ -1,0 +1,296 @@
+# Dependency Migration - Test/Validation Phase
+# Phase 6: Validation and Cleanup
+# Created: 2026-01-03
+#
+# PURPOSE: Validate all migrations, update references, and clean up
+#
+# DEPENDS ON: plan_live_build.yml (build phase must complete first)
+#
+# KEY PRINCIPLES:
+# 1. INPUTS: Migrated files and referencing agents
+# 2. GUIDANCE: Validation procedures and cleanup steps
+# 3. SUCCESS CRITERIA: All references resolve, no broken imports
+
+worktree: "/home/code/AgenticEngineering"
+liveplan: "docs/plans/live/260103_AgenticGuidance_dependency-migration/live/plan_live_test.yml"
+completedplan: "docs/plans/live/260103_AgenticGuidance_dependency-migration/completed/plan_completed.yml"
+
+live-plans:
+  - id: DEPENDENCY-MIGRATION-TEST-001
+    title: Validate Migration and Cleanup
+    description: |
+      Validate all migrated agents have valid manifests, all asset references resolve,
+      run integration tests, and update documentation.
+
+    depends_on:
+      - plan_live_build.yml
+
+    phases:
+      # ========================================
+      # VALIDATION PHASE
+      # ========================================
+      - name: Validation Phase
+        execution_groups:
+          - execution: parallel
+            name: Validate migrated agents
+            agents:
+              # Agent 1: Validate deploy agents
+              - type: test
+                inputs:
+                  - modules/AgenticGuidance/agents/deploy/manifest.yml
+                  - modules/AgenticGuidance/agents/deploy/deploy-worktree/manifest.yml
+                  - modules/AgenticGuidance/agents/deploy/deploy-worktree/process.yml
+                  - modules/AgenticGuidance/agents/deploy/deploy-worktree/inputs.yml
+                guidance: |
+                  Context: Validate deploy-worktree agent was migrated correctly and all
+                  references resolve.
+
+                  Instructions:
+                  1. Verify file existence:
+                     - agents/deploy/manifest.yml
+                     - agents/deploy/deploy-worktree/manifest.yml
+                     - agents/deploy/deploy-worktree/process.yml
+                     - agents/deploy/deploy-worktree/inputs.yml
+                  2. Validate YAML syntax (no parse errors)
+                  3. Check internal references in process.yml:
+                     - inputs.location paths exist
+                     - asset references (assets/...) resolve
+                  4. Check inputs.yml references:
+                     - All referenced files exist
+                     - No legacy paths remain (e.g., "deploy/deploy-worktree/..." without "agents/" prefix)
+                  5. Verify category manifest lists deploy-worktree
+                  6. Report any validation failures
+
+                  FAILURE REPORTING FORMAT:
+                  ```yaml
+                  validation_failures:
+                    - agent: deploy-worktree
+                      file: process.yml
+                      issue: "Reference to assets/definitions/plans.yml not found"
+                      line: 42
+                  ```
+                success_criteria:
+                  - All deploy agent files exist
+                  - YAML syntax valid
+                  - All internal references resolve
+                  - No legacy paths in references
+
+              # Agent 2: Validate test agents
+              - type: test
+                inputs:
+                  - modules/AgenticGuidance/agents/test/manifest.yml
+                  - modules/AgenticGuidance/agents/test/test-runner/
+                  - modules/AgenticGuidance/agents/test/test-audit/
+                  - modules/AgenticGuidance/agents/test/test-final-output/
+                  - modules/AgenticGuidance/agents/test/test-guidance-simulator/
+                guidance: |
+                  Context: Validate all migrated test agents and their references.
+
+                  Instructions:
+                  1. For each migrated test agent, verify:
+                     - Directory exists
+                     - manifest.yml, process.yml, inputs.yml exist
+                     - YAML syntax valid
+                     - Internal references resolve
+                  2. Check test category manifest:
+                     - Only lists actually migrated agents
+                     - Routing section has correct paths
+                  3. Verify cross-references:
+                     - planner-test can find test agents
+                     - planner-guidance-testing can find test-guidance-simulator
+                  4. Report validation failures
+                success_criteria:
+                  - All migrated test agents validated
+                  - Category manifest accurate
+                  - Cross-references from planners resolve
+
+              # Agent 3: Validate teacher agents
+              - type: test
+                inputs:
+                  - modules/AgenticGuidance/agents/teacher/manifest.yml
+                  - modules/AgenticGuidance/agents/teacher/teacher-update-guidance/
+                  - modules/AgenticGuidance/agents/teacher/teacher-update-assets/
+                guidance: |
+                  Context: Validate all migrated teacher agents and their references.
+
+                  Instructions:
+                  1. For each migrated teacher agent, verify:
+                     - Directory exists
+                     - Required files present (manifest, process, inputs)
+                     - YAML syntax valid
+                     - Internal references resolve
+                  2. Check teacher category manifest:
+                     - Only lists actually migrated agents
+                     - Notes about unimplemented agents (teacher-plan)
+                  3. Verify cross-references from teaching plans
+                  4. Report validation failures
+                success_criteria:
+                  - All migrated teacher agents validated
+                  - Category manifest accurate
+                  - Teaching plan references resolve
+
+              # Agent 4: Validate assets
+              - type: test
+                inputs:
+                  - modules/AgenticGuidance/assets/guidelines/orchestration-policy.yml
+                  - modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml
+                  - modules/AgenticGuidance/agents/orchestration/orchestration-build/inputs.yml
+                guidance: |
+                  Context: Validate migrated assets exist and are referenced correctly.
+
+                  Instructions:
+                  1. If orchestration-policy.yml was migrated:
+                     - Verify file exists at assets/guidelines/
+                     - Validate YAML syntax
+                  2. Check orchestration agents can find it:
+                     - orchestration-planning/inputs.yml references
+                     - orchestration-build/inputs.yml references
+                  3. List any other guideline files that should exist but don't
+                  4. Report validation failures
+                success_criteria:
+                  - All migrated assets exist
+                  - YAML syntax valid
+                  - Orchestration agents reference correct paths
+
+      # ========================================
+      # INTEGRATION TESTING
+      # ========================================
+      - name: Integration Testing
+        execution_groups:
+          - execution: test-fix-loop
+            name: Reference resolution testing
+            agents:
+              - type: test
+                inputs:
+                  - modules/AgenticGuidance/agents/manifest.yml
+                  - modules/AgenticGuidance/agents/orchestration/
+                  - modules/AgenticGuidance/agents/planner/
+                  - modules/AgenticGuidance/agents/deploy/
+                  - modules/AgenticGuidance/agents/test/
+                  - modules/AgenticGuidance/agents/teacher/
+                guidance: |
+                  Context: Run integration tests to verify the entire agent hierarchy
+                  can resolve all references.
+
+                  Instructions:
+                  1. Read the main agents/manifest.yml
+                  2. For each category listed, verify:
+                     - Category directory exists
+                     - Category manifest.yml exists
+                     - All listed sub_agents have directories
+                  3. For each orchestration agent, trace reference resolution:
+                     - Load process.mmd
+                     - Identify agent spawn references (deploy-worktree, test agents, etc.)
+                     - Verify referenced agents exist at expected paths
+                  4. For each planner agent, trace reference resolution:
+                     - Load process.yml
+                     - Identify inputs.yml references
+                     - Verify all inputs exist
+                  5. Test end-to-end reference chain:
+                     - entrypoint/_plan.yml -> orchestration-planning -> deploy-worktree -> assets
+                  6. Document any broken chains
+
+                  FAILURE REPORTING FORMAT:
+                  ```yaml
+                  integration_failures:
+                    - chain: "orchestration-planning -> deploy-worktree"
+                      issue: "deploy-worktree/process.yml not found"
+                      expected_path: "agents/deploy/deploy-worktree/process.yml"
+                  ```
+                success_criteria:
+                  - All agent categories discoverable from main manifest
+                  - All orchestration -> agent references resolve
+                  - All planner -> test agent references resolve
+                  - End-to-end reference chain validated
+
+              - type: build
+                inputs:
+                  - modules/AgenticGuidance/agents/
+                guidance: |
+                  Context: Fix any integration failures found by test agent.
+
+                  Instructions:
+                  1. Read integration_failures from live plan
+                  2. For each failure:
+                     - Identify root cause (missing file, wrong path, typo)
+                     - Implement fix (create file, update path, fix typo)
+                  3. Verify fix resolves the issue
+                  4. Mark failure as resolved in live plan
+                success_criteria:
+                  - All integration failures resolved
+                  - Re-running validation shows no failures
+
+      # ========================================
+      # CLEANUP PHASE
+      # ========================================
+      - name: Cleanup Phase
+        execution_groups:
+          - execution: sequential
+            name: Documentation and cleanup
+            agents:
+              - type: documentation
+                inputs:
+                  - modules/AgenticGuidance/README.md
+                  - modules/AgenticGuidance/agents/README.md
+                  - docs/plans/live/260103_AgenticGuidance_dependency-migration/analysis/
+                guidance: |
+                  Context: Update documentation to reflect migration and document any
+                  remaining work items.
+
+                  Instructions:
+                  1. Update modules/AgenticGuidance/README.md:
+                     - Add deploy, test, teacher to agent categories list
+                     - Update any directory structure documentation
+                  2. Update modules/AgenticGuidance/agents/README.md:
+                     - Document all agent categories and their purpose
+                     - List all sub-agents per category
+                  3. Create migration summary in analysis/migration_summary.md:
+                     - What was migrated
+                     - What was skipped and why
+                     - Any known issues or follow-up items
+                  4. Update plan.yml status to reflect completion
+                success_criteria:
+                  - README files updated with new agents
+                  - Migration summary created
+                  - Plan status updated
+
+              - type: cleaner
+                inputs:
+                  - docs/plans/live/260103_AgenticGuidance_dependency-migration/
+                guidance: |
+                  Context: Move completed items to completed folder and finalize plan.
+
+                  Instructions:
+                  1. Review all phases for completion
+                  2. Move completed items to completed/plan_completed.yml:
+                     ```yaml
+                     completed_items:
+                       - id: DEPENDENCY-MIGRATION-AUDIT-001
+                         title: "Audit Legacy Agents for Migration Relevance"
+                         completed_date: "2026-01-XX"
+                       - id: DEPENDENCY-MIGRATION-BUILD-001
+                         title: "Migrate Agent Directories and Assets"
+                         completed_date: "2026-01-XX"
+                       - id: DEPENDENCY-MIGRATION-TEST-001
+                         title: "Validate Migration and Cleanup"
+                         completed_date: "2026-01-XX"
+                     ```
+                  3. Update high-level plan.yml with final status
+                  4. Archive analysis files in analysis/ folder (keep for reference)
+                success_criteria:
+                  - Completed items tracked in completed/plan_completed.yml
+                  - Plan status reflects completion
+                  - Analysis artifacts preserved
+
+    user_stories:
+      - story: "As a developer, I want orchestration agents to find all required sub-agents"
+        validation: "orchestration-planning can spawn deploy-worktree successfully"
+        status: "must_validate"
+
+      - story: "As a developer, I want planner agents to find test agents for execution"
+        validation: "planner-test can reference test-runner, test-audit"
+        status: "must_validate"
+
+      - story: "As a maintainer, I want clear documentation of what was migrated"
+        validation: "Migration summary documents all decisions and outcomes"
+        status: "must_validate"

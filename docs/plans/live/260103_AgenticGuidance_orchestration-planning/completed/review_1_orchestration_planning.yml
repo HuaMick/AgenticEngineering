@@ -1,0 +1,70 @@
+reviewer: "planner-reviewer-1"
+scope: "orchestration-planning"
+iteration: 1
+status: CHANGES_REQUESTED
+findings:
+  - category: correctness
+    severity: critical
+    file: "/home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+    issue: "linkStyle 36 targets wrong index - the dotted feedback line (IdentifyAffectedPhases -.-> PlanningLoops) is at index 57, not 36"
+    suggestion: "Change 'linkStyle 36' to 'linkStyle 57' to correctly style the feedback loop return path"
+
+  - category: correctness
+    severity: critical
+    file: "/home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml"
+    issue: "References planner-phases/process.yml but planner-phases sub-agent does not exist in agents/planner/ directory"
+    suggestion: "Either create the planner-phases sub-agent or remove this reference and integrate phase determination logic into another component"
+
+  - category: completeness
+    severity: high
+    file: "/home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/manifest.yml"
+    issue: "manifest.yml does not list planner-phases as a sub-agent, but process.mmd spawns 'planner-phases Agent'"
+    suggestion: "Add planner-phases to sub_agents list in manifest.yml, or clarify which existing agent handles phase determination"
+
+  - category: convention
+    severity: medium
+    file: "/home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+    issue: "Feedback loops within planning loops (e.g., TeachPlanApproved --No:Refine--> SpawnPlannerTeachFix --> SpawnTeachReviewer) are not styled as dotted lines"
+    suggestion: "Add linkStyle for indices 20,21 (teach), 28,29 (build), 36,37 (test), 44,45 (cleanup) to match the convention for feedback/refinement loops"
+
+  - category: completeness
+    severity: medium
+    file: "/home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml"
+    issue: "Missing deploy-worktree reference - process.mmd spawns deploy-worktree agent but inputs.yml does not reference its process"
+    suggestion: "Add reference to agents/deploy/deploy-worktree/process.yml or equivalent"
+
+  - category: convention
+    severity: low
+    file: "/home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+    issue: "Header comment structure differs slightly from orchestration-build.mmd - missing GUIDELINE for user-story-testing.yml (may not apply to planning-only)"
+    suggestion: "Review if any additional guidelines should be referenced for planning phase, or document why they are intentionally excluded"
+
+  - category: structure
+    severity: low
+    file: "/home/code/AgenticEngineering/modules/AgenticGuidance/entrypoints/_plan.yml"
+    issue: "Steps list could be more precise - step 4 mentions 'planner-phases' but this agent needs to be created"
+    suggestion: "Update step 4 to reflect actual agent names once planner-phases resolution is addressed"
+
+approval_blockers:
+  - "Critical: linkStyle index 36 is incorrect - should be 57 for the feedback loop line"
+  - "Critical: planner-phases agent is referenced but does not exist - process.mmd, inputs.yml, and entrypoint all assume it exists"
+
+summary: |
+  The orchestration-planning implementation follows the established .mmd conventions with proper header
+  comments (GOAL, PROFILE, OUTPUT, GUIDELINE, INPUT_PATH), uses subgraphs correctly, and includes a
+  human approval gate. The flow logic for phase determination and iterative planning loops is well-structured.
+
+  However, two critical issues block approval:
+  1. The linkStyle index targets the wrong link (36 instead of 57), which means the feedback loop
+     from Human Approval back to Planning Loops will not be rendered with dotted styling.
+  2. The planner-phases agent is referenced throughout but does not exist in the codebase. This
+     agent is critical to the phase determination logic and must either be created or the
+     responsibility reassigned to an existing agent.
+
+  The entrypoint (_plan.yml) is correctly wired to the orchestration process.mmd file. The inputs.yml
+  has good coverage of guidelines and definitions but is missing the deploy-worktree reference and
+  includes a non-existent planner-phases reference.
+
+  Recommendation: Fix the two critical issues before proceeding. The planner-phases agent should be
+  created with appropriate process.yml and manifest.yml files, and the linkStyle index should be
+  corrected to 57.

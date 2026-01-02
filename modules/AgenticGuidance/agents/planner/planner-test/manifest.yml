@@ -1,0 +1,104 @@
+# Planner-Test Agent Manifest
+# Complete and self-contained manifest for the test planning agent
+
+name: planner-test
+description: |
+  Create phased test plans for validating implementations. Includes component testing (smoke_test),
+  user flow testing (agent_blind_test with user stories), cleanup phases, test-audit-fix loops
+  (MANDATORY), test suite phases (OPTIONAL, only if requested), and documentation validation. Plans incorporate user stories
+  from docs/userstories/<project>/ into test-fix-loop phases and include environment setup tasks.
+
+version: "1.0"
+
+# Purpose and scope
+purpose: |
+  Planner-test agents create phased test execution plans that orchestration agents use to spawn
+  and coordinate test agents. Plans include test strategies, test-fix-loop patterns, audit patterns,
+  and success criteria for testing.
+
+# Example plan structure reference
+example_plan: "assets/examples/planner/YYMMDDRepo_Branch/live/plan_live_test.yml"
+
+# Test plan structure requirements
+test_plan_structure: |
+  Plans must include these phases in order:
+  1. Environment Setup (MANDATORY before UAT testing):
+     - Local: Install latest version (`uv pip install -e .`) before UAT local testing
+     - Verify: `uv pip show myagents` (version matches source)
+     - Verify: CLI accessible via `myagents --version`
+     - Docker: Build shared image `myagents-test` using `Dockerfile.test`
+     - Ensures UAT tests latest code, not stale installed version
+
+  2. Test-fix-loop (incorporates BOTH component AND user flow testing):
+     - Component tests: smoke_test process (entry point testing strategy)
+     - User flow tests: user_simulator process (agent-blind-test strategy)
+     - One agent per user story FILE (tests all stories in file)
+     - Each agent tests specified layers (typically local + docker, sometimes cloud_build)
+
+  3. Cleanup (after initial implementation success)
+
+  4. Test-audit-fix loop (MANDATORY, not optional):
+     - Reviews skipped tests and validates skip justifications
+     - Catches issues like hardcoded paths, missing setup, reward hacking
+     - Uses audit process
+
+  5. Test suite (OPTIONAL, only if requested):
+     - Uses end2end testing
+     - Skip unless user explicitly requests test suite execution
+
+  6. Documentation-loop (at very end)
+
+# Testing layers decision tree
+testing_layers: |
+  Layer selection checklist:
+
+  ALWAYS INCLUDE: Local + Docker (baseline for all test plans)
+  - Local: Validates developer workflow (installed CLI)
+  - Docker: Validates CI/CD parity (shared pre-built image)
+
+  ALSO INCLUDE Cloud Build when changes touch:
+  - pyproject.toml (dependencies, packaging)
+  - Dockerfile.test or docker-compose.test.yml
+  - cloudbuild.yaml or cloudbuild-pr.yaml
+  - pytest.ini or test configuration
+  - scripts/install-global.sh or installation scripts
+  - CI/CD infrastructure (test directory structure)
+  - Any changes affecting workspace restructuring
+
+  Layer capabilities:
+  - Local: Catches Python logic errors, API issues, local config problems
+  - Docker: Catches Dockerfile issues, container runtime, dependency packaging
+  - Cloud Build: Catches workspace restructuring, CI/CD integration failures
+
+# Mandatory user stories
+mandatory_user_stories: |
+  US-INSTALL-* user stories MANDATORY when changes touch:
+  - pyproject.toml (dependencies, entry points, packaging)
+  - CLI entry points (frontend/cli/*)
+  - scripts/install-global.sh or installation scripts
+  - README.md or SETUP.md installation sections
+  - [tool.uv.sources] configuration
+  - Any packaging-related changes
+
+  Justification: Installation issues bypass normal testing because tests assume
+  cli_installed: true. US-INSTALL-* stories catch installation bugs that would
+  otherwise reach users (broken shebangs, editable install issues, local path
+  dependencies blocking pip/pipx install, missing docs, CLI inaccessibility).
+
+# Test process mapping
+# NOTE: Some test agents have been migrated to AgenticGuidance (2026-01-03).
+# Others remain in legacy location until migration is complete.
+test_process_mapping: |
+  Strategy to process mapping:
+  # MIGRATED: 2026-01-03
+  - smoke_test: agents/test/test-runner/process.yml
+  # NOT_MIGRATED: test-user-simulator - see modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/test-user-simulator/process.yml
+  - agent-blind-test: agents/test/test-user-simulator/process.yml
+  # NOT_MIGRATED: test-service - see modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/test-service/process.yml
+  - service_test: agents/test/test-service/process.yml
+  # NOT_MIGRATED: test-builder - see modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/test-builder/process.yml
+  - test-builder: agents/test/test-builder/process.yml
+  # MIGRATED: 2026-01-03
+  - audit: agents/test/test-audit/process.yml
+  # NOT_MIGRATED: deploy-cicd - see modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/deploy/deploy-cicd/process.yml
+  - cicd_maintenance: agents/deploy/deploy-cicd/process.yml

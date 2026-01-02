@@ -1,0 +1,188 @@
+# Migration Manifest - Consolidated Audit Findings
+# Created: 2026-01-03
+# Status: AUDIT_COMPLETE
+
+migration_manifest:
+  agents_to_migrate:
+    # DEPLOY AGENTS
+    - agent: deploy-worktree
+      source: modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/deploy/deploy-worktree/
+      target: modules/AgenticGuidance/agents/deploy/deploy-worktree/
+      priority: CRITICAL
+      referenced_by:
+        - orchestration-planning/process.mmd (spawned for worktree setup)
+        - orchestration-planning/inputs.yml (listed as required input)
+        - orchestration-build/process.mmd (spawned for worktree verification)
+        - orchestration-guidance/process.mmd (spawned for guidance worktree setup)
+      rationale: |
+        Critical infrastructure agent. All THREE orchestration agents depend on it.
+        Blocks full AgenticGuidance independence from legacy module.
+        Already defined in agent-categories.yml, marked as "not_migrated" in manifest.
+
+    # TEST AGENTS
+    - agent: test-runner
+      source: modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/test-runner/
+      target: modules/AgenticGuidance/agents/test/test-runner/
+      priority: CRITICAL
+      referenced_by:
+        - planner-test/manifest.yml (smoke_test strategy maps to test-runner)
+        - planner-test/inputs.yml (marked NOT_MIGRATED with legacy path)
+      rationale: |
+        Core executor for smoke_test (component testing). Plans created by
+        planner-test expect to spawn test-runner. Prerequisite for test planning.
+
+    - agent: test-audit
+      source: modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/test-audit/
+      target: modules/AgenticGuidance/agents/test/test-audit/
+      priority: CRITICAL
+      referenced_by:
+        - planner-test/manifest.yml (audit strategy maps to test-audit)
+        - planner-guidance-testing/manifest.yml (audit strategy maps to test-audit)
+        - planner-test/inputs.yml (marked NOT_MIGRATED)
+      rationale: |
+        Critical for mandatory audit-test-fix-loop phases in both implementation
+        and guidance testing. Covers reward hacking detection and skip validation.
+
+    - agent: test-final-output
+      source: modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/test-final-output/
+      target: modules/AgenticGuidance/agents/test/test-final-output/
+      priority: HIGH
+      referenced_by:
+        - Plan examples reference test-type agents
+        - Part of orchestration closure workflow
+      rationale: |
+        Serves unique quality gate role - interrogates execution data with skepticism,
+        validates functional testing actually occurred. Completes testing framework.
+
+    - agent: test-guidance-simulator
+      source: modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/test-guidance-simulator/
+      target: modules/AgenticGuidance/agents/test/test-guidance-simulator/
+      priority: CRITICAL
+      referenced_by:
+        - planner-guidance-testing/manifest.yml (core executor for guidance-test-loop)
+        - planner-guidance-testing/inputs.yml (marked required=false pending migration)
+        - assets/examples/test/guidance-test-plan.yml (referenced 10+ times)
+      rationale: |
+        SOLE executor for guidance-test-loop pattern. Planner-guidance-testing
+        cannot function without it. High strategic importance for guidance refinement.
+
+    # TEACHER AGENTS
+    - agent: teacher-update-guidance
+      source: modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/teacher/teacher-update-guidance/
+      target: modules/AgenticGuidance/agents/teacher/teacher-update-guidance/
+      priority: HIGH
+      referenced_by:
+        - assets/examples/planner/teaching-plan-example.yml (4 task examples)
+        - assets/definitions/agent-categories.yml (listed as teacher sub-agent)
+        - agents/planner/planner-guidance/process.yml (process refinement)
+        - docs/agent-role-scope-matrix.md (meta-level guidance updates)
+      rationale: |
+        Actively referenced by planner-guidance examples. Essential part of
+        guidance improvement workflow. Updates process.yml and inputs.yml files.
+
+    - agent: teacher-update-assets
+      source: modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/teacher/teacher-update-assets/
+      target: modules/AgenticGuidance/agents/teacher/teacher-update-assets/
+      priority: HIGH
+      referenced_by:
+        - assets/examples/planner/teaching-plan-example.yml (task examples)
+        - assets/definitions/agent-categories.yml (listed as teacher sub-agent)
+        - agents/planner/planner-guidance/process.yml (process refinement)
+        - docs/agent-role-scope-matrix.md (meta-level asset updates)
+      rationale: |
+        Actively referenced by planner-guidance examples. Essential part of
+        shared asset management workflow. Creates/updates definitions, guidelines.
+
+  agents_to_skip:
+    - agent: teacher-plan
+      source: N/A (not implemented)
+      reason: SKIP
+      rationale: |
+        Agent is defined in documentation but NOT YET IMPLEMENTED in legacy.
+        No working code exists. Workflow currently functions without it
+        (planner-guidance creates teaching plans directly).
+        Defer implementation until after teacher agents are migrated and validated.
+
+    - agent: test-builder
+      source: modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/test-builder/
+      reason: SKIP
+      rationale: |
+        Not explicitly referenced by AgenticGuidance planner or orchestration agents.
+        Test creation handled differently in current architecture.
+
+    - agent: test-user-simulator
+      source: modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/test-user-simulator/
+      reason: SKIP
+      rationale: |
+        Not explicitly referenced by AgenticGuidance agents.
+        User simulation may be handled by test-guidance-simulator.
+
+    - agent: test-service
+      source: modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/test-service/
+      reason: SKIP
+      rationale: |
+        Not explicitly referenced by AgenticGuidance agents.
+        Service testing not yet required in guidance-focused module.
+
+    - agent: test-flutter-builder
+      source: modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/test-flutter-builder/
+      reason: SKIP
+      rationale: Flutter-specific. AgenticGuidance is not Flutter-focused.
+
+    - agent: test-flutter-runner
+      source: modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/test-flutter-runner/
+      reason: SKIP
+      rationale: Flutter-specific. AgenticGuidance is not Flutter-focused.
+
+    - agent: deploy-packaging
+      source: modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/deploy/deploy-packaging/
+      reason: SKIP
+      rationale: Not referenced by orchestration agents. Packaging not required.
+
+    - agent: deploy-cicd
+      source: modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/deploy/deploy-cicd/
+      reason: SKIP
+      rationale: Not referenced by orchestration agents. CI/CD handled separately.
+
+  assets_to_migrate:
+    - asset: orchestration-policy.yml
+      source: modules/legacy/MyAgents/projects/MyAgentsGuidance/assets/guidelines/orchestration-policy.yml
+      target: modules/AgenticGuidance/assets/guidelines/orchestration-policy.yml
+      priority: HIGH
+      referenced_by:
+        - orchestration-guidance/process.mmd (Plan Status Management rule)
+        - orchestration-build/process.mmd (Plan Status Management rule)
+        - entrypoints/_plan.yml (comment lists as required guideline)
+      rationale: |
+        7KB of substantial policy documentation. Defines critical orchestration
+        behavior including escalation policy, plan status management, success
+        criteria. Currently MISSING from AgenticGuidance despite active references.
+
+  category_manifests_to_create:
+    - category: deploy
+      target: modules/AgenticGuidance/agents/deploy/manifest.yml
+      sub_agents: [deploy-worktree]
+
+    - category: test
+      target: modules/AgenticGuidance/agents/test/manifest.yml
+      sub_agents: [test-runner, test-audit, test-final-output, test-guidance-simulator]
+
+    - category: teacher
+      target: modules/AgenticGuidance/agents/teacher/manifest.yml
+      sub_agents: [teacher-update-guidance, teacher-update-assets]
+      notes: "teacher-plan not yet implemented - defer to future"
+
+summary:
+  total_agents_to_migrate: 7
+  total_agents_to_skip: 8
+  total_assets_to_migrate: 1
+  category_manifests_to_create: 3
+  migration_priority_order:
+    - deploy-worktree (CRITICAL - blocks orchestration)
+    - test-runner (CRITICAL - blocks test planning)
+    - test-audit (CRITICAL - blocks audit-test-fix-loop)
+    - test-guidance-simulator (CRITICAL - blocks guidance testing)
+    - orchestration-policy.yml (HIGH - policy documentation)
+    - test-final-output (HIGH - quality gate)
+    - teacher-update-guidance (HIGH - guidance improvement)
+    - teacher-update-assets (HIGH - asset management)

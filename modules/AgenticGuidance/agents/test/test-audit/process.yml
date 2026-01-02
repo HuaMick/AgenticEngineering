@@ -1,0 +1,77 @@
+process:
+  goal: |
+    Review existing tests in a specific test package to ensure valid testing. Detect silent failures,
+    reward hacking, structural violations, and unjustified skip patterns.
+
+  loop_definitions:
+    reference: "assets/definitions/agent-loops.yml"
+    description: "Loop types (audit-test-fix-loop) defined in agent-loops.yml"
+    # NOTE: Do not duplicate loop definitions here - see agent-loops.yml for full definitions
+
+  inputs:
+    - location: "agents/test/test-audit/inputs.yml"
+      description: "Core test audit agent inputs and guidelines"
+
+  outputs: []
+
+  steps:
+    - |
+      Review all inputs if an input cannot be found do not proceed.
+      If an input is found in a different location, update the path and flag
+      the discrepancy in your output.
+    - |
+      Focus on your assigned test package directory. You are auditing ONLY this package,
+      not the entire test suite. Other audit agents are handling other packages in parallel.
+    - |
+      SYSTEM STATE VALIDATION (for installation-related test packages):
+      Apply installation_architecture_validation checks per inputs.yml:
+      - Check pyproject.toml for local path dependencies
+      - Verify test assumptions about cli_installed
+      - Check for worktree-specific references
+      This catches installation architecture issues that bypass normal testing.
+    - |
+      Review the test results trace back to the test code and any relevant source code:
+      - Apply audit_checks per inputs.yml (outcome verification, evidence-based validation, etc.)
+      - Does the test verify actual outcomes, or only success booleans?
+      - How is failure reported - can it reach logs or monitoring?
+      - Do referenced paths in config files exist in the installed package?
+    - |
+      Review actual test execution results for skipped tests:
+      - Locate test result XML files in test-results/ directory (if available)
+      - Parse JUnit XML files to identify tests that were skipped during execution
+      - Extract skip messages/reasons from XML
+      - Validate each skip against acceptable-skips.yml criteria
+      - Categorize: unjustified (fixable), justified (acceptable), needs investigation
+      - Document unjustified skips with test name, skip message, file location, and fix recommendation
+    - |
+      Audit skip patterns in your assigned test package:
+      - Find all skip patterns: pytest.skip(), @pytest.mark.skip, @pytest.mark.skipif
+      - Analyze each skip against skip_pattern_audit criteria in inputs.yml
+      - Cross-reference with acceptable-skips.yml
+      - Document unjustified skips with file, line, condition, reason, and fix recommendation
+    - |
+      Review file and folder structure per structural_issues definition in inputs.yml.
+      Flag duplicates or architectural violations within your package.
+      The orchestration agent can spawn dedicated agents to investigate.
+    - |
+      Report findings per audit_reporting format in inputs.yml:
+      - Package name and path
+      - Skip pattern audit results
+      - Test quality issues (reward hacking signals from inputs.yml)
+      - Structural issues
+      - Installation/packaging issues (if applicable)
+      - Report back to orchestration agent for coordination
+
+  guidelines:
+    # Core guidelines: See assets/guidelines/ (context-minimisation.yml, reward-hacking-prevention.yml, testing.yml, safety.yml)
+    # Core definitions: See assets/definitions/ (acceptable-skips.yml, plans.yml, strategy-*.yml)
+    # Audit specifics: See inputs.yml for audit_role, reward_hacking_signals, audit_checks, skip_pattern_audit, installation_architecture_validation, structural_issues, audit_reporting, audit_constraints
+    - |
+      NEVER debug or fix issues you find. On fail proceed with the next
+      test and report back all failures to the orchestration agent.
+    - |
+      When flagging items, emphasis the need for investigation and dont talk
+      in absolutes. This allows the dedicated investigation agents to dig deeper without biasing.
+    - |
+      Focus ONLY on your assigned test package. Do not audit other packages - they have
+      dedicated audit agents handling them in parallel.

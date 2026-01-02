@@ -1,0 +1,91 @@
+status: IMPLEMENTED
+
+objective: "Refactor orchestration-build to delegate planning to orchestration-planning"
+
+implementation_date: "2026-01-03"
+
+changes_made:
+  - description: "Added new input fields for planning delegation"
+    location: "inputs.yml"
+    details:
+      - "Added approved_plan_path (optional) - path to pre-approved plan folder"
+      - "Added planning_objective (optional) - objective for orchestration-planning"
+      - "Added failure_context (optional) - failure details for re-planning cycles"
+      - "Added input validation constraint documentation"
+      - "Added PLANNING INPUT OPTIONS section header"
+
+  - description: "Removed embedded Planning & Review Subgraph"
+    location: "process.mmd"
+    details:
+      - "Removed PlanningReview entry node"
+      - "Removed Planning subgraph (lines 85-136 in original)"
+      - "Removed BuildPlanningLoop, SpawnPlannerBuild, SpawnBuildReviewer nodes"
+      - "Removed BuildPlanApproved gate and SpawnPlannerBuildFix refinement"
+      - "Removed TestPlanningLoop, SpawnTestPlanner, SpawnTestReviewer nodes"
+      - "Removed TestPlanApproved gate and SpawnTestPlannerFix refinement"
+      - "Removed TestPlanViable gate and UpdateBuildPlan return path"
+
+  - description: "Added new Planning Delegation Subgraph"
+    location: "process.mmd"
+    details:
+      - "Added CheckPlanInput decision node (Pre-approved Plan Provided?)"
+      - "Added LoadApprovedPlan action node for path-based input"
+      - "Added ValidatePlan decision gate"
+      - "Added AskUserPlan escalation node"
+      - "Added DelegatePlanning spawn node (orchestration-planning)"
+      - "Added AwaitPlanApproval wait node"
+      - "Added PlanningComplete decision gate"
+      - "Added PlanReady convergence node"
+      - "Documented handoff contract in comments"
+
+  - description: "Updated feedback loop return paths"
+    location: "process.mmd"
+    details:
+      - "UpdatePlanTests now returns to DelegatePlanning with TEST_FAILURE context"
+      - "UpdatePlanCICD now returns to DelegatePlanning with CICD_FAILURE context"
+      - "UpdatePlanBuild now returns to DelegatePlanning with GUIDANCE_GAP context"
+      - "UpdatePlanTest now returns to DelegatePlanning with GUIDANCE_GAP context"
+      - "UpdatePlanGuidance now returns to DelegatePlanning with GUIDANCE_GAP context"
+      - "UpdatePlanAudit now returns to DelegatePlanning with AUDIT_FAILURE context"
+      - "Renamed nodes to 'Package <CONTEXT> Context' for clarity"
+
+  - description: "Updated header comments and documentation"
+    location: "process.mmd"
+    details:
+      - "Added GUIDELINE about planning delegation"
+      - "Updated failure trigger comment to reference orchestration-planning"
+      - "Updated Implementation Phase comments for new plan source"
+      - "Updated linkStyle indices for feedback loop styling"
+      - "Removed reference to TestPlanViable in styling comments"
+
+files_modified:
+  - path: "modules/AgenticGuidance/agents/orchestration/orchestration-build/inputs.yml"
+    type: "input definition"
+  - path: "modules/AgenticGuidance/agents/orchestration/orchestration-build/process.mmd"
+    type: "process diagram"
+
+metrics:
+  lines_removed: 52
+  lines_added: 66
+  net_change: 14
+  original_process_lines: 271
+  new_process_lines: 265
+  original_inputs_lines: 43
+  new_inputs_lines: 87
+
+architectural_benefits:
+  - "Single responsibility: orchestration-build now focuses on EXECUTION only"
+  - "Planning logic moved to orchestration-planning (no duplication)"
+  - "Clear handoff contract via plan folder artifacts"
+  - "Supports both pre-approved plans and dynamic planning delegation"
+  - "Failure context is explicitly packaged for re-planning cycles"
+  - "Human approval gate moved to orchestration-planning"
+
+validation_notes:
+  - "Mermaid syntax should be validated with a linter"
+  - "Integration testing needed with orchestration-planning agent"
+  - "Feedback loop indices in linkStyle may need adjustment after final review"
+
+related_plans:
+  - "plan_proposal.yml - Parent plan creating orchestration-planning"
+  - "plan_refactor_orchestration_build.yml - Detailed refactor specification"

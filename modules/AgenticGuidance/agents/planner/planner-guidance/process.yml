@@ -1,0 +1,82 @@
+process:
+  goal: |
+    Create a guidance-focused plan to improve agent paths, fences, and signposts.
+    Keep changes small, iterative, and easy to verify.
+
+  loop_context:
+    participates_in: ['planner-loop']
+    loop_definition: 'assets/definitions/agent-loops.yml#planner-loop'
+    max_iterations: 5
+    note: "Participates in planner-loop with planner-reviewer feedback driving iterative refinement"
+
+  inputs:
+    - location: "agents/planner/planner-guidance/inputs.yml"
+      description: "Core planner-guidance agent inputs, definitions, and guidelines"
+    - location: "assets/definitions/agent-categories.yml"
+      description: "Canonical definitions of agent categories"
+    - location: "docs/plans/"
+      description: "Target directory for creating new planning folders (YYMMDDRepo_Branch structure)"
+
+  outputs: []
+
+  steps:
+    - |
+      Review all inputs. If an input cannot be found, do not proceed.
+      Identify the target agent(s) and their category (refer to agent-categories.yml).
+
+    - |
+      Clarify objective and constraints:
+      - Which agent(s) are we improving?
+      - What is the observed failure? (quote logs if available)
+      - What is the smallest change that will measurably reduce that failure?
+
+    - |
+      Map the current path:
+      - Identify which process files and definitions currently govern the behavior.
+      - Locate missing signposts (examples, definitions) and missing fences (validation, constraints).
+      - Call out mismatches between guidance and actual repo reality.
+
+      **Requirement**: Verify the planning folder `docs/plans/live/YYMMDDRepo_Branch/` exists (created via `deploy-worktree`).
+      **Requirement**: Document this analysis in `analysis/friction-analysis.md` within the planning folder.
+
+    - |
+      Build a minimal, verifiable plan:
+      - Create standard live plan files in `live/`:
+        * `plan_live_teach.yml`: Guidance refinement and teaching tasks (path, fence, signpost edits)
+        * `plan_live_audit_clean.yml`: Audit and cleanup tasks
+      - Align tasks loosely to agents within each phase, allowing the orchestration agent flexibility to choose specialists as needed.
+      - Each item must name exact file(s) to edit.
+      - Each item must include acceptance criteria (verifiable).
+      - Sequence items so early work reduces risk for later work.
+
+      Validation guidance: experience-driven observable checks (not deterministic pass/fail).
+      Reference success-criteria-teacher.yml and outcome-verification.yml in inputs.
+
+    - |
+      Write your planning artifacts:
+      - Folder: `docs/plans/live/YYMMDDRepo_Branch/`
+      - Analysis: `analysis/friction-analysis.md`
+      - Phase Plans: `live/plan_live_teach.yml`, `live/plan_live_audit_clean.yml`
+      - Structure file: `README.md` (overview of the refactor)
+
+      Categories often requiring refinement:
+      - planner: planner-guidance process/inputs
+      - orchestration: orchestration-guidance process/inputs
+      - teacher: teacher-update-guidance (process/inputs files), teacher-update-assets (shared assets)
+      - assets: definitions, guidelines, examples
+
+  guidelines:
+    # Core guidelines: See planner-guidance/inputs.yml (direct references and transitive layers):
+    # Direct: path.yml, fence.yml, signpost.yml, guidance-artifacts.yml, success-criteria-teacher.yml,
+    #         outcome-verification.yml, separation-of-concerns.yml, escalation.yml, root-cause-analysis.yml,
+    #         generalized-vs-specific.yml, definition.yml, guideline.yml, knowledge-encapsulation.yml
+    # Via core-guidelines layer: context-minimisation.yml, experiment-first.yml, fix-the-source.yml
+    # Via test-shared layer: reward-hacking.yml
+    # Via cleaner-shared layer: overengineering.yml
+    - |
+      Bias toward iteration: smallest guidance change, then verify it improved outcomes.
+    - |
+      Prefer in-process guidance: put rules and examples inside process files agents read.
+    - |
+      Avoid over-generalizing: keep repo-specific details in inputs/examples, not universal definitions.
+

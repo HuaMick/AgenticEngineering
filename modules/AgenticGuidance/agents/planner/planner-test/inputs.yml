@@ -1,0 +1,165 @@
+# Planner-Test Agent Inputs
+# Defines the files, directories, and context that planner-test agents need
+# to create test execution plans (test-fix-loop, audit-test-fix-loop).
+#
+# PURPOSE:
+# Planner-test agents create phased test execution plans that orchestration
+# agents use to spawn and coordinate test agents. Plans include test strategies,
+# test-fix-loop patterns, audit patterns, and success criteria for testing.
+#
+# CONTEXT MINIMIZATION:
+# This agent ONLY receives inputs needed for test planning. It does NOT need:
+# - Build planning patterns (cleaner-voting-loop, overengineering)
+# - Documentation planning patterns (documentation-loop)
+# - General architecture docs
+# - Existing non-test plans
+#
+# RESPONSIBILITIES:
+# - Create test execution plans with test-fix-loop or audit-test-fix-loop patterns
+# - Define test strategies (smoke_test, user_simulator, audit, service_test)
+# - Specify test success criteria and validation requirements
+# - Route test inputs (user stories, test processes, code to test)
+# - Ensure plans align with testing guidelines and patterns
+
+agent_context:
+  category: "assets/definitions/agent-categories.yml#planner"
+  role: "planner-test"
+
+inputs:
+  agent_type: "planner-test"
+  version: "2.0-p1"
+
+  # Reference layers (transitive loading)
+  layers:
+    - type: layer
+      path: "assets/inputs/core-system.yml"
+      description: "Core system definitions (plans, domains, workflows, entrypoints, architecture)"
+      required: true
+
+    - type: layer
+      path: "assets/inputs/core-guidelines.yml"
+      description: "Universal behavioral guidelines (fix-source, context-min, experiment-first, etc.)"
+      required: true
+
+    - type: layer
+      path: "assets/inputs/planner-shared.yml"
+      description: "Planner shared inputs (agent-role-scope-matrix, plan-inputs, folder-structure, iteration)"
+      required: true
+
+    - type: layer
+      path: "assets/inputs/test-shared.yml"
+      description: "Test category shared inputs (acceptable-skips, reward-hacking, test-builder-role, test-creation-principles, test-structure, testing-types)"
+      required: true
+
+  # Test-planning specific inputs
+  core_inputs:
+    # Test-specific architectural guidance
+    - type: file
+      path: "agents/planner/planner-test/manifest.yml"
+      description: "Test plan structure requirements and layer selection rules (Environment Setup, test-fix-loop patterns, testing layers decision tree, mandatory US-INSTALL-* stories, process mapping)"
+      required: true
+
+    # User Stories - Primary source of truth for success validation
+    # NOTE: This is a REPOSITORY-LEVEL path (relative to repo root), not a module path.
+    # The orchestration layer resolves this to the target project's docs/userstories/ directory.
+    - type: directory
+      path: "docs/userstories/"
+      description: "PRIMARY SOURCE OF TRUTH for success validation. User stories define complete user journeys with expected outcomes. SUCCESS = User Story tests pass. Organized by project (MyAgents/, RemoteAgents/, MyAgentsFrontend/). REPOSITORY-LEVEL PATH: Resolved by orchestration relative to target project root."
+      required: true
+
+    - type: file
+      path: "assets/definitions/user-stories.yml"
+      description: "User story structure and UAT testing patterns - defines how user stories validate success"
+      required: true
+    # Testing definitions and patterns
+    # NOTE: Loop definitions (test-fix-loop, audit-test-fix-loop) are now defined
+    # directly in planner-test/process.yml, not in separate definition files
+
+    # Test execution processes and workflows
+    # NOTE: Core test agents (test-runner, test-audit, test-guidance-simulator, test-final-output)
+    # were migrated 2026-01-03. Some test agents remain in legacy (test-user-simulator, test-builder).
+    - type: file
+      path: "agents/test/test-runner/process.yml"
+      description: "Test runner process definition for executing component tests"
+      required: true
+      # MIGRATED: 2026-01-03
+
+    # NOT_MIGRATED: test-user-simulator - see modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/test-user-simulator/process.yml
+    # Uncomment and update path when migrated to AgenticGuidance:
+    # - type: file
+    #   path: "agents/test/test-user-simulator/process.yml"
+    #   description: "User simulator process for agent-blind-test UAT execution"
+    #   required: true
+
+    - type: file
+      path: "agents/test/test-audit/process.yml"
+      description: "Audit process for reviewing test quality and detecting reward hacking"
+      required: true
+      # MIGRATED: 2026-01-03
+
+    # Test strategies and acceptable skips
+    - type: file
+      path: "assets/definitions/strategy-agent-review-loop.yml"
+      description: "Agent review loop testing strategy"
+      required: true
+
+    - type: file
+      path: "assets/definitions/strategy-agent-blind-test.yml"
+      description: "Agent blind test strategy for documentation validation"
+      required: true
+
+    - type: file
+      path: "assets/definitions/strategy-user-simulation.yml"
+      description: "User simulation testing strategy"
+      required: true
+
+    - type: file
+      path: "assets/definitions/strategy-test-suite.yml"
+      description: "Test suite execution strategy"
+      required: true
+
+    - type: file
+      path: "assets/definitions/strategy-fresh-environment.yml"
+      description: "Fresh environment testing strategy"
+      required: true
+
+    - type: file
+      path: "assets/definitions/strategy-multi-layer.yml"
+      description: "Multi-layer testing strategy"
+      required: true
+
+    - type: file
+      path: "assets/definitions/strategy-documentation-validation.yml"
+      description: "Documentation validation strategy"
+      required: true
+
+    - type: file
+      path: "assets/definitions/strategy-user-acceptance.yml"
+      description: "User acceptance testing strategy"
+      required: true
+
+    - type: file
+      path: "assets/definitions/testing-documentation.yml"
+      description: "Testing documentation requirements and validation patterns"
+      required: true
+
+    - type: file
+      path: "assets/definitions/test-execution-workflow.yml"
+      description: "Test execution workflow definitions and orchestration patterns"
+      required: true
+
+    # Example test plan structure
+    - type: file
+      path: "assets/examples/planner/YYMMDDRepo_Branch/live/plan_live_test.yml"
+      description: "Test phase example showing test-fix-loop structure with component testing (smoke_test), user flow testing (agent_blind_test), file-level inputs, and measurable success criteria"
+      required: true
+
+  # Test-specific guidelines
+  guidelines: []
+
+  # Test-planning specific definitions
+  # Per context-minimisation.yml: definitions are in planner-test/process.yml and referenced definition files
+  definitions:
+    # Loop definitions: See planner-test/process.yml (test-fix-loop, audit-test-fix-loop)
+    # Test strategies: See assets/definitions/strategy-*.yml files
+    # Reward hacking: See assets/definitions/reward-hacking.yml

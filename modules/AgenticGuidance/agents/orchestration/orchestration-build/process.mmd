@@ -1,0 +1,236 @@
+flowchart LR
+    %% GOAL: Orchestrate agents to implement code changes, features, or bug fixes.
+    %% PROFILE: Orchestration-Builder
+    %% OUTPUT: Implemented code, tests, and completed plans in docs/plans/completed/
+    %% GUIDELINE: BUILD FOCUS policy - code implementation and testing, not guidance-only changes.
+    %% GUIDELINE: Every test failure, CI/CD failure, or audit failure MUST trigger re-planning via orchestration-planning.
+    %% GUIDELINE: Planning is delegated to orchestration-planning agent OR uses pre-approved plan (approved_plan_path).
+    %% GUIDELINE: assets/guidelines/testing.yml - Testing strategies and validation
+    %% INPUT_PATH: agents/orchestration/orchestration-build/inputs.yml
+
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% Input Verification & Search Logic: Ensure we have all necessary context from inputs.yml
+    LoadInputs --> ReviewInputs[Review All Listed Inputs]
+    ReviewInputs --> CheckInputs{All Inputs Found?}
+
+    %% If inputs are missing, attempt to self-heal by searching
+    CheckInputs -- "No: Missing" --> SearchInputs[Search for Missing Inputs]
+    SearchInputs --> Found{Found?}
+
+    %% If found elsewhere, update paths to maintain continuity
+    Found -- "Yes: Update paths" --> UpdateRefs[Update References & Flag]
+    UpdateRefs --> ReviewInputs
+
+    %% Critical failure: Stop and ask user if context cannot be resolved
+    Found -- "No: Stop" --> AskUser((Ask User for Clarification))
+
+    %% Proceed only when context is fully loaded and verified
+    CheckInputs -- "Yes: Verified" --> SpawnDeployWorktree[Spawn deploy-worktree Agent]
+
+    %% Isolate work and initialize the planning environment
+    %% deploy-worktree agent handles worktree setup and verification per its internal criteria
+    SpawnDeployWorktree --> VerifyWorktree[Verify Worktree & Planning Folder]
+    VerifyWorktree --> WorktreeValid{Worktree Valid?}
+    WorktreeValid -- "No: Failed verification" --> AskUser
+
+    %% ========================================
+    %% PLANNING DELEGATION SUBGRAPH
+    %% ========================================
+    %% Planning is delegated to orchestration-planning agent OR uses pre-approved plan.
+    %% This ensures single responsibility: orchestration-build focuses on EXECUTION.
+    %%
+    %% INPUT MODES:
+    %% 1. approved_plan_path provided: Load and validate pre-approved plan, skip delegation
+    %% 2. planning_objective provided: Spawn orchestration-planning to create & approve plan
+    %%
+    %% FEEDBACK LOOP ENTRY POINTS:
+    %% When downstream validation fails, re-invoke orchestration-planning with failure context:
+    %% 1. Test Failures: Re-plan with TEST_FAILURE context
+    %% 2. CI/CD Failures: Re-plan with CICD_FAILURE context
+    %% 3. Guidance Gaps: Re-plan with GUIDANCE_GAP context
+    %% 4. Audit Failures: Re-plan with AUDIT_FAILURE context
+    %%
+    %% HANDOFF CONTRACT:
+    %% - orchestration-planning produces: plan.yml, phase_build.yml, phase_test.yml (all status: approved)
+    %% - orchestration-build consumes the approved plan folder for execution
+
+    WorktreeValid -- "Yes: Verified" --> CheckPlanInput{Pre-approved Plan Provided?}
+
+    subgraph PlanningDelegation ["Planning Delegation Subgraph"]
+        %% ----------------------------------------
+        %% PATH 1: LOAD PRE-APPROVED PLAN
+        %% ----------------------------------------
+        %% When approved_plan_path is provided, load and validate it.
+        %% Validation ensures all required files exist with status: approved.
+        CheckPlanInput -- "Yes: Path Provided" --> LoadApprovedPlan[Load Approved Plan from Path]
+        LoadApprovedPlan --> ValidatePlan{Plan Valid & Complete?}
+
+        %% If plan validation fails, ask user for clarification
+        ValidatePlan -- "No: Invalid/Incomplete" --> AskUserPlan((Ask User for Valid Plan))
+
+        %% ----------------------------------------
+        %% PATH 2: DELEGATE TO ORCHESTRATION-PLANNING
+        %% ----------------------------------------
+        %% When no approved plan, spawn orchestration-planning with objective.
+        %% orchestration-planning handles: exploration synthesis, planner-build,
+        %% planner-test, planner-reviewer loops, and human approval gate.
+        %%
+        %% FAILURE CONTEXT HANDLING:
+        %% When failure_context is provided (from downstream failures):
+        %% - Pass failure_type, failure_details, original_plan_path, iteration_count
+        %% - orchestration-planning incorporates feedback into updated plan
+        CheckPlanInput -- "No: Need Planning" --> DelegatePlanning[Spawn orchestration-planning Agent]
+
+        %% orchestration-planning runs its complete planning workflow:
+        %% - Build Planning Loop (planner-build + planner-reviewer)
+        %% - Test Planning Loop (planner-test + planner-reviewer)
+        %% - Human approval gate
+        DelegatePlanning --> AwaitPlanApproval[Await orchestration-planning Completion]
+        AwaitPlanApproval --> PlanningComplete{Planning Approved?}
+
+        %% If user rejects plan in orchestration-planning, escalate
+        PlanningComplete -- "No: User Rejected" --> AskUserPlan
+
+        %% ----------------------------------------
+        %% CONVERGENCE: PLAN READY FOR EXECUTION
+        %% ----------------------------------------
+        %% Both paths converge here with approved plans ready for execution.
+        ValidatePlan -- "Yes: Valid" --> PlanReady[Plan Ready for Execution]
+        PlanningComplete -- "Yes: Approved" --> PlanReady
+    end
+
+    %% NOTE: Approved plan drives test execution in Implementation Phase
+    %% phase_test.yml defines which tests will validate the build
+
+    %% ========================================
+    %% IMPLEMENTATION PHASE: Build Agents Execute Plan
+    %% ========================================
+    %% LOOP_DEFINITION: assets/definitions/agent-loops.yml#test-fix-loop
+    %% MAX_ITERATIONS: 5 (per test-fix-loop definition)
+    %% ESCALATION: If max iterations reached without tests passing, stop and Ask User
+    %%
+    %% Execution begins ONLY after plan is ready (from PlanningDelegation subgraph):
+    %% - Pre-approved plan validated and loaded, OR
+    %% - orchestration-planning completed with approved plan
+    PlanReady --> ExecutePhases[Execute Implementation Phases]
+
+    subgraph Implementation ["Implementation Loop Subgraph"]
+        %% BEHAVIOR: Build agents implement the approved plan
+        %% - build-python: Python implementation tasks
+        %% - build-flutter: Flutter/Dart implementation tasks
+        %% - test-runner: Execute tests after implementation
+        %%
+        %% FAIL-FAST: On test failure, categorize and handle:
+        %% - Unit test failure: Fix in current iteration
+        %% - Integration test failure: May require plan update
+        %% - E2E test failure: Escalate to planning phase
+        ExecutePhases --> SpawnBuilders[Spawn build-python/flutter agents]
+        SpawnBuilders --> RunTests[Spawn test-runner]
+        RunTests --> TestsPassed{Tests Passed?}
+        TestsPassed -- "No: Fix in Iteration" --> SpawnBuilders
+    end
+
+    %% Test failure escalation path for severe issues
+    %% Re-invoke orchestration-planning with TEST_FAILURE context
+    TestsPassed -- "No: Escalate" --> CategorizeTestFailure[Categorize Test Failure]
+    CategorizeTestFailure --> UpdatePlanTests[Package TEST_FAILURE Context]
+    UpdatePlanTests -.->|Re-plan with TEST_FAILURE| DelegatePlanning
+
+    %% ========================================
+    %% CI/CD VALIDATION PHASE
+    %% ========================================
+    %% Validate pipeline configuration if build changes affect CI/CD
+    %% deploy-cicd agent audits pipeline changes for correctness
+    %%
+    %% BEHAVIOR: Validate CI/CD pipeline changes
+    %% - deploy-cicd agent audits pipeline configuration
+    %% - Validates GitHub Actions, Docker, deployment scripts
+    %% - On failure: Categorize issue and route appropriately
+    %%
+    %% FAILURE HANDLING:
+    %% - Configuration errors: Return to planning for fix
+    %% - Syntax errors: Fix in place, re-validate
+    %% - Integration issues: May require build plan update
+    TestsPassed -- "Yes: Passed" --> CICDCheck{CI/CD Changes?}
+    CICDCheck -- "Yes" --> SpawnDeploy[Spawn deploy-cicd Audit]
+    SpawnDeploy --> CICDValid{CI/CD Valid?}
+
+    %% CI/CD failure categorization
+    %% Re-invoke orchestration-planning with CICD_FAILURE context
+    CICDValid -- "No: Categorize" --> CategorizeCICDFailure[Categorize CI/CD Failure]
+    CategorizeCICDFailure --> UpdatePlanCICD[Package CICD_FAILURE Context]
+    UpdatePlanCICD -.->|Re-plan with CICD_FAILURE| DelegatePlanning
+
+    %% ========================================
+    %% GUIDANCE VALIDATION PHASE
+    %% ========================================
+    %% Validate any new/updated guidance created during build
+    %% Uses guidance-blind-test strategy to validate guidance completeness
+    %% GUIDELINE: assets/definitions/strategy-guidance-blind-test.yml
+    %% LOOP_DEFINITION: assets/definitions/agent-loops.yml#guidance-test-loop
+    %% MAX_ITERATIONS: 3 (per guidance-test-loop definition)
+    %% ESCALATION: If max iterations reached without passing validation, stop and Ask User with gap context
+    CICDCheck -- "No" --> GuidanceChanges{Guidance Changes?}
+    CICDValid -- "Yes: Valid" --> GuidanceChanges
+    GuidanceChanges -- "Yes" --> GuidanceTest[Spawn planner-guidance-testing]
+    GuidanceTest --> GuidanceSimulator[Spawn test-guidance-simulator]
+
+    %% PLAN STATUS UPDATE: Consume test results and update plan task statuses
+    %% Reference: assets/guidelines/orchestration-policy.yml - Plan Status Management rule
+    %% This step ensures task statuses reflect test outcomes before evaluating overall guidance validity
+    GuidanceSimulator --> UpdateGuidanceStatuses[Update Plan Task Statuses from Test Results]
+    UpdateGuidanceStatuses --> GuidancePassed{Guidance Valid?}
+
+    %% ========================================
+    %% GUIDANCE REPAIR LOOP: Failing walkthrough tests trigger re-planning
+    %% ========================================
+    %% BEHAVIOR: When test-guidance-simulator reports friction points:
+    %% 1. Categorize gaps by severity (CRITICAL/HIGH/MEDIUM/LOW from test-guidance-simulator)
+    %% 2. Route to appropriate handler based on gap type:
+    %%    - Build process issues: Package as GUIDANCE_GAP (build)
+    %%    - Test design issues: Package as GUIDANCE_GAP (test)
+    %%    - Guidance issues: Package as GUIDANCE_GAP (guidance)
+    %% 3. Package structured friction report as failure_context
+    %% 4. Re-invoke orchestration-planning with GUIDANCE_GAP context
+    %% 5. Track iteration count against guidance-test-loop max_iterations (3)
+    %% ========================================
+    GuidancePassed -- "No: Gaps Found" --> CategorizeGuidanceGaps[Categorize Friction Points]
+    CategorizeGuidanceGaps --> RouteToHandler{Route by Gap Type}
+    RouteToHandler -- "Build Process" --> UpdatePlanBuild[Package GUIDANCE_GAP Context - Build]
+    RouteToHandler -- "Test Design" --> UpdatePlanTest[Package GUIDANCE_GAP Context - Test]
+    RouteToHandler -- "Guidance" --> UpdatePlanGuidance[Package GUIDANCE_GAP Context - Guidance]
+    UpdatePlanBuild -.->|Re-plan with GUIDANCE_GAP| DelegatePlanning
+    UpdatePlanTest -.->|Re-plan with GUIDANCE_GAP| DelegatePlanning
+    UpdatePlanGuidance -.->|Re-plan with GUIDANCE_GAP| DelegatePlanning
+
+    %% ========================================
+    %% FINAL AUDIT PHASE
+    %% ========================================
+    GuidanceChanges -- "No" --> SpawnFinalAudit[Spawn test-final-output Audit]
+    GuidancePassed -- "Yes: Verified" --> SpawnFinalAudit
+
+    SpawnFinalAudit --> FinalAudit{Final Audit Passed?}
+
+    %% If audit fails, re-invoke orchestration-planning with AUDIT_FAILURE context
+    FinalAudit -- "No: Failed" --> UpdatePlanAudit[Package AUDIT_FAILURE Context]
+    UpdatePlanAudit -.->|Re-plan with AUDIT_FAILURE| DelegatePlanning
+
+    %% ========================================
+    %% FINALIZATION
+    %% ========================================
+    %% Success: All criteria met. Finalize the work.
+    FinalAudit -- "Yes: Verified" --> MoveCompleted[Copy Completed Work to docs/plans/completed/]
+    MoveCompleted --> End((End))
+
+    %% COPY planning folder to completed/ (not move) - live/ may continue with follow-on work
+    %% Only user moves completed/ folders to archived/ subdirectory
+
+    %% Styling for feedback loops (return paths to DelegatePlanning)
+    %% These dotted lines represent quality improvement cycles that re-invoke orchestration-planning:
+    %% - Test failure returns (from Implementation Phase) - TEST_FAILURE context
+    %% - CI/CD failure returns (from CI/CD Validation Phase) - CICD_FAILURE context
+    %% - Guidance gap returns (from Guidance Validation Phase) - GUIDANCE_GAP context
+    %% - Audit failure returns (from Final Audit Phase) - AUDIT_FAILURE context
+    classDef dashedstroke stroke-dasharray: 5 5;
+    linkStyle 29,35,47,48,49,54 stroke:#888,stroke-width:2px,stroke-dasharray: 5 5;

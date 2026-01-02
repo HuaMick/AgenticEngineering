@@ -1,0 +1,67 @@
+guideline:
+  name: "Safety and Security"
+  description: |
+    Operational guardrails to ensure agents work within safe boundaries,
+    validate environment state, and maintain objective validation through
+    separation of concerns.
+
+  inputs:
+    - location: "assets/definitions/separation-of-concerns.yml"
+      description: "Principles for avoiding conflicting incentives (builder vs validator)"
+    - location: "assets/definitions/escalation.yml"
+      description: "Triggers for stopping work and requesting human intervention"
+
+  rules:
+    - rule: "Objective validation"
+      description: |
+        Maintain a strict boundary between work creation and work validation.
+        Fresh eyes are required for quality assurance.
+      justification: |
+        Builders are inherently biased toward declaring success. Independent
+        validation ensures rigor.
+      characteristics:
+        - "Builder implements; test/audit validates independently"
+        - "Use sequential review loops (fresh eyes) for complex tasks"
+        - "Avoid having an agent audit its own work"
+
+    - rule: "Fail-fast preflight"
+      description: |
+        Validate all prerequisites (files, tools, permissions, environment)
+        before starting execution.
+      justification: |
+        Detecting configuration or dependency issues early prevents wasted cycles
+        and provides clear feedback on why a task cannot proceed.
+      validation_checks:
+        - "Verify required input files exist"
+        - "Confirm tool availability (Docker, git, package managers)"
+        - "Check environment variables and permissions"
+
+    - rule: "Proactive escalation"
+      description: |
+        Stop work and escalate to a human when blocked by ambiguity,
+        missing inputs, or safety concerns.
+      justification: |
+        Guessing under uncertainty leads to regressions and unsafe states.
+        Human intervention provides the necessary clarity to proceed safely.
+      escalation_triggers:
+        - "Ambiguous or conflicting requirements"
+        - "Prerequisites cannot be met after multiple attempts"
+        - "System behavior contradicts safety guidelines"
+
+  examples:
+    good:
+      - description: "Independent validation chain"
+        example: "Builder implements → Test agent validates functionality → Audit agent reviews test quality."
+      - description: "Preflight blocking impossible task"
+        example: "Preflight check finds Docker is missing; agent stops and reports before attempting to build."
+    bad:
+      - description: "Conflicting incentives"
+        example: "Builder agent writes its own tests and declares the feature 'shippable' without external review."
+      - description: "Guessing under ambiguity"
+        example: "Agent encounters missing dependency and tries to 'work around' it by disabling features without asking."
+
+  related_guidelines:
+    - location: "assets/guidelines/testing.yml"
+      description: "Standard validation practices"
+    - location: "assets/guidelines/response-audit.yml"
+      description: "Mandatory final response verification"

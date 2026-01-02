@@ -1,0 +1,254 @@
+# Dependency Migration Plan for AgenticGuidance
+# High-level plan for migrating remaining dependencies identified in orchestration review
+# Created: 2026-01-03
+# Updated: 2026-01-03
+# Status: PARTIALLY_COMPLETED - Phase 2 pending
+
+objective: "Migrate missing agent directories and assets from legacy to AgenticGuidance module"
+
+context:
+  source_review: "260103_AgenticGuidance_orchestration-planning review findings"
+  scope: "Only items ACTUALLY REFERENCED by existing agents - no dead code"
+
+# =============================================================================
+# PHASE 1: COMPLETED - Initial Migration (orchestration-planning dependencies)
+# =============================================================================
+completed_phases:
+  - id: PHASE_1_COMPLETED
+    name: "Initial Agent Migration"
+    status: COMPLETED
+    completed_date: "2026-01-03"
+    summary: |
+      Migrated agents required by orchestration-planning and planner agents.
+      5 consecutive reviewer approvals achieved.
+    migrated:
+      deploy:
+        - deploy-worktree
+      test:
+        - test-runner
+        - test-audit
+        - test-final-output
+        - test-guidance-simulator
+      teacher:
+        - teacher-update-guidance
+        - teacher-update-assets
+      assets:
+        - orchestration-policy.yml (added to all 3 orchestration agent inputs)
+    skipped:
+      - teacher-plan (not implemented in legacy)
+      - test-user-simulator (not referenced)
+      - test-builder (not referenced)
+      - test-service (not referenced)
+      - test-flutter-* (Flutter-specific)
+      - deploy-packaging (not referenced)
+      - deploy-cicd (deferred to Phase 2)
+
+# =============================================================================
+# PHASE 2: PENDING - orchestration-build Dependencies
+# =============================================================================
+pending_phases:
+  - id: PHASE_2A
+    name: "Decommission Explore Agents"
+    status: COMPLETED
+    completed_date: "2026-01-03"
+    priority: HIGH
+    objective: |
+      Remove exploration phase from orchestration-build workflow.
+      Explore agents are over-engineering - planning should receive context from user.
+    outcome: |
+      VERIFIED: orchestration-build/process.mmd already has NO exploration phase.
+      The workflow goes directly from input verification to deploy-worktree to planning.
+      No action required - explore agents were never implemented in AgenticGuidance.
+    rationale:
+      - "Exploration phase adds latency without clear value"
+      - "User provides context in their prompt - no need for discovery"
+      - "Simplifies orchestration-build workflow"
+      - "Matches orchestration-planning which has no exploration phase"
+
+  - id: PHASE_2B
+    name: "Migrate Build Agents"
+    status: COMPLETED
+    completed_date: "2026-01-03"
+    priority: HIGH
+    objective: |
+      Migrate build-python and build-flutter agents for implementation phase.
+    agents_to_migrate:
+      - source: "modules/legacy/.../agents/build/build-python/"
+        target: "modules/AgenticGuidance/agents/build/build-python/"
+      - source: "modules/legacy/.../agents/build/build-flutter/"
+        target: "modules/AgenticGuidance/agents/build/build-flutter/"
+    actions:
+      - action: "Create agents/build/ directory structure"
+      - action: "Migrate build-python (process.yml, inputs.yml, manifest.yml)"
+      - action: "Migrate build-flutter (process.yml, inputs.yml, manifest.yml)"
+      - action: "Create agents/build/manifest.yml category manifest"
+      - action: "Update agents/manifest.yml to include build category"
+      - action: "Update path references in migrated files"
+
+  - id: PHASE_2C
+    name: "Migrate deploy-cicd Agent"
+    status: COMPLETED
+    completed_date: "2026-01-03"
+    priority: MEDIUM
+    objective: |
+      Migrate deploy-cicd for CI/CD validation phase in orchestration-build.
+    agents_to_migrate:
+      - source: "modules/legacy/.../agents/deploy/deploy-cicd/"
+        target: "modules/AgenticGuidance/agents/deploy/deploy-cicd/"
+    actions:
+      - action: "Migrate deploy-cicd (process.yml, inputs.yml)"
+      - action: "Update agents/deploy/manifest.yml to include deploy-cicd"
+      - action: "Update path references"
+
+  - id: PHASE_2D
+    name: "Validation and Review"
+    status: COMPLETED
+    completed_date: "2026-01-03"
+    priority: HIGH
+    depends_on: [PHASE_2A, PHASE_2B, PHASE_2C]
+    objective: |
+      Validate orchestration-build workflow functions with migrated agents.
+    actions:
+      - action: "Verify all orchestration-build spawn references resolve"
+      - action: "Run 5 reviewer agents for consecutive approval"
+      - action: "Update documentation"
+
+# =============================================================================
+# PHASE 3: Claude Code Agent Documentation (.claude/agents/)
+# =============================================================================
+  - id: PHASE_3
+    name: "Create .claude/agents/ Documentation"
+    status: COMPLETED
+    completed_date: "2026-01-03"
+    priority: MEDIUM
+    depends_on: [PHASE_2D]
+    objective: |
+      Create .md files in .claude/agents/ for all subagents in AgenticGuidance.
+      These files enable Claude Code's Task tool to use the agents via subagent_type parameter.
+
+    existing_files:
+      - planner-build.md
+      - planner-cleaning.md
+      - planner-phases.md
+      - planner-reviewer.md
+      - planner-teach.md
+      - planner-test-guidance.md
+      - planner-test.md
+
+    files_to_create:
+      orchestration:
+        - file: "orchestration-planning.md"
+          agent_path: "modules/AgenticGuidance/agents/orchestration/orchestration-planning/"
+          description: "Orchestrate planning workflows with planner agents and approval gates"
+        - file: "orchestration-build.md"
+          agent_path: "modules/AgenticGuidance/agents/orchestration/orchestration-build/"
+          description: "Orchestrate build workflows with implementation and test agents"
+        - file: "orchestration-guidance.md"
+          agent_path: "modules/AgenticGuidance/agents/orchestration/orchestration-guidance/"
+          description: "Orchestrate guidance improvement workflows with teaching agents"
+
+      deploy:
+        - file: "deploy-worktree.md"
+          agent_path: "modules/AgenticGuidance/agents/deploy/deploy-worktree/"
+          description: "Create git worktrees and plan folder structures for isolated work"
+
+      test:
+        - file: "test-runner.md"
+          agent_path: "modules/AgenticGuidance/agents/test/test-runner/"
+          description: "Execute test suites and report results with structured output"
+        - file: "test-audit.md"
+          agent_path: "modules/AgenticGuidance/agents/test/test-audit/"
+          description: "Audit test quality, coverage, and alignment with requirements"
+        - file: "test-final-output.md"
+          agent_path: "modules/AgenticGuidance/agents/test/test-final-output/"
+          description: "Validate final outputs of agent processes for completeness"
+        - file: "test-guidance-simulator.md"
+          agent_path: "modules/AgenticGuidance/agents/test/test-guidance-simulator/"
+          description: "Simulate guidance execution to identify friction points"
+
+      teacher:
+        - file: "teacher-update-guidance.md"
+          agent_path: "modules/AgenticGuidance/agents/teacher/teacher-update-guidance/"
+          description: "Analyze agent logs and improve process.yml and inputs.yml files"
+        - file: "teacher-update-assets.md"
+          agent_path: "modules/AgenticGuidance/agents/teacher/teacher-update-assets/"
+          description: "Create and update shared assets (definitions, guidelines, examples)"
+
+      planner_additions:
+        - file: "planner-guidance.md"
+          agent_path: "modules/AgenticGuidance/agents/planner/planner-guidance/"
+          description: "Create guidance-focused plans for improving agent paths and signposts"
+        - file: "planner-guidance-testing.md"
+          agent_path: "modules/AgenticGuidance/agents/planner/planner-guidance-testing/"
+          description: "Create validation plans using walkthrough-based guidance testing"
+
+    file_template: |
+      ---
+      name: {agent_name}
+      description: {description}
+      ---
+
+      # {agent_name}
+
+      {description}
+
+      ## Process
+
+      Follow: `{agent_path}process.yml`
+
+      ## Inputs
+
+      Load: `{agent_path}inputs.yml`
+
+    actions:
+      - action: "Create orchestration agent .md files (3 files)"
+        details: "orchestration-planning.md, orchestration-build.md, orchestration-guidance.md"
+      - action: "Create deploy agent .md files (1 file)"
+        details: "deploy-worktree.md"
+      - action: "Create test agent .md files (4 files)"
+        details: "test-runner.md, test-audit.md, test-final-output.md, test-guidance-simulator.md"
+      - action: "Create teacher agent .md files (2 files)"
+        details: "teacher-update-guidance.md, teacher-update-assets.md"
+      - action: "Create additional planner .md files (2 files)"
+        details: "planner-guidance.md, planner-guidance-testing.md"
+      - action: "Verify consistency with existing .md file format"
+        details: "Use planner-build.md as template reference"
+
+# =============================================================================
+# DIAGNOSTICS: Current State
+# =============================================================================
+diagnostics:
+  orchestration_planning:
+    status: FUNCTIONAL
+    dependencies_met: true
+    claude_code_agent: true  # .claude/agents/orchestration-planning.md
+
+  orchestration_build:
+    status: FUNCTIONAL
+    dependencies_met: true
+    migrated_agents:
+      - "build-python (MIGRATED)"
+      - "build-flutter (MIGRATED)"
+      - "deploy-cicd (MIGRATED)"
+    note: "All dependencies now in place"
+    claude_code_agent: true  # .claude/agents/orchestration-build.md
+
+  orchestration_guidance:
+    status: FUNCTIONAL
+    dependencies_met: true
+    note: "Uses teacher agents which are already migrated"
+    claude_code_agent: true  # .claude/agents/orchestration-guidance.md
+
+  claude_code_integration:
+    status: COMPLETE
+    total_agents: 19  # All agents now documented
+    note: "All agents accessible via Claude Code Task tool"
+
+notes:
+  - "Phase 1 completed with 5 consecutive reviewer approvals"
+  - "Phase 2A completed - explore agents were never in orchestration-build"
+  - "Phase 2B completed - build-python and build-flutter migrated"
+  - "Phase 2C completed - deploy-cicd migrated"
+  - "Phase 2D completed - validation passed"
+  - "Phase 3 completed - 12 new .md files created (19 total)"
+  - "ALL PHASES COMPLETE - orchestration-build now fully functional"

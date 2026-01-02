@@ -71,6 +71,21 @@ AgenticGuidance/
 └── examples/              # Reference implementations (TBD)
 ```
 
+### Path Resolution
+
+AgenticGuidance uses two path resolution strategies:
+
+| Path Type | Convention | Resolved Against | Example |
+|-----------|------------|------------------|---------|
+| **Module-relative** | Paths NOT starting with `docs/` | AgenticGuidance module root | `assets/`, `agents/`, `definitions/` |
+| **Repo-relative** | Paths starting with `docs/` | Target repository root (at orchestration time) | `docs/userstories/`, `docs/plans/` |
+
+**Why this distinction?**
+- Module-relative paths reference AgenticGuidance's own resources (definitions, guidelines, assets)
+- Repo-relative paths reference artifacts that belong to the target project being worked on (user stories, plans, documentation)
+
+The orchestration layer resolves repo-relative paths against whichever repository AgenticGuidance is operating within.
+
 ## Relationship to AgenticEngineering
 
 AgenticGuidance is one of three project modules:

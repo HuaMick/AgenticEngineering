@@ -1,0 +1,142 @@
+# Preserved Files Example
+# Files that must NEVER be removed or modified by cleaner agents
+# These are essential for CI/CD, reproducible builds, and project infrastructure
+
+version: "1.0"
+category: "cleaner"
+created: "2025-12-13"
+purpose: "Example of critical files that must never be flagged for cleanup"
+
+description: |
+  This example demonstrates files that are absolutely critical to project infrastructure
+  and must be protected from any cleanup operations. These files are often overlooked
+  as "configuration files" but are essential for reproducible builds, CI/CD pipelines,
+  and project stability.
+
+examples:
+  lock_files:
+    description: "Lock files ensure reproducible builds across environments"
+    files:
+      - file: "uv.lock"
+        reason: "Python dependency lock file (required by Dockerfile.test)"
+        risk_if_removed: "Build failures, version conflicts, non-reproducible builds"
+
+      - file: "poetry.lock"
+        reason: "Alternative Python dependency lock file"
+        risk_if_removed: "Build failures, version conflicts"
+
+      - file: "package-lock.json"
+        reason: "Node.js dependency lock file"
+        risk_if_removed: "Build failures, version conflicts in frontend builds"
+
+      - file: "yarn.lock"
+        reason: "Yarn dependency lock file"
+        risk_if_removed: "Build failures, version conflicts"
+
+  configuration_files:
+    description: "Project configuration files that define structure and behavior"
+    files:
+      - file: "pyproject.toml"
+        reason: "Python project configuration (defines package, dependencies, tools)"
+        risk_if_removed: "Build failures, package installation breaks, tool config lost"
+
+      - file: "setup.py"
+        reason: "Legacy Python project setup"
+        risk_if_removed: "Build failures, package installation breaks"
+
+      - file: "setup.cfg"
+        reason: "Legacy Python configuration"
+        risk_if_removed: "Tool configuration lost, build issues"
+
+      - file: "package.json"
+        reason: "Node.js project configuration"
+        risk_if_removed: "Build failures, dependency resolution breaks"
+
+      - file: ".gitignore"
+        reason: "Git ignore patterns"
+        risk_if_removed: "Unwanted files committed to repository"
+
+      - file: ".dockerignore"
+        reason: "Docker build context filtering"
+        risk_if_removed: "Bloated Docker images, slower builds, security issues"
+
+  cicd_infrastructure:
+    description: "Files required for CI/CD pipelines and deployments"
+    files:
+      - file: "Dockerfile"
+        reason: "Docker build configuration"
+        risk_if_removed: "Build failures, deployment breaks"
+        pattern: "Dockerfile*"
+
+      - file: "docker-compose.yml"
+        reason: "Docker compose configuration"
+        risk_if_removed: "Local development breaks, deployment breaks"
+        pattern: "docker-compose*.yml"
+
+      - file: "cloudbuild.yaml"
+        reason: "Google Cloud Build configuration"
+        risk_if_removed: "CI/CD pipeline breaks completely"
+
+      - file: ".github/workflows/ci.yml"
+        reason: "GitHub Actions workflow"
+        risk_if_removed: "CI/CD pipeline breaks"
+        pattern: ".github/workflows/*.yml"
+
+  documentation_required_by_builds:
+    description: "Documentation files that are actually required by build processes"
+    files:
+      - file: "README.md"
+        reason: "Often required in Docker build context, referenced by setup.py"
+        risk_if_removed: "Build failures if referenced by package configuration"
+        note: "Only root README.md is protected - READMEs elsewhere follow normal rules"
+
+patterns_to_protect:
+  description: "File patterns that should trigger protection warnings"
+  patterns:
+    - pattern: "*.lock"
+      reason: "All lock files are critical for reproducible builds"
+
+    - pattern: "Dockerfile*"
+      reason: "All Dockerfile variants are critical for builds"
+
+    - pattern: "docker-compose*.yml"
+      reason: "All docker-compose variants may be used in different environments"
+
+    - pattern: ".github/workflows/*.yml"
+      reason: "All GitHub Actions workflows are part of CI/CD"
+
+    - pattern: "cloudbuild*.yaml"
+      reason: "All Cloud Build configurations are critical"
+
+common_mistakes:
+  - mistake: "Flagging lock files as 'generated files' that can be regenerated"
+    why_wrong: "Lock files must be committed to ensure reproducible builds"
+    correct_action: "Never flag lock files for removal"
+
+  - mistake: "Flagging Dockerfile* as 'configuration' that could be consolidated"
+    why_wrong: "Different Dockerfiles serve different environments (dev, test, prod)"
+    correct_action: "Never flag Dockerfiles for removal"
+
+  - mistake: "Flagging .gitignore or .dockerignore as 'redundant configuration'"
+    why_wrong: "These files control what gets committed/built - critical for security and performance"
+    correct_action: "Never flag ignore files for removal"
+
+  - mistake: "Flagging README.md as 'documentation that should be in docs/'"
+    why_wrong: "Root README.md is often referenced by package configuration or Docker builds"
+    correct_action: "Protect root README.md, but READMEs elsewhere follow normal rules"
+
+reference:
+  source: "docs/CICD_README.md"
+  note: "See CI/CD documentation for complete pipeline details and file dependencies"
+
+usage:
+  when_to_use:
+    - "Before flagging any configuration or infrastructure file for cleanup"
+    - "When reviewing cleanup votes to ensure protected files aren't targeted"
+    - "When uncertain whether a file is critical infrastructure"
+
+  how_to_apply:
+    - "Check file against protected patterns before flagging"
+    - "If file matches protected pattern, do not flag it - move on"
+    - "If unsure, err on side of caution and do not flag"
+    - "Protected files should have confidence level 0 (never flag)"

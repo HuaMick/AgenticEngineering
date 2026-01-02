@@ -1,0 +1,134 @@
+# Status: Refactor orchestration-guidance to delegate planning to orchestration-planning
+# Created: 2026-01-03
+# Related Plan: plan_refactor_orchestration_guidance.yml
+
+status: IMPLEMENTED
+
+objective: "Refactor orchestration-guidance to delegate planning to orchestration-planning"
+
+changes_made:
+  - id: CHG-001
+    description: "Added approved_plan_path optional input parameter"
+    file: "inputs.yml"
+    detail: "New optional input allowing pre-approved plan folder path from orchestration-planning"
+
+  - id: CHG-002
+    description: "Added orchestration_planning_ref reference"
+    file: "inputs.yml"
+    detail: "Reference to orchestration-planning agent location for delegation"
+
+  - id: CHG-003
+    description: "Removed embedded Planning & Review Subgraph"
+    file: "process.mmd"
+    detail: |
+      Removed the entire Planning & Review Subgraph (original lines 55-107) including:
+      - Implementation Planning Loop (planner-teach, planner-reviewer)
+      - Test-Guidance Planning Loop (planner-test-guidance, planner-reviewer)
+      - All internal subgraph nodes and edges
+
+  - id: CHG-004
+    description: "Added Planning Delegation section"
+    file: "process.mmd"
+    detail: |
+      New nodes added:
+      - CheckApprovedPlan{Pre-Approved Plan Provided?}
+      - LoadApprovedPlan[Load Approved Plan from Input Path]
+      - ValidatePlanFormat{Plan Format Valid?}
+      - SpawnOrchestrationPlanning[Spawn orchestration-planning Agent]
+      - WaitForApproval{Plan Approved?}
+      - ReceiveApprovedPlan[Receive Approved Plan Folder Path]
+
+  - id: CHG-005
+    description: "Updated feedback loop return paths"
+    file: "process.mmd"
+    detail: |
+      Changed all three feedback loops to return to SpawnOrchestrationPlanning:
+      - Implementation Issues: UpdatePlan -.->|Return to Planning| SpawnOrchestrationPlanning
+      - Walkthrough Failures: UpdatePlanGaps -.->|Return to Planning| SpawnOrchestrationPlanning
+      - Final Audit Failures: UpdatePlanIssues -.->|Return to Planning| SpawnOrchestrationPlanning
+
+  - id: CHG-006
+    description: "Updated comments throughout process.mmd"
+    file: "process.mmd"
+    detail: |
+      - Added comprehensive PLANNING DELEGATION comment block explaining MODE 1 and MODE 2
+      - Updated GUIDELINE comment for re-invocation of orchestration-planning
+      - Updated EXECUTION PHASE comments to reference orchestration-planning
+      - Updated GUIDANCE VALIDATION PHASE comments
+      - Updated GUIDANCE REPAIR LOOP comments
+      - Updated feedback loop styling comments
+
+  - id: CHG-007
+    description: "Recalculated linkStyle indices"
+    file: "process.mmd"
+    detail: "Updated linkStyle from 23,27,31 to 25,32,36 to reflect new edge positions"
+
+files_modified:
+  - path: "modules/AgenticGuidance/agents/orchestration/orchestration-guidance/process.mmd"
+    type: "mermaid flowchart"
+
+  - path: "modules/AgenticGuidance/agents/orchestration/orchestration-guidance/inputs.yml"
+    type: "yaml input configuration"
+
+lines_removed: 55
+lines_added: 45
+
+net_change: -10
+
+success_criteria_met:
+  - id: SC-001
+    criterion: "Planning & Review Subgraph (lines 55-107) is completely removed"
+    status: PASS
+    verification: "No subgraph Planning block exists in process.mmd"
+
+  - id: SC-002
+    criterion: "New planning delegation nodes are present"
+    status: PASS
+    verification: "CheckApprovedPlan, SpawnOrchestrationPlanning, WaitForApproval nodes exist"
+
+  - id: SC-003
+    criterion: "inputs.yml includes optional approved_plan_path"
+    status: PASS
+    verification: "inputs.yml has approved_plan_path entry with type: optional"
+
+  - id: SC-004
+    criterion: "Pre-approved plan mode works"
+    status: PASS
+    verification: "When approved_plan_path provided, flow goes LoadApprovedPlan -> ValidatePlanFormat -> SpawnTeachers"
+
+  - id: SC-005
+    criterion: "Delegation mode works"
+    status: PASS
+    verification: "When no approved_plan_path, SpawnOrchestrationPlanning is invoked"
+
+  - id: SC-006
+    criterion: "Handoff contract defined"
+    status: PASS
+    verification: "ReceiveApprovedPlan node accepts output from orchestration-planning"
+
+  - id: SC-007
+    criterion: "Existing feedback loops still function"
+    status: PASS
+    verification: "All three feedback loops return to SpawnOrchestrationPlanning"
+
+  - id: SC-008
+    criterion: "Execution phase unchanged"
+    status: PASS
+    verification: "SpawnTeachers entry point preserved, execution flow unchanged"
+
+  - id: SC-009
+    criterion: "Comments accurately describe new delegation behavior"
+    status: PASS
+    verification: "PLANNING DELEGATION comment block explains both modes"
+
+  - id: SC-010
+    criterion: "Feedback loop comments updated"
+    status: PASS
+    verification: "All -.-> edges have updated comments referencing SpawnOrchestrationPlanning"
+
+notes:
+  - "The refactored process.mmd now supports two operational modes"
+  - "Mode 1 (pre-approved plan) bypasses planning for faster execution when plan already exists"
+  - "Mode 2 (delegation) spawns orchestration-planning for full planning workflow"
+  - "Both modes converge at SpawnTeachers for consistent execution phase"
+  - "Feedback loops re-invoke orchestration-planning with issue context for re-planning"

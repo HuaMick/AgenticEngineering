@@ -1,0 +1,115 @@
+process:
+  goal: |
+    Execute walkthrough-based validation by spawning target agents to perform self-guided
+    guidance review. Collect feedback on ambiguities, broken references, and missing context.
+
+  loop_context:
+    participates_in: ['guidance-test-loop']
+    loop_definition: 'assets/definitions/agent-loops.yml#guidance-test-loop'
+    max_iterations: 3
+    role: "Execute walkthrough tests and report guidance gaps"
+    iteration_strategy: |
+      - Each iteration spawns target agent to review its own guidance
+      - Collect all friction points from agent's self-guided review
+      - Later iterations retest previously failing scenarios after guidance fixes
+      - Refine gap categorization based on observed patterns across iterations
+    exit_conditions:
+      - "All walkthrough scenarios pass without guidance gaps"
+      - "Target agent completes self-guided guidance review successfully"
+      - "Max iterations reached (escalate to human with accumulated gaps)"
+
+  loop_definitions:
+    reference: "assets/definitions/agent-loops.yml"
+    description: "Loop types defined in agent-loops.yml"
+    # NOTE: Do not duplicate loop definitions here - see agent-loops.yml for full definitions
+
+  inputs:
+    - location: "agents/test/test-guidance-simulator/inputs.yml"
+      description: "Core test guidance simulator agent inputs and guidelines"
+
+  outputs:
+    - name: "test_results"
+      description: "Structured test results for orchestration consumption"
+      format:
+        task_id: "string - matches plan task id for status mapping"
+        status: "passed | failed"
+        friction_points:
+          - agent: "string - target agent name"
+            test_scenario: "string - which test failed (e.g., TASK_COMPLETION_TEST)"
+            issue: "string - what was missing or ambiguous"
+            severity: "CRITICAL | HIGH | MEDIUM | LOW"
+            guidance_gap: "string - what guidance should have specified"
+            suggested_fix: "string - specific improvement needed"
+      usage: |
+        Orchestration consumes these results to:
+        - Update plan task status (passed/failed)
+        - Route failures to teacher agents for guidance refinement
+        - Track friction patterns across multiple test runs
+
+  steps:
+    - |
+      VALIDATE CONTEXT per guidance_blind_test definition in inputs.yml:
+      - ONLY allowed inputs: target agent's process.yml, inputs.yml, outputs.yml
+      - NO access to implementation code or broader codebase
+      - If ANY additional context provided beyond guidance files, IMMEDIATELY FAIL and report excessive context
+    - |
+      Parse your assigned TARGET AGENT from the prompt per target_agent definition in inputs.yml:
+      - Note agent name and location
+      - Identify guidance file paths (process.yml, inputs.yml, outputs.yml if present)
+      - Verify guidance files exist before proceeding
+    - |
+      Load target agent guidance files:
+      - Read process.yml to understand task goal and execution steps
+      - Read inputs.yml to discover all required input file locations
+      - Read outputs.yml if present to understand expected outputs
+      - Use ONLY these guidance files for task understanding
+    - |
+      Determine which walkthrough scenarios to execute from guidance-test-scenarios.yml:
+      - ALWAYS include: task_completion_test, reference_resolution_test, friction_detection_test
+      - CONDITIONALLY include loop_context_test if agent participates in loops
+      - CONDITIONALLY include subagent_spawning_test if agent is an orchestrator
+      - Review test_scenario_application_rules to ensure correct scenario selection
+    - |
+      For each applicable walkthrough scenario, spawn the target agent:
+      - Provide target agent with its own guidance files (process.yml, inputs.yml, outputs.yml)
+      - Instruct agent to review guidance for clarity and completeness
+      - Ask agent to identify: ambiguities, broken references, missing context, unclear steps
+      - Request agent attempt a minimal task execution to expose guidance gaps
+      - Collect agent's feedback on friction points encountered
+    - |
+      Aggregate feedback from spawned agent sessions:
+      - Collect all reported ambiguities (unclear guidance requiring interpretation)
+      - Collect all broken references (paths that don't resolve, missing files)
+      - Collect all missing context (prerequisites, dependencies, environment assumptions)
+      - Note where agent requests code inspection or additional exploration
+      - Document where guidance contradicts agent capabilities
+    - |
+      Categorize friction points per friction_categorization in guidance-test-scenarios.yml:
+      - CRITICAL: Task cannot proceed without additional context
+      - HIGH: Significant ambiguity requiring code inspection or exploration
+      - MEDIUM: Guidance present but unclear or incomplete
+      - LOW: Minor discoverability issues, task completable with effort
+    - |
+      Report guidance gap findings in structured format:
+      - Use FRICTION_POINT structure from guidance-test-scenarios.yml
+      - Include: agent, test_scenario, issue, guidance_gap, impact, suggested_fix
+      - Produce aggregate friction report with total gaps and recommended actions
+      - Format for consumption by teacher agents who will refine guidance
+      - Report to orchestration agent with prioritized improvements
+
+  guidelines:
+    # Core guidelines: See assets/guidelines/ (context-minimisation.yml, testing.yml)
+    # Core definitions: See assets/definitions/ (strategy-guidance-blind-test.yml, guidance-test-scenarios.yml)
+    # Guidance simulator specifics: See inputs.yml for guidance_blind_test, target_agent, friction_categorization
+    - |
+      SPAWN target agents to perform self-guided review - this exposes authentic guidance issues.
+    - |
+      NEVER inspect implementation code. Rely on spawned agent feedback to identify guidance gaps.
+    - |
+      Fail immediately if excessive context is provided - this is mandatory per guidance_blind_test.
+    - |
+      Execute all applicable walkthrough scenarios from guidance-test-scenarios.yml. Collect ALL friction points before reporting.
+    - |
+      Focus on guidance clarity: Can spawned agent understand and execute task using only process.yml and inputs.yml?
+    - |
+      Report findings in structured format consumable by teacher agents for guidance refinement.

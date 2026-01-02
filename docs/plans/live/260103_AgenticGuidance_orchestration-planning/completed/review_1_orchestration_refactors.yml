@@ -1,0 +1,81 @@
+reviewer: "planner-reviewer-2"
+scope: "orchestration-build and orchestration-guidance refactors"
+iteration: 1
+status: APPROVED
+findings:
+  - category: convention
+    severity: low
+    file: "/home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-build/inputs.yml"
+    issue: "Input type for approved_plan_path uses 'string' while orchestration-guidance uses 'optional'"
+    suggestion: "Consider standardizing type nomenclature across both files (both could use 'string' with required: false)"
+
+  - category: correctness
+    severity: low
+    file: "/home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-build/process.mmd"
+    issue: "linkStyle line 265 references indices 32,40,46,58,59,60,65 - these link indices should be verified against the actual graph edges to ensure they target the correct feedback loop edges"
+    suggestion: "Validate that the listed link indices correctly identify the dotted feedback loop edges (UpdatePlanTests-->DelegatePlanning, UpdatePlanCICD-->DelegatePlanning, etc.)"
+
+  - category: correctness
+    severity: low
+    file: "/home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-guidance/process.mmd"
+    issue: "linkStyle line 159 references indices 25,32,36 - these link indices should be verified against the actual graph edges"
+    suggestion: "Validate that indices 25,32,36 correctly identify the three feedback loop edges (UpdatePlan-->SpawnOrchestrationPlanning, UpdatePlanGaps-->SpawnOrchestrationPlanning, UpdatePlanIssues-->SpawnOrchestrationPlanning)"
+
+  - category: completeness
+    severity: low
+    file: "/home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-guidance/inputs.yml"
+    issue: "No failure_context input parameter defined, unlike orchestration-build which has detailed failure context schema"
+    suggestion: "Consider adding failure_context input parameter for consistency, to support structured re-planning feedback"
+
+approval_blockers: []
+
+summary: |
+  The orchestration-build and orchestration-guidance refactors have been correctly implemented.
+
+  CRITERION 1 - Embedded Planning & Review Subgraph Removed: PASS
+  - orchestration-build: The old inline PlanningReview subgraph has been replaced with "PlanningDelegation" subgraph
+  - orchestration-guidance: No embedded planning logic; planning is delegated externally
+
+  CRITERION 2 - Planning Delegation Section Properly Implemented: PASS
+  - orchestration-build (lines 66-130): PlanningDelegation subgraph with clear MODE 1/MODE 2 paths
+    - PATH 1: Load pre-approved plan from approved_plan_path
+    - PATH 2: Spawn orchestration-planning agent with DelegatePlanning node
+  - orchestration-guidance (lines 36-84): Planning Delegation section with:
+    - MODE 1: Pre-Approved Plan Provided path
+    - MODE 2: Spawn orchestration-planning agent path
+    - Convergence point at SpawnTeachers
+
+  CRITERION 3 - Feedback Loops Updated to Re-invoke orchestration-planning: PASS
+  - orchestration-build: All failure paths now use dotted edges returning to DelegatePlanning:
+    - TEST_FAILURE: UpdatePlanTests -.-> DelegatePlanning (line 167)
+    - CICD_FAILURE: UpdatePlanCICD -.-> DelegatePlanning (line 192)
+    - GUIDANCE_GAP: UpdatePlanBuild/Test/Guidance -.-> DelegatePlanning (lines 232-234)
+    - AUDIT_FAILURE: UpdatePlanAudit -.-> DelegatePlanning (line 246)
+  - orchestration-guidance: All failure paths return to SpawnOrchestrationPlanning:
+    - Implementation Issues: UpdatePlan -.-> SpawnOrchestrationPlanning (line 100)
+    - Guidance Gaps: UpdatePlanGaps -.-> SpawnOrchestrationPlanning (line 134)
+    - Audit Failures: UpdatePlanIssues -.-> SpawnOrchestrationPlanning (line 144)
+
+  CRITERION 4 - approved_plan_path Input Parameter Added: PASS
+  - orchestration-build/inputs.yml: Lines 10-18 define approved_plan_path with example and notes
+  - orchestration-guidance/inputs.yml: Lines 4-8 define approved_plan_path with example and note
+
+  CRITERION 5 - Both Pre-approved and Delegation Paths Working: PASS
+  - orchestration-build: CheckPlanInput decision node (line 87) routes to:
+    - "Yes: Path Provided" -> LoadApprovedPlan -> ValidatePlan -> PlanReady
+    - "No: Need Planning" -> DelegatePlanning -> AwaitPlanApproval -> PlanReady
+  - orchestration-guidance: CheckApprovedPlan decision node (line 63) routes to:
+    - "Yes: Has Approved Plan" -> LoadApprovedPlan -> ValidatePlanFormat -> SpawnTeachers
+    - "No: Needs Planning" -> SpawnOrchestrationPlanning -> WaitForApproval -> SpawnTeachers
+
+  CRITERION 6 - .mmd Files Parse Correctly: PASS
+  - Both files use valid Mermaid flowchart LR syntax
+  - Balanced braces in all subgraph definitions
+  - All node references are consistent (no dangling references)
+  - Decision nodes use valid {curly brace} syntax
+  - Edge labels use proper "quoted text" format
+  - Styling directives (classDef, linkStyle) are syntactically valid
+
+  The refactoring successfully separates planning concerns from execution, enabling
+  reuse of orchestration-planning as a standalone agent while maintaining clear
+  feedback loops for iterative improvement cycles.

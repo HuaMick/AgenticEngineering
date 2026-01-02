@@ -1,0 +1,225 @@
+# Dependency Migration - Audit Phase
+# Phase 1: Audit Legacy Agents for Relevance
+# Created: 2026-01-03
+#
+# PURPOSE: Before migrating anything, audit legacy agents to determine:
+# 1. Which agents are actually referenced by existing orchestration/planner agents
+# 2. Which agents have redundant functionality that can be consolidated
+# 3. Which agents are dead code and should NOT be migrated
+#
+# KEY PRINCIPLES:
+# 1. INPUTS: File-level (specific files to audit)
+# 2. GUIDANCE: Detailed analysis instructions
+# 3. SUCCESS CRITERIA: Clear relevance determination for each agent family
+
+worktree: "/home/code/AgenticEngineering"
+liveplan: "docs/plans/live/260103_AgenticGuidance_dependency-migration/live/plan_live_audit.yml"
+completedplan: "docs/plans/live/260103_AgenticGuidance_dependency-migration/completed/plan_completed.yml"
+
+live-plans:
+  - id: DEPENDENCY-MIGRATION-AUDIT-001
+    title: Audit Legacy Agents for Migration Relevance
+    description: |
+      Audit legacy agent directories (deploy, test, teacher) to determine which agents
+      should be migrated to AgenticGuidance based on actual references in existing
+      orchestration and planner agents.
+
+    phases:
+      # ========================================
+      # AUDIT PHASE
+      # ========================================
+      - name: Audit Phase
+        execution_groups:
+          # Parallel audit of each agent family
+          - execution: parallel
+            name: Legacy agent relevance audit
+            agents:
+              # Agent 1: Audit Deploy Agents
+              - type: audit
+                inputs:
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/deploy/manifest.yml
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/deploy/deploy-worktree/process.yml
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/deploy/deploy-worktree/inputs.yml
+                  - modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd
+                  - modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml
+                  - modules/AgenticGuidance/agents/orchestration/orchestration-build/process.mmd
+                guidance: |
+                  Context: The deploy-worktree agent is referenced in orchestration-planning as
+                  responsible for worktree setup and plan folder creation. Verify this reference
+                  and determine if migration is required.
+
+                  Instructions:
+                  1. Read orchestration-planning/process.mmd and search for "deploy-worktree" references
+                  2. Read orchestration-planning/inputs.yml to verify deploy-worktree is listed as input
+                  3. Read orchestration-build/process.mmd for additional deploy agent references
+                  4. Review legacy deploy/deploy-worktree/process.yml to understand its functionality:
+                     - Worktree creation and management
+                     - VS Code workspace file updates
+                     - Plan folder scaffolding (live/, completed/ subdirectories)
+                  5. Check for functional overlap with any existing AgenticGuidance agents
+                  6. Document findings in analysis/deploy_audit.md
+
+                  Output format for analysis/deploy_audit.md:
+                  ```
+                  # Deploy Agent Audit
+                  ## Agent: deploy-worktree
+                  - Referenced by: [list of referencing agents/processes]
+                  - Functionality: [summary of what it does]
+                  - Overlap with existing: [any overlapping agents]
+                  - Migration recommendation: MIGRATE | SKIP | CONSOLIDATE
+                  - Rationale: [why]
+                  ```
+                success_criteria:
+                  - deploy-worktree reference locations documented
+                  - Functionality clearly summarized
+                  - Clear MIGRATE/SKIP/CONSOLIDATE recommendation with rationale
+                  - analysis/deploy_audit.md created
+
+              # Agent 2: Audit Test Agents
+              - type: audit
+                inputs:
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/manifest.yml
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/test-final-output/process.yml
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/test-guidance-simulator/process.yml
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/test-audit/process.yml
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/test-runner/process.yml
+                  - modules/AgenticGuidance/agents/planner/planner-test/process.yml
+                  - modules/AgenticGuidance/agents/planner/planner-guidance-testing/process.yml
+                  - modules/AgenticGuidance/assets/inputs/test-shared.yml
+                  - modules/AgenticGuidance/assets/examples/test/guidance-test-plan.yml
+                guidance: |
+                  Context: The planner-test and planner-guidance-testing agents reference test agents
+                  for execution. Determine which legacy test agents are actually needed.
+
+                  Instructions:
+                  1. Read planner-test/process.yml and identify test agent references
+                  2. Read planner-guidance-testing/process.yml for test agent references
+                  3. Read test-shared.yml inputs to see what test agents are expected
+                  4. For each legacy test agent, analyze:
+                     - test-final-output: Validates final outputs of processes
+                     - test-guidance-simulator: Simulates guidance execution for testing
+                     - test-audit: Reviews test quality and coverage
+                     - test-runner: Executes Python tests and reports results
+                  5. Check for overlap with existing AgenticGuidance test examples/inputs
+                  6. Document findings in analysis/test_audit.md
+
+                  Critical question: Which test agents are ACTIVELY REFERENCED by existing
+                  orchestration or planner agents vs which are legacy-only?
+                success_criteria:
+                  - Each test agent (4 total) has reference status documented
+                  - Functionality of each agent summarized
+                  - Clear MIGRATE/SKIP recommendation per agent
+                  - analysis/test_audit.md created with full audit
+
+              # Agent 3: Audit Teacher Agents
+              - type: audit
+                inputs:
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/teacher/manifest.yml
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/teacher/teacher-update-guidance/process.yml
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/teacher/teacher-update-assets/process.yml
+                  - modules/AgenticGuidance/agents/planner/planner-guidance/process.yml
+                  - modules/AgenticGuidance/assets/examples/planner/teaching-plan-example.yml
+                  - modules/AgenticGuidance/assets/examples/planner/YYMMDDRepo_Branch/live/plan_live_teach.yml
+                guidance: |
+                  Context: The teacher agents are referenced in teaching plans and guidance
+                  improvement workflows. Verify references and migration necessity.
+
+                  Instructions:
+                  1. Read planner-guidance/process.yml for teacher agent references
+                  2. Read teaching-plan-example.yml to see how teacher agents are invoked
+                  3. Read plan_live_teach.yml example for teacher agent usage patterns
+                  4. For each legacy teacher agent, analyze:
+                     - teacher-update-guidance: Updates process.yml and inputs.yml files
+                     - teacher-update-assets: Creates/updates shared assets (definitions, guidelines)
+                  5. Check if teacher-plan exists (mentioned in manifest but noted as "not yet implemented")
+                  6. Document findings in analysis/teacher_audit.md
+
+                  Note: The plan_live_teach.yml example shows agents with type: "teacher" -
+                  verify these reference the legacy teacher agents.
+                success_criteria:
+                  - Each teacher agent reference status documented
+                  - Functionality clearly summarized
+                  - Clear MIGRATE/SKIP recommendation per agent
+                  - teacher-plan implementation status clarified
+                  - analysis/teacher_audit.md created
+
+              # Agent 4: Audit Missing Assets
+              - type: audit
+                inputs:
+                  - modules/AgenticGuidance/assets/guidelines/
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/assets/guidelines/orchestration-policy.yml
+                  - modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml
+                  - modules/AgenticGuidance/agents/orchestration/orchestration-build/inputs.yml
+                guidance: |
+                  Context: The orchestration agents reference orchestration-policy.yml but it
+                  may be missing from AgenticGuidance assets. Verify and document.
+
+                  Instructions:
+                  1. List current files in modules/AgenticGuidance/assets/guidelines/
+                  2. Check if orchestration-policy.yml exists in AgenticGuidance
+                  3. Read orchestration-planning/inputs.yml for guideline references
+                  4. Read orchestration-build/inputs.yml for guideline references
+                  5. If orchestration-policy.yml is missing, check legacy location
+                  6. Document any other missing referenced assets
+                  7. Create analysis/assets_audit.md with findings
+
+                  Focus: Only migrate assets that are ACTUALLY REFERENCED by agents.
+                  Do not migrate unused/orphaned assets.
+                success_criteria:
+                  - Current AgenticGuidance guidelines listed
+                  - orchestration-policy.yml presence/absence confirmed
+                  - All referenced but missing assets identified
+                  - analysis/assets_audit.md created
+
+          # Sequential consolidation of audit findings
+          - execution: sequential
+            name: Consolidate audit findings
+            agents:
+              - type: documentation
+                inputs:
+                  - docs/plans/live/260103_AgenticGuidance_dependency-migration/analysis/deploy_audit.md
+                  - docs/plans/live/260103_AgenticGuidance_dependency-migration/analysis/test_audit.md
+                  - docs/plans/live/260103_AgenticGuidance_dependency-migration/analysis/teacher_audit.md
+                  - docs/plans/live/260103_AgenticGuidance_dependency-migration/analysis/assets_audit.md
+                guidance: |
+                  Context: Consolidate all audit findings into a migration manifest that
+                  will guide the build phase.
+
+                  Instructions:
+                  1. Read all four audit files
+                  2. Create analysis/migration_manifest.yml with:
+                     ```yaml
+                     migration_manifest:
+                       agents_to_migrate:
+                         - path: "agents/deploy/deploy-worktree"
+                           source: "modules/legacy/..."
+                           rationale: "Referenced by orchestration-planning"
+                         # ... more agents
+                       agents_to_skip:
+                         - path: "agents/test/test-flutter-builder"
+                           rationale: "Flutter-specific, not referenced in AgenticGuidance"
+                         # ... more agents
+                       assets_to_migrate:
+                         - path: "assets/guidelines/orchestration-policy.yml"
+                           source: "modules/legacy/..."
+                           rationale: "Referenced by orchestration agents"
+                       consolidation_notes:
+                         - "Consider: ..."
+                     ```
+                  3. Update the high-level plan.yml with audit outcomes
+
+                  This manifest becomes the source of truth for the build phase.
+                success_criteria:
+                  - migration_manifest.yml created with clear categorization
+                  - Every audited agent has a clear disposition (migrate/skip/consolidate)
+                  - Every referenced asset accounted for
+                  - plan.yml updated with audit outcomes
+
+    user_stories:
+      - story: "As a developer, I want to migrate only relevant agents so the module stays lean"
+        validation: "Audit clearly identifies which agents are referenced vs dead code"
+        status: "must_validate"
+
+      - story: "As a maintainer, I want to understand why each agent was migrated or skipped"
+        validation: "Audit provides clear rationale documented in analysis files"
+        status: "must_validate"

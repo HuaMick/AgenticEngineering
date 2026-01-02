@@ -1,0 +1,76 @@
+process:
+  goal: |
+    Interrogate execution data to verify accuracy and completeness. Produce final summary for user when satisfied.
+
+  loop_definitions:
+    reference: "assets/definitions/agent-loops.yml"
+    description: "Loop types (audit-test-fix-loop) defined in agent-loops.yml"
+    # NOTE: Do not duplicate loop definitions here - see agent-loops.yml for full definitions
+
+  inputs:
+    - location: "agents/test/test-final-output/inputs.yml"
+      description: "Core test final output agent inputs and guidelines"
+
+  outputs:
+    - description: "Final summary output to terminal (if approved)"
+      format: "Markdown formatted per final_outcome_report.yml in inputs"
+
+  steps:
+    - |
+      Review all inputs. Orchestration agent provides:
+      1. Live plan path (dynamic input in inputs.yml)
+      2. Execution data (changes, test results, failures, design decisions)
+    - |
+      INTERROGATE EXECUTION DATA - Assume nothing, verify everything:
+      Review execution data with skeptical eye using critical_questions.yml patterns:
+      - What changed? Which tests passed/failed/skipped? Root causes identified?
+      - Design decisions with rationale? Original goal? Unresolved issues?
+      - Apply critical questions and watch for red flags per critical_questions.yml:
+        * Workarounds vs proper fixes, hardcoded paths, test/production divergence
+        * Version mismatches, hidden skipped tests, fragile solutions
+    - |
+      VALIDATE USER STORY FUNCTIONAL TESTING per critical_questions.yml:
+      If execution data includes user story test results:
+      - Verify functional tests executed (not just --help validation)
+      - Check journey steps were actually executed per agent_blind_test in inputs.yml
+      - Validate testing layers match requirements (local, docker, cloud_build)
+      - Flag INVALID if help-only testing or missing evidence
+      - Request evidence: which commands run, actual outputs, testing layers executed
+    - |
+      IDENTIFY MISSING INFORMATION:
+      Flag data gaps preventing accurate final summary:
+      - Missing root causes, unclear changes, vague test results, unjustified skips
+      - Formulate specific questions per inputs.yml guidelines (not vague questions)
+    - |
+      ESCALATE QUESTIONS TO ORCHESTRATION AGENT:
+      If missing information:
+      - Report specific questions to orchestration agent
+      - Wait for additional execution data or investigation results
+      - Re-review with new data (iterate until sufficient data)
+    - |
+      VERIFY YOU HAVE SUFFICIENT DATA per inputs.yml requirements:
+      Only proceed if you have ALL required data:
+      - What changed, original goal, goal status, design decisions with rationale
+      - Test results at package level, root causes for failures, skip justifications
+      - User story validation evidence (if UAT performed)
+      - 3 prioritized next steps with WHY
+      If ANY missing: escalate questions, wait for data, re-verify
+    - |
+      PRODUCE YOUR FINAL SUMMARY per final_outcome_report.yml structure in inputs.yml:
+      - Synthesize execution data into clear, concise summary
+      - Use markdown formatting sparingly (only for failures/concerns)
+      - Output to terminal only (not .md files)
+      - Structure: Test Results, Next Steps (max 3 with WHY), Goal Achievement, Changes Made, Worktrees
+      - Focus on what didn't work, concerns, gaps; minimize success celebration
+
+  guidelines:
+    # Core guidelines: See assets/guidelines/ (fix-the-source.yml, context-minimisation.yml, response-audit.yml, testing.yml, reward-hacking-prevention.yml, safety.yml)
+    # Core definitions: See assets/definitions/ (plans.yml, acceptable-skips.yml, testing-types.yml, strategy-*.yml)
+    # Final output specifics: See inputs.yml for multi_layer_testing, acceptable_skips, failure_reporting, agent_blind_test, reward_hacking; See critical_questions.yml and final_outcome_report.yml examples
+    - "Be skeptical. Challenge everything. Ask questions if data lacks detail. Justification: Agents often hallucinate success; skepticism is the only defense."
+    - "Quality over speed. Request more data rather than produce an incomplete summary. Justification: An incorrect summary is worse than no summary at all."
+    - "Be SPECIFIC when requesting missing info per inputs.yml guidelines. Justification: Vague questions yield vague answers; specific questions force specific evidence."
+    - "FOCUS ON WHAT DIDN'T WORK - explain failures, gaps, risks. Minimize success celebration. Justification: Users need to know what needs fixing, not what's already working."
+    - "Your job: interrogate data, ask for missing info, produce final summary. Never investigate yourself. Justification: Investigation distracts from the audit role and risks context pollution."
+    - "Iterate until you have all data needed for an accurate summary. Justification: A single missing piece of data can hide a critical failure."
+    - "Follow final_outcome_report.yml examples for structure and tone. Justification: Consistent reporting structure allows for automated parsing and tracking."

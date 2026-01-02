@@ -1,0 +1,261 @@
+reviewer: "planner-reviewer-5"
+scope: "overall completeness"
+iteration: 3
+status: APPROVED
+
+checklist:
+  orchestration_planning_created: true
+  entrypoint_wired: true
+  orchestration_build_refactored: true
+  orchestration_guidance_refactored: true
+  manifest_todos_resolved: true
+  documentation_updated: true
+
+findings:
+  # ORCHESTRATION-PLANNING AGENT
+  - id: "F-001"
+    category: "orchestration_planning_created"
+    status: verified
+    detail: |
+      orchestration-planning agent fully implemented:
+      - process.mmd: 192 lines with complete flowchart including:
+        - Input validation phase
+        - Worktree & plan folder setup (spawns deploy-worktree)
+        - Phase determination subgraph (teach, build, test, cleanup)
+        - Planning loops for each phase with specialized planners
+        - Human approval gate with approve/changes/reject paths
+        - Output phase reporting plan location and next steps
+        - Correct linkStyle targeting for feedback edge (index 57)
+      - inputs.yml: 55 lines with comprehensive inputs including:
+        - Guidelines (fix-the-source, context-minimisation, worktree-and-branching, response-audit, iteration, orchestration-policy)
+        - Definitions (plans, agent-loops, agent-categories)
+        - Planner manifest and all sub-agent processes
+        - Plan examples for structure reference
+    files_verified:
+      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd
+      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml
+
+  # ENTRYPOINT WIRED
+  - id: "F-002"
+    category: "entrypoint_wired"
+    status: verified
+    detail: |
+      _plan.yml entrypoint correctly delegates to orchestration-planning:
+      - orchestration field: "agents/orchestration/orchestration-planning/process.mmd"
+      - Steps clearly describe the planning workflow delegation
+      - Output specification aligns with downstream consumers (_execute.yml, _teach.yml)
+      - No inline inputs - documented they are loaded by orchestration agent
+    files_verified:
+      - /home/code/AgenticEngineering/modules/AgenticGuidance/entrypoints/_plan.yml
+
+  # ORCHESTRATION-BUILD REFACTORED
+  - id: "F-003"
+    category: "orchestration_build_refactored"
+    status: verified
+    detail: |
+      orchestration-build correctly delegates planning to orchestration-planning:
+      - Removed embedded Planning & Review Subgraph (52 lines removed)
+      - Added Planning Delegation Subgraph with:
+        - CheckPlanInput decision node for pre-approved plans
+        - DelegatePlanning spawn node for orchestration-planning
+        - PlanReady convergence node for both paths
+      - inputs.yml updated with approved_plan_path, planning_objective, failure_context
+      - Feedback loops (TEST_FAILURE, CICD_FAILURE, GUIDANCE_GAP, AUDIT_FAILURE) route back to DelegatePlanning
+      - Single responsibility: orchestration-build now focuses on EXECUTION only
+    files_verified:
+      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-build/process.mmd
+      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-build/inputs.yml
+
+  # ORCHESTRATION-GUIDANCE REFACTORED
+  - id: "F-004"
+    category: "orchestration_guidance_refactored"
+    status: verified
+    detail: |
+      orchestration-guidance correctly delegates planning to orchestration-planning:
+      - Removed embedded Planning & Review Subgraph (55 lines removed)
+      - Added Planning Delegation section with:
+        - CheckApprovedPlan decision node for pre-approved plans
+        - SpawnOrchestrationPlanning spawn node for delegation
+        - ValidatePlanFormat and WaitForApproval gates
+        - ReceiveApprovedPlan convergence node
+      - inputs.yml updated with approved_plan_path and orchestration_planning_ref
+      - All three feedback loops return to SpawnOrchestrationPlanning
+      - Single responsibility: orchestration-guidance now focuses on EXECUTION only
+    files_verified:
+      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-guidance/process.mmd
+      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-guidance/inputs.yml
+
+  # MANIFEST TODOS RESOLVED
+  - id: "F-005"
+    category: "manifest_todos_resolved"
+    status: verified
+    detail: |
+      All manifest TODOs have been resolved:
+      1. planner-phases: REMOVED
+         - Folder deleted (manifest.yml, process.yml, inputs.yml)
+         - Removed from planner/manifest.yml sub_agents and routing_logic
+         - Removed from agents/manifest.yml
+         - Functionality absorbed into orchestration-planning phase determination
+
+      2. planner-agent-exam: REMOVED
+         - Folder deleted (manifest.yml, process.yml, inputs.yml)
+         - Removed from planner/manifest.yml sub_agents and routing_logic
+         - Removed from agents/manifest.yml
+         - .claude/agents/planner-agent-exam.md deleted
+
+      3. planner-teach RENAMED to planner-guidance:
+         - Folder renamed
+         - All references updated across manifests, orchestration files, definitions, examples
+         - Internal files (manifest.yml, process.yml, inputs.yml) updated
+
+      4. planner-test-guidance RENAMED to planner-guidance-testing:
+         - Folder renamed
+         - All references updated across manifests, orchestration files, definitions, examples
+         - Internal files (manifest.yml, process.yml, inputs.yml) updated
+    grep_verification:
+      planner_phases: "0 matches"
+      planner_agent_exam: "0 matches"
+      planner_teach: "0 matches"
+      planner_test_guidance: "0 matches"
+
+  # DOCUMENTATION UPDATED
+  - id: "F-006"
+    category: "documentation_updated"
+    status: verified
+    detail: |
+      All documentation has been updated to remove stale references:
+      - agents/README.md: Removed planner-phases and planner-agent-exam, updated sub-agent count to 6
+      - docs/agent-role-scope-matrix.md: Removed planner-agent-exam entry
+      - docs/ARCHITECTURE.md: Removed planner-agent-exam, added missing planner sub-agents
+      - assets/definitions/agent-categories.yml:
+        - Removed planner-agent-exam from planner sub_agents
+        - Added planner-reviewer (was missing)
+        - Added orchestration-planning to orchestration sub_agents (Review 2 blocker resolved)
+      - assets/examples/planner/YYMMDDRepo_Branch/live/plan_live_teach.yml: Updated to reference planner-build instead of planner-phases
+    files_verified:
+      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/README.md
+      - /home/code/AgenticEngineering/modules/AgenticGuidance/docs/agent-role-scope-matrix.md
+      - /home/code/AgenticEngineering/modules/AgenticGuidance/docs/ARCHITECTURE.md
+      - /home/code/AgenticEngineering/modules/AgenticGuidance/assets/definitions/agent-categories.yml
+      - /home/code/AgenticEngineering/modules/AgenticGuidance/assets/examples/planner/YYMMDDRepo_Branch/live/plan_live_teach.yml
+
+  # MANIFEST CONSISTENCY
+  - id: "F-007"
+    category: "manifest_alignment"
+    status: verified
+    detail: |
+      All manifests are consistent and aligned:
+      - agents/manifest.yml: Lists planner (6 sub-agents) and orchestration (3 sub-agents)
+      - agents/planner/manifest.yml: Lists all 6 planner sub-agents with correct routing logic
+      - agents/orchestration/manifest.yml: Lists orchestration-planning, orchestration-build, orchestration-guidance with entry patterns
+      - assets/definitions/agent-categories.yml: All categories aligned with manifest declarations
+
+  # REVIEW 2 BLOCKER RESOLVED
+  - id: "F-008"
+    category: "review_2_blocker_resolved"
+    status: verified
+    detail: |
+      The single approval blocker from Review 2 (review_2_integration.yml AB-01) has been resolved:
+      - Issue: agent-categories.yml was missing orchestration-planning from orchestration sub_agents
+      - Resolution: orchestration-planning is now listed at line 103 of agent-categories.yml
+      - Verified: orchestration sub_agents list now contains:
+        - orchestration-planning
+        - orchestration-build
+        - orchestration-guidance
+
+approval_blockers: []
+
+non_blocking_notes:
+  - id: "NBN-01"
+    type: "future_work"
+    note: |
+      deploy-worktree agent referenced in orchestration-planning/inputs.yml does not exist in AgenticGuidance module.
+      It exists in legacy (modules/legacy/MyAgents/) and is documented in agents/manifest.yml#not_migrated.
+      This is acceptable for now - deploy category migration is future work.
+
+  - id: "NBN-02"
+    type: "future_work"
+    note: |
+      explore-* and test-* agents referenced in orchestration-build and orchestration-guidance do not exist
+      in AgenticGuidance module. They are documented in agents/manifest.yml#not_migrated section.
+      These are acceptable references to agents that will be migrated in future work.
+
+summary: |
+  FINAL REVIEW: APPROVED
+
+  The orchestration-planning implementation is complete and ready for merge. All six checklist items
+  have been verified:
+
+  1. ORCHESTRATION-PLANNING CREATED: The new agent has process.mmd (192 lines) with complete
+     flowchart covering input validation, worktree setup, phase determination, planning loops,
+     human approval gate, and output phase. The inputs.yml (55 lines) provides comprehensive
+     context loading for the planning workflow.
+
+  2. ENTRYPOINT WIRED: _plan.yml correctly delegates to orchestration-planning/process.mmd with
+     clear documentation of the workflow steps and expected outputs.
+
+  3. ORCHESTRATION-BUILD REFACTORED: The embedded Planning & Review Subgraph has been replaced
+     with a Planning Delegation Subgraph that spawns orchestration-planning when needed.
+     All feedback loops correctly route back to DelegatePlanning.
+
+  4. ORCHESTRATION-GUIDANCE REFACTORED: Similarly refactored to delegate planning to
+     orchestration-planning with proper pre-approved plan handling and feedback loops.
+
+  5. MANIFEST TODOS RESOLVED:
+     - planner-phases: REMOVED (functionality in orchestration-planning)
+     - planner-agent-exam: REMOVED
+     - planner-teach: RENAMED to planner-guidance
+     - planner-test-guidance: RENAMED to planner-guidance-testing
+
+  6. DOCUMENTATION UPDATED: All stale references to removed/renamed agents have been cleaned up.
+     The Review 2 integration blocker (missing orchestration-planning in agent-categories.yml)
+     has been resolved.
+
+  Grep verification confirms zero remaining references to deprecated agents (planner-phases,
+  planner-agent-exam, planner-teach, planner-test-guidance) in the AgenticGuidance module.
+
+  Architectural Benefits Achieved:
+  - Single Responsibility: orchestration-build and orchestration-guidance now focus on EXECUTION
+  - Planning Centralization: All planning logic flows through orchestration-planning
+  - Human-in-the-Loop: Approval gate ensures user oversight before plan execution
+  - Clear Handoff Contracts: Approved plan folder artifacts define the interface between agents
+  - Quality Feedback Loops: Failure contexts (TEST_FAILURE, CICD_FAILURE, GUIDANCE_GAP, AUDIT_FAILURE)
+    enable iterative improvement through re-planning
+
+  This implementation establishes a clean separation between planning and execution phases in the
+  agent guidance system.
+
+files_reviewed:
+  - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd
+  - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml
+  - /home/code/AgenticEngineering/modules/AgenticGuidance/entrypoints/_plan.yml
+  - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-build/process.mmd
+  - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-build/inputs.yml
+  - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-guidance/process.mmd
+  - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-guidance/inputs.yml
+  - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/manifest.yml
+  - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/manifest.yml
+  - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/manifest.yml
+  - /home/code/AgenticEngineering/modules/AgenticGuidance/assets/definitions/agent-categories.yml
+  - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/README.md
+  - /home/code/AgenticEngineering/modules/AgenticGuidance/docs/agent-role-scope-matrix.md
+  - /home/code/AgenticEngineering/modules/AgenticGuidance/docs/ARCHITECTURE.md
+
+status_files_reviewed:
+  - status_wire_entrypoint.yml
+  - status_refactor_build.yml
+  - status_refactor_guidance.yml
+  - status_remove_planner_phases.yml
+  - status_remove_planner_agent_exam.yml
+  - status_rename_planner_teach.yml
+  - status_rename_planner_test_guidance.yml
+  - status_fix_documentation_refs.yml
+  - status_fix_planner_phases_refs.yml
+
+previous_reviews:
+  - review_1_orchestration_planning.yml
+  - review_1_orchestration_refactors.yml
+  - review_1_manifest_cleanup.yml
+  - review_2_orchestration_planning.yml
+  - review_2_manifest_cleanup.yml
+  - review_2_integration.yml

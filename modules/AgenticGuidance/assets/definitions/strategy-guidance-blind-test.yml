@@ -1,0 +1,214 @@
+guidance-blind-test: |
+  A testing strategy where a simulator agent is given ONLY the agent guidance files
+  (process.yml, inputs.yml, outputs.yml) but NO access to implementation code or broader codebase.
+  Justification: Tests whether guidance is self-sufficient for task execution without code inspection.
+
+  ## CONCEPT AND PURPOSE ##
+
+  GOAL: Validate that agent guidance alone enables successful task completion.
+
+  MINIMAL CONTEXT PRINCIPLE:
+  - Simulator receives ONLY: process.yml, inputs.yml, outputs.yml from target agent
+  - NO access to implementation files (code, scripts, binaries)
+  - NO access to broader codebase beyond guidance files
+  - Must discover all required paths through guidance alone
+
+  WHAT THIS TESTS:
+  - Guidance completeness: Are all required inputs/outputs specified?
+  - Path discoverability: Can agent find files using only guidance references?
+  - Loop awareness: Does guidance provide loop_context for iterative agents?
+  - Subagent spawning: Can orchestrator spawn children from guidance alone?
+  - Self-sufficiency: Can agent execute without code inspection or exploration?
+
+  ## CRITICAL REQUIREMENTS ##
+
+  SIMULATOR CONSTRAINTS:
+  - Receives only agent guidance files (process.yml, inputs.yml, outputs.yml)
+  - Cannot read source code or implementation files
+  - Cannot explore codebase beyond what guidance references
+  - Must report friction when guidance is insufficient
+  - Must attempt task completion using guidance alone
+
+  PROHIBITED BEHAVIORS:
+  - Reading implementation files not referenced in guidance
+  - Exploring directory structures beyond guidance paths
+  - Using prior knowledge about codebase structure
+  - Inferring paths or context not explicit in guidance
+  - Substituting guidance gaps with assumptions
+
+  REQUIRED BEHAVIORS:
+  - Parse process.yml to understand task goal and steps
+  - Read inputs.yml to discover all input file locations
+  - Validate all paths in inputs.yml actually exist
+  - Check for loop_context if agent participates in loops
+  - Report when guidance is ambiguous or incomplete
+  - Document every friction point encountered
+
+  ## TEST SCENARIOS ##
+
+  1. TASK_COMPLETION_TEST
+     Purpose: Can agent complete task with guidance only?
+     Setup: Provide process.yml, inputs.yml, outputs.yml
+     Constraints: No code access, no exploration beyond guidance
+     Success criteria:
+       - Agent completes task without code inspection
+       - All required inputs discovered through guidance
+       - All outputs created as specified
+       - No friction points encountered
+     Failure indicators:
+       - Agent requests access to implementation files
+       - Agent cannot find input files from guidance
+       - Agent reports ambiguous or missing guidance
+       - Task completion requires assumptions/inference
+
+  2. REFERENCE_RESOLUTION_TEST
+     Purpose: Do all paths in inputs.yml resolve correctly?
+     Setup: Provide inputs.yml with all input file references
+     Constraints: Agent can only check existence of referenced paths
+     Success criteria:
+       - All input file paths resolve to existing files
+       - All referenced locations are absolute or unambiguous
+       - No broken references or missing files
+       - All inputs have clear descriptions
+     Failure indicators:
+       - Input paths do not exist
+       - Relative paths without clear base directory
+       - Missing descriptions for input files
+       - Circular references between inputs
+
+  3. LOOP_CONTEXT_TEST
+     Purpose: Do loop participants have loop_context defined?
+     Setup: Identify agents that participate in iteration loops
+     Constraints: Check only process.yml for loop_context section
+     Success criteria:
+       - process.yml contains loop_context section
+       - loop_context.participates_in lists parent loop(s)
+       - loop_context.iteration_input specifies loop variable
+       - loop_context includes notes if non-standard
+     Failure indicators:
+       - Missing loop_context section for loop participant
+       - Empty participates_in when agent is in known loop
+       - Missing iteration_input for agents receiving loop data
+       - Ambiguous loop participation status
+
+  4. SUBAGENT_SPAWNING_TEST
+     Purpose: Can orchestrator spawn children successfully?
+     Setup: Test orchestrator agents that spawn subagents
+     Constraints: Orchestrator has only guidance files, must spawn children
+     Success criteria:
+       - process.yml clearly identifies orchestrator role
+       - Subagent guidance paths discoverable from inputs.yml
+       - Orchestrator can locate all child agent guidance
+       - Spawning parameters/context clearly specified
+     Failure indicators:
+       - Cannot determine which subagents to spawn
+       - Subagent guidance paths not in inputs.yml
+       - Missing context for subagent initialization
+       - Ambiguous orchestration logic
+
+  5. CROSS_AGENT_DEPENDENCY_TEST
+     Purpose: Are inter-agent dependencies explicit in guidance?
+     Setup: Test agents that depend on outputs from other agents
+     Constraints: Check if dependencies are documented in guidance
+     Success criteria:
+       - inputs.yml references outputs from upstream agents
+       - Dependency chain is traceable through guidance
+       - No hidden dependencies requiring code inspection
+       - Clear specification of dependency resolution order
+     Failure indicators:
+       - Undocumented dependencies discovered in code
+       - Circular dependencies not flagged in guidance
+       - Missing upstream output paths in inputs.yml
+       - Ambiguous execution ordering
+
+  ## VALIDATION CHECKLIST ##
+
+  Before reporting PASS, answer YES to all:
+
+  1. GUIDANCE COMPLETENESS
+     - Does process.yml define clear goal and steps?
+     - Does inputs.yml list all required input files?
+     - Does outputs.yml specify all outputs created?
+     - Are descriptions clear and actionable?
+
+  2. PATH DISCOVERABILITY
+     - Do all input paths in inputs.yml exist?
+     - Are paths absolute or clearly relative to known base?
+     - Can agent locate files without code exploration?
+     - Are nested references resolvable?
+
+  3. LOOP AWARENESS
+     - Do loop participants have loop_context section?
+     - Is participates_in field populated correctly?
+     - Is iteration_input specified for loop variables?
+     - Are loop mechanics clear from guidance?
+
+  4. SPAWNING CAPABILITY
+     - Can orchestrators locate subagent guidance?
+     - Are subagent paths in orchestrator's inputs.yml?
+     - Is spawning context/parameters documented?
+     - Can children be spawned without code inspection?
+
+  5. SELF-SUFFICIENCY
+     - Can task complete using only guidance files?
+     - Are all external dependencies explicit?
+     - Is execution order determinable from guidance?
+     - Are edge cases/failure modes documented?
+
+  If ANY answer is NO, report INCOMPLETE with friction details.
+
+  ## FAILURE REPORTING STRUCTURE ##
+
+  When guidance is insufficient, report friction using this format:
+
+  FRICTION_POINT:
+    agent: <agent_name>
+    test_scenario: <which test failed>
+    issue: <what was missing/ambiguous>
+    guidance_gap: <what guidance should have specified>
+    impact: <how this blocks task completion>
+    suggested_fix: <specific guidance improvement needed>
+
+  Example:
+
+  FRICTION_POINT:
+    agent: "explorer-validation"
+    test_scenario: "REFERENCE_RESOLUTION_TEST"
+    issue: "inputs.yml references 'validation_rules.yml' with relative path"
+    guidance_gap: "No base directory specified for relative path resolution"
+    impact: "Agent cannot locate validation rules without exploring codebase"
+    suggested_fix: "Change to absolute path or add base_directory field in inputs.yml"
+
+  AGGREGATE FRICTION REPORT:
+    total_friction_points: <count>
+    agents_with_gaps: [<list>]
+    most_common_gap: <pattern>
+    critical_blockers: <count of P0 issues>
+    recommended_actions: [<prioritized fixes>]
+
+  ## EXECUTION PATTERN ##
+
+  Orchestration flow:
+  1. Tester agent reads target agent guidance files only
+  2. Attempts each test scenario in sequence
+  3. Documents friction points as they occur
+  4. Continues testing even after failures (collect all gaps)
+  5. Produces aggregate friction report
+  6. Recommends guidance improvements
+
+  Success criteria:
+  - All test scenarios pass with zero friction points
+  - Agent completes task using only guidance files
+  - No code inspection or codebase exploration required
+  - All paths, contexts, and dependencies discoverable
+
+  ## RELATIONSHIP TO OTHER STRATEGIES ##
+
+  guidance-blind-test vs agent-blind-test:
+  - agent-blind-test: Tests user-facing documentation (README, architecture)
+  - guidance-blind-test: Tests internal agent guidance (process, inputs, outputs)
+  - Both use "blind" approach: minimal context, no prior knowledge
+  - agent-blind-test validates external docs, guidance-blind-test validates internal guidance
+
+  Process file: test/test-guidance-validator/process.yml (future)
+  See also: strategy-agent-blind-test.yml, guidance-artifacts.yml, context-minimisation.yml

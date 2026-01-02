@@ -1,0 +1,142 @@
+objective: "Wire _plan.yml entrypoint to a dedicated orchestration-planning agent"
+
+status: PHASE_1_COMPLETE
+
+context:
+  entrypoint: "modules/AgenticGuidance/entrypoints/_plan.yml"
+  target_location: "modules/AgenticGuidance/agents/orchestration/orchestration-planning/"
+
+analysis:
+  current_state:
+    - "orchestration-build has planning loops embedded inline (lines 85-136)"
+    - "orchestration-guidance has planning loops embedded inline (lines 55-107)"
+    - "_plan.yml entrypoint exists but has no dedicated orchestration agent"
+    - "Planning loops are duplicated across orchestration agents"
+
+  problem:
+    - "No clean separation between PLANNING and EXECUTION phases"
+    - "Human-in-the-loop approval happens mid-flow rather than at a clear handoff point"
+    - "If user wants plan-only work, they must traverse a build or guidance orchestration"
+    - "Planning loop logic is repeated, violating DRY"
+
+  proposed_solution: |
+    Create orchestration-planning as a standalone orchestration agent that:
+    1. Owns the entire PLANNER LOOP from _plan.yml
+    2. Produces approved plans ready for downstream orchestration (build/guidance)
+    3. Has explicit human approval gates before handoff
+    4. Can be invoked independently via _plan.yml entrypoint
+
+architectural_rationale:
+  separation_of_concerns:
+    - "Planning is a distinct cognitive phase - discovery, decomposition, review"
+    - "Execution is mechanical - follow the approved plan"
+    - "Mixing them creates unclear responsibility boundaries"
+
+  human_in_the_loop_benefits:
+    - "Clear approval checkpoint after planning, before any execution"
+    - "User can review full plan scope before committing"
+    - "Enables iterative refinement without execution side effects"
+    - "Supports 'plan-only' use cases (e.g., estimation, review)"
+
+  reusability:
+    - "orchestration-build can delegate to orchestration-planning"
+    - "orchestration-guidance can delegate to orchestration-planning"
+    - "New orchestration types (test, deploy) inherit planning capability"
+
+proposed_structure:
+  location: "agents/orchestration/orchestration-planning/"
+  files:
+    - process.mmd: "Main planning flowchart"
+    - inputs.yml: "Planning context inputs"
+
+  process_mmd_high_level:
+    phases:
+      1_input_validation:
+        - "Load context inputs"
+        - "Verify worktree via deploy-worktree"
+        - "Locate or create live plan folder"
+
+      2_exploration:
+        - "Spawn explore agents based on objective type"
+        - "Synthesize context for planners"
+
+      3_phase_determination:
+        - "Lead planner determines required phases"
+        - "Could be: teach, build, test, cleanup, etc."
+
+      4_planning_loops:
+        description: |
+          For each determined phase, spawn specialized planner:
+          - planner-build for implementation phases
+          - planner-test for test phases
+          - planner-teach for guidance phases
+          - planner-cleaning for cleanup phases
+        loop_behavior:
+          - "Planner creates phase .yml"
+          - "planner-reviewer reviews"
+          - "Iterate until approved or escalate"
+
+      5_human_approval_gate:
+        - "Present complete multi-phase plan to user"
+        - "User approves, requests changes, or rejects"
+        - "This is THE handoff point"
+
+      6_output:
+        - "Approved plan folder path"
+        - "Phases created with status: approved"
+        - "Ready for _execute.yml or _teach.yml"
+
+  handoff_to_execution:
+    options:
+      - "User manually invokes _execute.yml with approved plan"
+      - "User continues to _teach.yml for guidance work"
+      - "orchestration-build/guidance can be updated to accept pre-approved plans"
+
+manifest_updates:
+  agents_manifest_yml:
+    - "Add orchestration category with orchestration-planning"
+    - "Mark orchestration as migrated from legacy"
+
+  planner_manifest_yml:
+    - "No changes needed - planners remain independent"
+
+risks_and_mitigations:
+  risk_1:
+    description: "Existing orchestration flows have embedded planning"
+    mitigation: "Phase 2: Refactor to delegate to orchestration-planning"
+
+  risk_2:
+    description: "Extra handoff adds latency"
+    mitigation: "Optional: orchestration-planning can auto-continue if user opts in"
+
+implementation_phases:
+  phase_1_create_orchestration_planning:
+    tasks:
+      - "Create agents/orchestration/orchestration-planning/ folder"
+      - "Write process.mmd with planning-only flow"
+      - "Write inputs.yml with planning context"
+      - "Update agents/manifest.yml"
+    outcome: "Standalone planning orchestration working"
+
+  phase_2_wire_entrypoint:
+    tasks:
+      - "Update _plan.yml to reference orchestration-planning"
+      - "Ensure entrypoint → orchestration → planners chain works"
+    outcome: "_plan.yml invokes orchestration-planning"
+
+  phase_3_optional_refactor_existing:
+    tasks:
+      - "Refactor orchestration-build to delegate planning"
+      - "Refactor orchestration-guidance to delegate planning"
+    outcome: "DRY planning logic, single source of truth"
+
+success_criteria:
+  - "orchestration-planning produces approved plans independently"
+  - "_plan.yml successfully invokes the new orchestration"
+  - "Human approval gate works before any execution handoff"
+  - "Existing orchestration flows remain functional"
+
+open_questions:
+  - "Should orchestration-planning support auto-continue to execution?"
+  - "How should exploration phase differ for build vs guidance objectives?"
+  - "Should phase 3 refactor be mandatory or optional?"

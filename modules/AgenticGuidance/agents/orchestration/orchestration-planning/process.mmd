@@ -1,0 +1,190 @@
+flowchart LR
+    %% GOAL: Orchestrate planning agents to create executable plans without execution.
+    %% PROFILE: Orchestration-Planning
+    %% OUTPUT: Approved plan folder in docs/plans/live/, ready for _execute.yml or _teach.yml
+    %% GUIDELINE: PLANNING ONLY policy - no execution, no exploration loops.
+    %% GUIDELINE: User provides all necessary context in their prompt - no discovery phase.
+    %% GUIDELINE: assets/definitions/plans.yml - Plan types and folder structure
+    %% INPUT_PATH: agents/orchestration/orchestration-planning/inputs.yml
+
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    %% Verify all required context is provided in the user prompt.
+    %% Unlike orchestration-build, NO exploration phase - user supplies context.
+    LoadInputs --> ReviewInputs[Review All Listed Inputs]
+    ReviewInputs --> CheckInputs{All Inputs Found?}
+
+    %% If inputs are missing, ask user for clarification (no self-healing search)
+    CheckInputs -- "No: Missing" --> AskUser((Ask User for Clarification))
+
+    %% Proceed when context is verified
+    CheckInputs -- "Yes: Verified" --> SpawnDeployWorktree[Spawn deploy-worktree Agent]
+
+    %% ========================================
+    %% WORKTREE & PLAN FOLDER SETUP
+    %% ========================================
+    %% deploy-worktree agent handles worktree setup and verification
+    %% Creates or locates live plan folder (YYMMDDRepo_Branch/)
+    SpawnDeployWorktree --> VerifyWorktree[Verify Worktree & Locate/Create Live Plan Folder]
+    VerifyWorktree --> WorktreeValid{Worktree Valid?}
+    WorktreeValid -- "No: Failed verification" --> AskUser
+
+    %% ========================================
+    %% PHASE DETERMINATION
+    %% ========================================
+    %% Orchestration-planning agent analyzes objective and determines required phases.
+    %% Possible phases: teach, build, test, cleanup
+    %% Each phase will get its own plan_live_<phase>.yml file
+    WorktreeValid -- "Yes: Verified" --> PhaseDetermination[Enter Phase Determination]
+
+    subgraph PhaseDetermination_SG ["Phase Determination Subgraph"]
+        %% Orchestration-planning determines phases based on objective type:
+        %% - teach: guidance, process, or documentation improvements
+        %% - build: code implementation or feature development
+        %% - test: test strategy and validation tasks
+        %% - cleanup: code cleanup, audit, or removal tasks
+        %% Creates placeholder .yml files for each required phase
+        PhaseDetermination --> AnalyzeObjective[Analyze Objective Type]
+        AnalyzeObjective --> DeterminePhases[Determine Required Phases]
+        DeterminePhases --> PhasesDecided{Phases Decided?}
+
+        %% List possible phases: teach, build, test, cleanup
+        PhasesDecided -- "Yes" --> CreatePlaceholders[Create Phase Placeholder Files]
+        PhasesDecided -- "No: Unclear" --> EscalatePhases((Ask User for Phase Guidance))
+    end
+
+    %% ========================================
+    %% PLANNING LOOPS PHASE
+    %% ========================================
+    %% LOOP_DEFINITION: assets/definitions/agent-loops.yml#planner-loop
+    %% MAX_ITERATIONS: 5 (per planner-loop definition)
+    %% ESCALATION: If max iterations reached without approval, stop and Ask User
+    %%
+    %% For each required phase, spawn specialized planner + reviewer loop:
+    %% - planner-guidance: Teaching/guidance plans
+    %% - planner-build: Build/implementation plans
+    %% - planner-test: Test strategy plans
+    %% - planner-cleaning: Cleanup/audit plans
+    CreatePlaceholders --> PlanningLoops[Enter Planning Loops Phase]
+
+    subgraph PlanningLoops_SG ["Planning Loops Subgraph"]
+        %% ----------------------------------------
+        %% TEACH PLANNING LOOP (if teach phase required)
+        %% ----------------------------------------
+        PlanningLoops --> CheckTeach{Teach Phase Required?}
+        CheckTeach -- "Yes" --> TeachPlanLoop{Teach Planning Loop}
+
+        TeachPlanLoop --> SpawnPlannerTeach[Spawn planner-guidance Agent]
+        SpawnPlannerTeach --> SpawnTeachReviewer[Spawn planner-reviewer Agent]
+        SpawnTeachReviewer --> TeachPlanApproved{Teach Plan Approved?}
+
+        %% Iterative refinement for teach plan
+        TeachPlanApproved -- "No: Refine" --> SpawnPlannerTeachFix[Spawn planner-guidance Agent]
+        SpawnPlannerTeachFix --> SpawnTeachReviewer
+
+        TeachPlanApproved -- "Yes: Ready" --> CheckBuild{Build Phase Required?}
+        CheckTeach -- "No" --> CheckBuild
+
+        %% ----------------------------------------
+        %% BUILD PLANNING LOOP (if build phase required)
+        %% ----------------------------------------
+        CheckBuild -- "Yes" --> BuildPlanLoop{Build Planning Loop}
+
+        BuildPlanLoop --> SpawnPlannerBuild[Spawn planner-build Agent]
+        SpawnPlannerBuild --> SpawnBuildReviewer[Spawn planner-reviewer Agent]
+        SpawnBuildReviewer --> BuildPlanApproved{Build Plan Approved?}
+
+        %% Iterative refinement for build plan
+        BuildPlanApproved -- "No: Refine" --> SpawnPlannerBuildFix[Spawn planner-build Agent]
+        SpawnPlannerBuildFix --> SpawnBuildReviewer
+
+        BuildPlanApproved -- "Yes: Ready" --> CheckTest{Test Phase Required?}
+        CheckBuild -- "No" --> CheckTest
+
+        %% ----------------------------------------
+        %% TEST PLANNING LOOP (if test phase required)
+        %% ----------------------------------------
+        CheckTest -- "Yes" --> TestPlanLoop{Test Planning Loop}
+
+        TestPlanLoop --> SpawnPlannerTest[Spawn planner-test Agent]
+        SpawnPlannerTest --> SpawnTestReviewer[Spawn planner-reviewer Agent]
+        SpawnTestReviewer --> TestPlanApproved{Test Plan Approved?}
+
+        %% Iterative refinement for test plan
+        TestPlanApproved -- "No: Refine" --> SpawnPlannerTestFix[Spawn planner-test Agent]
+        SpawnPlannerTestFix --> SpawnTestReviewer
+
+        TestPlanApproved -- "Yes: Ready" --> CheckCleanup{Cleanup Phase Required?}
+        CheckTest -- "No" --> CheckCleanup
+
+        %% ----------------------------------------
+        %% CLEANUP PLANNING LOOP (if cleanup phase required)
+        %% ----------------------------------------
+        CheckCleanup -- "Yes" --> CleanupPlanLoop{Cleanup Planning Loop}
+
+        CleanupPlanLoop --> SpawnPlannerCleanup[Spawn planner-cleaning Agent]
+        SpawnPlannerCleanup --> SpawnCleanupReviewer[Spawn planner-reviewer Agent]
+        SpawnCleanupReviewer --> CleanupPlanApproved{Cleanup Plan Approved?}
+
+        %% Iterative refinement for cleanup plan
+        CleanupPlanApproved -- "No: Refine" --> SpawnPlannerCleanupFix[Spawn planner-cleaning Agent]
+        SpawnPlannerCleanupFix --> SpawnCleanupReviewer
+
+        CleanupPlanApproved -- "Yes: Ready" --> AllPhasesPlanned[All Required Phases Planned]
+        CheckCleanup -- "No" --> AllPhasesPlanned
+    end
+
+    %% ========================================
+    %% HUMAN APPROVAL GATE
+    %% ========================================
+    %% Present complete plan to user for final approval.
+    %% User can: approve, request changes, or reject.
+    %% This is the critical gate before plan is marked ready for execution.
+    AllPhasesPlanned --> HumanApproval[Enter Human Approval Gate]
+
+    subgraph HumanApproval_SG ["Human Approval Gate Subgraph"]
+        HumanApproval --> PresentPlan[Present Complete Plan Summary]
+        PresentPlan --> ShowPhases[Display All Phase Plans]
+        ShowPhases --> ShowTasks[Display Tasks per Phase]
+        ShowTasks --> ShowCriteria[Display Success Criteria]
+        ShowCriteria --> UserDecision{User Decision?}
+
+        %% User approves - proceed to output
+        UserDecision -- "Approved" --> MarkApproved[Mark Plan as Approved]
+
+        %% User requests changes - return to planning loops with feedback
+        UserDecision -- "Changes Requested" --> CaptureChanges[Capture User Feedback]
+        CaptureChanges --> IdentifyAffectedPhases[Identify Affected Phase Plans]
+        IdentifyAffectedPhases -.->|Return to Planning Loops| PlanningLoops
+
+        %% User rejects - terminate with explanation
+        UserDecision -- "Rejected" --> CaptureRejection[Capture Rejection Reason]
+        CaptureRejection --> RejectEnd((End: Plan Rejected))
+    end
+
+    %% ========================================
+    %% OUTPUT PHASE
+    %% ========================================
+    %% Output the approved plan folder path.
+    %% Plan is ready for _execute.yml or _teach.yml entrypoints.
+    MarkApproved --> OutputPhase[Generate Output]
+
+    subgraph Output_SG ["Output Subgraph"]
+        OutputPhase --> ReportPlanLocation[Report Live Plan Folder Path]
+        ReportPlanLocation --> ReportPhases[Report Phases Created]
+        ReportPhases --> ReportNextSteps[Report Next Steps: _execute.yml or _teach.yml]
+    end
+
+    ReportNextSteps --> End((End: Approved Plan Ready))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    %% Dotted lines for feedback loops (return paths from Human Approval)
+    %% These represent plan refinement cycles based on user feedback
+    %% Edge index 57 is: IdentifyAffectedPhases -.-> PlanningLoops
+    classDef dashedstroke stroke-dasharray: 5 5;
+    linkStyle 57 stroke:#888,stroke-width:2px,stroke-dasharray: 5 5;

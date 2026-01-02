@@ -1,0 +1,380 @@
+objective: "Refactor orchestration-build to delegate planning to orchestration-planning"
+
+status: PLANNING
+
+context:
+  parent_plan: "plan_proposal.yml"
+  parent_phase: "phase_3_optional_refactor_existing"
+  target_file: "modules/AgenticGuidance/agents/orchestration/orchestration-build/process.mmd"
+  related_agent: "modules/AgenticGuidance/agents/orchestration/orchestration-planning/"
+
+scope:
+  description: |
+    This plan details the refactoring of orchestration-build to remove its embedded
+    Planning & Review Subgraph (lines 85-136) and replace it with delegation to
+    the new orchestration-planning agent, OR acceptance of a pre-approved plan.
+
+what_to_remove:
+  target_section:
+    name: "Planning & Review Subgraph"
+    location: "lines 85-136"
+    description: |
+      The embedded planning subgraph contains:
+      - Build Implementation Planning Loop (planner-build + planner-reviewer)
+      - Build Test Planning Loop (planner-test + planner-reviewer)
+      - Iterative refinement cycles within both loops
+      - Test plan viability check with return to build planning
+
+  specific_elements:
+    - node: "PlanningReview"
+      line: 83
+      description: "Entry point to planning phase"
+
+    - subgraph: "Planning"
+      lines: "85-136"
+      contains:
+        - "BuildPlanningLoop decision node"
+        - "SpawnPlannerBuild agent spawn"
+        - "SpawnBuildReviewer agent spawn"
+        - "BuildPlanApproved decision gate"
+        - "SpawnPlannerBuildFix refinement spawn"
+        - "TestPlanningLoop decision node"
+        - "SpawnTestPlanner agent spawn"
+        - "SpawnTestReviewer agent spawn"
+        - "TestPlanApproved decision gate"
+        - "SpawnTestPlannerFix refinement spawn"
+        - "TestPlanViable decision gate"
+        - "UpdateBuildPlan return path"
+
+  feedback_loop_updates:
+    description: |
+      The current process.mmd has feedback loops that return to PlanningReview.
+      These must be updated to handle the new delegation model.
+    affected_lines:
+      - line: 172
+        current: "UpdatePlanTests -.->|Return to Planning| PlanningReview"
+        note: "Test failure escalation"
+      - line: 196
+        current: "UpdatePlanCICD -.->|Return to Planning| PlanningReview"
+        note: "CI/CD failure return"
+      - lines: "236-238"
+        current: "UpdatePlan* -.->|Return to Planning| PlanningReview"
+        note: "Guidance gap returns"
+      - line: 250
+        current: "UpdatePlanAudit -.->|Return to Planning| PlanningReview"
+        note: "Audit failure return"
+
+what_to_add:
+  new_input_model:
+    description: |
+      orchestration-build should support two input modes:
+      1. Pre-approved plan path (skip planning delegation)
+      2. Objective requiring planning (delegate to orchestration-planning)
+
+    inputs_yml_additions:
+      - name: "approved_plan_path"
+        type: "optional"
+        description: "Path to pre-approved plan folder from orchestration-planning"
+        example: "docs/plans/live/260103_feature_xyz/"
+
+      - name: "planning_objective"
+        type: "optional"
+        description: "Objective to pass to orchestration-planning if no approved plan"
+        example: "Implement user authentication feature"
+
+    validation_rule: |
+      At least one of (approved_plan_path, planning_objective) must be provided.
+      If approved_plan_path is provided, skip planning delegation.
+      If only planning_objective is provided, delegate to orchestration-planning.
+
+  new_decision_node:
+    name: "CheckPlanInput"
+    location: "After ExploreSynthesis (replacing direct link to PlanningReview)"
+    description: |
+      Decision node that determines whether to delegate planning or use pre-approved plan.
+
+    logic:
+      check: "approved_plan_path provided?"
+      yes_branch: "LoadApprovedPlan - Load and validate the pre-approved plan"
+      no_branch: "DelegatePlanning - Spawn orchestration-planning agent"
+
+  new_delegation_subgraph:
+    name: "PlanningDelegation"
+    description: |
+      Replaces the embedded Planning & Review Subgraph with delegation logic.
+
+    nodes:
+      - name: "CheckPlanInput"
+        type: "decision"
+        question: "Pre-approved Plan Provided?"
+
+      - name: "LoadApprovedPlan"
+        type: "action"
+        description: "Load approved plan from provided path"
+
+      - name: "ValidateApprovedPlan"
+        type: "decision"
+        question: "Plan Valid & Approved?"
+
+      - name: "DelegatePlanning"
+        type: "action"
+        description: "Spawn orchestration-planning with objective"
+
+      - name: "AwaitPlanApproval"
+        type: "wait"
+        description: "Wait for orchestration-planning to complete with approved plan"
+
+      - name: "PlanReady"
+        type: "merge"
+        description: "Both paths converge here with approved plans"
+
+  feedback_loop_handling:
+    description: |
+      When downstream validation fails, orchestration-build must re-invoke
+      orchestration-planning with failure context rather than inline re-planning.
+
+    new_pattern:
+      on_failure:
+        - "Package failure details into structured report"
+        - "Re-invoke orchestration-planning with failure context"
+        - "orchestration-planning incorporates feedback and produces updated plan"
+        - "Return to implementation with revised plan"
+
+    updated_return_paths:
+      - from: "UpdatePlanTests"
+        to: "DelegatePlanning (with TEST_FAILURE context)"
+
+      - from: "UpdatePlanCICD"
+        to: "DelegatePlanning (with CICD_FAILURE context)"
+
+      - from: "UpdatePlanBuild/Test/Guidance"
+        to: "DelegatePlanning (with GUIDANCE_GAP context)"
+
+      - from: "UpdatePlanAudit"
+        to: "DelegatePlanning (with AUDIT_FAILURE context)"
+
+handoff_specification:
+  orchestration_planning_outputs:
+    description: |
+      orchestration-planning produces an approved plan folder containing:
+
+    artifacts:
+      - file: "plan.yml"
+        description: "Master plan with objective and phase references"
+        status: "approved"
+
+      - file: "phase_build.yml"
+        description: "Build implementation plan (from planner-build)"
+        status: "approved"
+
+      - file: "phase_test.yml"
+        description: "Test plan (from planner-test)"
+        status: "approved"
+
+      - file: "exploration_summary.yml"
+        description: "Synthesized exploration context"
+        status: "complete"
+
+    folder_structure:
+      example: |
+        docs/plans/live/260103_feature_xyz/
+          plan.yml              # Master plan, status: approved
+          phase_build.yml       # Build plan, status: approved
+          phase_test.yml        # Test plan, status: approved
+          exploration/
+            codebase.yml        # From explore-codebase
+            dependencies.yml    # From explore-dependencies
+            tests.yml           # From explore-tests
+          exploration_summary.yml
+
+  orchestration_build_inputs:
+    description: |
+      orchestration-build consumes the approved plan folder and executes it.
+
+    what_it_reads:
+      - "plan.yml - Overall objective and phase order"
+      - "phase_build.yml - Implementation tasks to execute"
+      - "phase_test.yml - Tests to run after implementation"
+      - "exploration_summary.yml - Context for implementation decisions"
+
+    what_it_expects:
+      - "All phase files have status: approved"
+      - "Tasks have clear acceptance criteria"
+      - "Dependencies between phases are explicit"
+
+  handoff_contract:
+    from_planning_to_build:
+      required_fields:
+        - "approved_plan_path: string (absolute path to plan folder)"
+        - "plan_status: 'approved'"
+        - "phases: list of phase file names"
+
+    from_build_to_planning_on_failure:
+      required_fields:
+        - "failure_type: enum(TEST_FAILURE, CICD_FAILURE, GUIDANCE_GAP, AUDIT_FAILURE)"
+        - "failure_details: structured report"
+        - "original_plan_path: string"
+        - "iteration_count: integer"
+
+updated_flow_diagram:
+  description: |
+    High-level description of the refactored orchestration-build flow.
+    This replaces lines 83-136 in the current process.mmd.
+
+  mermaid_pseudocode: |
+    %% After Exploration Phase completes:
+    ExploreSynthesis --> CheckPlanInput{Pre-approved Plan?}
+
+    subgraph PlanningDelegation ["Planning Delegation Subgraph"]
+        CheckPlanInput -- "Yes: Path Provided" --> LoadApprovedPlan[Load Approved Plan]
+        LoadApprovedPlan --> ValidatePlan{Plan Valid?}
+        ValidatePlan -- "No: Invalid" --> AskUser((Ask User))
+
+        CheckPlanInput -- "No: Need Planning" --> DelegatePlanning[Spawn orchestration-planning]
+        DelegatePlanning --> AwaitApproval[Await Human Approval via orchestration-planning]
+        AwaitApproval --> PlanningComplete{Planning Complete?}
+        PlanningComplete -- "No: User Rejected" --> AskUser
+
+        ValidatePlan -- "Yes: Valid" --> PlanReady[Plan Ready for Execution]
+        PlanningComplete -- "Yes: Approved" --> PlanReady
+    end
+
+    PlanReady --> ExecutePhases[Execute Implementation Phases]
+
+    %% Feedback loops now return to DelegatePlanning with context:
+    UpdatePlanTests -.->|Re-plan with TEST_FAILURE| DelegatePlanning
+    UpdatePlanCICD -.->|Re-plan with CICD_FAILURE| DelegatePlanning
+    UpdatePlanBuild -.->|Re-plan with GUIDANCE_GAP| DelegatePlanning
+    UpdatePlanAudit -.->|Re-plan with AUDIT_FAILURE| DelegatePlanning
+
+  key_changes:
+    - "Planning & Review Subgraph (51 lines) replaced with PlanningDelegation (~15 lines)"
+    - "All planner spawning moved to orchestration-planning"
+    - "Human approval happens in orchestration-planning, not orchestration-build"
+    - "Feedback loops re-invoke orchestration-planning instead of inline re-planning"
+
+inputs_yml_updates:
+  additions:
+    - name: "approved_plan_path"
+      location: "assets/definitions/plans.yml"
+      description: "Optional: Path to pre-approved plan from orchestration-planning"
+      type: "string"
+      required: false
+
+    - name: "planning_objective"
+      description: "Optional: Objective to plan (if no approved plan)"
+      type: "string"
+      required: false
+
+    - name: "failure_context"
+      description: "Optional: Failure details from previous execution attempt"
+      type: "object"
+      required: false
+      schema:
+        failure_type: "enum(TEST_FAILURE, CICD_FAILURE, GUIDANCE_GAP, AUDIT_FAILURE)"
+        failure_details: "object"
+        original_plan_path: "string"
+        iteration_count: "integer"
+
+  constraint: |
+    Input validation must enforce:
+    - At least one of (approved_plan_path, planning_objective) must be provided
+    - If failure_context is provided, planning_objective must also be provided
+
+success_criteria:
+  functional:
+    - "orchestration-build can accept a pre-approved plan path and skip planning"
+    - "orchestration-build can delegate planning to orchestration-planning"
+    - "Human approval gate occurs in orchestration-planning (single responsibility)"
+    - "Feedback loops correctly re-invoke orchestration-planning with failure context"
+    - "Approved plans from orchestration-planning are correctly consumed by build"
+
+  architectural:
+    - "Planning logic is no longer duplicated in orchestration-build"
+    - "Clear separation between PLANNING and EXECUTION phases"
+    - "Handoff contract is explicit and documented"
+    - "Feedback iteration count is tracked across re-planning cycles"
+
+  non_regression:
+    - "End-to-end flow (plan -> build -> test -> validate) still works"
+    - "All existing feedback loops (test, CICD, guidance, audit) still function"
+    - "Exploration phase remains unchanged"
+    - "Implementation, CI/CD, Guidance, and Audit phases remain unchanged"
+
+  testable:
+    - "Test: Provide approved_plan_path, verify planning is skipped"
+    - "Test: Provide planning_objective only, verify orchestration-planning is spawned"
+    - "Test: Simulate TEST_FAILURE, verify re-planning with context"
+    - "Test: Verify iteration count increments on feedback cycles"
+
+implementation_tasks:
+  task_1:
+    name: "Update inputs.yml with new input fields"
+    file: "agents/orchestration/orchestration-build/inputs.yml"
+    changes:
+      - "Add approved_plan_path optional input"
+      - "Add planning_objective optional input"
+      - "Add failure_context optional input"
+      - "Document input validation rules"
+
+  task_2:
+    name: "Remove Planning & Review Subgraph from process.mmd"
+    file: "agents/orchestration/orchestration-build/process.mmd"
+    changes:
+      - "Remove lines 85-136 (Planning subgraph)"
+      - "Remove PlanningReview entry node (line 83)"
+      - "Update ExploreSynthesis to connect to new CheckPlanInput"
+
+  task_3:
+    name: "Add Planning Delegation Subgraph to process.mmd"
+    file: "agents/orchestration/orchestration-build/process.mmd"
+    changes:
+      - "Add CheckPlanInput decision node"
+      - "Add LoadApprovedPlan action node"
+      - "Add ValidatePlan decision node"
+      - "Add DelegatePlanning action node (spawn orchestration-planning)"
+      - "Add AwaitApproval wait node"
+      - "Add PlanReady merge node"
+
+  task_4:
+    name: "Update feedback loop return paths"
+    file: "agents/orchestration/orchestration-build/process.mmd"
+    changes:
+      - "Update UpdatePlanTests to return to DelegatePlanning"
+      - "Update UpdatePlanCICD to return to DelegatePlanning"
+      - "Update UpdatePlanBuild/Test/Guidance to return to DelegatePlanning"
+      - "Update UpdatePlanAudit to return to DelegatePlanning"
+      - "Update link styles for new feedback paths"
+
+  task_5:
+    name: "Update header comments in process.mmd"
+    file: "agents/orchestration/orchestration-build/process.mmd"
+    changes:
+      - "Update GUIDELINE comments to reflect new planning model"
+      - "Update FEEDBACK LOOP ENTRY POINTS comments"
+      - "Document orchestration-planning handoff"
+
+  task_6:
+    name: "Validate mermaid syntax"
+    validation: "Run mermaid linter on updated process.mmd"
+
+dependencies:
+  prerequisite: "orchestration-planning must exist and be functional"
+  related_plans:
+    - "plan_proposal.yml - Creates orchestration-planning (phase 1 and 2)"
+
+risks:
+  risk_1:
+    description: "Feedback loop semantics change"
+    impact: "medium"
+    mitigation: "Ensure failure context is properly packaged for re-planning"
+
+  risk_2:
+    description: "Additional latency from external delegation"
+    impact: "low"
+    mitigation: "orchestration-planning can be optimized independently"
+
+  risk_3:
+    description: "State management across agent boundaries"
+    impact: "medium"
+    mitigation: "Plan folder serves as explicit state handoff mechanism"

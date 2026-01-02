@@ -1,0 +1,157 @@
+flowchart LR
+    %% GOAL: Orchestrate agents to update the agent guidance system through a context engineering process.
+    %% PROFILE: Orchestration-Context-Engineer
+    %% OUTPUT: Completed plans and audit reports in docs/plans/completed/
+    %% GUIDELINE: Strict NO CODE policy - context engineering for guidance only.
+    %% GUIDELINE: Every execution issue or audit failure MUST trigger re-invocation of orchestration-planning.
+    %% INPUT_PATH: agents/orchestration/orchestration-guidance/inputs.yml
+
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% Input Verification & Search Logic: Ensure we have all necessary context from inputs.yml
+    LoadInputs --> ReviewInputs[Review All Listed Inputs]
+    ReviewInputs --> CheckInputs{All Inputs Found?}
+
+    %% If inputs are missing, attempt to self-heal by searching
+    CheckInputs -- "No: Missing" --> SearchInputs[Search for Missing Inputs]
+    SearchInputs --> Found{Found?}
+
+    %% If found elsewhere, update paths to maintain continuity
+    Found -- "Yes: Update paths" --> UpdateRefs[Update References & Flag]
+    UpdateRefs --> ReviewInputs
+
+    %% Critical failure: Stop and ask user if context cannot be resolved
+    Found -- "No: Stop" --> AskUser((Ask User for Clarification))
+
+    %% Proceed only when context is fully loaded and verified
+    CheckInputs -- "Yes: Verified" --> SpawnDeployWorktree[Spawn deploy-worktree Agent]
+
+    %% Isolate work and initialize the planning environment
+    %% deploy-worktree agent handles worktree setup and verification per its internal criteria
+    SpawnDeployWorktree --> WorktreeValid{Worktree Valid?}
+    WorktreeValid -- "No: Failed verification" --> AskUser
+
+    %% ========================================
+    %% PLANNING DELEGATION
+    %% ========================================
+    %% orchestration-guidance accepts two modes:
+    %% MODE 1: Pre-approved plan provided via approved_plan_path input
+    %%   - Skip planning, proceed directly to execution
+    %%   - Used when orchestration-planning was invoked independently
+    %%
+    %% MODE 2: No pre-approved plan
+    %%   - Delegate to orchestration-planning agent
+    %%   - orchestration-planning handles:
+    %%     - Implementation Planning Loop (planner-guidance + reviewer)
+    %%     - Test-Guidance Planning Loop (planner-guidance-testing + reviewer)
+    %%     - Human approval gate
+    %%   - Receive approved plan folder path upon completion
+    %%
+    %% OUTPUT FROM orchestration-planning:
+    %%   - Approved plan folder with implementation and test phases
+    %%   - Plan status: approved
+    %%   - Ready for execution phase
+    %%
+    %% FEEDBACK LOOP ENTRY POINTS:
+    %% This phase receives feedback from three downstream validation points:
+    %% 1. Implementation Issues: Execution-time problems → Re-invoke orchestration-planning
+    %% 2. Walkthrough Failures: Guidance gaps from test-guidance-simulator → Re-invoke orchestration-planning
+    %% 3. Final Audit Failures: Output quality issues → Re-invoke orchestration-planning
+
+    WorktreeValid -- "Yes: Verified" --> CheckApprovedPlan{Pre-Approved Plan Provided?}
+
+    %% MODE 1: Pre-approved plan path provided
+    CheckApprovedPlan -- "Yes: Has Approved Plan" --> LoadApprovedPlan[Load Approved Plan from Input Path]
+    LoadApprovedPlan --> ValidatePlanFormat{Plan Format Valid?}
+
+    %% Validate plan structure before proceeding
+    ValidatePlanFormat -- "No: Invalid" --> AskUser
+
+    %% MODE 2: No pre-approved plan - delegate to orchestration-planning
+    CheckApprovedPlan -- "No: Needs Planning" --> SpawnOrchestrationPlanning[Spawn orchestration-planning Agent]
+    SpawnOrchestrationPlanning --> WaitForApproval{Plan Approved?}
+
+    %% User rejected or cancelled during planning
+    WaitForApproval -- "No: User Rejected/Cancelled" --> AskUser
+
+    %% Receive approved plan from orchestration-planning
+    WaitForApproval -- "Yes: Approved" --> ReceiveApprovedPlan[Receive Approved Plan Folder Path]
+
+    %% Both paths converge to execution phase
+    ValidatePlanFormat -- "Yes: Valid" --> SpawnTeachers
+    ReceiveApprovedPlan --> SpawnTeachers
+
+    %% ========================================
+    %% EXECUTION PHASE: Implement Guidance Changes
+    %% ========================================
+    %% Execution begins ONLY after approved plan is loaded/received:
+    %% - Implementation plan approved (from orchestration-planning)
+    %% - Test plan approved (from orchestration-planning)
+    SpawnTeachers[Spawn teacher agents] --> ExecutePhases[Execute Implementation Phases]
+
+    %% Continuous monitoring for execution-time issues
+    ExecutePhases --> ImplIssues{Implementation Issues?}
+
+    %% Fail-Fast & Recover: Return to planning by re-invoking orchestration-planning
+    ImplIssues -- "Yes: Failed" --> OffloadIssues[Offload to Appropriate Agent]
+    OffloadIssues --> UpdatePlan[Update Live Plan]
+    UpdatePlan -.->|Return to Planning| SpawnOrchestrationPlanning
+
+    %% ========================================
+    %% GUIDANCE VALIDATION PHASE
+    %% ========================================
+    %% Execute the test-guidance plan from orchestration-planning
+    %% Uses guidance-blind-test strategy to validate guidance completeness
+    %% GUIDELINE: assets/definitions/strategy-guidance-blind-test.yml
+    %% LOOP_DEFINITION: assets/definitions/agent-loops.yml#guidance-test-loop
+    %% MAX_ITERATIONS: 3 (per guidance-test-loop definition)
+    %% ESCALATION: If max iterations reached without passing validation, stop and Ask User with gap context
+    ImplIssues -- "No: Done" --> ExecuteGuidanceTests[Execute Test-Guidance Phases]
+    ExecuteGuidanceTests --> SpawnGuidanceSim[Spawn test-guidance-simulator]
+    %% PLAN STATUS UPDATE: Consume test results and update plan task statuses
+    %% Reference: assets/guidelines/orchestration-policy.yml - Plan Status Management rule
+    %% This step ensures task statuses reflect test outcomes before evaluating overall guidance validity
+    SpawnGuidanceSim --> UpdateTestStatuses[Update Plan Task Statuses from Test Results]
+    UpdateTestStatuses --> GuidancePassed{Guidance Valid?}
+
+    %% ========================================
+    %% GUIDANCE REPAIR LOOP: Failing walkthrough tests trigger re-planning
+    %% ========================================
+    %% BEHAVIOR: When test-guidance-simulator reports friction points:
+    %% 1. Categorize gaps by severity (CRITICAL/HIGH/MEDIUM/LOW from test-guidance-simulator)
+    %% 2. Update plan with gap categorization context for orchestration-planning
+    %% 3. Re-invoke orchestration-planning with:
+    %%    - Structured friction report from test-guidance-simulator
+    %%    - Specific guidance gaps with suggested fixes
+    %%    - Context on which walkthrough scenarios failed
+    %% 4. orchestration-planning re-executes BOTH planning loops
+    %% 5. Track iteration count against guidance-test-loop max_iterations (3)
+    %% ========================================
+    GuidancePassed -- "No: Gaps Found" --> CategorizeGaps[Categorize Friction Points & Route to Teacher Agents]
+    CategorizeGaps --> UpdatePlanGaps[Update Plan with Walkthrough Failure Details]
+    UpdatePlanGaps -.->|Return to Planning| SpawnOrchestrationPlanning
+
+    %% ========================================
+    %% FINAL AUDIT PHASE
+    %% ========================================
+    GuidancePassed -- "Yes: Verified" --> SpawnAudit[Spawn test-final-output Audit]
+    SpawnAudit --> FinalAudit{Final Audit Passed?}
+
+    %% If audit fails, re-invoke orchestration-planning for correction
+    FinalAudit -- "No: Failed" --> UpdatePlanIssues[Update Plan with Audit Issues]
+    UpdatePlanIssues -.->|Return to Planning| SpawnOrchestrationPlanning
+
+    %% ========================================
+    %% FINALIZATION
+    %% ========================================
+    %% Success: All criteria met. Finalize the work.
+    FinalAudit -- "Yes: Verified" --> MoveCompleted[Copy Completed Work to docs/plans/completed/]
+    MoveCompleted --> End((End))
+
+    %% COPY planning folder to completed/ (not move) - live/ may continue with follow-on work
+    %% Only user moves completed/ folders to archived/ subdirectory
+
+    %% Styling for feedback loops (return paths to orchestration-planning)
+    %% These dotted lines represent quality improvement cycles that re-invoke planning
+    classDef dashedstroke stroke-dasharray: 5 5;
+    linkStyle 26,33,37 stroke:#888,stroke-width:2px,stroke-dasharray: 5 5;

@@ -1,0 +1,102 @@
+# Agent Loop Definitions
+# Conceptual definition of agent loops - what they are and when to use each type.
+# Process files contain specific implementation details (which agents, execution patterns).
+
+agent_loop:
+  concept: |
+    An agent loop is an iterative execution pattern where multiple agents collaborate
+    in cycles until success criteria are met or maximum iterations reached.
+
+    Key characteristics:
+    - Multiple agents with distinct roles collaborate in each iteration
+    - Each iteration produces feedback that guides the next
+    - Loops have explicit exit conditions (success or max iterations)
+    - Maximum iterations prevent infinite loops; escalate to human if reached
+
+  structure: |
+    1. Initial action by primary agent(s)
+    2. Validation/feedback by secondary agent(s)
+    3. Fix/improve based on feedback
+    4. Repeat until exit condition met
+
+loop_types:
+  test-fix-loop:
+    purpose: "Iterative development with user simulation testing"
+    phase: "active-development"
+    when_to_use: "During active development to validate real user experience"
+    maximum_iterations: 5
+    core_pattern: "Build → Test → Fix → Repeat"
+
+  audit-test-fix-loop:
+    purpose: "Validate test quality and detect reward hacking"
+    phase: "test-validation"
+    when_to_use: "After initial testing to ensure tests are valid"
+    maximum_iterations: 3
+    mandatory: true
+    core_pattern: "Audit → Test → Fix → Repeat"
+
+  cleaner-voting-loop:
+    purpose: "Multi-agent consensus for safe cleanup decisions"
+    phase: "cleanup"
+    when_to_use: "Before removing code - requires consensus to reduce false positives"
+    maximum_iterations: 1
+    core_pattern: "Vote → Aggregate → Escalate/Execute"
+
+  documentation-loop:
+    purpose: "Validate documentation through blind testing"
+    phase: "documentation-validation"
+    when_to_use: "To prove documentation is complete and usable"
+    maximum_iterations: 3
+    core_pattern: "Attempt journey → Report gaps → Fix → Repeat"
+
+  exploration-loop:
+    purpose: "Iterative discovery and information gathering"
+    phase: "discovery"
+    when_to_use: "Before implementation when understanding is needed"
+    maximum_iterations: 3
+    core_pattern: "Explore → Analyze → Decide → Repeat"
+
+  planner-loop:
+    purpose: "Iterative planning with reviewer feedback"
+    phase: "planning"
+    when_to_use: "To create and refine implementation plans"
+    maximum_iterations: 5
+    core_pattern: "Define Phases → Populate Phases → Review → Repeat"
+
+  guidance-test-loop:
+    purpose: "Validate guidance completeness through agent simulation"
+    phase: "guidance-validation"
+    maximum_iterations: 3
+    core_pattern:
+      - "Define test task from guidance"
+      - "Spawn test-guidance-simulator"
+      - "Execute with minimal context"
+      - "Report guidance gaps found"
+      - "Update plan task statuses from report"
+      - "Fix gaps via teacher agents"
+      - "Repeat until no gaps remain"
+    participants:
+      - "planner-guidance-testing"
+      - "test-guidance-simulator"
+    exit_conditions:
+      - "All test scenarios pass"
+      - "No guidance gaps identified"
+      - "Max iterations reached (escalate)"
+
+phase_ordering:
+  description: |
+    Standard phase order for complete implementation cycles:
+  order:
+    - "1. test-fix-loop (active development)"
+    - "2. cleaner-voting-loop (cleanup)"
+    - "3. audit-test-fix-loop (MANDATORY after cleanup)"
+    - "4. documentation-loop (final phase)"
+
+mandatory_loops:
+  audit-test-fix-loop:
+    reason: "Must ALWAYS be included after cleanup - catches reward hacking and test quality issues"
+
+exit_conditions:
+  success: "All validation criteria met"
+  max_iterations: "Escalate to human for decision"
+  blocked: "Cannot proceed - escalate with context"
