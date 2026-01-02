@@ -76,7 +76,7 @@ lib/
 The `modules/legacy/MyAgents/projects/MyAgentsFrontend/` directory contains the previous Flutter implementation, providing:
 
 - **Proven patterns**: Pairing flow, WebSocket management, encryption layer
-- **User stories**: Detailed acceptance criteria in `docs/services/userstories/MyAgentsFrontend/`
+- **User stories**: Detailed acceptance criteria in `modules/AgenticGuidance/userstories/MyAgentsFrontend/`
 - **Architecture decisions**: Clean state management (PairingState, PairingController, PairingScreen)
 - **CI/CD pipeline**: Cloud Build configuration for testing and deployment
 
