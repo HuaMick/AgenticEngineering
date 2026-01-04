@@ -31,19 +31,20 @@ inputs:
   core_inputs:
     # Deploy-worktree specific files
     - type: file
-      path: "deploy/deploy-worktree/manifest.yml"
+      path: "agents/deploy/deploy-worktree/manifest.yml"
       description: "Deploy-worktree agent manifest and metadata"
       required: true
 
     # VS Code workspace configuration
     - type: file
-      path: "/home/code/myagents/myagents.code-workspace"
+      path: "${REPO_ROOT}/*.code-workspace"
       description: "VS Code workspace file that tracks all worktrees and repository folders"
-      required: true
+      required: false
 
     # Planning and Environment Setup
+    # NOTE: docs/plans/ is at repository root level, not within AgenticGuidance module
     - type: directory
-      path: "docs/plans/"
+      path: "${REPO_ROOT}/docs/plans/"
       description: "Central location for all planning artifacts (live, backlog, completed)"
       required: true
 
@@ -66,13 +67,10 @@ inputs:
       Each worktree can have a different branch checked out, enabling parallel development
       without switching branches in the main working directory.
 
-      Worktree structure in this project:
-      - /home/code/myagents/MyAgents - main branch (source of truth)
-      - /home/code/myagents/MyAgents-staging - staging branch
-      - /home/code/myagents/MyAgents-<branch> - feature branch worktrees
-
-      Similarly for other repositories:
-      - Agent-GCPtoolkit, RemoteAgents, MyAgentsFrontend
+      Worktree structure pattern:
+      - <repo-root> - main branch (source of truth)
+      - <repo-root>-staging - staging branch
+      - <repo-root>-<branch> - feature branch worktrees
 
       Commands:
       - Create: git worktree add -b <branch> <path>
@@ -80,7 +78,7 @@ inputs:
       - Remove: git worktree remove <path>
 
     workspace_file: |
-      VS Code workspace file (myagents.code-workspace) is a JSON configuration that:
+      VS Code workspace file (*.code-workspace) is a JSON configuration that:
       - Defines multiple folder roots for the workspace
       - Configures git repository scanning for multi-repo support
       - Maintains consistent naming: "RepoName (branch-name)"
@@ -98,30 +96,28 @@ inputs:
       Worktree directories follow the pattern: <RepoName>-<branch-name>
 
       Examples:
-      - MyAgents-staging (staging branch)
-      - MyAgents-cloud-deploy (cloud-deploy branch)
-      - Agent-GCPtoolkit-staging (staging branch)
+      - Repo-staging (staging branch)
+      - Repo-feature-abc (feature-abc branch)
 
       Workspace folder names use: "<RepoName> (<branch-name>)"
 
       Examples:
-      - "MyAgents (staging)"
-      - "MyAgents (cloud-deploy)"
-      - "Agent-GCPtoolkit (staging)"
+      - "Repo (staging)"
+      - "Repo (feature-abc)"
 
     branch_strategy: |
       This project follows a structured branching strategy:
 
-      Main branch (/home/code/myagents/MyAgents):
+      Main branch:
       - Source of truth for agent guidance and process definitions
       - Production-ready code
       - PRs to main trigger CI/CD
 
-      Staging branch (/home/code/myagents/MyAgents-staging):
+      Staging branch:
       - Pre-release integration testing
       - All dev branches MUST merge to staging first
 
-      Feature branches (/home/code/myagents/MyAgents-<feature>):
+      Feature branches:
       - Development work for specific features
       - Merge to staging, never directly to main
 
@@ -158,5 +154,4 @@ inputs:
 
       Naming Convention (from plans.yml):
       - Format: YYMMDD<RepoAbbreviation>_<BranchName>
-      - Repo Abbreviations: MA (MyAgents), GCP (Agent-GCPtoolkit), RA (RemoteAgents), FE (MyAgentsFrontend)
-      - Example: 251221MA_feature-abc
+      - Example: 251221Repo_feature-abc
