@@ -1,0 +1,809 @@
+# Iteration 23 Build Plan - FINAL FEAT-12 Iteration
+# FEAT-12: Architectural Alignment with MyAgentsBackend
+# Tasks: 12.15 (Environment Injection) + 12.18 (Templating & Discovery)
+# Target: Complete FEAT-12 at 100% (18/18 tasks)
+
+iteration:
+  number: 23
+  date: "2026-01-04"
+  status: planning
+  feature: "FEAT-12 Architectural Alignment - FINAL"
+
+  summary: |
+    Complete the final two FEAT-12 tasks to achieve 100% architectural alignment.
+
+    Task 12.15: Context-Aware Environment Injection
+    - Secure in-memory environment provider for subprocess execution
+    - No .env file creation - secrets stay in memory only
+    - Integration with TieredConfigLoader for secret sources
+
+    Task 12.18: Robust Templating & Discovery
+    - Jinja2 templates replace simple string interpolation
+    - Provider-agnostic CI/CD auditing (GitHub Actions + Cloud Build)
+    - Tiered story discovery mechanism
+
+    This iteration completes FEAT-12 and marks AgenticCLI v0.1.0 as architecturally
+    aligned with the reference implementation.
+
+  prior_state:
+    tests_passing: 226
+    lint_status: clean
+    feat_12_progress: "16/18 (89%)"
+
+  target_state:
+    tests_passing: "260+"
+    lint_status: clean
+    feat_12_progress: "18/18 (100%)"
+
+  selected_tasks:
+    - id: "12.15"
+      title: "Context-Aware Environment Injection"
+      effort: MEDIUM
+      rationale: |
+        Enables secure secret handling for subprocess execution.
+        Avoids .env file side effects while maintaining tool compatibility.
+        Leverages TieredConfigLoader infrastructure from task 12.6.
+
+    - id: "12.18"
+      title: "Robust Templating & Discovery"
+      effort: MEDIUM
+      rationale: |
+        Completes CLI tooling with production-ready templates.
+        Multi-provider CI/CD support future-proofs auditing.
+        Tiered story discovery aligns with config tier pattern.
+
+# =============================================================================
+# PHASE 1: Environment Injection Infrastructure (Task 12.15)
+# =============================================================================
+phases:
+  - id: "phase-1"
+    name: "Context-Aware Environment Injection"
+    task_id: "12.15"
+    status: pending
+    estimated_effort: "3-4 hours"
+
+    objective: |
+      Implement a secure environment provider that injects secrets and configuration
+      directly into subprocesses at runtime. Key requirements:
+      - No .env file creation (in-memory only)
+      - Integration with TieredConfigLoader for secret sources
+      - Support for secret masking in logs
+      - Compatible with tools that expect environment variables
+
+    inputs:
+      - path: "modules/AgenticCLI/src/agenticcli/workflows/config_workflow.py"
+        description: "TieredConfigLoader - use for config/secret sources"
+      - path: "modules/AgenticCLI/src/agenticcli/context.py"
+        description: "CLIContext - add environment provider methods"
+      - path: "modules/AgenticCLI/src/agenticcli/logging.py"
+        description: "Logging setup - add secret masking capability"
+
+    implementation_steps:
+      - id: "1.1"
+        title: "Create EnvironmentProvider workflow"
+        description: |
+          Create src/agenticcli/workflows/environment_workflow.py with:
+
+          @dataclass
+          class SecretValue:
+              name: str
+              value: str
+              source: ConfigSource  # From config_workflow
+              masked: bool = True
+
+          @dataclass
+          class EnvironmentProvider:
+              """In-memory environment variable provider for subprocess execution."""
+              config_loader: TieredConfigLoader
+              secrets: dict[str, SecretValue] = field(default_factory=dict)
+
+              def load_from_config(self) -> None:
+                  """Load env vars from tiered config (secrets.* keys)."""
+
+              def load_from_env_file(self, path: Path, in_memory_only: bool = True) -> None:
+                  """Parse .env file but only store in memory, never write."""
+
+              def get_subprocess_env(self) -> dict[str, str]:
+                  """Return env dict suitable for subprocess.run(env=...)."""
+
+              def get_masked_env(self) -> dict[str, str]:
+                  """Return env dict with secret values masked for logging."""
+
+              def inject(self, command: list[str], **kwargs) -> subprocess.CompletedProcess:
+                  """Execute command with injected environment."""
+        files:
+          - action: create
+            path: "modules/AgenticCLI/src/agenticcli/workflows/environment_workflow.py"
+
+      - id: "1.2"
+        title: "Add secrets configuration to TieredConfigLoader"
+        description: |
+          Extend DEFAULT_CONFIG in config_workflow.py:
+
+          DEFAULT_CONFIG = {
+              ...
+              "secrets": {
+                  "mask_in_logs": True,
+                  "sources": ["env", "config"],  # Load order
+              },
+              "environment": {
+                  "inherit_parent": True,  # Inherit parent process env
+                  "allowed_prefixes": ["AGENTIC_", "GIT_", "HOME", "PATH", "USER"],
+              },
+          }
+
+          Add ENV_VAR_MAPPING entries:
+          - AGENTIC_SECRET_* -> secrets.custom.*
+        files:
+          - action: modify
+            path: "modules/AgenticCLI/src/agenticcli/workflows/config_workflow.py"
+
+      - id: "1.3"
+        title: "Add secret masking to logging"
+        description: |
+          Extend logging.py with secret masking filter:
+
+          class SecretMaskingFilter(logging.Filter):
+              """Masks secret values in log output."""
+              def __init__(self, secrets: set[str]):
+                  self.secrets = secrets
+
+              def filter(self, record: logging.LogRecord) -> bool:
+                  for secret in self.secrets:
+                      if secret in str(record.msg):
+                          record.msg = str(record.msg).replace(secret, "***")
+                  return True
+
+          def register_secrets_for_masking(secrets: set[str]) -> None:
+              """Register secret values to be masked in all log output."""
+        files:
+          - action: modify
+            path: "modules/AgenticCLI/src/agenticcli/logging.py"
+
+      - id: "1.4"
+        title: "Add environment provider to CLIContext"
+        description: |
+          Extend context.py with:
+
+          @property
+          def environment_provider(self) -> EnvironmentProvider:
+              """Get environment provider for subprocess execution."""
+              from agenticcli.workflows.environment_workflow import EnvironmentProvider
+              return EnvironmentProvider(config_loader=self.get_tiered_config())
+
+          def run_with_env(self, command: list[str], **kwargs) -> subprocess.CompletedProcess:
+              """Run subprocess with injected environment from config."""
+              return self.environment_provider.inject(command, **kwargs)
+        files:
+          - action: modify
+            path: "modules/AgenticCLI/src/agenticcli/context.py"
+
+      - id: "1.5"
+        title: "Create env command group"
+        description: |
+          Create commands/env.py with subcommands:
+
+          - agentic env show
+            Shows current environment configuration (with secrets masked)
+
+          - agentic env export --format=shell|json
+            Exports env vars in shell or JSON format (for debugging)
+            NEVER exports actual secret values - shows placeholder
+
+          - agentic env run -- <command>
+            Runs a command with the injected environment
+            Example: agentic env run -- python script.py
+        files:
+          - action: create
+            path: "modules/AgenticCLI/src/agenticcli/commands/env.py"
+          - action: modify
+            path: "modules/AgenticCLI/src/agenticcli/cli.py"
+
+    tests:
+      - path: "modules/AgenticCLI/tests/test_environment.py"
+        scenarios:
+          - "EnvironmentProvider loads secrets from config"
+          - "EnvironmentProvider parses .env file in-memory only"
+          - "get_subprocess_env() returns complete env dict"
+          - "get_masked_env() replaces secret values with ***"
+          - "inject() passes env to subprocess"
+          - "SecretMaskingFilter masks secrets in log messages"
+          - "Parent environment inheritance (when configured)"
+          - "Allowed prefix filtering"
+          - "env show command output (masked)"
+          - "env export --format=shell output"
+          - "env export --format=json output"
+          - "env run executes command with injected env"
+          - "JSON output mode for env commands"
+          - "No .env files created during any operation"
+        estimated_count: 15-18
+
+    success_criteria:
+      - "EnvironmentProvider loads from TieredConfigLoader"
+      - "Secrets are never written to disk"
+      - "Secret values are masked in all log output"
+      - "'agentic env show' displays masked env configuration"
+      - "'agentic env run' executes commands with correct env"
+      - "All tests pass (target: 15+ tests)"
+
+    user_validation:
+      - command: "agentic env show"
+        expected: "Shows environment configuration with secrets masked as ***"
+      - command: "agentic --json env show"
+        expected: "JSON output with masked secret values"
+      - command: "agentic env run -- echo $HOME"
+        expected: "Runs echo with inherited HOME variable"
+      - command: "agentic env export --format=shell"
+        expected: "Outputs shell export statements with placeholder secrets"
+
+# =============================================================================
+# PHASE 2: Jinja2 Templating System (Task 12.18 - Part A)
+# =============================================================================
+  - id: "phase-2"
+    name: "Jinja2 Template System"
+    task_id: "12.18"
+    status: pending
+    estimated_effort: "2-3 hours"
+
+    objective: |
+      Replace simple string.format() templates with Jinja2 for richer
+      plan generation. Enable template inheritance, conditionals, and
+      custom filters for plan/guidance document generation.
+
+    inputs:
+      - path: "modules/AgenticCLI/src/agenticcli/commands/template.py"
+        description: "Current template command - refactor to use Jinja2"
+      - path: "modules/AgenticGuidance/assets/examples/planner/"
+        description: "Reference templates for plan structure"
+
+    implementation_steps:
+      - id: "2.1"
+        title: "Add Jinja2 dependency"
+        description: |
+          Update pyproject.toml:
+          dependencies = [
+              ...
+              "jinja2>=3.1",
+          ]
+        files:
+          - action: modify
+            path: "modules/AgenticCLI/pyproject.toml"
+
+      - id: "2.2"
+        title: "Create TemplateWorkflow"
+        description: |
+          Create src/agenticcli/workflows/template_workflow.py with:
+
+          @dataclass
+          class TemplateWorkflow:
+              """Jinja2-based template rendering for plan generation."""
+
+              template_dirs: list[Path] = field(default_factory=list)
+              env: jinja2.Environment = field(init=False)
+
+              def __post_init__(self):
+                  self.env = jinja2.Environment(
+                      loader=jinja2.FileSystemLoader(self.template_dirs),
+                      autoescape=False,  # YAML output
+                      trim_blocks=True,
+                      lstrip_blocks=True,
+                  )
+                  self._register_filters()
+
+              def _register_filters(self):
+                  """Register custom filters for plan generation."""
+                  self.env.filters['date_format'] = self._date_format
+                  self.env.filters['slugify'] = self._slugify
+                  self.env.filters['yaml_safe'] = self._yaml_safe
+
+              def render(self, template_name: str, context: dict) -> str:
+                  """Render a template with given context."""
+
+              def render_string(self, template_str: str, context: dict) -> str:
+                  """Render a template string (for inline templates)."""
+
+              def list_templates(self) -> list[dict]:
+                  """List available templates with metadata."""
+        files:
+          - action: create
+            path: "modules/AgenticCLI/src/agenticcli/workflows/template_workflow.py"
+
+      - id: "2.3"
+        title: "Create template files directory"
+        description: |
+          Create bundled templates in src/agenticcli/templates/:
+
+          templates/
+            base.yml.j2           # Base template with common structure
+            plan_build.yml.j2     # Build plan template
+            plan_test.yml.j2      # Test plan template
+            plan_cleanup.yml.j2   # Cleanup/audit plan template
+            plan_guidance.yml.j2  # Guidance improvement template
+            iteration.yml.j2      # Iteration plan template
+
+          Each template includes:
+          - Jinja2 inheritance from base.yml.j2
+          - Variables for worktree, branch, date, etc.
+          - Conditional sections based on context
+        files:
+          - action: create
+            path: "modules/AgenticCLI/src/agenticcli/templates/base.yml.j2"
+          - action: create
+            path: "modules/AgenticCLI/src/agenticcli/templates/plan_build.yml.j2"
+          - action: create
+            path: "modules/AgenticCLI/src/agenticcli/templates/plan_test.yml.j2"
+          - action: create
+            path: "modules/AgenticCLI/src/agenticcli/templates/plan_cleanup.yml.j2"
+          - action: create
+            path: "modules/AgenticCLI/src/agenticcli/templates/plan_guidance.yml.j2"
+          - action: create
+            path: "modules/AgenticCLI/src/agenticcli/templates/iteration.yml.j2"
+
+      - id: "2.4"
+        title: "Refactor template command to use Jinja2"
+        description: |
+          Update commands/template.py:
+          - Replace TEMPLATES dict with Jinja2 file-based templates
+          - Add --context flag to pass custom variables
+          - Add --template-dir flag to specify custom template directory
+          - Maintain backward compatibility with existing template types
+
+          New usage:
+            agentic template generate build --output plan.yml
+            agentic template generate build --context '{"feature": "auth"}' -o plan.yml
+            agentic template list  # Shows all available templates with descriptions
+        files:
+          - action: modify
+            path: "modules/AgenticCLI/src/agenticcli/commands/template.py"
+
+    tests:
+      - path: "modules/AgenticCLI/tests/test_template_workflow.py"
+        scenarios:
+          - "TemplateWorkflow renders simple template"
+          - "Template inheritance from base.yml.j2"
+          - "Custom filters (date_format, slugify, yaml_safe)"
+          - "Context variables passed to template"
+          - "Conditional blocks render correctly"
+          - "template generate uses Jinja2 templates"
+          - "template list shows all available templates"
+          - "--context flag passes custom variables"
+          - "--template-dir uses custom directory"
+          - "Backward compatibility with existing template types"
+        estimated_count: 10-12
+
+    success_criteria:
+      - "Jinja2 templates replace string.format() templates"
+      - "Template inheritance works for plan types"
+      - "Custom filters available for date/slug/yaml operations"
+      - "'agentic template generate' uses new templates"
+      - "Existing template types still work"
+      - "All tests pass (target: 10+ tests)"
+
+    user_validation:
+      - command: "agentic template list"
+        expected: "Shows all templates including new Jinja2 templates"
+      - command: "agentic template generate build -o /tmp/test.yml"
+        expected: "Generates build plan using Jinja2 template"
+      - command: "agentic template generate iteration --context '{\"iteration\": 23}'"
+        expected: "Generates iteration plan with iteration number 23"
+
+# =============================================================================
+# PHASE 3: Provider-Agnostic CI/CD Auditing (Task 12.18 - Part B)
+# =============================================================================
+  - id: "phase-3"
+    name: "Multi-Provider CI/CD Auditing"
+    task_id: "12.18"
+    status: pending
+    estimated_effort: "2-3 hours"
+    depends_on: ["phase-2"]
+
+    objective: |
+      Extend CI/CD auditing to support multiple providers (GitHub Actions,
+      Cloud Build, CircleCI) through a plugin-like architecture.
+
+    inputs:
+      - path: "modules/AgenticCLI/src/agenticcli/commands/cicd.py"
+        description: "Current cicd command - extend with provider plugins"
+
+    implementation_steps:
+      - id: "3.1"
+        title: "Create CI/CD provider abstraction"
+        description: |
+          Create src/agenticcli/workflows/cicd_workflow.py with:
+
+          from abc import ABC, abstractmethod
+
+          class CICDProvider(ABC):
+              """Abstract base for CI/CD configuration providers."""
+
+              @abstractmethod
+              def detect(self, project_root: Path) -> bool:
+                  """Return True if this provider's config exists."""
+
+              @abstractmethod
+              def parse_config(self, project_root: Path) -> dict:
+                  """Parse the provider's configuration."""
+
+              @abstractmethod
+              def get_test_steps(self, config: dict) -> list[dict]:
+                  """Extract test steps from configuration."""
+
+              @abstractmethod
+              def get_build_steps(self, config: dict) -> list[dict]:
+                  """Extract build steps from configuration."""
+
+          class CloudBuildProvider(CICDProvider):
+              """Google Cloud Build provider (cloudbuild.yaml)."""
+
+          class GitHubActionsProvider(CICDProvider):
+              """GitHub Actions provider (.github/workflows/*.yml)."""
+
+          class CircleCIProvider(CICDProvider):
+              """CircleCI provider (.circleci/config.yml)."""
+
+          @dataclass
+          class CICDWorkflow:
+              """Multi-provider CI/CD auditing workflow."""
+              providers: list[CICDProvider] = field(default_factory=list)
+
+              def __post_init__(self):
+                  if not self.providers:
+                      self.providers = [
+                          CloudBuildProvider(),
+                          GitHubActionsProvider(),
+                          CircleCIProvider(),
+                      ]
+
+              def detect_provider(self, project_root: Path) -> CICDProvider | None:
+                  """Detect which CI/CD provider is configured."""
+
+              def audit(self, project_root: Path) -> dict:
+                  """Run full audit across all detected providers."""
+        files:
+          - action: create
+            path: "modules/AgenticCLI/src/agenticcli/workflows/cicd_workflow.py"
+
+      - id: "3.2"
+        title: "Implement GitHub Actions provider"
+        description: |
+          GitHubActionsProvider implementation:
+          - Detect .github/workflows/*.yml files
+          - Parse workflow files, extract jobs and steps
+          - Identify test steps (pytest, npm test, etc.)
+          - Map 'runs-on' to platform info
+          - Handle matrix builds
+
+          Special handling:
+          - Multi-file workflows (combine results)
+          - Reusable workflows (detect, note in audit)
+          - Composite actions (note as external dependency)
+
+      - id: "3.3"
+        title: "Implement CircleCI provider"
+        description: |
+          CircleCIProvider implementation:
+          - Detect .circleci/config.yml
+          - Parse orbs, jobs, and workflows sections
+          - Identify test jobs and steps
+          - Handle workflow dependencies
+
+          Special handling:
+          - Orb usage (note as external dependency)
+          - Caching configuration
+          - Parallelism settings
+
+      - id: "3.4"
+        title: "Refactor cicd command to use providers"
+        description: |
+          Update commands/cicd.py:
+          - Use CICDWorkflow for provider detection and parsing
+          - Support --provider flag to force specific provider
+          - Enhanced audit output showing provider-specific details
+          - Add 'cicd providers' subcommand to list detected providers
+
+          New usage:
+            agentic cicd audit                    # Auto-detect provider
+            agentic cicd audit --provider github  # Force GitHub Actions
+            agentic cicd providers                # List detected providers
+        files:
+          - action: modify
+            path: "modules/AgenticCLI/src/agenticcli/commands/cicd.py"
+
+    tests:
+      - path: "modules/AgenticCLI/tests/test_cicd_providers.py"
+        scenarios:
+          - "CloudBuildProvider detects cloudbuild.yaml"
+          - "CloudBuildProvider parses steps correctly"
+          - "GitHubActionsProvider detects .github/workflows/"
+          - "GitHubActionsProvider handles multiple workflow files"
+          - "GitHubActionsProvider extracts test jobs"
+          - "CircleCIProvider detects .circleci/config.yml"
+          - "CircleCIProvider parses jobs and workflows"
+          - "CICDWorkflow auto-detects provider"
+          - "cicd audit uses correct provider"
+          - "cicd audit --provider forces specific provider"
+          - "cicd providers lists detected providers"
+          - "JSON output for all cicd commands"
+        estimated_count: 12-15
+
+    success_criteria:
+      - "Three CI/CD providers implemented (Cloud Build, GitHub, CircleCI)"
+      - "Provider auto-detection works correctly"
+      - "'agentic cicd audit' works with any provider"
+      - "'agentic cicd providers' lists available providers"
+      - "All tests pass (target: 12+ tests)"
+
+    user_validation:
+      - command: "agentic cicd providers"
+        expected: "Lists detected CI/CD providers in project"
+      - command: "agentic cicd audit"
+        expected: "Runs audit with auto-detected provider"
+      - command: "agentic --json cicd audit"
+        expected: "JSON output with provider info and audit results"
+
+# =============================================================================
+# PHASE 4: Tiered Story Discovery (Task 12.18 - Part C)
+# =============================================================================
+  - id: "phase-4"
+    name: "Tiered Story Discovery"
+    task_id: "12.18"
+    status: pending
+    estimated_effort: "1-2 hours"
+    depends_on: ["phase-2"]
+
+    objective: |
+      Replace hardcoded story paths with a tiered discovery mechanism,
+      similar to TieredConfigLoader. Support project-local, module, and
+      global story locations.
+
+    inputs:
+      - path: "modules/AgenticCLI/src/agenticcli/commands/stories.py"
+        description: "Current stories command - refactor discovery"
+      - path: "modules/AgenticCLI/src/agenticcli/workflows/config_workflow.py"
+        description: "TieredConfigLoader pattern reference"
+
+    implementation_steps:
+      - id: "4.1"
+        title: "Create StoryDiscovery workflow"
+        description: |
+          Create src/agenticcli/workflows/story_workflow.py with:
+
+          @dataclass
+          class StoryLocation:
+              path: Path
+              source: str  # 'project', 'module', 'global'
+              priority: int
+
+          @dataclass
+          class StoryDiscovery:
+              """Tiered story location discovery."""
+              project_root: Path | None = None
+              config_dir: Path | None = None
+
+              def get_search_locations(self) -> list[StoryLocation]:
+                  """Get ordered list of story locations to search.
+
+                  Priority (highest first):
+                  1. Project stories: <project>/userstories/
+                  2. Project stories: <project>/stories/
+                  3. Module stories: <project>/modules/*/userstories/
+                  4. Global stories: ~/.config/agenticcli/stories/
+                  """
+
+              def discover_stories(self, filters: dict | None = None) -> list[dict]:
+                  """Find all stories across all tiers."""
+
+              def get_story_by_id(self, story_id: str) -> dict | None:
+                  """Find a specific story by ID."""
+        files:
+          - action: create
+            path: "modules/AgenticCLI/src/agenticcli/workflows/story_workflow.py"
+
+      - id: "4.2"
+        title: "Add story configuration to TieredConfigLoader"
+        description: |
+          Extend DEFAULT_CONFIG in config_workflow.py:
+
+          DEFAULT_CONFIG = {
+              ...
+              "stories": {
+                  "search_paths": [],  # Additional custom paths
+                  "file_patterns": ["*.yml", "*.yaml"],
+                  "exclude_patterns": ["*_template.yml"],
+              },
+          }
+
+          Add ENV_VAR_MAPPING:
+          - AGENTIC_STORIES_PATH -> stories.search_paths (colon-separated)
+        files:
+          - action: modify
+            path: "modules/AgenticCLI/src/agenticcli/workflows/config_workflow.py"
+
+      - id: "4.3"
+        title: "Refactor stories command to use discovery"
+        description: |
+          Update commands/stories.py:
+          - Use StoryDiscovery instead of _find_userstories_dir()
+          - Show source location for each story
+          - Add --source filter (project, module, global)
+          - Enhanced output showing story tier
+
+          New output format:
+            US-INSTALL-001: Installation smoke test [project]
+            US-CLI-001: CLI help command [module: AgenticGuidance]
+        files:
+          - action: modify
+            path: "modules/AgenticCLI/src/agenticcli/commands/stories.py"
+
+    tests:
+      - path: "modules/AgenticCLI/tests/test_story_discovery.py"
+        scenarios:
+          - "StoryDiscovery finds project stories"
+          - "StoryDiscovery finds module stories"
+          - "StoryDiscovery respects priority order"
+          - "Custom search paths from config"
+          - "File pattern matching"
+          - "Exclude pattern filtering"
+          - "stories find uses tiered discovery"
+          - "--source filter works correctly"
+          - "Story source attribution in output"
+          - "JSON output includes source info"
+        estimated_count: 10-12
+
+    success_criteria:
+      - "StoryDiscovery searches multiple locations"
+      - "Priority order respected (project > module > global)"
+      - "Stories show source location in output"
+      - "'agentic stories find' uses new discovery"
+      - "All tests pass (target: 10+ tests)"
+
+    user_validation:
+      - command: "agentic stories find"
+        expected: "Shows stories from all tiers with source attribution"
+      - command: "agentic stories find --source project"
+        expected: "Shows only project-local stories"
+      - command: "agentic --json stories find"
+        expected: "JSON output includes source tier for each story"
+
+# =============================================================================
+# PHASE 5: Integration & FEAT-12 Completion
+# =============================================================================
+  - id: "phase-5"
+    name: "Integration Testing & FEAT-12 Completion"
+    status: pending
+    estimated_effort: "1-2 hours"
+    depends_on: ["phase-1", "phase-2", "phase-3", "phase-4"]
+
+    objective: |
+      Verify end-to-end functionality, update documentation, run full test
+      suite, and mark FEAT-12 as 100% complete.
+
+    implementation_steps:
+      - id: "5.1"
+        title: "Run full test suite"
+        description: |
+          Execute: make test-all
+          Target: 260+ tests passing (226 existing + 35+ new)
+          Verify no regressions.
+        commands:
+          - "cd /home/code/AgenticEngineering-agentic-cli/modules/AgenticCLI && make test-all"
+
+      - id: "5.2"
+        title: "Run linter and fix issues"
+        description: |
+          Execute: ruff check src/ tests/
+          Fix any new linting issues.
+        commands:
+          - "cd /home/code/AgenticEngineering-agentic-cli/modules/AgenticCLI && ruff check src/ tests/"
+
+      - id: "5.3"
+        title: "Update CLI help text"
+        description: |
+          Ensure --help for new commands is clear:
+          - agentic env --help
+          - agentic template --help (updated)
+          - agentic cicd --help (updated)
+          - agentic stories --help (updated)
+
+      - id: "5.4"
+        title: "Update feature_12_architectural_alignment.yml"
+        description: |
+          Mark tasks 12.15 and 12.18 as completed:
+
+          - id: "12.15"
+            task: "Implement Context-Aware Environment Injection"
+            status: completed
+            completed_iteration: 23
+            implementation: |
+              - Created EnvironmentProvider in workflows/environment_workflow.py
+              - In-memory secret handling with no .env file creation
+              - Secret masking in logs via SecretMaskingFilter
+              - env command group (show, export, run)
+
+          - id: "12.18"
+            task: "Implement Robust Templating & Discovery"
+            status: completed
+            completed_iteration: 23
+            implementation: |
+              - Jinja2 TemplateWorkflow replaces string templates
+              - Multi-provider CI/CD (CloudBuild, GitHub, CircleCI)
+              - Tiered StoryDiscovery with source attribution
+        files:
+          - action: modify
+            path: "docs/plans/live/260103AE_agentic-cli/live/feature_12_architectural_alignment.yml"
+
+      - id: "5.5"
+        title: "Update plan_next_actions.yml"
+        description: |
+          Update FEAT-12 status to completed (100%).
+          Move to completed_features section.
+          Add iteration 23 metrics.
+        files:
+          - action: modify
+            path: "docs/plans/live/260103AE_agentic-cli/live/plan_next_actions.yml"
+
+    success_criteria:
+      - "make test-all passes with 260+ tests"
+      - "ruff check passes with 0 issues"
+      - "CLI help text complete for all new commands"
+      - "feature_12 file shows 18/18 tasks completed"
+      - "FEAT-12 marked as 100% complete"
+
+# =============================================================================
+# SUMMARY
+# =============================================================================
+summary:
+  total_phases: 5
+  estimated_duration: "10-14 hours"
+
+  new_files:
+    - "modules/AgenticCLI/src/agenticcli/workflows/environment_workflow.py"
+    - "modules/AgenticCLI/src/agenticcli/workflows/template_workflow.py"
+    - "modules/AgenticCLI/src/agenticcli/workflows/cicd_workflow.py"
+    - "modules/AgenticCLI/src/agenticcli/workflows/story_workflow.py"
+    - "modules/AgenticCLI/src/agenticcli/commands/env.py"
+    - "modules/AgenticCLI/src/agenticcli/templates/base.yml.j2"
+    - "modules/AgenticCLI/src/agenticcli/templates/plan_build.yml.j2"
+    - "modules/AgenticCLI/src/agenticcli/templates/plan_test.yml.j2"
+    - "modules/AgenticCLI/src/agenticcli/templates/plan_cleanup.yml.j2"
+    - "modules/AgenticCLI/src/agenticcli/templates/plan_guidance.yml.j2"
+    - "modules/AgenticCLI/src/agenticcli/templates/iteration.yml.j2"
+    - "modules/AgenticCLI/tests/test_environment.py"
+    - "modules/AgenticCLI/tests/test_template_workflow.py"
+    - "modules/AgenticCLI/tests/test_cicd_providers.py"
+    - "modules/AgenticCLI/tests/test_story_discovery.py"
+
+  modified_files:
+    - "modules/AgenticCLI/pyproject.toml"
+    - "modules/AgenticCLI/src/agenticcli/context.py"
+    - "modules/AgenticCLI/src/agenticcli/logging.py"
+    - "modules/AgenticCLI/src/agenticcli/workflows/config_workflow.py"
+    - "modules/AgenticCLI/src/agenticcli/commands/template.py"
+    - "modules/AgenticCLI/src/agenticcli/commands/cicd.py"
+    - "modules/AgenticCLI/src/agenticcli/commands/stories.py"
+    - "modules/AgenticCLI/src/agenticcli/cli.py"
+    - "docs/plans/live/260103AE_agentic-cli/live/feature_12_architectural_alignment.yml"
+    - "docs/plans/live/260103AE_agentic-cli/live/plan_next_actions.yml"
+
+  dependencies_added:
+    - "jinja2>=3.1 (templating)"
+
+  new_commands:
+    - "agentic env show"
+    - "agentic env export"
+    - "agentic env run"
+    - "agentic cicd providers"
+
+  expected_test_count: "260+ (226 existing + 35+ new)"
+
+  feat_12_completion:
+    before: "16/18 (89%)"
+    after: "18/18 (100%)"
+    tasks_completed_this_iteration:
+      - "12.15: Context-Aware Environment Injection"
+      - "12.18: Robust Templating & Discovery"
+
+  milestone: |
+    This iteration completes FEAT-12: Architectural Alignment with MyAgentsBackend.
+    AgenticCLI v0.1.0 will be fully aligned with the reference implementation,
+    including all workflow patterns, tiered configuration, and tooling standards.

@@ -44,27 +44,69 @@ plan_lifecycle:
      - Folder copied to docs/plans/completed/
      - May or may not remain in docs/plans/live/ (user decision)
 
-two_level_completion_pattern:
-  Plans use a two-level completion model to distinguish individual task completion from overall plan completion:
+file_taxonomy:
+  Agents can create ANY .yml files during planning/execution (no naming restrictions).
+  The file's LOCATION determines its status, not its name:
 
-  ITEM-LEVEL COMPLETION (MOVE pattern):
-  - Individual tasks/items are marked completed in the live plan
-  - Completed items are MOVED from live/*.yml to completed/plan_completed.yml
-  - This removes completed work from active context to reduce cognitive load
-  - The completed/ folder serves as an archive of finished work within the active plan folder
+  live/ subfolder:
+    purpose: "Active work files (in progress or pending)"
+    contains: "Any .yml files the agent creates during planning/execution"
+    reserved_files:
+      - plan_live_*.yml: "Phase definition files (stay in live/)"
+      - plan_next_actions.yml: "Active tracking file (stays in live/)"
+
+  completed/ subfolder:
+    purpose: "Finished work files (done, verified)"
+    contains: "Files moved from live/ when all their tasks are complete"
+    reserved_files:
+      - plan_completed.yml: "Summary index of completed items (stays in completed/)"
+
+  analysis/ subfolder:
+    purpose: "Iteration logs and analysis artifacts"
+    contains: "plan_iteration_*.yml files and .md analysis documents"
+
+two_level_completion_pattern:
+  Plans use a two-level completion model: item-level sync and folder-level copy.
+
+  FILE-LEVEL COMPLETION (Copy-and-Sync pattern):
+  Files stay in live/ while work continues. Completed items are synced to a copy in completed/.
+
+  INCREMENTAL COMPLETION (partial file completion):
+  - File remains in live/ while any items are pending/in-progress
+  - Create/update a COPY in completed/ containing ONLY completed items
+  - Both copies coexist: live/ has all items, completed/ has only done items
+  Example:
+    live/my_feature.yml         # 5 items: 3 completed, 2 pending
+    completed/my_feature.yml    # 3 items: only the completed ones
+
+  FULL COMPLETION (all items done):
+  - When ALL items in a file have status: completed
+  - Ensure completed/ copy has all items
+  - DELETE the file from live/ (no longer needed)
+  - File now exists ONLY in completed/
+  Example:
+    rm live/my_feature.yml      # All done, remove working copy
+    completed/my_feature.yml    # Authoritative completed version
+
+  REACTIVATION (issues found post-completion):
+  - COPY file back from completed/ to live/
+  - Update affected items' status to reflect the issue
+  - Keep completed/ copy as historical record
+  - Sync changes back to completed/ as items are re-completed
 
   FOLDER-LEVEL COMPLETION (COPY-NOT-MOVE pattern):
   - When ALL items in a plan folder are completed (status: 'fully_completed')
   - The ENTIRE plan folder is COPIED (not moved) to docs/plans/completed/
+    Command: cp -r docs/plans/live/YYMMDDRepo_Branch docs/plans/completed/
   - The original live/ folder remains in place to support follow-on work
   - The completed/ subfolder is preserved in both locations as the canonical archive
   - Only users manually move old plan folders from live/ to an archived/ subdirectory
 
-  Why COPY-NOT-MOVE for folders:
-  - Preserves the completed/ archive in both the live folder and the completed/ folder
-  - Allows the live/ folder to continue with new phases or follow-on work
-  - Prevents accidental loss of completion history during folder transitions
-  - Supports seamless continuation of work without recreating folder structure
+  Why this pattern works:
+  - Agents can add missed items to live/ files without disrupting completed/ archive
+  - Completed items are preserved even while work continues
+  - Clear deletion signal: file removed from live/ = fully done
+  - Reactivation is clean: copy back, fix, sync
 
 follow_on_work_pattern:
   DO:
@@ -99,28 +141,37 @@ archived_vs_completed:
   Only users may perform archival operations.
 
 concrete_example:
-  Same folder name in both live/ and completed/ with different contents:
+  Copy-and-Sync pattern in action:
 
-  Scenario: Initial work completed, follow-on work continues
+  Scenario: Work in progress with some items completed
 
   docs/plans/live/251215MA_main/
     live/
-      plan_live_enhance.yml        # New phase: Enhancement work
-      plan_live_optimize.yml       # New phase: Optimization work
+      plan_live_enhance.yml        # Phase definition (reserved - stays in live/)
+      my_feature.yml               # 5 items: 3 completed, 2 pending (stays in live/)
+      another_task.yml             # All items pending (stays in live/)
     completed/
-      plan_completed.yml           # Snapshot from initial phases
+      my_feature.yml               # 3 items: only completed ones (synced copy)
+      old_feature.yml              # All items done, deleted from live/
+      plan_completed.yml           # Summary index (reserved)
     analysis/
-      enhancement_analysis.md      # New artifacts
+      plan_iteration_1_results.yml # Iteration logs
 
-  docs/plans/completed/251215MA_main/
-    live/
-      plan_live_teach.yml          # Original phase: Teaching
-      plan_live_test.yml           # Original phase: Testing
-    completed/
-      plan_completed.yml           # Completed items from original phases
-    analysis/
-      initial_analysis.md          # Original artifacts
+  State transitions:
+  1. my_feature.yml exists in BOTH locations (partial completion)
+     - live/ copy: all 5 items (working copy)
+     - completed/ copy: 3 completed items only (archive)
+  2. old_feature.yml exists ONLY in completed/ (full completion)
+     - Was deleted from live/ when all items completed
+  3. another_task.yml exists ONLY in live/ (no completion yet)
+     - Will get a completed/ copy when first item completes
 
-  Key observation: Same folder name (251215MA_main) exists in both locations.
-  The completed/ version is a snapshot of the original work.
-  The live/ version continues with new phases.
+  When my_feature.yml finishes:
+  1. Sync final 2 items to completed/my_feature.yml
+  2. Delete live/my_feature.yml
+  3. File now exists only in completed/
+
+  If issues found in old_feature.yml:
+  1. Copy completed/old_feature.yml back to live/
+  2. Update affected items' status
+  3. Sync fixes back to completed/ as resolved

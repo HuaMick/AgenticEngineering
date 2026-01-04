@@ -1,8 +1,5 @@
 """Tests for inputs commands."""
 
-import os
-from pathlib import Path
-
 import pytest
 import yaml
 
@@ -12,12 +9,8 @@ def sample_inputs_file(temp_dir):
     """Create a sample inputs.yml file."""
     inputs_content = {
         "inputs": {
-            "definitions": [
-                {"name": "test_def", "path": "assets/definitions/test.yml"}
-            ],
-            "guidelines": [
-                {"name": "test_guide", "path": "assets/guidelines/test.yml"}
-            ],
+            "definitions": [{"name": "test_def", "path": "assets/definitions/test.yml"}],
+            "guidelines": [{"name": "test_guide", "path": "assets/guidelines/test.yml"}],
         }
     }
     inputs_file = temp_dir / "inputs.yml"
@@ -32,9 +25,7 @@ def valid_inputs_structure(temp_dir):
     # Create inputs.yml
     inputs_content = {
         "inputs": {
-            "definitions": [
-                {"name": "test_def", "path": "definitions/test.yml"}
-            ],
+            "definitions": [{"name": "test_def", "path": "definitions/test.yml"}],
         }
     }
     inputs_file = temp_dir / "inputs.yml"

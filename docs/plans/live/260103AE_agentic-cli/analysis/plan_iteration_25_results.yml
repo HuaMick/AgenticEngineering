@@ -1,0 +1,98 @@
+# Iteration 25 Results
+# Date: 2026-01-04
+# Status: COMPLETE
+
+iteration:
+  number: 25
+  status: complete
+  date: "2026-01-04"
+
+objective: |
+  Implement FEAT-13 (Error Handling Framework) and FEAT-14 (Input Validation Layer).
+
+completed_tasks:
+  - id: "FEAT-13"
+    title: "Error Handling & Recovery Framework"
+    status: complete
+    implementation:
+      files_created:
+        - src/agenticcli/exceptions.py
+        - tests/test_exceptions.py
+      key_components:
+        - ErrorContext: Dataclass for error context (file_path, line_number, command, operation, details)
+        - AgenticError: Base exception with message, recovery_hint, context, exit_code, to_dict()
+        - WorktreeError: Git worktree operations (exit_code 10)
+        - PlanError: Plan file operations (exit_code 20)
+        - ConfigError: Configuration operations (exit_code 30)
+        - ValidationError: Input validation (exit_code 40)
+        - EnvironmentError: Environment variable operations (exit_code 50)
+        - TemplateError: Template operations (exit_code 60)
+      factory_methods:
+        - WorktreeError: branch_exists, worktree_exists, not_in_repo, invalid_base_branch
+        - PlanError: not_found, invalid_yaml, invalid_structure, task_not_found
+        - ConfigError: key_not_found, invalid_value, file_not_found
+        - ValidationError: invalid_branch_name, invalid_plan_folder, schema_violation
+        - EnvironmentError: missing_required, subprocess_failed
+        - TemplateError: not_found, render_failed
+      tests_added: 31
+
+  - id: "FEAT-14"
+    title: "Input Validation Layer"
+    status: complete
+    implementation:
+      files_created:
+        - src/agenticcli/validation.py
+        - tests/test_validation.py
+      key_components:
+        - validate_branch_name: Git branch name validation with pattern checking
+        - validate_branch_name_or_raise: Raising version
+        - validate_plan_folder_structure: Plan folder structure validation
+        - validate_plan_folder_or_raise: Raising version
+        - validate_plan_yaml: YAML schema validation for plan files
+        - validate_plan_yaml_or_raise: Raising version
+        - validate_path_safe: Path traversal and injection protection
+        - validate_identifier: Task/phase ID validation
+      validation_rules:
+        branch_name:
+          - "Cannot start with dot or hyphen"
+          - "Cannot contain consecutive dots"
+          - "Cannot end with slash or .lock"
+          - "Cannot contain special characters (~^:?*[)"
+          - "Cannot contain whitespace or control characters"
+          - "Max 255 characters"
+        plan_folder:
+          - "Must exist as directory"
+          - "Must have 'live' subdirectory"
+          - "Must have at least one YAML file in live"
+        plan_yaml:
+          - "Must have 'plan' top-level key"
+          - "Must have 'plan.name' and 'plan.status'"
+          - "Status must be valid (pending, in_progress, completed, blocked, cancelled)"
+          - "Phases must be a list with id or name"
+      tests_added: 40
+
+metrics:
+  tests_before: 261
+  tests_after: 332
+  tests_added: 71
+  lint_status: pass
+  feat_13_status: complete
+  feat_14_status: complete
+
+files_summary:
+  created:
+    - src/agenticcli/exceptions.py (~280 lines)
+    - src/agenticcli/validation.py (~180 lines)
+    - tests/test_exceptions.py (~180 lines)
+    - tests/test_validation.py (~220 lines)
+
+next_steps:
+  - Integrate exceptions into existing commands (worktree, plan, config)
+  - Replace silent pass statements with proper error handling
+  - Add recovery suggestions to error paths
+
+iteration_25_metrics:
+  features_completed: 2
+  tests_added: 71
+  total_tests: 332
+  lint_status: "pass"

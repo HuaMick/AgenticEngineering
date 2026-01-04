@@ -14,7 +14,7 @@ from pathlib import Path
 import yaml
 
 
-def handle(args):
+def handle(args, ctx=None):
     """Route inputs subcommands."""
     if args.inputs_command == "validate":
         cmd_validate(args)
@@ -119,13 +119,15 @@ def _resolve_nested_inputs(inputs_file: Path, visited: set | None = None) -> lis
                     # Recursively resolve layer
                     layer_inputs = _resolve_nested_inputs(full_path, visited)
                     resolved.extend(layer_inputs)
-                    resolved.append({
-                        "type": "layer",
-                        "path": str(full_path),
-                        "exists": full_path.exists(),
-                        "description": layer.get("description", ""),
-                        "required": layer.get("required", True),
-                    })
+                    resolved.append(
+                        {
+                            "type": "layer",
+                            "path": str(full_path),
+                            "exists": full_path.exists(),
+                            "description": layer.get("description", ""),
+                            "required": layer.get("required", True),
+                        }
+                    )
 
         # Process core_inputs
         core_inputs = inputs_section.get("core_inputs", [])
@@ -142,28 +144,34 @@ def _resolve_nested_inputs(inputs_file: Path, visited: set | None = None) -> lis
                         if "*" in str(full_path):
                             # Find where the glob pattern starts
                             full_pattern = str(full_path).replace(str(assets_base) + "/", "")
-                            matches = list(assets_base.glob(full_pattern)) if assets_base.exists() else []
+                            matches = (
+                                list(assets_base.glob(full_pattern)) if assets_base.exists() else []
+                            )
                         else:
                             matches = [full_path] if full_path.exists() else []
 
-                        resolved.append({
-                            "type": "pattern",
-                            "path": str(full_path),
-                            "pattern": item_path,
-                            "matches": [str(m) for m in matches],
-                            "count": len(matches),
-                            "description": item.get("description", ""),
-                            "required": item.get("required", True),
-                        })
+                        resolved.append(
+                            {
+                                "type": "pattern",
+                                "path": str(full_path),
+                                "pattern": item_path,
+                                "matches": [str(m) for m in matches],
+                                "count": len(matches),
+                                "description": item.get("description", ""),
+                                "required": item.get("required", True),
+                            }
+                        )
                     else:
                         # Regular file
-                        resolved.append({
-                            "type": "file",
-                            "path": str(full_path),
-                            "exists": full_path.exists(),
-                            "description": item.get("description", ""),
-                            "required": item.get("required", True),
-                        })
+                        resolved.append(
+                            {
+                                "type": "file",
+                                "path": str(full_path),
+                                "exists": full_path.exists(),
+                                "description": item.get("description", ""),
+                                "required": item.get("required", True),
+                            }
+                        )
 
         # Process guidelines
         guidelines = inputs_section.get("guidelines", [])
@@ -172,12 +180,14 @@ def _resolve_nested_inputs(inputs_file: Path, visited: set | None = None) -> lis
                 item_path = item.get("path", "")
                 if item_path:
                     full_path = _resolve_path(item_path, inputs_file, assets_base)
-                    resolved.append({
-                        "type": "guideline",
-                        "path": str(full_path),
-                        "exists": full_path.exists(),
-                        "description": item.get("description", ""),
-                    })
+                    resolved.append(
+                        {
+                            "type": "guideline",
+                            "path": str(full_path),
+                            "exists": full_path.exists(),
+                            "description": item.get("description", ""),
+                        }
+                    )
 
         # Note: 'definitions' section contains inline content, not file references
         # So we skip it during file resolution
@@ -185,7 +195,9 @@ def _resolve_nested_inputs(inputs_file: Path, visited: set | None = None) -> lis
     return resolved
 
 
-def _resolve_flat_inputs(inputs_file: Path, inputs: list, assets_base: Path, visited: set) -> list[dict]:
+def _resolve_flat_inputs(
+    inputs_file: Path, inputs: list, assets_base: Path, visited: set
+) -> list[dict]:
     """Resolve inputs from a flat list format (legacy format).
 
     Args:
@@ -209,30 +221,36 @@ def _resolve_flat_inputs(inputs_file: Path, inputs: list, assets_base: Path, vis
             elif "file" in item:
                 # File reference
                 file_path = _resolve_path(item["file"], inputs_file, assets_base)
-                resolved.append({
-                    "type": "file",
-                    "path": str(file_path),
-                    "exists": file_path.exists(),
-                    "description": item.get("description", ""),
-                })
+                resolved.append(
+                    {
+                        "type": "file",
+                        "path": str(file_path),
+                        "exists": file_path.exists(),
+                        "description": item.get("description", ""),
+                    }
+                )
             elif "glob" in item:
                 # Glob pattern
                 glob_pattern = item["glob"]
                 matches = list(assets_base.glob(glob_pattern)) if assets_base.exists() else []
-                resolved.append({
-                    "type": "glob",
-                    "pattern": glob_pattern,
-                    "matches": [str(m) for m in matches],
-                    "count": len(matches),
-                })
+                resolved.append(
+                    {
+                        "type": "glob",
+                        "pattern": glob_pattern,
+                        "matches": [str(m) for m in matches],
+                        "count": len(matches),
+                    }
+                )
         elif isinstance(item, str):
             # Simple file path
             file_path = _resolve_path(item, inputs_file, assets_base)
-            resolved.append({
-                "type": "file",
-                "path": str(file_path),
-                "exists": file_path.exists(),
-            })
+            resolved.append(
+                {
+                    "type": "file",
+                    "path": str(file_path),
+                    "exists": file_path.exists(),
+                }
+            )
 
     return resolved
 
@@ -279,14 +297,16 @@ def cmd_validate(args):
         type_counts[t] = type_counts.get(t, 0) + 1
 
     if is_json_output():
-        print_json({
-            "file": str(inputs_file),
-            "valid": len(errors) == 0,
-            "errors": errors,
-            "warnings": warnings,
-            "counts": type_counts,
-            "total": len(resolved),
-        })
+        print_json(
+            {
+                "file": str(inputs_file),
+                "valid": len(errors) == 0,
+                "errors": errors,
+                "warnings": warnings,
+                "counts": type_counts,
+                "total": len(resolved),
+            }
+        )
     else:
         print_header(f"Validating: {inputs_file}")
 
@@ -332,12 +352,14 @@ def cmd_resolve(args):
         by_type[t].append(item)
 
     if is_json_output():
-        print_json({
-            "file": str(inputs_file),
-            "resolved": resolved,
-            "by_type": {k: len(v) for k, v in by_type.items()},
-            "total": len(resolved),
-        })
+        print_json(
+            {
+                "file": str(inputs_file),
+                "resolved": resolved,
+                "by_type": {k: len(v) for k, v in by_type.items()},
+                "total": len(resolved),
+            }
+        )
         return
 
     print_header(f"Resolving: {inputs_file}")
@@ -363,7 +385,9 @@ def cmd_resolve(args):
                 console.print(f"  [{status}] {item['path']}{required}{desc}")
             elif item_type in ("pattern", "glob"):
                 count = item.get("count", 0)
-                console.print(f"  [cyan][PATTERN][/cyan] {item.get('pattern', item.get('path'))} ({count} matches)")
+                console.print(
+                    f"  [cyan][PATTERN][/cyan] {item.get('pattern', item.get('path'))} ({count} matches)"
+                )
                 for match in item.get("matches", [])[:3]:
                     console.print(f"           [dim]{match}[/dim]")
                 if count > 3:

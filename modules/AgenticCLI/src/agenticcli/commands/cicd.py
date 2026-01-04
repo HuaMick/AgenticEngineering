@@ -9,7 +9,7 @@ from pathlib import Path
 import yaml
 
 
-def handle(args):
+def handle(args, ctx=None):
     """Route cicd subcommands."""
     if args.cicd_command == "audit":
         cmd_audit(args)
@@ -141,14 +141,16 @@ def cmd_audit(args):
         discrepancies.append({"type": "no_tests", "path": path})
 
     if is_json_output():
-        print_json({
-            "config": str(config_path),
-            "test_steps": test_steps,
-            "configured_tests": list(configured_tests),
-            "actual_tests": list(actual_tests),
-            "discrepancies": discrepancies,
-            "valid": len(discrepancies) == 0,
-        })
+        print_json(
+            {
+                "config": str(config_path),
+                "test_steps": test_steps,
+                "configured_tests": list(configured_tests),
+                "actual_tests": list(actual_tests),
+                "discrepancies": discrepancies,
+                "valid": len(discrepancies) == 0,
+            }
+        )
     else:
         print_header(f"CI/CD Audit: {config_path}")
 
@@ -171,7 +173,9 @@ def cmd_audit(args):
             console.print("  [dim](none found)[/dim]")
 
         if missing_in_ci:
-            console.print("\n[yellow]Missing from CI/CD[/yellow] (tests exist but not in pipeline):")
+            console.print(
+                "\n[yellow]Missing from CI/CD[/yellow] (tests exist but not in pipeline):"
+            )
             for path in sorted(missing_in_ci):
                 console.print(f"  [yellow]-[/yellow] {path}")
 

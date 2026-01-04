@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 
-def handle(args):
+def handle(args, ctx=None):
     """Route template subcommands."""
     if args.template_command == "generate":
         cmd_generate(args)
@@ -185,6 +185,33 @@ def _get_context() -> dict:
     }
 
 
+def _try_jinja2_render(template_type: str, context: dict) -> str | None:
+    """Try to render using Jinja2 templates if available.
+
+    Returns None if Jinja2 template not found.
+    """
+    try:
+        from agenticcli.workflows.template_workflow import TemplateContext, TemplateWorkflow
+
+        workflow = TemplateWorkflow()
+        jinja_template = f"{template_type}_plan.yml.j2"
+
+        # Check if template exists
+        templates = workflow.list_templates()
+        if any(t["name"] == f"{template_type}_plan" for t in templates):
+            # Create context
+            tpl_context = TemplateContext(
+                plan_name=context.get("plan_name", template_type.title()),
+                worktree=context.get("worktree", ""),
+                branch=context.get("branch", ""),
+            )
+            workflow.context = tpl_context
+            return workflow.render(jinja_template)
+    except Exception:
+        pass
+    return None
+
+
 def cmd_generate(args):
     """Generate a plan file from template."""
     from agenticcli.console import console, is_json_output, print_error, print_json, print_success
@@ -198,9 +225,14 @@ def cmd_generate(args):
             console.print(f"[dim]Available types: {', '.join(TEMPLATES.keys())}[/dim]")
         sys.exit(1)
 
-    template = TEMPLATES[template_type]
     context = _get_context()
-    content = template.format(**context)
+
+    # Try Jinja2 first, fall back to simple templates
+    content = _try_jinja2_render(template_type, context)
+    if content is None:
+        # Fall back to simple string formatting
+        template = TEMPLATES[template_type]
+        content = template.format(**context)
 
     if output_path:
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -219,10 +251,7 @@ def cmd_list(args):
     from agenticcli.console import console, is_json_output, print_header, print_json, print_table
 
     if is_json_output():
-        templates = [
-            {"type": t, "description": d}
-            for t, d in TEMPLATE_DESCRIPTIONS.items()
-        ]
+        templates = [{"type": t, "description": d} for t, d in TEMPLATE_DESCRIPTIONS.items()]
         print_json({"templates": templates})
         return
 

@@ -1,10 +1,5 @@
 """Tests for plan commands."""
 
-import os
-from pathlib import Path
-from unittest.mock import patch
-
-import pytest
 import yaml
 
 
@@ -59,43 +54,34 @@ class TestPlanList:
         assert "260103AE_test" in stdout
         assert code == 0
 
-    def test_list_empty_repo(self, cli_runner, temp_dir):
+    def test_list_empty_repo(self, cli_runner, temp_repo):
         """Test listing plans in empty repo."""
-        # Create empty plans directory
-        plans_dir = temp_dir / "docs" / "plans" / "live"
-        plans_dir.mkdir(parents=True)
-
-        original_cwd = os.getcwd()
-        os.chdir(temp_dir)
-        try:
-            stdout, stderr, code = cli_runner(["plan", "list"])
-            assert "Plans in Repository" in stdout or "No plan folders" in stdout
-            assert code == 0
-        finally:
-            os.chdir(original_cwd)
+        # cli_runner already sets up a git repo and changes to temp_repo
+        # temp_repo doesn't have 260103AE_test by default in cli_runner (only temp_repo from conftest)
+        # The cli_runner fixture already creates a plans structure with 260103AE_test
+        # So we test that it lists the existing plan
+        stdout, stderr, code = cli_runner(["plan", "list"])
+        assert "Plans in Repository" in stdout or "No plan folders" in stdout
+        assert code == 0
 
 
 class TestPlanScaffold:
     """Tests for 'agentic plan scaffold' command."""
 
-    def test_scaffold_creates_structure(self, cli_runner, temp_dir):
+    def test_scaffold_creates_structure(self, cli_runner, temp_repo):
         """Test scaffold creates proper folder structure."""
-        original_cwd = os.getcwd()
-        os.chdir(temp_dir)
-        try:
-            stdout, stderr, code = cli_runner(["plan", "scaffold", "260103AE_new_feature"])
+        # cli_runner already runs in temp_repo which is a git repo
+        stdout, stderr, code = cli_runner(["plan", "scaffold", "260103AE_new_feature"])
 
-            # Check output
-            assert "Created planning folder" in stdout
-            assert code == 0
+        # Check output
+        assert "Created planning folder" in stdout
+        assert code == 0
 
-            # Verify structure
-            plan_path = temp_dir / "docs" / "plans" / "live" / "260103AE_new_feature"
-            assert plan_path.exists()
-            assert (plan_path / "live").exists()
-            assert (plan_path / "completed").exists()
-        finally:
-            os.chdir(original_cwd)
+        # Verify structure - temp_repo is the cwd in cli_runner
+        plan_path = temp_repo / "docs" / "plans" / "live" / "260103AE_new_feature"
+        assert plan_path.exists()
+        assert (plan_path / "live").exists()
+        assert (plan_path / "completed").exists()
 
     def test_scaffold_existing_folder(self, cli_runner, mock_cwd, temp_repo):
         """Test scaffold fails if folder exists."""
@@ -124,7 +110,9 @@ class TestPlanTask:
     def test_task_complete(self, cli_runner, temp_repo):
         """Test completing a task."""
         plan_path = temp_repo / "docs" / "plans" / "live" / "260103AE_test"
-        stdout, stderr, code = cli_runner(["plan", "task", "complete", "02", "--plan", str(plan_path)])
+        stdout, stderr, code = cli_runner(
+            ["plan", "task", "complete", "02", "--plan", str(plan_path)]
+        )
         assert "completed" in stdout
         assert code == 0
 

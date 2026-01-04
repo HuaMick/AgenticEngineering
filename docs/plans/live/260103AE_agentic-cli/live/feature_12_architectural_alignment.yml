@@ -1,0 +1,274 @@
+# Feature 12: Architectural Alignment with MyAgentsBackend
+# Align AgenticCLI with the reference architectural patterns and tooling
+
+feature:
+  name: "Architectural Alignment with MyAgentsBackend"
+  priority: 1
+  status: in_progress
+  created_date: "2026-01-04"
+  estimated_effort: high
+
+  description: |
+    Bring AgenticCLI into alignment with the reference implementation in MyAgentsBackend.
+    This includes full `uv` integration, adoption of the Workflow pattern for core logic,
+    context-aware routing (Global vs Project), and standardized setup/test infrastructure.
+
+  reference:
+    legacy_cli: "modules/legacy/MyAgents/projects/MyAgentsBackend/"
+    patterns:
+      - Workflow Layer: "Separation of CLI handlers from core logic"
+      - Home Config: "Single source of truth in ~/.config/"
+      - UV First: "Lockfiles, sync, and tool-based installation"
+      - Context Detection: "Permissive routing with project discovery"
+      - Preferences API: "set/get/list/delete/clear with dot-notation"
+      - JIT Environment: "Automated .env generation for tool compatibility"
+
+  deliverables:
+    - name: "UV Integration"
+      path: "modules/AgenticCLI/uv.lock"
+      description: "Deterministic dependency management"
+
+    - name: "Workflow Layer"
+      path: "modules/AgenticCLI/src/agenticcli/workflows/"
+      description: "Core logic separated from CLI boilerplate"
+
+    - name: "Makefile"
+      path: "modules/AgenticCLI/Makefile"
+      description: "Standardized developer entrypoints"
+
+  implementation_steps:
+    - id: "12.1"
+      task: "Initialize UV project structure"
+      status: completed
+      details: |
+        Run `uv sync` to generate uv.lock
+        Update pyproject.toml to follow uv-friendly structure (e.g., dependency-groups)
+        Add .python-version file
+
+    - id: "12.2"
+      task: "Refactor to Workflow pattern"
+      status: completed
+      details: |
+        Create src/agenticcli/workflows/ directory
+        Implement WorktreeWorkflow, PlanWorkflow, and ConfigWorkflow
+        Delegate logic from commands/ to workflows/
+
+    - id: "12.3"
+      task: "Implement Context-Aware Entry Point"
+      status: completed
+      completed_iteration: 19
+      details: |
+        Refactor entry.py to use a HealthCheckWorkflow-style discovery
+        Support 'Global' commands that work from anywhere (setup, config, etc.)
+        Ensure project-specific commands (plan, worktree) handle context correctly
+      implementation: |
+        - CLIContext.discover() now detects project context
+        - Project requirement checking integrated into run_cli()
+        - Clear error messages when running project commands outside a project
+
+    - id: "12.4"
+      task: "Add 'setup' command"
+      status: completed
+      details: |
+        Implement `agentic setup` to initialize ~/.config/agenticcli/
+        Guided interactive setup for initial preferences
+        Ensure idempotency (don't overwrite existing config unless forced)
+
+    - id: "12.5"
+      task: "Standardize Test & Build Infrastructure"
+      status: completed
+      details: |
+        Create Makefile with venv, install, test-all, and rebuild targets
+        Add health reporting to pytest (match --workflow-health pattern)
+        Implement scripts/install-global.sh using `uv tool install`
+
+    - id: "12.6"
+      task: "Implement Tiered Configuration (Onion Model)"
+      status: completed
+      completed_iteration: 21
+      details: |
+        Implement a merged configuration loader that supports:
+        1. Global User Config (~/.config/agenticcli/config.yml)
+        2. Project-level Config (.agenticcli.yml in repo root)
+        3. Environment Variables (AGENTIC_*)
+        4. CLI Flags
+        Update 'config show' to display the merged view with source attribution.
+      implementation: |
+        - Created ConfigSource enum (DEFAULT, GLOBAL, PROJECT, ENV, CLI)
+        - Created ConfigValue dataclass with source attribution
+        - Created TieredConfigLoader class with 5-layer precedence:
+          1. CLI flags (highest)
+          2. Environment variables (AGENTIC_*)
+          3. Project config (.agenticcli.yml)
+          4. Global config (~/.config/agenticcli/config.yml)
+          5. Defaults (lowest)
+        - Added DEFAULT_CONFIG and ENV_VAR_MAPPING constants
+        - Added project_config_file property and get_tiered_config() to CLIContext
+        - Updated config show to display merged config with source attribution
+
+    - id: "12.7"
+      task: "Implement Robust State & Process Management"
+      status: completed
+      completed_iteration: 22
+      details: |
+        Replace the legacy raw PID/state file pattern with a structured registry (~/.config/agenticcli/state.json).
+        Use process-specific locking and verification (e.g., psutil) to ensure state accuracy.
+        Avoid side-effect-heavy state files; use a single source of truth for all background processes.
+      implementation: |
+        - Created StateRegistry class in workflows/state_workflow.py
+        - Implemented ProcessEntry dataclass and ProcessState enum
+        - Added FileLock class for atomic file operations with stale lock cleanup
+        - Created state command group with list/show/clear/cleanup subcommands
+        - Added state_file property to CLIContext
+        - Added psutil as dependency for cross-platform process detection
+        - 23 new tests in test_state.py
+
+    - id: "12.8"
+      task: "Automated Physical Task/File Movement"
+      status: completed
+      completed_iteration: 22
+      details: |
+        Refine the pattern of physically moving tasks to plan_completed.yml and folders to completed/ subdirectories.
+        This pattern directly supports the user's file-system-based high-level review workflow.
+        Implement safety checks (git status verification, file locks) to ensure physical movement is atomic and non-destructive.
+        Maintain a centralized registry (~/.config/agenticcli/plans.json) but ensure it reflects the physical file locations exactly.
+      implementation: |
+        - Created PlanMovementWorkflow class in workflows/plan_workflow.py
+        - Implemented GitSafetyChecker for verifying uncommitted changes
+        - Added plan move task <id> command to move single task to plan_completed.yml
+        - Added plan move tasks command to move all completed tasks
+        - Added plan move folder command to archive entire plan folder
+        - All moves support --dry-run and --force flags
+        - 15 new tests in test_plan_movement.py
+
+    - id: "12.9"
+      task: "Align CLI Permissiveness and Help Routing"
+      status: completed
+      completed_iteration: 19
+      details: |
+        Refactor entry.py to allow help/version discovery even when project root detection fails
+        Ensure 'Global' commands (setup, config, update) are truly environment-independent
+        Implement the deferred-import pattern for all subcommands to optimize startup time
+      implementation: |
+        - Added require_project() method to CLIContext in context.py
+        - Categorized commands into GLOBAL_COMMANDS (setup, config, preferences, prefs, pref, update, rebuild, health)
+        - Categorized PROJECT_COMMANDS (worktree, plan, inputs, template, stories, manifest, cicd)
+        - Project commands now require being in a project directory (git repo or .agenticcli.yml present)
+        - Global commands work anywhere
+
+    - id: "12.10"
+      task: "Implement Machine-Readable Health Checks"
+      status: completed
+      completed_iteration: 19
+      details: |
+        Add a 'health' command or 'status --json' that matches the legacy health-reporting pattern
+        Infrastructure to generate reports in REPORTS/health.json compatible with CI/CD
+        Standardized diagnostic output for troubleshooting installation issues
+      implementation: |
+        - Created commands/health.py with health check implementation
+        - Checks: cli_version, config_dir, config_file, project_root, git, uv
+        - Supports JSON output for CI/CD integration (agentic --json health)
+        - Created tests/test_health.py with 6 tests
+
+    - id: "12.11"
+      task: "Standardized Logging & Diagnostics"
+      status: completed
+      completed_iteration: 20
+      details: |
+        Standardize on ~/.config/agenticcli/logs/ for all command and service logging
+        Implement log rotation and level management (debug/info/error)
+        Add a 'diagnostics' mode to collect logs and state for debugging
+      implementation: |
+        - Created logging.py with setup_logging() and get_logger() functions
+        - RotatingFileHandler with 5 files, 1MB each
+        - Log directory: ~/.config/agenticcli/logs/
+        - Added --debug/-d flag for console logging
+        - Added logs_dir property to CLIContext
+        - Added logs_dir check to health command
+        - AGENTIC_LOG_LEVEL env var controls log level
+        - Created test_logging.py with 19 tests
+
+    - id: "12.12"
+      task: "Align Preferences Command Architecture"
+      status: completed
+      details: |
+        Promote 'preferences' to a top-level command group (alias: prefs, pref)
+        Implement subcommands: set, get, list, delete, clear
+        Ensure full support for dot-notation and JSON-compatible storage
+        Mirror the 'myagents preferences' UX exactly
+
+    - id: "12.13"
+      task: "Implement Explicit Configuration Management"
+      status: completed
+      completed_iteration: 21
+      details: |
+        Add 'config set-path', 'config show', and 'config clear' subcommands
+        Allow the CLI to point to a custom config file outside ~/.config/agenticcli/
+        Maintain the 'Single Source of Truth' principle while allowing portability
+      implementation: |
+        - Added config show-path command - displays all config paths with existence status
+        - Added config set-path command - sets custom config file path (validated)
+        - Added config clear --force command - clears config files safely
+
+    - id: "12.14"
+      task: "Add Experimental/Stability Warning System"
+      status: completed
+      completed_iteration: 20
+      details: |
+        Implement a standardized mechanism to mark commands as Alpha or Experimental
+        Add consistent visual banners for experimental features (like 'remote' or 'relay')
+        Ensure the 'Status: Alpha' pattern from MyAgents README is reflected in CLI help
+      implementation: |
+        - Created decorators.py with StabilityLevel enum (ALPHA, BETA, EXPERIMENTAL, STABLE)
+        - Added COMMAND_STABILITY mapping (cicd=ALPHA, manifest=BETA)
+        - Added print_stability_banner() function to console.py
+        - Updated cli.py to display stability banners before command execution
+        - Updated help text with [ALPHA] and [BETA] indicators
+        - Created test_decorators.py with 19 tests
+
+    - id: "12.15"
+      task: "Implement Context-Aware Environment Injection"
+      status: todo
+      details: |
+        Instead of generating .env files (legacy workaround), implement a secure environment provider.
+        The CLI should inject required secrets and config directly into subprocesses at runtime.
+        Ensure compatibility with tools that expect environment variables without creating file-system side effects.
+
+    - id: "12.16"
+      task: "Implement Command Aliases and Flag Shortcuts"
+      status: completed
+      completed_iteration: 20
+      details: |
+        Add short aliases for frequently used commands (e.g., 'c' for 'chat', 'prefs' for 'preferences')
+        Ensure all global flags have one-letter shortcuts (e.g., -j for --json, -v for --version)
+        Match the legacy CLI alias registry pattern
+      implementation: |
+        - Added command aliases: wt (worktree), cfg (config), tpl (template), st (stories), mf (manifest)
+        - Added -j shortcut for --json flag
+        - Added -d shortcut for --debug flag
+        - Updated GLOBAL_COMMANDS and PROJECT_COMMANDS with aliases
+        - Updated epilog to show aliases in help text
+        - Added 7 tests for aliases and flag shortcuts
+
+    - id: "12.17"
+      task: "Decouple Context from Global State"
+      status: completed
+      details: |
+        Refactor handlers to avoid using global variables for project/config paths.
+        Implement a Context object passed explicitly through the command hierarchy.
+        Fixes the legacy workaround of setting 'myagents_cli.project_dir' before execution.
+
+    - id: "12.18"
+      task: "Implement Robust Templating & Discovery"
+      status: todo
+      details: |
+        Transition from simple string templates to Jinja2 for plan generation.
+        Implement provider-agnostic CI/CD auditing with plugins (GitHub Actions, Cloudbuild).
+        Remove hardcoded story paths; use the tiered discovery mechanism for story locations.
+
+  success_criteria:
+    - "`uv sync` and `uv run` work as expected"
+    - "CLI routes correctly from any directory"
+    - "`agentic setup` initializes the environment correctly"
+    - "`make test-all` runs the full suite with health report"
+    - "No duplication of logic between CLI handlers and workflows"

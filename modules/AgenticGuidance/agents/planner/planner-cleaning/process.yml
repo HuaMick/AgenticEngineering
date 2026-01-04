@@ -6,9 +6,12 @@ process:
     Recognizes follow-on work scenarios (new phases added to existing plans).
 
     OUTPUT STRUCTURE:
-    - Outputs ONLY to `live/plan_live_audit_clean.yml` within the plan folder
-    - Reads from all other phase .yml files in `live/` to understand completed work
-    - Moves completed items to `completed/plan_completed.yml` in the same folder
+    - Outputs finalization phases to `live/plan_live_audit_clean.yml` within the plan folder
+    - Reads from all .yml files in `live/` to understand completed work
+    - SYNCS completed items from `live/` files to copies in `completed/` (copy-and-sync)
+    - DELETES files from `live/` only when ALL items are completed
+    - Updates `completed/plan_completed.yml` with summary entries
+    - COPIES entire plan folder to `docs/plans/completed/` when phases complete (folder-level copy)
 
   loop_definitions:
     reference: "assets/definitions/agent-loops.yml"
@@ -24,8 +27,14 @@ process:
   outputs:
     - location: "docs/plans/live/YYMMDDRepo_Branch/live/plan_live_audit_clean.yml"
       description: "Cleanup, audit, and documentation phases for the live plan"
+    - location: "docs/plans/live/YYMMDDRepo_Branch/completed/"
+      description: "Completed .yml files moved from live/ (file-level moves)"
     - location: "docs/plans/live/YYMMDDRepo_Branch/completed/plan_completed.yml"
-      description: "Completed items moved from live plan phases"
+      description: "Summary index of completed items"
+    - location: "docs/plans/live/YYMMDDRepo_Branch/analysis/"
+      description: "Iteration logs and analysis artifacts"
+    - location: "docs/plans/completed/YYMMDDRepo_Branch/"
+      description: "Snapshot copy of entire plan folder when phases complete"
 
   steps:
     - |
@@ -34,8 +43,50 @@ process:
       the discrepancy in your output.
     - |
       A planning folder should have been provided.
-      Read all other phase .yml files in `live/` to understand completed work.
-      Move any completed items to `completed/plan_completed.yml` in the same folder.
+      Read all .yml files in `live/` to understand completed work.
+
+      FILE LIFECYCLE - Copy-and-Sync Pattern:
+
+      Agents can create ANY .yml files during planning/execution (no naming restrictions).
+      Files exist in live/ while work continues, with completed items synced to completed/.
+
+      LOCATIONS:
+      - live/ = Working copy (contains all items, pending and completed)
+      - completed/ = Archive copy (contains only completed items from the file)
+
+      INCREMENTAL COMPLETION (sync completed items):
+      As items within a file are completed:
+      1. Keep the file in live/ (it still has pending/in-progress items)
+      2. Create or update a COPY in completed/ with the same filename
+      3. The completed/ copy contains ONLY the completed items from that file
+      4. Update plan_completed.yml summary index with the completed items
+      Example:
+        live/my_feature.yml         # Has 5 items: 3 completed, 2 pending
+        completed/my_feature.yml    # Has 3 items: only the completed ones
+
+      FULL COMPLETION (all items done):
+      When ALL items in a file have status: completed:
+      1. Ensure completed/ copy has all items
+      2. DELETE the file from live/ (no longer needed there)
+      3. The file now exists ONLY in completed/
+      Example:
+        rm live/my_feature.yml      # All items done, remove from live
+        completed/my_feature.yml    # Authoritative completed version
+
+      REACTIVATION (issues found post-completion):
+      If issues are found requiring rework on a completed file:
+      1. COPY the file back from completed/ to live/
+      2. Update the affected items' status to reflect the issue
+      3. Keep the completed/ copy as-is (historical record)
+      4. Sync changes back to completed/ as items are re-completed
+
+      ITERATION LOGS:
+      Move plan_iteration_*.yml files to analysis/ subfolder to reduce clutter.
+
+      RESERVED FILES (never delete):
+      - plan_live_*.yml files define phases and stay in live/
+      - plan_completed.yml is the summary index and stays in completed/
+      - plan_next_actions.yml is the active tracker and stays in live/
     - |
       Review the live plan phases and identify what work has been completed.
       Determine what finalization phases are needed based on the implementation.
@@ -95,6 +146,11 @@ process:
       - KEEP folder in live/ unless user explicitly requests removal
       - Mark plan as fully_completed in metadata
       - Both folders continue to coexist
+
+      EXPLICIT FOLDER COPY COMMAND:
+      When copying to docs/plans/completed/, execute:
+        mkdir -p docs/plans/completed/YYMMDDRepo_Branch
+        cp -r docs/plans/live/YYMMDDRepo_Branch/* docs/plans/completed/YYMMDDRepo_Branch/
 
       LIFECYCLE FENCE:
       - NEVER move folders to archived/

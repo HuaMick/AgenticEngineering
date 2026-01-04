@@ -1,0 +1,328 @@
+# Iteration 22 Build Plan
+# FEAT-12: Architectural Alignment with MyAgentsBackend
+# Tasks: 12.7 (State & Process Management) + 12.8 (Physical Task/File Movement)
+
+iteration:
+  number: 22
+  date: "2026-01-04"
+  status: planning
+  feature: "FEAT-12 Architectural Alignment"
+
+  summary: |
+    Implement robust state management and automated task/file movement.
+    These tasks are complementary - state registry (12.7) provides infrastructure
+    for safe file operations and locking (12.8).
+
+  prior_state:
+    tests_passing: 188
+    lint_status: clean
+    feat_12_progress: "14/18 (78%)"
+
+  selected_tasks:
+    - id: "12.7"
+      title: "Robust State & Process Management"
+      effort: MEDIUM
+      rationale: |
+        Foundation task that establishes state registry infrastructure.
+        Required for atomic operations and process-safe locking in 12.8.
+
+    - id: "12.8"
+      title: "Automated Physical Task/File Movement"
+      effort: MEDIUM
+      rationale: |
+        Directly supports user's file-system-based review workflow.
+        Can leverage 12.7's state registry for file locks and safety.
+        Pairs naturally with state management.
+
+  rejected_tasks:
+    - id: "12.15"
+      title: "Context-Aware Environment Injection"
+      reason: "Independent feature, no synergy with 12.7/12.8. Defer to iteration 23."
+
+    - id: "12.18"
+      title: "Robust Templating & Discovery"
+      reason: "Larger scope (Jinja2, multi-provider CI/CD). Better as standalone iteration."
+
+# =============================================================================
+# PHASE 1: State Registry Infrastructure (Task 12.7)
+# =============================================================================
+phases:
+  - id: "phase-1"
+    name: "State Registry Infrastructure"
+    task_id: "12.7"
+    status: pending
+    estimated_effort: "3-4 hours"
+
+    objective: |
+      Replace raw PID/state files with a structured JSON registry at
+      ~/.config/agenticcli/state.json. Implement process verification
+      using psutil to ensure state accuracy.
+
+    inputs:
+      - path: "modules/AgenticCLI/src/agenticcli/context.py"
+        description: "CLIContext class - add state_file property"
+      - path: "modules/AgenticCLI/src/agenticcli/workflows/config_workflow.py"
+        description: "Reference for registry patterns (TieredConfigLoader)"
+
+    implementation_steps:
+      - id: "1.1"
+        title: "Create StateRegistry class"
+        description: |
+          Create src/agenticcli/workflows/state_workflow.py with:
+          - StateRegistry class managing ~/.config/agenticcli/state.json
+          - Process entry dataclass: pid, command, started_at, metadata
+          - CRUD operations: register, unregister, list, get, clear_stale
+        files:
+          - action: create
+            path: "modules/AgenticCLI/src/agenticcli/workflows/state_workflow.py"
+
+      - id: "1.2"
+        title: "Implement process verification with psutil"
+        description: |
+          Add process verification methods:
+          - is_process_alive(pid) - check if PID exists and is our process
+          - clear_stale_entries() - remove entries for dead processes
+          - get_active_processes() - return only verified running processes
+          Uses psutil for cross-platform process inspection.
+        dependencies:
+          - pyproject.toml update to add psutil dependency
+
+      - id: "1.3"
+        title: "Add file locking for atomic operations"
+        description: |
+          Implement file-based locking for concurrent access:
+          - acquire_lock(resource_name, timeout) -> Lock context manager
+          - release_lock(resource_name)
+          - is_locked(resource_name)
+          Uses fcntl on Unix, msvcrt on Windows (via portalocker pattern).
+
+      - id: "1.4"
+        title: "Update CLIContext with state properties"
+        description: |
+          Add to context.py:
+          - state_file property -> Path to state.json
+          - get_state_registry() method -> StateRegistry instance
+        files:
+          - action: modify
+            path: "modules/AgenticCLI/src/agenticcli/context.py"
+
+      - id: "1.5"
+        title: "Create state command group"
+        description: |
+          Create commands/state.py with subcommands:
+          - agentic state list - show active processes
+          - agentic state clear - clear stale entries
+          - agentic state show - display state.json contents
+        files:
+          - action: create
+            path: "modules/AgenticCLI/src/agenticcli/commands/state.py"
+          - action: modify
+            path: "modules/AgenticCLI/src/agenticcli/cli.py"
+
+    tests:
+      - path: "modules/AgenticCLI/tests/test_state.py"
+        scenarios:
+          - "StateRegistry CRUD operations (register, unregister, list)"
+          - "Process verification with mock psutil"
+          - "Stale entry cleanup (dead PIDs removed)"
+          - "File locking (acquire, release, timeout)"
+          - "Concurrent access safety (lock contention)"
+          - "State command output (list, clear, show)"
+          - "JSON output mode for state commands"
+        estimated_count: 15-20
+
+    success_criteria:
+      - "StateRegistry persists to ~/.config/agenticcli/state.json"
+      - "Dead processes automatically cleaned on registry access"
+      - "File locks prevent concurrent modification"
+      - "'agentic state list' shows running processes with JSON support"
+      - "All new tests pass (target: 15+ tests)"
+
+    user_validation:
+      - command: "agentic state list"
+        expected: "Shows any active CLI processes with PID, command, start time"
+      - command: "agentic state clear"
+        expected: "Removes stale entries, shows count of cleared items"
+      - command: "agentic --json state list"
+        expected: "Returns JSON array of active processes"
+
+# =============================================================================
+# PHASE 2: Physical Task/File Movement (Task 12.8)
+# =============================================================================
+  - id: "phase-2"
+    name: "Automated Physical Task/File Movement"
+    task_id: "12.8"
+    status: pending
+    estimated_effort: "3-4 hours"
+    depends_on: ["phase-1"]
+
+    objective: |
+      Automate the movement of completed tasks to plan_completed.yml and
+      completed plan folders to the completed/ directory. Implement safety
+      checks using git status and file locks from Phase 1.
+
+    inputs:
+      - path: "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+        description: "Existing plan commands - extend with move operations"
+      - path: "modules/AgenticCLI/src/agenticcli/workflows/state_workflow.py"
+        description: "File locking from Phase 1"
+
+    implementation_steps:
+      - id: "2.1"
+        title: "Create PlanMovementWorkflow"
+        description: |
+          Create src/agenticcli/workflows/plan_workflow.py with:
+          - PlanMovementWorkflow class
+          - move_task_to_completed(task_id) - moves task entry to completed file
+          - move_folder_to_completed(plan_name) - moves entire plan folder
+          - validate_git_status() - ensures no uncommitted changes to plan files
+        files:
+          - action: create
+            path: "modules/AgenticCLI/src/agenticcli/workflows/plan_workflow.py"
+
+      - id: "2.2"
+        title: "Implement task movement to plan_completed.yml"
+        description: |
+          Add task movement logic:
+          - Parse source plan file, extract task by ID
+          - Append task to completed/plan_completed.yml (create if missing)
+          - Remove task from source file
+          - Preserve YAML formatting and comments where possible
+          - Add completion timestamp and iteration number
+
+      - id: "2.3"
+        title: "Implement folder movement with safety checks"
+        description: |
+          Add folder movement with safety:
+          - Check git status for uncommitted changes in plan folder
+          - Acquire file lock via StateRegistry
+          - Move folder from live/ to completed/
+          - Update any registry entries (if plans.json exists)
+          - Release lock on completion or error
+
+      - id: "2.4"
+        title: "Add plan move subcommand"
+        description: |
+          Extend commands/plan.py with:
+          - agentic plan move task <task-id> --to-completed
+          - agentic plan move folder <plan-name> --to-completed
+          - --force flag to skip git status check (with warning)
+          - --dry-run flag to preview changes without executing
+        files:
+          - action: modify
+            path: "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+          - action: modify
+            path: "modules/AgenticCLI/src/agenticcli/cli.py"
+
+      - id: "2.5"
+        title: "Implement atomic move with rollback"
+        description: |
+          Add transaction-like behavior:
+          - Create backup before modification
+          - Perform move operation
+          - On failure, restore from backup
+          - On success, remove backup
+          - Log all operations for debugging
+
+    tests:
+      - path: "modules/AgenticCLI/tests/test_plan_movement.py"
+        scenarios:
+          - "Move single task to plan_completed.yml"
+          - "Create plan_completed.yml if missing"
+          - "Preserve task metadata during move"
+          - "Reject move with uncommitted git changes"
+          - "Force move bypasses git check (with warning)"
+          - "Folder movement to completed/"
+          - "Rollback on failure"
+          - "Dry-run mode shows preview without changes"
+          - "File locking during move operations"
+          - "JSON output for move commands"
+        estimated_count: 12-15
+
+    success_criteria:
+      - "Tasks can be moved to plan_completed.yml with full metadata"
+      - "Git status check prevents accidental data loss"
+      - "Folder moves are atomic with rollback on failure"
+      - "File locks prevent concurrent modifications"
+      - "All new tests pass (target: 12+ tests)"
+
+    user_validation:
+      - command: "agentic plan move task 12.7 --to-completed"
+        expected: "Moves task 12.7 to completed/plan_completed.yml, shows confirmation"
+      - command: "agentic plan move task 12.7 --to-completed --dry-run"
+        expected: "Shows what would be moved without making changes"
+      - command: "agentic plan move folder 260103AE_agentic-cli --to-completed"
+        expected: "Moves entire plan folder to completed/, or errors if git changes exist"
+
+# =============================================================================
+# PHASE 3: Integration & Validation
+# =============================================================================
+  - id: "phase-3"
+    name: "Integration Testing & Documentation"
+    status: pending
+    estimated_effort: "1-2 hours"
+    depends_on: ["phase-1", "phase-2"]
+
+    objective: |
+      Verify end-to-end functionality, update documentation, and ensure
+      all tests pass with lint clean.
+
+    implementation_steps:
+      - id: "3.1"
+        title: "Run full test suite"
+        description: |
+          Execute: make test-all
+          Target: 200+ tests passing (188 existing + 27+ new)
+          Verify no regressions.
+
+      - id: "3.2"
+        title: "Run linter and fix issues"
+        description: |
+          Execute: ruff check src/ tests/
+          Fix any new linting issues.
+
+      - id: "3.3"
+        title: "Update CLI help text"
+        description: |
+          Ensure --help for new commands is clear:
+          - agentic state --help
+          - agentic plan move --help
+
+      - id: "3.4"
+        title: "Update feature_12_architectural_alignment.yml"
+        description: |
+          Mark tasks 12.7 and 12.8 as completed.
+          Add implementation notes and completed_iteration field.
+
+    success_criteria:
+      - "make test-all passes with 200+ tests"
+      - "ruff check passes with 0 issues"
+      - "CLI help text is complete and accurate"
+      - "feature_12 file updated with completion status"
+
+# =============================================================================
+# SUMMARY
+# =============================================================================
+summary:
+  total_phases: 3
+  estimated_duration: "7-10 hours"
+  new_files:
+    - "modules/AgenticCLI/src/agenticcli/workflows/state_workflow.py"
+    - "modules/AgenticCLI/src/agenticcli/workflows/plan_workflow.py"
+    - "modules/AgenticCLI/src/agenticcli/commands/state.py"
+    - "modules/AgenticCLI/tests/test_state.py"
+    - "modules/AgenticCLI/tests/test_plan_movement.py"
+  modified_files:
+    - "modules/AgenticCLI/src/agenticcli/context.py"
+    - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+    - "modules/AgenticCLI/src/agenticcli/cli.py"
+    - "modules/AgenticCLI/pyproject.toml"
+  dependencies_added:
+    - "psutil (process inspection)"
+  expected_test_count: "215+ (188 existing + 27+ new)"
+
+  post_iteration_status:
+    feat_12_completed: "16/18 (89%)"
+    remaining_tasks:
+      - "12.15: Context-Aware Environment Injection"
+      - "12.18: Robust Templating & Discovery"
