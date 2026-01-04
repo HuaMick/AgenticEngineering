@@ -21,7 +21,7 @@ def find_package_root() -> Path:
     sys.exit(1)
 
 
-def handle_update(args):
+def handle_update(args, ctx=None):
     """Reinstall AgenticCLI from source."""
     package_root = find_package_root()
     print(f"Updating AgenticCLI from {package_root}")
@@ -41,7 +41,7 @@ def handle_update(args):
         sys.exit(1)
 
 
-def handle_rebuild(args):
+def handle_rebuild(args, ctx=None):
     """Full rebuild and reinstall."""
     package_root = find_package_root()
     print(f"Rebuilding AgenticCLI from {package_root}")
@@ -52,6 +52,7 @@ def handle_rebuild(args):
         for path in package_root.glob(pattern):
             if path.is_dir():
                 import shutil
+
                 shutil.rmtree(path)
                 print(f"  Removed {path.name}")
 
@@ -61,6 +62,7 @@ def handle_rebuild(args):
         for path in src_dir.glob("*.egg-info"):
             if path.is_dir():
                 import shutil
+
                 shutil.rmtree(path)
                 print(f"  Removed src/{path.name}")
 

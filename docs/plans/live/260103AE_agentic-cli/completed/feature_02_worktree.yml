@@ -1,0 +1,113 @@
+# Feature 02: Worktree Management
+# Commands to automate git worktree and planning folder creation
+
+feature:
+  name: "Worktree Management Commands"
+  priority: 2
+  status: completed
+  completed_date: "2026-01-03"
+  estimated_effort: high
+
+  description: |
+    Automates the manual work currently done by deploy-worktree agent.
+    Creates worktrees, updates VS Code workspace file, and scaffolds planning folders.
+    This is the highest-value feature as it eliminates 6-8 manual steps per worktree.
+
+  reference:
+    agent: "modules/AgenticGuidance/agents/deploy/deploy-worktree"
+    inputs: "deploy-worktree/inputs.yml"
+    process: "deploy-worktree/process.yml"
+
+  commands:
+    - name: "worktree create"
+      usage: "agentic worktree create <branch> [--base <base-branch>] [--no-plan]"
+      description: "Create a new worktree with planning folder"
+      steps:
+        - "Determine repository root"
+        - "Generate worktree path: /home/code/<Repo>-<branch>"
+        - "Create git worktree with new branch"
+        - "Create planning folder at docs/plans/live/YYMMDD<Abbr>_<branch>/"
+        - "Initialize planning files (4 placeholders)"
+        - "Report success with paths"
+
+    - name: "worktree list"
+      usage: "agentic worktree list"
+      description: "List all worktrees with their planning folders"
+      steps:
+        - "Run git worktree list"
+        - "Match worktrees to planning folders"
+        - "Display structured output"
+
+    - name: "worktree remove"
+      usage: "agentic worktree remove <branch> [--force]"
+      description: "Remove a worktree (optionally with planning folder)"
+      steps:
+        - "Verify worktree exists"
+        - "Prompt for confirmation"
+        - "Remove git worktree"
+        - "Optionally archive planning folder"
+
+  implementation_steps:
+    - id: "02.1"
+      task: "Add worktree subparser"
+      status: completed
+      details: |
+        Add 'worktree' subparser with create/list/remove subcommands
+        Pattern: argparse subparsers for each command
+
+    - id: "02.2"
+      task: "Implement worktree create"
+      status: completed
+      details: |
+        Parse arguments: branch, --base, --no-plan
+        Generate paths following naming conventions
+        Execute: git worktree add -b <branch> <path>
+        Create planning folder structure
+        Initialize 4 YAML files
+
+    - id: "02.3"
+      task: "Implement planning folder scaffolding"
+      status: completed
+      details: |
+        Create helper function for planning folder creation
+        Naming: YYMMDD<RepoAbbr>_<branch>
+        Repo abbreviations: AE (AgenticEngineering), etc.
+        Create live/ and completed/ subdirectories
+        Create placeholder YAML files
+
+    - id: "02.4"
+      task: "Implement worktree list"
+      status: completed
+      details: |
+        Parse git worktree list output
+        Scan docs/plans/live/ for matching folders
+        Display in table format
+
+    - id: "02.5"
+      task: "Implement worktree remove"
+      status: completed
+      details: |
+        Verify worktree exists
+        Prompt confirmation (unless --force)
+        Execute: git worktree remove <path>
+        Handle planning folder archival
+
+  success_criteria:
+    - "`agentic worktree create feature-x` creates worktree at expected path"
+    - "Planning folder created with correct naming convention"
+    - "All 4 placeholder files exist with correct structure"
+    - "`agentic worktree list` shows worktrees and associated plans"
+    - "`agentic worktree remove feature-x` removes worktree safely"
+
+  agent_offload:
+    current_agent: "deploy-worktree"
+    manual_steps_eliminated:
+      - "Git worktree path construction"
+      - "Git worktree add command execution"
+      - "Planning folder name generation"
+      - "Planning folder structure creation"
+      - "YAML file initialization with metadata"
+    new_agent_workflow: |
+      Instead of agent manually executing steps, agent calls:
+      `agentic worktree create <branch>`
+      CLI handles all scaffolding automatically.

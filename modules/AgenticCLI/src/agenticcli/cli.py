@@ -21,41 +21,66 @@ def create_parser() -> argparse.ArgumentParser:
         description="AgenticCLI - Command-line interface for AgenticEngineering",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Commands:
-  worktree    Manage git worktrees with planning folder integration
-  plan        Manage planning folders and track task status
-  config      Configuration and preferences management
-  inputs      Validate and resolve inputs.yml references
-  template    Generate plan files from templates
-  stories     Find user stories for testing
-  manifest    Display agent manifests
-  cicd        Audit CI/CD configuration
-  update      Reinstall AgenticCLI from source
-  rebuild     Full rebuild and reinstall
+Global Commands (work from any directory):
+  setup           Interactive setup wizard
+  health          Check CLI health and dependencies
+  prefs           Manage preferences (alias: preferences)
+  config (cfg)    Configuration and preferences management
+  update          Reinstall AgenticCLI from source
+  rebuild         Full rebuild and reinstall
+
+Project Commands (require .git or .agenticcli.yml):
+  worktree (wt)   Manage git worktrees with planning folder integration
+  plan            Manage planning folders and track task status
+  inputs          Validate and resolve inputs.yml references
+  template (tpl)  Generate plan files from templates
+  stories (st)    Find user stories for testing
+  manifest (mf)   [BETA] Display agent manifests
+  cicd            [ALPHA] Audit CI/CD configuration
+
+Flags:
+  -j, --json      Output in JSON format
+  -d, --debug     Enable debug logging to console
+  -v, --version   Show version
+  -h, --help      Show help
 
 Examples:
-  agentic worktree create feature-auth
-  agentic plan status
-  agentic config show
-  agentic inputs validate path/to/inputs.yml
-  agentic template generate build --output plan.yml
+  agentic setup
+  agentic health
+  agentic prefs set editor.theme dark
+  agentic wt create feature-auth
+  agentic -j plan status
 """,
     )
 
     parser.add_argument(
-        "--version", "-v",
+        "--version",
+        "-v",
         action="version",
         version=f"agentic {__version__}",
     )
 
     parser.add_argument(
         "--json",
+        "-j",
         action="store_true",
         help="Output in JSON format for scripting/automation",
     )
 
+    parser.add_argument(
+        "--debug",
+        "-d",
+        action="store_true",
+        help="Enable debug logging to console",
+    )
+
     # Create subparsers for command groups
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
+
+    # Global commands (work from any directory)
+    _add_setup_parser(subparsers)
+    _add_preferences_parser(subparsers)
+    _add_health_parser(subparsers)
 
     # Worktree commands
     _add_worktree_parser(subparsers)
@@ -77,17 +102,106 @@ Examples:
     _add_manifest_parser(subparsers)
     _add_cicd_parser(subparsers)
 
+    # State management
+    _add_state_parser(subparsers)
+
+    # Environment management
+    _add_env_parser(subparsers)
+
     return parser
+
+
+def _add_setup_parser(subparsers):
+    """Add setup command parser."""
+    setup_parser = subparsers.add_parser(
+        "setup",
+        help="Interactive setup wizard",
+        description="Initialize AgenticCLI configuration with guided prompts.",
+    )
+    setup_parser.add_argument(
+        "--force",
+        "-f",
+        action="store_true",
+        help="Overwrite existing configuration without prompting",
+    )
+
+
+def _add_preferences_parser(subparsers):
+    """Add preferences command parser with aliases."""
+    prefs_parser = subparsers.add_parser(
+        "preferences",
+        aliases=["prefs", "pref"],
+        help="Manage preferences",
+        description="Get, set, list, and delete user preferences.",
+    )
+    prefs_subparsers = prefs_parser.add_subparsers(dest="prefs_command", help="Preference commands")
+
+    # prefs get
+    get_parser = prefs_subparsers.add_parser(
+        "get",
+        help="Get a preference value",
+        description="Get a specific preference value (supports dot notation).",
+    )
+    get_parser.add_argument("key", help="Preference key (e.g., editor.theme)")
+
+    # prefs set
+    set_parser = prefs_subparsers.add_parser(
+        "set",
+        help="Set a preference value",
+        description="Set a preference value (supports dot notation).",
+    )
+    set_parser.add_argument("key", help="Preference key")
+    set_parser.add_argument("value", help="Value to set")
+
+    # prefs list
+    prefs_subparsers.add_parser(
+        "list",
+        help="List all preferences",
+        description="Display all stored preferences.",
+    )
+
+    # prefs delete
+    delete_parser = prefs_subparsers.add_parser(
+        "delete",
+        help="Delete a preference",
+        description="Delete a specific preference key.",
+    )
+    delete_parser.add_argument("key", help="Preference key to delete")
+
+    # prefs clear
+    clear_parser = prefs_subparsers.add_parser(
+        "clear",
+        help="Clear all preferences",
+        description="Remove all preferences (with confirmation).",
+    )
+    clear_parser.add_argument(
+        "--force",
+        "-f",
+        action="store_true",
+        help="Clear without confirmation",
+    )
+
+
+def _add_health_parser(subparsers):
+    """Add health command parser."""
+    subparsers.add_parser(
+        "health",
+        help="Run health checks",
+        description="Check CLI installation, configuration, and dependencies.",
+    )
 
 
 def _add_worktree_parser(subparsers):
     """Add worktree subcommand parser."""
     worktree_parser = subparsers.add_parser(
         "worktree",
+        aliases=["wt"],
         help="Manage git worktrees with planning folder integration",
         description="Create, list, and remove git worktrees with automatic planning folder scaffolding.",
     )
-    worktree_subparsers = worktree_parser.add_subparsers(dest="worktree_command", help="Worktree commands")
+    worktree_subparsers = worktree_parser.add_subparsers(
+        dest="worktree_command", help="Worktree commands"
+    )
 
     # worktree create
     create_parser = worktree_subparsers.add_parser(
@@ -96,8 +210,12 @@ def _add_worktree_parser(subparsers):
         description="Create a git worktree and scaffold a planning folder.",
     )
     create_parser.add_argument("branch", help="Branch name for the new worktree")
-    create_parser.add_argument("--base", "-b", default="main", help="Base branch to create from (default: main)")
-    create_parser.add_argument("--no-plan", action="store_true", help="Skip planning folder creation")
+    create_parser.add_argument(
+        "--base", "-b", default="main", help="Base branch to create from (default: main)"
+    )
+    create_parser.add_argument(
+        "--no-plan", action="store_true", help="Skip planning folder creation"
+    )
 
     # worktree list
     worktree_subparsers.add_parser(
@@ -113,7 +231,9 @@ def _add_worktree_parser(subparsers):
         description="Remove a git worktree and optionally archive its planning folder.",
     )
     remove_parser.add_argument("branch", help="Branch name of the worktree to remove")
-    remove_parser.add_argument("--force", "-f", action="store_true", help="Force removal without confirmation")
+    remove_parser.add_argument(
+        "--force", "-f", action="store_true", help="Force removal without confirmation"
+    )
 
     # worktree status
     worktree_subparsers.add_parser(
@@ -139,7 +259,9 @@ def _add_plan_parser(subparsers):
         description="Create a new planning folder with proper structure and placeholder files.",
     )
     scaffold_parser.add_argument("name", help="Folder name (e.g., 260103AE_feature)")
-    scaffold_parser.add_argument("--worktree", "-w", help="Worktree path (default: current directory)")
+    scaffold_parser.add_argument(
+        "--worktree", "-w", help="Worktree path (default: current directory)"
+    )
 
     # plan status
     status_parser = plan_subparsers.add_parser(
@@ -188,11 +310,81 @@ def _add_plan_parser(subparsers):
         description="Display all plans in docs/plans/live with status summary.",
     )
 
+    # plan move
+    move_parser = plan_subparsers.add_parser(
+        "move",
+        help="Move completed tasks or archive folder",
+        description="Move completed tasks to plan_completed.yml or archive the entire folder.",
+    )
+    move_subparsers = move_parser.add_subparsers(dest="move_type", help="Move commands")
+
+    # plan move task <id>
+    move_task_parser = move_subparsers.add_parser(
+        "task",
+        help="Move a single completed task",
+        description="Move a specific completed task to plan_completed.yml.",
+    )
+    move_task_parser.add_argument("task_id", help="Task ID to move (e.g., 12.7)")
+    move_task_parser.add_argument("--plan", "-p", help="Plan path (default: auto-detect)")
+    move_task_parser.add_argument(
+        "--dry-run",
+        "-n",
+        action="store_true",
+        help="Show what would be done without making changes",
+    )
+    move_task_parser.add_argument(
+        "--force",
+        "-f",
+        action="store_true",
+        help="Move even if there are uncommitted changes",
+    )
+
+    # plan move tasks
+    move_tasks_parser = move_subparsers.add_parser(
+        "tasks",
+        help="Move all completed tasks",
+        description="Move all completed tasks to plan_completed.yml.",
+    )
+    move_tasks_parser.add_argument("--plan", "-p", help="Plan path (default: auto-detect)")
+    move_tasks_parser.add_argument(
+        "--dry-run",
+        "-n",
+        action="store_true",
+        help="Show what would be done without making changes",
+    )
+    move_tasks_parser.add_argument(
+        "--force",
+        "-f",
+        action="store_true",
+        help="Move even if there are uncommitted changes",
+    )
+
+    # plan move folder
+    move_folder_parser = move_subparsers.add_parser(
+        "folder",
+        help="Archive the plan folder",
+        description="Move the entire plan folder to docs/plans/completed/.",
+    )
+    move_folder_parser.add_argument("--plan", "-p", help="Plan path (default: auto-detect)")
+    move_folder_parser.add_argument(
+        "--dry-run",
+        "-n",
+        action="store_true",
+        help="Show what would be done without making changes",
+    )
+    move_folder_parser.add_argument(
+        "--force",
+        "-f",
+        action="store_true",
+        help="Archive even if there are uncommitted changes",
+    )
+
 
 def _add_config_parser(subparsers):
     """Add config subcommand parser."""
     config_parser = subparsers.add_parser(
         "config",
+        aliases=["cfg"],
         help="Configuration and preferences management",
         description="Manage AgenticCLI configuration stored in ~/.config/agenticcli/.",
     )
@@ -244,6 +436,34 @@ def _add_config_parser(subparsers):
     )
     delete_parser.add_argument("key", help="Preference key to delete (e.g., worktree.default_base)")
 
+    # config show-path
+    config_subparsers.add_parser(
+        "show-path",
+        help="Show all config file paths",
+        description="Display config file paths with existence status.",
+    )
+
+    # config set-path
+    set_path_parser = config_subparsers.add_parser(
+        "set-path",
+        help="Set custom config file path",
+        description="Set a custom config file path (persisted in config directory).",
+    )
+    set_path_parser.add_argument("path", help="Path to custom config file")
+
+    # config clear
+    clear_parser = config_subparsers.add_parser(
+        "clear",
+        help="Clear configuration",
+        description="Clear all configuration (requires --force).",
+    )
+    clear_parser.add_argument(
+        "--force",
+        "-f",
+        action="store_true",
+        help="Confirm clearing configuration",
+    )
+
 
 def _add_update_parser(subparsers):
     """Add update command parser."""
@@ -293,10 +513,13 @@ def _add_template_parser(subparsers):
     """Add template subcommand parser."""
     template_parser = subparsers.add_parser(
         "template",
+        aliases=["tpl"],
         help="Generate plan files from templates",
         description="Generate properly formatted plan files from templates.",
     )
-    template_subparsers = template_parser.add_subparsers(dest="template_command", help="Template commands")
+    template_subparsers = template_parser.add_subparsers(
+        dest="template_command", help="Template commands"
+    )
 
     # template generate
     generate_parser = template_subparsers.add_parser(
@@ -304,8 +527,9 @@ def _add_template_parser(subparsers):
         help="Generate a plan file from template",
         description="Generate a plan file with injected context.",
     )
-    generate_parser.add_argument("type", choices=["build", "test", "cleanup", "guidance"],
-                                  help="Template type")
+    generate_parser.add_argument(
+        "type", choices=["build", "test", "cleanup", "guidance"], help="Template type"
+    )
     generate_parser.add_argument("--output", "-o", help="Output file path (default: stdout)")
 
     # template list
@@ -320,10 +544,13 @@ def _add_stories_parser(subparsers):
     """Add stories subcommand parser."""
     stories_parser = subparsers.add_parser(
         "stories",
+        aliases=["st"],
         help="Find user stories for testing",
         description="Find and filter user stories from the userstories directory.",
     )
-    stories_subparsers = stories_parser.add_subparsers(dest="stories_command", help="Stories commands")
+    stories_subparsers = stories_parser.add_subparsers(
+        dest="stories_command", help="Stories commands"
+    )
 
     # stories find
     find_parser = stories_subparsers.add_parser(
@@ -339,10 +566,13 @@ def _add_manifest_parser(subparsers):
     """Add manifest subcommand parser."""
     manifest_parser = subparsers.add_parser(
         "manifest",
-        help="Display agent manifests",
-        description="Show formatted agent manifest information.",
+        aliases=["mf"],
+        help="[BETA] Display agent manifests",
+        description="[BETA] Show formatted agent manifest information.",
     )
-    manifest_subparsers = manifest_parser.add_subparsers(dest="manifest_command", help="Manifest commands")
+    manifest_subparsers = manifest_parser.add_subparsers(
+        dest="manifest_command", help="Manifest commands"
+    )
 
     # manifest show
     show_parser = manifest_subparsers.add_parser(
@@ -357,8 +587,8 @@ def _add_cicd_parser(subparsers):
     """Add cicd subcommand parser."""
     cicd_parser = subparsers.add_parser(
         "cicd",
-        help="Audit CI/CD configuration",
-        description="Audit CI/CD configuration against codebase.",
+        help="[ALPHA] Audit CI/CD configuration",
+        description="[ALPHA] Audit CI/CD configuration against codebase.",
     )
     cicd_subparsers = cicd_parser.add_subparsers(dest="cicd_command", help="CI/CD commands")
 
@@ -370,54 +600,247 @@ def _add_cicd_parser(subparsers):
     )
 
 
+def _add_state_parser(subparsers):
+    """Add state subcommand parser."""
+    state_parser = subparsers.add_parser(
+        "state",
+        help="Manage process state registry",
+        description="View and manage the process state registry for tracking active CLI operations.",
+    )
+    state_subparsers = state_parser.add_subparsers(dest="state_command", help="State commands")
+
+    # state list
+    list_parser = state_subparsers.add_parser(
+        "list",
+        help="List registered processes",
+        description="Display all processes in the state registry.",
+    )
+    list_parser.add_argument(
+        "--active",
+        "-a",
+        action="store_true",
+        help="Show only active (running) processes",
+    )
+
+    # state show
+    show_parser = state_subparsers.add_parser(
+        "show",
+        help="Show details of a specific process",
+        description="Display detailed information about a registered process.",
+    )
+    show_parser.add_argument("pid", type=int, help="Process ID to show")
+
+    # state clear
+    clear_parser = state_subparsers.add_parser(
+        "clear",
+        help="Clear entries from the registry",
+        description="Remove completed/failed/stale entries from the registry.",
+    )
+    clear_parser.add_argument(
+        "--all",
+        "-a",
+        action="store_true",
+        help="Clear all entries (including running)",
+    )
+    clear_parser.add_argument(
+        "--force",
+        "-f",
+        action="store_true",
+        help="Force clear (required with --all)",
+    )
+
+    # state cleanup
+    state_subparsers.add_parser(
+        "cleanup",
+        help="Clean up stale processes",
+        description="Mark processes that are no longer running as stale.",
+    )
+
+
+def _add_env_parser(subparsers):
+    """Add env subcommand parser."""
+    env_parser = subparsers.add_parser(
+        "env",
+        help="Manage environment variable injection",
+        description="View and manage environment variables for subprocess execution.",
+    )
+    env_subparsers = env_parser.add_subparsers(dest="env_command", help="Environment commands")
+
+    # env show
+    env_subparsers.add_parser(
+        "show",
+        help="Show environment configuration",
+        description="Display all configured environment variables with sources (secrets masked).",
+    )
+
+    # env export
+    export_parser = env_subparsers.add_parser(
+        "export",
+        help="Export environment variables",
+        description="Export environment variables in shell or JSON format.",
+    )
+    export_parser.add_argument(
+        "--format",
+        "-f",
+        choices=["shell", "json"],
+        default="shell",
+        help="Output format (default: shell)",
+    )
+
+    # env run
+    run_parser = env_subparsers.add_parser(
+        "run",
+        help="Run command with injected environment",
+        description="Execute a command with configured environment variables.",
+    )
+    run_parser.add_argument(
+        "cmd_args",
+        nargs="+",
+        metavar="COMMAND",
+        help="Command and arguments to run",
+    )
+
+
+# Command categories for project requirement checking
+# Includes aliases for each command
+GLOBAL_COMMANDS = {
+    "setup",
+    "config",
+    "cfg",  # alias for config
+    "preferences",
+    "prefs",
+    "pref",
+    "update",
+    "rebuild",
+    "health",
+    "state",
+    "env",
+}
+PROJECT_COMMANDS = {
+    "worktree",
+    "wt",  # alias for worktree
+    "plan",
+    "inputs",
+    "template",
+    "tpl",  # alias for template
+    "stories",
+    "st",  # alias for stories
+    "manifest",
+    "mf",  # alias for manifest
+    "cicd",
+}
+
+
 def run_cli():
     """Main CLI entry point.
 
     Parses arguments and routes to appropriate command handlers.
+    Global commands work from any directory.
+    Project commands require a .git or .agenticcli.yml in the directory tree.
     """
     parser = create_parser()
     args = parser.parse_args()
 
     # Set JSON output mode if requested
-    if getattr(args, "json", False):
+    json_output = getattr(args, "json", False)
+    if json_output:
         from agenticcli.console import set_json_output
+
         set_json_output(True)
+
+    # Create context for command handlers
+    from agenticcli.context import CLIContext
+
+    debug_mode = getattr(args, "debug", False)
+    ctx = CLIContext.discover(json_output=json_output)
+
+    # Initialize logging
+    from agenticcli.logging import setup_logging
+
+    logger = setup_logging(
+        log_dir=ctx.logs_dir,
+        level="DEBUG" if debug_mode else None,
+        debug_to_console=debug_mode,
+    )
 
     if args.command is None:
         parser.print_help()
         sys.exit(0)
 
-    # Route to command handlers
-    if args.command == "worktree":
+    # Log command invocation
+    logger.info(f"Command: {args.command}")
+
+    # Check project requirement for project-specific commands
+    if args.command in PROJECT_COMMANDS:
+        ctx.require_project(args.command)
+
+    # Display stability banner for non-stable commands
+    from agenticcli.console import print_stability_banner
+
+    print_stability_banner(args.command)
+
+    # Route to command handlers - ctx passed as optional param for gradual migration
+    # Global commands (work from any directory)
+    if args.command == "setup":
+        from agenticcli.commands import setup
+
+        setup.handle(args, ctx=ctx)
+    elif args.command in ("preferences", "prefs", "pref"):
+        from agenticcli.commands import preferences
+
+        preferences.handle(args, ctx=ctx)
+    elif args.command == "health":
+        from agenticcli.commands import health
+
+        health.handle(args, ctx=ctx)
+    elif args.command in ("worktree", "wt"):
         from agenticcli.commands import worktree
-        worktree.handle(args)
+
+        worktree.handle(args, ctx=ctx)
     elif args.command == "plan":
         from agenticcli.commands import plan
-        plan.handle(args)
-    elif args.command == "config":
+
+        plan.handle(args, ctx=ctx)
+    elif args.command in ("config", "cfg"):
         from agenticcli.commands import config
-        config.handle(args)
+
+        config.handle(args, ctx=ctx)
     elif args.command == "update":
         from agenticcli.commands import package
-        package.handle_update(args)
+
+        package.handle_update(args, ctx=ctx)
     elif args.command == "rebuild":
         from agenticcli.commands import package
-        package.handle_rebuild(args)
+
+        package.handle_rebuild(args, ctx=ctx)
     elif args.command == "inputs":
         from agenticcli.commands import inputs
-        inputs.handle(args)
-    elif args.command == "template":
+
+        inputs.handle(args, ctx=ctx)
+    elif args.command in ("template", "tpl"):
         from agenticcli.commands import template
-        template.handle(args)
-    elif args.command == "stories":
+
+        template.handle(args, ctx=ctx)
+    elif args.command in ("stories", "st"):
         from agenticcli.commands import stories
-        stories.handle(args)
-    elif args.command == "manifest":
+
+        stories.handle(args, ctx=ctx)
+    elif args.command in ("manifest", "mf"):
         from agenticcli.commands import manifest
-        manifest.handle(args)
+
+        manifest.handle(args, ctx=ctx)
     elif args.command == "cicd":
         from agenticcli.commands import cicd
-        cicd.handle(args)
+
+        cicd.handle(args, ctx=ctx)
+    elif args.command == "state":
+        from agenticcli.commands import state
+
+        state.handle(args, ctx=ctx)
+    elif args.command == "env":
+        from agenticcli.commands import env
+
+        env.handle(args, ctx=ctx)
     else:
         parser.print_help()
         sys.exit(1)

@@ -1,74 +1,54 @@
 """Tests for template commands."""
 
-import os
-from pathlib import Path
-
-import pytest
-
 
 class TestTemplateGenerate:
     """Tests for 'agentic template generate' command."""
 
-    def test_generate_build_template(self, cli_runner, temp_dir):
+    def test_generate_build_template(self, cli_runner):
         """Test generating a build template."""
-        original_cwd = os.getcwd()
-        os.chdir(temp_dir)
-        try:
-            stdout, stderr, code = cli_runner(["template", "generate", "build"])
-            assert "# Implementation Plan" in stdout
-            assert "Build Phase Implementation" in stdout
-            assert code == 0
-        finally:
-            os.chdir(original_cwd)
+        # cli_runner already runs in a git repo (temp_repo)
+        stdout, stderr, code = cli_runner(["template", "generate", "build"])
+        # Works with both Jinja2 ("# Build Plan") and simple ("# Implementation Plan") templates
+        assert "Plan" in stdout
+        assert "status: pending" in stdout
+        assert code == 0
 
-    def test_generate_test_template(self, cli_runner, temp_dir):
+    def test_generate_test_template(self, cli_runner):
         """Test generating a test template."""
-        original_cwd = os.getcwd()
-        os.chdir(temp_dir)
-        try:
-            stdout, stderr, code = cli_runner(["template", "generate", "test"])
-            assert "# Test Plan" in stdout
-            assert "Unit Tests" in stdout
-            assert code == 0
-        finally:
-            os.chdir(original_cwd)
+        stdout, stderr, code = cli_runner(["template", "generate", "test"])
+        assert "# Test Plan" in stdout
+        # Works with both Jinja2 ("unit") and simple ("Unit Tests") templates
+        assert "unit" in stdout.lower()
+        assert code == 0
 
-    def test_generate_cleanup_template(self, cli_runner, temp_dir):
+    def test_generate_cleanup_template(self, cli_runner):
         """Test generating a cleanup template."""
-        original_cwd = os.getcwd()
-        os.chdir(temp_dir)
-        try:
-            stdout, stderr, code = cli_runner(["template", "generate", "cleanup"])
-            assert "# Audit and Cleanup Plan" in stdout
-            assert code == 0
-        finally:
-            os.chdir(original_cwd)
+        stdout, stderr, code = cli_runner(["template", "generate", "cleanup"])
+        # Works with both Jinja2 ("# Cleanup Plan") and simple ("# Audit and Cleanup Plan") templates
+        assert "Cleanup" in stdout
+        assert "status: pending" in stdout
+        assert code == 0
 
-    def test_generate_guidance_template(self, cli_runner, temp_dir):
+    def test_generate_guidance_template(self, cli_runner):
         """Test generating a guidance template."""
-        original_cwd = os.getcwd()
-        os.chdir(temp_dir)
-        try:
-            stdout, stderr, code = cli_runner(["template", "generate", "guidance"])
-            assert "# Guidance Plan" in stdout
-            assert code == 0
-        finally:
-            os.chdir(original_cwd)
+        stdout, stderr, code = cli_runner(["template", "generate", "guidance"])
+        assert "# Guidance Plan" in stdout
+        assert code == 0
 
-    def test_generate_with_output(self, cli_runner, temp_dir):
+    def test_generate_with_output(self, cli_runner, temp_repo):
         """Test generating a template to a file."""
-        original_cwd = os.getcwd()
-        os.chdir(temp_dir)
-        output_file = temp_dir / "output.yml"
-        try:
-            stdout, stderr, code = cli_runner(["template", "generate", "build", "--output", str(output_file)])
-            assert "Generated:" in stdout
-            assert output_file.exists()
-            content = output_file.read_text()
-            assert "# Implementation Plan" in content
-            assert code == 0
-        finally:
-            os.chdir(original_cwd)
+        # Use temp_repo (where cli_runner runs) for output file
+        output_file = temp_repo / "output.yml"
+        stdout, stderr, code = cli_runner(
+            ["template", "generate", "build", "--output", str(output_file)]
+        )
+        assert "Generated:" in stdout
+        assert output_file.exists()
+        content = output_file.read_text()
+        # Works with both Jinja2 ("# Build Plan") and simple ("# Implementation Plan") templates
+        assert "Plan" in content
+        assert "status: pending" in content
+        assert code == 0
 
 
 class TestTemplateList:

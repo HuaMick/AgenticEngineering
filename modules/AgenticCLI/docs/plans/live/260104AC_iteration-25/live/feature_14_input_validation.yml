@@ -1,0 +1,135 @@
+# Feature 14: Input Validation Layer
+# Status: pending
+# Priority: high
+
+feature:
+  id: FEAT-14
+  name: "Input Validation Layer"
+  description: |
+    Create reusable input validation for AgenticCLI that prevents:
+    - Invalid git branch names from reaching git commands
+    - Malformed plan folder structures
+    - Invalid YAML schema in plan files
+    - Fix placeholder TODOs with helpful defaults
+
+  current_problems:
+    - description: "No branch name validation"
+      impact: "Invalid branch names cause confusing git errors"
+      example: "'agentic worktree create -feature' fails with cryptic git error"
+
+    - description: "No plan folder structure validation"
+      impact: "Missing directories cause silent failures or confusing errors"
+
+    - description: "No YAML schema validation for plans"
+      impact: "Malformed plan files not detected until runtime"
+
+    - description: "TODO placeholder text in templates"
+      locations:
+        - "src/agenticcli/commands/worktree.py:108"
+        - "src/agenticcli/commands/template.py:41"
+      impact: "Users see unhelpful placeholder text in generated files"
+
+  deliverables:
+    - path: "src/agenticcli/validation.py"
+      description: "Validation functions module"
+      contents:
+        - "validate_branch_name() - Git branch name validation"
+        - "validate_plan_folder() - Plan directory structure validation"
+        - "validate_plan_yaml() - YAML schema validation"
+
+    - path: "tests/test_validation.py"
+      description: "Validation function tests"
+      contents:
+        - "Branch name validation tests (valid and invalid)"
+        - "Plan folder validation tests"
+        - "YAML schema validation tests"
+
+  implementation_steps:
+    - id: "14.1"
+      name: "Create validation.py"
+      status: pending
+      estimated_lines: 120
+
+    - id: "14.2"
+      name: "Create test_validation.py"
+      status: pending
+      estimated_lines: 150
+
+    - id: "14.3"
+      name: "Integrate validation into worktree commands"
+      status: pending
+      files: ["src/agenticcli/commands/worktree.py"]
+      details:
+        - "Add validate_branch_name() call in cmd_create"
+        - "Fix TODO at line 108"
+
+    - id: "14.4"
+      name: "Integrate validation into template commands"
+      status: pending
+      files: ["src/agenticcli/commands/template.py"]
+      details:
+        - "Fix TODO at line 41"
+        - "Add output path validation"
+
+    - id: "14.5"
+      name: "Add validation exports to __init__.py"
+      status: pending
+      files: ["src/agenticcli/__init__.py"]
+
+  validation_rules:
+    branch_names:
+      invalid_patterns:
+        - "Names starting with '-'"
+        - "Names containing '..'"
+        - "Names containing '~'"
+        - "Names containing '^'"
+        - "Names containing ':'"
+        - "Names containing '\\'"
+        - "Names containing spaces"
+        - "Names ending with '.lock'"
+        - "Names ending with '/'"
+        - "Empty strings"
+      valid_examples:
+        - "feature-auth"
+        - "bugfix/issue-123"
+        - "release-v1.0.0"
+        - "user/john/experiment"
+
+    plan_folder_structure:
+      required_directories:
+        - "live/"
+        - "completed/"
+      optional_directories:
+        - "analysis/"
+        - "design-specs/"
+      required_files: []
+      optional_files:
+        - "live/plan_live_teach.yml"
+        - "live/plan_live_test.yml"
+        - "completed/plan_completed.yml"
+
+    plan_yaml_schemas:
+      build:
+        required_fields:
+          - "plan.name"
+          - "plan.status"
+        optional_fields:
+          - "plan.worktree"
+          - "plan.branch"
+          - "plan.objective"
+          - "plan.phases"
+
+      test:
+        required_fields:
+          - "plan.name"
+          - "plan.status"
+        optional_fields:
+          - "plan.phases"
+          - "plan.test_strategy"
+
+  success_criteria:
+    - "validation.py module exists with all 3 validators"
+    - "Invalid branch names rejected before git operations"
+    - "Clear error messages with validation details"
+    - "TODOs at worktree.py:108 and template.py:41 fixed"
+    - "All validation tests pass"

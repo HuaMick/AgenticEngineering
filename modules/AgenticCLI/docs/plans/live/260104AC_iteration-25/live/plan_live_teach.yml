@@ -1,0 +1,527 @@
+# Implementation Plan - Iteration 25: Error Handling & Validation Framework
+# Created: 2026-01-04
+# Status: planning
+
+worktree: "/home/code/AgenticEngineering-agentic-cli/modules/AgenticCLI"
+liveplan: "docs/plans/live/260104AC_iteration-25/live/plan_live_teach.yml"
+completedplan: "docs/plans/live/260104AC_iteration-25/completed/plan_completed.yml"
+
+live-plans:
+  - id: ITER-25
+    title: "Error Handling & Validation Framework"
+    description: |
+      Implement comprehensive error handling and input validation for AgenticCLI.
+      Gap analysis identified silent failures and missing validation as key issues.
+      This iteration addresses FEAT-13 (Error Handling) and FEAT-14 (Input Validation).
+
+    current_state:
+      tests_passing: 261
+      completed_features: ["FEAT-01 through FEAT-12"]
+      identified_issues:
+        - "Silent pass statements swallow errors in exception handlers"
+        - "No custom exception hierarchy for domain-specific errors"
+        - "Missing input validation for branch names and plan structures"
+        - "TODOs at worktree.py:108 and template.py:41 for placeholder content"
+        - "YAML schema validation not implemented for plan files"
+
+    phases:
+      # ========================================
+      # PHASE 1: Exception Framework Foundation
+      # ========================================
+      - id: "25.1"
+        name: "Exception Framework Foundation"
+        status: pending
+        execution: sequential
+
+        tasks:
+          - id: "25.1.1"
+            name: "Create exceptions.py module"
+            status: pending
+            agent_type: builder
+            inputs:
+              - src/agenticcli/workflows/config_workflow.py  # Reference pattern: ConfigResult dataclass
+              - src/agenticcli/workflows/plan_workflow.py    # Reference pattern: MoveResult enum
+            guidance: |
+              Create src/agenticcli/exceptions.py with a custom exception hierarchy:
+
+              1. Base exception class: AgenticError(Exception)
+                 - Should include: message, details (dict), recovery_hint (optional str)
+                 - Implement __str__ to format message with recovery hint
+
+              2. Domain-specific exceptions inheriting from AgenticError:
+                 - WorktreeError: For git worktree operation failures
+                 - PlanError: For plan file/folder validation failures
+                 - ConfigError: For configuration loading/saving failures
+                 - ValidationError: For input validation failures
+
+              3. Each exception should support:
+                 - Optional context dict for structured error data
+                 - Recovery suggestion string for user guidance
+                 - Error codes for machine-readable error handling
+
+              Pattern reference: Follow the dataclass pattern from ConfigResult but as exceptions.
+            success_criteria:
+              - "exceptions.py exists at src/agenticcli/exceptions.py"
+              - "AgenticError base class implemented with message, details, recovery_hint"
+              - "WorktreeError, PlanError, ConfigError, ValidationError classes exist"
+              - "All exception classes can be imported: from agenticcli.exceptions import *"
+
+          - id: "25.1.2"
+            name: "Create test_exceptions.py"
+            status: pending
+            agent_type: builder
+            inputs:
+              - src/agenticcli/exceptions.py  # Created in 25.1.1
+              - tests/conftest.py             # Testing patterns
+            guidance: |
+              Create tests/test_exceptions.py with comprehensive tests:
+
+              1. Test each exception class can be raised and caught
+              2. Test message formatting with and without recovery hints
+              3. Test that all exceptions inherit from AgenticError
+              4. Test details dict is accessible and serializable to JSON
+              5. Test error codes are unique per exception type
+
+              Use pytest parametrize for testing all exception types systematically.
+            success_criteria:
+              - "tests/test_exceptions.py exists"
+              - "Tests cover all 4 domain exception types"
+              - "Tests verify inheritance hierarchy"
+              - "All tests pass: pytest tests/test_exceptions.py -v"
+
+      # ========================================
+      # PHASE 2: Replace Silent Pass Statements
+      # ========================================
+      - id: "25.2"
+        name: "Replace Silent Pass Statements"
+        status: pending
+        execution: sequential
+        depends_on: ["25.1"]
+
+        tasks:
+          - id: "25.2.1"
+            name: "Audit and fix state_workflow.py error handling"
+            status: pending
+            agent_type: builder
+            inputs:
+              - src/agenticcli/workflows/state_workflow.py  # Lines 120, 145 have silent pass
+              - src/agenticcli/exceptions.py                # New exceptions
+            guidance: |
+              Fix silent pass statements in state_workflow.py:
+
+              Line 119-120: except OSError: pass in FileLock release
+              - Add logging: logger.debug("Failed to release lock: %s", e)
+              - Consider if this should raise or just log (release during cleanup is often best-effort)
+
+              Line 144-145: except OSError: pass in is_stale check
+              - This swallows legitimate errors - should at least log
+              - Add logging and consider returning True (stale) on error for safety
+
+              Import the logger and add appropriate log statements.
+              Silent passes should be replaced with either:
+              1. Proper error handling/re-raise with context
+              2. Explicit logging explaining why the error is ignored
+            success_criteria:
+              - "No bare 'pass' in except blocks in state_workflow.py"
+              - "Each exception handler either logs, re-raises, or has explicit handling"
+              - "Existing tests still pass: pytest tests/test_state.py -v"
+
+          - id: "25.2.2"
+            name: "Fix worktree.py error handling"
+            status: pending
+            agent_type: builder
+            inputs:
+              - src/agenticcli/commands/worktree.py  # Lines 482-483 have silent pass
+              - src/agenticcli/exceptions.py         # New exceptions
+            guidance: |
+              Fix silent exception handling in worktree.py:
+
+              Line 482-483: except Exception: pass in cmd_status YAML parsing
+              - This is particularly problematic - it swallows ALL exceptions
+              - Should catch yaml.YAMLError specifically and log the parse failure
+              - Add structured error info: which file failed, line number if available
+
+              Also audit other exception handlers in this file:
+              - Line 42-44: CalledProcessError handling is good (exits with message)
+              - Line 205-207: CalledProcessError handling is good
+
+              Replace broad Exception catch with specific yaml.YAMLError.
+            success_criteria:
+              - "No except Exception: pass patterns in worktree.py"
+              - "YAML parse errors are logged with file path context"
+              - "Existing tests still pass: pytest tests/test_worktree.py -v"
+
+          - id: "25.2.3"
+            name: "Fix remaining silent passes across codebase"
+            status: pending
+            agent_type: builder
+            inputs:
+              - src/agenticcli/commands/stories.py       # Lines 49-50, 99-100
+              - src/agenticcli/commands/template.py      # Lines 210-211
+              - src/agenticcli/commands/plan.py          # Lines 358-359, 401
+              - src/agenticcli/workflows/environment_workflow.py  # Lines 153-154, 170-171, 192-193
+              - src/agenticcli/workflows/template_workflow.py     # Lines 266-267
+            guidance: |
+              Systematically replace all remaining silent pass statements:
+
+              stories.py (lines 49-50, 99-100):
+              - Both are YAML parse errors - add logging with file path
+
+              template.py (lines 210-211):
+              - Catches Exception in _try_jinja2_render - log and return None is acceptable
+              - But should catch more specific exceptions: Jinja2 exceptions + yaml.YAMLError
+
+              plan.py (lines 358-359, 401):
+              - YAML parse errors in plan traversal - should log and continue
+
+              environment_workflow.py (lines 153-154, 170-171, 192-193):
+              - Multiple YAML parse handlers - add structured logging
+
+              template_workflow.py (lines 266-267):
+              - Git command failure in context creation - log the failure
+
+              Pattern: Replace with structured logging that includes:
+              - File path being processed
+              - Operation that failed
+              - Exception type and message
+            success_criteria:
+              - "grep -r 'except.*:$' followed by 'pass$' returns no results in src/"
+              - "All exception handlers have logging or explicit handling"
+              - "All existing tests pass: pytest tests/ -v"
+
+      # ========================================
+      # PHASE 3: Input Validation Layer
+      # ========================================
+      - id: "25.3"
+        name: "Input Validation Layer"
+        status: pending
+        execution: sequential
+        depends_on: ["25.1"]
+
+        tasks:
+          - id: "25.3.1"
+            name: "Create validation.py module"
+            status: pending
+            agent_type: builder
+            inputs:
+              - src/agenticcli/exceptions.py  # ValidationError for failures
+            guidance: |
+              Create src/agenticcli/validation.py with reusable validators:
+
+              1. Branch name validation:
+                 def validate_branch_name(name: str) -> None:
+                 - Reject names starting with - (git restriction)
+                 - Reject names containing: .., ~, ^, :, \, spaces
+                 - Reject names ending with .lock or /
+                 - Reject empty strings
+                 - Raise ValidationError with clear message on failure
+
+              2. Plan folder structure validation:
+                 def validate_plan_folder(path: Path) -> list[str]:
+                 - Check for required subdirectories: live/, completed/
+                 - Return list of warnings (missing optional files)
+                 - Raise ValidationError for critical structure issues
+
+              3. YAML schema validation:
+                 def validate_plan_yaml(content: dict, schema_type: str) -> None:
+                 - Schema types: "build", "test", "cleanup", "guidance"
+                 - Validate required fields based on schema type
+                 - Raise ValidationError with field-level error details
+
+              Include docstrings with examples for each validator.
+            success_criteria:
+              - "validation.py exists at src/agenticcli/validation.py"
+              - "validate_branch_name() function implemented"
+              - "validate_plan_folder() function implemented"
+              - "validate_plan_yaml() function implemented"
+              - "All validators raise ValidationError on failure"
+
+          - id: "25.3.2"
+            name: "Create test_validation.py"
+            status: pending
+            agent_type: builder
+            inputs:
+              - src/agenticcli/validation.py  # Created in 25.3.1
+              - tests/conftest.py             # Testing fixtures
+            guidance: |
+              Create tests/test_validation.py with comprehensive coverage:
+
+              1. Branch name validation tests:
+                 - Valid names: feature-auth, bugfix/123, release-v1.0
+                 - Invalid names: -invalid, has..dots, has~tilde, has space
+                 - Edge cases: empty string, single char, very long names
+
+              2. Plan folder validation tests:
+                 - Valid structure with all required dirs
+                 - Missing live/ directory
+                 - Missing completed/ directory
+                 - Extra directories (should be allowed)
+
+              3. YAML schema validation tests:
+                 - Valid build plan YAML
+                 - Missing required fields
+                 - Invalid field types
+                 - Extra fields (should be allowed)
+
+              Use pytest.mark.parametrize for systematic coverage.
+            success_criteria:
+              - "tests/test_validation.py exists"
+              - "Branch validation tests cover all git restrictions"
+              - "Plan folder tests cover structure requirements"
+              - "YAML schema tests cover all 4 plan types"
+              - "All tests pass: pytest tests/test_validation.py -v"
+
+          - id: "25.3.3"
+            name: "Integrate validation into worktree commands"
+            status: pending
+            agent_type: builder
+            inputs:
+              - src/agenticcli/commands/worktree.py
+              - src/agenticcli/validation.py
+              - src/agenticcli/exceptions.py
+            guidance: |
+              Add input validation to worktree.py cmd_create():
+
+              1. Before git worktree creation:
+                 - Call validate_branch_name(branch)
+                 - Catch ValidationError and display user-friendly message
+                 - Include recovery suggestion in error output
+
+              2. Update error messages to use new exception types:
+                 - Replace generic print_error with structured WorktreeError
+                 - Include context (branch name, base branch, target path)
+
+              3. Fix the TODO at line 108:
+                 - This is in the template for plan_live_teach.yml
+                 - Replace "TODO: Describe the objective" with a more helpful default
+                 - Suggest: "Define your implementation objective here"
+
+              Maintain backward compatibility - existing tests should still pass.
+            success_criteria:
+              - "validate_branch_name() called before worktree creation"
+              - "Invalid branch names produce clear error with recovery hint"
+              - "TODO at worktree.py:108 replaced with helpful default text"
+              - "All worktree tests pass: pytest tests/test_worktree.py -v"
+
+          - id: "25.3.4"
+            name: "Integrate validation into template commands"
+            status: pending
+            agent_type: builder
+            inputs:
+              - src/agenticcli/commands/template.py
+              - src/agenticcli/validation.py
+              - src/agenticcli/exceptions.py
+            guidance: |
+              Add validation to template.py:
+
+              1. Fix TODO at line 41:
+                 - In TEMPLATES["build"] template string
+                 - Replace "TODO: Describe the build objective" with helpful default
+                 - Suggest: "Define your build objective and expected deliverables"
+
+              2. Add output path validation in cmd_generate():
+                 - Validate output path is writable
+                 - Check parent directory exists or can be created
+                 - Raise ValidationError if path is invalid
+
+              3. Improve error handling in _try_jinja2_render():
+                 - Replace broad except Exception with specific exceptions
+                 - Log template rendering failures with context
+            success_criteria:
+              - "TODO at template.py:41 replaced with helpful default"
+              - "Output path validation added to cmd_generate()"
+              - "Template rendering errors are logged with context"
+              - "All template tests pass: pytest tests/test_template.py -v"
+
+      # ========================================
+      # PHASE 4: Recovery Patterns
+      # ========================================
+      - id: "25.4"
+        name: "Recovery Patterns for Destructive Operations"
+        status: pending
+        execution: sequential
+        depends_on: ["25.2", "25.3"]
+
+        tasks:
+          - id: "25.4.1"
+            name: "Add rollback capability to worktree create"
+            status: pending
+            agent_type: builder
+            inputs:
+              - src/agenticcli/commands/worktree.py
+              - src/agenticcli/exceptions.py
+            guidance: |
+              Add rollback capability to cmd_create() for partial failure recovery:
+
+              Current flow:
+              1. Create git worktree
+              2. Create planning folder
+
+              If step 2 fails, the worktree exists but is in an inconsistent state.
+
+              Implementation:
+              1. Wrap the entire operation in a try block
+              2. Track what was created (worktree_created=False, plan_created=False)
+              3. On exception:
+                 - If worktree was created but plan failed, offer to:
+                   a) Keep worktree without plan
+                   b) Remove worktree and abort
+                 - Log the partial state for debugging
+
+              4. Add --rollback-on-failure flag (default True):
+                 - If True, automatically clean up on failure
+                 - If False, keep partial state for manual recovery
+
+              User experience:
+              - In JSON mode: include "partial_state" in error response
+              - In interactive mode: prompt user for rollback decision
+            success_criteria:
+              - "cmd_create() has try/except with rollback logic"
+              - "Partial failures are detected and handled"
+              - "Error messages include recovery suggestions"
+              - "Tests added for partial failure scenarios"
+
+          - id: "25.4.2"
+            name: "Add recovery suggestions to all error paths"
+            status: pending
+            agent_type: builder
+            inputs:
+              - src/agenticcli/commands/worktree.py
+              - src/agenticcli/commands/plan.py
+              - src/agenticcli/commands/config.py
+              - src/agenticcli/exceptions.py
+            guidance: |
+              Audit all error paths and add recovery suggestions:
+
+              worktree.py:
+              - "Worktree path already exists" -> "Use a different branch name or remove existing worktree"
+              - "Not in git repository" -> "Run this command from within a git repository"
+              - "Error creating worktree" -> "Check if branch name is valid and base branch exists"
+
+              plan.py:
+              - "Plan folder not found" -> "Run 'agentic plan scaffold <name>' to create one"
+              - "Invalid plan structure" -> "Ensure live/ and completed/ subdirectories exist"
+              - "YAML parse error" -> "Check YAML syntax at [file]:[line]"
+
+              config.py:
+              - "No configuration found" -> "Run 'agentic config init' to create default config"
+              - "Permission denied" -> "Check write permissions for ~/.config/agenticcli/"
+
+              Implementation:
+              - Use the recovery_hint parameter of exception classes
+              - Update print_error calls to include suggestions
+              - Ensure JSON output includes recovery_hint field
+            success_criteria:
+              - "All user-facing errors include recovery suggestions"
+              - "Recovery hints are actionable and specific"
+              - "JSON error responses include recovery_hint field"
+
+      # ========================================
+      # PHASE 5: Integration Testing
+      # ========================================
+      - id: "25.5"
+        name: "Integration Testing"
+        status: pending
+        execution: sequential
+        depends_on: ["25.4"]
+
+        tasks:
+          - id: "25.5.1"
+            name: "Run full test suite and fix regressions"
+            status: pending
+            agent_type: builder
+            inputs:
+              - tests/  # All test files
+            guidance: |
+              Run the full test suite and ensure no regressions:
+
+              1. Run: pytest tests/ -v --tb=short
+              2. Fix any failures introduced by the new error handling
+              3. Verify test count is >= 261 (may increase with new tests)
+
+              Common issues to watch for:
+              - Tests that expected silent failures now see exceptions
+              - Tests that checked specific error messages
+              - Tests that mocked exception handling
+
+              Update affected tests to work with new exception types.
+            success_criteria:
+              - "All tests pass: pytest tests/ -v"
+              - "Test count >= 261"
+              - "No warnings about uncaught exceptions"
+
+          - id: "25.5.2"
+            name: "Add error handling integration tests"
+            status: pending
+            agent_type: builder
+            inputs:
+              - tests/conftest.py
+              - src/agenticcli/exceptions.py
+              - src/agenticcli/validation.py
+            guidance: |
+              Create tests/test_error_handling.py for integration scenarios:
+
+              1. Test that invalid branch names are rejected with clear message
+              2. Test that YAML parse errors include file path and recovery hint
+              3. Test that config errors suggest running init
+              4. Test that JSON output mode includes error details and recovery hints
+              5. Test that rollback cleans up partial worktree creation
+
+              Use cli_runner fixture to test end-to-end error flows.
+            success_criteria:
+              - "tests/test_error_handling.py exists"
+              - "Integration tests cover all major error scenarios"
+              - "All tests pass: pytest tests/test_error_handling.py -v"
+
+          - id: "25.5.3"
+            name: "Update exports and documentation"
+            status: pending
+            agent_type: builder
+            inputs:
+              - src/agenticcli/__init__.py
+            guidance: |
+              Update module exports:
+
+              1. Add exceptions to __init__.py exports:
+                 from agenticcli.exceptions import (
+                     AgenticError,
+                     WorktreeError,
+                     PlanError,
+                     ConfigError,
+                     ValidationError,
+                 )
+
+              2. Add validation functions to exports:
+                 from agenticcli.validation import (
+                     validate_branch_name,
+                     validate_plan_folder,
+                     validate_plan_yaml,
+                 )
+
+              3. Ensure __all__ is updated if present
+
+              This enables users to import directly:
+              from agenticcli import ValidationError, validate_branch_name
+            success_criteria:
+              - "Exceptions importable from agenticcli package"
+              - "Validators importable from agenticcli package"
+              - "No import errors: python -c 'from agenticcli import ValidationError'"
+
+    success_criteria:
+      user_acceptance_tests:
+        - "User runs 'agentic worktree create -invalid' and gets clear error with fix suggestion"
+        - "User sees recovery hints for all common errors"
+        - "JSON output includes structured error information"
+        - "YAML parse errors show file path and line number"
+
+      technical_criteria:
+        - "No silent 'pass' statements in exception handlers"
+        - "All errors use custom exception hierarchy"
+        - "Input validation prevents invalid git operations"
+        - "Rollback capability for partial worktree creation"
+        - "All 261+ tests pass"
+
+      test_commands:
+        - "pytest tests/ -v"
+        - "agentic worktree create -invalid-branch  # Should show validation error"
+        - "agentic --json worktree create test 2>&1 | jq .  # Should have recovery_hint on error"

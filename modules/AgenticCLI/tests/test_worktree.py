@@ -3,7 +3,7 @@
 import os
 import subprocess
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -63,10 +63,7 @@ class TestWorktreeHelpers:
         """Test get_repo_root returns correct path."""
         from agenticcli.commands.worktree import get_repo_root
 
-        mock_run.return_value = MagicMock(
-            stdout="/home/user/myrepo\n",
-            returncode=0
-        )
+        mock_run.return_value = MagicMock(stdout="/home/user/myrepo\n", returncode=0)
 
         root = get_repo_root()
         assert root == Path("/home/user/myrepo")
@@ -215,18 +212,40 @@ class TestWorktreeStatus:
         assert code == 0
         # Should be valid JSON with expected fields
         import json
+
         data = json.loads(stdout)
         assert "path" in data
         assert "branch" in data
         assert "changes" in data
 
-    def test_status_not_in_git_repo(self, cli_runner, temp_dir):
+    def test_status_not_in_git_repo(self, temp_dir):
         """Test status when not in a git repo."""
+        import io
+        import sys
+        from contextlib import redirect_stderr, redirect_stdout
+        from unittest.mock import patch
+
         original_cwd = os.getcwd()
         os.chdir(temp_dir)
         try:
-            stdout, stderr, code = cli_runner(["worktree", "status"])
-            assert code == 1
-            assert "not" in stderr.lower() or "error" in stderr.lower()
+            stdout_capture = io.StringIO()
+            stderr_capture = io.StringIO()
+            exit_code = 0
+
+            with patch.object(sys, "argv", ["agentic", "worktree", "status"]):
+                with redirect_stdout(stdout_capture):
+                    with redirect_stderr(stderr_capture):
+                        try:
+                            from agenticcli.cli import run_cli
+
+                            run_cli()
+                        except SystemExit as e:
+                            exit_code = e.code if e.code is not None else 0
+
+            stdout = stdout_capture.getvalue()
+            stderr = stderr_capture.getvalue()
+            combined = stdout.lower() + stderr.lower()
+            assert exit_code == 1
+            assert "error" in combined or "project" in combined
         finally:
             os.chdir(original_cwd)

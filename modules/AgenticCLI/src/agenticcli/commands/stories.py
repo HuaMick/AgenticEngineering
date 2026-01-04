@@ -10,7 +10,7 @@ from pathlib import Path
 import yaml
 
 
-def handle(args):
+def handle(args, ctx=None):
     """Route stories subcommands."""
     if args.stories_command == "find":
         cmd_find(args)
@@ -69,39 +69,45 @@ def _parse_story_file(story_file: Path, userstories_dir: Path | None = None) -> 
                 stories = []
                 for story in content["user_stories"]:
                     if isinstance(story, dict):
-                        stories.append({
-                            "file": story_file.name,
-                            "path": str(story_file),
-                            "id": story.get("id", story_file.stem),
-                            "title": story.get("name", story.get("title", "")),
-                            "project": story.get("project", project),
-                            "status": story.get("status", ""),
-                            "tags": story.get("tags", []),
-                            "category": story.get("category", ""),
-                        })
+                        stories.append(
+                            {
+                                "file": story_file.name,
+                                "path": str(story_file),
+                                "id": story.get("id", story_file.stem),
+                                "title": story.get("name", story.get("title", "")),
+                                "project": story.get("project", project),
+                                "status": story.get("status", ""),
+                                "tags": story.get("tags", []),
+                                "category": story.get("category", ""),
+                            }
+                        )
                 if stories:
                     return stories
 
             # Handle single story format (legacy)
-            return [{
-                "file": story_file.name,
-                "path": str(story_file),
-                "id": content.get("id", story_file.stem),
-                "title": content.get("title", content.get("name", "")),
-                "project": content.get("project", project),
-                "status": content.get("status", ""),
-                "tags": content.get("tags", []),
-            }]
+            return [
+                {
+                    "file": story_file.name,
+                    "path": str(story_file),
+                    "id": content.get("id", story_file.stem),
+                    "title": content.get("title", content.get("name", "")),
+                    "project": content.get("project", project),
+                    "status": content.get("status", ""),
+                    "tags": content.get("tags", []),
+                }
+            ]
     except yaml.YAMLError:
         pass
 
-    return [{
-        "file": story_file.name,
-        "path": str(story_file),
-        "id": story_file.stem,
-        "project": project,
-        "error": "Could not parse",
-    }]
+    return [
+        {
+            "file": story_file.name,
+            "path": str(story_file),
+            "id": story_file.stem,
+            "project": project,
+            "error": "Could not parse",
+        }
+    ]
 
 
 def _categorize_stories(stories: list[dict]) -> dict:
@@ -199,12 +205,14 @@ def cmd_find(args):
     categories = _categorize_stories(stories)
 
     if is_json_output():
-        print_json({
-            "directory": str(userstories_dir),
-            "stories": stories,
-            "categories": {k: len(v) for k, v in categories.items()},
-            "total": len(stories),
-        })
+        print_json(
+            {
+                "directory": str(userstories_dir),
+                "stories": stories,
+                "categories": {k: len(v) for k, v in categories.items()},
+                "total": len(stories),
+            }
+        )
         return
 
     print_header(f"User Stories: {userstories_dir}")

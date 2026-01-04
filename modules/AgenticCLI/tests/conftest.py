@@ -9,7 +9,6 @@ from unittest.mock import patch
 import pytest
 import yaml
 
-
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
@@ -72,21 +71,83 @@ def mock_cwd(temp_repo):
 
 
 @pytest.fixture
-def cli_runner():
-    """Fixture to run CLI commands and capture output."""
-    import io
-    from contextlib import redirect_stdout, redirect_stderr
+def cli_runner(temp_repo):
+    """Fixture to run CLI commands and capture output.
 
-    def run_cli(args: list[str], expect_exit: int | None = None):
-        """Run CLI with args and return (stdout, stderr, exit_code)."""
+    Runs in a temp repo directory to satisfy project requirement.
+    Initializes a real git repository for git commands to work.
+    """
+    import io
+    import subprocess
+    from contextlib import redirect_stderr, redirect_stdout
+
+    # Initialize a real git repository
+    subprocess.run(
+        ["git", "init"],
+        cwd=temp_repo,
+        capture_output=True,
+        check=True,
+    )
+    # Configure git user for the repo
+    subprocess.run(
+        ["git", "config", "user.email", "test@test.com"],
+        cwd=temp_repo,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Test User"],
+        cwd=temp_repo,
+        capture_output=True,
+    )
+    # Create an initial commit so we have a branch
+    (temp_repo / "README.md").write_text("# Test Repo\n")
+    subprocess.run(
+        ["git", "add", "."],
+        cwd=temp_repo,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "Initial commit"],
+        cwd=temp_repo,
+        capture_output=True,
+    )
+
+    # Change to temp repo directory
+    original_cwd = os.getcwd()
+    os.chdir(temp_repo)
+
+    class CLIResult:
+        """Result from CLI run. Supports both attribute and tuple unpacking access."""
+
+        def __init__(self, stdout: str, stderr: str, returncode: int):
+            self.stdout = stdout
+            self.stderr = stderr
+            self.returncode = returncode
+
+        def __iter__(self):
+            """Support tuple unpacking: stdout, stderr, code = result."""
+            return iter((self.stdout, self.stderr, self.returncode))
+
+    def run_cli(*args, expect_exit: int | None = None):
+        """Run CLI with args and return CLIResult."""
         from agenticcli.cli import run_cli as _run_cli
+        from agenticcli.console import set_json_output
+
+        # Reset JSON output mode before each run
+        set_json_output(False)
+
+        # Support both run_cli("a", "b") and run_cli(["a", "b"])
+        if len(args) == 1 and isinstance(args[0], list):
+            cmd_args = args[0]
+        else:
+            cmd_args = list(args)
 
         stdout_capture = io.StringIO()
         stderr_capture = io.StringIO()
         exit_code = 0
 
         # Patch sys.argv
-        with patch.object(sys, "argv", ["agentic"] + args):
+        with patch.object(sys, "argv", ["agentic"] + cmd_args):
             with redirect_stdout(stdout_capture):
                 with redirect_stderr(stderr_capture):
                     try:
@@ -98,11 +159,16 @@ def cli_runner():
         stderr = stderr_capture.getvalue()
 
         if expect_exit is not None:
-            assert exit_code == expect_exit, f"Expected exit {expect_exit}, got {exit_code}. stderr: {stderr}"
+            assert exit_code == expect_exit, (
+                f"Expected exit {expect_exit}, got {exit_code}. stderr: {stderr}"
+            )
 
-        return stdout, stderr, exit_code
+        return CLIResult(stdout, stderr, exit_code)
 
-    return run_cli
+    yield run_cli
+
+    # Restore cwd
+    os.chdir(original_cwd)
 
 
 @pytest.fixture
@@ -119,7 +185,7 @@ def sample_prefs(temp_config_dir):
             "nested": {
                 "value": "test_value",
             }
-        }
+        },
     }
     prefs_file = temp_config_dir / "preferences.yml"
     with open(prefs_file, "w") as f:

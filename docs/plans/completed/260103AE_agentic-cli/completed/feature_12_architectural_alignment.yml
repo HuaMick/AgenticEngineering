@@ -1,0 +1,173 @@
+# Feature 12: Architectural Alignment with MyAgentsBackend
+# Align AgenticCLI with the reference architectural patterns and tooling
+
+feature:
+  name: "Architectural Alignment with MyAgentsBackend"
+  priority: 1
+  status: in_progress
+  created_date: "2026-01-04"
+  estimated_effort: high
+
+  description: |
+    Bring AgenticCLI into alignment with the reference implementation in MyAgentsBackend.
+    This includes full `uv` integration, adoption of the Workflow pattern for core logic, 
+    context-aware routing (Global vs Project), and standardized setup/test infrastructure.
+
+  reference:
+    legacy_cli: "modules/legacy/MyAgents/projects/MyAgentsBackend/"
+    patterns:
+      - Workflow Layer: "Separation of CLI handlers from core logic"
+      - Home Config: "Single source of truth in ~/.config/"
+      - UV First: "Lockfiles, sync, and tool-based installation"
+      - Context Detection: "Permissive routing with project discovery"
+      - Preferences API: "set/get/list/delete/clear with dot-notation"
+      - JIT Environment: "Automated .env generation for tool compatibility"
+
+  deliverables:
+    - name: "UV Integration"
+      path: "modules/AgenticCLI/uv.lock"
+      description: "Deterministic dependency management"
+
+    - name: "Workflow Layer"
+      path: "modules/AgenticCLI/src/agenticcli/workflows/"
+      description: "Core logic separated from CLI boilerplate"
+
+    - name: "Makefile"
+      path: "modules/AgenticCLI/Makefile"
+      description: "Standardized developer entrypoints"
+
+  implementation_steps:
+    - id: "12.1"
+      task: "Initialize UV project structure"
+      status: todo
+      details: |
+        Run `uv sync` to generate uv.lock
+        Update pyproject.toml to follow uv-friendly structure (e.g., dependency-groups)
+        Add .python-version file
+
+    - id: "12.2"
+      task: "Refactor to Workflow pattern"
+      status: todo
+      details: |
+        Create src/agenticcli/workflows/ directory
+        Implement WorktreeWorkflow, PlanWorkflow, and ConfigWorkflow
+        Delegate logic from commands/ to workflows/
+
+    - id: "12.3"
+      task: "Implement Context-Aware Entry Point"
+      status: todo
+      details: |
+        Refactor entry.py to use a HealthCheckWorkflow-style discovery
+        Support 'Global' commands that work from anywhere (setup, config, etc.)
+        Ensure project-specific commands (plan, worktree) handle context correctly
+
+    - id: "12.4"
+      task: "Add 'setup' command"
+      status: todo
+      details: |
+        Implement `agentic setup` to initialize ~/.config/agenticcli/
+        Guided interactive setup for initial preferences
+        Ensure idempotency (don't overwrite existing config unless forced)
+
+    - id: "12.5"
+      task: "Standardize Test & Build Infrastructure"
+      status: todo
+      details: |
+        Create Makefile with venv, install, test-all, and rebuild targets
+        Add health reporting to pytest (match --workflow-health pattern)
+        Implement scripts/install-global.sh using `uv tool install`
+
+    - id: "12.6"
+      task: "Consolidate Configuration"
+      status: todo
+      details: |
+        Merge preferences and config into a unified home-directory strategy
+        Ensure all commands strictly respect the home config when applicable
+
+    - id: "12.7"
+      task: "Implement Background Process & State Management"
+      status: todo
+      details: |
+        Adopt the legacy pattern of tracking PIDs and status in ~/.config/agenticcli/*.state files
+        Create a StateWorkflow to manage process lifecycles (start/stop/status)
+        Prepare infrastructure for future background services (relay, remote terminal)
+
+    - id: "12.8"
+      task: "Transition to Centralized Project/Plan Registry"
+      status: todo
+      details: |
+        Shift from pure local discovery to a central registry in ~/.config/agenticcli/plans.json
+        Enable 'agentic plan status' and 'agentic plan list' to operate across multiple projects
+        Match the 'Single Source of Truth' architecture from MyAgentsBackend
+
+    - id: "12.9"
+      task: "Align CLI Permissiveness and Help Routing"
+      status: todo
+      details: |
+        Refactor entry.py to allow help/version discovery even when project root detection fails
+        Ensure 'Global' commands (setup, config, update) are truly environment-independent
+        Implement the deferred-import pattern for all subcommands to optimize startup time
+
+    - id: "12.10"
+      task: "Implement Machine-Readable Health Checks"
+      status: todo
+      details: |
+        Add a 'health' command or 'status --json' that matches the legacy health-reporting pattern
+        Infrastructure to generate reports in REPORTS/health.json compatible with CI/CD
+        Standardized diagnostic output for troubleshooting installation issues
+
+    - id: "12.11"
+      task: "Standardized Logging & Diagnostics"
+      status: todo
+      details: |
+        Standardize on ~/.config/agenticcli/logs/ for all command and service logging
+        Implement log rotation and level management (debug/info/error)
+        Add a 'diagnostics' mode to collect logs and state for debugging
+
+    - id: "12.12"
+      task: "Align Preferences Command Architecture"
+      status: todo
+      details: |
+        Promote 'preferences' to a top-level command group (alias: prefs, pref)
+        Implement subcommands: set, get, list, delete, clear
+        Ensure full support for dot-notation and JSON-compatible storage
+        Mirror the 'myagents preferences' UX exactly
+
+    - id: "12.13"
+      task: "Implement Explicit Configuration Management"
+      status: todo
+      details: |
+        Add 'config set-path', 'config show', and 'config clear' subcommands
+        Allow the CLI to point to a custom config file outside ~/.config/agenticcli/
+        Maintain the 'Single Source of Truth' principle while allowing portability
+
+    - id: "12.14"
+      task: "Add Experimental/Stability Warning System"
+      status: todo
+      details: |
+        Implement a standardized mechanism to mark commands as Alpha or Experimental
+        Add consistent visual banners for experimental features (like 'remote' or 'relay')
+        Ensure the 'Status: Alpha' pattern from MyAgents README is reflected in CLI help
+
+    - id: "12.15"
+      task: "Implement Environment Syncing Workflow"
+      status: todo
+      details: |
+        Create a workflow to generate .env files from stored config/secrets
+        Match the legacy '_write_env_file_for_chat' pattern
+        Ensure compatibility with tools that expect environment variables or local files
+
+    - id: "12.16"
+      task: "Implement Command Aliases and Flag Shortcuts"
+      status: todo
+      details: |
+        Add short aliases for frequently used commands (e.g., 'c' for 'chat', 'prefs' for 'preferences')
+        Ensure all global flags have one-letter shortcuts (e.g., -j for --json, -v for --version)
+        Match the legacy CLI alias registry pattern
+
+  success_criteria:
+    - "`uv sync` and `uv run` work as expected"
+    - "CLI routes correctly from any directory"
+    - "`agentic setup` initializes the environment correctly"
+    - "`make test-all` runs the full suite with health report"
+    - "No duplication of logic between CLI handlers and workflows"

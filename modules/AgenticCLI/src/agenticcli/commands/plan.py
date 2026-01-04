@@ -10,8 +10,13 @@ from pathlib import Path
 import yaml
 
 
-def handle(args):
-    """Route plan subcommands."""
+def handle(args, ctx=None):
+    """Route plan subcommands.
+
+    Args:
+        args: Parsed command arguments.
+        ctx: Optional CLIContext for dependency injection.
+    """
     if args.plan_command == "scaffold":
         cmd_scaffold(args)
     elif args.plan_command == "status":
@@ -30,8 +35,10 @@ def handle(args):
         cmd_archive(args)
     elif args.plan_command == "list":
         cmd_list(args)
+    elif args.plan_command == "move":
+        cmd_move(args, ctx)
     else:
-        print("Usage: agentic plan <scaffold|status|validate|task|archive|list>", file=sys.stderr)
+        print("Usage: agentic plan <scaffold|status|validate|task|archive|list|move>", file=sys.stderr)
         sys.exit(1)
 
 
@@ -138,12 +145,14 @@ def cmd_status(args):
                 completed += 1
 
         if pending + in_progress + completed > 0:
-            file_stats.append({
-                "file": yaml_file.name,
-                "pending": pending,
-                "in_progress": in_progress,
-                "completed": completed,
-            })
+            file_stats.append(
+                {
+                    "file": yaml_file.name,
+                    "pending": pending,
+                    "in_progress": in_progress,
+                    "completed": completed,
+                }
+            )
             total_pending += pending
             total_in_progress += in_progress
             total_completed += completed
@@ -152,16 +161,18 @@ def cmd_status(args):
     pct = (total_completed / total) * 100 if total > 0 else 0
 
     if is_json_output():
-        print_json({
-            "plan": plan_path.name,
-            "files": file_stats,
-            "totals": {
-                "pending": total_pending,
-                "in_progress": total_in_progress,
-                "completed": total_completed,
-            },
-            "progress_percent": round(pct, 1),
-        })
+        print_json(
+            {
+                "plan": plan_path.name,
+                "files": file_stats,
+                "totals": {
+                    "pending": total_pending,
+                    "in_progress": total_in_progress,
+                    "completed": total_completed,
+                },
+                "progress_percent": round(pct, 1),
+            }
+        )
     else:
         print_header(f"Plan Status: {plan_path.name}")
 
@@ -170,24 +181,24 @@ def cmd_status(args):
             if "error" in stat:
                 rows.append([stat["file"], "[red]ERROR[/red]", "", ""])
             else:
-                rows.append([
-                    stat["file"],
-                    f"[dim]{stat['pending']}[/dim]",
-                    f"[yellow]{stat['in_progress']}[/yellow]",
-                    f"[green]{stat['completed']}[/green]",
-                ])
+                rows.append(
+                    [
+                        stat["file"],
+                        f"[dim]{stat['pending']}[/dim]",
+                        f"[yellow]{stat['in_progress']}[/yellow]",
+                        f"[green]{stat['completed']}[/green]",
+                    ]
+                )
 
         if rows:
-            print_table(
-                "Files",
-                ["File", "Pending", "In Progress", "Completed"],
-                rows
-            )
+            print_table("Files", ["File", "Pending", "In Progress", "Completed"], rows)
 
         console.print()
-        console.print(f"[bold]Total:[/bold] [dim]{total_pending} pending[/dim], "
-                      f"[yellow]{total_in_progress} in progress[/yellow], "
-                      f"[green]{total_completed} completed[/green]")
+        console.print(
+            f"[bold]Total:[/bold] [dim]{total_pending} pending[/dim], "
+            f"[yellow]{total_in_progress} in progress[/yellow], "
+            f"[green]{total_completed} completed[/green]"
+        )
         console.print(f"[bold]Progress:[/bold] [cyan]{pct:.1f}%[/cyan]")
 
 
@@ -414,14 +425,16 @@ def cmd_list(args):
         total = total_pending + total_in_progress + total_completed
         pct = (total_completed / total) * 100 if total > 0 else 0
 
-        plans_data.append({
-            "name": plan_folder.name,
-            "status": plan_status,
-            "pending": total_pending,
-            "in_progress": total_in_progress,
-            "completed": total_completed,
-            "progress_percent": round(pct, 1),
-        })
+        plans_data.append(
+            {
+                "name": plan_folder.name,
+                "status": plan_status,
+                "pending": total_pending,
+                "in_progress": total_in_progress,
+                "completed": total_completed,
+                "progress_percent": round(pct, 1),
+            }
+        )
 
     if is_json_output():
         print_json({"plans": plans_data})
@@ -434,18 +447,117 @@ def cmd_list(args):
 
         rows = []
         for plan in plans_data:
-            progress = f"{plan['progress_percent']:.0f}%" if plan['progress_percent'] > 0 else "N/A"
-            rows.append([
-                f"[bold]{plan['name']}[/bold]",
-                format_status(plan['status']),
-                f"[dim]{plan['pending']}[/dim]",
-                f"[yellow]{plan['in_progress']}[/yellow]",
-                f"[green]{plan['completed']}[/green]",
-                f"[cyan]{progress}[/cyan]",
-            ])
+            progress = f"{plan['progress_percent']:.0f}%" if plan["progress_percent"] > 0 else "N/A"
+            rows.append(
+                [
+                    f"[bold]{plan['name']}[/bold]",
+                    format_status(plan["status"]),
+                    f"[dim]{plan['pending']}[/dim]",
+                    f"[yellow]{plan['in_progress']}[/yellow]",
+                    f"[green]{plan['completed']}[/green]",
+                    f"[cyan]{progress}[/cyan]",
+                ]
+            )
 
-        print_table(
-            "",
-            ["Plan", "Status", "Pending", "In Prog", "Done", "Progress"],
-            rows
-        )
+        print_table("", ["Plan", "Status", "Pending", "In Prog", "Done", "Progress"], rows)
+
+
+def cmd_move(args, ctx=None):
+    """Move completed tasks to plan_completed.yml or archive folder.
+
+    Supports:
+    - plan move task <task-id>: Move a single task
+    - plan move tasks: Move all completed tasks
+    - plan move folder: Archive the entire plan folder
+    """
+    from agenticcli.console import (
+        console,
+        is_json_output,
+        print_error,
+        print_json,
+        print_success,
+        print_warning,
+    )
+    from agenticcli.workflows.plan_workflow import MoveResult, PlanMovementWorkflow
+
+    plan_path = find_plan_folder(getattr(args, "plan", None))
+    workflow = PlanMovementWorkflow(plan_path)
+
+    dry_run = getattr(args, "dry_run", False)
+    force = getattr(args, "force", False)
+    move_type = getattr(args, "move_type", None)
+
+    if move_type == "task":
+        task_id = args.task_id
+        result = workflow.move_task_to_completed(task_id, dry_run=dry_run, force=force)
+
+        if is_json_output():
+            print_json({
+                "task_id": result.task_id,
+                "result": result.result.value,
+                "message": result.message,
+                "source_file": result.source_file,
+                "target_file": result.target_file,
+            })
+        else:
+            if result.result == MoveResult.SUCCESS:
+                print_success(result.message)
+            elif result.result == MoveResult.SKIPPED:
+                print_warning(result.message)
+            else:
+                print_error(result.message)
+                sys.exit(1)
+
+    elif move_type == "tasks":
+        results = workflow.move_all_completed_tasks(dry_run=dry_run, force=force)
+
+        if is_json_output():
+            print_json({
+                "results": [
+                    {
+                        "task_id": r.task_id,
+                        "result": r.result.value,
+                        "message": r.message,
+                    }
+                    for r in results
+                ],
+                "success": sum(1 for r in results if r.result == MoveResult.SUCCESS),
+                "skipped": sum(1 for r in results if r.result == MoveResult.SKIPPED),
+                "failed": sum(1 for r in results if r.result == MoveResult.FAILED),
+            })
+        else:
+            success = sum(1 for r in results if r.result == MoveResult.SUCCESS)
+            skipped = sum(1 for r in results if r.result == MoveResult.SKIPPED)
+            failed = sum(1 for r in results if r.result == MoveResult.FAILED)
+
+            if success > 0:
+                print_success(f"Moved {success} task(s) to plan_completed.yml")
+            if skipped > 0:
+                print_warning(f"Skipped {skipped} task(s)")
+            if failed > 0:
+                print_error(f"Failed {failed} task(s)")
+            if not results:
+                console.print("[dim]No completed tasks found to move.[/dim]")
+
+    elif move_type == "folder":
+        result = workflow.archive_plan_folder(dry_run=dry_run, force=force)
+
+        if is_json_output():
+            print_json({
+                "source": result.source,
+                "destination": result.destination,
+                "result": result.result.value,
+                "message": result.message,
+            })
+        else:
+            if result.result == MoveResult.SUCCESS:
+                print_success(result.message)
+            elif result.result == MoveResult.SKIPPED:
+                print_warning(result.message)
+            else:
+                print_error(result.message)
+                sys.exit(1)
+
+    else:
+        print("Usage: agentic plan move <task|tasks|folder>", file=sys.stderr)
+        sys.exit(1)

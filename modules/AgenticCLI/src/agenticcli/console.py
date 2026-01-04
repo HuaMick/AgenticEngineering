@@ -146,3 +146,32 @@ def format_status(status: str) -> str:
         return "[red]failed[/red]"
     else:
         return status
+
+
+def print_stability_banner(command: str):
+    """Print a stability warning banner for non-stable commands.
+
+    Suppressed in JSON output mode.
+
+    Args:
+        command: Command name to check stability for.
+    """
+    if _output_json:
+        return
+
+    from agenticcli.decorators import (
+        StabilityLevel,
+        get_command_stability,
+        get_stability_banner_text,
+        get_stability_color,
+    )
+
+    level = get_command_stability(command)
+    if level == StabilityLevel.STABLE:
+        return
+
+    banner_text = get_stability_banner_text(level, command)
+    if banner_text:
+        color = get_stability_color(level)
+        console.print(f"[{color}]{banner_text}[/{color}]")
+        console.print()

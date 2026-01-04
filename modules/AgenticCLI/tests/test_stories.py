@@ -1,7 +1,6 @@
 """Tests for stories commands."""
 
 import os
-from pathlib import Path
 
 import pytest
 import yaml

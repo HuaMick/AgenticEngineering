@@ -9,7 +9,7 @@ from pathlib import Path
 import yaml
 
 
-def handle(args):
+def handle(args, ctx=None):
     """Route manifest subcommands."""
     if args.manifest_command == "show":
         cmd_show(args)

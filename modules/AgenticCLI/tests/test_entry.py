@@ -1,7 +1,7 @@
 """Tests for entry point module."""
 
 import sys
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 
@@ -75,14 +75,17 @@ class TestEntryPointImports:
     def test_imports_agenticcli(self):
         """Test agenticcli package can be imported."""
         import agenticcli
+
         assert hasattr(agenticcli, "__version__")
 
     def test_imports_entry_module(self):
         """Test entry module can be imported."""
         from agenticcli import entry
+
         assert hasattr(entry, "main")
 
     def test_imports_cli_module(self):
         """Test cli module can be imported."""
         from agenticcli import cli
+
         assert hasattr(cli, "run_cli")

@@ -9,8 +9,13 @@ from datetime import datetime
 from pathlib import Path
 
 
-def handle(args):
-    """Route worktree subcommands."""
+def handle(args, ctx=None):
+    """Route worktree subcommands.
+
+    Args:
+        args: Parsed command arguments.
+        ctx: Optional CLIContext for dependency injection.
+    """
     if args.worktree_command == "create":
         cmd_create(args)
     elif args.worktree_command == "list":
@@ -279,11 +284,13 @@ def cmd_list(args):
         if plan_dir.exists():
             plan_folders = [d.name for d in plan_dir.iterdir() if d.is_dir()]
 
-        worktree_data.append({
-            "path": str(wt_path),
-            "branch": branch,
-            "plan_folders": plan_folders,
-        })
+        worktree_data.append(
+            {
+                "path": str(wt_path),
+                "branch": branch,
+                "plan_folders": plan_folders,
+            }
+        )
 
     if is_json_output():
         print_json({"worktrees": worktree_data})
@@ -293,11 +300,13 @@ def cmd_list(args):
         rows = []
         for wt in worktree_data:
             plan_str = ", ".join(wt["plan_folders"]) if wt["plan_folders"] else "[dim]-[/dim]"
-            rows.append([
-                f"[cyan]{wt['path']}[/cyan]",
-                f"[green]{wt['branch']}[/green]",
-                plan_str,
-            ])
+            rows.append(
+                [
+                    f"[cyan]{wt['path']}[/cyan]",
+                    f"[green]{wt['branch']}[/green]",
+                    plan_str,
+                ]
+            )
 
         print_table("", ["Path", "Branch", "Plan Folders"], rows)
 
@@ -456,10 +465,13 @@ def cmd_status(args):
                     for yml_file in live_dir.glob("*.yml"):
                         try:
                             import yaml
+
                             content = yaml.safe_load(yml_file.read_text())
                             if content:
                                 plan_data = content.get("plan", content.get("feature", {}))
-                                for item in plan_data.get("phases", []) + plan_data.get("implementation_steps", []):
+                                for item in plan_data.get("phases", []) + plan_data.get(
+                                    "implementation_steps", []
+                                ):
                                     status = item.get("status", "pending")
                                     if status == "pending":
                                         pending += 1
@@ -469,12 +481,14 @@ def cmd_status(args):
                                         completed += 1
                         except Exception:
                             pass
-                    plan_stats.append({
-                        "name": plan_dir.name,
-                        "pending": pending,
-                        "in_progress": in_progress,
-                        "completed": completed,
-                    })
+                    plan_stats.append(
+                        {
+                            "name": plan_dir.name,
+                            "pending": pending,
+                            "in_progress": in_progress,
+                            "completed": completed,
+                        }
+                    )
 
     # Count changes by type
     staged = len([c for c in changes if c and c[0] in "MADRC"])
@@ -504,7 +518,9 @@ def cmd_status(args):
     # Basic info
     console.print(f"\n[bold]Path:[/bold] [cyan]{cwd}[/cyan]")
     console.print(f"[bold]Branch:[/bold] [green]{current_branch}[/green]")
-    console.print(f"[bold]Type:[/bold] {'[magenta]worktree[/magenta]' if is_worktree else '[dim]main repo[/dim]'}")
+    console.print(
+        f"[bold]Type:[/bold] {'[magenta]worktree[/magenta]' if is_worktree else '[dim]main repo[/dim]'}"
+    )
     console.print(f"[bold]Last Commit:[/bold] [dim]{last_commit}[/dim]")
 
     # Changes
@@ -522,7 +538,13 @@ def cmd_status(args):
         for plan in plan_stats:
             total = plan["pending"] + plan["in_progress"] + plan["completed"]
             pct = (plan["completed"] / total * 100) if total > 0 else 0
-            status_str = format_status("completed") if pct == 100 else format_status("in_progress") if plan["in_progress"] > 0 else format_status("pending")
+            status_str = (
+                format_status("completed")
+                if pct == 100
+                else format_status("in_progress")
+                if plan["in_progress"] > 0
+                else format_status("pending")
+            )
             console.print(f"  [cyan]{plan['name']}[/cyan]: {status_str} ({pct:.0f}% complete)")
     else:
         console.print("  [dim]No active plans[/dim]")

@@ -1,10 +1,6 @@
 """Tests for console output utilities."""
 
 import json
-from io import StringIO
-from unittest.mock import patch
-
-import pytest
 
 
 class TestJsonOutputMode:
@@ -12,7 +8,7 @@ class TestJsonOutputMode:
 
     def test_set_json_output(self):
         """Test enabling JSON output mode."""
-        from agenticcli.console import set_json_output, is_json_output
+        from agenticcli.console import is_json_output, set_json_output
 
         set_json_output(True)
         assert is_json_output() is True
@@ -33,8 +29,9 @@ class TestJsonOutputMode:
 
     def test_print_json_with_complex_types(self, capsys):
         """Test print_json handles complex types."""
-        from agenticcli.console import print_json
         from pathlib import Path
+
+        from agenticcli.console import print_json
 
         data = {"path": Path("/some/path")}
         print_json(data)
