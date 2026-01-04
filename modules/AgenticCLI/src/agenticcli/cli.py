@@ -35,8 +35,8 @@ Project Commands (require .git or .agenticcli.yml):
   inputs          Validate and resolve inputs.yml references
   template (tpl)  Generate plan files from templates
   stories (st)    Find user stories for testing
-  manifest (mf)   [BETA] Display agent manifests
-  cicd            [ALPHA] Audit CI/CD configuration
+  manifest (mf)   Manage agent manifests
+  cicd            CI/CD configuration management
 
 Flags:
   -j, --json      Output in JSON format

@@ -18,9 +18,10 @@ class StabilityLevel(str, Enum):
 
 # Mapping of commands to their stability levels
 # Commands not listed are assumed to be STABLE
+# All commands are now STABLE as of iteration-28
 COMMAND_STABILITY: dict[str, StabilityLevel] = {
-    "cicd": StabilityLevel.ALPHA,
-    "manifest": StabilityLevel.BETA,
+    # "cicd": StabilityLevel.STABLE,  # Matured in iteration-28
+    # "manifest": StabilityLevel.STABLE,  # Matured in iteration-28
 }
 
 

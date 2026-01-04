@@ -27,9 +27,10 @@ class TestStabilityLevels:
         assert isinstance(StabilityLevel.BETA.value, str)
 
     def test_command_stability_mapping_exists(self):
-        """Verify command stability mapping has expected entries."""
-        assert "cicd" in COMMAND_STABILITY
-        assert COMMAND_STABILITY["cicd"] == StabilityLevel.ALPHA
+        """Verify command stability mapping exists (can be empty when all commands are stable)."""
+        # All commands are now STABLE as of iteration-28
+        # COMMAND_STABILITY can be empty when all commands are STABLE
+        assert isinstance(COMMAND_STABILITY, dict)
 
     def test_stability_messages_defined(self):
         """Verify stability messages exist for non-stable levels."""
@@ -48,13 +49,13 @@ class TestStabilityLevels:
 class TestGetCommandStability:
     """Tests for get_command_stability function."""
 
-    def test_get_alpha_command(self):
-        """Verify ALPHA command returns correct level."""
-        assert get_command_stability("cicd") == StabilityLevel.ALPHA
+    def test_get_cicd_command_stable(self):
+        """Verify cicd command is now STABLE (matured in iteration-28)."""
+        assert get_command_stability("cicd") == StabilityLevel.STABLE
 
-    def test_get_beta_command(self):
-        """Verify BETA command returns correct level."""
-        assert get_command_stability("manifest") == StabilityLevel.BETA
+    def test_get_manifest_command_stable(self):
+        """Verify manifest command is now STABLE (matured in iteration-28)."""
+        assert get_command_stability("manifest") == StabilityLevel.STABLE
 
     def test_get_stable_command_unlisted(self):
         """Verify unlisted command defaults to STABLE."""
@@ -128,10 +129,11 @@ class TestStabilityBannerIntegration:
         # Output should be JSON, not contain banner markers
         assert "[ALPHA]" not in result.stdout
 
-    def test_help_shows_stability_indicator(self, cli_runner):
-        """Verify help text includes stability indicators."""
+    def test_help_shows_all_commands_stable(self, cli_runner):
+        """Verify help text does not include stability indicators (all commands stable)."""
         result = cli_runner("--help")
         assert result.returncode == 0
-        # Should show [ALPHA] for cicd in help
-        assert "[ALPHA]" in result.stdout
-        assert "[BETA]" in result.stdout
+        # All commands are now STABLE, no indicators should appear
+        # cicd and manifest were matured in iteration-28
+        assert "[ALPHA]" not in result.stdout
+        assert "[BETA]" not in result.stdout
