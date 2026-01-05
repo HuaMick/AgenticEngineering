@@ -36,13 +36,14 @@ flowchart LR
     %% PHASE DETERMINATION
     %% ========================================
     %% Orchestration-planning agent analyzes objective and determines required phases.
-    %% Possible phases: teach, build, test, cleanup
+    %% Possible phases: teach, guidance-test, build, test, cleanup
     %% Each phase will get its own plan_live_<phase>.yml file
     WorktreeValid -- "Yes: Verified" --> PhaseDetermination[Enter Phase Determination]
 
     subgraph PhaseDetermination_SG ["Phase Determination Subgraph"]
         %% Orchestration-planning determines phases based on objective type:
         %% - teach: guidance, process, or documentation improvements
+        %% - guidance-test: guidance validation through walkthroughs (if teach phase exists)
         %% - build: code implementation or feature development
         %% - test: test strategy and validation tasks
         %% - cleanup: code cleanup, audit, or removal tasks
@@ -51,7 +52,7 @@ flowchart LR
         AnalyzeObjective --> DeterminePhases[Determine Required Phases]
         DeterminePhases --> PhasesDecided{Phases Decided?}
 
-        %% List possible phases: teach, build, test, cleanup
+        %% List possible phases: teach, guidance-test, build, test, cleanup
         PhasesDecided -- "Yes" --> CreatePlaceholders[Create Phase Placeholder Files]
         PhasesDecided -- "No: Unclear" --> EscalatePhases((Ask User for Phase Guidance))
     end
@@ -65,6 +66,7 @@ flowchart LR
     %%
     %% For each required phase, spawn specialized planner + reviewer loop:
     %% - planner-guidance: Teaching/guidance plans
+    %% - planner-guidance-testing: Guidance validation plans
     %% - planner-build: Build/implementation plans
     %% - planner-test: Test strategy plans
     %% - planner-cleaning: Cleanup/audit plans
@@ -85,8 +87,24 @@ flowchart LR
         TeachPlanApproved -- "No: Refine" --> SpawnPlannerTeachFix[Spawn planner-guidance Agent]
         SpawnPlannerTeachFix --> SpawnTeachReviewer
 
-        TeachPlanApproved -- "Yes: Ready" --> CheckBuild{Build Phase Required?}
-        CheckTeach -- "No" --> CheckBuild
+        TeachPlanApproved -- "Yes: Ready" --> CheckGuidanceTest{Guidance Test Phase Required?}
+        CheckTeach -- "No" --> CheckGuidanceTest
+
+        %% ----------------------------------------
+        %% GUIDANCE TEST PLANNING LOOP (if guidance test phase required)
+        %% ----------------------------------------
+        CheckGuidanceTest -- "Yes" --> GuidanceTestPlanLoop{Guidance Test Planning Loop}
+
+        GuidanceTestPlanLoop --> SpawnPlannerGuidanceTest[Spawn planner-guidance-testing Agent]
+        SpawnPlannerGuidanceTest --> SpawnGuidanceTestReviewer[Spawn planner-reviewer Agent]
+        SpawnGuidanceTestReviewer --> GuidanceTestPlanApproved{Guidance Test Plan Approved?}
+
+        %% Iterative refinement for guidance test plan
+        GuidanceTestPlanApproved -- "No: Refine" --> SpawnPlannerGuidanceTestFix[Spawn planner-guidance-testing Agent]
+        SpawnPlannerGuidanceTestFix --> SpawnGuidanceTestReviewer
+
+        GuidanceTestPlanApproved -- "Yes: Ready" --> CheckBuild{Build Phase Required?}
+        CheckGuidanceTest -- "No" --> CheckBuild
 
         %% ----------------------------------------
         %% BUILD PLANNING LOOP (if build phase required)
