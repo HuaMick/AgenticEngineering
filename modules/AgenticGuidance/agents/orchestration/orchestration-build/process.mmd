@@ -28,10 +28,13 @@ flowchart LR
     %% Proceed only when context is fully loaded and verified
     CheckInputs -- "Yes: Verified" --> SpawnDeployWorktree[Spawn deploy-worktree Agent]
 
-    %% Isolate work and initialize the planning environment
-    %% deploy-worktree agent handles worktree setup and verification per its internal criteria
-    SpawnDeployWorktree --> VerifyWorktree[Verify Worktree & Planning Folder]
-    VerifyWorktree --> WorktreeValid{Worktree Valid?}
+    %% CLI OFFLOAD: Use agentic-cli commands for worktree and plan operations
+    %% - agentic worktree status: Verifies worktree configuration
+    %% - agentic plan validate: Validates plan folder structure
+    %% deploy-worktree agent orchestrates CLI commands
+    SpawnDeployWorktree --> VerifyWorktree[Verify Worktree via CLI: agentic worktree status]
+    VerifyWorktree --> ValidatePlanFolder[Validate Plan Folder via CLI: agentic plan validate]
+    ValidatePlanFolder --> WorktreeValid{Worktree & Plan Valid?}
     WorktreeValid -- "No: Failed verification" --> AskUser
 
     %% ========================================
@@ -220,8 +223,12 @@ flowchart LR
     %% FINALIZATION
     %% ========================================
     %% Success: All criteria met. Finalize the work.
-    FinalAudit -- "Yes: Verified" --> MoveCompleted[Copy Completed Work to docs/plans/completed/]
-    MoveCompleted --> End((End))
+    %% CLI OFFLOAD: Use agentic-cli for task and folder completion
+    %% - agentic plan move tasks: Move all completed tasks to plan_completed.yml
+    %% - agentic plan move folder: Archive entire plan folder to completed/
+    FinalAudit -- "Yes: Verified" --> MoveCompletedTasks[Move Completed Tasks via CLI: agentic plan move tasks]
+    MoveCompletedTasks --> ArchivePlanFolder[Archive Plan Folder via CLI: agentic plan move folder]
+    ArchivePlanFolder --> End((End))
 
     %% COPY planning folder to completed/ (not move) - live/ may continue with follow-on work
     %% Only user moves completed/ folders to archived/ subdirectory

@@ -10,10 +10,177 @@ priority: high
 
 context: |
   This plan consolidated the remaining tasks from the previous build and remediation phases.
-  The focus is on offloading deterministic logic to the agentic-cli and implementing 
+  The focus is on offloading deterministic logic to the agentic-cli and implementing
   dynamic orchestration via Mermaid diagrams.
 
+  UPDATE 2026-01-06: Agent self-review testing revealed critical friction patterns that
+  must be addressed before proceeding with remaining phases. A Friction Remediation phase
+  has been added to fix blocking issues.
+
+  UPDATE 2026-01-06 (session 2): Friction Remediation phase COMPLETED. All 7 tasks done:
+  - rem_cp001: Path semantics clarified in inputs.yml files
+  - rem_cp002: Required inputs sections added to 4 agents
+  - rem_hp001: Loop context added to test-audit and orchestration-guidance
+  - rem_hp002: Output schemas defined for 3 agents
+  - rem_hp003: Fragment reference syntax documented in new definition file
+  - rem_mp001: Excessive context loading removed from teacher-update-guidance
+  - rem_mp002: Version numbers aligned to 2.0 with documented scheme
+
+  NEXT: Resume with Phase 1 (CLI Offloading) in fresh session.
+
 phases:
+  # ========================================
+  # FRICTION REMEDIATION PHASE (Priority)
+  # Added after agent self-review testing revealed critical issues
+  # ========================================
+  - name: Friction Remediation
+    execution: sequential
+    description: "Address critical friction patterns found during agent self-review testing"
+    priority: critical
+    audit_ref: "audit/260106_agent_self_review_results.yml"
+    tasks:
+      # CRITICAL Issues
+      - id: "rem_cp001"
+        name: "Clarify docs/plans/ path semantics"
+        description: |
+          Multiple agents reference docs/plans/live/ and docs/plans/completed/ directories.
+          Clarify in guidance that these paths are relative to TARGET PROJECT, not the
+          AgenticGuidance module. Add documentation to inputs.yml files.
+        severity: "critical"
+        affected_agents:
+          - orchestration-planning
+          - orchestration-build
+          - orchestration-guidance
+          - planner-build
+          - planner-guidance
+          - planner-test
+        target_files:
+          - "agents/orchestration/orchestration-planning/inputs.yml"
+          - "agents/orchestration/orchestration-build/inputs.yml"
+          - "agents/planner/planner-build/inputs.yml"
+          - "agents/planner/planner-guidance/inputs.yml"
+        acceptance_criteria:
+          - "All inputs.yml files document that docs/plans/ is target project relative"
+          - "Add base_path clarification comment at top of inputs files"
+        status: "completed"
+        completed_date: "2026-01-06"
+
+      - id: "rem_cp002"
+        name: "Add required_inputs sections to inputs.yml"
+        description: |
+          inputs.yml files don't distinguish between required inputs (must be provided by
+          user/orchestration) and reference inputs (background context). Add required_inputs
+          section to critical agents.
+        severity: "critical"
+        affected_agents:
+          - orchestration-planning
+          - orchestration-build
+          - planner-build
+          - planner-guidance
+        target_files:
+          - "agents/orchestration/orchestration-planning/inputs.yml"
+          - "agents/orchestration/orchestration-build/inputs.yml"
+          - "agents/planner/planner-build/inputs.yml"
+          - "agents/planner/planner-guidance/inputs.yml"
+        acceptance_criteria:
+          - "Each inputs.yml has required_inputs section"
+          - "Required inputs clearly marked vs optional context"
+        status: "completed"
+        completed_date: "2026-01-06"
+
+      # HIGH Issues
+      - id: "rem_hp001"
+        name: "Add loop_context to loop participants"
+        description: |
+          Agents participating in loops (audit-test-fix-loop, guidance-test-loop) lack
+          explicit loop_context sections specifying role, iteration strategy, exit conditions.
+        severity: "high"
+        affected_agents:
+          - test-audit
+          - orchestration-guidance
+        target_files:
+          - "agents/test/test-audit/process.yml"
+          - "agents/orchestration/orchestration-guidance/process.yml"
+        acceptance_criteria:
+          - "Each agent has loop_context section"
+          - "Specifies participates_in, role, iteration_strategy, exit_conditions"
+        status: "completed"
+        completed_date: "2026-01-06"
+        notes: "Added to test-audit/process.yml and orchestration-guidance/manifest.yml"
+
+      - id: "rem_hp002"
+        name: "Define output schemas for agents"
+        description: |
+          Multiple agents have outputs: [] but steps describe generating reports/recommendations.
+          Add structured output schemas.
+        severity: "high"
+        affected_agents:
+          - test-audit
+          - teacher-update-guidance
+          - orchestration-guidance
+        target_files:
+          - "agents/test/test-audit/process.yml"
+          - "agents/teacher/teacher-update-guidance/process.yml"
+          - "agents/orchestration/orchestration-guidance/process.yml"
+        acceptance_criteria:
+          - "Each agent has populated outputs section"
+          - "Output format, location, and structure defined"
+        status: "completed"
+        completed_date: "2026-01-06"
+        notes: "Added structured output schemas to all three agents"
+
+      - id: "rem_hp003"
+        name: "Standardize fragment reference syntax"
+        description: |
+          References like 'agent-categories.yml#planner' use fragment syntax that is not
+          universally supported. Document resolution mechanism or convert to explicit paths.
+        severity: "high"
+        target_files:
+          - "agents/planner/planner-build/inputs.yml"
+          - "agents/planner/planner-guidance/inputs.yml"
+          - "agents/orchestration/orchestration-planning/inputs.yml"
+        acceptance_criteria:
+          - "Fragment references documented with resolution rules OR"
+          - "Converted to explicit section references"
+        status: "completed"
+        completed_date: "2026-01-06"
+        notes: "Created assets/definitions/fragment-references.yml documenting resolution rules"
+
+      # MEDIUM Issues
+      - id: "rem_mp001"
+        name: "Reduce excessive context loading"
+        description: |
+          teacher-update-guidance loads cleaner-shared and test-shared layers that are
+          irrelevant, violating context-minimisation. Create teacher-specific layer.
+        severity: "medium"
+        affected_agents:
+          - teacher-update-guidance
+        target_files:
+          - "agents/teacher/teacher-update-guidance/inputs.yml"
+          - "assets/inputs/teacher-shared.yml (create)"
+        acceptance_criteria:
+          - "teacher-update-guidance uses only relevant layers"
+          - "Context load reduced by removing irrelevant layers"
+        status: "completed"
+        completed_date: "2026-01-06"
+        notes: "Removed cleaner-shared.yml and test-shared.yml layers"
+
+      - id: "rem_mp002"
+        name: "Align version numbers across files"
+        description: |
+          Version mismatches between inputs.yml and manifest.yml create confusion.
+          Standardize versioning scheme.
+        severity: "medium"
+        affected_agents:
+          - planner-test
+          - test-audit
+        acceptance_criteria:
+          - "All files in agent folder use same version"
+          - "Version scheme documented"
+        status: "completed"
+        completed_date: "2026-01-06"
+        notes: "Aligned versions to 2.0, added version scheme comments to manifest.yml files"
+
   - name: CLI Offloading
     execution: sequential
     description: "Offload deterministic tasks to agentic-cli"
@@ -75,4 +242,191 @@ phases:
       - id: "ast_004"
         name: "Update Planner Inputs"
         description: "Update planner-build and planner-guidance inputs.yml to reference the new unified examples and MMD files"
+        status: "pending"
+
+  - name: Agent Self-Review Testing
+    execution: parallel
+    description: "Spawn each agent to review their own guidance files for correctness and completeness"
+    tasks:
+      # Orchestration Agents
+      - id: "test_agent_001"
+        name: "orchestration-planning self-review"
+        description: "Spawn test-guidance-simulator to have orchestration-planning review its own process.mmd, process.yml, and inputs.yml"
+        agent: "test-guidance-simulator"
+        target: "agents/orchestration/orchestration-planning/"
+        status: "pending"
+      - id: "test_agent_002"
+        name: "orchestration-build self-review"
+        description: "Spawn test-guidance-simulator to have orchestration-build review its own guidance"
+        agent: "test-guidance-simulator"
+        target: "agents/orchestration/orchestration-build/"
+        status: "pending"
+      - id: "test_agent_003"
+        name: "orchestration-guidance self-review"
+        description: "Spawn test-guidance-simulator to have orchestration-guidance review its own guidance"
+        agent: "test-guidance-simulator"
+        target: "agents/orchestration/orchestration-guidance/"
+        status: "pending"
+      # Planner Agents
+      - id: "test_agent_004"
+        name: "planner-build self-review"
+        description: "Spawn test-guidance-simulator to have planner-build review its own guidance"
+        agent: "test-guidance-simulator"
+        target: "agents/planner/planner-build/"
+        status: "pending"
+      - id: "test_agent_005"
+        name: "planner-guidance self-review"
+        description: "Spawn test-guidance-simulator to have planner-guidance review its own guidance"
+        agent: "test-guidance-simulator"
+        target: "agents/planner/planner-guidance/"
+        status: "pending"
+      - id: "test_agent_006"
+        name: "planner-test self-review"
+        description: "Spawn test-guidance-simulator to have planner-test review its own guidance"
+        agent: "test-guidance-simulator"
+        target: "agents/planner/planner-test/"
+        status: "pending"
+      - id: "test_agent_007"
+        name: "planner-reviewer self-review"
+        description: "Spawn test-guidance-simulator to have planner-reviewer review its own guidance"
+        agent: "test-guidance-simulator"
+        target: "agents/planner/planner-reviewer/"
+        status: "pending"
+      - id: "test_agent_008"
+        name: "planner-cleaning self-review"
+        description: "Spawn test-guidance-simulator to have planner-cleaning review its own guidance"
+        agent: "test-guidance-simulator"
+        target: "agents/planner/planner-cleaning/"
+        status: "pending"
+      - id: "test_agent_009"
+        name: "planner-guidance-testing self-review"
+        description: "Spawn test-guidance-simulator to have planner-guidance-testing review its own guidance"
+        agent: "test-guidance-simulator"
+        target: "agents/planner/planner-guidance-testing/"
+        status: "pending"
+      # Test Agents
+      - id: "test_agent_010"
+        name: "test-audit self-review"
+        description: "Spawn test-guidance-simulator to have test-audit review its own guidance"
+        agent: "test-guidance-simulator"
+        target: "agents/test/test-audit/"
+        status: "pending"
+      - id: "test_agent_011"
+        name: "test-guidance-simulator self-review"
+        description: "Spawn test-guidance-simulator to review its own guidance (meta-review)"
+        agent: "test-guidance-simulator"
+        target: "agents/test/test-guidance-simulator/"
+        status: "pending"
+      - id: "test_agent_012"
+        name: "test-runner self-review"
+        description: "Spawn test-guidance-simulator to have test-runner review its own guidance"
+        agent: "test-guidance-simulator"
+        target: "agents/test/test-runner/"
+        status: "pending"
+      - id: "test_agent_013"
+        name: "test-final-output self-review"
+        description: "Spawn test-guidance-simulator to have test-final-output review its own guidance"
+        agent: "test-guidance-simulator"
+        target: "agents/test/test-final-output/"
+        status: "pending"
+      # Teacher Agents
+      - id: "test_agent_014"
+        name: "teacher-update-guidance self-review"
+        description: "Spawn test-guidance-simulator to have teacher-update-guidance review its own guidance"
+        agent: "test-guidance-simulator"
+        target: "agents/teacher/teacher-update-guidance/"
+        status: "pending"
+      - id: "test_agent_015"
+        name: "teacher-update-assets self-review"
+        description: "Spawn test-guidance-simulator to have teacher-update-assets review its own guidance"
+        agent: "test-guidance-simulator"
+        target: "agents/teacher/teacher-update-assets/"
+        status: "pending"
+      # Deploy Agents
+      - id: "test_agent_016"
+        name: "deploy-worktree self-review"
+        description: "Spawn test-guidance-simulator to have deploy-worktree review its own guidance"
+        agent: "test-guidance-simulator"
+        target: "agents/deploy/deploy-worktree/"
+        status: "pending"
+      - id: "test_agent_017"
+        name: "deploy-cicd self-review"
+        description: "Spawn test-guidance-simulator to have deploy-cicd review its own guidance"
+        agent: "test-guidance-simulator"
+        target: "agents/deploy/deploy-cicd/"
+        status: "pending"
+      # Build Agents
+      - id: "test_agent_018"
+        name: "build-flutter self-review"
+        description: "Spawn test-guidance-simulator to have build-flutter review its own guidance"
+        agent: "test-guidance-simulator"
+        target: "agents/build/build-flutter/"
+        status: "pending"
+      - id: "test_agent_019"
+        name: "build-python self-review"
+        description: "Spawn test-guidance-simulator to have build-python review its own guidance"
+        agent: "test-guidance-simulator"
+        target: "agents/build/build-python/"
+        status: "pending"
+
+  - name: CLI Fitness Testing
+    execution: sequential
+    description: "Test agentic-cli commands to ensure they are fit for purpose"
+    tasks:
+      - id: "test_cli_001"
+        name: "Test plan commands"
+        description: "Test agentic plan scaffold, status, validate, task, archive, list, move commands"
+        cli_module: "plan.py"
+        test_commands:
+          - "agentic plan list"
+          - "agentic plan status"
+          - "agentic plan validate"
+        status: "pending"
+      - id: "test_cli_002"
+        name: "Test worktree commands"
+        description: "Test agentic worktree create, list, remove, status commands"
+        cli_module: "worktree.py"
+        test_commands:
+          - "agentic worktree list"
+          - "agentic worktree status"
+        status: "pending"
+      - id: "test_cli_003"
+        name: "Test inputs commands"
+        description: "Test agentic inputs validate, resolve commands"
+        cli_module: "inputs.py"
+        test_commands:
+          - "agentic inputs validate"
+        status: "pending"
+      - id: "test_cli_004"
+        name: "Test manifest commands"
+        description: "Test agentic manifest show command"
+        cli_module: "manifest.py"
+        test_commands:
+          - "agentic manifest show"
+        status: "pending"
+      - id: "test_cli_005"
+        name: "Test state commands"
+        description: "Test agentic state list, show, clear, cleanup commands"
+        cli_module: "state.py"
+        test_commands:
+          - "agentic state list"
+        status: "pending"
+      - id: "test_cli_006"
+        name: "Test health commands"
+        description: "Test agentic health command for system verification"
+        cli_module: "health.py"
+        test_commands:
+          - "agentic health"
+        status: "pending"
+      - id: "test_cli_007"
+        name: "Test config commands"
+        description: "Test agentic config commands"
+        cli_module: "config.py"
+        test_commands:
+          - "agentic config show"
+        status: "pending"
+      - id: "test_cli_008"
+        name: "CLI integration test"
+        description: "Full integration test of CLI with agent orchestration workflow"
+        test_scenario: "Execute full plan lifecycle using CLI commands"
         status: "pending"
