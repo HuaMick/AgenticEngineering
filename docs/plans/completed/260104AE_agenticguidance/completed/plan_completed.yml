@@ -74,6 +74,56 @@ completed_items:
           - Identified: _teach.yml referenced but doesn't exist
           - Resolution: Consolidated on _orchestrate.yml (see design decision)
 
+    # Additional validation round - CLI entrypoint awareness (2026-01-06)
+    cli_entrypoint_validation:
+      - agent: teacher-update-guidance (review)
+        task: Comprehensive guidance review
+        result: PASS
+        findings: |
+          - All 5 core guidance files verified correct
+          - No standalone _plan.yml references anywhere
+          - Both verbose and concise examples show _plan_build.yml/_plan_teach.yml
+
+      - agent: test-audit
+        task: Residual reference audit
+        result: PASS
+        findings: |
+          - Searched 148+ YAML files across agents/ and assets/
+          - Zero standalone _plan.yml references
+          - Old _plan.yml confirmed NOT EXISTS in entrypoints/
+
+      - agent: orchestration-planning (self-review)
+        task: Verify CLI entrypoint awareness
+        result: PASS
+        findings: |
+          - Correctly identifies both _plan_build.yml and _plan_teach.yml as entry points
+          - Can explain what happens for each CLI command
+          - Friction: Phase determination relies on objective analysis, not explicit intent signal
+
+      - agent: planner-build (self-review)
+        task: Verify CLI entrypoint awareness
+        result: PASS
+        findings: |
+          - Correctly explains: _plan_build.yml → orchestration-planning → planner-build
+          - No confusion about invocation hierarchy
+          - Clear on output destination (plan_live_build.yml)
+
+      - agent: planner-guidance (self-review)
+        task: Verify CLI entrypoint awareness
+        result: PASS
+        findings: |
+          - Correctly explains: _plan_teach.yml → orchestration-planning → planner-guidance
+          - No confusion about invocation hierarchy
+          - Clear on output destination (plan_live_teach.yml)
+
+      - agent: teacher-update-guidance (self-review)
+        task: Verify CLI entrypoint awareness
+        result: PASS
+        findings: |
+          - Correctly explains full flow: _plan_teach.yml → orchestration-planning → orchestration-guidance → self
+          - Examples in concise.yml verified correct
+          - Friction: Loop context could better reflect re-invocation scenarios
+
     design_decisions:
       - id: DD-001
         title: Consolidate on _orchestrate.yml as single execution entrypoint
@@ -95,8 +145,39 @@ completed_items:
       - modules/AgenticGuidance/entrypoints/_plan.yml (deleted)
 
     future_improvements:
-      - Add entrypoint-awareness to orchestration-planning process.mmd
-      - Add invocation_context section to planner process files
-      - Consider optimizing heavy transitive input loading in planner-guidance
+      - id: FI-001
+        title: Add entrypoint-awareness to orchestration-planning process.mmd
+        priority: LOW
+        description: Process doesn't differentiate which entrypoint invoked it
+
+      - id: FI-002
+        title: Add invocation_context section to planner process files
+        priority: LOW
+        description: Explicit documentation of invocation paths in process files
+
+      - id: FI-003
+        title: Consider optimizing heavy transitive input loading in planner-guidance
+        priority: LOW
+        description: Input layer loading could be clearer
+
+      - id: FI-004
+        title: Add explicit intent signal from entrypoints
+        priority: LOW
+        description: Phase determination relies on objective analysis, not explicit intent
+
+      - id: FI-005
+        title: Add explicit teacher agent routing in orchestration-guidance
+        priority: LOW
+        description: SpawnTeachers doesn't specify routing between teacher-update-guidance and teacher-update-assets
+
+      - id: FI-006
+        title: Improve loop context for teacher-update-guidance
+        priority: MEDIUM
+        description: process.yml says operates at "meta-level" but may be re-invoked if guidance validation fails
+
+      - id: FI-007
+        title: Verify example plan files exist
+        priority: LOW
+        description: Plan example paths in inputs.yml not verified (e.g., YYMMDDRepo_Branch examples)
 
     status: COMPLETE
