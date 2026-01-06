@@ -1,0 +1,307 @@
+# Planner-Test Agent Guidance Review Report
+# Generated: 2026-01-06
+# Reviewed by: test-guidance-simulator agent
+
+review_summary:
+  agent: planner-test
+  files_reviewed:
+    - process.yml
+    - inputs.yml
+    - manifest.yml
+  process_mmd_exists: false
+  overall_assessment: "MEDIUM - Several path resolution and consistency issues that could cause friction"
+
+findings:
+
+  # ==============================================================================
+  # CRITICAL Issues - Would prevent execution
+  # ==============================================================================
+  critical: []
+  # No critical blocking issues found - all referenced files exist
+
+  # ==============================================================================
+  # HIGH Issues - Significant friction or ambiguity
+  # ==============================================================================
+  high:
+    - id: HIGH-001
+      file: process.yml
+      location: "line 7-8 (loop_definitions.reference)"
+      issue: "Loop definitions reference path mismatch"
+      description: |
+        process.yml references "assets/definitions/agent-loops.yml" but also states
+        "NOTE: Do not duplicate loop definitions here - see agent-loops.yml for full definitions".
+        However, the loop definitions ARE present in agent-loops.yml and work correctly.
+        The confusion is that inputs.yml lines 75-76 claim loop definitions are "defined
+        directly in planner-test/process.yml" which contradicts process.yml's statement.
+      impact: "Agent may be confused about authoritative source of loop definitions"
+      recommendation: |
+        Align messaging: inputs.yml should reference agent-loops.yml as the authoritative
+        source, not claim definitions are in process.yml.
+      files_involved:
+        - modules/AgenticGuidance/agents/planner/planner-test/process.yml
+        - modules/AgenticGuidance/agents/planner/planner-test/inputs.yml
+        - modules/AgenticGuidance/assets/definitions/agent-loops.yml
+
+    - id: HIGH-002
+      file: inputs.yml
+      location: "lines 64-68 (userstories directory)"
+      issue: "Repository-level path requires orchestration resolution"
+      description: |
+        The path "modules/AgenticGuidance/userstories/" is documented as a
+        "REPOSITORY-LEVEL PATH" that must be "resolved by orchestration relative to
+        target project root". This creates ambiguity:
+        1. Within AgenticGuidance module, this path exists
+        2. For cross-repo scenarios, path resolution is undefined
+        3. No fallback behavior specified if path doesn't exist
+      impact: "Planner agents may fail to locate user stories in multi-repo scenarios"
+      recommendation: |
+        - Add path resolution examples for different scenarios
+        - Document orchestration layer's resolution algorithm
+        - Add fallback behavior if path not found
+
+    - id: HIGH-003
+      file: manifest.yml
+      location: "lines 93-106 (test_process_mapping)"
+      issue: "NOT_MIGRATED agents referenced without fallback paths"
+      description: |
+        The manifest lists several NOT_MIGRATED agents:
+        - test-user-simulator: agents/test/test-user-simulator/process.yml
+        - test-service: agents/test/test-service/process.yml
+        - test-builder: agents/test/test-builder/process.yml
+
+        These paths don't exist in AgenticGuidance. The legacy paths are mentioned in
+        comments but not structured for programmatic resolution.
+      impact: "Agents referencing these mappings will fail when trying to spawn unmigrated agents"
+      recommendation: |
+        - Add structured fallback_path field for NOT_MIGRATED agents
+        - Or remove NOT_MIGRATED entries until migration complete
+        - Or add clear "migration_status" field with blocking indicator
+
+  # ==============================================================================
+  # MEDIUM Issues - Minor friction or inconsistencies
+  # ==============================================================================
+  medium:
+    - id: MED-001
+      file: inputs.yml
+      location: "lines 87-92"
+      issue: "Commented-out test-user-simulator reference"
+      description: |
+        A commented-out reference to test-user-simulator exists but with instruction
+        "Uncomment and update path when migrated". This is a manual maintenance burden.
+      impact: "Post-migration, this comment may be overlooked, leaving stale guidance"
+      recommendation: |
+        Add a migration tracking mechanism or link to migration checklist
+
+    - id: MED-002
+      file: process.yml
+      location: "lines 63-70 (phase ordering)"
+      issue: "Phase ordering inconsistent with manifest.yml"
+      description: |
+        process.yml lists phases as:
+        1. Test-fix-loop
+        2. Cleanup phase
+        3. Audit-test-fix-loop
+        4. Test suite phase
+        5. Documentation-loop
+
+        But manifest.yml (test_plan_structure) lists:
+        1. Environment Setup (MANDATORY)
+        2. Test-fix-loop
+        3. Cleanup
+        4. Test-audit-fix loop
+        5. Test suite
+        6. Documentation-loop
+
+        Environment Setup is missing from process.yml ordering.
+      impact: "Agent may omit critical Environment Setup phase"
+      recommendation: |
+        Add Environment Setup as step 0 in process.yml phases
+
+    - id: MED-003
+      file: manifest.yml
+      location: "line 22"
+      issue: "example_plan path not using standard prefix"
+      description: |
+        manifest.yml uses: "assets/examples/planner/YYMMDDRepo_Branch/live/plan_live_test.yml"
+        inputs.yml uses: "assets/examples/planner/YYMMDDRepo_Branch/live/plan_live_test.yml"
+        process.yml uses: "YYMMDDRepo_Branch/live/plan_live_test.yml" (inconsistent prefix)
+      impact: "Path resolution may fail if agent doesn't know the base path"
+      recommendation: |
+        Standardize all example references to use full relative paths from module root
+
+    - id: MED-004
+      file: inputs.yml
+      location: "lines 157-165 (guidelines and definitions)"
+      issue: "Empty guidelines array with deferred definitions"
+      description: |
+        inputs.yml has "guidelines: []" with a comment deferring to process.yml and
+        definition files. However, the definitions section also defers to other files.
+        This creates a scavenger hunt for the actual content.
+      impact: "Agent must chase multiple file references to understand guidelines"
+      recommendation: |
+        Either populate guidelines/definitions inline or provide a clear single reference
+
+    - id: MED-005
+      file: process.yml
+      location: "lines 74-77 (guidelines comment)"
+      issue: "Guidelines reference uses glob pattern"
+      description: |
+        "# Core guidelines: See assets/guidelines/ (less-is-more.yml, iteration.yml, ...)"
+
+        This is a comment listing files, not a structured reference. An agent cannot
+        programmatically load these files based on this comment.
+      impact: "Layer loading mechanism cannot process comment-based references"
+      recommendation: |
+        Move guideline references to inputs.yml layers section with proper structure
+
+  # ==============================================================================
+  # LOW Issues - Suggestions for improvement
+  # ==============================================================================
+  low:
+    - id: LOW-001
+      file: manifest.yml
+      location: "lines 11-13"
+      issue: "Version scheme documentation could be clearer"
+      description: |
+        "Version scheme: X.Y where X = architecture version, Y = iteration"
+        It's unclear what triggers X vs Y increments.
+      recommendation: |
+        Add examples: "1.0 -> 1.1 for minor changes, 1.1 -> 2.0 for architecture changes"
+
+    - id: LOW-002
+      file: inputs.yml
+      location: "line 25 (agent_context)"
+      issue: "Fragment reference uses # syntax"
+      description: |
+        "category: assets/definitions/agent-categories.yml#planner"
+        The # syntax for fragment selection is not documented anywhere.
+      recommendation: |
+        Document fragment reference syntax in a standard location
+
+    - id: LOW-003
+      file: process.yml
+      location: "lines 82-88 (test strategy selection)"
+      issue: "Strategy names inconsistent with manifest"
+      description: |
+        process.yml uses: "smoke_test", "agent-blind-test", "test-suite", "service_test"
+        manifest.yml uses: "smoke_test", "agent-blind-test", "service_test", "test-builder"
+        "test-suite" vs "test-builder" naming inconsistency.
+      recommendation: |
+        Standardize strategy naming across all files
+
+    - id: LOW-004
+      file: all files
+      location: throughout
+      issue: "No explicit required inputs section in process.yml"
+      description: |
+        process.yml has a step "Review all inputs if an input cannot be found do not proceed"
+        but doesn't explicitly list which inputs are blocking vs optional.
+      recommendation: |
+        Add required_inputs section to process.yml for fail-fast validation
+
+# ==============================================================================
+# Path Resolution Analysis
+# ==============================================================================
+path_analysis:
+  base_path: "modules/AgenticGuidance"
+
+  verified_paths:
+    - path: "assets/definitions/agent-loops.yml"
+      exists: true
+      referenced_by: process.yml
+    - path: "assets/inputs/core-system.yml"
+      exists: true
+      referenced_by: inputs.yml
+    - path: "assets/inputs/core-guidelines.yml"
+      exists: true
+      referenced_by: inputs.yml
+    - path: "assets/inputs/planner-shared.yml"
+      exists: true
+      referenced_by: inputs.yml
+    - path: "assets/inputs/test-shared.yml"
+      exists: true
+      referenced_by: inputs.yml
+    - path: "agents/test/test-runner/process.yml"
+      exists: true
+      referenced_by: inputs.yml, manifest.yml
+    - path: "agents/test/test-audit/process.yml"
+      exists: true
+      referenced_by: inputs.yml, manifest.yml
+    - path: "assets/examples/planner/YYMMDDRepo_Branch/live/plan_live_test.yml"
+      exists: true
+      referenced_by: inputs.yml, manifest.yml
+    - path: "userstories/"
+      exists: true
+      referenced_by: inputs.yml
+
+  missing_or_unmigrated_paths:
+    - path: "agents/test/test-user-simulator/process.yml"
+      exists: false
+      status: NOT_MIGRATED
+      legacy_path: "modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/test-user-simulator/process.yml"
+    - path: "agents/test/test-service/process.yml"
+      exists: false
+      status: NOT_MIGRATED
+    - path: "agents/test/test-builder/process.yml"
+      exists: false
+      status: NOT_MIGRATED
+
+# ==============================================================================
+# Version Consistency Analysis
+# ==============================================================================
+version_analysis:
+  manifest_version: "2.0"
+  inputs_version: "2.0"
+  process_version: "not specified"
+  layer_versions:
+    planner-shared: "1.0"
+    test-shared: "1.0"
+  assessment: "CONSISTENT - manifest and inputs align, layers use separate versioning"
+
+# ==============================================================================
+# Loop Context Completeness
+# ==============================================================================
+loop_context:
+  test-fix-loop:
+    defined_in: "assets/definitions/agent-loops.yml"
+    referenced_in: ["process.yml", "manifest.yml"]
+    completeness: "COMPLETE"
+  audit-test-fix-loop:
+    defined_in: "assets/definitions/agent-loops.yml"
+    referenced_in: ["process.yml", "manifest.yml"]
+    completeness: "COMPLETE"
+    mandatory: true
+  documentation-loop:
+    defined_in: "assets/definitions/agent-loops.yml"
+    referenced_in: ["process.yml", "manifest.yml"]
+    completeness: "COMPLETE"
+
+# ==============================================================================
+# Output Schema Clarity
+# ==============================================================================
+output_schema:
+  process_outputs: "outputs: []"
+  expected_output: "live/plan_live_test.yml"
+  output_format_defined: false
+  assessment: |
+    LOW - process.yml has empty outputs array but steps describe writing to
+    live/plan_live_test.yml. Output schema not formally defined.
+
+# ==============================================================================
+# Recommendations Summary
+# ==============================================================================
+recommendations:
+  immediate:
+    - "Align loop definition source messaging between process.yml and inputs.yml"
+    - "Add Environment Setup phase to process.yml phase ordering"
+    - "Provide structured fallback paths for NOT_MIGRATED agents"
+
+  short_term:
+    - "Document fragment reference syntax (#planner)"
+    - "Standardize strategy naming across files"
+    - "Add required_inputs section to process.yml"
+
+  long_term:
+    - "Complete migration of test-user-simulator, test-service, test-builder"
+    - "Formalize output schema for plan creation"
+    - "Add path resolution documentation for multi-repo scenarios"

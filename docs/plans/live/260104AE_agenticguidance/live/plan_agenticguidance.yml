@@ -26,7 +26,30 @@ context: |
   - rem_mp001: Excessive context loading removed from teacher-update-guidance
   - rem_mp002: Version numbers aligned to 2.0 with documented scheme
 
-  NEXT: Resume with Phase 1 (CLI Offloading) in fresh session.
+  UPDATE 2026-01-06 (session 3): Agent Self-Review Testing Phase 2 COMPLETED. 19 agents
+  reviewed their own guidance. Findings aggregated in audit/260106_session2_self_review_results.yml.
+  Key findings:
+  - 2 legacy-only agents discovered (planner-phases, planner-teach) require migration decision
+  - Fragment reference resolution inconsistency (nested vs top-level keys)
+  - orchestration agents missing process.yml (only have process.mmd)
+  - NOT_MIGRATED test agents referenced without fallback paths
+  - Version mismatches between manifest.yml and inputs.yml
+  - Empty outputs: [] sections despite documented outputs
+
+  A Friction Remediation Phase 2 has been added with 11 remediation tasks.
+
+  UPDATE 2026-01-06 (session 3, iteration 2): Created plan_live_teach.yml with 8 teaching
+  phases covering all CRITICAL and HIGH friction points. Two decision items require human
+  input before proceeding:
+  - DECISION-001: Legacy-only agents (planner-phases, planner-teach)
+  - DECISION-002: NOT_MIGRATED test agents
+
+  NEXT: Execute Teach Plan phases, then complete Friction Remediation Phase 2, before
+  resuming CLI Offloading.
+
+related_plans:
+  teach: "live/plan_live_teach.yml"
+  orchestration: "live/orchestration_agenticguidance.mmd"
 
 phases:
   # ========================================
@@ -181,6 +204,196 @@ phases:
         completed_date: "2026-01-06"
         notes: "Aligned versions to 2.0, added version scheme comments to manifest.yml files"
 
+  # ========================================
+  # FRICTION REMEDIATION PHASE 2 (Priority)
+  # Added after session 3 agent self-review testing
+  # ========================================
+  - name: Friction Remediation Phase 2
+    execution: sequential
+    description: "Address critical friction patterns found during session 3 agent self-review testing"
+    priority: critical
+    audit_ref: "audit/260106_session2_self_review_results.yml"
+    tasks:
+      # CRITICAL Issues
+      - id: "rem2_001"
+        name: "Resolve legacy-only planner agents"
+        description: |
+          planner-phases and planner-teach exist ONLY in legacy location and have NOT been
+          migrated to modules/AgenticGuidance/agents/planner/. They are not listed in
+          agent-categories.yml and no entrypoint references them.
+        severity: "critical"
+        affected_agents:
+          - planner-phases (legacy only)
+          - planner-teach (legacy only)
+        options:
+          - "Migrate with full updates (PATH RESOLUTION, required_inputs, layers)"
+          - "Deprecate if functionality absorbed by other agents"
+          - "Merge into orchestration-planning"
+        acceptance_criteria:
+          - "Decision documented for each agent"
+          - "If migrated: new location follows current patterns"
+          - "If deprecated: legacy files marked and references removed"
+        status: "pending"
+
+      - id: "rem2_002"
+        name: "Fix fragment reference resolution"
+        description: |
+          Fragment references like 'agent-loops.yml#planner-loop' assume top-level keys,
+          but actual file structure nests under 'loop_types.planner-loop'. Same issue for
+          'agent-categories.yml#planner' which is under 'agent_categories.planner'.
+        severity: "critical"
+        affected_agents:
+          - orchestration-planning
+          - planner-guidance
+          - planner-build
+        options:
+          - "Update fragment-references.yml to support dot-notation"
+          - "Restructure definition files to have target keys at top level"
+          - "Update all references to use correct nested paths"
+        acceptance_criteria:
+          - "Fragment references resolve correctly"
+          - "Documentation updated if syntax changes"
+        status: "pending"
+
+      - id: "rem2_003"
+        name: "Standardize process file format"
+        description: |
+          orchestration-planning and orchestration-build have process.mmd but no process.yml.
+          Other agents expect process.yml for execution instructions.
+        severity: "critical"
+        affected_agents:
+          - orchestration-planning
+          - orchestration-build
+        options:
+          - "Create process.yml wrappers that reference process.mmd"
+          - "Update agent loader to handle .mmd-only agents"
+          - "Standardize on single process file format"
+        acceptance_criteria:
+          - "Consistent process file pattern across all agents"
+          - "Agent loader handles chosen pattern"
+        status: "pending"
+
+      - id: "rem2_004"
+        name: "Address NOT_MIGRATED test agents"
+        description: |
+          planner-test manifest references test agents that don't exist:
+          test-user-simulator, test-service, test-builder (all NOT_MIGRATED)
+        severity: "critical"
+        affected_agents:
+          - planner-test
+        missing_agents:
+          - test-user-simulator
+          - test-service
+          - test-builder
+        options:
+          - "Add structured fallback_path fields for NOT_MIGRATED agents"
+          - "Migrate the missing agents"
+          - "Remove strategies that require unmigrated agents"
+        acceptance_criteria:
+          - "No broken references to non-existent agents"
+          - "Test strategies that can execute have valid agent paths"
+        status: "pending"
+
+      # HIGH Issues
+      - id: "rem2_005"
+        name: "Align version numbers"
+        description: |
+          Multiple agents have different versions in manifest.yml vs inputs.yml.
+          Example: planner-build has manifest 1.0 but inputs 2.0-p1.
+        severity: "high"
+        affected_agents:
+          - planner-build
+          - planner-guidance
+        acceptance_criteria:
+          - "Version numbers consistent within each agent"
+          - "Version scheme documented"
+        status: "pending"
+
+      - id: "rem2_006"
+        name: "Populate output schemas"
+        description: |
+          Process files declare outputs: [] but steps describe generating artifacts.
+          No formal output schema for downstream consumers.
+        severity: "high"
+        affected_agents:
+          - orchestration-planning
+          - orchestration-build
+          - planner-build
+          - planner-guidance
+          - planner-test
+        acceptance_criteria:
+          - "outputs sections have formal schemas"
+          - "Schemas include path templates, required fields, schema references"
+        status: "pending"
+
+      - id: "rem2_007"
+        name: "Centralize CLI command documentation"
+        description: |
+          CLI commands are duplicated between inputs.yml files with slight variations.
+        severity: "high"
+        affected_agents:
+          - orchestration-build
+          - orchestration-planning
+        target_files:
+          - "assets/definitions/cli-commands.yml (create)"
+        acceptance_criteria:
+          - "Single source of truth for CLI command documentation"
+          - "All inputs.yml files reference shared definition"
+        status: "pending"
+
+      - id: "rem2_008"
+        name: "Add spawns declarations"
+        description: |
+          Orchestration agents spawn many agents but don't declare these in manifest.yml.
+          orchestration-build spawns 9+ agents.
+        severity: "high"
+        affected_agents:
+          - orchestration-build
+          - orchestration-planning
+        acceptance_criteria:
+          - "manifest.yml has spawns section listing spawnable agents"
+          - "Can validate spawn chain integrity at load time"
+        status: "pending"
+
+      - id: "rem2_009"
+        name: "Explicit required input validation"
+        description: |
+          inputs.yml defines required_inputs but process.yml step 1 only says
+          "if an input cannot be found do not proceed" without explicit validation.
+        severity: "high"
+        affected_agents:
+          - planner-guidance
+          - planner-build
+          - planner-test
+        acceptance_criteria:
+          - "Process step 1 explicitly lists required inputs"
+          - "Error messaging pattern documented"
+        status: "pending"
+
+      - id: "rem2_010"
+        name: "Define REPO_ROOT variable"
+        description: |
+          deploy-worktree uses ${REPO_ROOT} in git commands but this variable
+          is never defined or documented.
+        severity: "high"
+        affected_agents:
+          - deploy-worktree
+        acceptance_criteria:
+          - "REPO_ROOT defined in inputs.yml or replaced with target_project_path"
+          - "Git commands use consistent variable"
+        status: "pending"
+
+      - id: "rem2_011"
+        name: "Clarify path resolution prefixes"
+        description: |
+          Dual path resolution (module root vs target project root) can cause confusion.
+          Consider using explicit prefixes.
+        severity: "high"
+        acceptance_criteria:
+          - "Path resolution rules are unambiguous"
+          - "Either use explicit prefixes or enhanced documentation"
+        status: "pending"
+
   - name: CLI Offloading
     execution: sequential
     description: "Offload deterministic tasks to agentic-cli"
@@ -247,6 +460,9 @@ phases:
   - name: Agent Self-Review Testing
     execution: parallel
     description: "Spawn each agent to review their own guidance files for correctness and completeness"
+    status: "completed"
+    completed_date: "2026-01-06"
+    notes: "Session 3: All 19 agents reviewed. See audit/260106_session2_self_review_results.yml"
     tasks:
       # Orchestration Agents
       - id: "test_agent_001"
