@@ -21,6 +21,11 @@ scope_additions:
       - Multiple files make sense for large plans where agents only need subset of tasks
       The goal is pragmatic file organization, not rigid categorization.
     status: "pending"
+    inputs:
+      # Pre-read context for guidance refinement
+      - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"  # Current file separation logic
+      - "modules/AgenticGuidance/assets/definitions/plans.yml"  # Current plan structure definitions
+      - "modules/AgenticGuidance/assets/guidelines/context-minimisation.yml"  # Guiding principle
     target_files:
       - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
       - "modules/AgenticGuidance/assets/definitions/plans.yml"
@@ -60,6 +65,11 @@ phases:
         name: "Worktree setup offload"
         description: "Replace agent-driven worktree creation with agentic worktree create command."
         status: "pending"
+        inputs:
+          # Pre-read context for understanding current implementation
+          - "modules/AgenticCLI/src/agenticcli/commands/worktree.py"  # CLI worktree commands to use
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.yml"  # Current process with git logic
+          - "modules/AgenticGuidance/agents/planner/deploy-worktree/process.yml"  # Worktree deployment patterns
         target_files:
           - "modules/AgenticCLI/src/agenticcli/commands/worktree.py"
           - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.yml"
@@ -73,6 +83,11 @@ phases:
         description: "Replace agent-driven plan folder structure validation with agentic plan validate command."
         status: "pending"
         depends_on: ["cli_002a"]
+        inputs:
+          # Pre-read context for understanding current implementation
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"  # CLI plan commands to use
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.yml"  # Current validation logic
+          - "modules/AgenticGuidance/assets/definitions/plans.yml"  # Plan folder structure requirements
         target_files:
           - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
           - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.yml"
@@ -86,6 +101,11 @@ phases:
         description: "Replace agent-driven task status management with agentic plan task commands."
         status: "pending"
         depends_on: ["cli_002b"]
+        inputs:
+          # Pre-read context for understanding current implementation
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"  # CLI plan task commands
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-build/process.yml"  # Current task status logic
+          - "modules/AgenticGuidance/assets/definitions/plans.yml"  # Plan lifecycle states
         target_files:
           - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
           - "modules/AgenticGuidance/agents/orchestration/orchestration-build/process.yml"
@@ -99,6 +119,11 @@ phases:
         description: "Replace agent-driven completed task archival with agentic plan move command."
         status: "pending"
         depends_on: ["cli_002c"]
+        inputs:
+          # Pre-read context for understanding current implementation
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"  # CLI plan move command
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-build/process.yml"  # Current archival logic
+          - "modules/AgenticGuidance/assets/definitions/plans.yml"  # Two-level completion pattern
         target_files:
           - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
           - "modules/AgenticGuidance/agents/orchestration/orchestration-build/process.yml"
@@ -111,6 +136,11 @@ phases:
         name: "Input validation pre-check offload"
         description: "Replace agent-driven input file validation with agentic inputs validate command."
         status: "pending"
+        inputs:
+          # Pre-read context for understanding current implementation
+          - "modules/AgenticCLI/src/agenticcli/commands/inputs.py"  # CLI inputs validate command
+          - "modules/AgenticGuidance/agents/planner/planner-build/process.yml"  # Current validation steps
+          - "modules/AgenticGuidance/agents/planner/planner-build/inputs.yml"  # Input file references
         target_files:
           - "modules/AgenticCLI/src/agenticcli/commands/inputs.py"
           - "modules/AgenticGuidance/agents/planner/planner-build/process.yml"
@@ -123,6 +153,11 @@ phases:
         name: "Template seeding offload"
         description: "Replace agent-driven template file creation with agentic template command."
         status: "pending"
+        inputs:
+          # Pre-read context for understanding current implementation
+          - "modules/AgenticCLI/src/agenticcli/commands/template.py"  # CLI template commands
+          - "modules/AgenticGuidance/agents/planner/planner-build/process.yml"  # Current template logic
+          - "modules/AgenticGuidance/assets/examples/planner/YYMMDDRepo_Branch/"  # Template structure examples
         target_files:
           - "modules/AgenticCLI/src/agenticcli/commands/template.py"
           - "modules/AgenticGuidance/agents/planner/planner-build/process.yml"
@@ -189,6 +224,14 @@ phases:
         description: "Assess whether orchestration-build and orchestration-guidance share enough common patterns to warrant extracting shared logic into a base orchestration pattern. This is optional refactoring."
         status: "pending"
         priority: "optional"
+        inputs:
+          # Pre-read context for pattern analysis
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-build/process.yml"  # Build orchestration logic
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-build/inputs.yml"
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-guidance/process.yml"  # Guidance orchestration logic
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-guidance/inputs.yml"
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"  # Planning flow
+          - "modules/AgenticGuidance/agents/orchestration/manifest.yml"  # Orchestration manifest
         target_files:
           - "modules/AgenticGuidance/agents/orchestration/orchestration-build/"
           - "modules/AgenticGuidance/agents/orchestration/orchestration-guidance/"
@@ -208,29 +251,40 @@ phases:
       - id: "mmd_001"
         name: "Define Plan-MMD Schema"
         description: |
-          Create a YAML schema definition for Plan-MMD files that specifies:
-          - Required metadata comments (version, generator, plan folder, phases)
-          - Agent routing configuration (maps phase types to agents)
+          Create a YAML schema definition for Plan-MMD files that focuses on agent orchestration
+          patterns rather than rigid phase sequences. The MMD should express:
+          - Agent spawning decisions (which agents to invoke)
+          - Agent loops (test-fix-loop, audit-test-fix-loop, etc.)
+          - Agent dependencies (execution order when needed)
           - Feedback triggers (conditions that cause re-planning)
           - Repair iteration limits
-          - Valid node types and edge semantics
+
+          Planners are intelligent enough to determine what agents need to be spawned and what
+          loops to orchestrate. The MMD is a tool for expressing these orchestration decisions,
+          not a rigid phase template.
 
           Plan-MMD Specification (metadata comments in MMD):
           ```
           %% PLAN_MMD_VERSION: 1.0
           %% GENERATED_BY: planner-<type>
           %% PLAN_FOLDER: <path>
-          %% PHASES: (ordered list)
-          %% AGENT_ROUTING: (maps phase types to agents)
+          %% AGENT_ORCHESTRATION: (agent spawning and loop patterns)
           %% FEEDBACK_TRIGGERS: (what causes re-planning)
           %% MAX_REPAIR_ITERATIONS: 3
           ```
         status: "pending"
+        inputs:
+          # Pre-read context for schema design
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"  # Existing MMD patterns
+          - "modules/AgenticGuidance/assets/definitions/agent-loops.yml"  # Loop and iteration patterns
+          - "modules/AgenticGuidance/assets/definitions/agent-categories.yml"  # Agent routing categories
+          - "modules/AgenticGuidance/assets/definitions/plans.yml"  # Plan structure definitions
         target_files:
           - "assets/definitions/plan-mmd-schema.yml"
         acceptance_criteria:
-          - "Schema validates required metadata fields"
-          - "Agent routing supports build, teach, test, and audit types"
+          - "Schema focuses on agent orchestration patterns, not phase sequences"
+          - "Agent loops (test-fix-loop, audit-test-fix-loop) expressible in MMD"
+          - "Planner agents decide orchestration patterns based on task needs"
           - "Feedback triggers include failure, quality threshold, and explicit request"
           - "Example MMD included in schema documentation"
 
@@ -241,6 +295,11 @@ phases:
           The MMD should define the execution flow for implementation phases.
         status: "pending"
         depends_on: ["mmd_001"]
+        inputs:
+          # Pre-read context for MMD generation implementation
+          - "modules/AgenticGuidance/agents/planner/planner-build/process.yml"  # Current planner process
+          - "modules/AgenticGuidance/assets/definitions/plan-mmd-schema.yml"  # Schema to follow (from mmd_001)
+          - "modules/AgenticGuidance/assets/examples/planner/YYMMDDRepo_Branch/live/plan_live_build.yml"  # Plan example
         target_files:
           - "agents/planner/planner-build/process.yml"
           - "agents/planner/planner-build/templates/plan-flow.mmd.template"
@@ -256,6 +315,11 @@ phases:
           The MMD should define the flow for guidance creation and validation.
         status: "pending"
         depends_on: ["mmd_001"]
+        inputs:
+          # Pre-read context for MMD generation implementation
+          - "modules/AgenticGuidance/agents/planner/planner-guidance/process.yml"  # Current planner process
+          - "modules/AgenticGuidance/assets/definitions/plan-mmd-schema.yml"  # Schema to follow (from mmd_001)
+          - "modules/AgenticGuidance/assets/examples/planner/teaching-plan-example.yml"  # Teaching plan example
         target_files:
           - "agents/planner/planner-guidance/process.yml"
           - "agents/planner/planner-guidance/templates/plan-flow.mmd.template"
@@ -275,6 +339,13 @@ phases:
           - Tracks state via agentic-cli
         status: "pending"
         depends_on: ["mmd_001"]
+        inputs:
+          # Pre-read context for orchestration executor design
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-build/process.yml"  # Existing orchestration patterns
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-build/inputs.yml"
+          - "modules/AgenticGuidance/agents/orchestration/manifest.yml"  # Orchestration manifest patterns
+          - "modules/AgenticGuidance/assets/definitions/plan-mmd-schema.yml"  # MMD parsing requirements
+          - "modules/AgenticGuidance/assets/definitions/agent-loops.yml"  # Repair loop patterns
         target_files:
           - "agents/orchestration/orchestration-executor/manifest.yml"
           - "agents/orchestration/orchestration-executor/process.yml"
@@ -292,6 +363,12 @@ phases:
           Remove hardcoded agent references in favor of MMD-driven routing.
         status: "pending"
         depends_on: ["mmd_003"]
+        inputs:
+          # Pre-read context for entrypoint refactoring
+          - "modules/AgenticGuidance/entrypoints/_orchestrate.yml"  # Current entrypoint
+          - "modules/AgenticGuidance/entrypoints/_plan_build.yml"  # Build planning entry
+          - "modules/AgenticGuidance/entrypoints/_plan_teach.yml"  # Teach planning entry
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml"  # New executor (from mmd_003)
         target_files:
           - "entrypoints/_orchestrate.yml"
         acceptance_criteria:
@@ -309,6 +386,13 @@ phases:
           4. State is correctly persisted throughout
         status: "pending"
         depends_on: ["mmd_002a", "mmd_002b", "mmd_004"]
+        inputs:
+          # Pre-read context for e2e test design
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml"  # Executor to test
+          - "modules/AgenticGuidance/agents/planner/planner-build/process.yml"  # Build planner MMD output
+          - "modules/AgenticGuidance/agents/planner/planner-guidance/process.yml"  # Guidance planner MMD output
+          - "modules/AgenticGuidance/entrypoints/_orchestrate.yml"  # Entry flow to test
+          - "modules/AgenticGuidance/assets/examples/test/guidance-test-plan.yml"  # Test plan patterns
         target_files:
           - "tests/orchestration/test_mmd_flow.yml"
         acceptance_criteria:
@@ -316,3 +400,57 @@ phases:
           - "Teach plan flow executes without hardcoded routing"
           - "Repair loop triggers on simulated failure"
           - "State reflects completed phases accurately"
+
+  - name: "Guidance Refinement"
+    description: "Refine guidance to remove rigid phase-based file separation and refocus MMD on agent orchestration."
+    success_criteria:
+      - "File separation based purely on context-minimisation, not phase types"
+      - "MMD schema focused on agent orchestration patterns, not phase sequences"
+      - "Planners create multiple files ONLY when it reduces noise for reading agents"
+      - "Planner agents determine orchestration patterns based on task needs"
+    tasks:
+      - id: "guide_001"
+        name: "Replace phase-based file separation with context-minimisation"
+        description: |
+          Remove the concept of separate planning files by phase type (build/teach/test/cleanup).
+          Instead, file separation should purely serve context-minimisation - planners should create
+          multiple smaller files when it helps agents avoid reading unrelated noise. The goal is that
+          when an agent reads a planning file, it gets focused content relevant to its task.
+        status: "pending"
+        inputs:
+          # Pre-read context for guidance refinement
+          - "modules/AgenticGuidance/assets/definitions/plans.yml"  # Current plan structure definitions
+          - "modules/AgenticGuidance/agents/planner/planner-build/process.yml"  # Current planner-build process
+          - "modules/AgenticGuidance/agents/planner/planner-guidance/process.yml"  # Current planner-guidance process
+          - "modules/AgenticGuidance/assets/guidelines/context-minimisation.yml"  # Guiding principle
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/plans.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-build/process.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-guidance/process.yml"
+        acceptance_criteria:
+          - "Removed references to phase-type file naming (plan_live_build.yml, plan_live_teach.yml, etc.)"
+          - "Added guidance that file separation is for context-minimisation only"
+          - "Planners create multiple files ONLY when it reduces noise for reading agents"
+          - "File names should be descriptive of content, not phase type"
+
+      - id: "guide_002"
+        name: "Refocus Plan-MMD on agent orchestration"
+        description: |
+          The .mmd files should define agent orchestration patterns (which agents to spawn, agent
+          loops, dependencies) NOT phase sequences. Planners are intelligent enough to determine what
+          agents need to be spawned and what loops to orchestrate. The MMD is a tool for expressing
+          these orchestration decisions, not a rigid phase template.
+        status: "pending"
+        inputs:
+          # Pre-read context for MMD refocus
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"  # Current orchestration MMD
+          - "modules/AgenticGuidance/assets/definitions/agent-loops.yml"  # Agent loop patterns
+          - "modules/AgenticGuidance/assets/definitions/agent-categories.yml"  # Agent categories
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/plan-mmd-schema.yml"
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+        acceptance_criteria:
+          - "MMD schema focuses on agent spawning and orchestration, not phase sequences"
+          - "Agent loops (test-fix-loop, audit-test-fix-loop) are expressed in MMD when needed"
+          - "Planner agents decide orchestration patterns based on task needs"
+          - "Removed rigid phase-type routing from MMD metadata"
