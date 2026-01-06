@@ -1,0 +1,320 @@
+plan_name: "orchestration-refinement"
+worktree: "/home/code/AgenticEngineering-agenticguidance"
+branch: "agenticguidance"
+status: "blocked"
+phase_type: "build"
+blocker: "Entrypoint refactor tasks incomplete - see audit/260106_audit_findings.yml"
+remediation_plan: "live/plan_live_remediation.yml"
+
+objective: |
+  Refactor orchestration to be generic and split planning entrypoints
+  into build and teach variants, leveraging the agentic-cli.
+
+scope_additions:
+  - id: "scope_001"
+    name: "Relax plan file separation guidance"
+    description: |
+      Remove the strict requirement to separate plans into build/teach/test files.
+      Replace with flexible guidance based on context_minimisation principle:
+      - Split into multiple files ONLY when it reduces noise for agents reading the plan
+      - Single file is fine if the plan is small/focused
+      - Multiple files make sense for large plans where agents only need subset of tasks
+      The goal is pragmatic file organization, not rigid categorization.
+    status: "pending"
+    target_files:
+      - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+      - "modules/AgenticGuidance/assets/definitions/plans.yml"
+    acceptance_criteria:
+      - "Removed mandatory build/teach/test/cleanup file structure from process.mmd"
+      - "Updated plans.yml definition to describe flexible file organization"
+      - "Added context_minimisation rationale for when to split files"
+
+phases:
+  - name: "CLI Capability Mapping & Offloading"
+    description: "Identify deterministic tasks currently handled by agents and offload them to agentic-cli."
+    success_criteria:
+      - "All agentic-cli commands documented with inputs/outputs"
+      - "Offload candidates identified with clear CLI command mappings"
+      - "No agent performing tasks that CLI can handle deterministically"
+    tasks:
+      - id: "cli_001"
+        name: "Audit agentic-cli capabilities"
+        description: "Review agenticcli/commands/ to map existing functionality (plan, worktree, manifest, inputs, state)."
+        status: "completed"
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/commands/"
+        acceptance_criteria:
+          - "All CLI command modules enumerated from agenticcli/commands/ directory"
+          - "Command groups and subcommands documented with their purposes"
+          - "Input/output patterns identified for each command group"
+        evidence: |
+          CLI commands mapped during planning loop 1:
+          - plan: scaffold, status, validate, task (start/complete), archive, list, move
+          - worktree: create, list, remove, status
+          - manifest: show
+          - inputs: validate, resolve
+          - state: list, show, clear, cleanup
+          - config, prefs, template, stories, cicd, env, setup, health, package
+
+      - id: "cli_002a"
+        name: "Worktree setup offload"
+        description: "Replace agent-driven worktree creation with agentic worktree create command."
+        status: "pending"
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/commands/worktree.py"
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.yml"
+        acceptance_criteria:
+          - "Orchestration process invokes 'agentic worktree create' instead of git commands"
+          - "Worktree path validation uses 'agentic worktree status'"
+          - "Agent no longer contains git worktree logic"
+
+      - id: "cli_002b"
+        name: "Plan folder validation offload"
+        description: "Replace agent-driven plan folder structure validation with agentic plan validate command."
+        status: "pending"
+        depends_on: ["cli_002a"]
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.yml"
+        acceptance_criteria:
+          - "Orchestration process invokes 'agentic plan validate' for folder structure checks"
+          - "Missing subfolder creation handled by CLI command"
+          - "Agent no longer contains folder structure validation logic"
+
+      - id: "cli_002c"
+        name: "Task status updates offload"
+        description: "Replace agent-driven task status management with agentic plan task commands."
+        status: "pending"
+        depends_on: ["cli_002b"]
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-build/process.yml"
+        acceptance_criteria:
+          - "Task start uses 'agentic plan task start <task_id>'"
+          - "Task completion uses 'agentic plan task complete <task_id>'"
+          - "Agent no longer directly modifies plan YAML for status changes"
+
+      - id: "cli_002d"
+        name: "Completed task movement offload"
+        description: "Replace agent-driven completed task archival with agentic plan move command."
+        status: "pending"
+        depends_on: ["cli_002c"]
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-build/process.yml"
+        acceptance_criteria:
+          - "Completed tasks moved via 'agentic plan move' command"
+          - "Archive folder structure maintained by CLI"
+          - "Agent no longer contains file movement logic for completed tasks"
+
+      - id: "cli_002e"
+        name: "Input validation pre-check offload"
+        description: "Replace agent-driven input file validation with agentic inputs validate command."
+        status: "pending"
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/commands/inputs.py"
+          - "modules/AgenticGuidance/agents/planner/planner-build/process.yml"
+        acceptance_criteria:
+          - "Planner invokes 'agentic inputs validate' before processing"
+          - "Missing input files detected by CLI with clear error messages"
+          - "Agent no longer contains input file existence checks"
+
+      - id: "cli_002f"
+        name: "Template seeding offload"
+        description: "Replace agent-driven template file creation with agentic template command."
+        status: "pending"
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/commands/template.py"
+          - "modules/AgenticGuidance/agents/planner/planner-build/process.yml"
+        acceptance_criteria:
+          - "New plan files seeded via 'agentic template' command"
+          - "Template variables resolved by CLI"
+          - "Agent no longer contains template file generation logic"
+
+  - name: "Entrypoint Refactoring"
+    description: "Split _plan.yml into domain-specific planning entrypoints. Execution is unified via _orchestrate.yml (DD-001)."
+    success_criteria:
+      - "_plan_build.yml handles code implementation planning"
+      - "_plan_teach.yml handles guidance and context engineering planning"
+      - "Both planning entrypoints output plans for unified _orchestrate.yml execution (DD-001)"
+      - "Orchestration pattern unification decision documented"
+    tasks:
+      - id: "ent_001"
+        name: "Rename _plan.yml to _plan_build.yml"
+        description: "Update entrypoint to explicitly handle code implementation planning."
+        status: "blocked"
+        blocker: "Worktree has incomplete version - name field says '_plan' not '_plan_build'"
+        audit_ref: "audit/260106_audit_findings.yml#C2"
+        evidence: "File exists but content incomplete - see audit C2, H2, M2"
+        target_files:
+          - "modules/AgenticGuidance/entrypoints/_plan_build.yml"
+        acceptance_criteria:
+          - "File renamed from _plan.yml to _plan_build.yml"
+          - "Entrypoint goal focuses on implementation planning"
+          - "Routes to orchestration-planning agent"
+
+      - id: "ent_002"
+        name: "Create _plan_teach.yml"
+        description: "Create new entrypoint for guidance and context engineering planning."
+        status: "blocked"
+        blocker: "File does not exist in worktree - only in main repo"
+        audit_ref: "audit/260106_audit_findings.yml#C1"
+        evidence: "File MISSING from worktree - see audit C1"
+        target_files:
+          - "modules/AgenticGuidance/entrypoints/_plan_teach.yml"
+        acceptance_criteria:
+          - "File created with guidance-focused goal"
+          - "Routes to orchestration-planning with guidance intent"
+          - "Output phases include teach, test, cleanup"
+
+      - id: "ent_003"
+        name: "Create _teach.yml execution entrypoint"
+        description: |
+          [CANCELLED per DD-001]
+
+          Per design decision DD-001: The _teach.yml execution entrypoint does NOT exist.
+          All execution (both build and teach workflows) routes through _orchestrate.yml.
+
+          Rationale: Execution orchestration is unified - the orchestration-build agent handles
+          both build and teach plan execution. Only the PLANNING entrypoints are split:
+          - _plan_build.yml → for code implementation planning
+          - _plan_teach.yml → for guidance planning
+
+          Both planning entrypoints output plans for _orchestrate.yml execution.
+        status: "cancelled"
+        cancelled_reason: "DD-001: Unified execution via _orchestrate.yml"
+        target_files: []
+        acceptance_criteria: []
+
+      - id: "ent_004"
+        name: "Evaluate orchestration pattern unification"
+        description: "Assess whether orchestration-build and orchestration-guidance share enough common patterns to warrant extracting shared logic into a base orchestration pattern. This is optional refactoring."
+        status: "pending"
+        priority: "optional"
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-build/"
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-guidance/"
+        acceptance_criteria:
+          - "Analysis document produced identifying shared patterns"
+          - "Decision recorded: unify or keep separate"
+          - "If unifying: refactoring plan added to Phase 3"
+
+  - name: "Dynamic Orchestration via MMD"
+    description: "Enable planners to define the orchestration flow dynamically using Mermaid files with embedded metadata."
+    success_criteria:
+      - "Plan-MMD schema defined and documented with examples"
+      - "Both planner-build and planner-guidance emit valid Plan-MMD files"
+      - "Generic orchestration-executor routes based on MMD metadata"
+      - "End-to-end dynamic orchestration tested for both build and teach flows"
+    tasks:
+      - id: "mmd_001"
+        name: "Define Plan-MMD Schema"
+        description: |
+          Create a YAML schema definition for Plan-MMD files that specifies:
+          - Required metadata comments (version, generator, plan folder, phases)
+          - Agent routing configuration (maps phase types to agents)
+          - Feedback triggers (conditions that cause re-planning)
+          - Repair iteration limits
+          - Valid node types and edge semantics
+
+          Plan-MMD Specification (metadata comments in MMD):
+          ```
+          %% PLAN_MMD_VERSION: 1.0
+          %% GENERATED_BY: planner-<type>
+          %% PLAN_FOLDER: <path>
+          %% PHASES: (ordered list)
+          %% AGENT_ROUTING: (maps phase types to agents)
+          %% FEEDBACK_TRIGGERS: (what causes re-planning)
+          %% MAX_REPAIR_ITERATIONS: 3
+          ```
+        status: "pending"
+        target_files:
+          - "assets/definitions/plan-mmd-schema.yml"
+        acceptance_criteria:
+          - "Schema validates required metadata fields"
+          - "Agent routing supports build, teach, test, and audit types"
+          - "Feedback triggers include failure, quality threshold, and explicit request"
+          - "Example MMD included in schema documentation"
+
+      - id: "mmd_002a"
+        name: "Update planner-build to Generate MMD"
+        description: |
+          Modify planner-build process to emit a Plan-MMD file alongside the plan YAML.
+          The MMD should define the execution flow for implementation phases.
+        status: "pending"
+        depends_on: ["mmd_001"]
+        target_files:
+          - "agents/planner/planner-build/process.yml"
+          - "agents/planner/planner-build/templates/plan-flow.mmd.template"
+        acceptance_criteria:
+          - "Process includes step to generate plan-flow.mmd"
+          - "Generated MMD includes all required metadata comments"
+          - "Agent routing maps to builder and tester agents"
+
+      - id: "mmd_002b"
+        name: "Update planner-guidance to Generate MMD"
+        description: |
+          Modify planner-guidance process to emit a Plan-MMD file for teaching workflows.
+          The MMD should define the flow for guidance creation and validation.
+        status: "pending"
+        depends_on: ["mmd_001"]
+        target_files:
+          - "agents/planner/planner-guidance/process.yml"
+          - "agents/planner/planner-guidance/templates/plan-flow.mmd.template"
+        acceptance_criteria:
+          - "Process includes step to generate plan-flow.mmd"
+          - "Generated MMD includes all required metadata comments"
+          - "Agent routing maps to teacher and auditor agents"
+
+      - id: "mmd_003"
+        name: "Create Generic Orchestration Executor"
+        description: |
+          Build a new orchestration-executor agent that:
+          - Reads Plan-MMD from the active plan folder
+          - Parses metadata to determine agent routing
+          - Executes phases in order defined by MMD graph
+          - Handles feedback triggers and repair loops
+          - Tracks state via agentic-cli
+        status: "pending"
+        depends_on: ["mmd_001"]
+        target_files:
+          - "agents/orchestration/orchestration-executor/manifest.yml"
+          - "agents/orchestration/orchestration-executor/process.yml"
+          - "agents/orchestration/orchestration-executor/inputs.yml"
+        acceptance_criteria:
+          - "Agent can parse Plan-MMD metadata comments"
+          - "Agent routes to correct sub-agent based on phase type"
+          - "Agent respects MAX_REPAIR_ITERATIONS limit"
+          - "Agent updates plan state after each phase"
+
+      - id: "mmd_004"
+        name: "Update Entrypoints for MMD-Driven Flow"
+        description: |
+          Refactor _orchestrate.yml to use the generic orchestration-executor.
+          Remove hardcoded agent references in favor of MMD-driven routing.
+        status: "pending"
+        depends_on: ["mmd_003"]
+        target_files:
+          - "entrypoints/_orchestrate.yml"
+        acceptance_criteria:
+          - "Entrypoint delegates to orchestration-executor"
+          - "No hardcoded agent paths in entrypoint"
+          - "Plan folder path passed as input"
+
+      - id: "mmd_005"
+        name: "Test End-to-End Dynamic Orchestration"
+        description: |
+          Validate the complete flow:
+          1. Planner generates plan with MMD
+          2. Orchestrator reads MMD and routes correctly
+          3. Feedback triggers cause appropriate re-planning
+          4. State is correctly persisted throughout
+        status: "pending"
+        depends_on: ["mmd_002a", "mmd_002b", "mmd_004"]
+        target_files:
+          - "tests/orchestration/test_mmd_flow.yml"
+        acceptance_criteria:
+          - "Build plan flow executes without hardcoded routing"
+          - "Teach plan flow executes without hardcoded routing"
+          - "Repair loop triggers on simulated failure"
+          - "State reflects completed phases accurately"

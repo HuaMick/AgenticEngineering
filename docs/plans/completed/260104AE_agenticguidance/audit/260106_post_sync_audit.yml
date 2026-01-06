@@ -1,0 +1,152 @@
+# Post-Sync Audit Results - 260106
+# Plan: 260104AE_agenticguidance
+# Objective: Verify entrypoint refactor after worktree sync
+
+audit_date: "2026-01-06"
+sync_commit: "bd3ec8a (cherry-pick of bfb3ec4)"
+
+auditors_spawned:
+  teacher_agents:
+    - id: a4c35d3
+      task: Review manifest routing logic
+      result: PASS
+    - id: a302e19
+      task: Review teacher examples
+      result: ISSUES_FOUND
+    - id: a44d6cf
+      task: Review orchestrate entrypoint
+      result: ISSUES_FOUND
+  audit_agents:
+    - id: af40f53
+      task: Audit _plan.yml references
+      result: FAIL
+    - id: ad1d024
+      task: Audit routing consistency
+      result: FAIL
+  self_review_agents:
+    - id: a45f2af
+      agent: orchestration-planning
+      result: PASS_WITH_FRICTION
+    - id: a812b8a
+      agent: planner-build
+      result: FAIL
+    - id: a459a0d
+      agent: planner-guidance
+      result: PASS
+    - id: a9faa2d
+      agent: teacher-update-guidance
+      result: PASS_WITH_FRICTION
+
+summary:
+  total_agents: 9
+  passed: 2
+  passed_with_friction: 3
+  failed: 4
+  status: INCOMPLETE - REQUIRES REMEDIATION
+
+critical_issues:
+  - id: CRIT-001
+    title: "planner-build outputs to wrong file"
+    severity: CRITICAL
+    description: |
+      planner-build/process.yml references plan_live_teach.yml instead of plan_live_build.yml.
+      This would cause planner-build to overwrite the teach plan instead of creating the build plan.
+    files:
+      - path: "modules/AgenticGuidance/agents/planner/planner-build/process.yml"
+        lines: [26, 30, 34, 58, 60]
+        current: "plan_live_teach.yml"
+        expected: "plan_live_build.yml"
+      - path: "modules/AgenticGuidance/agents/planner/planner-build/inputs.yml"
+        lines: [31, 37]
+        current: "plan_live_teach.yml"
+        expected: "plan_live_build.yml"
+    fix_count: 7
+
+high_issues:
+  - id: HIGH-001
+    title: "References to non-existent _teach.yml entrypoint"
+    severity: HIGH
+    description: |
+      4 references to _teach.yml which does not exist.
+      Per design decision DD-001, _teach.yml was consolidated into _plan_teach.yml.
+    files:
+      - path: "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+        lines: [4, 172, 178]
+        current: "_teach.yml"
+        expected: "_plan_teach.yml or just _orchestrate.yml"
+      - path: "modules/AgenticGuidance/agents/orchestration/orchestration-guidance/manifest.yml"
+        line: 12
+        current: "_teach.yml"
+        expected: "_plan_teach.yml"
+    fix_count: 4
+
+  - id: HIGH-002
+    title: "_orchestrate.yml routing inconsistency"
+    severity: HIGH
+    description: |
+      Manifest claims _orchestrate.yml routes to either orchestration-build OR orchestration-guidance
+      based on plan type, but the actual entrypoint file only references orchestration-build.
+    location:
+      manifest: "modules/AgenticGuidance/agents/orchestration/manifest.yml"
+      entrypoint: "modules/AgenticGuidance/entrypoints/_orchestrate.yml"
+    issue: "orchestration-guidance is orphaned in routing"
+
+medium_issues:
+  - id: MED-001
+    title: "No explicit intent parameter from entrypoint"
+    severity: MEDIUM
+    description: |
+      orchestration-planning does not receive explicit intent (build vs teach) from entrypoint.
+      It relies on objective analysis alone, which could be ambiguous.
+    suggested_fix: "Add runtime_inputs mechanism with planning_intent field"
+
+low_issues:
+  - id: LOW-001
+    title: "Inconsistent teach vs guidance terminology"
+    severity: LOW
+    description: |
+      Entrypoints and plan files use 'teach' (_plan_teach.yml, plan_live_teach.yml)
+      but agents use 'guidance' (planner-guidance, orchestration-guidance).
+    suggested_fix: "Document that 'teach' and 'guidance' are synonymous"
+
+positive_findings:
+  - "No standalone _plan.yml references found in active guidance (0 matches)"
+  - "Entrypoint files are correctly structured (_plan_build.yml, _plan_teach.yml)"
+  - "manifest.yml routing_logic section has both new entrypoints"
+  - "concise.yml examples are correctly updated"
+  - "_orchestrate.yml correctly references both _plan_build.yml and _plan_teach.yml"
+  - "planner-guidance correctly understands its invocation path"
+
+next_session_actions:
+  phase_1_critical_fix:
+    title: "Fix planner-build output file references"
+    priority: P0
+    tasks:
+      - file: "agents/planner/planner-build/process.yml"
+        action: "Replace plan_live_teach.yml with plan_live_build.yml (5 occurrences)"
+      - file: "agents/planner/planner-build/inputs.yml"
+        action: "Replace plan_live_teach.yml with plan_live_build.yml (2 occurrences)"
+
+  phase_2_high_fix:
+    title: "Remove _teach.yml references"
+    priority: P1
+    tasks:
+      - file: "agents/orchestration/orchestration-planning/process.mmd"
+        action: "Update lines 4, 172, 178 - remove _teach.yml reference"
+      - file: "agents/orchestration/orchestration-guidance/manifest.yml"
+        action: "Update line 12 - change _teach.yml to _plan_teach.yml"
+
+  phase_3_verify:
+    title: "Re-run verification"
+    priority: P2
+    tasks:
+      - "Re-run planner-build self-review"
+      - "Re-run _teach.yml audit (should return 0)"
+
+  phase_4_commit:
+    title: "Commit remediation"
+    priority: P3
+    tasks:
+      - "Stage all fixes"
+      - "Commit with message: fix(AgenticGuidance): correct planner-build output and remove _teach.yml refs"
+      - "Push to worktree branch"
