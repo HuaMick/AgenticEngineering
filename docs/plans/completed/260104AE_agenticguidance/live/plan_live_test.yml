@@ -1,0 +1,95 @@
+# Live Plan - Test Phase
+# Plan: 260104AE_agenticguidance
+# Objective: Test guidance updates for entrypoint refactor
+
+worktree: /home/code/AgenticEngineering-agenticguidance
+liveplan: "docs/plans/live/260104AE_agenticguidance/live/plan_live_test.yml"
+completedplan: "docs/plans/live/260104AE_agenticguidance/completed/plan_completed.yml"
+
+live-plans:
+  - id: GUIDANCE-ENTRYPOINT-REFACTOR-001
+    title: Test Guidance Updates for Entrypoint Refactor
+
+    phases:
+      # ========================================
+      # TEST PHASE - Guidance Validation
+      # ========================================
+      - name: Test Phase
+        execution_groups:
+          - execution: guidance-test-loop
+            name: Validate guidance consistency
+            agents:
+              # Agent 1: Test orchestration-planning guidance
+              - type: test-guidance-simulator
+                inputs:
+                  - modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd
+                  - modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml
+                  - modules/AgenticGuidance/agents/orchestration/manifest.yml
+                guidance: |
+                  Context: Test that orchestration-planning agent can understand the new entrypoint structure.
+
+                  Walkthrough Scenario: Planning for a build task
+                  1. Simulate receiving a build planning request
+                  2. Verify agent understands _plan_build.yml is the entry point for code planning
+                  3. Verify agent knows to route to orchestration-planning
+                  4. Check that agent doesn't reference old _plan.yml
+
+                  Walkthrough Scenario: Planning for a teach task
+                  1. Simulate receiving a guidance planning request
+                  2. Verify agent understands _plan_teach.yml is the entry point for guidance planning
+                  3. Verify agent knows to route to orchestration-planning
+                  4. Check that agent doesn't reference old _plan.yml
+
+                  Friction points to check:
+                  - Does guidance clearly distinguish build vs teach planning?
+                  - Are there any ambiguous references that could confuse the agent?
+                  - Is the routing from entrypoint to orchestration agent clear?
+                success_criteria:
+                  - Agent correctly identifies _plan_build.yml for code planning tasks
+                  - Agent correctly identifies _plan_teach.yml for guidance planning tasks
+                  - No confusion from old _plan.yml references
+                  - Routing logic is unambiguous
+
+              # Agent 2: Test teacher agent guidance
+              - type: test-guidance-simulator
+                inputs:
+                  - modules/AgenticGuidance/agents/teacher/teacher-update-guidance/process.yml
+                  - modules/AgenticGuidance/assets/examples/teacher/concise.yml
+                guidance: |
+                  Context: Test that teacher agents understand the entrypoint structure when teaching about it.
+
+                  Walkthrough Scenario: Teaching about agent paths
+                  1. Simulate a teaching task about agent workflows
+                  2. Verify teacher uses correct examples (_plan_build.yml or _plan_teach.yml)
+                  3. Check that examples don't reference old _plan.yml
+                  4. Verify examples are concise and clear
+
+                  Friction points to check:
+                  - Are the examples in concise.yml up to date?
+                  - Does the teacher understand when to use each entrypoint?
+                success_criteria:
+                  - Teacher examples reference correct entrypoints
+                  - No outdated _plan.yml examples
+                  - Examples are clear and consistent
+
+              # Agent 3: Test impacted agents can review their own guidance
+              - type: test-guidance-simulator
+                inputs:
+                  - modules/AgenticGuidance/agents/planner/manifest.yml
+                  - modules/AgenticGuidance/agents/planner/planner-build/process.yml
+                  - modules/AgenticGuidance/agents/planner/planner-guidance/process.yml
+                guidance: |
+                  Context: Planner agents may reference entry patterns. Verify they understand the new structure.
+
+                  Walkthrough Scenario: Planner understanding workflow
+                  1. Simulate planner-build reading its guidance
+                  2. Check if it understands how it's invoked (via _plan_build.yml → orchestration-planning)
+                  3. Simulate planner-guidance reading its guidance
+                  4. Check if it understands how it's invoked (via _plan_teach.yml → orchestration-planning)
+
+                  Friction points to check:
+                  - Do planner processes correctly understand their invocation path?
+                  - Are there any hardcoded references to old _plan.yml?
+                success_criteria:
+                  - Planner agents understand their invocation flow
+                  - No confusion about which entrypoint triggers which planner
