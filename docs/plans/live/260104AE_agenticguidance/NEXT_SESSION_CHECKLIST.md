@@ -100,6 +100,7 @@ After completing above:
 - [ ] CLI Offloading phase (4 tasks)
 - [ ] Entrypoint & Schema phase (2 tasks)
 - [ ] MMD Implementation phase (3 tasks)
+- [ ] Orchestration Remodel & De-linearization phase (1 task)
 - [ ] Asset & Example Alignment phase (4 tasks)
 
 ## Quick Reference
@@ -108,6 +109,7 @@ After completing above:
 |------|---------|
 | `live/plan_agenticguidance.yml` | Main plan with all phases |
 | `live/plan_live_teach.yml` | Teaching phases (8 phases) |
+| `live/plan_live_orchestration_remodel.yml` | Remodel phases (4 phases) |
 | `audit/260106_session2_self_review_results.yml` | Friction findings |
 | `audit/260106_session3_summary.yml` | Session summary |
 

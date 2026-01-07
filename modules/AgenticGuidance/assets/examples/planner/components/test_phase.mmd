@@ -1,0 +1,58 @@
+flowchart LR
+    %% COMPONENT: Test Phase
+    %% PURPOSE: Demonstrate the test planning loop with test-fix-loop integration
+    %% USAGE: Planners can incorporate this pattern for validation phases
+    %% LOOP: planner-loop with planner-test + planner-reviewer
+    %% INTEGRATION: test-fix-loop for iterative test/fix cycles
+
+    %% Entry point - assumes phase has been determined to require testing
+    TestPhaseStart((Test Phase)) --> SpawnPlannerTest[Spawn planner-test Agent]
+
+    %% Planner-test creates test strategy plan
+    %% INPUTS: build_plan, target_project_path, test_scope
+    SpawnPlannerTest --> PlanCreated{Plan Created?}
+
+    PlanCreated -- "No: Error" --> EscalateTest((Escalate: Cannot Create Plan))
+    PlanCreated -- "Yes" --> SpawnReviewer[Spawn planner-reviewer Agent]
+
+    %% Reviewer evaluates the test plan
+    %% CRITERIA: coverage strategy, test types, exit conditions
+    SpawnReviewer --> ReviewResult{Plan Approved?}
+
+    %% Iterative refinement loop
+    ReviewResult -- "No: Refine" --> CaptureFeedback[Capture Reviewer Feedback]
+    CaptureFeedback --> CheckIterations{Max Iterations?}
+    CheckIterations -- "No" --> SpawnPlannerTestFix[Spawn planner-test Agent with Feedback]
+    SpawnPlannerTestFix --> SpawnReviewer
+    CheckIterations -- "Yes" --> EscalateTest
+
+    %% Approved plan includes test-fix-loop structure
+    ReviewResult -- "Yes: Approved" --> VerifyTestFixLoop[Verify Test-Fix-Loop Structure]
+
+    subgraph TestFixLoop ["Test-Fix-Loop Integration"]
+        %% Test plan should define test-fix-loop execution:
+        %% 1. Test agents run tests
+        %% 2. Failures captured in plan
+        %% 3. Build agents fix failures
+        %% 4. Loop until all pass or max iterations
+        VerifyTestFixLoop --> CheckTestAgents{Test Agents Defined?}
+        CheckTestAgents -- "Yes" --> CheckFailureCapture{Failure Capture Defined?}
+        CheckFailureCapture -- "Yes" --> CheckBuildAgents{Build Agents for Fixes?}
+        CheckBuildAgents -- "Yes" --> CheckExitConditions{Exit Conditions Clear?}
+        CheckExitConditions -- "Yes" --> LoopValid[Test-Fix-Loop Valid]
+
+        %% Missing components trigger refinement
+        CheckTestAgents -- "No" --> MissingComponent[Flag Missing Component]
+        CheckFailureCapture -- "No" --> MissingComponent
+        CheckBuildAgents -- "No" --> MissingComponent
+        CheckExitConditions -- "No" --> MissingComponent
+        MissingComponent --> CaptureFeedback
+    end
+
+    LoopValid --> TestPhaseComplete((Test Phase Complete))
+
+    %% Styling
+    classDef entrypoint fill:#90EE90
+    classDef exitpoint fill:#FFB6C1
+    class TestPhaseStart,TestPhaseComplete entrypoint
+    class EscalateTest exitpoint

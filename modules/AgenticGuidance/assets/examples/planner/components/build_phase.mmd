@@ -1,0 +1,58 @@
+flowchart LR
+    %% COMPONENT: Build Phase
+    %% PURPOSE: Demonstrate the build planning loop with architecture layers
+    %% USAGE: Planners can incorporate this pattern for implementation phases
+    %% LOOP: planner-loop with planner-build + planner-reviewer
+    %% ARCHITECTURE: Domain -> Workflow -> Entrypoint pattern
+
+    %% Entry point - assumes phase has been determined to require building
+    BuildPhaseStart((Build Phase)) --> SpawnPlannerBuild[Spawn planner-build Agent]
+
+    %% Planner-build creates implementation plan
+    %% INPUTS: objective, target_project_path, plan_folder_name
+    SpawnPlannerBuild --> PlanCreated{Plan Created?}
+
+    PlanCreated -- "No: Error" --> EscalateBuild((Escalate: Cannot Create Plan))
+    PlanCreated -- "Yes" --> SpawnReviewer[Spawn planner-reviewer Agent]
+
+    %% Reviewer evaluates the build plan
+    %% CRITERIA: architecture compliance, test coverage, acceptance criteria
+    SpawnReviewer --> ReviewResult{Plan Approved?}
+
+    %% Iterative refinement loop
+    ReviewResult -- "No: Refine" --> CaptureFeedback[Capture Reviewer Feedback]
+    CaptureFeedback --> CheckIterations{Max Iterations?}
+    CheckIterations -- "No" --> SpawnPlannerBuildFix[Spawn planner-build Agent with Feedback]
+    SpawnPlannerBuildFix --> SpawnReviewer
+    CheckIterations -- "Yes" --> EscalateBuild
+
+    %% Approved plan includes architecture layer structure
+    ReviewResult -- "Yes: Approved" --> VerifyLayers[Verify Architecture Layers]
+
+    subgraph ArchLayers ["Architecture Layer Verification"]
+        %% Plan should include these layers in sequence:
+        %% 1. Environment Setup
+        %% 2. Domain Layer (pure business logic)
+        %% 3. Workflow Layer (orchestration)
+        %% 4. Entrypoint Layer (CLI, API, UI)
+        VerifyLayers --> CheckEnvSetup{Env Setup Present?}
+        CheckEnvSetup -- "Yes" --> CheckDomain{Domain Layer Present?}
+        CheckDomain -- "Yes" --> CheckWorkflow{Workflow Layer Present?}
+        CheckWorkflow -- "Yes" --> CheckEntrypoint{Entrypoint Present?}
+        CheckEntrypoint -- "Yes" --> LayersValid[All Layers Valid]
+
+        %% Missing layers trigger refinement
+        CheckEnvSetup -- "No" --> MissingLayer[Flag Missing Layer]
+        CheckDomain -- "No" --> MissingLayer
+        CheckWorkflow -- "No" --> MissingLayer
+        CheckEntrypoint -- "No" --> MissingLayer
+        MissingLayer --> CaptureFeedback
+    end
+
+    LayersValid --> BuildPhaseComplete((Build Phase Complete))
+
+    %% Styling
+    classDef entrypoint fill:#90EE90
+    classDef exitpoint fill:#FFB6C1
+    class BuildPhaseStart,BuildPhaseComplete entrypoint
+    class EscalateBuild exitpoint
