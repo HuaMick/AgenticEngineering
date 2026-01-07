@@ -14,7 +14,7 @@
 **Agents**: planner-phases, planner-teach
 **Location**: `modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/planner/`
 
-Choose ONE:
+Choose ONE: 
 - [ ] **Option A**: Migrate with full updates
   - Create `modules/AgenticGuidance/agents/planner/planner-phases/`
   - Create `modules/AgenticGuidance/agents/planner/planner-teach/`
@@ -23,7 +23,7 @@ Choose ONE:
   - Add layer references
   - Update agent-categories.yml
 
-- [ ] **Option B**: Deprecate
+- [X] **Option B**: Deprecate
   - Create `DEPRECATED.md` in legacy folders
   - Remove any dangling references
   - Document that functionality absorbed by orchestration-planning
@@ -44,7 +44,7 @@ Choose ONE:
   - Update planner-test/manifest.yml with fallback_path fields
   - Point to legacy locations
 
-- [ ] **Option B**: Migrate agents (HIGH effort)
+- [X] **Option B**: Migrate agents (HIGH effort)
   - Create agents in `modules/AgenticGuidance/agents/test/`
   - Full guidance updates
 
@@ -63,9 +63,9 @@ Execute phases from `live/plan_live_teach.yml`:
   - Add concrete examples
 
 - [ ] **Phase 2**: Process File Format Standardization (`teach_proc_001`)
-  - Create `orchestration-planning/process.yml`
-  - Create `orchestration-build/process.yml`
-  - Document .mmd vs .yml pattern
+  - Update `agent-context-files.yml` to allow `.mmd` format
+  - Update `agent-role-scope-matrix.md` with `.mmd` links
+  - Document the .mmd-first pattern for orchestration
 
 ### HIGH Phases
 - [ ] **Phase 3**: Output Schema Documentation (`teach_out_001`)

@@ -67,23 +67,25 @@ live-plans:
               - type: teacher
                 id: teach_proc_001
                 inputs:
-                  - agents/orchestration/orchestration-planning/process.mmd
-                  - agents/orchestration/orchestration-build/process.mmd
+                  - assets/definitions/agent-context-files.yml
                   - docs/agent-role-scope-matrix.md
+                  - agents/orchestration/orchestration-planning/process.mmd
                 guidance: |
                   Context: orchestration-planning and orchestration-build have process.mmd
-                  but no process.yml. Other agents expect process.yml for execution instructions.
+                  but current framework docs imply process.yml is mandatory. We want to
+                  standardize .mmd as a first-class citizen for orchestration logic.
 
                   Instructions:
-                  1. Create process.yml wrapper files that reference process.mmd
-                  2. Add SIGNPOST explaining when to use .mmd vs .yml formats
-                  3. Update agent-role-scope-matrix.md to document the pattern
+                  1. Update agent-context-files.yml to explicitly allow .mmd for process logic
+                  2. Update agent-role-scope-matrix.md to reference .mmd files for orchestration
+                  3. Add SIGNPOST explaining when to use .mmd vs .yml formats
+                  4. Document the pattern in orchestration manifest files
 
-                  Why this matters: Agent loader may fail to find process instructions.
-                  Inconsistent file patterns cause confusion.
+                  Why this matters: Consistent file patterns across agent types while
+                  supporting the visual clarity of Mermaid diagrams.
                 success_criteria:
-                  - orchestration-planning/process.yml exists and references process.mmd
-                  - orchestration-build/process.yml exists and references process.mmd
+                  - assets/definitions/agent-context-files.yml documents .mmd as valid process format
+                  - agent-role-scope-matrix.md points to orchestration .mmd files
                   - Documentation explains .mmd vs .yml usage pattern
 
       # ========================================
@@ -277,35 +279,26 @@ decision_items:
   - id: DECISION-001
     title: "Legacy-only Agents: planner-phases and planner-teach"
     severity: critical
+    status: RESOLVED
+    resolution: "Option B - Deprecate (see plan_live_cleanup_deprecation.yml)"
+    resolved_date: "2026-01-07"
     context: |
       These agents exist ONLY in legacy location and have NOT been migrated.
       They are not listed in agent-categories.yml and no entrypoint references them.
-    options:
-      - option: "Migrate with full updates"
-        effort: HIGH
-        description: "Migrate to modules/AgenticGuidance/agents/planner/ with PATH RESOLUTION, required_inputs, layers"
-      - option: "Deprecate"
-        effort: LOW
-        description: "Add DEPRECATED.md, remove references if functionality absorbed by other agents"
-      - option: "Merge into orchestration-planning"
-        effort: MEDIUM
-        description: "If phase decomposition is orchestration's job, merge the logic"
-    recommendation: "Evaluate if planner-phases functionality is covered by orchestration-planning's phase determination"
+    coverage_verification:
+      planner_phases: "Covered by orchestration-planning Phase Determination Subgraph (process.mmd lines 47-61)"
+      planner_teach: "Covered by planner-guidance agent at modules/AgenticGuidance/agents/planner/planner-guidance/"
 
   - id: DECISION-002
     title: "NOT_MIGRATED Test Agents"
     severity: critical
+    status: RESOLVED
+    resolution: "Option B - Migrate agents (see plan_live_build_migration.yml)"
+    resolved_date: "2026-01-07"
     context: |
       planner-test manifest references test agents that don't exist:
       test-user-simulator, test-service, test-builder (all NOT_MIGRATED)
-    options:
-      - option: "Add fallback paths"
-        effort: LOW
-        description: "Add structured fallback_path fields pointing to legacy location"
-      - option: "Migrate agents"
-        effort: HIGH
-        description: "Migrate test-user-simulator, test-service, test-builder to current location"
-      - option: "Remove strategies"
-        effort: MEDIUM
-        description: "Remove test strategies that require unmigrated agents"
-    recommendation: "Start with fallback paths, migrate incrementally as strategies are used"
+    migration_target:
+      - "modules/AgenticGuidance/agents/test/test-user-simulator/"
+      - "modules/AgenticGuidance/agents/test/test-service/"
+      - "modules/AgenticGuidance/agents/test/test-builder/"

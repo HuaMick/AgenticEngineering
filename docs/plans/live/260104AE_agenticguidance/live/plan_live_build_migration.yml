@@ -1,0 +1,495 @@
+# Build Plan: Test Agent Migration (DECISION-002 Option B)
+# Created: 2026-01-07
+# Scope: Migrate legacy test agents to modules/AgenticGuidance/agents/test/
+#
+# DECISION CONTEXT:
+# - DECISION-002 Option B selected: Migrate with full update to 2.0 architecture
+# - Source: modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/
+# - Target: modules/AgenticGuidance/agents/test/
+#
+# MIGRATION REQUIREMENTS:
+# 1. Each agent MUST have manifest.yml (new file - legacy lacks this)
+# 2. Each agent MUST have process.yml with PATH RESOLUTION SEMANTICS header
+# 3. Each agent MUST have inputs.yml with required_inputs section and layer references
+#
+# PATTERN REFERENCES:
+# - Manifest pattern: modules/AgenticGuidance/agents/test/test-audit/manifest.yml
+# - Process pattern: modules/AgenticGuidance/agents/test/test-audit/process.yml
+# - Inputs pattern: modules/AgenticGuidance/agents/test/test-audit/inputs.yml
+# - Category definition: modules/AgenticGuidance/assets/definitions/agent-categories.yml
+
+worktree: "/home/code/AgenticEngineering-agenticguidance"
+liveplan: "docs/plans/live/260104AE_agenticguidance/live/plan_live_build_migration.yml"
+completedplan: "docs/plans/live/260104AE_agenticguidance/completed/plan_completed.yml"
+
+live-plans:
+  - id: MIGRATION-TEST-AGENTS-001
+    title: Migrate Legacy Test Agents to AgenticGuidance
+    description: |
+      Migrate test-user-simulator, test-service, and test-builder from legacy location
+      to modules/AgenticGuidance/agents/test/ with full 2.0 architecture compliance.
+
+      This enables these agents to participate in the unified AgenticGuidance system
+      with proper manifest.yml files, PATH RESOLUTION headers, and layer references.
+
+    phases:
+      # ========================================
+      # PHASE 1: ENVIRONMENT SETUP
+      # Sequential - verify source and target locations
+      # ========================================
+      - name: Environment Setup
+        execution_groups:
+          - execution: sequential
+            name: Verify migration prerequisites
+            agents:
+              - type: build
+                inputs:
+                  # Source verification
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/test-user-simulator/process.yml
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/test-user-simulator/inputs.yml
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/test-service/process.yml
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/test-service/inputs.yml
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/test-builder/process.yml
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/test-builder/inputs.yml
+                  # Pattern references
+                  - modules/AgenticGuidance/agents/test/test-audit/manifest.yml
+                  - modules/AgenticGuidance/agents/test/test-audit/process.yml
+                  - modules/AgenticGuidance/agents/test/test-audit/inputs.yml
+                guidance: |
+                  Context: Before migration, verify all source files exist and understand the patterns.
+
+                  Instructions:
+                  1. Verify all 6 legacy source files exist and are readable
+                  2. Verify test-audit pattern files exist as migration templates
+                  3. Verify target directories can be created:
+                     - modules/AgenticGuidance/agents/test/test-user-simulator/
+                     - modules/AgenticGuidance/agents/test/test-service/
+                     - modules/AgenticGuidance/agents/test/test-builder/
+                  4. Confirm no naming conflicts in target location
+                  5. Report any issues before proceeding
+
+                  Why this matters: Migration involves creating new directories and files.
+                  Verifying prerequisites prevents partial migration failures.
+                success_criteria:
+                  - All 6 legacy source files confirmed readable
+                  - Pattern files (test-audit) confirmed as valid templates
+                  - Target directories confirmed available (no conflicts)
+                  - No blocking issues identified
+
+      # ========================================
+      # PHASE 2: MIGRATE TEST-USER-SIMULATOR
+      # Sequential - create agent directory with all 3 files
+      # ========================================
+      - name: Migrate test-user-simulator
+        execution_groups:
+          - execution: sequential
+            name: Create test-user-simulator agent with 2.0 architecture
+            agents:
+              # Task 2.1: Create manifest.yml (new file)
+              - type: build
+                inputs:
+                  - modules/AgenticGuidance/agents/test/test-audit/manifest.yml
+                  - modules/AgenticGuidance/assets/definitions/agent-categories.yml
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/test-user-simulator/process.yml
+                guidance: |
+                  Context: Create manifest.yml for test-user-simulator. Legacy agents lack this file.
+                  Use test-audit/manifest.yml as the pattern.
+
+                  Instructions:
+                  1. Create directory: modules/AgenticGuidance/agents/test/test-user-simulator/
+                  2. Create manifest.yml with:
+                     - name: test-user-simulator
+                     - description: From legacy process.yml goal (user stories testing with agent-blind-test)
+                     - version: "2.0" (reference layer architecture)
+                     - category: test (from agent-categories.yml)
+                  3. Keep manifest minimal like test-audit (7 lines)
+
+                  Pattern file: modules/AgenticGuidance/agents/test/test-audit/manifest.yml
+                success_criteria:
+                  - Directory modules/AgenticGuidance/agents/test/test-user-simulator/ created
+                  - manifest.yml created with name, description, version, category fields
+                  - Version set to "2.0" indicating reference layer architecture
+                  - Category set to "test" matching agent-categories.yml
+
+              # Task 2.2: Migrate and update process.yml
+              - type: build
+                inputs:
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/test-user-simulator/process.yml
+                  - modules/AgenticGuidance/agents/test/test-audit/process.yml
+                guidance: |
+                  Context: Migrate process.yml with PATH RESOLUTION SEMANTICS header.
+                  The header clarifies that paths are relative to AgenticGuidance module root.
+
+                  Instructions:
+                  1. Copy legacy process.yml content
+                  2. Add PATH RESOLUTION SEMANTICS header at top (see test-audit/process.yml pattern)
+                  3. Update inputs location from:
+                     "agents/test/test-user-simulator/inputs.yml"
+                     (Already correct - paths relative to module root)
+                  4. Preserve goal, loop_definitions, steps, guidelines sections
+                  5. Ensure loop_definitions.reference points to correct asset path
+
+                  PATH RESOLUTION HEADER FORMAT (from test-audit pattern):
+                  # ==============================================
+                  # PATH RESOLUTION SEMANTICS
+                  # ==============================================
+                  # All paths in this file are relative to the AgenticGuidance MODULE ROOT
+                  # (e.g., modules/AgenticGuidance/), NOT the target project root.
+                  # ==============================================
+
+                  Note: The header is NOT in test-audit/process.yml but IS required per inputs.yml pattern.
+                  Add it for consistency even though process.yml paths were already correct.
+                success_criteria:
+                  - process.yml created at modules/AgenticGuidance/agents/test/test-user-simulator/process.yml
+                  - PATH RESOLUTION SEMANTICS header present at file top
+                  - Goal preserved from legacy (agent-blind-test for user stories)
+                  - Steps preserved from legacy (7 steps)
+                  - Guidelines preserved from legacy
+                  - Input location path correct for new location
+
+              # Task 2.3: Migrate and update inputs.yml
+              - type: build
+                inputs:
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/test-user-simulator/inputs.yml
+                  - modules/AgenticGuidance/agents/test/test-audit/inputs.yml
+                guidance: |
+                  Context: Migrate inputs.yml with PATH RESOLUTION SEMANTICS header
+                  and ensure proper required_inputs section if needed (for orchestrator-provided inputs).
+
+                  Instructions:
+                  1. Add PATH RESOLUTION SEMANTICS header at file top (from test-audit/inputs.yml)
+                  2. Preserve agent_context section (category reference, role)
+                  3. Preserve inputs section with layers and core_inputs
+                  4. Update version to "2.0" if still showing pilot notation
+                  5. Verify layer paths are correct for new location:
+                     - assets/inputs/core-system.yml
+                     - assets/inputs/core-guidelines.yml
+                  6. Preserve definitions section (agent_blind_test, user_story, etc.)
+                  7. Preserve guidelines section
+
+                  Note: test-user-simulator does NOT need required_inputs section because
+                  user stories are passed in prompt, not loaded from files by the agent.
+                success_criteria:
+                  - inputs.yml created at modules/AgenticGuidance/agents/test/test-user-simulator/inputs.yml
+                  - PATH RESOLUTION SEMANTICS header present
+                  - Layer references use correct relative paths (assets/inputs/*)
+                  - Version updated to "2.0" (not "2.0-pilot")
+                  - All definitions preserved (agent_blind_test, user_story, multi_environment_testing, etc.)
+
+      # ========================================
+      # PHASE 3: MIGRATE TEST-SERVICE
+      # Sequential - create agent directory with all 3 files
+      # ========================================
+      - name: Migrate test-service
+        execution_groups:
+          - execution: sequential
+            name: Create test-service agent with 2.0 architecture
+            agents:
+              # Task 3.1: Create manifest.yml (new file)
+              - type: build
+                inputs:
+                  - modules/AgenticGuidance/agents/test/test-audit/manifest.yml
+                  - modules/AgenticGuidance/assets/definitions/agent-categories.yml
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/test-service/process.yml
+                guidance: |
+                  Context: Create manifest.yml for test-service. Legacy agents lack this file.
+
+                  Instructions:
+                  1. Create directory: modules/AgenticGuidance/agents/test/test-service/
+                  2. Create manifest.yml with:
+                     - name: test-service
+                     - description: From legacy process.yml goal (backend service lifecycle validation)
+                     - version: "2.0"
+                     - category: test
+                  3. Keep manifest minimal like test-audit
+
+                  Pattern file: modules/AgenticGuidance/agents/test/test-audit/manifest.yml
+                success_criteria:
+                  - Directory modules/AgenticGuidance/agents/test/test-service/ created
+                  - manifest.yml created with all required fields
+                  - Version "2.0", category "test"
+
+              # Task 3.2: Migrate and update process.yml
+              - type: build
+                inputs:
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/test-service/process.yml
+                  - modules/AgenticGuidance/agents/test/test-audit/process.yml
+                guidance: |
+                  Context: Migrate process.yml with PATH RESOLUTION SEMANTICS header.
+
+                  Instructions:
+                  1. Copy legacy process.yml content
+                  2. Add PATH RESOLUTION SEMANTICS header at top
+                  3. Update inputs location to "agents/test/test-service/inputs.yml"
+                  4. Preserve goal (service lifecycle validation), steps, guidelines
+                  5. Ensure loop_definitions reference is correct
+                success_criteria:
+                  - process.yml created at modules/AgenticGuidance/agents/test/test-service/process.yml
+                  - PATH RESOLUTION SEMANTICS header present
+                  - All content preserved from legacy
+                  - Input path updated for new location
+
+              # Task 3.3: Migrate and update inputs.yml
+              - type: build
+                inputs:
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/test-service/inputs.yml
+                  - modules/AgenticGuidance/agents/test/test-audit/inputs.yml
+                guidance: |
+                  Context: Migrate inputs.yml with PATH RESOLUTION header and layer references.
+
+                  Instructions:
+                  1. Add PATH RESOLUTION SEMANTICS header
+                  2. Preserve agent_context, inputs sections
+                  3. Update version to "2.0"
+                  4. Verify layer paths correct (assets/inputs/core-system.yml, etc.)
+                  5. Preserve definitions (test_runner, service_validation, delayed_validation, etc.)
+                  6. Add test-shared.yml layer reference if not present
+                success_criteria:
+                  - inputs.yml created with PATH RESOLUTION header
+                  - Version "2.0"
+                  - Layer references correct
+                  - All definitions preserved
+
+      # ========================================
+      # PHASE 4: MIGRATE TEST-BUILDER
+      # Sequential - create agent directory with all 3 files
+      # ========================================
+      - name: Migrate test-builder
+        execution_groups:
+          - execution: sequential
+            name: Create test-builder agent with 2.0 architecture
+            agents:
+              # Task 4.1: Create manifest.yml (new file)
+              - type: build
+                inputs:
+                  - modules/AgenticGuidance/agents/test/test-audit/manifest.yml
+                  - modules/AgenticGuidance/assets/definitions/agent-categories.yml
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/test-builder/process.yml
+                guidance: |
+                  Context: Create manifest.yml for test-builder. Legacy agents lack this file.
+
+                  Instructions:
+                  1. Create directory: modules/AgenticGuidance/agents/test/test-builder/
+                  2. Create manifest.yml with:
+                     - name: test-builder
+                     - description: From legacy process.yml goal (create and update test files)
+                     - version: "2.0"
+                     - category: test
+                  3. Keep manifest minimal
+
+                  Pattern file: modules/AgenticGuidance/agents/test/test-audit/manifest.yml
+                success_criteria:
+                  - Directory modules/AgenticGuidance/agents/test/test-builder/ created
+                  - manifest.yml created with all required fields
+                  - Version "2.0", category "test"
+
+              # Task 4.2: Migrate and update process.yml
+              - type: build
+                inputs:
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/test-builder/process.yml
+                  - modules/AgenticGuidance/agents/test/test-audit/process.yml
+                guidance: |
+                  Context: Migrate process.yml with PATH RESOLUTION SEMANTICS header.
+
+                  Instructions:
+                  1. Copy legacy process.yml content
+                  2. Add PATH RESOLUTION SEMANTICS header at top
+                  3. Update inputs location to "agents/test/test-builder/inputs.yml"
+                  4. Preserve goal (create/update tests), steps, guidelines
+                  5. Ensure loop_definitions reference is correct
+                success_criteria:
+                  - process.yml created at modules/AgenticGuidance/agents/test/test-builder/process.yml
+                  - PATH RESOLUTION SEMANTICS header present
+                  - All content preserved from legacy
+                  - Input path updated for new location
+
+              # Task 4.3: Migrate and update inputs.yml
+              - type: build
+                inputs:
+                  - modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/test-builder/inputs.yml
+                  - modules/AgenticGuidance/agents/test/test-audit/inputs.yml
+                guidance: |
+                  Context: Migrate inputs.yml with PATH RESOLUTION header and layer references.
+
+                  Instructions:
+                  1. Add PATH RESOLUTION SEMANTICS header
+                  2. Preserve agent_context, inputs sections
+                  3. Update version to "2.0"
+                  4. Verify layer paths correct
+                  5. Preserve definitions (component_test, smoke_test, integration_test, workflow_test)
+                  6. Verify test-shared.yml layer reference present
+                success_criteria:
+                  - inputs.yml created with PATH RESOLUTION header
+                  - Version "2.0"
+                  - Layer references correct
+                  - All definitions preserved
+
+      # ========================================
+      # PHASE 5: UPDATE DEPENDENT FILES
+      # Sequential - update references to migrated agents
+      # ========================================
+      - name: Update Dependent Files
+        execution_groups:
+          - execution: sequential
+            name: Update references to migrated agents
+            agents:
+              # Task 5.1: Update agent-categories.yml
+              - type: build
+                inputs:
+                  - modules/AgenticGuidance/assets/definitions/agent-categories.yml
+                guidance: |
+                  Context: agent-categories.yml already lists test-user-simulator, test-service,
+                  and test-builder as sub_agents under the test category. Verify this is still
+                  accurate and no updates are needed.
+
+                  Instructions:
+                  1. Read agent-categories.yml
+                  2. Verify test category sub_agents includes:
+                     - test-builder
+                     - test-runner
+                     - test-audit
+                     - test-user-simulator
+                     - test-service
+                     - test-final-output
+                     - test-flutter-builder
+                     - test-flutter-runner
+                     - test-guidance-simulator
+                  3. If all present, no changes needed (just verification)
+                  4. If any missing, add them to the list
+
+                  Why this matters: agent-categories.yml is the canonical source of truth
+                  for agent organization. Migrated agents must be listed here.
+                success_criteria:
+                  - test-user-simulator listed in test.sub_agents
+                  - test-service listed in test.sub_agents
+                  - test-builder listed in test.sub_agents
+                  - No duplicate entries
+
+              # Task 5.2: Update planner-test manifest.yml
+              - type: build
+                inputs:
+                  - modules/AgenticGuidance/agents/planner/planner-test/manifest.yml
+                guidance: |
+                  Context: planner-test/manifest.yml has test_process_mapping that references
+                  both migrated and legacy agent locations. Update to reflect completed migration.
+
+                  Instructions:
+                  1. Read current manifest.yml
+                  2. Update test_process_mapping section:
+                     BEFORE:
+                     # NOT_MIGRATED: test-user-simulator - see modules/legacy/...
+                     - agent-blind-test: agents/test/test-user-simulator/process.yml
+                     # NOT_MIGRATED: test-service - see modules/legacy/...
+                     - service_test: agents/test/test-service/process.yml
+                     # NOT_MIGRATED: test-builder - see modules/legacy/...
+                     - test-builder: agents/test/test-builder/process.yml
+
+                     AFTER:
+                     # MIGRATED: 2026-01-07
+                     - agent-blind-test: agents/test/test-user-simulator/process.yml
+                     # MIGRATED: 2026-01-07
+                     - service_test: agents/test/test-service/process.yml
+                     # MIGRATED: 2026-01-07
+                     - test-builder: agents/test/test-builder/process.yml
+                  3. Remove NOT_MIGRATED comments and legacy path references
+                  4. Add MIGRATED date comment for each
+
+                  Why this matters: planner-test uses this mapping to construct prompts
+                  for test orchestration. Wrong paths cause agent invocation failures.
+                success_criteria:
+                  - test-user-simulator marked as MIGRATED with date
+                  - test-service marked as MIGRATED with date
+                  - test-builder marked as MIGRATED with date
+                  - All NOT_MIGRATED comments removed for these agents
+                  - No legacy path references remaining for migrated agents
+
+      # ========================================
+      # PHASE 6: VALIDATION
+      # Sequential - verify migration completeness
+      # ========================================
+      - name: Migration Validation
+        execution_groups:
+          - execution: sequential
+            name: Verify migration completeness
+            agents:
+              - type: test
+                inputs:
+                  - modules/AgenticGuidance/agents/test/test-user-simulator/manifest.yml
+                  - modules/AgenticGuidance/agents/test/test-user-simulator/process.yml
+                  - modules/AgenticGuidance/agents/test/test-user-simulator/inputs.yml
+                  - modules/AgenticGuidance/agents/test/test-service/manifest.yml
+                  - modules/AgenticGuidance/agents/test/test-service/process.yml
+                  - modules/AgenticGuidance/agents/test/test-service/inputs.yml
+                  - modules/AgenticGuidance/agents/test/test-builder/manifest.yml
+                  - modules/AgenticGuidance/agents/test/test-builder/process.yml
+                  - modules/AgenticGuidance/agents/test/test-builder/inputs.yml
+                  - modules/AgenticGuidance/agents/planner/planner-test/manifest.yml
+                guidance: |
+                  Context: Validate that all migration tasks completed successfully.
+
+                  Instructions:
+                  1. Verify all 9 migrated files exist (3 agents x 3 files each)
+                  2. For each manifest.yml:
+                     - name field matches agent directory name
+                     - version is "2.0"
+                     - category is "test"
+                  3. For each process.yml:
+                     - PATH RESOLUTION SEMANTICS header present (if applicable)
+                     - inputs location path correct
+                     - Goal and steps preserved from legacy
+                  4. For each inputs.yml:
+                     - PATH RESOLUTION SEMANTICS header present
+                     - Version is "2.0" (not pilot)
+                     - Layer references use correct paths
+                     - Definitions preserved
+                  5. Verify planner-test manifest updated:
+                     - All 3 agents marked as MIGRATED
+                     - No NOT_MIGRATED comments for these agents
+                  6. Report any discrepancies
+
+                  Why this matters: Incomplete migration breaks agent invocation.
+                  Validation catches issues before they cause runtime failures.
+                success_criteria:
+                  - 9 files exist in target locations
+                  - All manifest.yml files have correct structure
+                  - All process.yml files have correct input paths
+                  - All inputs.yml files have PATH RESOLUTION headers
+                  - planner-test manifest references updated
+                  - No legacy path references in updated files
+
+    # ========================================
+    # TASK SUMMARY
+    # ========================================
+    task_summary:
+      total_file_operations: 12
+      breakdown:
+        - agent: test-user-simulator
+          files:
+            - manifest.yml (CREATE - new file)
+            - process.yml (MIGRATE with header)
+            - inputs.yml (MIGRATE with header)
+        - agent: test-service
+          files:
+            - manifest.yml (CREATE - new file)
+            - process.yml (MIGRATE with header)
+            - inputs.yml (MIGRATE with header)
+        - agent: test-builder
+          files:
+            - manifest.yml (CREATE - new file)
+            - process.yml (MIGRATE with header)
+            - inputs.yml (MIGRATE with header)
+        - update: agent-categories.yml (VERIFY - likely no changes)
+        - update: planner-test/manifest.yml (UPDATE - migration status)
+        - validation: All migrated files (VERIFY)
+
+    # ========================================
+    # SUCCESS CRITERIA
+    # ========================================
+    overall_success_criteria:
+      - All 3 agents migrated to modules/AgenticGuidance/agents/test/
+      - Each agent has manifest.yml, process.yml, inputs.yml
+      - All files follow 2.0 architecture patterns
+      - PATH RESOLUTION SEMANTICS headers present where required
+      - planner-test manifest updated with MIGRATED status
+      - No broken references to legacy locations
+      - Legacy files remain in place (not deleted - may be needed for reference)
