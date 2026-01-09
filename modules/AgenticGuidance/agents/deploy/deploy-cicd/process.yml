@@ -12,7 +12,31 @@ process:
     - location: "modules/AgenticGuidance/agents/deploy/deploy-cicd/inputs.yml"
       description: "Core deploy-cicd agent inputs, guidelines, and CI/CD validation procedures"
 
-  outputs: []
+  outputs:
+    # FENCE: Output must match declared schema before marking complete
+    - name: "cicd_audit_report"
+      type: "object"
+      description: "Structured report of CI/CD synchronization status"
+      required_fields:
+        - "cloudbuild_audit"   # {missing: [], non_existent: [], uncovered: []}
+        - "dockerfile_issues"  # List of sed pattern or dependency issues
+        - "pytest_issues"      # Coverage or marker configuration issues
+        - "compose_drift"      # Differences between cloudbuild and compose
+        - "platform_issues"    # Root user, path dependency issues
+        - "recommended_fixes"  # List of {file, change, reason}
+
+    - name: "validation_status"
+      type: "string"
+      description: "Overall validation result"
+      enum: ["PASS", "WARN", "FAIL"]
+      required: true
+
+    - name: "blocking_issues"
+      type: "array"
+      description: "Issues that would cause CI failure if not fixed"
+      items:
+        type: "object"
+        fields: ["file", "issue", "severity"]
 
   loop_context:
     participates_in:
