@@ -1,0 +1,47 @@
+# Copy-and-Sync Pattern Example
+# Demonstrates the two-level completion pattern for plan management.
+# Referenced by: modules/AgenticGuidance/assets/definitions/plans.yml
+
+# This example shows how files move between live/ and completed/ subfolders
+# based on their completion status.
+
+scenario: "Work in progress with some items completed"
+
+folder_structure:
+  docs/plans/live/251215MA_main/:
+    live/:
+      plan_live_enhance.yml: "Phase definition (reserved - stays in live/)"
+      my_feature.yml: "5 items: 3 completed, 2 pending (stays in live/)"
+      another_task.yml: "All items pending (stays in live/)"
+    completed/:
+      my_feature.yml: "3 items: only completed ones (synced copy)"
+      old_feature.yml: "All items done, deleted from live/"
+      plan_completed.yml: "Summary index (reserved)"
+    analysis/:
+      plan_iteration_1_results.yml: "Iteration logs"
+
+state_transitions:
+  - description: "Partial completion (file in BOTH locations)"
+    file: my_feature.yml
+    live_copy: "all 5 items (working copy)"
+    completed_copy: "3 completed items only (archive)"
+
+  - description: "Full completion (file ONLY in completed/)"
+    file: old_feature.yml
+    note: "Was deleted from live/ when all items completed"
+
+  - description: "No completion yet (file ONLY in live/)"
+    file: another_task.yml
+    note: "Will get a completed/ copy when first item completes"
+
+completion_workflow:
+  when_my_feature_finishes:
+    - "Sync final 2 items to completed/my_feature.yml"
+    - "Delete live/my_feature.yml"
+    - "File now exists only in completed/"
+
+reactivation_workflow:
+  if_issues_found_in_old_feature:
+    - "Copy completed/old_feature.yml back to live/"
+    - "Update affected items' status"
+    - "Sync fixes back to completed/ as resolved"

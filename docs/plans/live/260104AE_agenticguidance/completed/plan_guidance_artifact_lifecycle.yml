@@ -1,0 +1,397 @@
+# Plan: Guidance Artifact Lifecycle Remediation
+# Purpose: Fix planning folder noise by adding explicit artifact lifecycle guidance
+# Generated: 2026-01-09
+# Source: Consolidated findings from 6 planner agent self-reviews
+# Reference: docs/plans/live/260104AE_agenticguidance/analysis/guidance_consistency_assessment.md
+
+plan_name: guidance_artifact_lifecycle
+worktree: /home/code/AgenticEngineering-agenticguidance
+branch: agenticguidance
+status: completed
+completed_date: 2026-01-09
+
+objective: |
+  Add explicit artifact lifecycle guidance to planning agents so that:
+  1. audit_*.yml and review_*.yml files are treated as transient artifacts
+  2. These files move to appropriate subfolders after approval (not remain in live/)
+  3. Intermediate remediation plans are merged into phase plans then archived
+  4. The "Unified Plan" vs "Split Phase" confusion is resolved with clear terminology
+
+# ============================================================
+# PHASE 1: ADD ARTIFACT TAXONOMY TO plans.yml
+# ============================================================
+phases:
+  - id: phase_1
+    name: "Add Artifact Taxonomy"
+    description: "Extend plans.yml file_taxonomy with scrap_file_taxonomy for transient artifacts"
+    agent_type: teacher
+
+    tasks:
+      - id: 1.1
+        description: "Add scrap_file_taxonomy section to plans.yml"
+        target_file: "modules/AgenticGuidance/assets/definitions/plans.yml"
+        operation: UPDATE
+        details: |
+          Add new section after file_taxonomy:
+
+          scrap_file_taxonomy:
+            description: "Transient artifacts from planning loops with different lifecycle than phase plans"
+
+            audit_files:
+              pattern: "audit_*.yml"
+              purpose: "Issue identification reports from audit loops"
+              lifecycle: "Move to audit/ subfolder after remediation plan is APPROVED"
+              retention: "Archive for historical reference, do not delete"
+
+            review_files:
+              pattern: "review_*.yml"
+              purpose: "Plan approval/rejection decisions from planner-reviewer"
+              lifecycle: "Move to analysis/ subfolder after decision is processed"
+              retention: "Archive for decision audit trail, do not delete"
+
+            remediation_plans:
+              pattern: "plan_*_remediation*.yml"
+              purpose: "Intermediate fix plans generated from audits"
+              lifecycle: "Merge approved tasks into authoritative phase plan, then delete from live/"
+              retention: "Tasks preserved in phase plan; original file deleted (not archived)"
+
+        acceptance_criteria:
+          - "scrap_file_taxonomy section exists in plans.yml"
+          - "Three artifact types defined: audit_files, review_files, remediation_plans"
+          - "Each type has pattern, purpose, lifecycle, and retention fields"
+
+      - id: 1.2
+        description: "Add lifecycle fence distinguishing scrap files from phase plans"
+        target_file: "modules/AgenticGuidance/assets/definitions/plans.yml"
+        operation: UPDATE
+        details: |
+          Add FENCE to two_level_completion_pattern section:
+
+          SCRAP FILE FENCE:
+          The Copy-and-Sync pattern applies to PHASE PLANS (plan_live_*.yml).
+          SCRAP FILES (audit_*.yml, review_*.yml, plan_*_remediation*.yml) have different rules:
+          - They do NOT use Copy-and-Sync
+          - They MOVE (not copy) to target subfolders after processing
+          - remediation_plans are DELETED (not moved) after task merge
+          - Cleanup is triggered by APPROVAL, not by completion of all items
+
+        acceptance_criteria:
+          - "SCRAP FILE FENCE section exists in plans.yml"
+          - "Clear distinction between phase plan lifecycle and scrap file lifecycle"
+
+    success_criteria:
+      - "plans.yml contains scrap_file_taxonomy with all three artifact types"
+      - "Lifecycle rules are explicit and unambiguous"
+      - "FENCE prevents agents from applying wrong lifecycle pattern"
+
+# ============================================================
+# PHASE 2: UPDATE PLANNER-REVIEWER WITH POST-APPROVAL CLEANUP
+# ============================================================
+  - id: phase_2
+    name: "Add Post-Approval Cleanup to Planner-Reviewer"
+    description: "Extend planner-reviewer process.yml with explicit cleanup step after APPROVE"
+    agent_type: teacher
+    depends_on: [phase_1]
+
+    tasks:
+      - id: 2.1
+        description: "Add post-approval cleanup step to planner-reviewer process.yml"
+        target_file: "modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml"
+        operation: UPDATE
+        details: |
+          Add new step after "Report decision and feedback":
+
+          - |
+            POST-APPROVAL CLEANUP (execute only on APPROVE decision):
+
+            1. Report to orchestrator that remediation tasks should be merged:
+               "APPROVED: Merge tasks from [plan_name] into authoritative phase plan"
+
+            2. Specify artifacts to archive:
+               - audit_*.yml related to this review → move to audit/ subfolder
+               - review_*.yml (this file) → move to analysis/ subfolder
+
+            3. Specify remediation plan disposition:
+               - After tasks are merged into phase plan, DELETE the remediation plan from live/
+
+            FENCE: Do not execute cleanup on REJECT decisions. Rejected plans remain
+            in live/ for the next iteration of the planner-loop.
+
+        acceptance_criteria:
+          - "process.yml has step 5 with POST-APPROVAL CLEANUP"
+          - "Step specifies three actions: report, archive, delete"
+          - "FENCE prevents cleanup on REJECT"
+
+      - id: 2.2
+        description: "Add plans.yml#scrap_file_taxonomy to planner-reviewer inputs"
+        target_file: "modules/AgenticGuidance/agents/planner/planner-reviewer/inputs.yml"
+        operation: UPDATE
+        details: |
+          Add to core_inputs section:
+
+          - location: "modules/AgenticGuidance/assets/definitions/plans.yml#scrap_file_taxonomy"
+            description: "Artifact lifecycle definitions for audit, review, and remediation files"
+            purpose: "Determines cleanup actions after approval decisions"
+
+        acceptance_criteria:
+          - "inputs.yml references plans.yml#scrap_file_taxonomy"
+          - "Purpose field explains connection to cleanup actions"
+
+    success_criteria:
+      - "planner-reviewer process.yml includes post-approval cleanup step"
+      - "planner-reviewer inputs.yml references scrap_file_taxonomy"
+      - "Clear handoff to orchestrator for merge and cleanup actions"
+
+# ============================================================
+# PHASE 3: UPDATE PLANNER-CLEANING WITH SCRAP FILE HANDLING
+# ============================================================
+  - id: phase_3
+    name: "Add Scrap File Handling to Planner-Cleaning"
+    description: "Extend planner-cleaning FILE LIFECYCLE to handle audit/review artifacts"
+    agent_type: teacher
+    depends_on: [phase_1]
+
+    tasks:
+      - id: 3.1
+        description: "Add SCRAP FILE HANDLING pattern to planner-cleaning process.yml"
+        target_file: "modules/AgenticGuidance/agents/planner/planner-cleaning/process.yml"
+        operation: UPDATE
+        details: |
+          Add after REACTIVATION pattern in Step 2:
+
+          SCRAP FILE HANDLING (for audit/review artifacts):
+
+          Unlike phase plans, scrap files do NOT use Copy-and-Sync.
+          They are processed differently based on type:
+
+          AUDIT FILES (audit_*.yml):
+          - Source: Created by audit loops
+          - Trigger: Related remediation plan APPROVED by planner-reviewer
+          - Action: MOVE (not copy) to audit/ subfolder
+          - Command: mv live/audit_*.yml audit/
+
+          REVIEW FILES (review_*.yml):
+          - Source: Created by planner-reviewer
+          - Trigger: Decision processed (APPROVE or final REJECT)
+          - Action: MOVE (not copy) to analysis/ subfolder
+          - Command: mv live/review_*.yml analysis/
+
+          REMEDIATION PLANS (plan_*_remediation*.yml):
+          - Source: Created by planner agents to fix audit findings
+          - Trigger: APPROVED and tasks merged into authoritative phase plan
+          - Action: DELETE from live/ (tasks preserved in phase plan)
+          - Command: rm live/plan_*_remediation*.yml
+
+          FENCE: Never apply Copy-and-Sync to scrap files.
+          FENCE: Never delete audit/review files - always move to archive subfolders.
+
+        acceptance_criteria:
+          - "SCRAP FILE HANDLING section exists in process.yml"
+          - "Three file types have explicit trigger, action, and command"
+          - "FENCEs prevent incorrect handling"
+
+      - id: 3.2
+        description: "Add scrap_file_taxonomy reference to planner-cleaning inputs"
+        target_file: "modules/AgenticGuidance/agents/planner/planner-cleaning/inputs.yml"
+        operation: UPDATE
+        details: |
+          Add to core_inputs:
+
+          - location: "modules/AgenticGuidance/assets/definitions/plans.yml#scrap_file_taxonomy"
+            description: "Lifecycle definitions for transient planning artifacts"
+
+        acceptance_criteria:
+          - "inputs.yml references scrap_file_taxonomy"
+
+    success_criteria:
+      - "planner-cleaning process.yml has SCRAP FILE HANDLING section"
+      - "All three artifact types have explicit handling rules"
+      - "FENCEs prevent lifecycle confusion"
+
+# ============================================================
+# PHASE 4: CLARIFY PLAN EXAMPLE TERMINOLOGY
+# ============================================================
+  - id: phase_4
+    name: "Clarify Plan Example Purpose"
+    description: "Rename or annotate plan_example.yml to prevent Unified vs Split confusion"
+    agent_type: teacher
+
+    tasks:
+      - id: 4.1
+        description: "Add clarification header to plan_example.yml"
+        target_file: "modules/AgenticGuidance/assets/examples/planner/YYMMDDRepo_Branch/plan_example.yml"
+        operation: UPDATE
+        details: |
+          Add clarification at top of file:
+
+          # CLARIFICATION: This example shows STRUCTURE, not file organization strategy.
+          #
+          # For complex multi-phase work, use SEPARATE phase files:
+          # - live/plan_live_teach.yml (teaching/guidance phases)
+          # - live/plan_live_build.yml (implementation phases)
+          # - live/plan_live_test.yml (testing phases)
+          # - live/plan_live_audit_clean.yml (cleanup/audit phases)
+          #
+          # This single-file example is for REFERENCE only, showing all required
+          # fields and phase structure. It does NOT mean all phases must be in one file.
+          #
+          # See: modules/AgenticGuidance/assets/guidelines/context-minimisation.yml
+          # Specialized agents should read only the phase files they need.
+
+        acceptance_criteria:
+          - "Clarification header exists at top of plan_example.yml"
+          - "Header explicitly says separate phase files are preferred for complex work"
+          - "Reference to context-minimisation.yml included"
+
+      - id: 4.2
+        description: "Add phase_file_strategy note to orchestration-planning inputs"
+        target_file: "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml"
+        operation: UPDATE
+        details: |
+          Add to planning_outputs or similar section:
+
+          phase_file_strategy: |
+            For multi-phase plans, create SEPARATE phase files:
+            - One plan_live_<phase>.yml per phase type (teach, build, test, cleanup)
+            - This enables Context Minimisation: agents read only their phase file
+            - Do NOT attempt to consolidate all phases into a single "unified" file
+
+            The plan_example.yml is a STRUCTURE reference, not a file organization template.
+
+        acceptance_criteria:
+          - "phase_file_strategy note exists in orchestration-planning inputs"
+          - "Explicitly states separate files preferred"
+          - "Explains Context Minimisation benefit"
+
+    success_criteria:
+      - "plan_example.yml has clarification header"
+      - "orchestration-planning has phase_file_strategy guidance"
+      - "Unified vs Split confusion eliminated"
+
+# ============================================================
+# PHASE 5: CLEANUP CURRENT PLANNING FOLDER
+# ============================================================
+  - id: phase_5
+    name: "Archive Current Scrap Files"
+    description: "Apply new lifecycle rules to existing audit/review files in 260104AE_agenticguidance"
+    agent_type: build
+    depends_on: [phase_1, phase_2, phase_3]
+
+    tasks:
+      - id: 5.1
+        description: "Create audit/ subfolder and move audit files"
+        target_folder: "docs/plans/live/260104AE_agenticguidance/"
+        operation: CREATE_AND_MOVE
+        details: |
+          mkdir -p docs/plans/live/260104AE_agenticguidance/audit/
+          mv docs/plans/live/260104AE_agenticguidance/live/audit_*.yml docs/plans/live/260104AE_agenticguidance/audit/
+
+        files_to_move:
+          - audit_deploy_worktree.yml
+          - audit_planner_build.yml
+          - audit_planner_cleaning.yml
+          - audit_planner_guidance.yml
+          - audit_planner_reviewer.yml
+          - audit_planner_test.yml
+
+        acceptance_criteria:
+          - "audit/ subfolder exists"
+          - "All 6 audit files moved to audit/"
+          - "No audit_*.yml files remain in live/"
+
+      - id: 5.2
+        description: "Move review files to analysis/ subfolder"
+        target_folder: "docs/plans/live/260104AE_agenticguidance/"
+        operation: MOVE
+        details: |
+          mv docs/plans/live/260104AE_agenticguidance/live/review_*.yml docs/plans/live/260104AE_agenticguidance/analysis/
+
+        files_to_move:
+          - review_deploy_worktree.yml
+          - review_planner_build.yml
+          - review_planner_cleaning.yml
+          - review_planner_guidance.yml
+          - review_planner_reviewer.yml
+          - review_planner_test.yml
+
+        acceptance_criteria:
+          - "All 6 review files moved to analysis/"
+          - "No review_*.yml files remain in live/"
+
+      - id: 5.3
+        description: "Move consolidation_recommendations.yml to analysis/"
+        target_folder: "docs/plans/live/260104AE_agenticguidance/"
+        operation: MOVE
+        details: |
+          mv docs/plans/live/260104AE_agenticguidance/live/consolidation_recommendations.yml docs/plans/live/260104AE_agenticguidance/analysis/
+
+        acceptance_criteria:
+          - "consolidation_recommendations.yml moved to analysis/"
+
+      - id: 5.4
+        description: "Archive intermediate remediation plans (tasks already merged)"
+        target_folder: "docs/plans/live/260104AE_agenticguidance/"
+        operation: EVALUATE_AND_ARCHIVE
+        details: |
+          For each remediation plan in live/:
+          1. Check if tasks have been merged into a phase plan (look for superseded_by field)
+          2. If merged: move to completed/ subfolder (tasks preserved elsewhere)
+          3. If not merged: leave in live/ for further processing
+
+          Files to evaluate:
+          - plan_guidance_deploy_worktree_remediation.yml
+          - plan_guidance_reviewer_context.yml
+
+        acceptance_criteria:
+          - "Merged remediation plans moved to completed/"
+          - "Unmerged remediation plans remain in live/ for processing"
+
+    success_criteria:
+      - "live/ folder contains only active phase plans and unprocessed artifacts"
+      - "audit/ subfolder contains all audit files"
+      - "analysis/ subfolder contains all review files and analysis artifacts"
+      - "Folder noise reduced from 22+ files to ~10 active files"
+
+# ============================================================
+# SUCCESS CRITERIA (OVERALL)
+# ============================================================
+overall_success_criteria:
+  - "plans.yml has scrap_file_taxonomy with explicit lifecycle for audit, review, and remediation files"
+  - "planner-reviewer has post-approval cleanup step that triggers artifact archival"
+  - "planner-cleaning has SCRAP FILE HANDLING pattern distinct from Copy-and-Sync"
+  - "plan_example.yml has clarification header preventing Unified vs Split confusion"
+  - "260104AE_agenticguidance planning folder is cleaned up per new lifecycle rules"
+  - "Future planning loops will auto-archive scrap files after approval"
+
+# ============================================================
+# CROSS-CUTTING CONCERNS
+# ============================================================
+cross_cutting_concerns:
+  - concern: "Reference updates may be needed in other agents"
+    mitigation: "After Phase 1, grep for 'plans.yml' references and verify they don't conflict with new taxonomy"
+
+  - concern: "Existing processes may expect scrap files in live/"
+    mitigation: "Add transition note to README in 260104AE_agenticguidance explaining the new structure"
+
+  - concern: "orchestration-planning may need process.mmd update"
+    mitigation: "Phase 4 adds guidance to inputs.yml; process.mmd update can be a follow-on task if needed"
+
+# ============================================================
+# AGENT QUESTIONS CONSOLIDATED
+# ============================================================
+questions_raised_by_agents:
+  terminology:
+    - "Should 'Unified Plan' example be renamed to 'Authoritative Phase Plan' or just clarified with header?"
+    - "Is 'scrap files' the best term, or should we use 'transient artifacts' or 'intermediate files'?"
+
+  lifecycle:
+    - "Should audit/review files be DELETED after archival period, or retained permanently in subfolder?"
+    - "Should remediation plans go to completed/ before deletion, or delete immediately after merge?"
+
+  responsibility:
+    - "Should planner-reviewer trigger cleanup, or should orchestrator handle it after receiving APPROVE signal?"
+    - "Should planner-cleaning be invoked explicitly, or should cleanup be inline in planner-reviewer?"
+
+  folder_structure:
+    - "Is audit/ a better destination than analysis/ for audit files, or consolidate both to analysis/?"
+    - "Should completed/ subfolder in plan folder be distinct from docs/plans/completed/ folder?"

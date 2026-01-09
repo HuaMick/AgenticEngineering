@@ -30,15 +30,16 @@ inputs:
   version: "2.0"  # Reference layer architecture
 
   # Reference layers (transitive loading)
+  # NOTE: Uses specialized planner-core layers (T4 optimization) to reduce token usage
   layers:
     - type: layer
-      path: "modules/AgenticGuidance/assets/inputs/core-system.yml"
-      description: "Core system definitions (plans, domains, workflows, entrypoints, architecture)"
+      path: "modules/AgenticGuidance/assets/inputs/planner-core-system.yml"
+      description: "Planner-specific system definitions (plans.yml only - excludes architecture-pattern)"
       required: true
 
     - type: layer
-      path: "modules/AgenticGuidance/assets/inputs/core-guidelines.yml"
-      description: "Universal behavioral guidelines (fix-source, context-min, experiment-first, etc.)"
+      path: "modules/AgenticGuidance/assets/inputs/planner-core-guidelines.yml"
+      description: "Planner-specific guidelines (excludes testing.yml, safety.yml)"
       required: true
 
     - type: layer
@@ -59,43 +60,25 @@ inputs:
       description: "Test plan structure requirements and layer selection rules (Environment Setup, test-fix-loop patterns, testing layers decision tree, mandatory US-INSTALL-* stories, process mapping)"
       required: true
 
-    # User Stories - Primary source of truth for success validation
-    # NOTE: This is a REPOSITORY-LEVEL path (relative to repo root), not a module path.
-    # The orchestration layer resolves this to the target project's modules/AgenticGuidance/userstories/ directory.
-    - type: directory
-      path: "modules/AgenticGuidance/userstories/"
-      description: "PRIMARY SOURCE OF TRUTH for success validation. User stories define complete user journeys with expected outcomes. SUCCESS = User Story tests pass. Organized by project (MyAgents/, RemoteAgents/, MyAgentsFrontend/). REPOSITORY-LEVEL PATH: Resolved by orchestration relative to target project root."
-      required: true
-
+    # User Stories - See user-stories.yml for authoritative path and structure
     - type: file
       path: "modules/AgenticGuidance/assets/definitions/user-stories.yml"
-      description: "User story structure and UAT testing patterns - defines how user stories validate success"
+      description: "User story structure, UAT testing patterns, and authoritative path (modules/AgenticGuidance/userstories/)"
       required: true
     # Testing definitions and patterns
     # NOTE: Loop definitions (test-fix-loop, audit-test-fix-loop) are now defined
     # directly in planner-test/process.yml, not in separate definition files
 
     # Test execution processes and workflows
-    # NOTE: Core test agents (test-runner, test-audit, test-guidance-simulator, test-final-output)
-    # were migrated 2026-01-03. Some test agents remain in legacy (test-user-simulator, test-builder).
     - type: file
       path: "modules/AgenticGuidance/agents/test/test-runner/process.yml"
       description: "Test runner process definition for executing component tests"
       required: true
-      # MIGRATED: 2026-01-03
-
-    # NOT_MIGRATED: test-user-simulator - see modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/test-user-simulator/process.yml
-    # Uncomment and update path when migrated to AgenticGuidance:
-    # - type: file
-    #   path: "modules/AgenticGuidance/agents/test/test-user-simulator/process.yml"
-    #   description: "User simulator process for agent-blind-test UAT execution"
-    #   required: true
 
     - type: file
       path: "modules/AgenticGuidance/agents/test/test-audit/process.yml"
       description: "Audit process for reviewing test quality and detecting reward hacking"
       required: true
-      # MIGRATED: 2026-01-03
 
     # Test strategies and acceptable skips
     - type: file
@@ -154,17 +137,13 @@ inputs:
       description: "Unified plan example showing how to structure test phases with test-fix-loop patterns and success criteria in a single plan file."
       required: true
 
-    # MMD Component Examples
-    # Use these when composing orchestration plans with visual flow diagrams
-    - type: file
-      path: "modules/AgenticGuidance/assets/examples/planner/components/test_phase.mmd"
-      description: "MMD component showing test phase pattern with test-fix-loop integration"
-      required: false
-
-    - type: file
-      path: "modules/AgenticGuidance/assets/examples/planner/components/uat_phase.mmd"
-      description: "MMD component showing UAT phase pattern (MANDATORY) with flexible strategy selection"
-      required: false
+  # Visual References (documentation only - not parsed by agents)
+  # These MMD files are for human documentation and visual diagrams, not agent input.
+  visual_references:
+    - path: "modules/AgenticGuidance/assets/examples/planner/components/test_phase.mmd"
+      note: "Visual reference only - test phase flow diagram"
+    - path: "modules/AgenticGuidance/assets/examples/planner/components/uat_phase.mmd"
+      note: "Visual reference only - UAT phase flow diagram"
 
   # Test-specific guidelines
   guidelines: []

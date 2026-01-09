@@ -30,14 +30,7 @@
 
 ## Agent Categories
 
-Agent categories represent the top-level organizational structure of the MyAgents framework. They group related sub-agents that share a common purpose and responsibility domain.
-
-### What Are Agent Categories?
-
-Categories are organizational units that contain one or more sub-agents. Each category has:
-- A clear **purpose** (what problem domain it addresses)
-- Defined **responsibilities** (what actions its sub-agents perform)
-- Explicit **boundaries** (what the category does NOT do)
+Agent categories represent the top-level organizational structure of the MyAgents framework.
 
 ### Why Categories Exist
 
@@ -48,35 +41,9 @@ Categories provide several benefits:
 3. **Routing Context**: Categories help the orchestrator route tasks to the appropriate specialist agents
 4. **Separation of Concerns**: Categories enforce separation between different types of work (planning vs. implementation vs. validation)
 
-### Category Hierarchy
-
-The framework has 9 categories:
-
-1. **Build**: Implementation of code changes and new functionality
-2. **Planner**: Create executable implementation plans from objectives
-3. **Test**: Validation through testing and quality assurance
-4. **Cleaner**: Safe removal of dead code and redundant content
-5. **Explore**: Codebase discovery and analysis before planning
-6. **Teacher**: Build paths, fences, and signposts for agents
-7. **Deploy**: Packaging, CI/CD, and infrastructure management
-8. **Documentation**: Maintain minimal, accurate documentation
-9. **Orchestration**: Coordinate agent execution and manage workflows
-
-### How Categories Relate to Sub-Agents
-
-Each category contains one or more sub-agents:
-- **Category-level responsibilities** define the overall problem domain
-- **Sub-agent-level responsibilities** define specific tasks within that domain
-
-For example, the Test category is responsible for "validation through testing" while:
-- `test-builder` writes tests
-- `test-runner` executes tests
-- `test-audit` reviews test quality
-- Other test sub-agents handle specific validation tasks
-
 ### Canonical Source
 
-The authoritative definition of all categories is maintained at:
+The authoritative definition of all 9 agent categories (Build, Planner, Test, Cleaner, Explore, Teacher, Deploy, Documentation, Orchestration) is maintained at:
 `modules/AgenticGuidance/assets/definitions/agent-categories.yml`
 
 This file defines each category's purpose, responsibilities, sub-agents, and boundaries.
@@ -113,16 +80,7 @@ modules/AgenticGuidance/agents/
 
 ## Agents
 
-| Agent | Purpose | Subagents |
-|-------|---------|-----------|
-| **Planner** | Build execution plans from objectives | planner-build, planner-test, planner-cleaning, planner-guidance, planner-reviewer, planner-guidance-testing |
-| **Builder** | Implementation and code changes | build-python, build-flutter |
-| **Test** | Validation through testing | test-runner, test-builder, test-user-simulator, test-audit, test-service, test-final-output, test-flutter-builder, test-flutter-runner |
-| **Cleaner** | Safe removal with voting consensus | cleaner-identify, cleaner-execute, cleaner-core |
-| **Explore** | Codebase discovery before planning | explore-architecture, explore-feature, explore-dependency, explore-test, explore-synthesis |
-| **Documentation** | Update docs to match code | documentation-core |
-| **Deploy** | Packaging, CI/CD, worktree management | deploy-packaging, deploy-cicd, deploy-worktree |
-| **Teacher** | Build paths, fences, and signposts for agents | teacher-plan, teacher-process, teacher-update-assets |
+For agent roles and scopes, see [agent-role-scope-matrix.md](agent-role-scope-matrix.md).
 
 ---
 

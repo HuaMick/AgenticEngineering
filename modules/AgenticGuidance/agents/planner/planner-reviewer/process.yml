@@ -48,6 +48,21 @@ process:
       - APPROVE: If all checklist items pass and the plan is ready for execution.
       - REJECT: If any checklist items fail. Provide specific feedback for the planner agents to fix, referencing which checklist items failed and why.
     - "Report decision and feedback."
+    - |
+      POST-APPROVAL CLEANUP (execute only on APPROVE decision):
+
+      1. Report to orchestrator that remediation tasks should be merged:
+         "APPROVED: Merge tasks from [plan_name] into authoritative phase plan"
+
+      2. Specify artifacts to archive:
+         - audit_*.yml related to this review → move to audit/ subfolder
+         - review_*.yml (this file) → move to analysis/ subfolder
+
+      3. Specify remediation plan disposition:
+         - After tasks are merged into phase plan, DELETE the remediation plan from live/
+
+      FENCE: Do not execute cleanup on REJECT decisions. Rejected plans remain
+      in live/ for the next iteration of the planner-loop.
 
   guidelines:
     - "Only reject plans with genuine structural issues or missing critical information."

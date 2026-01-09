@@ -22,10 +22,16 @@ inputs:
   version: "2.0-p1"
 
   # Reference layers (transitive loading)
+  # NOTE: Uses specialized planner-core layers (T4 optimization) to reduce token usage
   layers:
     - type: layer
-      path: "modules/AgenticGuidance/assets/inputs/core-system.yml"
-      description: "Core system definitions (plans, domains, workflows, entrypoints, architecture)"
+      path: "modules/AgenticGuidance/assets/inputs/planner-core-system.yml"
+      description: "Planner-specific system definitions (plans.yml only - excludes architecture-pattern)"
+      required: true
+
+    - type: layer
+      path: "modules/AgenticGuidance/assets/inputs/planner-core-guidelines.yml"
+      description: "Planner-specific guidelines (excludes testing.yml, safety.yml)"
       required: true
 
     - type: layer
@@ -41,17 +47,10 @@ inputs:
       description: "Phase creation rules and finalization phase structures (Cleanup->Audit->User Story Validation->Documentation ordering, phase-specific structure requirements)"
       required: true
 
-    # User Stories - Primary source of truth for success validation
-    # NOTE: Path is workspace-relative. Actual location varies by target workspace.
-    # Canonical definition in modules/AgenticGuidance/assets/definitions/user-stories.yml says modules/AgenticGuidance/userstories/<project>/
-    - type: directory
-      path: "modules/AgenticGuidance/userstories/"
-      description: "PRIMARY SOURCE OF TRUTH for success validation. User stories define complete user journeys with expected outcomes. SUCCESS = User Story tests pass. Organized by project (MyAgents/, RemoteAgents/, MyAgentsFrontend/)."
-      required: true
-
+    # User Stories - See user-stories.yml for authoritative path and structure
     - type: file
       path: "modules/AgenticGuidance/assets/definitions/user-stories.yml"
-      description: "User story structure and UAT testing patterns - defines how user stories validate success"
+      description: "User story structure, UAT testing patterns, and authoritative path (modules/AgenticGuidance/userstories/)"
       required: true
     # Example plan for audit/cleanup/documentation phases
     - type: file
@@ -78,17 +77,19 @@ inputs:
       description: "The live plan folder containing plan_live_teach.yml, plan_live_test.yml, and plan_live_audit_clean.yml. Planner-cleaning outputs to plan_live_audit_clean.yml and moves completed items to plan_completed.yml in the same folder."
       required: true
 
+    # Scrap file lifecycle definitions (audit, review, remediation files)
+    - type: file
+      path: "modules/AgenticGuidance/assets/definitions/plans.yml#scrap_file_taxonomy"
+      description: "Lifecycle definitions for transient planning artifacts"
+      required: true
+
   # Cleaning-specific guidelines
   guidelines: []
 
   # Planner-cleaning specific definitions
   # Per context-minimisation.yml: provide only required information, reduce noise
   definitions:
-    # Finalization phases: See planner-cleaning/process.yml for phase definitions and ordering
+    # Phase ordering: See manifest.yml phase_creation_rules (authoritative source)
     # Loop definitions: See modules/AgenticGuidance/assets/definitions/agent-loops.yml (audit-test-fix-loop, cleaner-voting-loop)
     # User story validation: See modules/AgenticGuidance/assets/definitions/user-stories.yml
     # Reward hacking patterns: See modules/AgenticGuidance/assets/definitions/reward-hacking.yml
-
-    phase_ordering: |
-      Cleanup -> Audit -> User Story Validation -> Documentation
-      See plan_live_audit_clean.yml example for structure.

@@ -45,57 +45,18 @@ process:
       A planning folder should have been provided.
       Read all .yml files in `live/` to understand completed work.
 
-      FILE LIFECYCLE - Copy-and-Sync Pattern:
-
-      Agents can create ANY .yml files during planning/execution (no naming restrictions).
-      Files exist in live/ while work continues, with completed items synced to completed/.
-
-      LOCATIONS:
-      - live/ = Working copy (contains all items, pending and completed)
-      - completed/ = Archive copy (contains only completed items from the file)
-
-      INCREMENTAL COMPLETION (sync completed items):
-      As items within a file are completed:
-      1. Keep the file in live/ (it still has pending/in-progress items)
-      2. Create or update a COPY in completed/ with the same filename
-      3. The completed/ copy contains ONLY the completed items from that file
-      4. Update plan_completed.yml summary index with the completed items
-      Example:
-        live/my_feature.yml         # Has 5 items: 3 completed, 2 pending
-        completed/my_feature.yml    # Has 3 items: only the completed ones
-
-      FULL COMPLETION (all items done):
-      When ALL items in a file have status: completed:
-      1. Ensure completed/ copy has all items
-      2. DELETE the file from live/ (no longer needed there)
-      3. The file now exists ONLY in completed/
-      Example:
-        rm live/my_feature.yml      # All items done, remove from live
-        completed/my_feature.yml    # Authoritative completed version
-
-      REACTIVATION (issues found post-completion):
-      If issues are found requiring rework on a completed file:
-      1. COPY the file back from completed/ to live/
-      2. Update the affected items' status to reflect the issue
-      3. Keep the completed/ copy as-is (historical record)
-      4. Sync changes back to completed/ as items are re-completed
-
-      ITERATION LOGS:
-      Move plan_iteration_*.yml files to analysis/ subfolder to reduce clutter.
-
-      RESERVED FILES (never delete):
-      - plan_live_*.yml files define phases and stay in live/
-      - plan_completed.yml is the summary index and stays in completed/
-      - plan_next_actions.yml is the active tracker and stays in live/
+      FILE LIFECYCLE:
+      See modules/AgenticGuidance/assets/definitions/plans.yml for authoritative lifecycle patterns:
+      - two_level_completion_pattern: Copy-and-Sync for phase plans
+      - scrap_file_taxonomy: Move/delete rules for audit, review, remediation files
+      - file_taxonomy: Reserved files and location semantics
     - |
       Review the live plan phases and identify what work has been completed.
       Determine what finalization phases are needed based on the implementation.
     - |
-      Add finalization phases to `live/plan_live_audit_clean.yml` following the phase ordering defined in inputs.yml:
-      1. Cleanup Phase (if needed) - Reference manifest.yml cleanup_phase definition
-      2. Audit Phase (mandatory) - Reference manifest.yml audit_phase definition
-      3. User Story Validation Phase (mandatory) - Reference manifest.yml user_story_validation_phase definition
-      4. Documentation Phase (mandatory) - Reference manifest.yml documentation_phase definition
+      Add finalization phases to `live/plan_live_audit_clean.yml` following the phase ordering in manifest.yml:
+      See manifest.yml phase_creation_rules for authoritative ordering and phase definitions
+      (cleanup_phase, audit_phase, user_story_validation_phase, documentation_phase).
 
       PLAN STRUCTURE REQUIREMENTS:
       Reference the example live plan file from inputs (`live/plan_live_audit_clean.yml`) for:
@@ -112,59 +73,18 @@ process:
       DUMPING GROUND: Use additional subfolders (e.g., `audit-results/`, `analysis/`) to store agent artifacts
       like audit reports, cleanup logs, or final documentation drafts to avoid polluting shared spaces.
     - |
-      Determine folder lifecycle action based on plan completion status:
-
-      FOLDER LIFECYCLE TRANSITIONS:
-      Plans move through distinct stages that determine folder location:
-      - planning -> active: Work begins in docs/plans/live/
-      - active -> partially_completed: First completion triggers COPY to docs/plans/completed/
-      - partially_completed -> partially_completed: Ongoing work updates both locations
-      - partially_completed -> fully_completed: Final work triggers final COPY update
-
-      DECISION LOGIC FOR FOLDER ACTIONS:
-
-      SCENARIO 1 - Initial Completion (first phase completes):
-      - COPY entire plan folder to `docs/plans/completed/YYMMDDRepo_Branch/`
-      - KEEP original folder in `docs/plans/live/YYMMDDRepo_Branch/`
-      - Mark phase as completed in metadata
-      - Folder now exists in BOTH locations (partially_completed state)
-
-      SCENARIO 2 - Follow-On Work Added (new phases to existing plan):
-      - ADD new phase files to live/YYMMDDRepo_Branch/live/
-      - KEEP existing completed snapshot in docs/plans/completed/
-      - Document relationship in plan metadata (original work vs follow-on phases)
-      - Folder remains in partially_completed state
-
-      SCENARIO 3 - Follow-On Work Completes (subsequent phase finishes):
-      - UPDATE completed/YYMMDDRepo_Branch/ with new snapshot
-      - COPY newly completed phase files to completed/ folder
-      - KEEP folder active in docs/plans/live/ for potential future work
-      - Update metadata to track multiple completion iterations
-
-      SCENARIO 4 - Full Completion (all phases done, no more work planned):
-      - COPY final state to completed/YYMMDDRepo_Branch/
-      - KEEP folder in live/ unless user explicitly requests removal
-      - Mark plan as fully_completed in metadata
-      - Both folders continue to coexist
-
-      EXPLICIT FOLDER COPY COMMAND:
-      When copying to docs/plans/completed/, execute:
-        mkdir -p docs/plans/completed/YYMMDDRepo_Branch
-        cp -r docs/plans/live/YYMMDDRepo_Branch/* docs/plans/completed/YYMMDDRepo_Branch/
-
-      LIFECYCLE FENCE:
-      - NEVER move folders to archived/
-      - NEVER remove folders from live/ without user confirmation
-      - Only COPY operations are allowed (never MOVE)
-      - Only completed/ or live/ are valid locations for agent operations
-      - Archive decisions are user-only actions
+      Determine folder lifecycle action based on plan completion status.
+      See modules/AgenticGuidance/assets/definitions/plans.yml for authoritative patterns:
+      - plan_lifecycle: Four stages (planning, active, partially_completed, fully_completed)
+      - follow_on_work_pattern: DO/DON'T rules for ongoing work
+      - archived_vs_completed: FENCE - agents never touch archived/
     - |
       Report back to the orchestration agent that finalization phases have been added to plan_live_audit_clean.yml.
 
   guidelines:
     # Core guidelines: See modules/AgenticGuidance/assets/guidelines/ (less-is-more.yml, iteration.yml, fix-the-source.yml, experiment-first.yml, context-minimisation.yml, worktree-and-branching.yml, response-audit.yml)
     # Core definitions: See modules/AgenticGuidance/assets/definitions/ (plans.yml, guidance.yml, friction.yml, domains.yml, workflows.yml, entrypoints.yml)
-    # Phase ordering and definitions: See manifest.yml definitions section (cleanup_phase, audit_phase, user_story_validation_phase, documentation_phase) and inputs.yml (phase_ordering)
+    # Phase ordering and definitions: See manifest.yml (authoritative source for phase_creation_rules and definitions)
     - |
       REFERENCE STRUCTURE:
       - Use plan_live_audit_clean.yml as the authoritative example for phase structure
