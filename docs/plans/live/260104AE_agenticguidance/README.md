@@ -16,36 +16,33 @@
 | 5 | 2026-01-08 | Example alignment (7 phases completed) |
 | 6 | 2026-01-09 | Plan structure standardization, 6 audits, 6 review plans |
 | 7 | 2026-01-09 | Plan cleanup: consolidated remediation plans, archived superseded |
+| 8 | 2026-01-09 | Ralph loop: DECISION-001 completed (deprecation), DECISION-002 completed (migration) |
 
 ## Active Decisions
 
 ### DECISION-001: Legacy Agents (planner-phases, planner-teach)
-**Status**: IN PROGRESS - Option B selected (Deprecate)
+**Status**: COMPLETED (Session 8)
 
 **Decision**: Keep existing AgenticGuidance structure, mark legacy agents as deprecated.
 
-**Verified**:
-- Functionality absorbed: planner-phases → orchestration-planning Phase Determination; planner-teach → planner-guidance
-- No dangling references in active code
-
-**Pending**:
-- [ ] Create `DEPRECATED.md` for planner-phases
-- [ ] Create `DEPRECATED.md` for planner-teach
-- Plan: `live/plan_live_cleanup_deprecation.yml`
+**Completed**:
+- [x] Functionality absorbed: planner-phases → orchestration-planning Phase Determination; planner-teach → planner-guidance
+- [x] No dangling references in active code
+- [x] Created `DEPRECATED.md` for planner-phases
+- [x] Created `DEPRECATED.md` for planner-teach
+- Plan: `completed/plan_live_cleanup_deprecation.yml`
 
 ### DECISION-002: Test Agents Migration
-**Status**: UNRESOLVED - Option B selected (Migrate with 2.0 compliance)
+**Status**: COMPLETED (Session 8)
 
 **Decision**: Migrate test-user-simulator, test-service, test-builder to AgenticGuidance.
 
-**Current State**:
-- Agents exist ONLY in legacy location
-- planner-test manifest has inconsistent references (NOT_MIGRATED comments but AgenticGuidance paths)
-- agent-categories.yml lists them but they don't exist in AgenticGuidance
-
-**Pending**:
-- [ ] Execute 6-phase migration plan
-- Plan: `live/plan_live_build_migration.yml`
+**Completed**:
+- [x] All 3 agents migrated to modules/AgenticGuidance/agents/test/
+- [x] Each agent has manifest.yml (version 2.0), process.yml (PATH RESOLUTION SEMANTICS), inputs.yml (layer references)
+- [x] planner-test manifest updated with MIGRATED status
+- [x] test category manifest updated with migrated agents
+- Plan: `completed/plan_live_build_migration.yml`
 
 ## Phase Status
 
@@ -75,9 +72,11 @@
 │   ├── 260106_session2_self_review_results.yml
 │   ├── 260106_session3_summary.yml
 │   └── agent-reports/                    # 6 individual agent reports
-├── completed/                            # 10 archived plans
+├── completed/                            # 19 archived plans
 │   ├── plan_completed_example_alignment.yml
 │   ├── plan_live_build.yml
+│   ├── plan_live_build_migration.yml     # DECISION-002 COMPLETED
+│   ├── plan_live_cleanup_deprecation.yml # DECISION-001 COMPLETED
 │   ├── plan_live_guidance_cleaning_remediation.yml
 │   ├── plan_live_guidance_planner_build.yml
 │   ├── plan_live_orchestration_remodel.yml
@@ -85,65 +84,47 @@
 │   ├── plan_live_remediation.yml
 │   ├── plan_live_teach.yml
 │   ├── plan_next_actions.yml
-│   └── plan_planner_guidance_remediation.yml
-└── live/                                 # 21 active files
+│   ├── plan_planner_guidance_remediation.yml
+│   ├── plan_guidance_artifact_lifecycle.yml
+│   ├── plan_guidance_planner_build.yml
+│   ├── plan_guidance_planner_cleaning.yml
+│   ├── plan_guidance_planner_guidance.yml
+│   ├── plan_guidance_planner_reviewer.yml
+│   └── plan_guidance_planner_test.yml
+└── live/                                 # 8 active files
     ├── orchestration_agenticguidance.mmd
     ├── plan_agenticguidance.yml          # MASTER PLAN
     │
     │   # Active Consolidated Plans
     ├── plan_live_teach_consolidated.yml
-    ├── plan_live_planner_remediation_consolidated.yml
+    ├── plan_live_planner_remediation_consolidated.yml  # COMPLETED, next: self-review loop
     │
-    │   # Action Plans
-    ├── plan_live_build_migration.yml     # DECISION-002
-    ├── plan_live_cleanup_deprecation.yml # DECISION-001
+    │   # Remaining Action Plans
     ├── plan_guidance_deploy_worktree_remediation.yml
     ├── plan_guidance_reviewer_context.yml
-    │
-    │   # Audits (6)
-    ├── audit_deploy_worktree.yml
-    ├── audit_planner_build.yml
-    ├── audit_planner_cleaning.yml
-    ├── audit_planner_guidance.yml
-    ├── audit_planner_reviewer.yml
-    ├── audit_planner_test.yml
-    │
-    │   # Reviews (6)
-    ├── review_deploy_worktree.yml
-    ├── review_planner_build.yml
-    ├── review_planner_cleaning.yml
-    ├── review_planner_guidance.yml
-    ├── review_planner_reviewer.yml
-    ├── review_planner_test.yml
-    │
-    └── consolidation_recommendations.yml # Meta: further cleanup options
+    └── plan_guidance_artifact_lifecycle.yml
 ```
 
 ## Next Session Priorities
 
-### Priority 1: Execute Deprecation (DECISION-001)
+### Priority 1: Agent Self-Review Loop
 ```bash
-# Plan: live/plan_live_cleanup_deprecation.yml
-# Tasks: Create DEPRECATED.md files for planner-phases, planner-teach
+# Plan: completed/plan_live_planner_remediation_consolidated.yml (phase-6)
+# Task: Validate remediation by spawning planner agents with real tasks
+# Status: Ready for execution
 ```
 
-### Priority 2: Execute Migration (DECISION-002)
-```bash
-# Plan: live/plan_live_build_migration.yml
-# Tasks: Migrate test-user-simulator, test-service, test-builder
-```
-
-### Priority 3: Consolidated Remediation
-```bash
-# Plan: live/plan_live_planner_remediation_consolidated.yml
-# Contains: T4 Specialized Core Layer Audit, context reduction for all planner agents
-```
-
-### Priority 4: Teach Plan Execution
+### Priority 2: Teach Plan Execution
 ```bash
 # Plan: live/plan_live_teach_consolidated.yml
 # 8 phases: Fragment resolution, Process format, Output schema, Input validation,
 #           Version alignment, CLI centralization, Spawns declaration, REPO_ROOT
+```
+
+### Priority 3: Deploy Worktree Remediation
+```bash
+# Plan: live/plan_guidance_deploy_worktree_remediation.yml
+# Task: Fix deploy-worktree guidance based on audit findings
 ```
 
 ## Key Files Reference
@@ -153,8 +134,8 @@
 | `live/plan_agenticguidance.yml` | Master plan with all phases |
 | `live/plan_live_teach_consolidated.yml` | Teaching phases (8 phases, T4 specialization) |
 | `live/plan_live_planner_remediation_consolidated.yml` | Unified remediation (5 planner agents) |
-| `live/plan_live_build_migration.yml` | Test agent migration (DECISION-002) |
-| `live/plan_live_cleanup_deprecation.yml` | Legacy deprecation (DECISION-001) |
+| `completed/plan_live_build_migration.yml` | Test agent migration (DECISION-002) - COMPLETED |
+| `completed/plan_live_cleanup_deprecation.yml` | Legacy deprecation (DECISION-001) - COMPLETED |
 | `audit/260106_session3_summary.yml` | Session 3 findings summary |
 
 ## Plan Structure Standard
