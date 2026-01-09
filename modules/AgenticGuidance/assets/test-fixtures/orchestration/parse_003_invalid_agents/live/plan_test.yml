@@ -1,0 +1,56 @@
+# Test Plan: PARSE_003 - Invalid Agent Types
+# Purpose: Verify executor detects and reports invalid agent types
+# Expected: Error reported, transition to blocked
+
+name: parse-003-invalid-agents
+status: pending
+priority: high
+phase_type: test
+
+context: |
+  Test fixture for validating agent type validation.
+  This plan contains INVALID agent types that don't exist.
+  The executor should detect and report these errors.
+
+phases:
+  - name: "Setup_Phase"
+    status: pending
+    description: "Initialize test environment"
+    agent_type: "invalid_agent"  # INVALID - no such agent type
+    tasks:
+      - id: "setup_001"
+        name: "Setup task"
+        status: "pending"
+
+  - name: "Build_Phase"
+    status: pending
+    description: "Execute build operations"
+    agent_type: "unknown_type"  # INVALID - no such agent type
+    tasks:
+      - id: "build_001"
+        name: "Build task"
+        status: "pending"
+
+  - name: "Test_Phase"
+    status: pending
+    description: "Execute test operations"
+    agent_type: "tester"  # VALID - should work
+    tasks:
+      - id: "test_001"
+        name: "Test task"
+        status: "pending"
+
+success_criteria:
+  - "Invalid agent type 'invalid_agent' detected for Setup_Phase"
+  - "Invalid agent type 'unknown_type' detected for Build_Phase"
+  - "Valid agent type 'tester' accepted for Test_Phase"
+  - "Executor transitions to blocked for user resolution"
+
+expected_behavior: |
+  Executor should:
+  1. Parse AGENT_ROUTING
+  2. Validate each routing type against known types:
+     - builder, tester, deployer, teacher, cleaner, auditor, planner
+  3. Report error: "Invalid agent type 'invalid_agent' for phase 'Setup_Phase'"
+  4. Report error: "Invalid agent type 'unknown_type' for phase 'Build_Phase'"
+  5. Transition to blocked for user resolution

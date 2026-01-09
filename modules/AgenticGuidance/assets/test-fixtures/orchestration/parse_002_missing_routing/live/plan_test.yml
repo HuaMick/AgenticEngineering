@@ -1,0 +1,55 @@
+# Test Plan: PARSE_002 - Missing AGENT_ROUTING
+# Purpose: Verify executor handles missing AGENT_ROUTING gracefully
+# Expected: Inference attempted or blocked for user resolution
+
+name: parse-002-missing-routing
+status: pending
+priority: high
+phase_type: test
+
+context: |
+  Test fixture for validating orchestration-executor fallback behavior.
+  This plan is INTENTIONALLY missing AGENT_ROUTING metadata.
+  The executor should attempt inference from phase names or block.
+
+phases:
+  - name: "Setup_Phase"
+    status: pending
+    description: "Initialize test environment"
+    # NOTE: No agent_type specified - should be inferred
+    tasks:
+      - id: "setup_001"
+        name: "Setup task"
+        status: "pending"
+
+  - name: "Build_Phase"
+    status: pending
+    description: "Execute build operations"
+    # NOTE: No agent_type - should infer "builder" from name
+    tasks:
+      - id: "build_001"
+        name: "Build task"
+        status: "pending"
+
+  - name: "Test_Phase"
+    status: pending
+    description: "Execute test operations"
+    # NOTE: No agent_type - should infer "tester" from name
+    tasks:
+      - id: "test_001"
+        name: "Test task"
+        status: "pending"
+
+success_criteria:
+  - "Missing AGENT_ROUTING detected"
+  - "Inference attempted from phase names"
+  - "If inference fails, transition to blocked"
+
+expected_behavior: |
+  Executor should:
+  1. Detect missing AGENT_ROUTING
+  2. Attempt inference from phase names:
+     - Setup* -> deployer (ambiguous, may need user input)
+     - Build* -> builder
+     - Test* -> tester
+  3. If inference fails, transition to blocked and ask user

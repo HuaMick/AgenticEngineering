@@ -4,9 +4,10 @@
 # Phase Type: test
 
 name: orchestration-executor-integration-testing
-status: blocked
+status: pending
 priority: medium
-blocked_reason: "Test fixtures need restructuring - standalone MMD files need companion YAML and proper folder structure"
+unblocked_date: "2026-01-10"
+unblocked_notes: "Test fixtures restructured into proper plan folders with companion YAML files"
 created: "2026-01-10"
 phase_type: test
 
@@ -24,9 +25,25 @@ inputs:
   - location: "modules/AgenticGuidance/agents/orchestration/orchestration-executor/"
     description: "The agent under test"
   - location: "modules/AgenticGuidance/assets/test-fixtures/orchestration/"
-    description: "Test fixture MMD files"
+    description: "Test fixture plan folders (4 scenarios)"
   - location: "modules/AgenticGuidance/assets/definitions/orchestration-test-scenarios.yml"
     description: "Comprehensive test scenarios"
+
+test_fixtures:
+  - name: "parse_001_valid"
+    path: "modules/AgenticGuidance/assets/test-fixtures/orchestration/parse_001_valid/"
+    description: "Valid MMD with all metadata - should parse successfully"
+  - name: "parse_002_missing_routing"
+    path: "modules/AgenticGuidance/assets/test-fixtures/orchestration/parse_002_missing_routing/"
+    description: "Missing AGENT_ROUTING - should infer or block"
+  - name: "parse_003_invalid_agents"
+    path: "modules/AgenticGuidance/assets/test-fixtures/orchestration/parse_003_invalid_agents/"
+    description: "Invalid agent types - should error and block"
+  - name: "parse_004_malformed_triggers"
+    path: "modules/AgenticGuidance/assets/test-fixtures/orchestration/parse_004_malformed_triggers/"
+    description: "Malformed triggers - should report parsing errors"
+
+target_project_path: "/home/code/AgenticEngineering-agenticguidance"
 
 phases:
   - name: "MMD Parsing Tests"
@@ -119,20 +136,16 @@ success_criteria:
   - "State persists correctly across sessions"
 
 notes: |
-  GAP IDENTIFIED (2026-01-10):
-  The test fixtures are standalone MMD files, but the orchestration-executor
-  requires a full plan folder structure with:
-  - plan_folder_path containing both YAML and MMD files
-  - target_project_path pointing to a real project
+  UPDATE 2026-01-10: UNBLOCKED
+  Test fixtures have been restructured into proper plan folders:
+  - Each fixture now has live/plan_test.yml + live/orchestration_test.mmd
+  - target_project_path defined as this repo
+  - Ready for integration test execution
 
-  PREREQUISITE WORK NEEDED:
-  1. Create test plan folders (not just standalone MMD files)
-  2. Create companion YAML files for each test fixture
-  3. Define a mock target project or use this repo as target
+  EXECUTION APPROACH:
+  1. For each test fixture, spawn orchestration-executor with fixture path
+  2. Observe behavior and compare against expected_behavior in YAML
+  3. Report pass/fail for each scenario
 
-  EXECUTION BLOCKERS:
-  - Cannot spawn orchestration-executor without proper inputs
-  - Test fixtures need restructuring before execution
-  - Consider adding a "test fixture setup" phase before execution
-
-  STATUS: BLOCKED pending test fixture restructuring
+  NOTE: Full execution requires spawning the orchestration-executor agent
+  which will then attempt to spawn subagents. Test parsing behavior first.
