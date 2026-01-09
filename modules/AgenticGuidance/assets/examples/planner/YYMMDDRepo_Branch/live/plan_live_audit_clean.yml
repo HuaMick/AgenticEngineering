@@ -1,5 +1,7 @@
 # Live Plan - Audit and Cleanup Phase (Example)
 # This example shows structure for combined audit and cleanup phases.
+# Phase ordering shown is the SENSIBLE DEFAULT per manifest.yml.
+# Planners may reorder phases when context warrants.
 # For detailed audit scenarios, see: reference/audit-scenarios-detailed.yml
 
 worktree: /home/code/MyProject-feature-branch
@@ -17,7 +19,32 @@ live-plans:
 
     phases:
       # ========================================
-      # AUDIT PHASE (Full Detail Example)
+      # CLEANUP PHASE (Comes First - Sensible Default)
+      # ========================================
+      - name: Cleanup Phase
+        # Pattern: Sequential cleanup tasks
+        execution_groups:
+          - execution: sequential
+            name: Remove development artifacts
+            agents:
+              - type: cleaner
+                inputs:
+                  - "project root"
+                guidance: |
+                  Remove temporary files, debug logs, and unused imports.
+                  Verify no active references before deletion.
+                success_criteria:
+                  - No temporary files remain
+                  - Clean working directory
+
+          # Additional cleanup groups follow same pattern:
+          # - Documentation cleanup
+          # - Import optimization
+          # - Configuration validation
+          # See reference/audit-scenarios-detailed.yml for full examples
+
+      # ========================================
+      # AUDIT PHASE (After Cleanup - Validates Without Obsolete Files)
       # ========================================
       - name: Audit Phase
         execution_groups:
@@ -48,31 +75,6 @@ live-plans:
                   - All requirements implemented and documented
                   - Tests verify actual behavior
                   - No broken references
-
-      # ========================================
-      # CLEANUP PHASE (Abbreviated - Shows Structure)
-      # ========================================
-      - name: Cleanup Phase
-        # Pattern: Sequential cleanup tasks
-        execution_groups:
-          - execution: sequential
-            name: Remove development artifacts
-            agents:
-              - type: cleaner
-                inputs:
-                  - "project root"
-                guidance: |
-                  Remove temporary files, debug logs, and unused imports.
-                  Verify no active references before deletion.
-                success_criteria:
-                  - No temporary files remain
-                  - Clean working directory
-
-          # Additional cleanup groups follow same pattern:
-          # - Documentation cleanup
-          # - Import optimization
-          # - Configuration validation
-          # See reference/audit-scenarios-detailed.yml for full examples
 
 success_criteria:
   - Audit finds no critical issues
