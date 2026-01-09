@@ -11,6 +11,14 @@
 - **2026-01-06 (Session 1)**: Remediation of entrypoint refactor complete. CLI capability mapping performed.
 - **2026-01-06 (Session 2)**: Agent self-review testing completed (19 agents). Identified 100+ friction points. Friction Remediation phase completed (7 tasks). Fixed critical path semantics, required inputs, loop context, output schemas, fragment references, context loading, and version alignment.
 - **2026-01-06 (Session 3)**: Agent Self-Review Testing Phase 2 completed via Ralph loop (8 iterations). 19 agents re-reviewed via test-guidance-simulator. Created plan_live_teach.yml with 8 teaching phases. Added Friction Remediation Phase 2 with 11 tasks.
+- **2026-01-08 (Session 4)**: **EXAMPLE-ALIGNMENT-001 COMPLETED**. Executed 7-phase plan to update planner examples:
+  - Phase 1: Added root-level inputs pattern to 4 example plan files
+  - Phase 2: Created unified main plan example (plan_main.yml) with related_plans
+  - Phase 3: Created MMD orchestration example (orchestration.mmd) with metadata
+  - Phase 4: Added decision_items pattern to teach plan example
+  - Phase 5: Created README.md example with consolidated session tracking
+  - Phase 6: Updated guidance alignment (plans.yml, process.yml, inputs.yml)
+  - Phase 7: Verification passed - all checklist items verified
 
 ## Implementation Details
 
@@ -47,7 +55,7 @@
 - **Phase 1 (CLI Offloading)**: Pending (4 tasks)
 - **Phase 2 (Entrypoint & Schema)**: Pending (2 tasks)
 - **Phase 3 (MMD Implementation)**: Pending (3 tasks)
-- **Phase 4 (Asset & Example Alignment)**: Pending (4 tasks)
+- **Phase 4 (Asset & Example Alignment)**: **COMPLETED** (plan_live_example_alignment.yml - 7 phases)
 - **Phase 5 (Agent Self-Review Testing)**: **COMPLETED** (19 agents tested x2)
 - **Phase 6 (CLI Fitness Testing)**: **COMPLETED** (CLI verified working)
 
@@ -72,7 +80,8 @@
 ├── completed/
 │   ├── plan_live_build.yml
 │   ├── plan_live_remediation.yml
-│   └── plan_next_actions.yml
+│   ├── plan_next_actions.yml
+│   └── plan_completed_example_alignment.yml   # Example alignment (7 phases) - Session 4
 └── live/
     ├── orchestration_agenticguidance.mmd      # Orchestration flow diagram
     ├── plan_agenticguidance.yml               # Main plan (all phases)
@@ -86,6 +95,9 @@ See `NEXT_SESSION_CHECKLIST.md` for prioritized execution guide.
 - `live/plan_agenticguidance.yml` - Main plan with all phases and remediation tasks
 - `live/plan_live_teach.yml` - Teach-focused guidance improvements (8 teaching phases)
 - `live/orchestration_agenticguidance.mmd` - Orchestration flow diagram
+
+## Completed Plans (Session 4)
+- `completed/plan_completed_example_alignment.yml` - Example alignment (7 phases completed)
 
 ## Next Steps
 Complete Friction Remediation Phase 2 (11 tasks) and Teach Plan (8 phases) before resuming CLI Offloading.

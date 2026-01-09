@@ -1,0 +1,783 @@
+# Guidance Plan: planner-build Context Overload Remediation
+# Created by: planner-guidance
+# Source Audit: audit_planner_build.yml (14 issues, 8-12% context usage)
+# Target Agent: planner-build
+# Plan Type: Teaching/guidance improvement plan
+
+plan_name: "planner-build Context Optimization"
+worktree: "/home/code/AgenticEngineering-agenticguidance"
+branch: "agenticguidance"
+created: "2026-01-07"
+updated: "2026-01-08"
+
+objective: |
+  Reduce planner-build context overhead by addressing 14 identified issues through
+  targeted guidance improvements. Goal is to reduce transitive loading from 18 files
+  to approximately 10 essential files while maintaining planning capability.
+
+# Source Analysis
+audit_reference:
+  file: "docs/plans/live/260104AE_agenticguidance/live/audit_planner_build.yml"
+  total_issues: 14
+  context_usage: "8-12%"
+  issues_by_category:
+    REDUNDANCY: 3
+    OVERLAP: 2
+    EXCESSIVE: 2
+    UNUSED: 2
+    MISSING_CONSOLIDATION: 2
+    STALE: 1
+    INCONSISTENT: 2
+
+inputs:
+  # Audit source
+  - location: "docs/plans/live/260104AE_agenticguidance/live/audit_planner_build.yml"
+    description: "Complete audit with 14 issues and recommendations"
+    required: true
+
+  # Teaching concepts
+  - location: "assets/definitions/path.yml"
+    description: "Path concept - what agents read"
+  - location: "assets/definitions/fence.yml"
+    description: "Fence concept - guardrails preventing wrong work"
+  - location: "assets/definitions/signpost.yml"
+    description: "Signpost concept - teaching artifacts"
+  - location: "assets/definitions/guidance-artifacts.yml"
+    description: "Where to place guidance information"
+
+  # Files to modify
+  - location: "agents/planner/planner-build/inputs.yml"
+    description: "Primary input specification for planner-build"
+  - location: "agents/planner/planner-build/process.yml"
+    description: "Process definition with duplicate loop reference"
+  - location: "agents/planner/planner-build/manifest.yml"
+    description: "Manifest with redundant purpose statement"
+  - location: "assets/inputs/planner-shared.yml"
+    description: "Shared planner layer with unused references"
+  - location: "assets/definitions/folder-structure.yml"
+    description: "Folder structure with duplicate plan definitions"
+  - location: "assets/examples/planner/YYMMDDRepo_Branch/live/plan_live_build.yml"
+    description: "515-line example plan with out-of-scope phases"
+
+  # B2 consolidation targets
+  - location: "assets/definitions/domains.yml"
+    description: "Domain definitions (27 lines) - consolidation target"
+  - location: "assets/definitions/workflows.yml"
+    description: "Workflow definitions (53 lines) - consolidation target"
+  - location: "assets/definitions/entrypoints.yml"
+    description: "Entrypoint definitions (47 lines) - consolidation target"
+
+  # T4 core layer audit targets
+  - location: "assets/inputs/core-guidelines.yml"
+    description: "Generic core guidelines layer - to be specialized"
+  - location: "assets/inputs/core-system.yml"
+    description: "Generic core system layer - to be specialized"
+
+# ============================================================
+# USER DECISIONS APPLIED
+# ============================================================
+user_decisions:
+  B1:
+    decision: "Consolidate domains.yml, workflows.yml, and entrypoints.yml into ONE file"
+    applied_in: "phase-2b-architecture-consolidation"
+    rationale: "User decision to reduce file count by consolidating related architecture definitions"
+
+# ============================================================
+# PHASE 1: IMMEDIATE CLEANUPS
+# Low-risk changes that directly reduce context overhead
+# Estimated savings: ~5% context reduction
+# ============================================================
+phases:
+  - name: "phase-1-immediate-cleanups"
+    description: |
+      Quick wins that remove unused inputs and clarify scope boundaries.
+      These changes have minimal risk and provide immediate context savings.
+    agent_category: "teacher"
+    priority: "immediate"
+    estimated_savings: "~5%"
+
+    success_criteria:
+      - "iteration-approach.yml reference removed from iteration.yml inputs"
+      - "Example plan includes clear note about Integration/CI/CD phases belonging to planner-test"
+      - "loop_definitions in process.yml consolidated to reference inputs.yml"
+
+    tasks:
+      - id: "1.1"
+        description: "Remove unused iteration-approach.yml reference from iteration.yml"
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        context:
+          target_file: "assets/guidelines/iteration.yml"
+          issue_category: "UNUSED"
+          audit_reference: "audit_planner_build.yml - iteration-approach.yml (builder guidance, not planner)"
+          current_state: |
+            iteration.yml line 9 references iteration-approach.yml which contains only
+            11 lines of builder-focused advice about small iterations. This is execution
+            guidance for builders, not planning guidance for planners.
+          required_changes:
+            - "Remove the input reference to assets/definitions/iteration-approach.yml"
+            - "If iteration-approach concepts are truly needed, inline the 2-3 relevant lines directly"
+        acceptance_criteria:
+          - "iteration-approach.yml no longer referenced in iteration.yml inputs section"
+          - "No broken references in iteration.yml"
+          - "File remains coherent and complete"
+        files:
+          - "assets/guidelines/iteration.yml"
+
+      - id: "1.2"
+        description: "Add scope clarification note to example plan"
+        agent_type: "teacher-update-assets"
+        operation: "UPDATE"
+        context:
+          target_file: "assets/examples/planner/YYMMDDRepo_Branch/live/plan_live_build.yml"
+          issue_category: "INCONSISTENT"
+          audit_reference: "audit_planner_build.yml - example includes phases belonging to other planners"
+          current_state: |
+            The example plan includes Integration Testing and CI/CD Validation phases,
+            but manifest.yml says these are handled by planner-test and deploy-cicd.
+            This creates confusion about planner-build scope.
+          required_changes:
+            - "Add prominent NOTE at top of file clarifying scope boundaries"
+            - "Mark Integration Testing and CI/CD phases with comment: '# NOTE: Shown for reference - handled by planner-test'"
+            - "Emphasize in KEY PRINCIPLES that planner-build outputs only build/environment phases"
+        acceptance_criteria:
+          - "Clear scope note present in header comments"
+          - "Integration Testing and CI/CD phases marked as planner-test responsibility"
+          - "No structural changes to example - only clarifying comments"
+        files:
+          - "assets/examples/planner/YYMMDDRepo_Branch/live/plan_live_build.yml"
+
+      - id: "1.3"
+        description: "Remove duplicate loop_definitions from process.yml"
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        context:
+          target_file: "agents/planner/planner-build/process.yml"
+          issue_category: "INCONSISTENT"
+          audit_reference: "audit_planner_build.yml - process.yml defines own loop_definitions reference"
+          current_state: |
+            process.yml lines 5-8 define loop_definitions reference to agent-loops.yml,
+            but this information is already accessible via inputs.yml -> planner-shared.yml -> iteration.yml.
+            This creates two paths to the same information.
+          required_changes:
+            - "Remove loop_definitions block from process.yml (lines 5-8)"
+            - "Add comment noting that loop definitions are accessed via inputs.yml"
+        acceptance_criteria:
+          - "loop_definitions block removed from process.yml"
+          - "Comment clarifies single path to loop information"
+          - "No loss of necessary guidance"
+        files:
+          - "agents/planner/planner-build/process.yml"
+
+# ============================================================
+# PHASE 2: REDUNDANCY CONSOLIDATION
+# Merge duplicate definitions to single authoritative sources
+# Estimated savings: ~8%
+# ============================================================
+  - name: "phase-2-redundancy-consolidation"
+    description: |
+      Consolidate redundant definitions by making secondary sources reference-only.
+      This eliminates duplicate content while preserving navigability.
+    agent_category: "teacher"
+    priority: "short-term"
+    estimated_savings: "~8%"
+    dependencies:
+      - "phase-1-immediate-cleanups"
+
+    success_criteria:
+      - "folder-structure.yml references plans.yml for plan folder definitions (no duplication)"
+      - "manifest.yml purpose statement references process.yml goal (no duplication)"
+      - "ARCHITECTURE.md references agent-categories.yml for category list (no duplication)"
+
+    tasks:
+      - id: "2.1"
+        description: "Make folder-structure.yml reference plans.yml for plan definitions"
+        agent_type: "teacher-update-assets"
+        operation: "UPDATE"
+        context:
+          target_file: "assets/definitions/folder-structure.yml"
+          issue_category: "REDUNDANCY"
+          audit_reference: "audit_planner_build.yml - folder-structure.yml/plans.yml duplication"
+          current_state: |
+            Both folder-structure.yml and plans.yml define plan folder structure.
+            folder-structure.yml notes plans.yml is authoritative (lines 6-7) but still
+            redefines plans_live, plans_completed patterns (50+ lines of overlap).
+          required_changes:
+            - "Remove plans_live, plans_completed, plans_backlog, plans_root detailed definitions"
+            - "Replace with reference: 'See assets/definitions/plans.yml for plan folder structure'"
+            - "Keep only general path_conventions and non-plan folder definitions (agent_logs)"
+        acceptance_criteria:
+          - "Plan folder definitions removed from folder-structure.yml"
+          - "Reference to plans.yml clearly stated"
+          - "agent_logs definition preserved"
+          - "File reduced from ~83 lines to ~40 lines"
+        files:
+          - "assets/definitions/folder-structure.yml"
+
+      - id: "2.2"
+        description: "Remove redundant purpose from manifest.yml"
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        context:
+          target_file: "agents/planner/planner-build/manifest.yml"
+          issue_category: "REDUNDANCY"
+          audit_reference: "audit_planner_build.yml - manifest.yml purpose repeats process.yml goal"
+          current_state: |
+            manifest.yml purpose field repeats what's already in process.yml goal.
+            Manifest should focus on architecture checklist and phase patterns,
+            not restate the agent's purpose.
+          required_changes:
+            - "Replace purpose block with brief reference: 'purpose: See process.yml goal'"
+            - "Keep architecture_checklist and phase_patterns (unique value)"
+        acceptance_criteria:
+          - "Purpose statement no longer duplicates process.yml goal"
+          - "Architecture checklist preserved"
+          - "Manifest remains useful for its intended purpose (checklists)"
+        files:
+          - "agents/planner/planner-build/manifest.yml"
+
+      - id: "2.3"
+        description: "Make ARCHITECTURE.md reference agent-categories.yml for category list"
+        agent_type: "teacher-update-assets"
+        operation: "UPDATE"
+        context:
+          target_file: "docs/ARCHITECTURE.md"
+          issue_category: "REDUNDANCY"
+          audit_reference: "audit_planner_build.yml - agent category info in three places"
+          current_state: |
+            ARCHITECTURE.md lists 9 agent categories with descriptions (lines 36-63).
+            Same information exists in agent-categories.yml (canonical) and
+            agent-role-scope-matrix.md. ARCHITECTURE.md should reference, not duplicate.
+          required_changes:
+            - "Replace inline category list with reference to agent-categories.yml"
+            - "Keep high-level architecture narrative, remove category details"
+            - "Add note: 'For full agent category definitions, see assets/definitions/agent-categories.yml'"
+        acceptance_criteria:
+          - "Category list replaced with reference"
+          - "ARCHITECTURE.md reduced by ~30 lines"
+          - "Architectural narrative preserved"
+        files:
+          - "docs/ARCHITECTURE.md"
+
+# ============================================================
+# PHASE 2B: ARCHITECTURE CONSOLIDATION (User Decision B1)
+# Consolidate domains.yml, workflows.yml, entrypoints.yml into ONE file
+# Estimated savings: ~3%
+# ============================================================
+  - name: "phase-2b-architecture-consolidation"
+    description: |
+      Per User Decision B1: Consolidate domains.yml, workflows.yml, and entrypoints.yml
+      into a single architecture-pattern.yml file. These three small files (127 lines total)
+      define related architecture concepts that belong together.
+    agent_category: "teacher"
+    priority: "short-term"
+    estimated_savings: "~3%"
+    dependencies:
+      - "phase-1-immediate-cleanups"
+    user_decision_ref: "B1"
+
+    success_criteria:
+      - "New architecture-pattern.yml contains all content from domains, workflows, entrypoints"
+      - "Original three files replaced with references to architecture-pattern.yml"
+      - "All agents referencing original files updated to use new consolidated file"
+      - "Net reduction of 2 files in the guidance system"
+
+    tasks:
+      - id: "2b.1"
+        description: "Create consolidated architecture-pattern.yml from domains, workflows, entrypoints"
+        agent_type: "teacher-update-assets"
+        operation: "CREATE"
+        context:
+          target_file: "assets/definitions/architecture-pattern.yml"
+          issue_category: "MISSING_CONSOLIDATION"
+          source_files:
+            - "assets/definitions/domains.yml (27 lines)"
+            - "assets/definitions/workflows.yml (53 lines)"
+            - "assets/definitions/entrypoints.yml (47 lines)"
+          current_state: |
+            Three separate files define the core architecture pattern:
+            - domains.yml: Defines domain layer concepts
+            - workflows.yml: Defines workflow orchestration patterns
+            - entrypoints.yml: Defines CLI/API entry points
+            Total: 127 lines across 3 files, closely related content.
+          required_structure:
+            header: |
+              # Architecture Pattern: Domains, Workflows, Entrypoints
+              # Consolidated from: domains.yml, workflows.yml, entrypoints.yml
+              # Purpose: Single-source definition of the core architecture pattern
+            sections:
+              - "domains: (content from domains.yml)"
+              - "workflows: (content from workflows.yml)"
+              - "entrypoints: (content from entrypoints.yml)"
+              - "relationships: (how these three concepts interconnect)"
+        acceptance_criteria:
+          - "architecture-pattern.yml exists with all content from source files"
+          - "Clear section headers for domains, workflows, entrypoints"
+          - "Relationships section explains how concepts connect"
+          - "Estimated ~100-120 lines (consolidated with some deduplication)"
+        files:
+          - "assets/definitions/architecture-pattern.yml"
+
+      - id: "2b.2"
+        description: "Replace domains.yml with reference to architecture-pattern.yml"
+        agent_type: "teacher-update-assets"
+        operation: "UPDATE"
+        context:
+          target_file: "assets/definitions/domains.yml"
+          current_state: "27-line standalone definition"
+          required_changes:
+            - "Replace content with reference: 'See assets/definitions/architecture-pattern.yml#domains'"
+            - "Keep as thin redirect file for backwards compatibility"
+            - "Add deprecation note recommending direct use of architecture-pattern.yml"
+        acceptance_criteria:
+          - "domains.yml reduced to ~5 lines (reference only)"
+          - "Clear deprecation/redirect message"
+        files:
+          - "assets/definitions/domains.yml"
+
+      - id: "2b.3"
+        description: "Replace workflows.yml with reference to architecture-pattern.yml"
+        agent_type: "teacher-update-assets"
+        operation: "UPDATE"
+        context:
+          target_file: "assets/definitions/workflows.yml"
+          current_state: "53-line standalone definition"
+          required_changes:
+            - "Replace content with reference: 'See assets/definitions/architecture-pattern.yml#workflows'"
+            - "Keep as thin redirect file for backwards compatibility"
+            - "Add deprecation note recommending direct use of architecture-pattern.yml"
+        acceptance_criteria:
+          - "workflows.yml reduced to ~5 lines (reference only)"
+          - "Clear deprecation/redirect message"
+        files:
+          - "assets/definitions/workflows.yml"
+
+      - id: "2b.4"
+        description: "Replace entrypoints.yml with reference to architecture-pattern.yml"
+        agent_type: "teacher-update-assets"
+        operation: "UPDATE"
+        context:
+          target_file: "assets/definitions/entrypoints.yml"
+          current_state: "47-line standalone definition"
+          required_changes:
+            - "Replace content with reference: 'See assets/definitions/architecture-pattern.yml#entrypoints'"
+            - "Keep as thin redirect file for backwards compatibility"
+            - "Add deprecation note recommending direct use of architecture-pattern.yml"
+        acceptance_criteria:
+          - "entrypoints.yml reduced to ~5 lines (reference only)"
+          - "Clear deprecation/redirect message"
+        files:
+          - "assets/definitions/entrypoints.yml"
+
+      - id: "2b.5"
+        description: "Update all references to use architecture-pattern.yml"
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        context:
+          scope: "All files referencing domains.yml, workflows.yml, or entrypoints.yml"
+          required_changes:
+            - "Search for all references to the three original files"
+            - "Update to reference architecture-pattern.yml instead"
+            - "Update any section-specific references to use anchor syntax"
+          search_patterns:
+            - "domains.yml"
+            - "workflows.yml"
+            - "entrypoints.yml"
+        acceptance_criteria:
+          - "All agent inputs updated to use architecture-pattern.yml"
+          - "No direct references to deprecated files remain (except the files themselves)"
+          - "Zero broken references"
+        files:
+          - "agents/planner/planner-build/inputs.yml"
+          - "assets/inputs/planner-shared.yml"
+          - "assets/inputs/core-system.yml"
+
+# ============================================================
+# PHASE 3: LAYER OPTIMIZATION
+# Create planner-build-specific layer for efficient loading
+# Estimated savings: ~5%
+# ============================================================
+  - name: "phase-3-layer-optimization"
+    description: |
+      Create a targeted input layer that loads only what planner-build needs,
+      bypassing transitive dependencies that include unused content.
+    agent_category: "teacher"
+    priority: "short-term"
+    estimated_savings: "~5%"
+    dependencies:
+      - "phase-2-redundancy-consolidation"
+      - "phase-2b-architecture-consolidation"
+
+    success_criteria:
+      - "planner-build-layer.yml exists with essential-only references"
+      - "planner-build/inputs.yml uses planner-build-layer instead of generic layers"
+      - "File count reduced from 18 to approximately 10"
+
+    tasks:
+      - id: "3.1"
+        description: "Create planner-build-specific layer file"
+        agent_type: "teacher-update-assets"
+        operation: "CREATE"
+        context:
+          target_file: "assets/inputs/planner-build-layer.yml"
+          issue_category: "MISSING_CONSOLIDATION"
+          audit_reference: "audit_planner_build.yml - layer files could be combined"
+          current_state: |
+            planner-build loads core-system.yml (5 files) + planner-shared.yml (4 files)
+            transitively loading 18 total files. Many are not needed:
+            - domains.yml, workflows.yml, entrypoints.yml (now consolidated to architecture-pattern.yml)
+            - iteration-approach.yml (builder guidance)
+            - MMD components (planner outputs YAML, not MMD)
+          required_structure:
+            header: |
+              # Layer: planner-build-specific
+              # Optimized inputs for planner-build agent
+              # Consolidates core-system and planner-shared essentials
+            essential_references:
+              - "assets/definitions/plans.yml"
+              - "assets/definitions/architecture-pattern.yml"
+              - "docs/ARCHITECTURE.md"
+              - "docs/agent-role-scope-matrix.md"
+              - "assets/guidelines/iteration.yml"
+              - "assets/definitions/agent-loops.yml"
+            excluded_with_rationale:
+              - "domains.yml, workflows.yml, entrypoints.yml: Consolidated to architecture-pattern.yml"
+              - "iteration-approach.yml: Builder-focused execution guidance"
+              - "folder-structure.yml: Now references plans.yml"
+        acceptance_criteria:
+          - "planner-build-layer.yml exists"
+          - "Contains only essential references (5-6 files)"
+          - "Includes rationale for exclusions"
+        files:
+          - "assets/inputs/planner-build-layer.yml"
+
+      - id: "3.2"
+        description: "Update planner-build inputs.yml to use specific layer"
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        context:
+          target_file: "agents/planner/planner-build/inputs.yml"
+          issue_category: "MISSING_CONSOLIDATION"
+          current_state: |
+            inputs.yml references two generic layers:
+            - core-system.yml (5 files, some unused)
+            - planner-shared.yml (4 files, some unused)
+            This loads more context than planner-build needs.
+          required_changes:
+            - "Replace core-system.yml and planner-shared.yml with planner-build-layer.yml"
+            - "Keep build-specific core_inputs (example, manifest, MMD optional)"
+            - "Remove or mark MMD components as truly optional (not even suggested)"
+        acceptance_criteria:
+          - "Single planner-build-layer reference replaces two generic layers"
+          - "MMD components marked as optional or removed"
+          - "Total transitive file count reduced"
+        files:
+          - "agents/planner/planner-build/inputs.yml"
+
+# ============================================================
+# PHASE T4: SPECIALIZED CORE LAYER AUDIT (Cross-cutting Addition)
+# Audit planner agents to discover actual core file usage
+# Create specialized planner-core layers
+# ============================================================
+  - name: "phase-t4-specialized-core-layer-audit"
+    description: |
+      T4 Cross-cutting Addition: Audit planner agents (specifically planner-build) to discover
+      which core files they actually use. Create specialized planner-core-guidelines.yml and
+      planner-core-system.yml to replace generic core layers with planner-optimized versions.
+    agent_category: "teacher"
+    priority: "short-term"
+    estimated_savings: "~10%"
+    dependencies:
+      - "phase-3-layer-optimization"
+    cross_cutting_ref: "T4"
+
+    success_criteria:
+      - "Audit completed identifying which core files planner-build actually uses"
+      - "planner-core-guidelines.yml created with planner-specific guidelines"
+      - "planner-core-system.yml created with planner-specific system definitions"
+      - "planner-build updated to use specialized layers instead of generic core layers"
+      - "Other planner agents can reuse these specialized layers"
+
+    tasks:
+      - id: "t4.1"
+        description: "AUDIT planner-build to discover actual core file usage"
+        agent_type: "teacher-update-assets"
+        operation: "AUDIT"
+        context:
+          target_agent: "planner-build"
+          scope: "Identify which files from core-guidelines.yml and core-system.yml are actually used"
+          audit_approach:
+            - "Trace all inputs from planner-build/inputs.yml"
+            - "Identify which core-guidelines.yml references are actually read during planning"
+            - "Identify which core-system.yml references are actually needed"
+            - "Document unused core files that could be excluded"
+          expected_findings:
+            - "List of actually-used guidelines from core-guidelines.yml"
+            - "List of actually-used system definitions from core-system.yml"
+            - "List of unused/irrelevant core files for planner context"
+        acceptance_criteria:
+          - "Complete inventory of core file usage by planner-build"
+          - "Clear documentation of what is used vs. unused"
+          - "Rationale for each inclusion/exclusion decision"
+        files:
+          - "agents/planner/planner-build/inputs.yml"
+          - "assets/inputs/core-guidelines.yml"
+          - "assets/inputs/core-system.yml"
+        output:
+          - "docs/plans/live/260104AE_agenticguidance/live/audit_planner_core_usage.yml"
+
+      - id: "t4.2"
+        description: "Create specialized planner-core-guidelines.yml"
+        agent_type: "teacher-update-assets"
+        operation: "CREATE"
+        context:
+          target_file: "assets/inputs/planner-core-guidelines.yml"
+          source: "Audit results from t4.1"
+          purpose: |
+            Create a planner-optimized version of core-guidelines.yml that includes
+            only the guidelines actually relevant to planner agents. This reduces
+            context overhead by excluding builder-focused, test-focused, or other
+            irrelevant guidelines.
+          expected_structure:
+            header: |
+              # Planner Core Guidelines Layer
+              # Specialized subset of core-guidelines.yml for planner agents
+              # Created based on audit of actual planner usage patterns
+            sections:
+              - "planning_guidelines: (guidelines for creating plans)"
+              - "iteration_guidelines: (planning iteration patterns)"
+              - "excluded_with_rationale: (list of excluded core guidelines)"
+        acceptance_criteria:
+          - "planner-core-guidelines.yml exists"
+          - "Contains only planner-relevant guidelines"
+          - "Excludes builder, test, and other irrelevant guidelines"
+          - "Includes rationale for exclusions"
+        files:
+          - "assets/inputs/planner-core-guidelines.yml"
+
+      - id: "t4.3"
+        description: "Create specialized planner-core-system.yml"
+        agent_type: "teacher-update-assets"
+        operation: "CREATE"
+        context:
+          target_file: "assets/inputs/planner-core-system.yml"
+          source: "Audit results from t4.1"
+          purpose: |
+            Create a planner-optimized version of core-system.yml that includes
+            only the system definitions actually relevant to planner agents.
+            Planners need architecture understanding but not execution details.
+          expected_structure:
+            header: |
+              # Planner Core System Layer
+              # Specialized subset of core-system.yml for planner agents
+              # Created based on audit of actual planner usage patterns
+            sections:
+              - "architecture_definitions: (ARCHITECTURE.md, agent-categories.yml)"
+              - "plan_definitions: (plans.yml, folder-structure refs)"
+              - "excluded_with_rationale: (list of excluded core system files)"
+        acceptance_criteria:
+          - "planner-core-system.yml exists"
+          - "Contains only planner-relevant system definitions"
+          - "Excludes execution-focused and irrelevant system files"
+          - "Includes rationale for exclusions"
+        files:
+          - "assets/inputs/planner-core-system.yml"
+
+      - id: "t4.4"
+        description: "Update planner-build to use specialized core layers"
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        context:
+          target_file: "agents/planner/planner-build/inputs.yml"
+          current_state: |
+            After phase-3, planner-build uses planner-build-layer.yml which may still
+            reference generic core-guidelines.yml and core-system.yml transitively.
+          required_changes:
+            - "Update planner-build-layer.yml to use planner-core-guidelines.yml"
+            - "Update planner-build-layer.yml to use planner-core-system.yml"
+            - "Verify no transitive loading of generic core layers"
+            - "Document the specialized layer usage in inputs.yml header"
+        acceptance_criteria:
+          - "planner-build loads only specialized planner-core layers"
+          - "No transitive loading of generic core-guidelines.yml"
+          - "No transitive loading of generic core-system.yml"
+          - "Context usage further reduced"
+        files:
+          - "agents/planner/planner-build/inputs.yml"
+          - "assets/inputs/planner-build-layer.yml"
+
+      - id: "t4.5"
+        description: "Document specialized layer pattern for other planner agents"
+        agent_type: "teacher-update-assets"
+        operation: "CREATE"
+        context:
+          target_file: "docs/patterns/planner-specialized-layers.md"
+          purpose: |
+            Document the pattern established for planner-build so it can be
+            applied to other planner agents (planner-test, planner-guidance, etc.)
+          content:
+            - "Pattern: Specialized Core Layers for Planner Agents"
+            - "Rationale: Why generic core layers are inefficient for planners"
+            - "Implementation: How to create agent-specific core layers"
+            - "Reuse: How other planners can use planner-core-*.yml files"
+            - "Audit process: How to audit and create specialized layers"
+        acceptance_criteria:
+          - "Pattern documented for reuse"
+          - "Other planner agents can follow same approach"
+          - "Audit process is repeatable"
+        files:
+          - "docs/patterns/planner-specialized-layers.md"
+
+# ============================================================
+# PHASE 4: VERIFICATION
+# Validate changes didn't break functionality
+# ============================================================
+  - name: "phase-4-verification"
+    description: |
+      Verify all changes maintain planner-build capability while reducing context.
+      Check for broken references and validate example plan still provides needed patterns.
+    agent_category: "test"
+    priority: "after-implementation"
+    dependencies:
+      - "phase-t4-specialized-core-layer-audit"
+
+    success_criteria:
+      - "All file references in inputs.yml resolve to existing files"
+      - "planner-build can create valid plans using reduced context"
+      - "No broken cross-references between files"
+      - "Example plan still demonstrates required patterns"
+      - "Specialized planner-core layers function correctly"
+
+    tasks:
+      - id: "4.1"
+        description: "Validate all file references resolve"
+        agent_type: "test-final-output"
+        operation: "AUDIT"
+        context:
+          scope: "All modified files, new layer files, and consolidated files"
+          checks:
+            - "All paths in planner-build-layer.yml exist"
+            - "All paths in planner-build/inputs.yml exist"
+            - "All paths in planner-core-guidelines.yml exist"
+            - "All paths in planner-core-system.yml exist"
+            - "architecture-pattern.yml contains all expected content"
+            - "Cross-references between files are valid"
+            - "No dangling references to removed content"
+        acceptance_criteria:
+          - "Zero broken references"
+          - "All layer files load successfully"
+        files:
+          - "assets/inputs/planner-build-layer.yml"
+          - "assets/inputs/planner-core-guidelines.yml"
+          - "assets/inputs/planner-core-system.yml"
+          - "assets/definitions/architecture-pattern.yml"
+          - "agents/planner/planner-build/inputs.yml"
+          - "agents/planner/planner-build/process.yml"
+          - "agents/planner/planner-build/manifest.yml"
+
+      - id: "4.2"
+        description: "Verify context reduction achieved"
+        agent_type: "test-final-output"
+        operation: "MEASURE"
+        context:
+          baseline: "18 files, 8-12% context"
+          target: "8-10 files, 4-6% context"
+          measurement_approach:
+            - "Count total files in transitive input chain"
+            - "Estimate token usage based on file sizes"
+            - "Compare before/after specialized layer implementation"
+        acceptance_criteria:
+          - "File count reduced by at least 50%"
+          - "Estimated context usage reduced by at least 40%"
+          - "Specialized planner-core layers smaller than generic core layers"
+        files:
+          - "agents/planner/planner-build/inputs.yml"
+
+# ============================================================
+# SUCCESS CRITERIA
+# ============================================================
+success_criteria:
+  user_validation:
+    - "planner-build creates valid build plans with reduced context"
+    - "Plans include proper file-level inputs and success criteria"
+    - "No confusion about scope boundaries (build vs test phases)"
+    - "B1 consolidation (architecture-pattern.yml) functions correctly"
+
+  technical_validation:
+    - "Transitive file count reduced from 18 to ~8-10"
+    - "Estimated context usage reduced from 8-12% to 4-6%"
+    - "Zero broken references across all modified files"
+    - "All redundant definitions consolidated to single source"
+    - "Specialized planner-core layers created and functioning"
+    - "architecture-pattern.yml consolidates domains/workflows/entrypoints"
+
+  experience_validation:
+    - "planner-build loads faster with less context overhead"
+    - "Clearer guidance about scope boundaries"
+    - "Single authoritative source for each concept"
+    - "Specialized layers available for other planner agents to reuse"
+
+# ============================================================
+# QUESTIONS FOR USER (Updated)
+# Design decisions that need clarification before proceeding
+# ============================================================
+questions_for_user:
+  scope_questions:
+    - question: "Should the example plan be split into smaller focused examples?"
+      context: |
+        The 515-line example plan is comprehensive but large. Options:
+        1. Keep as-is with scope clarification notes (Phase 1 approach)
+        2. Split into structure-template.yml (~150 lines) + phase-examples/ folder
+        3. Create planner-specific views (build-example, test-example)
+      recommendation: "Option 1 for now (lowest risk), defer split to future optimization"
+      blocking: false
+
+    # B1 RESOLVED - User decided to consolidate
+    - question: "[RESOLVED] Should domains.yml, workflows.yml, entrypoints.yml be consolidated?"
+      context: |
+        User Decision B1: YES - consolidate into architecture-pattern.yml.
+        Added as phase-2b-architecture-consolidation.
+      resolution: "Consolidate per User Decision B1"
+      blocking: false
+      status: "resolved"
+
+  layer_questions:
+    - question: "Should planner-build-layer be exclusive or supplementary?"
+      context: |
+        Option A: planner-build-layer replaces core-system + planner-shared (exclusive)
+        Option B: planner-build-layer supplements existing layers (additive)
+      recommendation: "Option A - exclusive replacement for maximum context reduction"
+      blocking: true
+      default_if_no_response: "Option A"
+
+    - question: "Should other planners also get specific layers?"
+      context: |
+        If planner-build gets a specific layer, consistency suggests other planners should too.
+        This plan only addresses planner-build; other planners need separate audits.
+        T4 addition creates planner-core-*.yml layers that can be shared.
+      recommendation: "Create pattern with planner-build, apply to others after validation"
+      blocking: false
+
+  verification_questions:
+    - question: "What is the acceptable context usage target?"
+      context: |
+        Current: 8-12% (~15,000 tokens)
+        Proposed target (updated with T4): 4-6% (~8,000 tokens)
+        Aggressive target: 2-4% (~5,000 tokens)
+      recommendation: "4-6% is reasonable with specialized layers"
+      blocking: false
+      default_if_no_response: "4-6%"
+
+# ============================================================
+# NOTES
+# ============================================================
+notes:
+  - "This plan addresses all 14 issues identified in audit_planner_build.yml"
+  - "Phases are ordered from lowest to highest risk"
+  - "Phase 1 can proceed immediately with no blocking questions"
+  - "Phase 2b added for User Decision B1 (consolidate domains/workflows/entrypoints)"
+  - "Phase T4 added for specialized core layer audit (cross-cutting requirement)"
+  - "Phase 3 depends on answer to layer_questions[0]"
+  - "Phase T4 enables other planner agents to reuse specialized layers"
+  - "Long-term optimizations (example split, matrix views) deferred to future plans"
+  - "Teacher agent selection: teacher-update-guidance for agent-specific files; teacher-update-assets for shared assets"

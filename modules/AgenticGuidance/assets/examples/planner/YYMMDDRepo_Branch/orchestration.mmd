@@ -1,0 +1,87 @@
+%% ========================================
+%% PLAN ORCHESTRATION MMD
+%% ========================================
+%% PLAN_MMD_VERSION: 1.0
+%% GENERATED_BY: planner-build
+%% PLAN_FOLDER: docs/plans/live/<YYMMDDRepo_Branch>
+%% PHASES: Environment_Setup, Domain_Build, Workflow_Build, Entrypoint_Build, Integration_Test, CI_CD_Validation
+%% AGENT_ROUTING: Environment_Setup -> builder, Domain_Build -> builder, Workflow_Build -> builder, Entrypoint_Build -> builder, Integration_Test -> tester, CI_CD_Validation -> deployer
+%% STATUS: Environment_Setup=pending, Domain_Build=pending, Workflow_Build=pending, Entrypoint_Build=pending, Integration_Test=pending, CI_CD_Validation=pending
+%%
+%% This MMD file provides visual orchestration for the plan.
+%% - Metadata comments (above) are machine-parseable for dynamic workflow execution
+%% - The graph (below) shows phase flow, dependencies, and feedback triggers
+%% - classDef styling indicates completed phases
+
+graph TD
+    %% ========================================
+    %% PHASE FLOW
+    %% ========================================
+    Start((Start)) --> Phase1[Phase 1: Environment Setup]
+    Phase1 --> Phase2[Phase 2: Domain Layer Build]
+    Phase2 --> Phase3[Phase 3: Workflow Layer Build]
+    Phase3 --> Phase4[Phase 4: Entrypoint Layer Build]
+    Phase4 --> Phase5[Phase 5: Integration Testing]
+    Phase5 --> Phase6[Phase 6: CI/CD Validation]
+    Phase6 --> End((End))
+
+    %% ========================================
+    %% FEEDBACK TRIGGERS
+    %% ========================================
+    %% These edges show when phases loop back due to failures.
+    %% Dotted lines indicate feedback loops, not normal flow.
+    Phase5 -- test_failure --> Phase4
+    Phase5 -- test_failure --> Phase3
+    Phase5 -- test_failure --> Phase2
+    Phase6 -- cicd_failure --> Phase5
+    Phase6 -- config_error --> Phase1
+
+    %% ========================================
+    %% PHASE DETAILS (Comments)
+    %% ========================================
+    %% Phase 1: Environment Setup
+    %%   - Agent: builder
+    %%   - Tasks: Verify dependencies, create branch, setup dev environment
+    %%   - Exit: All dependencies installed, branch created
+    %%
+    %% Phase 2: Domain Layer Build
+    %%   - Agent: builder (parallel execution possible)
+    %%   - Tasks: Implement domain services, validators, unit tests
+    %%   - Exit: Domain layer complete, unit tests pass
+    %%
+    %% Phase 3: Workflow Layer Build
+    %%   - Agent: builder
+    %%   - Tasks: Implement workflow orchestration, dependency injection
+    %%   - Exit: Workflow layer complete, integration with domain verified
+    %%
+    %% Phase 4: Entrypoint Layer Build
+    %%   - Agent: builder (parallel execution possible - CLI and API)
+    %%   - Tasks: Implement CLI commands, API routes
+    %%   - Exit: Entrypoints complete, manual smoke tests pass
+    %%
+    %% Phase 5: Integration Testing
+    %%   - Agent: tester
+    %%   - Pattern: test-fix-loop (max 5 iterations)
+    %%   - Tasks: Run integration tests, fix failures
+    %%   - Exit: All integration tests pass
+    %%
+    %% Phase 6: CI/CD Validation
+    %%   - Agent: deployer
+    %%   - Tasks: Validate pipeline config, Docker builds, Cloud Build
+    %%   - Exit: CI/CD pipeline validates successfully
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    %% Completed phases use green styling
+    %% In-progress phases use yellow styling
+    %% Pending phases use default styling
+    %%
+    %% Example: After Phase 1 and 2 complete:
+    %% Phase1:::completed
+    %% Phase2:::completed
+    %% Phase3:::inprogress
+
+    classDef completed fill:#90EE90,stroke:#228B22
+    classDef inprogress fill:#FFFF99,stroke:#DAA520
+    classDef failed fill:#FFB6C1,stroke:#DC143C
