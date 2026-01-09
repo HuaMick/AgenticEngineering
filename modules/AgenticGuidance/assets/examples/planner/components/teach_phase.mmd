@@ -1,0 +1,36 @@
+flowchart LR
+    %% COMPONENT: Teach Phase
+    %% PURPOSE: Demonstrate the teach/guidance planning loop pattern
+    %% USAGE: Planners can incorporate this pattern for guidance improvement phases
+    %% LOOP: planner-loop with planner-guidance + planner-reviewer
+
+    %% Entry point - assumes phase has been determined to require teaching
+    TeachPhaseStart((Teach Phase)) --> SpawnPlannerGuidance[Spawn planner-guidance Agent]
+
+    %% Planner-guidance creates teaching plan
+    %% INPUTS: friction_source, target_agent, target_project_path
+    SpawnPlannerGuidance --> PlanCreated{Plan Created?}
+
+    PlanCreated -- "No: Error" --> EscalateTeach((Escalate: Cannot Create Plan))
+    PlanCreated -- "Yes" --> SpawnReviewer[Spawn planner-reviewer Agent]
+
+    %% Reviewer evaluates the teaching plan
+    %% CRITERIA: task specificity, file targets, acceptance criteria
+    SpawnReviewer --> ReviewResult{Plan Approved?}
+
+    %% Iterative refinement loop
+    %% MAX_ITERATIONS: 5 (per planner-loop definition)
+    ReviewResult -- "No: Refine" --> CaptureFeedback[Capture Reviewer Feedback]
+    CaptureFeedback --> CheckIterations{Max Iterations?}
+    CheckIterations -- "No" --> SpawnPlannerGuidanceFix[Spawn planner-guidance Agent with Feedback]
+    SpawnPlannerGuidanceFix --> SpawnReviewer
+    CheckIterations -- "Yes" --> EscalateTeach
+
+    %% Approved plan exits to next phase
+    ReviewResult -- "Yes: Approved" --> TeachPhaseComplete((Teach Phase Complete))
+
+    %% Styling
+    classDef entrypoint fill:#90EE90
+    classDef exitpoint fill:#FFB6C1
+    class TeachPhaseStart,TeachPhaseComplete entrypoint
+    class EscalateTeach exitpoint

@@ -1,0 +1,58 @@
+flowchart LR
+    %% COMPONENT: Cleanup Phase
+    %% PURPOSE: Demonstrate the cleanup planning loop with dependency-aware exploration
+    %% USAGE: Planners can incorporate this pattern for cleanup/audit phases
+    %% LOOP: planner-loop with planner-cleaning + planner-reviewer
+    %% INTEGRATION: cleaner-dependency-loop (replaces deprecated voting loop)
+
+    %% Entry point - assumes phase has been determined to require cleanup
+    CleanupPhaseStart((Cleanup Phase)) --> SpawnPlannerCleaning[Spawn planner-cleaning Agent]
+
+    %% Planner-cleaning identifies cleanup targets
+    %% INPUTS: target_scope, preserved_files, audit_results
+    SpawnPlannerCleaning --> PlanCreated{Plan Created?}
+
+    PlanCreated -- "No: Error" --> EscalateCleanup((Escalate: Cannot Create Plan))
+    PlanCreated -- "Yes" --> SpawnReviewer[Spawn planner-reviewer Agent]
+
+    %% Reviewer evaluates the cleanup plan
+    %% CRITERIA: target specificity, dependency awareness, safety checks
+    SpawnReviewer --> ReviewResult{Plan Approved?}
+
+    %% Iterative refinement loop
+    ReviewResult -- "No: Refine" --> CaptureFeedback[Capture Reviewer Feedback]
+    CaptureFeedback --> CheckIterations{Max Iterations?}
+    CheckIterations -- "No" --> SpawnPlannerCleaningFix[Spawn planner-cleaning Agent with Feedback]
+    SpawnPlannerCleaningFix --> SpawnReviewer
+    CheckIterations -- "Yes" --> EscalateCleanup
+
+    %% Approved plan includes dependency checking
+    ReviewResult -- "Yes: Approved" --> VerifyDependencyLoop[Verify Dependency Loop Structure]
+
+    subgraph CleanerDependencyLoop ["Cleaner-Dependency-Loop Integration"]
+        %% Cleanup plan should define dependency-aware execution:
+        %% 1. Cleaner identifies targets
+        %% 2. Explorer checks dependencies
+        %% 3. Decision point (Cleaner or User)
+        %% 4. Execute or defer based on dependencies
+        VerifyDependencyLoop --> CheckTargets{Cleanup Targets Defined?}
+        CheckTargets -- "Yes" --> CheckExplorer{Explorer Integration?}
+        CheckExplorer -- "Yes" --> CheckDecision{Decision Criteria Clear?}
+        CheckDecision -- "Yes" --> CheckSafety{Safety Checks Present?}
+        CheckSafety -- "Yes" --> LoopValid[Dependency Loop Valid]
+
+        %% Missing components trigger refinement
+        CheckTargets -- "No" --> MissingComponent[Flag Missing Component]
+        CheckExplorer -- "No" --> MissingComponent
+        CheckDecision -- "No" --> MissingComponent
+        CheckSafety -- "No" --> MissingComponent
+        MissingComponent --> CaptureFeedback
+    end
+
+    LoopValid --> CleanupPhaseComplete((Cleanup Phase Complete))
+
+    %% Styling
+    classDef entrypoint fill:#90EE90
+    classDef exitpoint fill:#FFB6C1
+    class CleanupPhaseStart,CleanupPhaseComplete entrypoint
+    class EscalateCleanup exitpoint

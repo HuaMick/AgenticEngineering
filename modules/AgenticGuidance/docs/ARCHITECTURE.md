@@ -4,7 +4,7 @@
 
 ```
                     ┌──────────────────────┐
-                    │   assets/            │  (HUB)
+                    │   modules/AgenticGuidance/assets/            │  (HUB)
                     │   ├── definitions/   │
                     │   ├── guidelines/    │
                     │   └── examples/      │
@@ -22,7 +22,7 @@
    └─────────┘            └─────────┘           └─────────┘
 ```
 
-- **Hub**: `assets/` contains shared definitions, guidelines, and examples
+- **Hub**: `modules/AgenticGuidance/assets/` contains shared definitions, guidelines, and examples
 - **Spokes**: Each agent folder has `inputs.yml` referencing the hub
 - **Process Files**: Reference their agent's `inputs.yml` as first input
 
@@ -77,7 +77,7 @@ For example, the Test category is responsible for "validation through testing" w
 ### Canonical Source
 
 The authoritative definition of all categories is maintained at:
-`assets/definitions/agent-categories.yml`
+`modules/AgenticGuidance/assets/definitions/agent-categories.yml`
 
 This file defines each category's purpose, responsibilities, sub-agents, and boundaries.
 
@@ -86,8 +86,8 @@ This file defines each category's purpose, responsibilities, sub-agents, and bou
 ## Directory Structure
 
 ```
-agents/
-├── assets/                     # HUB: Shared resources
+modules/AgenticGuidance/agents/
+├── modules/AgenticGuidance/assets/                     # HUB: Shared resources
 │   ├── definitions/           # Shared terminology and concepts
 │   ├── guidelines/            # Reusable behavioral guidelines
 │   ├── examples/              # Reference patterns
@@ -134,7 +134,7 @@ See [agent-role-scope-matrix.md](agent-role-scope-matrix.md) for the complete ma
 
 ## Guidelines
 
-Located in `assets/guidelines/`:
+Located in `modules/AgenticGuidance/assets/guidelines/`:
 
 | Guideline | Purpose |
 |-----------|---------|
@@ -171,7 +171,7 @@ inputs:
       required: true | false
 
   guidelines:
-    - path: "assets/guidelines/testing.yml"
+    - path: "modules/AgenticGuidance/assets/guidelines/testing.yml"
 
   definitions:
     term_name: |

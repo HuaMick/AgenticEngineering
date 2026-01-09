@@ -1,0 +1,68 @@
+# Fragment Reference Syntax Documentation
+# Version: 1.0
+# Purpose: Document how #fragment references are resolved in AgenticGuidance
+
+definition:
+  name: "Fragment References"
+  description: |
+    Fragment references use the syntax `path/to/file.yml#anchor` to reference
+    a specific section within a YAML file. This allows precise referencing of
+    definitions, categories, or loops without loading the entire file.
+
+syntax:
+  format: "<file_path>#<anchor_name>"
+  examples:
+    - reference: "modules/AgenticGuidance/assets/definitions/agent-categories.yml#planner"
+      description: "References the 'planner' category definition in agent-categories.yml"
+    - reference: "modules/AgenticGuidance/assets/definitions/agent-loops.yml#test-fix-loop"
+      description: "References the 'test-fix-loop' definition in agent-loops.yml"
+
+resolution_rules:
+  - rule: "Top-level key match"
+    description: |
+      The anchor is matched against top-level keys in the YAML file.
+      For `file.yml#anchor`, the system looks for a key named `anchor` at
+      the root level of the YAML structure.
+    example:
+      file_content: |
+        planner:
+          description: "Planner category..."
+        test:
+          description: "Test category..."
+      reference: "file.yml#planner"
+      resolves_to: "The entire 'planner' section including all nested content"
+
+  - rule: "Categories in agent-categories.yml"
+    description: |
+      agent-categories.yml defines categories as top-level keys.
+      Use #category_name to reference: planner, test, teacher, deploy, orchestration, etc.
+
+  - rule: "Loops in agent-loops.yml"
+    description: |
+      agent-loops.yml defines loop patterns as top-level keys.
+      Use #loop_name to reference: test-fix-loop, audit-test-fix-loop, guidance-test-loop, planner-loop, etc.
+
+agent_usage:
+  reading_fragments: |
+    When an agent encounters a fragment reference, it should:
+    1. Load the referenced file
+    2. Extract the section matching the anchor
+    3. Use only that section for context (context-minimisation)
+
+  writing_fragments: |
+    Use fragment references when:
+    - Referencing a specific category definition for agent_context
+    - Referencing a specific loop pattern for loop_context
+    - Pointing to one definition within a multi-definition file
+
+common_files_with_fragments:
+  - file: "modules/AgenticGuidance/assets/definitions/agent-categories.yml"
+    anchors: ["planner", "test", "teacher", "deploy", "orchestration", "build", "cleaner"]
+  - file: "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+    anchors: ["test-fix-loop", "audit-test-fix-loop", "guidance-test-loop", "planner-loop"]
+
+notes:
+  - "Fragment references are NOT universally supported by YAML parsers"
+  - "AgenticGuidance uses fragment syntax as a convention for agent context"
+  - "Resolution is performed by the agent reading the file, not by tooling"
+  - "If a fragment cannot be resolved, the agent should load the full file"

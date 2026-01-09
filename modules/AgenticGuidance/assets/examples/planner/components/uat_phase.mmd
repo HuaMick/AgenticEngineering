@@ -1,0 +1,65 @@
+flowchart LR
+    %% COMPONENT: UAT Phase
+    %% PURPOSE: Demonstrate the UAT validation pattern with flexible implementation
+    %% USAGE: MANDATORY for all plans; implementation strategy is at planner's discretion
+    %% REQUIREMENT: UAT MUST be anchored to user stories
+    %% OPTIONS: simulator, blind test, documentation loop, manual validation
+
+    %% Entry point - UAT is MANDATORY for all plans
+    UATPhaseStart((UAT Phase)) --> ValidateUserStories[Validate User Stories Exist]
+
+    %% FENCE: UAT MUST be anchored to user stories
+    ValidateUserStories --> StoriesExist{User Stories Defined?}
+    StoriesExist -- "No" --> EscalateUAT((Escalate: No User Stories))
+    StoriesExist -- "Yes" --> SelectStrategy[Select UAT Strategy]
+
+    %% Strategy selection - planner's discretion
+    subgraph StrategySelection ["UAT Strategy Options"]
+        SelectStrategy --> StrategyChoice{Which Strategy?}
+
+        %% Option 1: User Simulator
+        StrategyChoice -- "Simulator" --> SimulatorPath[Spawn test-user-simulator]
+        SimulatorPath --> SimulatorExecute[Execute Simulated User Journeys]
+        SimulatorExecute --> SimulatorResults[Collect Simulation Results]
+
+        %% Option 2: Blind Test
+        StrategyChoice -- "Blind Test" --> BlindTestPath[Spawn test-guidance-simulator]
+        BlindTestPath --> BlindTestExecute[Execute Without Prior Context]
+        BlindTestExecute --> BlindTestResults[Collect Blind Test Results]
+
+        %% Option 3: Documentation Loop
+        StrategyChoice -- "Doc Loop" --> DocLoopPath[Create User Documentation]
+        DocLoopPath --> DocLoopReview[User Reviews Documentation]
+        DocLoopReview --> DocLoopResults[Collect Documentation Feedback]
+
+        %% Option 4: Manual Validation
+        StrategyChoice -- "Manual" --> ManualPath[Present to Human Validator]
+        ManualPath --> ManualExecute[Human Executes User Stories]
+        ManualExecute --> ManualResults[Collect Human Feedback]
+    end
+
+    %% Aggregate results from chosen strategy
+    SimulatorResults --> AggregateResults[Aggregate UAT Results]
+    BlindTestResults --> AggregateResults
+    DocLoopResults --> AggregateResults
+    ManualResults --> AggregateResults
+
+    %% Evaluate UAT results
+    AggregateResults --> EvaluateResults{All Stories Pass?}
+
+    %% Failure triggers iteration or escalation
+    EvaluateResults -- "No: Failures" --> CaptureFailures[Capture Story Failures]
+    CaptureFailures --> CanIterate{Iteration Possible?}
+    CanIterate -- "Yes" --> SelectStrategy
+    CanIterate -- "No" --> EscalateUAT
+
+    %% Success completes UAT phase
+    EvaluateResults -- "Yes: All Pass" --> UATPhaseComplete((UAT Phase Complete))
+
+    %% Styling
+    classDef entrypoint fill:#90EE90
+    classDef exitpoint fill:#FFB6C1
+    classDef mandatory fill:#FFD700
+    class UATPhaseStart,UATPhaseComplete entrypoint
+    class EscalateUAT exitpoint
+    class ValidateUserStories mandatory

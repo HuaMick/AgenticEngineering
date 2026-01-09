@@ -1,0 +1,736 @@
+# Unified Plan: AgenticGuidance Orchestration Refinement
+# Plan: 260104AE_agenticguidance
+# Objective: Consolidate remaining tasks for CLI offloading and MMD orchestration
+
+# ========================================
+# ROOT-LEVEL PLAN METADATA (Required)
+# ========================================
+name: "agenticguidance-refinement"
+worktree_path: "/home/code/AgenticEngineering-agenticguidance"
+branch: "agenticguidance"
+status: "active"
+priority: "high"
+
+# File paths for plan management
+worktree: "/home/code/AgenticEngineering-agenticguidance"
+plan_file: "docs/plans/live/260104AE_agenticguidance/live/plan_agenticguidance.yml"
+
+# ========================================
+# CONTEXT (Narrative Updates)
+# ========================================
+context: |
+  This plan consolidated the remaining tasks from the previous build and remediation phases.
+  The focus is on offloading deterministic logic to the agentic-cli and implementing
+  dynamic orchestration via Mermaid diagrams.
+
+  UPDATE 2026-01-06: Agent self-review testing revealed critical friction patterns that
+  must be addressed before proceeding with remaining phases. A Friction Remediation phase
+  has been added to fix blocking issues.
+
+  UPDATE 2026-01-06 (session 2): Friction Remediation phase COMPLETED. All 7 tasks done:
+  - rem_cp001: Path semantics clarified in inputs.yml files
+  - rem_cp002: Required inputs sections added to 4 agents
+  - rem_hp001: Loop context added to test-audit and orchestration-guidance
+  - rem_hp002: Output schemas defined for 3 agents
+  - rem_hp003: Fragment reference syntax documented in new definition file
+  - rem_mp001: Excessive context loading removed from teacher-update-guidance
+  - rem_mp002: Version numbers aligned to 2.0 with documented scheme
+
+  UPDATE 2026-01-06 (session 3): Agent Self-Review Testing Phase 2 COMPLETED. 19 agents
+  reviewed their own guidance. Findings aggregated in audit/260106_session2_self_review_results.yml.
+  Key findings:
+  - 2 legacy-only agents discovered (planner-phases, planner-teach) require migration decision
+  - Fragment reference resolution inconsistency (nested vs top-level keys)
+  - orchestration agents missing process.yml (only have process.mmd)
+  - NOT_MIGRATED test agents referenced without fallback paths
+  - Version mismatches between manifest.yml and inputs.yml
+  - Empty outputs: [] sections despite documented outputs
+
+  A Friction Remediation Phase 2 has been added with 11 remediation tasks.
+
+  UPDATE 2026-01-06 (session 3, iteration 2): Created plan_live_teach.yml with 8 teaching
+  phases covering all CRITICAL and HIGH friction points. Two decision items require human
+  input before proceeding:
+  - DECISION-001: Legacy-only agents (planner-phases, planner-teach)
+  - DECISION-002: NOT_MIGRATED test agents
+
+  NEXT: Execute Teach Plan phases, then complete Friction Remediation Phase 2, before
+  resuming CLI Offloading.
+
+# ========================================
+# RELATED PLANS (Optional)
+# ========================================
+related_plans:
+  orchestration: "live/orchestration_agenticguidance.mmd"
+  teach_consolidated: "live/plan_live_teach_consolidated.yml"
+  build_migration: "live/plan_live_build_migration.yml"
+  cleanup_deprecation: "live/plan_live_cleanup_deprecation.yml"
+  orchestration_remodel: "live/plan_live_orchestration_remodel.yml"
+
+# ========================================
+# ROOT-LEVEL INPUTS (Pre-gathered Context)
+# ========================================
+inputs:
+  - location: "audit/260106_session2_self_review_results.yml"
+    description: "Consolidated friction findings from 19 agent self-reviews (180+ points)"
+
+  - location: "analysis/friction-consolidation-analysis.yml"
+    description: "Analysis of overlapping tasks across teach/remediation plans"
+
+  - location: "modules/AgenticGuidance/assets/examples/planner/YYMMDDRepo_Branch/plan_example.yml"
+    description: "Unified plan structure example - canonical reference"
+
+# ========================================
+# OPEN QUESTIONS (Human-Authority Decisions)
+# ========================================
+open_questions:
+  - id: "DECISION-001"
+    question: "How should we handle legacy-only agents (planner-phases, planner-teach)?"
+    severity: "critical"
+    status: "ANSWERED"
+    answer: "Deprecate - create DEPRECATED.md in legacy folders, functionality absorbed by orchestration-planning and planner-guidance"
+    answered_by: "HUMAN"
+    context: |
+      These agents exist ONLY in legacy location and have NOT been migrated.
+      Coverage analysis confirmed:
+      - planner-phases: Covered by orchestration-planning Phase Determination Subgraph
+      - planner-teach: Covered by planner-guidance agent
+    options:
+      - "Migrate with full updates"
+      - "Deprecate (Selected)"
+      - "Merge into orchestration-planning"
+
+  - id: "DECISION-002"
+    question: "How should we handle NOT_MIGRATED test agents (test-user-simulator, test-service, test-builder)?"
+    severity: "critical"
+    status: "ANSWERED"
+    answer: "Migrate agents to modules/AgenticGuidance/agents/test/ with full 2.0 architecture compliance"
+    answered_by: "HUMAN"
+    context: |
+      planner-test manifest references test agents that don't exist in migrated location.
+      Migration required for proper agent invocation.
+    options:
+      - "Add fallback paths (LOW effort)"
+      - "Migrate agents (Selected)"
+      - "Remove strategies requiring unmigrated agents"
+
+# ========================================
+# PHASES AND TASKS
+# ========================================
+phases:
+  # ========================================
+  # FRICTION REMEDIATION PHASE (Priority)
+  # Added after agent self-review testing revealed critical issues
+  # ========================================
+  - name: Friction Remediation
+    execution: sequential
+    description: "Address critical friction patterns found during agent self-review testing"
+    priority: critical
+    audit_ref: "audit/260106_agent_self_review_results.yml"
+    tasks:
+      # CRITICAL Issues
+      - id: "rem_cp001"
+        name: "Clarify docs/plans/ path semantics"
+        description: |
+          Multiple agents reference docs/plans/live/ and docs/plans/completed/ directories.
+          Clarify in guidance that these paths are relative to TARGET PROJECT, not the
+          AgenticGuidance module. Add documentation to inputs.yml files.
+        severity: "critical"
+        affected_agents:
+          - orchestration-planning
+          - orchestration-build
+          - orchestration-guidance
+          - planner-build
+          - planner-guidance
+          - planner-test
+        target_files:
+          - "agents/orchestration/orchestration-planning/inputs.yml"
+          - "agents/orchestration/orchestration-build/inputs.yml"
+          - "agents/planner/planner-build/inputs.yml"
+          - "agents/planner/planner-guidance/inputs.yml"
+        acceptance_criteria:
+          - "All inputs.yml files document that docs/plans/ is target project relative"
+          - "Add base_path clarification comment at top of inputs files"
+        status: "completed"
+        completed_date: "2026-01-06"
+
+      - id: "rem_cp002"
+        name: "Add required_inputs sections to inputs.yml"
+        description: |
+          inputs.yml files don't distinguish between required inputs (must be provided by
+          user/orchestration) and reference inputs (background context). Add required_inputs
+          section to critical agents.
+        severity: "critical"
+        affected_agents:
+          - orchestration-planning
+          - orchestration-build
+          - planner-build
+          - planner-guidance
+        target_files:
+          - "agents/orchestration/orchestration-planning/inputs.yml"
+          - "agents/orchestration/orchestration-build/inputs.yml"
+          - "agents/planner/planner-build/inputs.yml"
+          - "agents/planner/planner-guidance/inputs.yml"
+        acceptance_criteria:
+          - "Each inputs.yml has required_inputs section"
+          - "Required inputs clearly marked vs optional context"
+        status: "completed"
+        completed_date: "2026-01-06"
+
+      # HIGH Issues
+      - id: "rem_hp001"
+        name: "Add loop_context to loop participants"
+        description: |
+          Agents participating in loops (audit-test-fix-loop, guidance-test-loop) lack
+          explicit loop_context sections specifying role, iteration strategy, exit conditions.
+        severity: "high"
+        affected_agents:
+          - test-audit
+          - orchestration-guidance
+        target_files:
+          - "agents/test/test-audit/process.yml"
+          - "agents/orchestration/orchestration-guidance/process.yml"
+        acceptance_criteria:
+          - "Each agent has loop_context section"
+          - "Specifies participates_in, role, iteration_strategy, exit_conditions"
+        status: "completed"
+        completed_date: "2026-01-06"
+        notes: "Added to test-audit/process.yml and orchestration-guidance/manifest.yml"
+
+      - id: "rem_hp002"
+        name: "Define output schemas for agents"
+        description: |
+          Multiple agents have outputs: [] but steps describe generating reports/recommendations.
+          Add structured output schemas.
+        severity: "high"
+        affected_agents:
+          - test-audit
+          - teacher-update-guidance
+          - orchestration-guidance
+        target_files:
+          - "agents/test/test-audit/process.yml"
+          - "agents/teacher/teacher-update-guidance/process.yml"
+          - "agents/orchestration/orchestration-guidance/process.yml"
+        acceptance_criteria:
+          - "Each agent has populated outputs section"
+          - "Output format, location, and structure defined"
+        status: "completed"
+        completed_date: "2026-01-06"
+        notes: "Added structured output schemas to all three agents"
+
+      - id: "rem_hp003"
+        name: "Standardize fragment reference syntax"
+        description: |
+          References like 'agent-categories.yml#planner' use fragment syntax that is not
+          universally supported. Document resolution mechanism or convert to explicit paths.
+        severity: "high"
+        target_files:
+          - "agents/planner/planner-build/inputs.yml"
+          - "agents/planner/planner-guidance/inputs.yml"
+          - "agents/orchestration/orchestration-planning/inputs.yml"
+        acceptance_criteria:
+          - "Fragment references documented with resolution rules OR"
+          - "Converted to explicit section references"
+        status: "completed"
+        completed_date: "2026-01-06"
+        notes: "Created assets/definitions/fragment-references.yml documenting resolution rules"
+
+      # MEDIUM Issues
+      - id: "rem_mp001"
+        name: "Reduce excessive context loading"
+        description: |
+          teacher-update-guidance loads cleaner-shared and test-shared layers that are
+          irrelevant, violating context-minimisation. Create teacher-specific layer.
+        severity: "medium"
+        affected_agents:
+          - teacher-update-guidance
+        target_files:
+          - "agents/teacher/teacher-update-guidance/inputs.yml"
+          - "assets/inputs/teacher-shared.yml (create)"
+        acceptance_criteria:
+          - "teacher-update-guidance uses only relevant layers"
+          - "Context load reduced by removing irrelevant layers"
+        status: "completed"
+        completed_date: "2026-01-06"
+        notes: "Removed cleaner-shared.yml and test-shared.yml layers"
+
+      - id: "rem_mp002"
+        name: "Align version numbers across files"
+        description: |
+          Version mismatches between inputs.yml and manifest.yml create confusion.
+          Standardize versioning scheme.
+        severity: "medium"
+        affected_agents:
+          - planner-test
+          - test-audit
+        acceptance_criteria:
+          - "All files in agent folder use same version"
+          - "Version scheme documented"
+        status: "completed"
+        completed_date: "2026-01-06"
+        notes: "Aligned versions to 2.0, added version scheme comments to manifest.yml files"
+
+  # ========================================
+  # FRICTION REMEDIATION PHASE 2 (Priority)
+  # Added after session 3 agent self-review testing
+  # ========================================
+  - name: Friction Remediation Phase 2
+    execution: sequential
+    description: "Address critical friction patterns found during session 3 agent self-review testing"
+    priority: critical
+    audit_ref: "audit/260106_session2_self_review_results.yml"
+    tasks:
+      # CRITICAL Issues
+      - id: "rem2_001"
+        name: "Resolve legacy-only planner agents"
+        description: |
+          planner-phases and planner-teach exist ONLY in legacy location and have NOT been
+          migrated to modules/AgenticGuidance/agents/planner/. They are not listed in
+          agent-categories.yml and no entrypoint references them.
+        severity: "critical"
+        affected_agents:
+          - planner-phases (legacy only)
+          - planner-teach (legacy only)
+        options:
+          - "Migrate with full updates (PATH RESOLUTION, required_inputs, layers)"
+          - "Deprecate if functionality absorbed by other agents (SELECTED)"
+          - "Merge into orchestration-planning"
+        acceptance_criteria:
+          - "Decision documented: Deprecate legacy agents"
+          - "Legacy folders marked with DEPRECATED.md"
+          - "References removed from entrypoints/manifests"
+        status: "pending"
+
+      - id: "rem2_002"
+        name: "Fix fragment reference resolution"
+        description: |
+          Fragment references like 'agent-loops.yml#planner-loop' assume top-level keys,
+          but actual file structure nests under 'loop_types.planner-loop'. Same issue for
+          'agent-categories.yml#planner' which is under 'agent_categories.planner'.
+        severity: "critical"
+        affected_agents:
+          - orchestration-planning
+          - planner-guidance
+          - planner-build
+        options:
+          - "Update fragment-references.yml to support dot-notation"
+          - "Restructure definition files to have target keys at top level"
+          - "Update all references to use correct nested paths"
+        acceptance_criteria:
+          - "Fragment references resolve correctly"
+          - "Documentation updated if syntax changes"
+        status: "pending"
+
+      - id: "rem2_003"
+        name: "Standardize process file format"
+        description: |
+          orchestration-planning and orchestration-build have process.mmd but no process.yml.
+          Other agents expect process.yml for execution instructions.
+        severity: "critical"
+        affected_agents:
+          - orchestration-planning
+          - orchestration-build
+        options:
+          - "Create process.yml wrappers that reference process.mmd"
+          - "Standardize .mmd as a first-class process format (SELECTED)"
+          - "Update agent loader to handle .mmd-only agents"
+        acceptance_criteria:
+          - "agent-context-files.yml allows .mmd format"
+          - "agent-role-scope-matrix.md references .mmd directly"
+        status: "pending"
+
+      - id: "rem2_004"
+        name: "Address NOT_MIGRATED test agents"
+        description: |
+          planner-test manifest references test agents that don't exist:
+          test-user-simulator, test-service, test-builder (all NOT_MIGRATED)
+        severity: "critical"
+        affected_agents:
+          - planner-test
+        missing_agents:
+          - test-user-simulator
+          - test-service
+          - test-builder
+        options:
+          - "Add structured fallback_path fields for NOT_MIGRATED agents"
+          - "Migrate the missing agents (SELECTED)"
+          - "Remove strategies that require unmigrated agents"
+        acceptance_criteria:
+          - "Missing test agents migrated to modules/AgenticGuidance/agents/test/"
+          - "planner-test manifest updated with correct paths"
+        status: "pending"
+
+      # HIGH Issues
+      - id: "rem2_005"
+        name: "Align version numbers"
+        description: |
+          Multiple agents have different versions in manifest.yml vs inputs.yml.
+          Example: planner-build has manifest 1.0 but inputs 2.0-p1.
+        severity: "high"
+        affected_agents:
+          - planner-build
+          - planner-guidance
+        acceptance_criteria:
+          - "Version numbers consistent within each agent"
+          - "Version scheme documented"
+        status: "pending"
+
+      - id: "rem2_006"
+        name: "Populate output schemas"
+        description: |
+          Process files declare outputs: [] but steps describe generating artifacts.
+          No formal output schema for downstream consumers.
+        severity: "high"
+        affected_agents:
+          - orchestration-planning
+          - orchestration-build
+          - planner-build
+          - planner-guidance
+          - planner-test
+        acceptance_criteria:
+          - "outputs sections have formal schemas"
+          - "Schemas include path templates, required fields, schema references"
+        status: "pending"
+
+      - id: "rem2_007"
+        name: "Centralize CLI command documentation"
+        description: |
+          CLI commands are duplicated between inputs.yml files with slight variations.
+        severity: "high"
+        affected_agents:
+          - orchestration-build
+          - orchestration-planning
+        target_files:
+          - "assets/definitions/cli-commands.yml (create)"
+        acceptance_criteria:
+          - "Single source of truth for CLI command documentation"
+          - "All inputs.yml files reference shared definition"
+        status: "pending"
+
+      - id: "rem2_008"
+        name: "Add spawns declarations"
+        description: |
+          Orchestration agents spawn many agents but don't declare these in manifest.yml.
+          orchestration-build spawns 9+ agents.
+        severity: "high"
+        affected_agents:
+          - orchestration-build
+          - orchestration-planning
+        acceptance_criteria:
+          - "manifest.yml has spawns section listing spawnable agents"
+          - "Can validate spawn chain integrity at load time"
+        status: "pending"
+
+      - id: "rem2_009"
+        name: "Explicit required input validation"
+        description: |
+          inputs.yml defines required_inputs but process.yml step 1 only says
+          "if an input cannot be found do not proceed" without explicit validation.
+        severity: "high"
+        affected_agents:
+          - planner-guidance
+          - planner-build
+          - planner-test
+        acceptance_criteria:
+          - "Process step 1 explicitly lists required inputs"
+          - "Error messaging pattern documented"
+        status: "pending"
+
+      - id: "rem2_010"
+        name: "Define REPO_ROOT variable"
+        description: |
+          deploy-worktree uses ${REPO_ROOT} in git commands but this variable
+          is never defined or documented.
+        severity: "high"
+        affected_agents:
+          - deploy-worktree
+        acceptance_criteria:
+          - "REPO_ROOT defined in inputs.yml or replaced with target_project_path"
+          - "Git commands use consistent variable"
+        status: "pending"
+
+      - id: "rem2_011"
+        name: "Clarify path resolution prefixes"
+        description: |
+          Dual path resolution (module root vs target project root) can cause confusion.
+          Consider using explicit prefixes.
+        severity: "high"
+        acceptance_criteria:
+          - "Path resolution rules are unambiguous"
+          - "Either use explicit prefixes or enhanced documentation"
+        status: "pending"
+
+  - name: CLI Offloading
+    execution: sequential
+    description: "Offload deterministic tasks to agentic-cli"
+    tasks:
+      - id: "cli_002a"
+        name: "Worktree setup offload"
+        status: "pending"
+      - id: "cli_002b"
+        name: "Plan folder validation offload"
+        status: "pending"
+      - id: "cli_002c"
+        name: "Task status updates offload"
+        status: "pending"
+      - id: "cli_002d"
+        name: "Completed task movement offload"
+        status: "pending"
+
+  - name: Entrypoint & Schema
+    execution: parallel
+    description: "Finalize entrypoints and define Plan-MMD schema"
+    tasks:
+      - id: "ent_004"
+        name: "Evaluate orchestration pattern unification"
+        status: "pending"
+      - id: "mmd_001"
+        name: "Define Plan-MMD Schema"
+        status: "pending"
+
+  - name: Orchestration Remodel & De-linearization
+    execution: sequential
+    description: "Remodel cleaner loop and de-linearize planning phases for agent autonomy"
+    related_plan: "live/plan_live_orchestration_remodel.yml"
+    tasks:
+      - id: "remod_001"
+        name: "Execute Orchestration Remodel Plan"
+        description: "Complete all tasks in plan_live_orchestration_remodel.yml"
+        status: "pending"
+
+  - name: MMD Implementation
+    execution: sequential
+    description: "Update agents to use MMD-driven orchestration"
+    tasks:
+      - id: "mmd_002a"
+        name: "Update planner-build to Generate MMD"
+        status: "pending"
+      - id: "mmd_003"
+        name: "Create Generic Orchestration Executor"
+        status: "pending"
+      - id: "mmd_005"
+        name: "Test End-to-End Dynamic Orchestration"
+        status: "pending"
+
+  - name: Asset & Example Alignment
+    execution: sequential
+    description: "Align examples and definitions with the new unified architecture"
+    tasks:
+      - id: "ast_001"
+        name: "Unified Planner Examples"
+        description: "Update asset examples to use plan_<name>.yml + orchestration_<name>.mmd"
+        status: "pending"
+      - id: "ast_002"
+        name: "Add Metadata Examples"
+        description: "Add README.md metadata examples to planning folder assets"
+        status: "pending"
+      - id: "ast_003"
+        name: "Cleanup Legacy Split Examples"
+        description: "Remove build/teach/test split plan examples from assets"
+        status: "pending"
+      - id: "ast_004"
+        name: "Update Planner Inputs"
+        description: "Update planner-build and planner-guidance inputs.yml to reference the new unified examples and MMD files"
+        status: "pending"
+
+  - name: Agent Self-Review Testing
+    execution: parallel
+    description: "Spawn each agent to review their own guidance files for correctness and completeness"
+    status: "completed"
+    completed_date: "2026-01-06"
+    notes: "Session 3: All 19 agents reviewed. See audit/260106_session2_self_review_results.yml"
+    tasks:
+      # Orchestration Agents
+      - id: "test_agent_001"
+        name: "orchestration-planning self-review"
+        description: "Spawn test-guidance-simulator to have orchestration-planning review its own process.mmd, process.yml, and inputs.yml"
+        agent: "test-guidance-simulator"
+        target: "agents/orchestration/orchestration-planning/"
+        status: "pending"
+      - id: "test_agent_002"
+        name: "orchestration-build self-review"
+        description: "Spawn test-guidance-simulator to have orchestration-build review its own guidance"
+        agent: "test-guidance-simulator"
+        target: "agents/orchestration/orchestration-build/"
+        status: "pending"
+      - id: "test_agent_003"
+        name: "orchestration-guidance self-review"
+        description: "Spawn test-guidance-simulator to have orchestration-guidance review its own guidance"
+        agent: "test-guidance-simulator"
+        target: "agents/orchestration/orchestration-guidance/"
+        status: "pending"
+      # Planner Agents
+      - id: "test_agent_004"
+        name: "planner-build self-review"
+        description: "Spawn test-guidance-simulator to have planner-build review its own guidance"
+        agent: "test-guidance-simulator"
+        target: "agents/planner/planner-build/"
+        status: "pending"
+      - id: "test_agent_005"
+        name: "planner-guidance self-review"
+        description: "Spawn test-guidance-simulator to have planner-guidance review its own guidance"
+        agent: "test-guidance-simulator"
+        target: "agents/planner/planner-guidance/"
+        status: "pending"
+      - id: "test_agent_006"
+        name: "planner-test self-review"
+        description: "Spawn test-guidance-simulator to have planner-test review its own guidance"
+        agent: "test-guidance-simulator"
+        target: "agents/planner/planner-test/"
+        status: "pending"
+      - id: "test_agent_007"
+        name: "planner-reviewer self-review"
+        description: "Spawn test-guidance-simulator to have planner-reviewer review its own guidance"
+        agent: "test-guidance-simulator"
+        target: "agents/planner/planner-reviewer/"
+        status: "pending"
+      - id: "test_agent_008"
+        name: "planner-cleaning self-review"
+        description: "Spawn test-guidance-simulator to have planner-cleaning review its own guidance"
+        agent: "test-guidance-simulator"
+        target: "agents/planner/planner-cleaning/"
+        status: "pending"
+      - id: "test_agent_009"
+        name: "planner-guidance-testing self-review"
+        description: "Spawn test-guidance-simulator to have planner-guidance-testing review its own guidance"
+        agent: "test-guidance-simulator"
+        target: "agents/planner/planner-guidance-testing/"
+        status: "pending"
+      # Test Agents
+      - id: "test_agent_010"
+        name: "test-audit self-review"
+        description: "Spawn test-guidance-simulator to have test-audit review its own guidance"
+        agent: "test-guidance-simulator"
+        target: "agents/test/test-audit/"
+        status: "pending"
+      - id: "test_agent_011"
+        name: "test-guidance-simulator self-review"
+        description: "Spawn test-guidance-simulator to review its own guidance (meta-review)"
+        agent: "test-guidance-simulator"
+        target: "agents/test/test-guidance-simulator/"
+        status: "pending"
+      - id: "test_agent_012"
+        name: "test-runner self-review"
+        description: "Spawn test-guidance-simulator to have test-runner review its own guidance"
+        agent: "test-guidance-simulator"
+        target: "agents/test/test-runner/"
+        status: "pending"
+      - id: "test_agent_013"
+        name: "test-final-output self-review"
+        description: "Spawn test-guidance-simulator to have test-final-output review its own guidance"
+        agent: "test-guidance-simulator"
+        target: "agents/test/test-final-output/"
+        status: "pending"
+      # Teacher Agents
+      - id: "test_agent_014"
+        name: "teacher-update-guidance self-review"
+        description: "Spawn test-guidance-simulator to have teacher-update-guidance review its own guidance"
+        agent: "test-guidance-simulator"
+        target: "agents/teacher/teacher-update-guidance/"
+        status: "pending"
+      - id: "test_agent_015"
+        name: "teacher-update-assets self-review"
+        description: "Spawn test-guidance-simulator to have teacher-update-assets review its own guidance"
+        agent: "test-guidance-simulator"
+        target: "agents/teacher/teacher-update-assets/"
+        status: "pending"
+      # Deploy Agents
+      - id: "test_agent_016"
+        name: "deploy-worktree self-review"
+        description: "Spawn test-guidance-simulator to have deploy-worktree review its own guidance"
+        agent: "test-guidance-simulator"
+        target: "agents/deploy/deploy-worktree/"
+        status: "pending"
+      - id: "test_agent_017"
+        name: "deploy-cicd self-review"
+        description: "Spawn test-guidance-simulator to have deploy-cicd review its own guidance"
+        agent: "test-guidance-simulator"
+        target: "agents/deploy/deploy-cicd/"
+        status: "pending"
+      # Build Agents
+      - id: "test_agent_018"
+        name: "build-flutter self-review"
+        description: "Spawn test-guidance-simulator to have build-flutter review its own guidance"
+        agent: "test-guidance-simulator"
+        target: "agents/build/build-flutter/"
+        status: "pending"
+      - id: "test_agent_019"
+        name: "build-python self-review"
+        description: "Spawn test-guidance-simulator to have build-python review its own guidance"
+        agent: "test-guidance-simulator"
+        target: "agents/build/build-python/"
+        status: "pending"
+
+  - name: CLI Fitness Testing
+    execution: sequential
+    description: "Test agentic-cli commands to ensure they are fit for purpose"
+    tasks:
+      - id: "test_cli_001"
+        name: "Test plan commands"
+        description: "Test agentic plan scaffold, status, validate, task, archive, list, move commands"
+        cli_module: "plan.py"
+        test_commands:
+          - "agentic plan list"
+          - "agentic plan status"
+          - "agentic plan validate"
+        status: "pending"
+      - id: "test_cli_002"
+        name: "Test worktree commands"
+        description: "Test agentic worktree create, list, remove, status commands"
+        cli_module: "worktree.py"
+        test_commands:
+          - "agentic worktree list"
+          - "agentic worktree status"
+        status: "pending"
+      - id: "test_cli_003"
+        name: "Test inputs commands"
+        description: "Test agentic inputs validate, resolve commands"
+        cli_module: "inputs.py"
+        test_commands:
+          - "agentic inputs validate"
+        status: "pending"
+      - id: "test_cli_004"
+        name: "Test manifest commands"
+        description: "Test agentic manifest show command"
+        cli_module: "manifest.py"
+        test_commands:
+          - "agentic manifest show"
+        status: "pending"
+      - id: "test_cli_005"
+        name: "Test state commands"
+        description: "Test agentic state list, show, clear, cleanup commands"
+        cli_module: "state.py"
+        test_commands:
+          - "agentic state list"
+        status: "pending"
+      - id: "test_cli_006"
+        name: "Test health commands"
+        description: "Test agentic health command for system verification"
+        cli_module: "health.py"
+        test_commands:
+          - "agentic health"
+        status: "pending"
+      - id: "test_cli_007"
+        name: "Test config commands"
+        description: "Test agentic config commands"
+        cli_module: "config.py"
+        test_commands:
+          - "agentic config show"
+        status: "pending"
+      - id: "test_cli_008"
+        name: "CLI integration test"
+        description: "Full integration test of CLI with agent orchestration workflow"
+        test_scenario: "Execute full plan lifecycle using CLI commands"
+        status: "pending"
+
+# ========================================
+# SUCCESS CRITERIA
+# ========================================
+success_criteria:
+  - "Friction Remediation Phase 2: All 11 tasks completed (4 CRITICAL, 7 HIGH)"
+  - "CLI Offloading: Worktree, plan folder, task status, and completed task movement handled by agentic-cli"
+  - "Entrypoint & Schema: Orchestration pattern evaluated, Plan-MMD schema defined"
+  - "MMD Implementation: Planners generate MMD, generic executor created, end-to-end tested"
+  - "Asset Alignment: Examples use unified plan + orchestration.mmd pattern"
+  - "DECISION-001 resolved: Legacy agents deprecated with DEPRECATED.md files"
+  - "DECISION-002 resolved: Test agents migrated to modules/AgenticGuidance/agents/test/"

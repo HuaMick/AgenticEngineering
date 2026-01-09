@@ -4,7 +4,7 @@ This directory contains agent process definitions that have been migrated to the
 
 ## Purpose
 
-The `agents/` directory organizes guidance for structured agent behaviors. Each agent category has:
+The `modules/AgenticGuidance/agents/` directory organizes guidance for structured agent behaviors. Each agent category has:
 
 - A **manifest** that lists sub-agents and their routing logic
 - Individual **sub-agent directories** containing:
@@ -66,10 +66,10 @@ Agents should reference **category manifests** rather than individual process fi
 
 ```yaml
 # Preferred: Reference the category manifest
-test_agents: "agents/test/manifest.yml"
+test_agents: "modules/AgenticGuidance/agents/test/manifest.yml"
 
 # Avoid: Direct process file references
-test_runner: "agents/test/test-runner/process.yml"
+test_runner: "modules/AgenticGuidance/agents/test/test-runner/process.yml"
 ```
 
 **Why:**
@@ -102,11 +102,11 @@ This approach:
 
 When migrating additional agent categories to AgenticGuidance:
 
-1. **Update the top-level manifest** (`agents/manifest.yml`)
+1. **Update the top-level manifest** (`modules/AgenticGuidance/agents/manifest.yml`)
    - Move category from `not_migrated` to `categories`
    - Add sub-agent list with descriptions
 
-2. **Create the category directory** (`agents/<category>/`)
+2. **Create the category directory** (`modules/AgenticGuidance/agents/<category>/`)
    - Add `manifest.yml` with routing logic
    - Migrate each sub-agent directory
 
@@ -122,7 +122,7 @@ When migrating additional agent categories to AgenticGuidance:
 ## Directory Structure
 
 ```
-agents/
+modules/AgenticGuidance/agents/
 ├── manifest.yml              # Top-level agent manifest
 ├── README.md                 # This file
 └── planner/                  # Planner agent category (migrated)
@@ -137,6 +137,6 @@ agents/
 
 ## Related Files
 
-- `agents/manifest.yml` - Lists all migrated and non-migrated agent categories
-- `assets/definitions/agent-categories.yml` - Category definitions and characteristics
+- `modules/AgenticGuidance/agents/manifest.yml` - Lists all migrated and non-migrated agent categories
+- `modules/AgenticGuidance/assets/definitions/agent-categories.yml` - Category definitions and characteristics
 - `docs/agent-role-scope-matrix.md` - Role and scope documentation for all agents

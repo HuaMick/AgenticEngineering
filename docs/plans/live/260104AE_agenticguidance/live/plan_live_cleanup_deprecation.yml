@@ -1,0 +1,174 @@
+# plan_live_cleanup_deprecation.yml
+# Created: 2026-01-07
+# Purpose: Deprecate legacy planner-phases and planner-teach agents per DECISION-001 (Option B)
+
+# ========================================
+# ROOT-LEVEL PLAN METADATA (Required)
+# ========================================
+name: "cleanup-deprecation"
+worktree_path: "/home/code/AgenticEngineering-agenticguidance"
+branch: "agenticguidance"
+status: "active"
+priority: "high"
+
+# File paths for plan management
+worktree: "/home/code/AgenticEngineering-agenticguidance"
+plan_file: "docs/plans/live/260104AE_agenticguidance/live/plan_live_cleanup_deprecation.yml"
+
+# ========================================
+# CONTEXT (Narrative Updates)
+# ========================================
+context: |
+  This plan handles the deprecation of legacy planner agents (planner-phases and planner-teach)
+  as determined by DECISION-001 Option B. The decision was to keep the existing AgenticGuidance
+  structure and maintain legacy agents separately with proper deprecation markers.
+
+  The legacy agents' functionality has been absorbed into:
+  - planner-phases -> orchestration-planning Phase Determination Subgraph
+  - planner-teach -> planner-guidance agent
+
+  UPDATE 2026-01-07: Plan created after coverage analysis confirmed full coverage of legacy
+  agent functionality by current AgenticGuidance agents. No dangling references found in
+  the active codebase.
+
+  NEXT: Execute deprecation tasks to create DEPRECATED.md files and verify no dangling references.
+
+# ========================================
+# ROOT-LEVEL INPUTS (Pre-gathered Context)
+# ========================================
+inputs:
+  - location: "modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/planner/planner-phases/"
+    description: "Legacy planner-phases agent being deprecated (absorbed into orchestration-planning)"
+
+  - location: "modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/planner/planner-teach/"
+    description: "Legacy planner-teach agent being deprecated (replaced by planner-guidance)"
+
+  - location: "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+    description: "Coverage location for planner-phases (Phase Determination Subgraph, lines 47-61)"
+
+  - location: "modules/AgenticGuidance/agents/planner/planner-guidance/"
+    description: "Coverage location for planner-teach (planner-guidance agent)"
+
+# ========================================
+# OPEN QUESTIONS (Human-Authority Decisions)
+# ========================================
+open_questions:
+  - id: "DECISION-001"
+    question: "Should we refactor AgenticGuidance structure or keep existing and maintain legacy agents separately?"
+    severity: "high"
+    status: "ANSWERED"
+    answer: "Option B - Keep existing AgenticGuidance structure, maintain legacy agents separately with deprecation markers"
+    answered_by: "HUMAN"
+    context: |
+      Two options were considered:
+      - Option A: Refactor AgenticGuidance to match legacy MyAgentsGuidance structure
+      - Option B: Keep existing structure, mark legacy agents as deprecated
+      Human decided on Option B for stability and to avoid unnecessary refactoring.
+    options:
+      - "Option A: Refactor AgenticGuidance structure"
+      - "Option B: Keep existing structure (Selected)"
+
+# ========================================
+# COVERAGE ANALYSIS (Domain-specific context)
+# ========================================
+coverage_analysis:
+  planner_phases:
+    legacy_location: "modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/planner/planner-phases/"
+    legacy_goal: "Decompose objective into required implementation phases (teach, build, test, cleanup, documentation)"
+    legacy_output: "Placeholder .yml files in live/ directory"
+    covered_by: "orchestration-planning Phase Determination Subgraph"
+    coverage_location: "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd (lines 47-61)"
+    coverage_evidence:
+      - "Subgraph explicitly determines phases: teach, build, test, cleanup"
+      - "CreatePlaceholders step creates phase .yml files"
+      - "Phase determination now embedded in orchestration-planning, not separate agent"
+    verdict: "FULLY COVERED"
+
+  planner_teach:
+    legacy_location: "modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/planner/planner-teach/"
+    legacy_goal: "Create guidance-focused plan to improve agent paths, fences, and signposts"
+    legacy_output: "plan_live_teach.yml, plan_live_audit_clean.yml"
+    covered_by: "planner-guidance agent"
+    coverage_location: "modules/AgenticGuidance/agents/planner/planner-guidance/"
+    coverage_evidence:
+      - "Identical goal statement"
+      - "Same output files: plan_live_teach.yml, plan_live_audit_clean.yml"
+      - "Same loop participation: planner-loop, max 5 iterations"
+      - "Referenced in orchestration-planning line 84: Spawn planner-guidance Agent"
+    verdict: "FULLY COVERED"
+
+  dangling_references:
+    search_scope: "modules/AgenticGuidance/"
+    search_patterns: ["planner-phases", "planner-teach"]
+    results: "No matches found"
+    verdict: "NO DANGLING REFERENCES"
+
+# ========================================
+# PHASES AND TASKS
+# ========================================
+phases:
+  - name: "Deprecation Phase"
+    execution: sequential
+    description: "Create deprecation markers for legacy agents and verify no dangling references"
+    tasks:
+      - id: "DEPREC-001"
+        name: "Create DEPRECATED.md for planner-phases"
+        description: |
+          Create a DEPRECATED.md file in the legacy planner-phases folder explaining:
+          - When deprecated (2026-01-07)
+          - Why deprecated (functionality absorbed into orchestration-planning Phase Determination Subgraph)
+          - What replaced it (orchestration-planning process.mmd lines 47-61)
+          - Migration path (no action needed - use orchestration-planning)
+        target_file: "modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/planner/planner-phases/DEPRECATED.md"
+        acceptance_criteria:
+          - "DEPRECATED.md exists with date, reason, replacement, and migration info"
+          - "File is self-contained and explains the deprecation clearly"
+        status: "pending"
+
+      - id: "DEPREC-002"
+        name: "Create DEPRECATED.md for planner-teach"
+        description: |
+          Create a DEPRECATED.md file in the legacy planner-teach folder explaining:
+          - When deprecated (2026-01-07)
+          - Why deprecated (functionality moved to planner-guidance agent)
+          - What replaced it (planner-guidance at modules/AgenticGuidance/agents/planner/planner-guidance/)
+          - Migration path (update any references to use planner-guidance)
+        target_file: "modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/planner/planner-teach/DEPRECATED.md"
+        acceptance_criteria:
+          - "DEPRECATED.md exists with date, reason, replacement, and migration info"
+          - "File is self-contained and explains the deprecation clearly"
+        status: "pending"
+
+      - id: "DEPREC-003"
+        name: "Final verification scan for dangling references"
+        description: |
+          Perform a final scan across the entire repository to ensure no active code references
+          the deprecated agents (planner-phases, planner-teach). This confirms the deprecation
+          is safe and complete.
+        search_scope: "entire repository"
+        search_patterns:
+          - "planner-phases"
+          - "planner-teach"
+        acceptance_criteria:
+          - "No references found in modules/AgenticGuidance/"
+          - "Any references found in modules/legacy/ are expected and acceptable"
+          - "Document findings in task completion notes"
+        status: "pending"
+
+# ========================================
+# SUCCESS CRITERIA
+# ========================================
+success_criteria:
+  - "DEPRECATED.md files exist in both legacy agent folders"
+  - "Deprecation files clearly document the date, reason, replacement, and migration path"
+  - "No dangling references to deprecated agents exist in active AgenticGuidance module"
+  - "Legacy agents remain in place for historical reference (not deleted)"
+
+# ========================================
+# EXECUTION NOTES
+# ========================================
+execution_notes:
+  - "DEPREC-001 and DEPREC-002 can be executed in parallel"
+  - "DEPREC-003 should be executed after DEPREC-001 and DEPREC-002 for final verification"
+  - "No code changes required in active AgenticGuidance module - only DEPRECATED.md files needed"
+  - "Legacy agents remain in place for reference - they are not deleted, just marked deprecated"

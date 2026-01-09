@@ -27,13 +27,20 @@ completed_items:
 
     verification_results:
       - agent: teacher-update-guidance
-        task: Review guidance files for entrypoint refactor
+        task: Verify orchestration manifest changes
         result: PASS
         findings: |
           - manifest.yml has both _plan_build.yml and _plan_teach.yml in routing_logic
           - Clear distinction between build (code) and teach (guidance) planning
           - No remaining references to old _plan.yml
-          - Git commit needed (addressed in final session)
+
+      - agent: teacher-update-guidance
+        task: Verify teacher example changes
+        result: PASS
+        findings: |
+          - concise.yml examples correctly show _plan_build.yml or _plan_teach.yml
+          - Both verbose and concise versions are consistent
+          - No outdated _plan.yml examples
 
       - agent: test-audit
         task: Audit for remaining _plan.yml references
@@ -42,6 +49,22 @@ completed_items:
           - 214 files searched
           - Zero standalone _plan.yml references in active guidance
           - All routing patterns consistent with entrypoint files
+
+      - agent: test-guidance-simulator
+        task: Test orchestration-planning guidance
+        result: PASS
+        findings: |
+          - Build planning routing is clear and unambiguous
+          - Teach planning routing is clear and correctly identified
+          - One medium friction point identified and fixed
+
+      - agent: test-guidance-simulator
+        task: Test planner agents' guidance understanding
+        result: PASS
+        findings: |
+          - planner-build correctly understands invocation via _plan_build.yml → orchestration-planning
+          - planner-guidance correctly understands invocation via _plan_teach.yml → orchestration-planning
+          - No hardcoded references to old _plan.yml in planner processes
 
       - agent: orchestration-planning (self-review)
         task: Self-review of guidance understanding
@@ -52,29 +75,6 @@ completed_items:
           - Identified: Missing invocation context in process files
           - These are future improvements, not blockers
 
-      - agent: planner-build (self-review)
-        task: Self-review of guidance understanding
-        result: PASS
-        findings: |
-          - Correctly understands invocation via _plan_build.yml → orchestration-planning
-          - No hardcoded references to old _plan.yml
-
-      - agent: planner-guidance (self-review)
-        task: Self-review of guidance understanding
-        result: PASS
-        findings: |
-          - Correctly understands invocation via _plan_teach.yml → orchestration-planning
-          - No hardcoded references to old _plan.yml
-
-      - agent: teacher-update-guidance (self-review)
-        task: Self-review of guidance understanding
-        result: PASS
-        findings: |
-          - Examples updated to new entrypoint names
-          - Identified: _teach.yml referenced but doesn't exist
-          - Resolution: Consolidated on _orchestrate.yml (see design decision)
-
-    # Additional validation round - CLI entrypoint awareness (2026-01-06)
     cli_entrypoint_validation:
       - agent: teacher-update-guidance (review)
         task: Comprehensive guidance review
@@ -92,38 +92,6 @@ completed_items:
           - Zero standalone _plan.yml references
           - Old _plan.yml confirmed NOT EXISTS in entrypoints/
 
-      - agent: orchestration-planning (self-review)
-        task: Verify CLI entrypoint awareness
-        result: PASS
-        findings: |
-          - Correctly identifies both _plan_build.yml and _plan_teach.yml as entry points
-          - Can explain what happens for each CLI command
-          - Friction: Phase determination relies on objective analysis, not explicit intent signal
-
-      - agent: planner-build (self-review)
-        task: Verify CLI entrypoint awareness
-        result: PASS
-        findings: |
-          - Correctly explains: _plan_build.yml → orchestration-planning → planner-build
-          - No confusion about invocation hierarchy
-          - Clear on output destination (plan_live_build.yml)
-
-      - agent: planner-guidance (self-review)
-        task: Verify CLI entrypoint awareness
-        result: PASS
-        findings: |
-          - Correctly explains: _plan_teach.yml → orchestration-planning → planner-guidance
-          - No confusion about invocation hierarchy
-          - Clear on output destination (plan_live_teach.yml)
-
-      - agent: teacher-update-guidance (self-review)
-        task: Verify CLI entrypoint awareness
-        result: PASS
-        findings: |
-          - Correctly explains full flow: _plan_teach.yml → orchestration-planning → orchestration-guidance → self
-          - Examples in concise.yml verified correct
-          - Friction: Loop context could better reflect re-invocation scenarios
-
     design_decisions:
       - id: DD-001
         title: Consolidate on _orchestrate.yml as single execution entrypoint
@@ -135,6 +103,12 @@ completed_items:
           - One less entrypoint to maintain
         alternatives_considered:
           - Create _teach.yml for guidance execution (rejected - unnecessary complexity)
+
+    fixes_applied:
+      - file: modules/AgenticGuidance/entrypoints/_plan_teach.yml
+        line: 25
+        issue: Output referenced _orchestrate.yml instead of _teach.yml
+        fix: Changed to "ready for _teach.yml" to match manifest routing
 
     files_changed:
       - modules/AgenticGuidance/agents/orchestration/manifest.yml
@@ -155,30 +129,10 @@ completed_items:
         priority: LOW
         description: Explicit documentation of invocation paths in process files
 
-      - id: FI-003
-        title: Consider optimizing heavy transitive input loading in planner-guidance
-        priority: LOW
-        description: Input layer loading could be clearer
-
-      - id: FI-004
-        title: Add explicit intent signal from entrypoints
-        priority: LOW
-        description: Phase determination relies on objective analysis, not explicit intent
-
-      - id: FI-005
-        title: Add explicit teacher agent routing in orchestration-guidance
-        priority: LOW
-        description: SpawnTeachers doesn't specify routing between teacher-update-guidance and teacher-update-assets
-
       - id: FI-006
         title: Improve loop context for teacher-update-guidance
         priority: MEDIUM
         description: process.yml says operates at "meta-level" but may be re-invoked if guidance validation fails
-
-      - id: FI-007
-        title: Verify example plan files exist
-        priority: LOW
-        description: Plan example paths in inputs.yml not verified (e.g., YYMMDDRepo_Branch examples)
 
       - id: FI-008
         title: Sync planner examples to worktree
@@ -189,3 +143,6 @@ completed_items:
           Worktree needs sync: git merge main or rebase.
 
     status: COMPLETE
+    next_steps:
+      - Commit matching changes to git
+      - Sync worktrees

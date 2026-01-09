@@ -3,12 +3,12 @@ process:
     Create new git worktrees and update VS Code workspace file configuration.
 
   loop_definitions:
-    reference: "assets/definitions/agent-loops.yml"
+    reference: "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
     description: "Loop types defined in agent-loops.yml"
     # NOTE: Do not duplicate loop definitions here - see agent-loops.yml for full definitions
 
   inputs:
-    - location: "agents/deploy/deploy-worktree/inputs.yml"
+    - location: "modules/AgenticGuidance/agents/deploy/deploy-worktree/inputs.yml"
       description: "Core deploy-worktree agent inputs, guidelines, and worktree operation procedures"
 
   outputs: []
@@ -24,42 +24,46 @@ process:
       the discrepancy in your output.
     - |
       Determine current worktree context:
-      Reference inputs.yml definitions (git_worktree, worktree_naming_convention) for:
-      - Worktree structure and path conventions
-      - Commands for worktree operations
-      - Expected directory patterns
+      Use CLI command: `agentic worktree status`
+      This returns JSON with path, branch, is_worktree flag, and active plans.
+      Reference inputs.yml definitions for context interpretation.
     - |
       Create new worktree if requested:
-      Reference inputs.yml definitions (worktree_operations, branch_strategy) for:
-      - Worktree creation procedures and safety checks
-      - Branch naming conventions and merge flow
-      - Verification steps
+      Use CLI command: `agentic worktree create <branch> --base <base-branch>`
+      The CLI handles:
+      - Git worktree creation with proper path conventions
+      - Planning folder scaffolding (docs/plans/live/<folder_name>/)
+      - All placeholder file creation
+      Verify with: `agentic worktree status`
     - |
       Update VS Code workspace file:
       Reference inputs.yml definitions (workspace_file, worktree_naming_convention) for:
       - Workspace file structure and formatting requirements
       - Folder naming patterns
       - Git repository scanning configuration
+      NOTE: Workspace file update remains manual as it requires VS Code integration.
     - |
       Verify workspace file validity and accessibility:
       Reference inputs.yml definitions (worktree_operations) for validation requirements
     - |
-      Create Planning Scaffolding:
-      Reference inputs.yml definitions (planning_scaffolding) and assets/definitions/plans.yml:
-      1. Generate folder name following YYMMDDRepo_Branch convention.
-      2. Create directory at docs/plans/live/<folder_name>/ and internal subdirectories live/ and completed/.
-      3. Initialize the four placeholder files in their respective subdirectories:
-         - live/plan_live_teach.yml (populated with metadata: name, worktree path, branch, status: planning)
-         - live/plan_live_test.yml (empty: phases: [])
-         - live/plan_live_audit_clean.yml (empty: phases: [])
-         - completed/plan_completed.yml (empty: completed_items: [])
+      Validate Planning Folder Structure:
+      Use CLI command: `agentic plan validate <plan_folder_path>`
+      The CLI validates:
+      - live/ and completed/ subdirectory existence
+      - YAML file syntax in all plan files
+      - Required placeholder files present
+      Reference modules/AgenticGuidance/assets/definitions/plans.yml for structure requirements.
     - |
       Final Verification:
-      Confirm worktree, workspace entry, and planning folder structure (live/, completed/) with all 4 files exist in their correct locations.
+      Use CLI commands in sequence:
+      1. `agentic worktree list` - Confirm worktree appears in list
+      2. `agentic plan list` - Confirm planning folder detected
+      3. `agentic plan status --path <plan_folder>` - Verify folder structure
+      Report any CLI validation errors to user.
 
   guidelines:
-    # Core guidelines: See assets/guidelines/ (safety.yml, fix-the-source.yml, worktree-and-branching.yml)
-    # Core definitions: See assets/definitions/ (plans.yml, domains.yml, workflows.yml, entrypoints.yml)
+    # Core guidelines: See modules/AgenticGuidance/assets/guidelines/ (safety.yml, fix-the-source.yml, worktree-and-branching.yml)
+    # Core definitions: See modules/AgenticGuidance/assets/definitions/ (plans.yml, domains.yml, workflows.yml, entrypoints.yml)
     # Worktree procedures: See inputs.yml definitions (git_worktree, workspace_file, worktree_operations)
     - |
       All detailed worktree procedures are in inputs.yml definitions.

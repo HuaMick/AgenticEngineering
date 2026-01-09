@@ -1,11 +1,11 @@
 flowchart LR
     %% GOAL: Orchestrate planning agents to create executable plans without execution.
     %% PROFILE: Orchestration-Planning
-    %% OUTPUT: Approved plan folder in docs/plans/live/, ready for _orchestrate.yml or _teach.yml
+    %% OUTPUT: Approved plan folder in docs/plans/live/, ready for _orchestrate.yml
     %% GUIDELINE: PLANNING ONLY policy - no execution, no exploration loops.
     %% GUIDELINE: User provides all necessary context in their prompt - no discovery phase.
-    %% GUIDELINE: assets/definitions/plans.yml - Plan types and folder structure
-    %% INPUT_PATH: agents/orchestration/orchestration-planning/inputs.yml
+    %% GUIDELINE: modules/AgenticGuidance/assets/definitions/plans.yml - Plan types and folder structure
+    %% INPUT_PATH: modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml
 
     Start((Start)) --> LoadInputs[Load Context Inputs]
 
@@ -26,10 +26,14 @@ flowchart LR
     %% ========================================
     %% WORKTREE & PLAN FOLDER SETUP
     %% ========================================
-    %% deploy-worktree agent handles worktree setup and verification
-    %% Creates or locates live plan folder (YYMMDDRepo_Branch/)
-    SpawnDeployWorktree --> VerifyWorktree[Verify Worktree & Locate/Create Live Plan Folder]
-    VerifyWorktree --> WorktreeValid{Worktree Valid?}
+    %% CLI OFFLOAD: Use agentic-cli commands for worktree and plan operations
+    %% - agentic worktree create: Creates worktree with plan folder
+    %% - agentic worktree status: Verifies worktree configuration
+    %% - agentic plan validate: Validates plan folder structure
+    %% deploy-worktree agent orchestrates CLI commands
+    SpawnDeployWorktree --> VerifyWorktree[Verify Worktree via CLI: agentic worktree status]
+    VerifyWorktree --> ValidatePlanFolder[Validate Plan Folder via CLI: agentic plan validate]
+    ValidatePlanFolder --> WorktreeValid{Worktree & Plan Valid?}
     WorktreeValid -- "No: Failed verification" --> AskUser
 
     %% ========================================
@@ -59,7 +63,7 @@ flowchart LR
     %% ========================================
     %% PLANNING LOOPS PHASE
     %% ========================================
-    %% LOOP_DEFINITION: assets/definitions/agent-loops.yml#planner-loop
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#planner-loop
     %% MAX_ITERATIONS: 5 (per planner-loop definition)
     %% ESCALATION: If max iterations reached without approval, stop and Ask User
     %%
@@ -169,13 +173,13 @@ flowchart LR
     %% OUTPUT PHASE
     %% ========================================
     %% Output the approved plan folder path.
-    %% Plan is ready for _orchestrate.yml or _teach.yml entrypoints.
+    %% Plan is ready for _orchestrate.yml entrypoints.
     MarkApproved --> OutputPhase[Generate Output]
 
     subgraph Output_SG ["Output Subgraph"]
         OutputPhase --> ReportPlanLocation[Report Live Plan Folder Path]
         ReportPlanLocation --> ReportPhases[Report Phases Created]
-        ReportPhases --> ReportNextSteps[Report Next Steps: _orchestrate.yml or _teach.yml]
+        ReportPhases --> ReportNextSteps[Report Next Steps: _orchestrate.yml]
     end
 
     ReportNextSteps --> End((End: Approved Plan Ready))

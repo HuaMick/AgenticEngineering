@@ -1,0 +1,120 @@
+# Live Plan - Build Phase (Remediation)
+# Plan: 260106AE_agenticguidance_remediation
+# Objective: Fix critical issues discovered in 260104AE_agenticguidance post-sync audit
+
+plan_name: "agenticguidance-remediation"
+worktree: "/home/code/AgenticEngineering-agenticguidance"
+branch: "agenticguidance"
+status: "completed"
+phase_type: "build"
+completed_date: "2026-01-06"
+
+parent_audit: "docs/plans/completed/260104AE_agenticguidance/audit/260106_post_sync_audit.yml"
+
+objective: |
+  Fix critical and high-priority issues discovered during the post-sync audit of the
+  entrypoint refactor. Primary focus:
+  1. CRIT-001: planner-build outputs to wrong file
+  2. HIGH-001: References to non-existent _teach.yml entrypoint
+
+phases:
+  - name: "Critical Fix Phase"
+    description: "Fix planner-build output file misconfiguration"
+    priority: P0
+    status: "completed"
+    success_criteria:
+      - "planner-build/process.yml references plan_live_build.yml (not plan_live_teach.yml)"
+      - "planner-build/inputs.yml references plan_live_build.yml"
+      - "planner-build self-review returns PASS"
+    tasks:
+      - id: "rem_001"
+        name: "Fix planner-build/process.yml output references"
+        description: |
+          Replace all occurrences of 'plan_live_teach.yml' with 'plan_live_build.yml'
+          in the planner-build process file.
+        status: "completed"
+        completed_date: "2026-01-06"
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-build/process.yml"
+        evidence: "Used Edit tool with replace_all=true to update all 5 occurrences"
+
+      - id: "rem_002"
+        name: "Fix planner-build/inputs.yml example references"
+        description: |
+          Replace plan_live_teach.yml references with plan_live_build.yml
+          in the planner-build inputs file.
+        status: "completed"
+        completed_date: "2026-01-06"
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-build/inputs.yml"
+        evidence: "Used Edit tool with replace_all=true to update all 2 occurrences"
+
+  - name: "High Priority Fix Phase"
+    description: "Remove references to non-existent _teach.yml entrypoint"
+    priority: P1
+    status: "completed"
+    success_criteria:
+      - "Zero _teach.yml references in active guidance"
+      - "References changed to _plan_teach.yml or removed per DD-001"
+    tasks:
+      - id: "rem_003"
+        name: "Update orchestration-planning/process.mmd"
+        description: |
+          Remove _teach.yml references from process.mmd.
+          Per DD-001, execution goes through _orchestrate.yml regardless of plan type.
+        status: "completed"
+        completed_date: "2026-01-06"
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+        evidence: "Used Edit tool with replace_all=true to change '_orchestrate.yml or _teach.yml' to '_orchestrate.yml' (3 occurrences)"
+
+      - id: "rem_004"
+        name: "Update orchestration-guidance/manifest.yml"
+        description: |
+          Fix the _teach.yml reference in the orchestration-guidance manifest.
+        status: "completed"
+        completed_date: "2026-01-06"
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-guidance/manifest.yml"
+        evidence: "Changed '_teach.yml' to '_plan_teach.yml' on line 12"
+
+  - name: "Verification Phase"
+    description: "Re-run affected agents for self-review"
+    priority: P2
+    status: "completed"
+    success_criteria:
+      - "planner-build self-review returns PASS"
+      - "_teach.yml audit returns 0 matches"
+    tasks:
+      - id: "rem_005"
+        name: "Re-run planner-build self-review"
+        description: "Spawn planner-build self-review agent to verify fix"
+        status: "completed"
+        completed_date: "2026-01-06"
+        agent_type: "test-guidance-simulator"
+        evidence: |
+          Agent ae05f2a returned PASS:
+          - Primary output file: plan_live_build.yml (stated 4+ times)
+          - Identity: Build planner (explicit in name, role, description)
+          - Example reference: plan_live_build.yml (build-focused example)
+          No friction points identified.
+
+      - id: "rem_006"
+        name: "Re-run _teach.yml audit"
+        description: "Search for any remaining _teach.yml references"
+        status: "completed"
+        completed_date: "2026-01-06"
+        agent_type: "test-audit"
+        evidence: |
+          Agent af7a93f returned:
+          - _teach.yml references in active guidance: 0 (PASS)
+          - _plan_teach.yml references: Correctly structured
+          - _plan.yml standalone references: 0 (PASS)
+          Only historical references remain in plan documentation (expected).
+
+summary: |
+  All remediation tasks completed successfully. Agent verification confirms:
+  - planner-build correctly references plan_live_build.yml
+  - orchestration-planning correctly outputs to _orchestrate.yml only
+  - orchestration-guidance correctly references _plan_teach.yml
+  - Zero _teach.yml references in active guidance files

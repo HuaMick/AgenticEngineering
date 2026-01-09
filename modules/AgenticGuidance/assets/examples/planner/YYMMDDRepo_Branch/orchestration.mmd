@@ -1,0 +1,67 @@
+%% ========================================
+%% PLAN ORCHESTRATION MMD
+%% ========================================
+%% PLAN_MMD_VERSION: 1.1
+%% GENERATED_BY: planner-build
+%% PLAN_FOLDER: docs/plans/live/<YYMMDDRepo_Branch>
+%% PHASES: Environment_Setup, Domain_Build, Workflow_Build, Entrypoint_Build, Integration_Test, CI_CD_Validation
+%% AGENT_ROUTING: Environment_Setup -> builder, Domain_Build -> builder, Workflow_Build -> builder, Entrypoint_Build -> builder, Integration_Test -> tester, CI_CD_Validation -> deployer
+%% STATUS: Environment_Setup=pending, Domain_Build=pending, Workflow_Build=pending, Entrypoint_Build=pending, Integration_Test=pending, CI_CD_Validation=pending
+%%
+%% This MMD shows Agents and Loops. Planners select from the collection of loops 
+%% and testing strategies defined in modules/AgenticGuidance/assets/definitions/.
+%% - Loops: test-fix-loop, audit-test-fix-loop, exploration-loop, etc.
+%% - Strategies: agent-blind-test, smoke-test, user-simulation, etc.
+
+graph TD
+    %% ========================================
+    %% PHASE FLOW WITH AGENTS AND LOOPS
+    %% ========================================
+    Start((Start)) --> Phase1[Phase 1: Environment Setup <br/> <b>builder</b>]
+    
+    Phase1 --> Phase2[Phase 2: Domain Layer Build <br/> <b>builder</b>]
+    
+    Phase2 --> Phase3[Phase 3: Workflow Layer Build <br/> <b>builder</b>]
+    
+    Phase3 --> Phase4[Phase 4: Entrypoint Layer Build <br/> <b>builder</b>]
+    
+    Phase4 --> Phase5{Phase 5: Integration Testing <br/> <b>test-fix-loop</b>}
+    
+    subgraph test-fix-loop [test-fix-loop (tester)]
+        Phase5 --> Test[Run Tests]
+        Test -- fail --> Fix[Fix Issues]
+        Fix --> Test
+        Test -- pass --> Phase6
+    end
+    
+    Phase6[Phase 6: CI/CD Validation <br/> <b>deployer</b>] --> Audit{Phase 7: Final Audit <br/> <b>audit-test-fix-loop</b>}
+    
+    subgraph audit-test-fix-loop [audit-test-fix-loop (tester)]
+        Audit --> Check[Audit Quality]
+        Check -- issues --> Remediation[Remediate]
+        Remediation --> Check
+        Check -- verified --> End((End))
+    end
+
+    %% ========================================
+    %% STRATEGIES (Example Selections)
+    %% ========================================
+    %% Phase 5 uses 'agent-blind-test' strategy for UAT
+    %% Phase 7 uses 'reward-hacking' audit strategy
+
+    %% ========================================
+    %% FEEDBACK TRIGGERS (Cross-Phase)
+    %% ========================================
+    Phase6 -- cicd_failure --> Phase5
+    Phase6 -- config_error --> Phase1
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef completed fill:#90EE90,stroke:#228B22
+    classDef inprogress fill:#FFFF99,stroke:#DAA520
+    classDef failed fill:#FFB6C1,stroke:#DC143C
+    classDef loop fill:#E1F5FE,stroke:#01579B,stroke-dasharray: 5 5
+
+    test-fix-loop:::loop
+    audit-test-fix-loop:::loop
