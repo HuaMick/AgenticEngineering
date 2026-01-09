@@ -45,6 +45,35 @@ loop_types:
     when_to_use: "Before removing code - requires consensus to reduce false positives"
     maximum_iterations: 1
     core_pattern: "Vote → Aggregate → Escalate/Execute"
+    status: "deprecated"
+    deprecated_reason: |
+      Replaced by cleaner-dependency-loop which uses explorer agents for actual
+      dependency checking rather than voting consensus. Dependency checking is
+      more reliable and produces verifiable results.
+    replacement: "cleaner-dependency-loop"
+
+  cleaner-dependency-loop:
+    purpose: "Dependency-aware cleanup with explorer verification"
+    phase: "cleanup"
+    when_to_use: "Before removing code - uses explorer to verify no active dependencies"
+    maximum_iterations: 3
+    core_pattern:
+      - "Cleaner identifies target files/code for removal"
+      - "Explorer agent checks for dependencies/usages"
+      - "Decision point: Safe to remove or defer"
+      - "Execute removal or escalate with dependency report"
+    participants:
+      - "cleaner agent (identification)"
+      - "explorer agent (dependency checking)"
+      - "orchestrator (decision and execution)"
+    exit_conditions:
+      - "All targets removed (no dependencies found)"
+      - "Deferred targets documented (dependencies exist)"
+      - "Max iterations reached (escalate remaining)"
+    safety_checks:
+      - "Explorer must verify zero usages before removal"
+      - "Indirect dependencies must be traced (transitive)"
+      - "Test coverage must be checked (removes may break tests)"
 
   documentation-loop:
     purpose: "Validate documentation through blind testing"
@@ -101,6 +130,19 @@ loop_types:
     purpose: "Iterative guidance improvement through agent self-review"
     phase: "guidance-improvement"
     when_to_use: "When updating guidance for multiple agents based on identified friction"
+    alternative_to: "guidance-test-loop"
+    selection_criteria: |
+      Use guidance-self-review-loop (LIGHTER) when:
+      - Multiple agents need guidance improvements simultaneously
+      - Friction patterns have been identified but not localized
+      - Agent context files (inputs.yml, process.yml, manifest.yml) need review
+      - Quick iteration on guidance changes is needed
+
+      Use guidance-test-loop (HEAVIER) when:
+      - Guidance completeness needs validation via blind simulation
+      - New agent processes require external validation
+      - High-confidence verification is required before deployment
+      - User stories need full execution testing
     maximum_iterations: 3
     core_pattern:
       - "Spawn target agents for self-review (parallel)"
@@ -130,7 +172,7 @@ phase_ordering:
     Standard phase order for complete implementation cycles:
   order:
     - "1. test-fix-loop (active development)"
-    - "2. cleaner-voting-loop (cleanup)"
+    - "2. cleaner-dependency-loop (cleanup with explorer verification)"
     - "3. audit-test-fix-loop (MANDATORY after cleanup)"
     - "4. user-story-validation-loop (PRIMARY SUCCESS CRITERIA)"
     - "5. documentation-loop (final phase)"
