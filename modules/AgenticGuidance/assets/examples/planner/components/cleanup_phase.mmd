@@ -1,58 +1,109 @@
 flowchart LR
-    %% COMPONENT: Cleanup Phase
-    %% PURPOSE: Demonstrate the cleanup planning loop with dependency-aware exploration
-    %% USAGE: Planners can incorporate this pattern for cleanup/audit phases
-    %% LOOP: planner-loop with planner-cleaning + planner-reviewer
-    %% INTEGRATION: cleaner-dependency-loop (replaces deprecated voting loop)
+    %% ========================================
+    %% CLEANUP PHASE COMPONENT
+    %% ========================================
+    %% GOAL: Plan cleanup using planner-cleaning + reviewer loop with dependency verification.
+    %% PROFILE: Planner-Component-Cleanup
+    %% COMPONENT_TYPE: Reusable phase component for orchestration plans
+    %% USAGE: Planners incorporate this pattern when cleanup/audit is required.
+    %%
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.planner-loop
+    %% MAX_ITERATIONS: 5 (per planner-loop definition)
+    %% ESCALATION: If max iterations reached without approval, stop and Ask User
+    %%
+    %% INTEGRATED LOOP: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.cleaner-dependency-loop
+    %% DEPENDENCY_LOOP MAX_ITERATIONS: 3 (per cleaner-dependency-loop definition)
+    %% NOTE: Replaces deprecated cleaner-voting-loop with explorer-based verification
+    %%
+    %% INPUTS (expected from orchestrator):
+    %% - target_scope: Directories or file patterns to evaluate for cleanup
+    %% - preserved_files: Reference to preserved-files.yml (never delete)
+    %% - audit_results: Prior audit findings if available
+    %%
+    %% EXIT CONDITIONS:
+    %% - Success: Cleanup plan approved with dependency-aware execution defined
+    %% - Escalate: Max iterations reached or cannot create valid plan
 
-    %% Entry point - assumes phase has been determined to require cleanup
+    %% ========================================
+    %% ENTRY POINT
+    %% ========================================
+    %% Assumes phase determination has identified cleanup as needed.
     CleanupPhaseStart((Cleanup Phase)) --> SpawnPlannerCleaning[Spawn planner-cleaning Agent]
 
-    %% Planner-cleaning identifies cleanup targets
-    %% INPUTS: target_scope, preserved_files, audit_results
+    %% ========================================
+    %% PLANNER-LOOP: PLAN CREATION
+    %% ========================================
+    %% planner-cleaning identifies cleanup targets with safety constraints.
+    %% Plan includes: targets, dependency checks, safety gates.
     SpawnPlannerCleaning --> PlanCreated{Plan Created?}
 
     PlanCreated -- "No: Error" --> EscalateCleanup((Escalate: Cannot Create Plan))
     PlanCreated -- "Yes" --> SpawnReviewer[Spawn planner-reviewer Agent]
 
-    %% Reviewer evaluates the cleanup plan
-    %% CRITERIA: target specificity, dependency awareness, safety checks
+    %% ========================================
+    %% PLANNER-LOOP: REVIEW ITERATION
+    %% ========================================
+    %% REVIEWER CRITERIA:
+    %% - Target specificity (concrete paths, not vague patterns)
+    %% - Dependency awareness (explorer integration defined)
+    %% - Safety checks (preserved files respected)
     SpawnReviewer --> ReviewResult{Plan Approved?}
 
     %% Iterative refinement loop
-    ReviewResult -- "No: Refine" --> CaptureFeedback[Capture Reviewer Feedback]
-    CaptureFeedback --> CheckIterations{Max Iterations?}
-    CheckIterations -- "No" --> SpawnPlannerCleaningFix[Spawn planner-cleaning Agent with Feedback]
-    SpawnPlannerCleaningFix --> SpawnReviewer
-    CheckIterations -- "Yes" --> EscalateCleanup
+    subgraph PlannerLoop_SG ["Planner-Loop Subgraph"]
+        ReviewResult -- "No: Refine" --> CaptureFeedback[Capture Reviewer Feedback]
+        CaptureFeedback --> CheckIterations{Max Iterations?}
+        CheckIterations -- "No: Continue" --> SpawnPlannerCleaningFix[Spawn planner-cleaning Agent]
+        SpawnPlannerCleaningFix --> SpawnReviewer
+        CheckIterations -- "Yes: Limit Reached" --> EscalateCleanup
+    end
 
-    %% Approved plan includes dependency checking
+    %% Approved plan requires dependency loop verification
     ReviewResult -- "Yes: Approved" --> VerifyDependencyLoop[Verify Dependency Loop Structure]
 
-    subgraph CleanerDependencyLoop ["Cleaner-Dependency-Loop Integration"]
-        %% Cleanup plan should define dependency-aware execution:
-        %% 1. Cleaner identifies targets
-        %% 2. Explorer checks dependencies
-        %% 3. Decision point (Cleaner or User)
-        %% 4. Execute or defer based on dependencies
+    %% ========================================
+    %% CLEANER-DEPENDENCY-LOOP INTEGRATION
+    %% ========================================
+    %% Cleanup plans MUST define dependency-aware execution.
+    %% Explorer agents verify zero usages before removal.
+    subgraph CleanerDependencyLoop_SG ["Cleaner-Dependency-Loop Integration Subgraph"]
+        %% Dependency loop execution pattern:
+        %% 1. Cleaner identifies target files/code for removal
+        %% 2. Explorer agent checks for dependencies/usages
+        %% 3. Decision point: Safe to remove or defer
+        %% 4. Execute removal or escalate with dependency report
         VerifyDependencyLoop --> CheckTargets{Cleanup Targets Defined?}
         CheckTargets -- "Yes" --> CheckExplorer{Explorer Integration?}
         CheckExplorer -- "Yes" --> CheckDecision{Decision Criteria Clear?}
         CheckDecision -- "Yes" --> CheckSafety{Safety Checks Present?}
         CheckSafety -- "Yes" --> LoopValid[Dependency Loop Valid]
 
-        %% Missing components trigger refinement
+        %% Missing components trigger refinement with specific feedback
         CheckTargets -- "No" --> MissingComponent[Flag Missing Component]
         CheckExplorer -- "No" --> MissingComponent
         CheckDecision -- "No" --> MissingComponent
         CheckSafety -- "No" --> MissingComponent
-        MissingComponent --> CaptureFeedback
+        MissingComponent -.->|Return with feedback| CaptureFeedback
     end
+
+    %% ========================================
+    %% SAFETY CONSTRAINTS
+    %% ========================================
+    %% FENCE: Cleanup MUST verify these before any removal:
+    %% - Explorer confirms zero active dependencies
+    %% - Indirect (transitive) dependencies traced
+    %% - Test coverage checked (removals may break tests)
+    %% - Preserved files list consulted
 
     LoopValid --> CleanupPhaseComplete((Cleanup Phase Complete))
 
-    %% Styling
-    classDef entrypoint fill:#90EE90
-    classDef exitpoint fill:#FFB6C1
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef entrypoint fill:#90EE90,stroke:#228B22
+    classDef exitpoint fill:#FFB6C1,stroke:#DC143C
+    classDef dashedstroke stroke-dasharray: 5 5
     class CleanupPhaseStart,CleanupPhaseComplete entrypoint
     class EscalateCleanup exitpoint
+    %% Dashed line for feedback loop
+    linkStyle 14 stroke:#888,stroke-width:2px,stroke-dasharray: 5 5

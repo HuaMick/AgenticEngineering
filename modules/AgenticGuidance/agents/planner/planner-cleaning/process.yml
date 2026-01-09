@@ -17,8 +17,11 @@ process:
     reference: "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
     description: "Loop types (audit-test-fix-loop, cleaner-dependency-loop) defined in agent-loops.yml"
     # NOTE: Do not duplicate loop definitions here - see agent-loops.yml for full definitions
-    # cleaner-dependency-loop: Uses explorer agents to verify no dependencies before removal
-    # cleaner-voting-loop: DEPRECATED - replaced by cleaner-dependency-loop
+    # cleaner-dependency-loop: Explorer-verified cleanup pattern
+    #   1. Cleaner identifies target files/code for removal
+    #   2. Explorer agent checks for dependencies/usages
+    #   3. Decision point: Safe to remove (no deps) or defer (has deps)
+    #   4. Execute removal or escalate with dependency report
 
   inputs:
     - location: "modules/AgenticGuidance/agents/planner/planner-cleaning/inputs.yml"
@@ -63,6 +66,14 @@ process:
       PHASE ORDERING (LOOSE RULE):
       The manifest.yml order (Cleanup -> Audit -> User Story Validation -> Documentation)
       is a sensible default. Planners may adjust ordering based on context.
+
+      CLEANUP PHASE REQUIREMENTS (cleaner-dependency-loop):
+      When creating cleanup phases, ensure the plan includes:
+      1. Cleaner agent tasks to identify cleanup candidates
+      2. Explorer agent tasks to check dependencies for each candidate
+      3. Decision criteria for removal (safe if no dependencies) or deferral (has dependencies)
+      4. Safety checks: zero usages verified, transitive dependencies traced, test coverage considered
+      See cleanup_phase.mmd in inputs for visual reference.
 
       STRUCTURAL PATTERNS:
       Reference plan_example.yml from inputs for:

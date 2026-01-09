@@ -1,39 +1,75 @@
 flowchart LR
-    %% COMPONENT: Build Phase
-    %% PURPOSE: Demonstrate the build planning loop with architecture layers
-    %% USAGE: Planners can incorporate this pattern for implementation phases
-    %% LOOP: planner-loop with planner-build + planner-reviewer
-    %% ARCHITECTURE: Domain -> Workflow -> Entrypoint pattern
+    %% ========================================
+    %% BUILD PHASE COMPONENT
+    %% ========================================
+    %% GOAL: Plan implementation using planner-build + reviewer loop with architecture layer validation.
+    %% PROFILE: Planner-Component-Build
+    %% COMPONENT_TYPE: Reusable phase component for orchestration plans
+    %% USAGE: Planners incorporate this pattern when code implementation is required.
+    %%
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.planner-loop
+    %% MAX_ITERATIONS: 5 (per planner-loop definition)
+    %% ESCALATION: If max iterations reached without approval, stop and Ask User
+    %%
+    %% INPUTS (expected from orchestrator):
+    %% - objective: Clear description of what to build
+    %% - target_project_path: Project root for implementation
+    %% - plan_folder_name: docs/plans/live/<plan_id> location
+    %%
+    %% EXIT CONDITIONS:
+    %% - Success: Plan approved with all architecture layers defined
+    %% - Escalate: Max iterations reached or cannot create valid plan
+    %%
+    %% ARCHITECTURE PATTERN: Domain -> Workflow -> Entrypoint
+    %% Plans MUST include these layers in the correct sequence.
 
-    %% Entry point - assumes phase has been determined to require building
+    %% ========================================
+    %% ENTRY POINT
+    %% ========================================
+    %% Assumes phase determination has identified build/implementation as needed.
     BuildPhaseStart((Build Phase)) --> SpawnPlannerBuild[Spawn planner-build Agent]
 
-    %% Planner-build creates implementation plan
-    %% INPUTS: objective, target_project_path, plan_folder_name
+    %% ========================================
+    %% PLANNER-LOOP: PLAN CREATION
+    %% ========================================
+    %% planner-build creates implementation plan following architecture layers.
+    %% Plan includes: env setup, domain, workflow, entrypoint phases.
     SpawnPlannerBuild --> PlanCreated{Plan Created?}
 
     PlanCreated -- "No: Error" --> EscalateBuild((Escalate: Cannot Create Plan))
     PlanCreated -- "Yes" --> SpawnReviewer[Spawn planner-reviewer Agent]
 
-    %% Reviewer evaluates the build plan
-    %% CRITERIA: architecture compliance, test coverage, acceptance criteria
+    %% ========================================
+    %% PLANNER-LOOP: REVIEW ITERATION
+    %% ========================================
+    %% REVIEWER CRITERIA:
+    %% - Architecture layer compliance (Domain -> Workflow -> Entrypoint)
+    %% - Test coverage per phase
+    %% - Clear acceptance criteria
     SpawnReviewer --> ReviewResult{Plan Approved?}
 
     %% Iterative refinement loop
-    ReviewResult -- "No: Refine" --> CaptureFeedback[Capture Reviewer Feedback]
-    CaptureFeedback --> CheckIterations{Max Iterations?}
-    CheckIterations -- "No" --> SpawnPlannerBuildFix[Spawn planner-build Agent with Feedback]
-    SpawnPlannerBuildFix --> SpawnReviewer
-    CheckIterations -- "Yes" --> EscalateBuild
+    subgraph PlannerLoop_SG ["Planner-Loop Subgraph"]
+        ReviewResult -- "No: Refine" --> CaptureFeedback[Capture Reviewer Feedback]
+        CaptureFeedback --> CheckIterations{Max Iterations?}
+        CheckIterations -- "No: Continue" --> SpawnPlannerBuildFix[Spawn planner-build Agent]
+        SpawnPlannerBuildFix --> SpawnReviewer
+        CheckIterations -- "Yes: Limit Reached" --> EscalateBuild
+    end
 
-    %% Approved plan includes architecture layer structure
+    %% Approved plan requires architecture layer verification
     ReviewResult -- "Yes: Approved" --> VerifyLayers[Verify Architecture Layers]
 
-    subgraph ArchLayers ["Architecture Layer Verification"]
-        %% Plan should include these layers in sequence:
-        %% 1. Environment Setup
-        %% 2. Domain Layer (pure business logic)
-        %% 3. Workflow Layer (orchestration)
+    %% ========================================
+    %% ARCHITECTURE LAYER VERIFICATION
+    %% ========================================
+    %% Build plans MUST define the standard architecture sequence.
+    %% This subgraph validates completeness before phase completion.
+    subgraph ArchLayers_SG ["Architecture Layer Verification Subgraph"]
+        %% Layer sequence:
+        %% 1. Environment Setup (dependencies, tooling)
+        %% 2. Domain Layer (pure business logic, no I/O)
+        %% 3. Workflow Layer (orchestration, composition)
         %% 4. Entrypoint Layer (CLI, API, UI)
         VerifyLayers --> CheckEnvSetup{Env Setup Present?}
         CheckEnvSetup -- "Yes" --> CheckDomain{Domain Layer Present?}
@@ -41,18 +77,23 @@ flowchart LR
         CheckWorkflow -- "Yes" --> CheckEntrypoint{Entrypoint Present?}
         CheckEntrypoint -- "Yes" --> LayersValid[All Layers Valid]
 
-        %% Missing layers trigger refinement
+        %% Missing layers trigger refinement with specific feedback
         CheckEnvSetup -- "No" --> MissingLayer[Flag Missing Layer]
         CheckDomain -- "No" --> MissingLayer
         CheckWorkflow -- "No" --> MissingLayer
         CheckEntrypoint -- "No" --> MissingLayer
-        MissingLayer --> CaptureFeedback
+        MissingLayer -.->|Return with feedback| CaptureFeedback
     end
 
     LayersValid --> BuildPhaseComplete((Build Phase Complete))
 
-    %% Styling
-    classDef entrypoint fill:#90EE90
-    classDef exitpoint fill:#FFB6C1
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef entrypoint fill:#90EE90,stroke:#228B22
+    classDef exitpoint fill:#FFB6C1,stroke:#DC143C
+    classDef dashedstroke stroke-dasharray: 5 5
     class BuildPhaseStart,BuildPhaseComplete entrypoint
     class EscalateBuild exitpoint
+    %% Dashed line for feedback loop
+    linkStyle 14 stroke:#888,stroke-width:2px,stroke-dasharray: 5 5
