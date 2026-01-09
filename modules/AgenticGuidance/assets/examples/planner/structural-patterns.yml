@@ -1,0 +1,150 @@
+# Structural Patterns for Plans
+# SHARED: Used by planner-guidance (teaching) and planner-reviewer (validation)
+# Purpose: Define required structure for all plan types
+
+# =============================================================================
+# ROOT FIELDS - Required for all plans
+# =============================================================================
+plan_name: "Descriptive Plan Name"       # Human-readable plan identifier
+worktree: "<repo_root>"                  # Absolute path to repository root
+branch: "feature-branch-name"            # Git branch for this work
+liveplan: "docs/plans/live/.../plan.yml" # Path to this plan (when live)
+completedplan: "docs/plans/live/.../completed/plan.yml"  # Archive location
+
+# Optional root fields
+created: "YYYY-MM-DD"                    # Plan creation date
+objective: "Clear statement of goal"     # What this plan achieves
+
+# =============================================================================
+# INPUTS SECTION - Context files for plan execution
+# =============================================================================
+inputs:
+  - location: "path/to/file.yml"         # Relative path from worktree
+    description: "Purpose of this input" # Why agents need this file
+
+# =============================================================================
+# PHASES SECTION - Execution stages
+# =============================================================================
+phases:
+  # ---------------------------------------------------------------------------
+  # SEQUENTIAL PHASE PATTERN
+  # Use for: Ordered operations where each depends on the previous
+  # ---------------------------------------------------------------------------
+  - name: "Phase Name - Sequential"
+    description: "What this phase accomplishes"
+    agent_category: "teacher|build|test|deploy"  # Category of agents in phase
+    success_criteria:                     # Phase-level success criteria
+      - "Outcome 1 that proves phase complete"
+      - "Outcome 2 measurable result"
+    dependencies:                         # Optional: phases that must complete first
+      - "previous-phase-name"
+
+    # Execution groups within phase
+    execution_groups:
+      - execution: sequential             # Tasks run one after another
+        name: "Group description"
+        agents:
+          - type: agent-type-name         # Agent type from agent-categories.yml
+            inputs:                       # Files this agent needs
+              - path/to/input1.yml
+              - path/to/input2.md
+            guidance: <detailed instructions>  # Full guidance in actual plan
+            success_criteria:
+              - "Agent-specific outcome 1"
+              - "Agent-specific outcome 2"
+
+  # ---------------------------------------------------------------------------
+  # PARALLEL PHASE PATTERN
+  # Use for: Independent operations that can run simultaneously
+  # ---------------------------------------------------------------------------
+  - name: "Phase Name - Parallel"
+    execution_groups:
+      - execution: parallel               # Tasks run at same time
+        name: "Independent operations"
+        agents:
+          - type: build-api
+            inputs: [src/workflows/, src/api/]
+            guidance: <detailed instructions>
+            success_criteria:
+              - "API endpoints functional"
+
+          - type: build-cli
+            inputs: [src/workflows/, src/cli/]
+            guidance: <detailed instructions>
+            success_criteria:
+              - "CLI commands execute correctly"
+
+  # ---------------------------------------------------------------------------
+  # TEST-FIX-LOOP PHASE PATTERN
+  # Use for: Test phases that iterate until passing
+  # ---------------------------------------------------------------------------
+  - name: "Phase Name - Test Fix Loop"
+    execution_groups:
+      - execution: test-fix-loop          # Repeat until tests pass
+        name: "Component testing"
+        agents:
+          - type: test-component
+            inputs:
+              - src/core/
+              - tests/unit/
+            guidance: <detailed instructions>
+            success_criteria:
+              - "All unit tests pass"
+              - "Edge cases covered"
+
+# =============================================================================
+# TASK STRUCTURE - Within execution groups
+# =============================================================================
+# Each task/agent entry requires:
+tasks:
+  - id: "1.1"                             # Unique identifier within plan
+    description: "What this task does"    # Human-readable description
+    agent_type: "teacher-update-guidance" # Specific agent type
+    operation: "CREATE|UPDATE|AUDIT"      # Type of operation
+
+    # Context provides agent-specific details
+    context:
+      target_file: "path/to/target.yml"   # File being modified
+      current_state: "Description of now" # What exists currently
+      required_changes:                   # What must change
+        - "Change 1"
+        - "Change 2"
+
+    # Acceptance criteria for this specific task
+    acceptance_criteria:
+      - "Specific measurable outcome"
+      - "File exists at expected location"
+      - "No broken references"
+
+    files:                                # Files affected by this task
+      - "path/to/modified/file.yml"
+
+# =============================================================================
+# SUCCESS CRITERIA PATTERNS
+# =============================================================================
+# Pattern 1: Outcome-focused (preferred)
+success_criteria:
+  - "Build agents check dependencies before attempting builds"  # Observable behavior
+  - "Clear error messages guide users when dependencies missing" # User experience
+  - "Build failures due to missing dependencies eliminated"      # Problem resolved
+
+# Pattern 2: Structured validation
+success_criteria:
+  user_validation:
+    - "Feature works as expected from user perspective"
+  technical_validation:
+    - "All tests pass"
+    - "No broken references"
+
+# Pattern 3: Phase completion
+success_criteria:
+  - "All layers implemented"              # Build complete
+  - "Build succeeds"                      # Technical verification
+  - "Ready for testing phase"             # Handoff readiness
+
+# =============================================================================
+# EXECUTION TYPE REFERENCE
+# =============================================================================
+# sequential:     Run agents one at a time in order
+# parallel:       Run agents simultaneously (no dependencies between them)
+# test-fix-loop:  Run tests, fix failures, repeat until all pass
