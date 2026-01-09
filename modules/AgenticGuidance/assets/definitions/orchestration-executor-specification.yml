@@ -1,0 +1,959 @@
+# Orchestration Executor Specification
+# Defines the runtime behavior for a generic executor that reads Plan-MMD files and executes them dynamically.
+#
+# SCOPE: Specification for an executor that interprets Plan-MMD metadata and orchestrates agent execution.
+# This specification enables MMD-driven orchestration without hardcoded flows in process.mmd files.
+#
+# RELATED:
+#   - modules/AgenticGuidance/assets/definitions/plan-mmd-schema.yml (MMD structural schema)
+#   - modules/AgenticGuidance/assets/definitions/agent-loops.yml (loop definitions)
+#   - modules/AgenticGuidance/assets/examples/planner/YYMMDDRepo_Branch/orchestration_example.mmd
+
+# =============================================================================
+# SECTION 1: EXECUTOR SCOPE AND RESPONSIBILITIES
+# =============================================================================
+
+executor_scope:
+  definition: |
+    The orchestration executor is an EXECUTION-ONLY runtime component that:
+    - Reads Plan-MMD files and their associated plan YAML files
+    - Interprets AGENT_ROUTING metadata to determine which agent handles each phase
+    - Manages phase progression, feedback loops, and escalation paths
+    - Updates state in both MMD comments and plan YAML files
+    - Does NOT perform planning (planning is delegated to orchestration-planning agent)
+
+  responsibilities:
+    execution:
+      - "Parse Plan-MMD header metadata (AGENT_ROUTING, STATUS, FEEDBACK_TRIGGERS)"
+      - "Load corresponding plan YAML files from the plan folder"
+      - "Execute phases in declared order by spawning routed agents"
+      - "Monitor agent outputs for feedback triggers"
+      - "Update phase status as execution progresses"
+      - "Handle failures according to FEEDBACK_TRIGGERS patterns"
+      - "Persist state for resume capability"
+
+    NOT_responsibilities:
+      - "Planning (delegated to orchestration-planning agent)"
+      - "Plan creation or task definition (done by planner agents)"
+      - "Agent implementation (executor spawns agents, does not implement them)"
+      - "Human approval gates (passed through to orchestration-planning)"
+
+  relationship_to_orchestration_agents:
+    orchestration_planning:
+      role: "Creates and refines plans; produces approved Plan-MMD and YAML files"
+      interaction: |
+        Executor receives approved plans FROM orchestration-planning.
+        On feedback triggers requiring re-planning, executor invokes orchestration-planning
+        with failure context, then resumes execution with updated plan.
+
+    orchestration_build:
+      role: "Current hardcoded build orchestration flow (to be replaced by executor)"
+      migration_path: |
+        orchestration-build/process.mmd will be converted to Plan-MMD format.
+        The executor will interpret this MMD dynamically rather than following
+        the current hardcoded flowchart structure.
+
+    orchestration_guidance:
+      role: "Current hardcoded guidance orchestration flow (to be replaced)"
+      migration_path: "Same pattern as orchestration-build migration"
+
+  entrypoints_served:
+    _orchestrate.yml:
+      description: "Primary entrypoint for execution with pre-approved plan"
+      required_inputs:
+        - "plan_path: Path to approved Plan-MMD file"
+        - "plan_folder: Path to plan folder containing YAML files"
+      behavior: |
+        Executor loads the Plan-MMD, validates all referenced YAML files exist,
+        resumes from last incomplete phase (or starts from beginning), and
+        executes until completion or escalation.
+
+    fallback_to_planning:
+      description: "When _orchestrate.yml is called without approved plan"
+      behavior: |
+        If plan_path is missing or plan status is not 'approved', executor
+        delegates to orchestration-planning agent to create/approve plan first,
+        then resumes execution with the approved result.
+
+# =============================================================================
+# SECTION 2: AGENT_ROUTING METADATA FORMAT
+# =============================================================================
+
+agent_routing:
+  definition: |
+    AGENT_ROUTING is a header comment in Plan-MMD files that maps phases to agent types.
+    The executor uses this mapping to determine which agent to spawn for each phase.
+
+  format:
+    syntax: |
+      %% AGENT_ROUTING: Phase_Name -> agent_type, Phase_Name -> agent_type, ...
+    structure:
+      - "Phase names use PascalCase with underscores (e.g., Environment_Setup)"
+      - "Agent types are lowercase kebab-case categories (e.g., builder, tester, deployer)"
+      - "Mappings are comma-separated"
+      - "All phases in PHASES header must have corresponding AGENT_ROUTING entry"
+
+    example: |
+      %% PHASES: Environment_Setup, Domain_Build, Workflow_Build, Integration_Test, CI_CD_Validation
+      %% AGENT_ROUTING: Environment_Setup -> builder, Domain_Build -> builder, Workflow_Build -> builder, Integration_Test -> tester, CI_CD_Validation -> deployer
+
+  agent_types:
+    description: |
+      Agent types map to agent categories defined in agent-categories.yml.
+      The executor resolves the type to a specific agent based on context.
+
+    valid_types:
+      builder:
+        category: "build"
+        resolves_to: "build-python or build-flutter based on project type"
+        reference: "modules/AgenticGuidance/assets/definitions/agent-categories.yml#build"
+
+      tester:
+        category: "test"
+        resolves_to: "test-runner for execution, test-builder for test creation"
+        reference: "modules/AgenticGuidance/assets/definitions/agent-categories.yml#test"
+
+      deployer:
+        category: "deploy"
+        resolves_to: "deploy-cicd for CI/CD, deploy-worktree for setup"
+        reference: "modules/AgenticGuidance/assets/definitions/agent-categories.yml#deploy"
+
+      teacher:
+        category: "teacher"
+        resolves_to: "teacher-update-guidance or teacher-update-assets"
+        reference: "modules/AgenticGuidance/assets/definitions/agent-categories.yml#teacher"
+
+      cleaner:
+        category: "cleaner"
+        resolves_to: "cleaner-core for execution"
+        reference: "modules/AgenticGuidance/assets/definitions/agent-categories.yml#cleaner"
+
+      planner:
+        category: "planner"
+        resolves_to: "Appropriate planner sub-agent"
+        reference: "modules/AgenticGuidance/assets/definitions/agent-categories.yml#planner"
+        note: "Rarely used in AGENT_ROUTING; planning is usually pre-execution"
+
+      auditor:
+        category: "test"
+        resolves_to: "test-final-output or test-audit"
+        note: "Specialized tester role for quality audits"
+
+  validation_rules:
+    routing_coverage:
+      rule: "Every phase in PHASES must have AGENT_ROUTING entry"
+      enforcement: "HARD - executor fails to start if routing is incomplete"
+      example_violation: |
+        %% PHASES: Phase_A, Phase_B, Phase_C
+        %% AGENT_ROUTING: Phase_A -> builder, Phase_C -> tester
+        # ERROR: Phase_B has no routing defined
+
+    manifest_alignment:
+      rule: "Routed agents must be in orchestrator's manifest.yml spawns fence"
+      enforcement: "HARD - executor refuses to spawn agents not in spawns list"
+      reference: "modules/AgenticGuidance/agents/orchestration/orchestration-build/manifest.yml#spawns"
+      validation_process: |
+        1. Executor loads orchestrator's manifest.yml
+        2. For each phase routing, resolve agent_type to specific agent
+        3. Verify resolved agent appears in spawns list
+        4. If not in spawns, fail with clear error message
+
+    type_validity:
+      rule: "Agent types must match defined categories"
+      enforcement: "HARD - unknown agent types cause startup failure"
+      error_format: |
+        ERROR: Unknown agent type '{type}' in AGENT_ROUTING for phase '{phase}'.
+        Valid types: builder, tester, deployer, teacher, cleaner, planner, auditor
+
+  handling_unknown_types:
+    behavior: |
+      When executor encounters an unknown or invalid agent type:
+      1. Log error with phase name and invalid type
+      2. Mark phase status as 'blocked' with reason
+      3. Escalate to user with clear message
+      4. Do NOT proceed to subsequent phases
+
+    error_message_format: |
+      ROUTING ERROR: Cannot execute phase '{phase_name}'
+      Agent type '{agent_type}' is not valid.
+      Valid agent types: builder, tester, deployer, teacher, cleaner, planner, auditor
+
+      Options:
+      1. Update AGENT_ROUTING in Plan-MMD with valid type
+      2. Add new agent type to orchestration-executor-specification.yml
+
+# =============================================================================
+# SECTION 3: FEEDBACK_TRIGGERS PATTERN
+# =============================================================================
+
+feedback_triggers:
+  definition: |
+    FEEDBACK_TRIGGERS define conditions that interrupt normal phase progression
+    and trigger corrective actions (re-planning, retry, or escalation).
+    The executor monitors agent outputs for these trigger patterns.
+
+  trigger_types:
+    TEST_FAILURE:
+      description: "Test execution reports failing tests"
+      detection:
+        output_patterns:
+          - "test_status: failed"
+          - "tests_passed: false"
+          - "exit_code: non-zero from test command"
+        structured_output:
+          - "results.status == 'failed'"
+          - "results.failures.count > 0"
+
+      severity_levels:
+        unit_test:
+          severity: "LOW"
+          response: "Fix in current iteration (within test-fix-loop)"
+          max_retries: 5
+          reference: "modules/AgenticGuidance/assets/definitions/agent-loops.yml#test-fix-loop"
+
+        integration_test:
+          severity: "MEDIUM"
+          response: "May require plan update; categorize and decide"
+          escalation_threshold: 3
+
+        e2e_test:
+          severity: "HIGH"
+          response: "Likely requires re-planning"
+          escalation_threshold: 1
+
+      response_actions:
+        retry: |
+          1. Re-spawn builder agent with failure context
+          2. Builder attempts fix based on test output
+          3. Re-run tests
+          4. Increment iteration counter
+
+        re_plan: |
+          1. Package TEST_FAILURE context:
+             - failure_type: "TEST_FAILURE"
+             - failure_details: test output, failing tests, attempted fixes
+             - original_plan_path: current plan location
+             - iteration_count: number of fix attempts
+          2. Invoke orchestration-planning with failure context
+          3. Await updated plan approval
+          4. Resume execution from affected phase
+
+        escalate: |
+          1. Mark phase as 'blocked'
+          2. Generate failure summary
+          3. Present to user with options:
+             - Provide fix guidance
+             - Skip test
+             - Abort execution
+
+    CICD_FAILURE:
+      description: "CI/CD validation or pipeline execution fails"
+      detection:
+        output_patterns:
+          - "cicd_status: failed"
+          - "pipeline_error: true"
+          - "validation_result: invalid"
+        exit_codes:
+          - "Non-zero from deploy-cicd audit"
+          - "Pipeline lint errors"
+
+      failure_categories:
+        configuration_error:
+          description: "Invalid CI/CD configuration syntax or structure"
+          severity: "MEDIUM"
+          response: "Return to build phase for configuration fix"
+
+        integration_error:
+          description: "CI/CD works but fails with current codebase"
+          severity: "HIGH"
+          response: "May require coordinated plan update"
+
+        infrastructure_error:
+          description: "External service or permission issue"
+          severity: "CRITICAL"
+          response: "Escalate immediately to user"
+
+      response_actions:
+        retry: |
+          1. Re-spawn deploy-cicd with previous failure context
+          2. Deploy agent attempts configuration fix
+          3. Re-run validation
+          4. Increment retry counter (max: 3)
+
+        re_plan: |
+          1. Package CICD_FAILURE context:
+             - failure_type: "CICD_FAILURE"
+             - failure_category: configuration_error | integration_error
+             - failure_details: validation output, config files affected
+             - original_plan_path: current plan location
+          2. Invoke orchestration-planning
+          3. Planning agent determines if build plan needs update
+          4. Resume with updated plan
+
+        escalate: |
+          1. Mark CI/CD phase as 'blocked'
+          2. Generate infrastructure/permission report
+          3. Present to user with:
+             - Root cause analysis
+             - Suggested manual steps
+             - Option to skip CI/CD validation
+
+    GUIDANCE_GAP:
+      description: "Guidance validation reveals missing or unclear guidance"
+      detection:
+        output_patterns:
+          - "guidance_complete: false"
+          - "friction_points: [list]"
+          - "gaps_found: true"
+        simulator_output:
+          - "test-guidance-simulator reports friction"
+          - "Agent unable to complete task without additional context"
+
+      gap_categories:
+        build_process:
+          description: "Build steps are unclear or incomplete"
+          route_to: "planner-build for plan update"
+
+        test_design:
+          description: "Test strategy or coverage is insufficient"
+          route_to: "planner-test for plan update"
+
+        guidance:
+          description: "Agent guidance files need improvement"
+          route_to: "planner-guidance for guidance plan"
+
+      response_actions:
+        categorize: |
+          1. Parse friction report from test-guidance-simulator
+          2. Classify each gap by category (build_process, test_design, guidance)
+          3. Group gaps for efficient remediation
+
+        re_plan: |
+          1. Package GUIDANCE_GAP context:
+             - failure_type: "GUIDANCE_GAP"
+             - gap_category: build_process | test_design | guidance
+             - friction_report: structured gap details
+             - affected_agents: list of agents with gaps
+             - original_plan_path: current plan location
+          2. Route to appropriate planner based on gap_category
+          3. Await remediation plan approval
+          4. Execute remediation via teacher agents
+          5. Re-run guidance validation
+
+        escalate: |
+          1. If max_iterations (3) reached without resolution
+          2. Mark guidance phase as 'blocked'
+          3. Present gap summary to user
+          4. Request clarification or additional context
+
+    AUDIT_FAILURE:
+      description: "Final audit reveals quality or completeness issues"
+      detection:
+        output_patterns:
+          - "audit_passed: false"
+          - "quality_issues: [list]"
+          - "completion_status: incomplete"
+        auditor_output:
+          - "test-final-output reports issues"
+          - "Required artifacts missing"
+          - "Quality criteria not met"
+
+      failure_categories:
+        missing_outputs:
+          description: "Required deliverables not present"
+          severity: "HIGH"
+          response: "Return to relevant build phase"
+
+        quality_issues:
+          description: "Outputs exist but do not meet quality bar"
+          severity: "MEDIUM"
+          response: "Re-plan with quality feedback"
+
+        documentation_gaps:
+          description: "Required documentation incomplete"
+          severity: "LOW"
+          response: "May defer or create documentation task"
+
+      response_actions:
+        re_plan: |
+          1. Package AUDIT_FAILURE context:
+             - failure_type: "AUDIT_FAILURE"
+             - failure_category: missing_outputs | quality_issues | documentation_gaps
+             - audit_report: detailed findings from test-final-output
+             - affected_phases: which build phases produced failing outputs
+             - original_plan_path: current plan location
+          2. Invoke orchestration-planning with context
+          3. Planning determines remediation scope
+          4. Resume execution targeting specific issues
+
+        escalate: |
+          1. Mark execution as 'blocked' at final audit
+          2. Generate completion status report
+          3. Present to user with:
+             - What passed vs. what failed
+             - Effort estimate for remediation
+             - Option to accept partial completion
+
+  max_iterations_handling:
+    definition: |
+      Each feedback loop has a maximum iteration count defined in agent-loops.yml.
+      When max iterations are reached without resolution, executor must escalate.
+
+    iteration_tracking:
+      storage: "Iteration count stored in plan YAML under phase metadata"
+      format: |
+        phases:
+          - name: "Integration_Test"
+            status: "in_progress"
+            iteration: 3
+            max_iterations: 5
+
+    escalation_path:
+      trigger: "iteration >= max_iterations AND status != completed"
+      actions:
+        - "1. Mark phase status as 'blocked'"
+        - "2. Preserve all iteration context (attempts, failures, partial fixes)"
+        - "3. Generate escalation summary with:"
+        - "   - Total iterations attempted"
+        - "   - Failure patterns observed"
+        - "   - Partial progress made"
+        - "   - Recommended next steps"
+        - "4. Present to user for decision"
+
+      user_options:
+        continue: "User provides additional context; reset iteration count"
+        skip: "User accepts current state; mark phase as 'completed_with_issues'"
+        abort: "User terminates execution; preserve state for later resume"
+
+# =============================================================================
+# SECTION 4: STATE MODEL
+# =============================================================================
+
+state_model:
+  definition: |
+    The executor maintains execution state to enable progress tracking and resume capability.
+    State is persisted in both the Plan-MMD file (STATUS header) and plan YAML files.
+
+  phase_status_values:
+    pending:
+      description: "Phase has not started"
+      transitions_to: ["in_progress", "blocked"]
+      initial_state: true
+
+    in_progress:
+      description: "Phase is currently executing"
+      transitions_to: ["completed", "failed", "blocked"]
+      constraints:
+        - "Only ONE phase may be in_progress at a time"
+        - "Must have routed agent actively spawned"
+
+    completed:
+      description: "Phase finished successfully"
+      transitions_to: []  # Terminal state
+      requirements:
+        - "All phase tasks marked complete in plan YAML"
+        - "No active feedback triggers"
+        - "Success criteria met (if defined)"
+
+    failed:
+      description: "Phase encountered unrecoverable error"
+      transitions_to: ["in_progress"]  # Can retry after re-planning
+      requirements:
+        - "Failure reason documented"
+        - "Re-planning required before retry"
+
+    blocked:
+      description: "Phase cannot proceed without user input"
+      transitions_to: ["in_progress", "pending"]  # User can unblock
+      triggers:
+        - "Max iterations reached"
+        - "Unknown agent type"
+        - "Missing dependencies"
+        - "Escalation from feedback trigger"
+
+    completed_with_issues:
+      description: "Phase finished but with known issues (user-approved skip)"
+      transitions_to: []  # Terminal state with caveats
+      requirements:
+        - "User explicitly approved continuation"
+        - "Issues documented in status metadata"
+
+  state_transitions:
+    valid_transitions:
+      pending_to_in_progress:
+        trigger: "Executor begins phase execution"
+        action: "Spawn routed agent for phase"
+
+      in_progress_to_completed:
+        trigger: "Agent reports success; no feedback triggers"
+        action: "Update both MMD STATUS and plan YAML"
+
+      in_progress_to_failed:
+        trigger: "Unrecoverable error; no more retries available"
+        action: "Log failure; prepare for re-planning"
+
+      in_progress_to_blocked:
+        trigger: "Escalation required (max iterations, unknown routing)"
+        action: "Pause execution; await user input"
+
+      blocked_to_in_progress:
+        trigger: "User provides resolution"
+        action: "Resume execution with user-provided context"
+
+      failed_to_in_progress:
+        trigger: "Re-planning complete; new plan approved"
+        action: "Resume from failed phase with updated plan"
+
+  persistence:
+    dual_storage: |
+      State is maintained in TWO locations for different purposes:
+      1. MMD STATUS header: Quick visual status overview
+      2. Plan YAML files: Detailed status with metadata
+
+    mmd_status_format:
+      location: "Header comment in Plan-MMD file"
+      format: |
+        %% STATUS: Phase_A=completed, Phase_B=in_progress, Phase_C=pending
+      update_frequency: "On every phase transition"
+      example: |
+        %% STATUS: Environment_Setup=completed, Domain_Build=completed, Integration_Test=in_progress, CI_CD_Validation=pending
+
+    yaml_status_format:
+      location: "Phase entries in plan_live_*.yml files"
+      structure: |
+        phases:
+          - name: "Environment_Setup"
+            status: "completed"
+            started_at: "2025-01-10T14:30:00Z"
+            completed_at: "2025-01-10T14:45:00Z"
+            agent_used: "build-python"
+
+          - name: "Integration_Test"
+            status: "in_progress"
+            started_at: "2025-01-10T15:00:00Z"
+            iteration: 2
+            max_iterations: 5
+            last_failure:
+              type: "TEST_FAILURE"
+              message: "3 unit tests failing"
+              timestamp: "2025-01-10T15:10:00Z"
+
+      update_frequency: "On every significant state change"
+      metadata_tracked:
+        - "started_at: ISO timestamp of phase start"
+        - "completed_at: ISO timestamp of completion"
+        - "agent_used: Specific agent that executed phase"
+        - "iteration: Current iteration count (for loops)"
+        - "last_failure: Most recent failure details"
+
+    sync_protocol:
+      description: "How to keep MMD and YAML in sync"
+      rules:
+        - "YAML is source of truth for detailed state"
+        - "MMD STATUS is derived summary for quick reference"
+        - "On state change: Update YAML first, then regenerate MMD STATUS"
+        - "On load: If MMD and YAML conflict, trust YAML"
+
+  resume_capability:
+    definition: |
+      The executor can resume execution from the last incomplete phase after
+      interruption (crash, user pause, or session timeout).
+
+    resume_algorithm:
+      steps:
+        - "1. Load Plan-MMD and parse STATUS header"
+        - "2. Load all plan YAML files from plan folder"
+        - "3. Identify resume point:"
+        - "   - If any phase is 'in_progress': resume from that phase"
+        - "   - If all completed phases contiguous: start next 'pending' phase"
+        - "   - If gap in completed phases: ERROR - state inconsistency"
+        - "4. Load context from YAML (iteration count, last failure)"
+        - "5. Resume execution with preserved context"
+
+    resume_point_identification:
+      priority_order:
+        - "in_progress phase (highest priority - was interrupted)"
+        - "blocked phase (awaiting user input)"
+        - "first pending phase after last completed"
+
+    context_preservation:
+      preserved_on_resume:
+        - "Iteration count for feedback loops"
+        - "Last failure context"
+        - "Partial outputs from interrupted phase"
+        - "Agent spawn history"
+
+      not_preserved:
+        - "In-memory agent state (agent restarts fresh)"
+        - "Temporary files (must be in declared outputs)"
+
+    crash_recovery:
+      scenario: "Executor or agent crashes mid-phase"
+      behavior: |
+        1. On restart, executor detects phase with status='in_progress'
+        2. Executor checks for partial outputs from crashed phase
+        3. If outputs exist and valid: Consider phase complete
+        4. If outputs missing or invalid: Restart phase from beginning
+        5. Increment iteration count (crash counts as failed attempt)
+
+# =============================================================================
+# SECTION 5: FALLBACK BEHAVIORS
+# =============================================================================
+
+fallback_behaviors:
+  definition: |
+    Fallback behaviors define how the executor handles exceptional conditions
+    that are not covered by normal FEEDBACK_TRIGGERS.
+
+  missing_agent_routing:
+    scenario: "AGENT_ROUTING header is missing from Plan-MMD"
+    detection: "Parser finds PHASES header but no AGENT_ROUTING"
+
+    fallback_strategy:
+      behavior: "Attempt to infer routing from phase names and plan context"
+      inference_rules:
+        - "Phase contains 'Setup' or 'Environment': builder"
+        - "Phase contains 'Build' or 'Implementation': builder"
+        - "Phase contains 'Test': tester"
+        - "Phase contains 'Validation' or 'Audit': tester"
+        - "Phase contains 'Deploy' or 'CI' or 'CD': deployer"
+        - "Phase contains 'Guidance' or 'Teach': teacher"
+        - "Phase contains 'Clean' or 'Removal': cleaner"
+
+      confidence_threshold: |
+        Inferred routing is marked as 'inferred' with confidence level.
+        HIGH confidence (keyword match): Execute with warning
+        LOW confidence (no keyword match): Escalate to user
+
+      escalation: |
+        If inference fails or confidence is LOW:
+        1. Mark all phases as 'blocked'
+        2. Present inferred routing (if any) to user
+        3. Request explicit AGENT_ROUTING header
+        4. Do not proceed until user confirms or provides routing
+
+    prevention: |
+      Plan-MMD validation (pre-execution) should catch missing AGENT_ROUTING.
+      This fallback is for backward compatibility with legacy MMD files.
+
+  agent_spawn_failure:
+    scenario: "Routed agent fails to start or immediately crashes"
+    detection:
+      - "Agent spawn command returns error"
+      - "Agent exits within 5 seconds without output"
+      - "Agent reports fatal initialization error"
+
+    fallback_strategy:
+      retry_policy:
+        max_retries: 3
+        backoff: "exponential (1s, 2s, 4s)"
+
+      on_retry_exhaustion:
+        - "1. Mark phase as 'blocked'"
+        - "2. Log detailed spawn failure context:"
+        - "   - Agent name and resolved path"
+        - "   - Spawn command used"
+        - "   - Error messages from failed attempts"
+        - "   - Environment state at failure"
+        - "3. Check for common causes:"
+        - "   - Agent manifest.yml missing or invalid"
+        - "   - Agent dependencies not met"
+        - "   - Permission issues"
+        - "4. Escalate to user with diagnostic information"
+
+      alternative_agent: |
+        If manifest.yml defines alternative agents for same type:
+        1. Check spawns list for alternative with same agent_type
+        2. Attempt spawn with alternative agent
+        3. If successful, continue with warning logged
+        4. If all alternatives fail, escalate
+
+  plan_yaml_mmd_desync:
+    scenario: "Plan YAML files and MMD STATUS header are out of sync"
+    detection:
+      - "MMD shows phase as 'completed' but YAML shows 'pending'"
+      - "YAML has phases not present in MMD PHASES header"
+      - "MMD PHASES order differs from YAML phase order"
+
+    fallback_strategy:
+      resolution_priority: "YAML is source of truth"
+
+      actions:
+        status_conflict:
+          description: "MMD and YAML disagree on phase status"
+          resolution: |
+            1. Trust YAML status
+            2. Regenerate MMD STATUS from YAML
+            3. Log conflict for diagnostics
+            4. Continue execution with YAML state
+
+        phase_mismatch:
+          description: "Different phases in MMD vs YAML"
+          resolution: |
+            1. Identify discrepancies
+            2. If YAML has extra phases: Add to MMD (plan was extended)
+            3. If MMD has extra phases: Warning - orphan phases
+            4. Escalate if significant mismatch (>1 phase difference)
+
+        order_mismatch:
+          description: "Phase execution order differs"
+          resolution: |
+            1. Use YAML order as canonical
+            2. Update MMD PHASES to match
+            3. Log order change
+            4. Continue with YAML order
+
+      prevention:
+        - "Always update YAML before MMD"
+        - "Use atomic writes where possible"
+        - "Run sync check at execution start"
+
+  missing_plan_yaml:
+    scenario: "Plan-MMD references plan folder but YAML files are missing"
+    detection: "plan_folder path exists but required YAML files absent"
+
+    fallback_strategy:
+      check_pattern: |
+        Required files:
+        - plan_live_build.yml OR plan_live_test.yml OR plan_live_teach.yml
+        - At least one plan_live_*.yml must exist for execution
+
+      on_missing:
+        - "1. Check if plan needs generation (new plan folder)"
+        - "2. If PLAN_FOLDER header indicates new plan:"
+        - "   - Delegate to orchestration-planning to generate YAMLs"
+        - "3. If existing plan should have YAMLs:"
+        - "   - Mark as 'blocked'"
+        - "   - Report missing files"
+        - "   - Check for backup/alternative locations"
+        - "4. Escalate to user if cannot resolve"
+
+  circular_feedback:
+    scenario: "Feedback triggers create infinite re-planning loop"
+    detection:
+      - "Same phase fails with same failure type >3 consecutive times"
+      - "Re-planning produces identical plan >2 times"
+      - "Iteration count exceeds 2x max_iterations"
+
+    fallback_strategy:
+      circuit_breaker:
+        trigger: "Identical failure pattern detected 3+ times"
+        action: |
+          1. Break feedback loop
+          2. Mark phase as 'blocked'
+          3. Generate loop analysis:
+             - Failure pattern description
+             - Re-planning attempts summary
+             - Hypothesis for root cause
+          4. Escalate to user with analysis
+
+      prevention:
+        - "Track failure signatures (type + message hash)"
+        - "Compare re-planned plans for meaningful diff"
+        - "Require human input after 2 identical re-plans"
+
+# =============================================================================
+# SECTION 6: EXECUTION PROTOCOL
+# =============================================================================
+
+execution_protocol:
+  definition: |
+    The step-by-step protocol for executor operation from startup to completion.
+
+  startup_sequence:
+    steps:
+      - step: "1. Load Plan-MMD"
+        actions:
+          - "Parse file from plan_path input"
+          - "Extract all header metadata (GOAL, PROFILE, PHASES, AGENT_ROUTING, STATUS)"
+          - "Validate header completeness"
+
+      - step: "2. Load Plan YAML files"
+        actions:
+          - "Read plan_folder path"
+          - "Load all plan_live_*.yml files"
+          - "Build phase-to-YAML mapping"
+
+      - step: "3. Validate orchestrator manifest"
+        actions:
+          - "Load orchestrator's manifest.yml"
+          - "Extract spawns fence"
+          - "Validate all routed agents are in spawns list"
+
+      - step: "4. Determine resume point"
+        actions:
+          - "Parse STATUS from MMD or YAML (prefer YAML)"
+          - "Identify in_progress, blocked, or next pending phase"
+          - "Load context for resume (iteration count, last failure)"
+
+      - step: "5. Initialize execution context"
+        actions:
+          - "Set up logging"
+          - "Initialize iteration counters"
+          - "Prepare agent spawn environment"
+
+  phase_execution_loop:
+    for_each_phase:
+      - step: "1. Transition to in_progress"
+        actions:
+          - "Update YAML status to 'in_progress'"
+          - "Update MMD STATUS"
+          - "Record start timestamp"
+
+      - step: "2. Resolve agent"
+        actions:
+          - "Look up agent_type from AGENT_ROUTING"
+          - "Resolve to specific agent based on context (project type, etc.)"
+          - "Verify agent is in spawns fence"
+
+      - step: "3. Spawn agent"
+        actions:
+          - "Prepare agent inputs (phase tasks from YAML, context)"
+          - "Spawn agent process"
+          - "Monitor agent execution"
+
+      - step: "4. Collect output"
+        actions:
+          - "Receive agent output (success/failure, artifacts)"
+          - "Parse output for feedback triggers"
+          - "Store output artifacts"
+
+      - step: "5. Evaluate triggers"
+        actions:
+          - "Check for TEST_FAILURE, CICD_FAILURE, GUIDANCE_GAP, AUDIT_FAILURE"
+          - "If trigger detected: Execute trigger response"
+          - "If no trigger: Proceed to completion"
+
+      - step: "6. Complete or iterate"
+        actions:
+          - "If success: Transition to 'completed', record end timestamp"
+          - "If failure + retries available: Increment iteration, restart from step 2"
+          - "If failure + no retries: Transition to 'failed' or 'blocked'"
+
+  shutdown_sequence:
+    on_completion:
+      - "Update all phase statuses to final state"
+      - "Generate execution summary"
+      - "Archive completed plan to docs/plans/completed/ (if fully complete)"
+
+    on_interruption:
+      - "Persist current state to YAML"
+      - "Update MMD STATUS"
+      - "Log resume point for next session"
+
+    on_escalation:
+      - "Preserve full context in YAML"
+      - "Generate user-facing summary"
+      - "Await user input (do not auto-terminate)"
+
+# =============================================================================
+# SECTION 7: INTEGRATION POINTS
+# =============================================================================
+
+integration_points:
+  agentic_cli:
+    description: "CLI commands the executor uses for plan and worktree operations"
+    commands:
+      - "agentic worktree status: Verify worktree configuration"
+      - "agentic plan validate: Validate plan folder structure"
+      - "agentic plan move tasks: Move completed tasks to plan_completed.yml"
+      - "agentic plan move folder: Archive plan folder to completed/"
+
+  orchestration_planning:
+    description: "Interface for delegating to planning agent"
+    invocation:
+      trigger: "Feedback trigger requires re-planning"
+      inputs:
+        - "failure_context: Structured failure information"
+        - "original_plan_path: Current plan location"
+        - "iteration_count: How many attempts made"
+      outputs:
+        - "updated_plan_path: Path to updated/approved plan"
+        - "plan_changes: Summary of what changed"
+
+  agent_spawning:
+    description: "How executor spawns agents"
+    mechanism: |
+      Executor uses standard agent spawning protocol:
+      1. Load agent manifest.yml to understand inputs/outputs
+      2. Prepare input payload (phase tasks, context)
+      3. Spawn agent (CLI command or direct invocation)
+      4. Monitor stdout/stderr and structured output
+      5. Collect exit code and output artifacts
+
+# =============================================================================
+# SECTION 8: EXAMPLES
+# =============================================================================
+
+examples:
+  minimal_plan_mmd:
+    description: "Minimal valid Plan-MMD for executor"
+    content: |
+      %% PLAN_MMD_VERSION: 1.1
+      %% GOAL: Implement feature X
+      %% PROFILE: Build
+      %% PLAN_FOLDER: docs/plans/live/250110Repo_feature-x
+      %% PHASES: Setup, Implementation, Testing
+      %% AGENT_ROUTING: Setup -> deployer, Implementation -> builder, Testing -> tester
+      %% STATUS: Setup=pending, Implementation=pending, Testing=pending
+
+      graph TD
+          Start((Start)) --> Phase1[Setup]
+          Phase1 --> Phase2[Implementation]
+          Phase2 --> Phase3[Testing]
+          Phase3 --> End((End))
+
+  complete_plan_mmd:
+    description: "Full-featured Plan-MMD with feedback loops"
+    reference: "modules/AgenticGuidance/assets/examples/planner/YYMMDDRepo_Branch/orchestration_example.mmd"
+
+  status_update_example:
+    description: "How status updates flow"
+    scenario: "Setup completes, Implementation starts"
+    before:
+      mmd: "%% STATUS: Setup=in_progress, Implementation=pending, Testing=pending"
+      yaml: |
+        phases:
+          - name: Setup
+            status: in_progress
+            started_at: "2025-01-10T14:00:00Z"
+    after:
+      mmd: "%% STATUS: Setup=completed, Implementation=in_progress, Testing=pending"
+      yaml: |
+        phases:
+          - name: Setup
+            status: completed
+            started_at: "2025-01-10T14:00:00Z"
+            completed_at: "2025-01-10T14:15:00Z"
+            agent_used: "deploy-worktree"
+          - name: Implementation
+            status: in_progress
+            started_at: "2025-01-10T14:15:00Z"
+
+# =============================================================================
+# SECTION 9: VALIDATION CHECKLIST
+# =============================================================================
+
+validation_checklist:
+  pre_execution:
+    - "Plan-MMD has PLAN_MMD_VERSION header"
+    - "PHASES header is present and non-empty"
+    - "AGENT_ROUTING covers all phases"
+    - "All routed agents are valid types"
+    - "All routed agents are in orchestrator's spawns fence"
+    - "Plan folder exists and is accessible"
+    - "At least one plan_live_*.yml exists"
+    - "YAML phase names match MMD PHASES"
+
+  during_execution:
+    - "Only one phase in_progress at a time"
+    - "Status transitions follow valid paths"
+    - "Iteration counts do not exceed max_iterations"
+    - "Spawned agents match routing"
+    - "Output artifacts are written to declared locations"
+
+  post_execution:
+    - "All phases have terminal status (completed, failed, blocked, completed_with_issues)"
+    - "MMD STATUS matches YAML statuses"
+    - "Execution summary generated"
+    - "Plan folder archived if fully complete"

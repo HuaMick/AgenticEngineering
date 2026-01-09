@@ -1,67 +1,172 @@
-%% ========================================
-%% PLAN ORCHESTRATION MMD
-%% ========================================
-%% PLAN_MMD_VERSION: 1.1
-%% GENERATED_BY: planner-build
-%% PLAN_FOLDER: docs/plans/live/<YYMMDDRepo_Branch>
-%% PHASES: Environment_Setup, Domain_Build, Workflow_Build, Entrypoint_Build, Integration_Test, CI_CD_Validation
-%% AGENT_ROUTING: Environment_Setup -> builder, Domain_Build -> builder, Workflow_Build -> builder, Entrypoint_Build -> builder, Integration_Test -> tester, CI_CD_Validation -> deployer
-%% STATUS: Environment_Setup=pending, Domain_Build=pending, Workflow_Build=pending, Entrypoint_Build=pending, Integration_Test=pending, CI_CD_Validation=pending
-%%
-%% This MMD shows Agents and Loops. Planners select from the collection of loops 
-%% and testing strategies defined in modules/AgenticGuidance/assets/definitions/.
-%% - Loops: test-fix-loop, audit-test-fix-loop, exploration-loop, etc.
-%% - Strategies: agent-blind-test, smoke-test, user-simulation, etc.
+flowchart LR
+    %% ========================================
+    %% HEADER METADATA
+    %% ========================================
+    %% GOAL: Demonstrate complete Plan-MMD structure for orchestrating a multi-phase build workflow.
+    %% PROFILE: orchestrator
+    %% PLAN_FOLDER: docs/plans/live/YYMMDDRepo_Branch/
+    %% INPUT_PATH: docs/plans/live/YYMMDDRepo_Branch/plan_example.yml
+    %% OUTPUT_PATH: orchestration_example.mmd
+    %% PHASES: Environment_Setup, Domain_Build, Workflow_Build, Entrypoint_Build, Integration_Test, CI_CD_Validation, Final_Audit
+    %% AGENT_ROUTING: Environment_Setup -> builder, Domain_Build -> builder, Workflow_Build -> builder, Entrypoint_Build -> builder, Integration_Test -> tester, CI_CD_Validation -> deployer, Final_Audit -> auditor
+    %% FEEDBACK_TRIGGER: TEST_FAILURE -> TestFixLoop
+    %% FEEDBACK_TRIGGER: BUILD_FAILURE -> BuildFixLoop
+    %% FEEDBACK_TRIGGER: CICD_FAILURE -> CICDFixLoop
+    %% FEEDBACK_TRIGGER: AUDIT_FAILURE -> AuditFixLoop
+    %% STATUS: Environment_Setup=pending, Domain_Build=pending, Workflow_Build=pending, Entrypoint_Build=pending, Integration_Test=pending, CI_CD_Validation=pending, Final_Audit=pending
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.test-fix-loop
+    %% MAX_ITERATIONS: 5 (per test-fix-loop definition)
+    %% ESCALATION: If max iterations reached without resolution, stop and Ask User
 
-graph TD
     %% ========================================
-    %% PHASE FLOW WITH AGENTS AND LOOPS
+    %% START NODE
     %% ========================================
-    Start((Start)) --> Phase1[Phase 1: Environment Setup <br/> <b>builder</b>]
-    
-    Phase1 --> Phase2[Phase 2: Domain Layer Build <br/> <b>builder</b>]
-    
-    Phase2 --> Phase3[Phase 3: Workflow Layer Build <br/> <b>builder</b>]
-    
-    Phase3 --> Phase4[Phase 4: Entrypoint Layer Build <br/> <b>builder</b>]
-    
-    Phase4 --> Phase5{Phase 5: Integration Testing <br/> <b>test-fix-loop</b>}
-    
-    subgraph test-fix-loop [test-fix-loop (tester)]
-        Phase5 --> Test[Run Tests]
-        Test -- fail --> Fix[Fix Issues]
-        Fix --> Test
-        Test -- pass --> Phase6
-    end
-    
-    Phase6[Phase 6: CI/CD Validation <br/> <b>deployer</b>] --> Audit{Phase 7: Final Audit <br/> <b>audit-test-fix-loop</b>}
-    
-    subgraph audit-test-fix-loop [audit-test-fix-loop (tester)]
-        Audit --> Check[Audit Quality]
-        Check -- issues --> Remediation[Remediate]
-        Remediation --> Check
-        Check -- verified --> End((End))
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    subgraph InputValidation_SG ["Input Validation Subgraph"]
+        LoadInputs --> ReviewInputs[Review All Listed Inputs]
+        ReviewInputs --> CheckInputs{All Inputs Found?}
+        CheckInputs -- "No: Missing" --> SearchInputs[Search for Missing Inputs]
+        SearchInputs --> FoundInputs{Found?}
+        FoundInputs -- "Yes: Update paths" --> ReviewInputs
+        FoundInputs -- "No: Stop" --> AskUser((Ask User for Clarification))
+        CheckInputs -- "Yes: Verified" --> Phase1
     end
 
     %% ========================================
-    %% STRATEGIES (Example Selections)
+    %% PHASE 1: ENVIRONMENT SETUP
     %% ========================================
-    %% Phase 5 uses 'agent-blind-test' strategy for UAT
-    %% Phase 7 uses 'reward-hacking' audit strategy
+    %% Agent: builder (deploy-worktree for setup tasks)
+    subgraph Phase1_SG ["Phase 1: Environment Setup"]
+        Phase1[Environment Setup] --> SpawnSetup[Spawn deploy-worktree Agent]
+        SpawnSetup --> SetupComplete{Setup Complete?}
+        SetupComplete -- "No: Retry" --> SpawnSetup
+        SetupComplete -- "Yes: Ready" --> Phase2
+    end
 
     %% ========================================
-    %% FEEDBACK TRIGGERS (Cross-Phase)
+    %% PHASE 2: DOMAIN LAYER BUILD
     %% ========================================
-    Phase6 -- cicd_failure --> Phase5
-    Phase6 -- config_error --> Phase1
+    %% Agent: builder (build-python or build-flutter)
+    subgraph Phase2_SG ["Phase 2: Domain Layer Build"]
+        Phase2[Domain Layer Build] --> SpawnDomainBuilder[Spawn build-python Agent]
+        SpawnDomainBuilder --> DomainTests[Run Domain Unit Tests]
+        DomainTests --> DomainPassed{Domain Tests Passed?}
+        DomainPassed -- "No: Fix" --> SpawnDomainBuilder
+        DomainPassed -- "Yes: Ready" --> Phase3
+    end
+
+    %% ========================================
+    %% PHASE 3: WORKFLOW LAYER BUILD
+    %% ========================================
+    %% Agent: builder
+    subgraph Phase3_SG ["Phase 3: Workflow Layer Build"]
+        Phase3[Workflow Layer Build] --> SpawnWorkflowBuilder[Spawn build-python Agent]
+        SpawnWorkflowBuilder --> WorkflowTests[Run Workflow Unit Tests]
+        WorkflowTests --> WorkflowPassed{Workflow Tests Passed?}
+        WorkflowPassed -- "No: Fix" --> SpawnWorkflowBuilder
+        WorkflowPassed -- "Yes: Ready" --> Phase4
+    end
+
+    %% ========================================
+    %% PHASE 4: ENTRYPOINT LAYER BUILD
+    %% ========================================
+    %% Agent: builder
+    subgraph Phase4_SG ["Phase 4: Entrypoint Layer Build"]
+        Phase4[Entrypoint Layer Build] --> SpawnEntrypointBuilder[Spawn build-python Agent]
+        SpawnEntrypointBuilder --> EntrypointTests[Run Entrypoint Unit Tests]
+        EntrypointTests --> EntrypointPassed{Entrypoint Tests Passed?}
+        EntrypointPassed -- "No: Fix" --> SpawnEntrypointBuilder
+        EntrypointPassed -- "Yes: Ready" --> Phase5
+    end
+
+    %% ========================================
+    %% PHASE 5: INTEGRATION TESTING
+    %% ========================================
+    %% Agent: tester (test-runner)
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.test-fix-loop
+    %% MAX_ITERATIONS: 5 (per test-fix-loop definition)
+    %% ESCALATION: If max iterations reached, categorize failure and re-plan or Ask User
+    subgraph Phase5_SG ["Phase 5: Integration Testing"]
+        Phase5[Integration Testing] --> SpawnTester[Spawn test-runner Agent]
+        SpawnTester --> IntegrationTests[Run Integration Tests]
+        IntegrationTests --> IntegrationPassed{Integration Tests Passed?}
+        IntegrationPassed -- "No: Fix in Iteration" --> SpawnTester
+    end
+
+    %% Test failure escalation - feedback loop
+    IntegrationPassed -- "No: Escalate" --> CategorizeTestFailure[Categorize Test Failure]
+    CategorizeTestFailure --> PackageTestContext[Package TEST_FAILURE Context]
+    PackageTestContext -.->|Re-plan with TEST_FAILURE| Phase2
+
+    %% Success path continues
+    IntegrationPassed -- "Yes: Passed" --> Phase6
+
+    %% ========================================
+    %% PHASE 6: CI/CD VALIDATION
+    %% ========================================
+    %% Agent: deployer (deploy-cicd)
+    subgraph Phase6_SG ["Phase 6: CI/CD Validation"]
+        Phase6[CI/CD Validation] --> SpawnDeployer[Spawn deploy-cicd Agent]
+        SpawnDeployer --> CICDAudit[Audit CI/CD Configuration]
+        CICDAudit --> CICDValid{CI/CD Valid?}
+    end
+
+    %% CI/CD failure path - feedback loop
+    CICDValid -- "No: Config Error" --> CategorizeCICDFailure[Categorize CI/CD Failure]
+    CategorizeCICDFailure --> PackageCICDContext[Package CICD_FAILURE Context]
+    PackageCICDContext -.->|Re-plan with CICD_FAILURE| Phase1
+
+    %% Success path continues
+    CICDValid -- "Yes: Valid" --> Phase7
+
+    %% ========================================
+    %% PHASE 7: FINAL AUDIT
+    %% ========================================
+    %% Agent: auditor (test-final-output)
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.audit-test-fix-loop
+    %% MAX_ITERATIONS: 3 (per audit-test-fix-loop definition)
+    %% ESCALATION: If max iterations reached, stop and Ask User with audit findings
+    subgraph Phase7_SG ["Phase 7: Final Audit"]
+        Phase7[Final Audit] --> SpawnAuditor[Spawn test-final-output Agent]
+        SpawnAuditor --> AuditCheck[Audit Quality & Completeness]
+        AuditCheck --> AuditPassed{Audit Passed?}
+        AuditPassed -- "No: Issues Found" --> AuditRemediation[Identify Remediation]
+        AuditRemediation --> SpawnAuditor
+    end
+
+    %% Audit failure escalation - feedback loop
+    AuditPassed -- "No: Escalate" --> PackageAuditContext[Package AUDIT_FAILURE Context]
+    PackageAuditContext -.->|Re-plan with AUDIT_FAILURE| Phase2
+
+    %% ========================================
+    %% SUCCESS PATH
+    %% ========================================
+    AuditPassed -- "Yes: Verified" --> MoveCompletedTasks[Move Completed Tasks]
+    MoveCompletedTasks --> ArchivePlan[Archive Plan to Completed]
+    ArchivePlan --> End((End))
+
+    %% ========================================
+    %% ESCALATION PATH
+    %% ========================================
+    %% All escalation endpoints converge to AskUser for human intervention
+    SetupComplete -- "No: Escalate" --> AskUser
+    DomainPassed -- "No: Escalate" --> AskUser
+    WorkflowPassed -- "No: Escalate" --> AskUser
+    EntrypointPassed -- "No: Escalate" --> AskUser
 
     %% ========================================
     %% STYLING
     %% ========================================
+    %% Phase status styling classes
     classDef completed fill:#90EE90,stroke:#228B22
     classDef inprogress fill:#FFFF99,stroke:#DAA520
     classDef failed fill:#FFB6C1,stroke:#DC143C
-    classDef loop fill:#E1F5FE,stroke:#01579B,stroke-dasharray: 5 5
+    classDef pending fill:#E8E8E8,stroke:#808080
 
-    test-fix-loop:::loop
-    audit-test-fix-loop:::loop
+    %% Feedback loop styling (dashed lines for re-planning paths)
+    classDef dashedstroke stroke-dasharray: 5 5;
+    linkStyle 23,27,31 stroke:#888,stroke-width:2px,stroke-dasharray: 5 5;

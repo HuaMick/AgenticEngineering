@@ -493,6 +493,13 @@ validation_checklist:
     - "linkStyle indices match feedback edges"
     - "Styling block at end of file"
 
+  execution_metadata_validation:
+    - "AGENT_ROUTING comment present (required for orchestrators)"
+    - "All routed agents exist in manifest.yml spawns"
+    - "FEEDBACK_TRIGGERs reference valid flowchart nodes"
+    - "STATUS comment lists all major phases"
+    - "Trigger loop references match agent-loops.yml definitions"
+
 # =============================================================================
 # COMPLETE EXAMPLE
 # =============================================================================
@@ -545,3 +552,289 @@ complete_example:
         %% STYLING
         %% ========================================
         classDef dashedstroke stroke-dasharray: 5 5;
+
+# =============================================================================
+# EXECUTION METADATA PATTERNS
+# =============================================================================
+# The following sections define metadata patterns used by orchestration executors
+# to route agents, handle failures, and track execution state at runtime.
+
+# =============================================================================
+# AGENT_ROUTING PATTERN
+# =============================================================================
+# Agent routing comments map phases to specific agents for execution.
+# This enables executors to determine which agent handles each phase.
+
+agent_routing:
+  description: |
+    Agent routing defines which agent type handles each phase or subgraph.
+    Executors use this metadata to spawn correct agents during workflow execution.
+
+  comment_format:
+    pattern: "^# AGENT_ROUTING: .+ -> [a-z-]+(?:, .+ -> [a-z-]+)*$"
+    location: "After flowchart declaration, before Start node"
+    example: "# AGENT_ROUTING: Implementation -> build-python, Testing -> test-runner, Audit -> test-final-output"
+
+  valid_agent_types:
+    orchestration:
+      - "orchestration-planning"
+      - "orchestration-build"
+      - "orchestration-guidance"
+    deploy:
+      - "deploy-worktree"
+      - "deploy-cicd"
+    planners:
+      - "planner-build"
+      - "planner-test"
+      - "planner-guidance"
+      - "planner-cleaning"
+      - "planner-reviewer"
+      - "planner-guidance-testing"
+    builders:
+      - "build-python"
+      - "build-flutter"
+    testers:
+      - "test-runner"
+      - "test-guidance-simulator"
+      - "test-final-output"
+      - "test-audit"
+      - "test-user-simulator"
+    teachers:
+      - "teacher-update-guidance"
+      - "teacher-update-assets"
+
+  routing_examples:
+    build_orchestrator: |
+      # AGENT_ROUTING: Setup -> deploy-worktree, Implementation -> build-python, Testing -> test-runner, Audit -> test-final-output
+    teaching_orchestrator: |
+      # AGENT_ROUTING: Planning -> planner-guidance, Review -> planner-reviewer, Teaching -> teacher-update-guidance
+    planning_orchestrator: |
+      # AGENT_ROUTING: BuildPlanning -> planner-build, TestPlanning -> planner-test, Review -> planner-reviewer
+
+  validation:
+    - "Each phase name in routing must match a subgraph or node ID in the flowchart"
+    - "Each agent type must exist in the orchestrator's manifest.yml spawns list"
+    - "All spawn nodes in flowchart should have corresponding routing entry"
+
+# =============================================================================
+# FEEDBACK_TRIGGERS PATTERN
+# =============================================================================
+# Feedback triggers define failure conditions that cause re-planning or escalation.
+# These connect to loop definitions and enable automated failure recovery.
+
+feedback_triggers:
+  description: |
+    Feedback triggers define events that cause the workflow to re-enter planning
+    or escalate to human intervention. Triggers map failure types to actions.
+
+  comment_format:
+    pattern: "^# FEEDBACK_TRIGGER: [A-Z_]+ -> .+$"
+    location: "Within phase comment blocks where failure handling occurs"
+    example: "# FEEDBACK_TRIGGER: TEST_FAILURE -> DelegatePlanning"
+
+  standard_triggers:
+    TEST_FAILURE:
+      description: "Test execution failed after implementation"
+      severity_levels:
+        - "unit: Fix in current iteration"
+        - "integration: May require plan update"
+        - "e2e: Escalate to planning phase"
+      typical_action: "Re-plan with TEST_FAILURE context"
+      loop_reference: "agent-loops.yml#loop_types.test-fix-loop"
+
+    BUILD_FAILURE:
+      description: "Build/compilation failed during implementation"
+      typical_action: "Fix in iteration or escalate to planning"
+      loop_reference: "agent-loops.yml#loop_types.test-fix-loop"
+
+    CICD_FAILURE:
+      description: "CI/CD pipeline validation failed"
+      typical_action: "Re-plan with CICD_FAILURE context"
+      affected_agents:
+        - "deploy-cicd"
+
+    GUIDANCE_GAP:
+      description: "Guidance validation found missing or incomplete guidance"
+      subtypes:
+        - "build: Build process documentation gaps"
+        - "test: Test design documentation gaps"
+        - "guidance: Agent guidance documentation gaps"
+      typical_action: "Re-plan with GUIDANCE_GAP context"
+      loop_reference: "agent-loops.yml#loop_types.guidance-test-loop"
+
+    AUDIT_FAILURE:
+      description: "Final audit detected quality or completeness issues"
+      typical_action: "Re-plan with AUDIT_FAILURE context"
+      affected_agents:
+        - "test-final-output"
+
+  trigger_to_action_mapping:
+    description: |
+      Standard mapping from triggers to workflow actions:
+    mappings:
+      - trigger: "TEST_FAILURE"
+        severity: "low"
+        action: "Retry in current iteration"
+        target_node: "SpawnBuilders"
+
+      - trigger: "TEST_FAILURE"
+        severity: "high"
+        action: "Escalate to planning"
+        target_node: "DelegatePlanning"
+        context_package: "failure_type, failure_details, original_plan_path, iteration_count"
+
+      - trigger: "CICD_FAILURE"
+        action: "Re-plan with CI/CD context"
+        target_node: "DelegatePlanning"
+        context_package: "pipeline_config, error_details, affected_files"
+
+      - trigger: "GUIDANCE_GAP"
+        action: "Re-plan with gap type context"
+        target_node: "DelegatePlanning"
+        context_package: "gap_type, friction_report, affected_guidance"
+
+      - trigger: "AUDIT_FAILURE"
+        action: "Re-plan with audit findings"
+        target_node: "DelegatePlanning"
+        context_package: "audit_findings, severity, affected_outputs"
+
+  loop_connection:
+    description: |
+      Triggers connect to loop definitions in agent-loops.yml.
+      Each trigger should reference its governing loop for iteration limits.
+    example: |
+      %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.test-fix-loop
+      %% FEEDBACK_TRIGGER: TEST_FAILURE -> DelegatePlanning (after max_iterations)
+      %% MAX_ITERATIONS: 5 (per test-fix-loop definition)
+
+# =============================================================================
+# STATUS/STATE MANAGEMENT
+# =============================================================================
+# Status comments track execution state of phases during workflow execution.
+# Executors update these as phases complete or fail.
+
+status_management:
+  description: |
+    Status comments track the execution state of each phase in the workflow.
+    These are updated by the executor during runtime to enable resumption
+    and progress tracking.
+
+  comment_format:
+    pattern: "^# STATUS: [A-Za-z]+=(pending|in_progress|completed|failed|blocked)(?:, [A-Za-z]+=(pending|in_progress|completed|failed|blocked))*$"
+    location: "After AGENT_ROUTING comment, before Start node"
+    example: "# STATUS: InputValidation=completed, Planning=in_progress, Implementation=pending"
+
+  valid_status_values:
+    pending:
+      description: "Phase has not started"
+      can_transition_to:
+        - "in_progress"
+        - "blocked"
+
+    in_progress:
+      description: "Phase is currently executing"
+      can_transition_to:
+        - "completed"
+        - "failed"
+        - "blocked"
+
+    completed:
+      description: "Phase finished successfully"
+      can_transition_to: []
+      note: "Terminal state - cannot transition out"
+
+    failed:
+      description: "Phase encountered unrecoverable error"
+      can_transition_to:
+        - "pending"
+      note: "Can reset to pending for retry after re-planning"
+
+    blocked:
+      description: "Phase cannot proceed due to external dependency"
+      can_transition_to:
+        - "pending"
+        - "in_progress"
+      note: "Requires human intervention or upstream fix"
+
+  executor_update_rules:
+    - "Set phase to in_progress when spawning its agent"
+    - "Set phase to completed when agent reports success"
+    - "Set phase to failed when agent reports unrecoverable error"
+    - "Set phase to blocked when waiting on human input or external resource"
+    - "Reset phase to pending after re-planning for retry"
+
+  relationship_to_plan_yaml:
+    description: |
+      STATUS comments in MMD files track workflow-level phase state.
+      This differs from plan YAML phase status which tracks task completion.
+    mapping:
+      mmd_status: "Workflow execution state (pending/in_progress/completed/failed/blocked)"
+      yaml_status: "Plan task completion state (pending/in_progress/completed)"
+    synchronization: |
+      When MMD phase completes:
+      - Check all corresponding YAML tasks for that phase
+      - Phase can only be 'completed' if all its YAML tasks are completed
+      - If any YAML task failed, MMD phase should be 'failed'
+
+  initial_state_template: |
+    # STATUS: InputValidation=pending, Planning=pending, Implementation=pending, Testing=pending, Audit=pending
+
+# =============================================================================
+# VALIDATION RULES EXPANSION
+# =============================================================================
+# Extended validation rules for execution metadata patterns.
+
+validation_rules_execution:
+  agent_routing_validation:
+    - "AGENT_ROUTING comment must be present for orchestrator MMD files"
+    - "Each phase in routing must correspond to a subgraph or action node"
+    - "All agent types must be valid (see agent_routing.valid_agent_types)"
+    - "All routed agents must exist in orchestrator's manifest.yml spawns list"
+    - "No duplicate phase names in routing"
+
+  manifest_alignment:
+    description: |
+      Agent routing must align with the orchestrator's manifest.yml spawns.
+      This ensures only authorized agents are invoked.
+    validation_steps:
+      - "Load orchestrator's manifest.yml"
+      - "Extract spawns list (agent names)"
+      - "For each agent in AGENT_ROUTING, verify it exists in spawns"
+      - "Flag any routing to agents not in spawns list"
+    example_check: |
+      # In orchestration-build/process.mmd:
+      # AGENT_ROUTING: Implementation -> build-python
+      #
+      # Must verify orchestration-build/manifest.yml contains:
+      # spawns:
+      #   - agent: "build-python"
+
+  feedback_trigger_validation:
+    - "Each FEEDBACK_TRIGGER must reference a valid target node in the flowchart"
+    - "Trigger types must be from standard_triggers list"
+    - "Trigger actions should have corresponding feedback_flow edges (dashed lines)"
+    - "Triggers referencing loops must have matching LOOP_DEFINITION comment"
+
+  loop_reference_validation:
+    description: |
+      Triggers that reference loops must validate against agent-loops.yml.
+    validation_steps:
+      - "Extract loop reference from trigger (e.g., test-fix-loop)"
+      - "Verify loop exists in agent-loops.yml#loop_types"
+      - "Verify MAX_ITERATIONS matches loop definition"
+      - "Verify ESCALATION policy exists"
+
+  status_validation:
+    - "STATUS comment must list all major phases in the workflow"
+    - "Phase names in STATUS must match subgraph IDs or be recognizable phase labels"
+    - "Initial state should have all phases as 'pending' except entry phase"
+    - "No phase should be 'completed' in initial state"
+
+  cross_reference_validation:
+    description: |
+      Validation across multiple metadata patterns for consistency.
+    checks:
+      - "All phases in AGENT_ROUTING should appear in STATUS"
+      - "All phases with FEEDBACK_TRIGGERs should have 'failed' as possible state in STATUS"
+      - "Spawns in flowchart should match AGENT_ROUTING declarations"
+      - "Loop entry points should have STATUS tracking"
