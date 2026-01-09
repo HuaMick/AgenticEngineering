@@ -1,0 +1,49 @@
+%% Test Fixture: Valid MMD with All Required Metadata
+%% Test Scenario: MMD_PARSING_TEST - PARSE_001
+%% Purpose: Verify executor correctly parses complete Plan-MMD
+
+%% GOAL: Test complete MMD parsing with all required metadata
+%% PROFILE: orchestrator
+%% PLAN_FOLDER: docs/plans/live/test_fixture/
+%% INPUT_PATH: docs/plans/live/test_fixture/plan_test.yml
+%% OUTPUT_PATH: valid_mmd_all_metadata.mmd
+%% PHASES: Setup_Phase, Build_Phase, Test_Phase
+%% AGENT_ROUTING: Setup_Phase -> deployer, Build_Phase -> builder, Test_Phase -> tester
+%% FEEDBACK_TRIGGER: TEST_FAILURE -> TestFixLoop
+%% FEEDBACK_TRIGGER: BUILD_FAILURE -> BuildFixLoop
+%% STATUS: Setup_Phase=pending, Build_Phase=pending, Test_Phase=pending
+%% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.test-fix-loop
+%% MAX_ITERATIONS: 3
+
+flowchart LR
+    Start((Start)) --> SetupPhase[Setup Phase]
+
+    subgraph Setup_SG[Setup Phase]
+        SetupPhase --> SpawnDeployer[Spawn deploy-worktree]
+        SpawnDeployer --> SetupDone{Setup Complete?}
+    end
+
+    SetupDone -- "Yes" --> BuildPhase[Build Phase]
+    SetupDone -- "No" --> AskUser((Ask User))
+
+    subgraph Build_SG[Build Phase]
+        BuildPhase --> SpawnBuilder[Spawn build-python]
+        SpawnBuilder --> BuildDone{Build Complete?}
+    end
+
+    BuildDone -- "Yes" --> TestPhase[Test Phase]
+    BuildDone -- "No: BUILD_FAILURE" -.-> BuildFixLoop[Re-plan Build]
+    BuildFixLoop -.-> BuildPhase
+
+    subgraph Test_SG[Test Phase]
+        TestPhase --> SpawnTester[Spawn test-runner]
+        SpawnTester --> TestDone{Tests Pass?}
+    end
+
+    TestDone -- "Yes" --> End((End))
+    TestDone -- "No: TEST_FAILURE" -.-> TestFixLoop[Re-plan Tests]
+    TestFixLoop -.-> TestPhase
+
+    classDef pending fill:#fff,stroke:#999
+    classDef completed fill:#90EE90,stroke:#228B22
+    class SetupPhase,BuildPhase,TestPhase pending
