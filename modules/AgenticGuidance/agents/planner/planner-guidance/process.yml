@@ -18,16 +18,48 @@ process:
       description: "Target directory for creating new planning folders (YYMMDDRepo_Branch structure)"
 
   outputs:
-    - location: "docs/plans/live/YYMMDDRepo_Branch/live/plan_live_teach.yml"
+    # FENCE: Output must match declared schema before marking complete
+    - name: "plan_live_teach.yml"
+      path_template: "docs/plans/live/{plan_id}/live/plan_live_teach.yml"
       description: "Teaching phase plan for guidance improvements (path, fence, signpost edits)"
-    - location: "docs/plans/live/YYMMDDRepo_Branch/live/plan_live_audit_clean.yml"
+      required_fields:
+        - "name"
+        - "worktree_path"
+        - "status"
+        - "phases"
+      schema_reference: "modules/AgenticGuidance/assets/examples/planner/YYMMDDRepo_Branch/plan_example.yml"
+
+    - name: "plan_live_audit_clean.yml"
+      path_template: "docs/plans/live/{plan_id}/live/plan_live_audit_clean.yml"
       description: "Audit and cleanup phase plan (if needed)"
-    - location: "docs/plans/live/YYMMDDRepo_Branch/analysis/friction-analysis.md"
+      required_fields:
+        - "name"
+        - "status"
+        - "phases"
+
+    - name: "friction-analysis.md"
+      path_template: "docs/plans/live/{plan_id}/analysis/friction-analysis.md"
       description: "Friction analysis document identifying guidance issues"
+      required_fields: []  # Markdown format, structure flexible
 
   steps:
     - |
-      Review all inputs. If an input cannot be found, do not proceed.
+      VALIDATE REQUIRED INPUTS (from inputs.yml required_inputs):
+      The following inputs MUST be provided by the orchestrator or user:
+
+      1. friction_source (string, required)
+         - Path to friction report, agent logs, or audit results to analyze
+         - ERROR if missing: "STOP: No friction_source provided. Cannot analyze guidance issues without source data."
+
+      2. target_agent (string, required)
+         - Agent name whose guidance needs improvement
+         - ERROR if missing: "STOP: No target_agent provided. Cannot create guidance plan without knowing which agent to improve."
+
+      3. target_project_path (string, required)
+         - Absolute path to target project root
+         - ERROR if missing: "STOP: No target_project_path provided. Cannot resolve docs/plans/ location."
+
+      If ANY required input is missing, report the specific error and STOP.
       Identify the target agent(s) and their category (refer to agent-categories.yml).
 
     - |

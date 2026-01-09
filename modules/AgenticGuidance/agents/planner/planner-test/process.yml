@@ -13,15 +13,32 @@ process:
       description: "Core planner agent inputs and guidelines"
 
   outputs:
-    - location: "{planning_folder}/live/plan_test.yml"
-      description: "Test phases plan file. planning_folder is absolute path provided by orchestration."
-      format: "YAML plan with phases, tasks, and success criteria"
+    # FENCE: Output must match declared schema before marking complete
+    - name: "plan_test.yml"
+      path_template: "docs/plans/live/{plan_id}/live/plan_test.yml"
+      description: "Test phases plan file with test-fix-loop and audit-test-fix-loop patterns"
+      required_fields:
+        - "name"
+        - "status"
+        - "phases"         # Test phases with test-fix-loop patterns
+      schema_reference: "modules/AgenticGuidance/assets/examples/planner/YYMMDDRepo_Branch/plan_example.yml"
+      note: "planning_folder is absolute path provided by orchestration"
 
   steps:
     - |
-      Review all inputs if an input cannot be found do not proceed.
-      If an input is found in a different location, update the path and flag
-      the discrepancy in your output.
+      VALIDATE REQUIRED INPUTS (from inputs.yml required_inputs):
+      The following inputs MUST be provided by the orchestrator or user:
+
+      1. planning_folder (string, required)
+         - Absolute path to planning folder containing build phase plans to test
+         - ERROR if missing: "STOP: No planning_folder provided. Cannot create test plan without knowing what to test."
+
+      2. build_phases (list, required)
+         - List of build phase plan files to create tests for
+         - ERROR if missing: "STOP: No build_phases provided. Cannot determine test targets."
+
+      If ANY required input is missing, report the specific error and STOP.
+      If an input is found in a different location, update the path and flag the discrepancy.
     - |
       PLAN FOLDER STRUCTURE:
       See modules/AgenticGuidance/assets/definitions/plans.yml for folder structure and lifecycle.

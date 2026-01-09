@@ -9,13 +9,37 @@ process:
     - location: "modules/AgenticGuidance/agents/planner/planner-build/inputs.yml"
       description: "Core planner agent inputs and guidelines"
 
-  outputs: []
+  outputs:
+    # FENCE: Output must match declared schema before marking complete
+    - name: "plan_live_build.yml"
+      path_template: "docs/plans/live/{plan_id}/live/plan_live_build.yml"
+      description: "Implementation plan with build and environment setup phases"
+      required_fields:
+        - "name"           # Unique plan name
+        - "worktree_path"  # Absolute path to worktree
+        - "status"         # active, blocked, completed
+        - "phases"         # List of implementation phases
+      schema_reference: "modules/AgenticGuidance/assets/examples/planner/YYMMDDRepo_Branch/plan_example.yml"
 
   steps:
     - |
-      Review all inputs if an input cannot be found do not proceed.
-      If an input is found in a different location, update the path and flag
-      the discrepancy in your output.
+      VALIDATE REQUIRED INPUTS (from inputs.yml required_inputs):
+      The following inputs MUST be provided by the orchestrator or user:
+
+      1. objective (string, required)
+         - Build objective to plan for
+         - ERROR if missing: "STOP: No objective provided. Cannot create build plan without clear objective."
+
+      2. target_project_path (string, required)
+         - Absolute path to target project root
+         - ERROR if missing: "STOP: No target_project_path provided. Cannot resolve docs/plans/ location."
+
+      3. plan_folder_name (string, required)
+         - Plan folder name in YYMMDDRepo_Branch format
+         - ERROR if missing: "STOP: No plan_folder_name provided. Cannot create plan files."
+
+      If ANY required input is missing, report the specific error and STOP.
+      If an input is found in a different location, update the path and flag the discrepancy.
     - |
       A planning folder should have been provided (docs/plans/live/YYMMDDRepo_Branch/).
       Create appropriate folder structure based on plan complexity:
