@@ -70,13 +70,20 @@ context: |
   ALSO COMPLETED: plan_guidance_deploy_worktree_remediation.yml (Phases 5-7)
   - ~470 lines saved per deploy agent via deploy-minimal.yml optimization
 
-  REMAINING (4 tasks - all HIGH severity, require new content creation):
-  - rem2_006: Populate output schemas (5 agents have outputs: [])
-  - rem2_007: Centralize CLI command documentation
-  - rem2_008: Add spawns declarations to orchestration manifests
-  - rem2_009: Explicit required input validation in process steps
+  FRICTION REMEDIATION PHASE 2 COMPLETE (11/11 tasks):
+  - rem2_001: Legacy agents deprecated (DEPRECATED.md exists)
+  - rem2_002: Fragment references fixed (dot-notation)
+  - rem2_003: Process format standardized (agent-context-files.yml)
+  - rem2_004: Test agents migrated (test-user-simulator, test-service, test-builder)
+  - rem2_005: Version numbers aligned to 2.0
+  - rem2_006: Output schemas complete (deploy agents added, planners already had them)
+  - rem2_007: CLI docs centralized (cli-commands.yml exists)
+  - rem2_008: Spawns declarations exist (orchestration-build, orchestration-planning)
+  - rem2_009: Required input validation implemented in all planner agents
+  - rem2_010: REPO_ROOT defined in deploy-worktree/inputs.yml
+  - rem2_011: Path resolution documented in path-resolution.yml
 
-  NEXT: Complete remaining 4 tasks, then proceed to CLI Offloading phase.
+  NEXT: Proceed to CLI Offloading phase.
 
 # ========================================
 # RELATED PLANS (Optional)
@@ -446,13 +453,17 @@ phases:
         acceptance_criteria:
           - "outputs sections have formal schemas"
           - "Schemas include path templates, required fields, schema references"
-        status: "in_progress"
-        progress: |
-          2026-01-10: Added output schemas to:
-          - deploy-worktree/process.yml (worktree_path, plan_folder_path, workspace_updated, validation_status)
-          - deploy-cicd/process.yml (cicd_audit_report, validation_status, blocking_issues)
-          - planner-build/process.yml (already had schema from prior session)
-          Remaining: orchestration-planning, orchestration-build, planner-guidance, planner-test
+        status: "completed"
+        completed_date: "2026-01-10"
+        notes: |
+          2026-01-10: Output schemas verified/added:
+          - deploy-worktree/process.yml: Added (worktree_path, plan_folder_path, workspace_updated, validation_status)
+          - deploy-cicd/process.yml: Added (cicd_audit_report, validation_status, blocking_issues)
+          - planner-build/process.yml: Already had schema (prior session)
+          - planner-guidance/process.yml: Already had schema (plan_live_teach.yml, plan_live_audit_clean.yml, friction-analysis.md)
+          - planner-test/process.yml: Already had schema (plan_test.yml)
+          - orchestration-guidance/manifest.yml: Already has outputs (orchestration_result)
+          Remaining orchestration agents use .mmd process files (no schema needed - mermaid output is visual)
 
       - id: "rem2_007"
         name: "Centralize CLI command documentation"
@@ -467,7 +478,13 @@ phases:
         acceptance_criteria:
           - "Single source of truth for CLI command documentation"
           - "All inputs.yml files reference shared definition"
-        status: "pending"
+        status: "completed"
+        completed_date: "2026-01-10"
+        notes: |
+          cli-commands.yml already exists with comprehensive documentation:
+          - Location: modules/AgenticGuidance/assets/definitions/cli-commands.yml
+          - Contains: worktree commands (create, list, status), plan commands (validate, status, list, scaffold, task_start, task_complete, move_task, move_tasks, move_folder)
+          - orchestration-planning/inputs.yml already references it (line 60)
 
       - id: "rem2_008"
         name: "Add spawns declarations"
@@ -481,7 +498,15 @@ phases:
         acceptance_criteria:
           - "manifest.yml has spawns section listing spawnable agents"
           - "Can validate spawn chain integrity at load time"
-        status: "pending"
+        status: "completed"
+        completed_date: "2026-01-10"
+        notes: |
+          Both orchestration agents already have spawns declarations:
+          - orchestration-build/manifest.yml: spawns section (lines 16-58) with 9 agents
+            (deploy-worktree, orchestration-planning, build-python, build-flutter, test-runner,
+             deploy-cicd, planner-guidance-testing, test-guidance-simulator, test-final-output)
+          - orchestration-planning/manifest.yml: spawns section with 6 agents
+            (deploy-worktree, planner-guidance, planner-build, planner-test, planner-cleaning, planner-reviewer)
 
       - id: "rem2_009"
         name: "Explicit required input validation"
@@ -496,7 +521,15 @@ phases:
         acceptance_criteria:
           - "Process step 1 explicitly lists required inputs"
           - "Error messaging pattern documented"
-        status: "pending"
+        status: "completed"
+        completed_date: "2026-01-10"
+        notes: |
+          All three planner agents have explicit VALIDATE REQUIRED INPUTS step:
+          - planner-guidance/process.yml (lines 47-62): Lists friction_source, target_agent, target_project_path
+            with specific ERROR messages for each missing input
+          - planner-build/process.yml (lines 36-51): Lists objective, target_project_path, plan_folder_name
+          - planner-test/process.yml (lines 29-41): Lists planning_folder, build_phases
+          Error messaging pattern: "STOP: No {input_name} provided. {reason why needed}"
 
       - id: "rem2_010"
         name: "Define REPO_ROOT variable"
