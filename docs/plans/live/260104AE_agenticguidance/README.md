@@ -16,7 +16,7 @@
 | 5 | 2026-01-08 | Example alignment (7 phases completed) |
 | 6 | 2026-01-09 | Plan structure standardization, 6 audits, 6 review plans |
 | 7 | 2026-01-09 | Plan cleanup: consolidated remediation plans, archived superseded |
-| 8 | 2026-01-09 | Ralph loop: DECISION-001 + DECISION-002 completed, teach plan Phase 1 (3 critical tasks) |
+| 8 | 2026-01-09 | Ralph loop: DECISION-001 + DECISION-002 + teach Phase 1 (3 tasks) + Phase 2 (1 task) |
 
 ## Active Decisions
 
@@ -101,11 +101,11 @@
 
 ## Next Session Priorities
 
-### Priority 1: Continue Teach Plan Phase 2
+### Priority 1: Continue Teach Plan
 ```bash
 # Plan: live/plan_live_teach_consolidated.yml
-# Status: Phase 1 COMPLETED (3 critical tasks), Phase 2+ pending
-# Tasks: Output schema population, input validation standardization
+# Status: Phase 1 COMPLETED (3 tasks), Phase 2 (1/3 tasks done)
+# Next: TEACH-CON-003 (Output Schema), TEACH-CON-004 (Input Validation)
 ```
 
 ### Priority 2: Deploy Worktree Remediation
@@ -125,7 +125,7 @@
 | File | Purpose |
 |------|---------|
 | `live/plan_agenticguidance.yml` | Master plan with all phases |
-| `live/plan_live_teach_consolidated.yml` | Teaching phases - Phase 1 COMPLETED (Session 8) |
+| `live/plan_live_teach_consolidated.yml` | Teaching phases - Phase 1 DONE, Phase 2 in progress |
 | `completed/plan_live_planner_remediation_consolidated.yml` | Unified remediation - COMPLETED |
 | `completed/plan_live_build_migration.yml` | Test agent migration (DECISION-002) - COMPLETED |
 | `completed/plan_live_cleanup_deprecation.yml` | Legacy deprecation (DECISION-001) - COMPLETED |
