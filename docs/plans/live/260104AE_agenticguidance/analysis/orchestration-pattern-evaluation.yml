@@ -1,0 +1,342 @@
+# Orchestration Pattern Evaluation
+# Task: ent_004 - Evaluate orchestration pattern unification
+# Created: 2026-01-10
+
+evaluation:
+  task_id: "ent_004"
+  objective: "Analyze orchestration patterns and determine if unification is warranted"
+  status: "completed"
+
+# =============================================================================
+# CURRENT PATTERN INVENTORY
+# =============================================================================
+pattern_inventory:
+  entrypoints:
+    - name: "_plan_build.yml"
+      orchestration_agent: "orchestration-planning"
+      process_file: "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+      purpose: "Build/implementation planning orchestration"
+      inputs_loaded_from: "orchestration-planning/inputs.yml"
+
+    - name: "_plan_teach.yml"
+      orchestration_agent: "orchestration-planning"
+      process_file: "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+      purpose: "Teaching/guidance planning orchestration"
+      inputs_loaded_from: "orchestration-planning/inputs.yml"
+
+    - name: "_orchestrate.yml"
+      orchestration_agent: "orchestration-build"
+      process_file: "modules/AgenticGuidance/agents/orchestration/orchestration-build/process.mmd"
+      purpose: "Execution orchestration (pre-approved plans)"
+      inputs_loaded_from: "orchestration-build/inputs.yml"
+
+  orchestration_agents:
+    - name: "orchestration-planning"
+      process_type: "mmd"
+      used_by_entrypoints: ["_plan_build.yml", "_plan_teach.yml"]
+      focus: "PLANNING ONLY - creates and validates plans without execution"
+      delegates_execution_to: "orchestration-build via _orchestrate.yml"
+
+    - name: "orchestration-build"
+      process_type: "mmd"
+      used_by_entrypoints: ["_orchestrate.yml"]
+      focus: "EXECUTION - implements code/features with test validation"
+      can_delegate_planning_to: "orchestration-planning when no approved plan provided"
+
+    - name: "orchestration-guidance"
+      process_type: "mmd"
+      used_by_entrypoints: []  # Not currently referenced by any entrypoint
+      focus: "GUIDANCE EXECUTION - context engineering and teaching workflows"
+      can_delegate_planning_to: "orchestration-planning when no approved plan provided"
+      note: "No entrypoint currently routes here - may indicate unused or specialized role"
+
+# =============================================================================
+# COMMON ELEMENTS IDENTIFIED
+# =============================================================================
+common_elements:
+  structural_patterns:
+    - name: "Input Loading and Validation"
+      description: "All three orchestrators follow the same pattern"
+      pattern: |
+        Start --> LoadInputs[Load Context Inputs]
+        LoadInputs --> ReviewInputs[Review All Listed Inputs]
+        ReviewInputs --> CheckInputs{All Inputs Found?}
+      occurrences: ["orchestration-planning", "orchestration-build", "orchestration-guidance"]
+
+    - name: "Missing Input Recovery"
+      description: "Self-healing search pattern for missing inputs"
+      pattern: |
+        CheckInputs -- "No: Missing" --> SearchInputs[Search for Missing Inputs]
+        SearchInputs --> Found{Found?}
+        Found -- "Yes: Update paths" --> UpdateRefs[Update References & Flag]
+        Found -- "No: Stop" --> AskUser((Ask User for Clarification))
+      occurrences: ["orchestration-build", "orchestration-guidance"]
+      note: "orchestration-planning uses simpler model - asks user directly"
+
+    - name: "Worktree Verification"
+      description: "Deploy-worktree spawning and validation"
+      pattern: |
+        CheckInputs -- "Yes: Verified" --> SpawnDeployWorktree[Spawn deploy-worktree Agent]
+        SpawnDeployWorktree --> WorktreeValid{Worktree Valid?}
+        WorktreeValid -- "No: Failed verification" --> AskUser
+      occurrences: ["orchestration-planning", "orchestration-build", "orchestration-guidance"]
+
+    - name: "Planning Delegation Pattern"
+      description: "Dual-mode plan handling (pre-approved vs delegation)"
+      pattern: |
+        Check for pre-approved plan -->
+          If yes: Load and validate
+          If no: Spawn orchestration-planning
+      occurrences: ["orchestration-build", "orchestration-guidance"]
+      note: "orchestration-planning is the DESTINATION of delegation, not a delegator"
+
+    - name: "Failure Feedback Loops"
+      description: "Return to planning when validation fails"
+      pattern: |
+        ValidationFailed --> PackageFailureContext --> Re-invoke planning (dotted line)
+      occurrences: ["orchestration-build", "orchestration-guidance"]
+      failure_types:
+        - "TEST_FAILURE"
+        - "CICD_FAILURE"
+        - "GUIDANCE_GAP"
+        - "AUDIT_FAILURE"
+
+    - name: "Guidance Validation Phase"
+      description: "Test-guidance-simulator validation loop"
+      pattern: |
+        GuidanceChanges? --> SpawnGuidanceTest --> GuidancePassed?
+        No: Categorize gaps and re-plan
+      occurrences: ["orchestration-build", "orchestration-guidance"]
+
+    - name: "Final Audit Phase"
+      description: "test-final-output audit before completion"
+      pattern: |
+        SpawnFinalAudit --> FinalAudit{Passed?} --> End
+      occurrences: ["orchestration-build", "orchestration-guidance"]
+
+    - name: "Finalization Pattern"
+      description: "Copy to completed and end"
+      pattern: |
+        MoveCompleted[Copy to docs/plans/completed/] --> End((End))
+      occurrences: ["orchestration-build", "orchestration-guidance"]
+
+  shared_inputs:
+    common_guidelines:
+      - "fix-the-source.yml"
+      - "context-minimisation.yml"
+      - "worktree-and-branching.yml"
+      - "response-audit.yml"
+      - "iteration.yml"
+      - "orchestration-policy.yml"
+    common_definitions:
+      - "plans.yml"
+      - "agent-loops.yml"
+      - "agent-categories.yml"
+      - "path.yml"
+      - "fence.yml"
+      - "signpost.yml"
+      - "signal-and-noise.yml"
+    note: "85% overlap in inputs.yml references across all three orchestrators"
+
+# =============================================================================
+# DIFFERENCES REQUIRING SPECIALIZATION
+# =============================================================================
+differences_requiring_specialization:
+  - name: "Phase Types and Planners"
+    description: "Different phase types require different planner agents"
+    orchestration_planning:
+      phases: ["teach", "build", "test", "cleanup"]
+      planners: ["planner-guidance", "planner-build", "planner-test", "planner-cleaning"]
+      note: "Acts as the PLANNING HUB - dispatches to specialized planners"
+    orchestration_build:
+      phases: ["implementation", "CI/CD validation", "guidance validation", "final audit"]
+      agents: ["build-python", "build-flutter", "test-runner", "deploy-cicd"]
+      note: "CODE EXECUTION focus - spawns builders and testers"
+    orchestration_guidance:
+      phases: ["implementation (guidance)", "guidance validation", "final audit"]
+      agents: ["teacher-update-guidance", "teacher-update-assets", "test-guidance-simulator"]
+      note: "GUIDANCE EXECUTION focus - spawns teachers, NO CODE"
+
+  - name: "Planning vs Execution Role"
+    description: "Fundamental role distinction that prevents unification"
+    orchestration_planning:
+      role: "PURE PLANNER - creates plans, never executes"
+      outputs: "plan_live_*.yml files with status: approved"
+      execution: "delegated to orchestration-build or orchestration-guidance"
+    orchestration_build:
+      role: "EXECUTOR - implements code based on approved plans"
+      outputs: "implemented code, tests, completed plan archives"
+      can_plan: "only by delegating to orchestration-planning"
+    orchestration_guidance:
+      role: "EXECUTOR - implements guidance based on approved plans"
+      outputs: "updated guidance artifacts, completed plan archives"
+      can_plan: "only by delegating to orchestration-planning"
+
+  - name: "Input Validation Policy"
+    description: "Different approaches to missing inputs"
+    orchestration_planning:
+      policy: "STRICT - user provides all context, no discovery phase"
+      on_missing: "Ask User directly (no self-healing search)"
+    orchestration_build:
+      policy: "FLEXIBLE - attempt self-healing search"
+      on_missing: "SearchInputs --> Found? --> UpdateRefs or Ask User"
+    orchestration_guidance:
+      policy: "FLEXIBLE - attempt self-healing search"
+      on_missing: "SearchInputs --> Found? --> UpdateRefs or Ask User"
+
+  - name: "Failure Type Handling"
+    description: "Different failure categories per domain"
+    orchestration_build:
+      failure_types: ["TEST_FAILURE", "CICD_FAILURE", "GUIDANCE_GAP", "AUDIT_FAILURE"]
+      routing: "Categorizes and routes by gap type (Build Process, Test Design, Guidance)"
+    orchestration_guidance:
+      failure_types: ["Implementation Issues", "Walkthrough Failures", "Final Audit"]
+      routing: "Categorizes friction points and routes to teacher agents"
+    note: "Different taxonomies reflect different execution domains"
+
+  - name: "Domain-Specific Agents"
+    description: "Each orchestrator spawns domain-specific specialists"
+    orchestration_planning:
+      spawns: "Planner agents only (planner-build, planner-test, planner-guidance, etc.)"
+    orchestration_build:
+      spawns: "Builder agents (build-python, build-flutter) + test-runner + deploy-cicd"
+    orchestration_guidance:
+      spawns: "Teacher agents (teacher-update-guidance, teacher-update-assets)"
+
+  - name: "Loop Contexts"
+    description: "Different loop types per orchestrator"
+    orchestration_planning:
+      loop_types: ["planner-loop"]
+      max_iterations: 5
+    orchestration_build:
+      loop_types: ["test-fix-loop", "guidance-test-loop"]
+      max_iterations: "5 for test-fix, 3 for guidance-test"
+    orchestration_guidance:
+      loop_types: ["guidance-test-loop"]
+      max_iterations: 3
+
+# =============================================================================
+# RECOMMENDATION
+# =============================================================================
+recommendation:
+  decision: "KEEP SEPARATE"
+  confidence: "HIGH"
+
+  justification:
+    - point: "Separation of Concerns"
+      explanation: |
+        The three orchestrators serve fundamentally different roles:
+        - orchestration-planning: PLANNING (creates plans)
+        - orchestration-build: CODE EXECUTION (implements features)
+        - orchestration-guidance: GUIDANCE EXECUTION (updates teaching artifacts)
+        Unifying them would violate the clear separation between planning and execution.
+
+    - point: "Context Minimisation"
+      explanation: |
+        Each orchestrator loads domain-specific agents and guidelines.
+        A unified orchestrator would need to load ALL possible agents and contexts,
+        increasing token usage and cognitive load. The current separation follows
+        the Context Minimisation guideline by loading only what each domain needs.
+
+    - point: "Human Approval Gates"
+      explanation: |
+        orchestration-planning has a formal Human Approval Gate phase that the
+        execution orchestrators lack. This is appropriate because planning decisions
+        affect downstream work, while execution follows approved plans.
+
+    - point: "Failure Handling Differs by Domain"
+      explanation: |
+        Code failures (TEST_FAILURE, CICD_FAILURE) require different handling than
+        guidance failures (friction points, walkthrough issues). Unified handling
+        would add complexity without benefit.
+
+    - point: "Entrypoint Clarity"
+      explanation: |
+        The current entrypoint structure (_plan_build, _plan_teach, _orchestrate)
+        provides clear routing. Users know what to invoke based on their intent.
+        A unified orchestrator would require more complex parameterization to
+        achieve the same clarity.
+
+  alternative_considered: "Parameterized Single Process"
+    description: |
+      A single orchestration process with mode parameter (planning|build|guidance)
+      was considered but rejected because:
+      1. The MMD process files would become 3x larger with conditional branches
+      2. Inputs.yml would need to include ALL possible agent references
+      3. Error handling logic would become mode-dependent and complex
+      4. Testing would require covering all mode combinations
+
+# =============================================================================
+# IMPROVEMENT OPPORTUNITIES
+# =============================================================================
+improvement_opportunities:
+  - id: "imp_001"
+    title: "Extract Common Input Validation Pattern"
+    description: |
+      The input validation and missing-input recovery pattern is duplicated.
+      Consider extracting to a shared definition or MMD subgraph that can be
+      referenced by both orchestration-build and orchestration-guidance.
+    priority: "LOW"
+    effort: "SMALL"
+    note: "orchestration-planning intentionally uses stricter validation"
+
+  - id: "imp_002"
+    title: "Shared Finalization Pattern"
+    description: |
+      The final audit and copy-to-completed pattern is identical in
+      orchestration-build and orchestration-guidance. Could be extracted
+      to a shared finalization subgraph.
+    priority: "LOW"
+    effort: "SMALL"
+
+  - id: "imp_003"
+    title: "Create Entrypoint for orchestration-guidance"
+    description: |
+      orchestration-guidance has no entrypoint currently routing to it.
+      If it's intended for use, consider adding _plan_guidance.yml or
+      documenting when it should be invoked directly.
+    priority: "MEDIUM"
+    effort: "SMALL"
+    note: |
+      May be intentionally invoked only internally by orchestration-build
+      during guidance validation phases. If so, document this explicitly.
+
+  - id: "imp_004"
+    title: "Shared Inputs Layer for Orchestrators"
+    description: |
+      Create an orchestration-shared.yml layer in assets/inputs/ that contains
+      the common guidelines and definitions (85% overlap identified).
+      Each orchestrator's inputs.yml would then reference this layer plus
+      their domain-specific additions.
+    priority: "MEDIUM"
+    effort: "SMALL"
+    benefit: "Reduces duplication, easier maintenance of shared references"
+
+  - id: "imp_005"
+    title: "Document Orchestrator Delegation Hierarchy"
+    description: |
+      The delegation pattern (planning -> build/guidance) is implicit in the
+      MMD files. Consider adding a visual diagram or explicit documentation
+      showing how orchestrators delegate to each other.
+    priority: "LOW"
+    effort: "SMALL"
+
+# =============================================================================
+# SUMMARY
+# =============================================================================
+summary: |
+  The three orchestration agents (orchestration-planning, orchestration-build,
+  orchestration-guidance) serve distinct roles that justify their separation:
+
+  - orchestration-planning: PURE PLANNER that creates and validates plans
+  - orchestration-build: CODE EXECUTOR that implements features from plans
+  - orchestration-guidance: GUIDANCE EXECUTOR that implements teaching changes
+
+  While they share ~85% of input references and several structural patterns
+  (input validation, worktree setup, failure loops, finalization), the
+  fundamental difference between PLANNING and EXECUTION roles prevents
+  meaningful unification without violating separation of concerns.
+
+  RECOMMENDATION: Keep orchestrators separate. Consider extracting shared
+  patterns into reusable layers/subgraphs for maintainability, but do not
+  attempt to unify the core orchestration logic.
