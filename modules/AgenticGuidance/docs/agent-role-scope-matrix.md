@@ -8,7 +8,7 @@ Each agent has limited context. This matrix defines:
 ## Category Reference
 
 Agent categories provide the organizational structure for all agents. See the canonical definition at:
-`assets/definitions/agent-categories.yml`
+`modules/AgenticGuidance/assets/definitions/agent-categories.yml`
 
 This matrix organizes agents by their category, showing how sub-agents fit within their category's purpose and boundaries.
 
@@ -134,7 +134,7 @@ This matrix organizes agents by their category, showing how sub-agents fit withi
 |---------|------|--------|----------------------------|
 | **teacher-plan** | Plan guidance improvements | Target agents, observed failures, process files | Map current path, build minimal verifiable plan (3-7 items); meta-level, not in iteration loops |
 | **teacher-update-guidance** | Update process and input guidance | Agent logs, friction patterns, process files, inputs.yml files | Identify friction, generate prioritized recommendations, update process.yml and inputs.yml files with instructions/examples; has authority for cross-agent scope updates; meta-level |
-| **teacher-update-assets** | Update shared assets | Asset type, existing assets, manifests | Add/update definitions, guidelines, examples in `assets/`; update shared inputs.yml entries (used by 2+ agents); ensure multi-agent reuse; update indexes |
+| **teacher-update-assets** | Update shared assets | Asset type, existing assets, manifests | Add/update definitions, guidelines, examples in `modules/AgenticGuidance/assets/`; update shared inputs.yml entries (used by 2+ agents); ensure multi-agent reuse; update indexes |
 
 ---
 

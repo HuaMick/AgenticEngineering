@@ -77,7 +77,7 @@ AgenticGuidance uses two path resolution strategies:
 
 | Path Type | Convention | Resolved Against | Example |
 |-----------|------------|------------------|---------|
-| **Module-relative** | Paths NOT starting with `docs/` | AgenticGuidance module root | `assets/`, `agents/`, `definitions/` |
+| **Module-relative** | Paths NOT starting with `docs/` | AgenticGuidance module root | `modules/AgenticGuidance/assets/`, `modules/AgenticGuidance/agents/`, `definitions/` |
 | **Repo-relative** | Paths starting with `docs/` | Target repository root (at orchestration time) | `docs/userstories/`, `docs/plans/` |
 
 **Why this distinction?**
@@ -118,9 +118,9 @@ The main `docs/README.md` describes the overall architecture. AgenticGuidance se
 The `modules/legacy/MyAgents/projects/MyAgentsGuidance/` directory contains the previous guidance system, which organized guidance for a 9-category, 35+ sub-agent framework:
 
 **Key legacy patterns to draw from:**
-- `assets/definitions/`: 70+ definition files covering concepts from context-minimization to test structures
-- `assets/guidelines/`: 15+ guideline files for behavioral rules (less-is-more, fix-the-source, etc.)
-- `assets/examples/`: Project-specific reference implementations
+- `modules/AgenticGuidance/assets/definitions/`: 70+ definition files covering concepts from context-minimization to test structures
+- `modules/AgenticGuidance/assets/guidelines/`: 15+ guideline files for behavioral rules (less-is-more, fix-the-source, etc.)
+- `modules/AgenticGuidance/assets/examples/`: Project-specific reference implementations
 - YAML-based structure with cross-references between files
 
 **What's different now:**
