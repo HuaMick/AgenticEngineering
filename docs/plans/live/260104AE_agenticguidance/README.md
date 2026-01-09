@@ -16,7 +16,7 @@
 | 5 | 2026-01-08 | Example alignment (7 phases completed) |
 | 6 | 2026-01-09 | Plan structure standardization, 6 audits, 6 review plans |
 | 7 | 2026-01-09 | Plan cleanup: consolidated remediation plans, archived superseded |
-| 8 | 2026-01-09 | Ralph loop: DECISION-001 completed (deprecation), DECISION-002 completed (migration) |
+| 8 | 2026-01-09 | Ralph loop: DECISION-001 + DECISION-002 completed, teach plan Phase 1 (3 critical tasks) |
 
 ## Active Decisions
 
@@ -91,40 +91,33 @@
 │   ├── plan_guidance_planner_guidance.yml
 │   ├── plan_guidance_planner_reviewer.yml
 │   └── plan_guidance_planner_test.yml
-└── live/                                 # 8 active files
+└── live/                                 # 5 active files
     ├── orchestration_agenticguidance.mmd
     ├── plan_agenticguidance.yml          # MASTER PLAN
-    │
-    │   # Active Consolidated Plans
-    ├── plan_live_teach_consolidated.yml
-    ├── plan_live_planner_remediation_consolidated.yml  # COMPLETED, next: self-review loop
-    │
-    │   # Remaining Action Plans
+    ├── plan_live_teach_consolidated.yml  # IN PROGRESS (3 tasks completed Session 8)
     ├── plan_guidance_deploy_worktree_remediation.yml
-    ├── plan_guidance_reviewer_context.yml
-    └── plan_guidance_artifact_lifecycle.yml
+    └── plan_guidance_reviewer_context.yml
 ```
 
 ## Next Session Priorities
 
-### Priority 1: Agent Self-Review Loop
-```bash
-# Plan: completed/plan_live_planner_remediation_consolidated.yml (phase-6)
-# Task: Validate remediation by spawning planner agents with real tasks
-# Status: Ready for execution
-```
-
-### Priority 2: Teach Plan Execution
+### Priority 1: Continue Teach Plan Phase 2
 ```bash
 # Plan: live/plan_live_teach_consolidated.yml
-# 8 phases: Fragment resolution, Process format, Output schema, Input validation,
-#           Version alignment, CLI centralization, Spawns declaration, REPO_ROOT
+# Status: Phase 1 COMPLETED (3 critical tasks), Phase 2+ pending
+# Tasks: Output schema population, input validation standardization
 ```
 
-### Priority 3: Deploy Worktree Remediation
+### Priority 2: Deploy Worktree Remediation
 ```bash
 # Plan: live/plan_guidance_deploy_worktree_remediation.yml
 # Task: Fix deploy-worktree guidance based on audit findings
+```
+
+### Priority 3: Reviewer Context Optimization
+```bash
+# Plan: live/plan_guidance_reviewer_context.yml
+# Task: Reduce planner-reviewer context by 50-60%
 ```
 
 ## Key Files Reference
@@ -132,8 +125,8 @@
 | File | Purpose |
 |------|---------|
 | `live/plan_agenticguidance.yml` | Master plan with all phases |
-| `live/plan_live_teach_consolidated.yml` | Teaching phases (8 phases, T4 specialization) |
-| `live/plan_live_planner_remediation_consolidated.yml` | Unified remediation (5 planner agents) |
+| `live/plan_live_teach_consolidated.yml` | Teaching phases - Phase 1 COMPLETED (Session 8) |
+| `completed/plan_live_planner_remediation_consolidated.yml` | Unified remediation - COMPLETED |
 | `completed/plan_live_build_migration.yml` | Test agent migration (DECISION-002) - COMPLETED |
 | `completed/plan_live_cleanup_deprecation.yml` | Legacy deprecation (DECISION-001) - COMPLETED |
 | `audit/260106_session3_summary.yml` | Session 3 findings summary |
