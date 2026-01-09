@@ -1,6 +1,27 @@
 # Plan Structure Requirements
 # Extracted from plans.yml for reviewer validation
 # Focus: structure validation, not lifecycle management
+# Source: modules/AgenticGuidance/assets/definitions/plans.yml
+
+required_fields:
+  plan_level:
+    - plan_name: "string - unique descriptive name"
+    - worktree: "string - YYMMDDRepo_Branch format"
+    - branch: "string - git branch name"
+    - status: "enum - planning|active|partially_completed|fully_completed"
+    - phases: "list - ordered phase definitions"
+
+  phase_level:
+    - phase_id: "string - unique identifier"
+    - name: "string - human-readable name"
+    - status: "enum - pending|in_progress|completed"
+    - tasks: "list - ordered task definitions"
+
+  task_level:
+    - task_id: "string - unique identifier"
+    - description: "string - actionable (starts with verb)"
+    - status: "enum - pending|in_progress|completed|blocked"
+    - success_criteria: "list - verifiable conditions"
 
 folder_structure:
   root: docs/plans/
@@ -8,41 +29,31 @@ folder_structure:
   live_plans:
     path: docs/plans/live/YYMMDDRepo_Branch/
     naming: "YYMMDD + Repo initials + underscore + branch name"
-    examples:
-      - "251122MA_main"
-      - "251211MA_custom_agents"
+    examples: ["251122MA_main", "251211MA_custom_agents"]
     subfolders:
-      live/: "Active phase files (in progress or pending)"
-      completed/: "Finished work files (done, verified)"
-      analysis/: "Iteration logs and analysis artifacts (optional)"
-      audit/: "Audit reports and findings (optional)"
-
-  backlog_plans:
-    path: docs/plans/backlog/
-    pattern: "backlog_*.yml"
-    categories: [cicd, core, maintenance, testing]
-
-  completed_plans:
-    path: docs/plans/completed/
-    pattern: "YYMMDD_<worktree>.yml"
+      live/: "Active phase files"
+      completed/: "Finished work files"
+      analysis/: "Iteration logs (optional)"
+      audit/: "Audit reports (optional)"
 
 reserved_files:
   live_subfolder:
-    - pattern: "plan_live_*.yml"
-      purpose: "Phase definition files"
-    - pattern: "plan_next_actions.yml"
-      purpose: "Active tracking file"
-
+    - "plan_live_*.yml - Phase definition files"
+    - "plan_next_actions.yml - Active tracking file"
   completed_subfolder:
-    - pattern: "plan_completed.yml"
-      purpose: "Summary index of completed items"
+    - "plan_completed.yml - Summary index"
 
-  analysis_subfolder:
-    - pattern: "plan_iteration_*.yml"
-      purpose: "Iteration logs"
+validation_checklist:
+  structure:
+    - "All required_fields present at each level"
+    - "Phase/task IDs unique within their scope"
+    - "Status values match valid enum options"
+  naming:
+    - "Folder matches YYMMDDRepo_Branch pattern"
+    - "Phase files in live/ or completed/ subfolder"
+  quality:
+    - "Success criteria are specific and verifiable"
+    - "Task descriptions start with action verb"
+    - "Phase ordering reflects dependencies"
 
-validation_rules:
-  - "Folder name must match YYMMDD[Repo]_[Branch] pattern"
-  - "Phase plans must be in live/ or completed/ subfolder"
-  - "Files determine status by LOCATION not name"
-  - "Agents must NEVER modify docs/plans/archived/"
+fence: "Agents must NEVER modify docs/plans/archived/"
