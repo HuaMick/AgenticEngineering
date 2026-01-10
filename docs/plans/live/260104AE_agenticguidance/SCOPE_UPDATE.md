@@ -19,7 +19,7 @@ Added **plan_orchestration_decommission.yml** to complete the MMD-driven orchest
 
 ## What Was Added
 
-### 6 Phases, 19 Tasks
+### 7 Phases, 20 Tasks
 
 | Phase | Tasks | Purpose |
 |-------|-------|---------|
@@ -27,10 +27,11 @@ Added **plan_orchestration_decommission.yml** to complete the MMD-driven orchest
 | **2. Build: planner-reviewer MMD Check** | 1 | Simple .mmd presence validation |
 | **3. Build: Deprecate orchestration-build** | 3 | Mark DEPRECATED, convert to reference MMD, remove from routing |
 | **4. Build: Deprecate orchestration-guidance** | 3 | Same as orchestration-build deprecation |
-| **5. Build: Entrypoint Migration** | 2 | Update `_orchestrate.yml` to route to orchestration-executor |
-| **6. Test: Integration & E2E** | 9 | Complete deferred tests (int_005-010) + E2E validation |
+| **5. Build: Entrypoint Migration** | 3 | Update `_orchestrate.yml` to route to orchestration-executor + update executor to discover .mmd |
+| **6. Test: Integration Testing** | 6 | Complete deferred tests (int_005-010) |
+| **7. Test: E2E Validation** | 3 | Full workflow validation (e2e_001-003) |
 
-**Total Estimated Effort**: 12-16 hours across 4-5 focused sessions
+**Total Estimated Effort**: 14-18 hours across 5-6 focused sessions
 
 ## Why This Matters
 
@@ -43,10 +44,17 @@ _orchestrate.yml   → orchestration-build     # Hardcoded execution flow
 
 ### Target Architecture (Generic, MMD-Driven)
 ```yaml
-_plan_build.yml    → orchestration-planning  → planner-build → outputs MMD
-_plan_teach.yml    → orchestration-planning  → planner-guidance → outputs MMD
-_orchestrate.yml   → orchestration-executor  ← reads MMD dynamically
+_plan_build.yml    → orchestration-planning  → planner-build → outputs plan_*.yml
+                                              → generates orchestration_*.mmd
+                                              → outputs to <plan_folder>/live/
+
+_orchestrate.yml   → orchestration-executor  ← receives plan_folder
+                                              → discovers orchestration_*.mmd inside
+                                              → reads MMD dynamically
+                                              → executes based on AGENT_ROUTING
 ```
+
+**Key Design Decision**: `_orchestrate.yml` receives only `plan_folder_path`. The orchestration-executor discovers the `.mmd` file inside `<plan_folder>/live/` automatically. This keeps the interface clean and ensures both plan YAML and orchestration MMD live in the same location.
 
 ## Key Architectural Changes
 

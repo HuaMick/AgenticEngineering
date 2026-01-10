@@ -76,8 +76,8 @@ phases:
           - "Generate MMD with PHASES, AGENT_ROUTING, FEEDBACK_TRIGGERS metadata"
           - "Reference plan-mmd-schema.yml for structure"
           - "Use component examples from assets/examples/planner/components/"
-          - "Output location: <plan_folder>/live/orchestration_<name>.mmd"
-          - "At approval gate: Present BOTH plan_folder path AND orchestration_*.mmd path for _orchestrate.yml"
+          - "Output location: <plan_folder>/live/orchestration_<name>.mmd (same folder as plan_*.yml files)"
+          - "At approval gate: Present plan_folder path for _orchestrate.yml (executor discovers .mmd inside)"
 
       - id: "build_orch_002"
         name: "Update orchestration-planning inputs"
@@ -204,18 +204,30 @@ phases:
       - id: "entrypoint_001"
         name: "Update _orchestrate.yml routing and inputs"
         status: "pending"
-        description: "Change orchestration agent from orchestration-build to orchestration-executor and update input requirements"
+        description: "Change orchestration agent from orchestration-build to orchestration-executor"
         target_file: "modules/AgenticGuidance/entrypoints/_orchestrate.yml"
         changes:
           - "BEFORE orchestration: modules/AgenticGuidance/agents/orchestration/orchestration-build/process.mmd"
           - "AFTER orchestration: modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml"
-          - "BEFORE input: Pre-approved plan folder path"
-          - "AFTER input: plan_path (to orchestration_*.mmd) AND plan_folder (to folder with plan_*.yml files)"
+          - "Input: plan_folder_path (executor discovers orchestration_*.mmd inside <plan_folder>/live/)"
           - "Update description: Execute pre-approved plan using dynamic MMD-driven orchestration"
-          - "Update steps to reflect MMD loading: Load Plan-MMD, validate AGENT_ROUTING metadata, execute phases"
+          - "Update steps: Discover orchestration_*.mmd in plan folder, load Plan-MMD, validate AGENT_ROUTING, execute phases"
           - "Inputs loaded from: orchestration-executor/inputs.yml"
 
       - id: "entrypoint_002"
+        name: "Update orchestration-executor to discover .mmd file"
+        status: "pending"
+        description: "Update orchestration-executor to discover orchestration_*.mmd inside plan folder"
+        target_file: "modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml"
+        changes:
+          - "Input: plan_folder_path (not separate plan_path and plan_folder)"
+          - "Step 1: Search <plan_folder>/live/ for orchestration_*.mmd file"
+          - "Step 2: If not found, error: 'No orchestration MMD found in plan folder'"
+          - "Step 3: Load discovered MMD file"
+          - "Step 4: Load plan_*.yml files from same <plan_folder>/live/ directory"
+          - "Continue with existing execution logic"
+
+      - id: "entrypoint_003"
         name: "Update entrypoint documentation"
         status: "pending"
         description: "Update README files to reflect new routing"
@@ -224,7 +236,7 @@ phases:
           - "docs/README.md"
 
   # ========================================
-  # PHASE 5: Integration Testing
+  # PHASE 6: Integration Testing
   # ========================================
   - name: "Test: Complete Integration Testing"
     execution: sequential
@@ -268,7 +280,7 @@ phases:
         description: "Verify executor can resume from saved state across sessions"
 
   # ========================================
-  # PHASE 6: End-to-End Validation
+  # PHASE 7: End-to-End Validation
   # ========================================
   - name: "Test: E2E Workflow Validation"
     execution: sequential
@@ -352,6 +364,6 @@ notes: |
 
   EXECUTION SEQUENCE:
   Phase 1 (Planning MMD) → Phase 2 (Reviewer Check) → Phase 3-4 (Deprecation) →
-  Phase 5 (Entrypoint) → Phase 6-7 (Testing)
+  Phase 5 (Entrypoint Migration) → Phase 6 (Integration Testing) → Phase 7 (E2E)
 
-execution_estimate: "12-16 hours across 4-5 focused sessions"
+execution_estimate: "14-18 hours across 5-6 focused sessions"
