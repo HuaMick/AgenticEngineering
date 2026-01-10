@@ -1,7 +1,7 @@
 # Orchestration Decommissioning Plan
 # Plan: 260104AE_agenticguidance
 # Status: pending
-# Phase Type: teach + build
+# Phase Type: build + test
 
 name: orchestration-decommission
 status: pending
@@ -10,22 +10,25 @@ created: "2026-01-10"
 phase_type: composite
 
 objective: |
-  Replace hardcoded orchestration flows (orchestration-planning, orchestration-build,
-  orchestration-guidance) with generic orchestration-executor that reads Plan-MMD files
-  dynamically. This completes the MMD-driven orchestration vision outlined in the
-  orchestration-executor specification.
+  Replace hardcoded orchestration flows (orchestration-build, orchestration-guidance)
+  with generic orchestration-executor that reads Plan-MMD files dynamically.
+  Establish orchestration-planning as the dedicated MMD generator.
 
 context: |
   The orchestration-executor agent exists and has been tested for MMD parsing (4/4 PASS).
   However, the system still uses hardcoded orchestration flows:
-  - _plan_build.yml / _plan_teach.yml → orchestration-planning (hardcoded planning)
   - _orchestrate.yml → orchestration-build (hardcoded execution)
+  - orchestration-guidance (hardcoded guidance execution)
+
+  SIMPLIFIED APPROACH:
+  - Only orchestration-planning generates MMD (not individual planners)
+  - planner-reviewer validates MMD presence (simple check)
+  - No guidance-based reminders/checklists (agents forget anyway)
+  - CLI task list approach moved to backlog for experimentation
 
   The orchestration-executor specification (Section 1.2) explicitly states:
   - orchestration-build → "to be replaced by executor"
   - orchestration-guidance → "Same pattern as orchestration-build migration"
-
-  This plan implements the decommissioning and migration strategy.
 
 prerequisites:
   - "orchestration-executor agent created (491 lines)"
@@ -45,169 +48,80 @@ inputs:
 
 phases:
   # ========================================
-  # PHASE 1: Teaching Prerequisites
+  # PHASE 1: Orchestration-Planning as MMD Generator
   # ========================================
-  - name: "Teaching: Agent Momentum Definition"
-    execution: sequential
-    status: pending
-    priority: high
-    phase_type: teach
-    description: "Create definition for agent momentum phenomenon"
-    rationale: |
-      Planning agents often fail to generate MMD files during their process because they
-      build momentum doing one type of task (creating tasks, writing plan YAML) and forget
-      ancillary requirements. This is a recurring friction pattern that needs formalization.
-    tasks:
-      - id: "teach_mom_001"
-        name: "Create agent-momentum.yml definition"
-        status: "pending"
-        description: |
-          Define agent momentum as a cognitive pattern where agents become focused on
-          one workflow aspect and lose track of parallel requirements (MMD generation,
-          README updates, documentation, etc.)
-        target_file: "modules/AgenticGuidance/assets/definitions/agent-momentum.yml"
-        content_requirements:
-          - "Definition of agent momentum phenomenon"
-          - "Common manifestations (forgotten MMD, skipped READMEs, missing docs)"
-          - "Detection signals (plan created but no MMD, code without tests, etc.)"
-          - "Mitigation strategies (explicit checklists, process.yml reminders, output schemas)"
-          - "Related concepts: scope creep, context switching, task focus"
-        estimated_lines: 120
-
-      - id: "teach_mom_002"
-        name: "Add momentum mitigation to orchestration-planning"
-        status: "pending"
-        description: |
-          Update orchestration-planning process to explicitly check for MMD generation
-          as a required output before considering planning phase complete
-        target_file: "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
-        changes:
-          - "Add MMD Generation Checkpoint node after each planner invocation"
-          - "Explicit reminder: 'Verify planner generated orchestration_*.mmd file'"
-          - "Reference agent-momentum.yml in inputs"
-
-      - id: "teach_mom_003"
-        name: "Add output validation to planner agents"
-        status: "pending"
-        description: |
-          Update planner-test, planner-cleaning, planner-guidance-testing output schemas
-          to explicitly declare MMD file as REQUIRED output
-        target_files:
-          - "modules/AgenticGuidance/agents/planner/planner-test/manifest.yml"
-          - "modules/AgenticGuidance/agents/planner/planner-cleaning/manifest.yml"
-          - "modules/AgenticGuidance/agents/planner/planner-guidance-testing/manifest.yml"
-        changes:
-          - "Add orchestration_*.mmd to outputs section with required: true"
-          - "Add required_metadata field listing AGENT_ROUTING, PHASES, etc."
-
-  # ========================================
-  # PHASE 2: Planner MMD Completeness
-  # ========================================
-  - name: "Build: Complete Planner MMD Generation"
-    execution: sequential
-    status: pending
-    priority: high
-    phase_type: build
-    description: "Enable all planner agents to generate orchestration MMD files"
-    context: |
-      Currently only planner-build and planner-guidance have MMD generation guidance.
-      planner-test, planner-cleaning, and planner-guidance-testing need updates.
-    tasks:
-      - id: "build_mmd_001"
-        name: "Update planner-test with MMD generation"
-        status: "pending"
-        description: "Add MMD generation guidance to planner-test process.yml"
-        target_file: "modules/AgenticGuidance/agents/planner/planner-test/process.yml"
-        reference: "modules/AgenticGuidance/agents/planner/planner-build/process.yml (sections 7-8)"
-        changes:
-          - "Add Section 7: Generate orchestration_test.mmd"
-          - "Reference plan-mmd-schema.yml for structure"
-          - "Reference component examples: test_phase.mmd"
-          - "Define AGENT_ROUTING for test phases (tester, auditor)"
-
-      - id: "build_mmd_002"
-        name: "Update planner-cleaning with MMD generation"
-        status: "pending"
-        description: "Add MMD generation guidance to planner-cleaning process.yml"
-        target_file: "modules/AgenticGuidance/agents/planner/planner-cleaning/process.yml"
-        changes:
-          - "Add Section 7: Generate orchestration_cleanup.mmd"
-          - "Reference component examples: cleanup_phase.mmd"
-          - "Define AGENT_ROUTING for cleanup phases (cleaner, auditor)"
-
-      - id: "build_mmd_003"
-        name: "Update planner-guidance-testing with MMD generation"
-        status: "pending"
-        description: "Add MMD generation guidance to planner-guidance-testing process.yml"
-        target_file: "modules/AgenticGuidance/agents/planner/planner-guidance-testing/process.yml"
-        changes:
-          - "Add Section 7: Generate orchestration_guidance_test.mmd"
-          - "Define AGENT_ROUTING for guidance test phases (test-guidance-simulator)"
-
-      - id: "build_mmd_004"
-        name: "Update planner inputs with MMD references"
-        status: "pending"
-        description: "Add plan-mmd-schema.yml and component examples to planner inputs"
-        target_files:
-          - "modules/AgenticGuidance/agents/planner/planner-test/inputs.yml"
-          - "modules/AgenticGuidance/agents/planner/planner-cleaning/inputs.yml"
-          - "modules/AgenticGuidance/agents/planner/planner-guidance-testing/inputs.yml"
-        changes:
-          - "Add assets/definitions/plan-mmd-schema.yml to definitions layer"
-          - "Add assets/examples/planner/components/*.mmd to examples layer"
-
-  # ========================================
-  # PHASE 3: Orchestration-Planning Refactor
-  # ========================================
-  - name: "Build: Refactor orchestration-planning to MMD Generator"
+  - name: "Build: orchestration-planning MMD Generation"
     execution: sequential
     status: pending
     priority: critical
     phase_type: build
-    description: "Transform orchestration-planning into MMD generation coordinator"
-    context: |
-      Current state: orchestration-planning has hardcoded flow for coordinating planners
-      Target state: Lightweight coordinator that ensures planners generate valid MMD,
-      validates MMD structure, and presents plan + MMD for human approval
+    description: "Make orchestration-planning the dedicated MMD generator"
     rationale: |
-      The planning agent should be the "guardian" of MMD generation, explicitly checking
-      that each planner produces valid MMD before approval. This addresses agent momentum
-      where planners forget to generate MMD files.
+      Instead of having each planner agent generate MMD (and risk forgetting),
+      orchestration-planning generates the orchestration MMD after aggregating
+      outputs from all planner agents. This centralizes MMD generation in one place.
     tasks:
-      - id: "build_plan_001"
-        name: "Add MMD validation checkpoint to orchestration-planning"
+      - id: "build_orch_001"
+        name: "Add MMD generation to orchestration-planning"
         status: "pending"
         description: |
-          Insert explicit MMD validation after each planner invocation
+          After all planner phases complete and plan YAML files are created,
+          orchestration-planning generates the orchestration_*.mmd file that
+          defines how orchestration-executor should execute the plan.
         target_file: "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
         changes:
-          - "After PlannerComplete: Add ValidateMMD{MMD Generated?} checkpoint"
-          - "If No: ReInvokePlanner with reminder to generate MMD"
-          - "If Yes: ValidateMMDStructure (check required metadata)"
-          - "Reference agent-momentum.yml in rationale"
+          - "After all planners complete: Generate orchestration_*.mmd"
+          - "Read all plan_*.yml files from plan folder"
+          - "Determine AGENT_ROUTING based on phase types (teach→teacher, build→builder, test→tester)"
+          - "Generate MMD with PHASES, AGENT_ROUTING, FEEDBACK_TRIGGERS metadata"
+          - "Reference plan-mmd-schema.yml for structure"
+          - "Use component examples from assets/examples/planner/components/"
 
-      - id: "build_plan_002"
-        name: "Add MMD aggregation to approval gate"
-        status: "pending"
-        description: |
-          Update human approval gate to present both plan YAML and orchestration MMD
-        target_file: "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
-        changes:
-          - "Approval gate presents: plan_*.yml + orchestration_*.mmd"
-          - "Validation: Both files exist and reference each other"
-          - "Output: Approved plan folder with both artifacts"
-
-      - id: "build_plan_003"
+      - id: "build_orch_002"
         name: "Update orchestration-planning inputs"
         status: "pending"
-        description: "Add MMD-related definitions to orchestration-planning inputs"
+        description: "Add MMD generation references to inputs"
         target_file: "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml"
         changes:
           - "Add plan-mmd-schema.yml to definitions layer"
-          - "Add agent-momentum.yml to definitions layer"
+          - "Add component examples (teach_phase.mmd, build_phase.mmd, etc.)"
+
+      - id: "build_orch_003"
+        name: "Update orchestration-planning manifest outputs"
+        status: "pending"
+        description: "Declare orchestration_*.mmd as required output"
+        target_file: "modules/AgenticGuidance/agents/orchestration/orchestration-planning/manifest.yml"
+        changes:
+          - "Add orchestration_*.mmd to outputs section"
+          - "Mark as required: true"
+          - "Document required_metadata: PHASES, AGENT_ROUTING, STATUS"
 
   # ========================================
-  # PHASE 4: Deprecate Legacy Orchestrators
+  # PHASE 2: Planner-Reviewer MMD Validation
+  # ========================================
+  - name: "Build: planner-reviewer MMD Check"
+    execution: sequential
+    status: pending
+    priority: high
+    phase_type: build
+    description: "Add simple .mmd validation to planner-reviewer"
+    rationale: |
+      Simple validation: after orchestration-planning completes, planner-reviewer
+      verifies that orchestration_*.mmd file exists alongside plan_*.yml files.
+    tasks:
+      - id: "review_mmd_001"
+        name: "Add MMD presence check to planner-reviewer"
+        status: "pending"
+        description: "Validate .mmd file exists in plan folder"
+        target_file: "modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml"
+        changes:
+          - "After reviewing plan_*.yml files: Check for orchestration_*.mmd"
+          - "If missing: Flag as incomplete (block approval)"
+          - "If present: Validate basic structure (has PHASES, AGENT_ROUTING)"
+          - "Simple presence check, not deep validation"
+
+  # ========================================
+  # PHASE 3: Deprecate Legacy Orchestrators
   # ========================================
   - name: "Build: Deprecate orchestration-build"
     execution: sequential
@@ -276,7 +190,7 @@ phases:
           - "modules/AgenticGuidance/README.md"
 
   # ========================================
-  # PHASE 5: Entrypoint Migration
+  # PHASE 4: Entrypoint Migration
   # ========================================
   - name: "Build: Migrate _orchestrate.yml to orchestration-executor"
     execution: sequential
@@ -300,12 +214,11 @@ phases:
         status: "pending"
         description: "Update README files to reflect new routing"
         target_files:
-          - "modules/AgenticGuidance/entrypoints/README.md (if exists)"
           - "modules/AgenticGuidance/README.md"
           - "docs/README.md"
 
   # ========================================
-  # PHASE 6: Integration Testing
+  # PHASE 5: Integration Testing
   # ========================================
   - name: "Test: Complete Integration Testing"
     execution: sequential
@@ -349,7 +262,7 @@ phases:
         description: "Verify executor can resume from saved state across sessions"
 
   # ========================================
-  # PHASE 7: End-to-End Validation
+  # PHASE 6: End-to-End Validation
   # ========================================
   - name: "Test: E2E Workflow Validation"
     execution: sequential
@@ -364,10 +277,11 @@ phases:
         description: |
           Full workflow test:
           1. Invoke _plan_build.yml with test objective
-          2. Verify planner-build generates plan_*.yml + orchestration_*.mmd
-          3. Verify orchestration-planning validates MMD and presents approval
-          4. Invoke _orchestrate.yml with approved plan
-          5. Verify orchestration-executor reads MMD and executes phases
+          2. Verify orchestration-planning generates plan_*.yml + orchestration_*.mmd
+          3. Verify planner-reviewer checks for .mmd presence
+          4. Verify human approval gate presents both artifacts
+          5. Invoke _orchestrate.yml with approved plan
+          6. Verify orchestration-executor reads MMD and executes phases
         expected: "Complete flow works end-to-end without manual intervention"
 
       - id: "e2e_002"
@@ -382,9 +296,8 @@ phases:
         approach: "Test with completed plan from docs/plans/completed/"
 
 success_criteria:
-  - "agent-momentum.yml definition created and referenced by orchestration-planning"
-  - "All planner agents (build, test, cleaning, guidance, guidance-testing) generate MMD"
-  - "orchestration-planning validates MMD generation before approval"
+  - "orchestration-planning generates orchestration_*.mmd after planner aggregation"
+  - "planner-reviewer validates .mmd presence (simple check)"
   - "orchestration-build and orchestration-guidance marked DEPRECATED with migration docs"
   - "_orchestrate.yml routes to orchestration-executor"
   - "All integration tests (int_005-010) PASS"
@@ -392,14 +305,9 @@ success_criteria:
   - "Documentation updated to reflect new architecture"
 
 deliverables:
-  definitions:
-    - "assets/definitions/agent-momentum.yml"
-
   updated_agents:
-    - "agents/planner/planner-test/ (MMD generation)"
-    - "agents/planner/planner-cleaning/ (MMD generation)"
-    - "agents/planner/planner-guidance-testing/ (MMD generation)"
-    - "agents/orchestration/orchestration-planning/ (MMD validation)"
+    - "agents/orchestration/orchestration-planning/ (MMD generation)"
+    - "agents/planner/planner-reviewer/ (MMD presence check)"
 
   deprecated:
     - "agents/orchestration/orchestration-build/DEPRECATED.md"
@@ -416,17 +324,28 @@ deliverables:
     - "Integration test report (6 tests: int_005-010)"
     - "E2E test report (3 tests: e2e_001-003)"
 
+backlog_reference: "live/backlog_cli_task_lists.yml"
+
 notes: |
-  This plan completes the MMD-driven orchestration vision by:
-  1. Addressing agent momentum (planners forgetting to generate MMD)
-  2. Enabling all planners to generate orchestration MMD
-  3. Making orchestration-planning the "MMD guardian"
-  4. Deprecating hardcoded orchestration flows
-  5. Migrating entrypoints to generic executor
-  6. Validating the entire system through integration testing
+  SIMPLIFIED APPROACH:
+  - Only orchestration-planning generates MMD (centralizes generation)
+  - planner-reviewer does simple .mmd presence check
+  - No guidance-based reminders/checklists (moved to backlog experiment)
+
+  This approach may naturally solve the "forgetfulness" problem by having
+  orchestration-planning (which has full context of all phases) generate
+  the MMD rather than expecting individual planners to remember.
+
+  CLI TASK LIST EXPERIMENT (Backlog):
+  The idea of using CLI preset task lists that agents can prefill and update
+  is a promising approach, but requires:
+  - CLI integration with planning folders
+  - Preset task list templates
+  - Blind planning loop testing
+  This has been moved to backlog for experimentation after current goals complete.
 
   EXECUTION SEQUENCE:
-  Phase 1 (Teaching) → Phase 2 (Planner MMD) → Phase 3 (Planning Refactor) →
-  Phase 4 (Deprecation) → Phase 5 (Entrypoint) → Phase 6 (Integration) → Phase 7 (E2E)
+  Phase 1 (Planning MMD) → Phase 2 (Reviewer Check) → Phase 3-4 (Deprecation) →
+  Phase 5 (Entrypoint) → Phase 6-7 (Testing)
 
-execution_estimate: "16-24 hours across multiple sessions"
+execution_estimate: "12-16 hours across 4-5 focused sessions"
