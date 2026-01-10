@@ -1,0 +1,323 @@
+# Guidance Improvement Plan: planner-reviewer Agent
+# Created: 2026-01-09
+# Purpose: Fix identified guidance issues in planner-reviewer agent files
+
+plan_name: "planner-reviewer-guidance-remediation"
+worktree: "/home/code/AgenticEngineering-agenticguidance"
+branch: "agenticguidance"
+created: "2026-01-09"
+objective: "Fix guidance inconsistencies in planner-reviewer agent to improve clarity and reduce agent friction"
+
+# Analysis summary from self-review
+issues_identified:
+  - id: "issue-1"
+    description: "Incorrect anchor path format in agent_context.category"
+    current: "agent-categories.yml#planner"
+    problem: "'planner' is nested under 'agent_categories:', not a top-level key"
+    decision: "Simplify - remove anchor, use full file reference"
+
+  - id: "issue-2"
+    description: "Anchor reference in plans.yml input"
+    current: "plans.yml#scrap_file_taxonomy"
+    problem: "While scrap_file_taxonomy IS a top-level key, anchor syntax adds complexity"
+    decision: "Simplify - remove anchor, reference whole file (reviewer needs full plans.yml context)"
+
+  - id: "issue-3"
+    description: "Version mismatch between inputs.yml and manifest.yml"
+    current: "inputs.yml: 2.0-p1, manifest.yml: 1.0"
+    decision: "Synchronize to 2.0-p1 (inputs.yml is authoritative for agent version)"
+
+  - id: "issue-4"
+    description: "Success criteria file is minimal"
+    current: "success-criteria-teacher.yml has only 10 lines"
+    decision: "Sufficient for purpose - brief is better per context-minimisation"
+
+  - id: "issue-5"
+    description: "Post-approval cleanup folder targets unclear"
+    current: "Mentions 'audit/ subfolder' and 'analysis/ subfolder' without full paths"
+    decision: "Clarify with full relative paths within plan folder"
+
+  - id: "issue-6"
+    description: "Empty guidelines array in inputs.yml"
+    current: "guidelines: []"
+    decision: "Add comment explaining guidelines come from layers (already noted but can be clearer)"
+
+inputs:
+  # Target files
+  - location: "modules/AgenticGuidance/agents/planner/planner-reviewer/inputs.yml"
+    description: "Current planner-reviewer inputs - primary target for fixes"
+  - location: "modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml"
+    description: "Current planner-reviewer process - cleanup path clarification"
+  - location: "modules/AgenticGuidance/agents/planner/planner-reviewer/manifest.yml"
+    description: "Current planner-reviewer manifest - version sync"
+
+  # Reference files for patterns
+  - location: "modules/AgenticGuidance/assets/definitions/fragment-references.yml"
+    description: "Fragment reference syntax rules"
+  - location: "modules/AgenticGuidance/assets/definitions/agent-categories.yml"
+    description: "Agent category definitions (structure verification)"
+  - location: "modules/AgenticGuidance/assets/definitions/plans.yml"
+    description: "Plan definitions including scrap_file_taxonomy"
+  - location: "modules/AgenticGuidance/agents/manifest.yml"
+    description: "Root agent manifest - layer optimization reference"
+
+phases:
+  - name: "phase-1-fix-references"
+    description: "Fix anchor references and version alignment"
+    agent_category: "teacher"
+    success_criteria:
+      - "No anchor syntax in category reference (full file path only)"
+      - "No anchor syntax in plans.yml reference (full file path only)"
+      - "Version synchronized to 2.0-p1 across inputs.yml and manifest.yml"
+      - "Empty guidelines array has clarifying comment"
+
+    tasks:
+      - id: "teach_001"
+        name: "Simplify agent_context.category reference"
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        inputs:
+          - "modules/AgenticGuidance/agents/planner/planner-reviewer/inputs.yml"
+          - "modules/AgenticGuidance/assets/definitions/fragment-references.yml"
+          - "modules/AgenticGuidance/assets/definitions/agent-categories.yml"
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-reviewer/inputs.yml"
+        guidance: |
+          CHANGE in inputs.yml:
+
+          FROM (line 16):
+            category: "modules/AgenticGuidance/assets/definitions/agent-categories.yml#planner"
+
+          TO:
+            category: "modules/AgenticGuidance/assets/definitions/agent-categories.yml"
+
+          RATIONALE:
+          - Per fragment-references.yml: anchors match TOP-LEVEL keys only
+          - In agent-categories.yml, 'planner' is nested under 'agent_categories:', not top-level
+          - The 'role: planner-reviewer' field already identifies the specific agent
+          - Full file reference is simpler and more reliable
+        acceptance_criteria:
+          - "category field contains only the file path, no #anchor suffix"
+          - "role field remains 'planner-reviewer'"
+
+      - id: "teach_002"
+        name: "Simplify plans.yml reference in core_inputs"
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        inputs:
+          - "modules/AgenticGuidance/agents/planner/planner-reviewer/inputs.yml"
+          - "modules/AgenticGuidance/assets/definitions/plans.yml"
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-reviewer/inputs.yml"
+        guidance: |
+          CHANGE in inputs.yml core_inputs section:
+
+          FROM (lines 44-47):
+            - type: file
+              path: "modules/AgenticGuidance/assets/definitions/plans.yml#scrap_file_taxonomy"
+              description: "Artifact lifecycle definitions for audit, review, and remediation files"
+              required: true
+
+          TO:
+            - type: file
+              path: "modules/AgenticGuidance/assets/definitions/plans.yml"
+              description: "Plan lifecycle and file taxonomy (including scrap files: audit_*, review_*, remediation plans)"
+              required: true
+
+          RATIONALE:
+          - Reviewer agents need full plans.yml context (plan_lifecycle, file_taxonomy, scrap_file_taxonomy)
+          - Simplifies reference while retaining semantic hint in description
+          - Description now mentions specific relevant content areas
+        acceptance_criteria:
+          - "path field contains only the file path, no #anchor suffix"
+          - "description updated to reflect broader scope"
+
+      - id: "teach_003"
+        name: "Synchronize manifest.yml version to 2.0-p1"
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        inputs:
+          - "modules/AgenticGuidance/agents/planner/planner-reviewer/manifest.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-reviewer/inputs.yml"
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-reviewer/manifest.yml"
+        guidance: |
+          CHANGE in manifest.yml:
+
+          FROM (line 5):
+            version: "1.0"
+
+          TO:
+            version: "2.0-p1"
+
+          RATIONALE:
+          - inputs.yml uses version 2.0-p1 (reflects T4 optimization updates)
+          - manifest.yml should match for consistency
+          - Version sync prevents confusion about which version is authoritative
+        acceptance_criteria:
+          - "version field is '2.0-p1'"
+          - "Version matches inputs.yml version"
+
+      - id: "teach_004"
+        name: "Add clarifying comment for empty guidelines array"
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        inputs:
+          - "modules/AgenticGuidance/agents/planner/planner-reviewer/inputs.yml"
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-reviewer/inputs.yml"
+        guidance: |
+          CHANGE in inputs.yml:
+
+          FROM (lines 67-68):
+            # Reviewer-specific guidelines (empty - all guidelines come from layers)
+            guidelines: []
+
+          TO:
+            # Reviewer-specific guidelines
+            # NOTE: Empty array is intentional - all guidelines come from planner-core-guidelines layer.
+            # Do not add guidelines here unless they are reviewer-specific and NOT in shared layers.
+            guidelines: []
+
+          RATIONALE:
+          - Existing comment mentions "empty - all guidelines come from layers" but is terse
+          - Expanded comment explains WHY empty and WHEN to add entries
+          - Prevents future confusion or accidental additions
+        acceptance_criteria:
+          - "Comment explains empty array is intentional"
+          - "Comment mentions layer source (planner-core-guidelines)"
+          - "Comment provides guidance on when additions are appropriate"
+
+  - name: "phase-2-clarify-cleanup-paths"
+    description: "Clarify post-approval cleanup folder targets in process.yml"
+    agent_category: "teacher"
+    dependencies:
+      - "phase-1-fix-references"
+    success_criteria:
+      - "Cleanup paths are explicit relative paths within plan folder structure"
+      - "Folder targets match plans.yml scrap_file_taxonomy definitions"
+
+    tasks:
+      - id: "teach_005"
+        name: "Clarify post-approval cleanup folder targets"
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        inputs:
+          - "modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml"
+          - "modules/AgenticGuidance/assets/definitions/plans.yml"
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml"
+        guidance: |
+          CHANGE in process.yml POST-APPROVAL CLEANUP section (lines 52-65):
+
+          FROM:
+            - |
+              POST-APPROVAL CLEANUP (execute only on APPROVE decision):
+
+              1. Report to orchestrator that remediation tasks should be merged:
+                 "APPROVED: Merge tasks from [plan_name] into authoritative phase plan"
+
+              2. Specify artifacts to archive:
+                 - audit_*.yml related to this review → move to audit/ subfolder
+                 - review_*.yml (this file) → move to analysis/ subfolder
+
+              3. Specify remediation plan disposition:
+                 - After tasks are merged into phase plan, DELETE the remediation plan from live/
+
+              FENCE: Do not execute cleanup on REJECT decisions. Rejected plans remain
+              in live/ for the next iteration of the planner-loop.
+
+          TO:
+            - |
+              POST-APPROVAL CLEANUP (execute only on APPROVE decision):
+
+              1. Report to orchestrator that remediation tasks should be merged:
+                 "APPROVED: Merge tasks from [plan_name] into authoritative phase plan"
+
+              2. Specify artifacts to archive (paths relative to plan folder root):
+                 - audit_*.yml related to this review -> move from live/ to audit/
+                   Example: live/audit_planner_build.yml -> audit/audit_planner_build.yml
+                 - review_*.yml (this decision file) -> move from live/ to analysis/
+                   Example: live/review_planner_build.yml -> analysis/review_planner_build.yml
+
+              3. Specify remediation plan disposition:
+                 - After tasks are merged into phase plan, DELETE the remediation plan from live/
+                 - Do NOT archive remediation plans (tasks are preserved in merged phase plan)
+
+              FENCE: Do not execute cleanup on REJECT decisions. Rejected plans remain
+              in live/ for the next iteration of the planner-loop.
+
+          RATIONALE:
+          - Original text said "audit/ subfolder" but didn't clarify source location
+          - Examples make the move operation concrete
+          - Aligns with plans.yml scrap_file_taxonomy definitions
+        acceptance_criteria:
+          - "Source and destination paths are explicit"
+          - "Examples show actual file movement patterns"
+          - "Matches plans.yml scrap_file_taxonomy lifecycle rules"
+
+  - name: "phase-3-verification"
+    description: "Verify all changes are consistent and well-formed"
+    agent_category: "test"
+    dependencies:
+      - "phase-2-clarify-cleanup-paths"
+    success_criteria:
+      - "All modified files are valid YAML"
+      - "No broken references"
+      - "Version consistency across files"
+
+    tasks:
+      - id: "verify_001"
+        name: "Validate planner-reviewer file consistency"
+        agent_type: "test-final-output"
+        operation: "AUDIT"
+        inputs:
+          - "modules/AgenticGuidance/agents/planner/planner-reviewer/inputs.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-reviewer/manifest.yml"
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-reviewer/inputs.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-reviewer/manifest.yml"
+        guidance: |
+          Verify the following across all three files:
+
+          1. YAML Validity:
+             - All files parse without errors
+             - Indentation is consistent
+
+          2. Reference Consistency:
+             - inputs.yml category field has no #anchor suffix
+             - inputs.yml plans.yml reference has no #anchor suffix
+             - All file paths in inputs reference existing files
+
+          3. Version Consistency:
+             - inputs.yml version matches manifest.yml version (both 2.0-p1)
+
+          4. Documentation Quality:
+             - Empty guidelines array has explanatory comment
+             - POST-APPROVAL CLEANUP has explicit path examples
+        acceptance_criteria:
+          - "Zero YAML parse errors"
+          - "Zero broken file references"
+          - "Version is 2.0-p1 in both inputs.yml and manifest.yml"
+          - "No #anchor suffixes in category or plans.yml references"
+
+success_criteria:
+  user_validation:
+    - "planner-reviewer agent files have no ambiguous anchor references"
+    - "Version is consistent across inputs.yml and manifest.yml"
+    - "Cleanup instructions in process.yml are clear and actionable"
+
+  technical_validation:
+    - "No #anchor syntax in agent_context.category"
+    - "No #anchor syntax in plans.yml core_input reference"
+    - "manifest.yml version is 2.0-p1"
+    - "Empty guidelines array has explanatory comment"
+    - "POST-APPROVAL CLEANUP paths are explicit with examples"
+
+notes:
+  - "Issue 4 (success-criteria file minimal) deemed acceptable - brevity is intentional"
+  - "User decision: simplify anchor syntax rather than fix complex anchor references"
+  - "User decision: planners only need root manifest.yml (T4 optimization applies)"
+  - "All changes are backward-compatible guidance clarifications"

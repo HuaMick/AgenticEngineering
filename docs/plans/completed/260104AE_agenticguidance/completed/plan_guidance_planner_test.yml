@@ -1,0 +1,359 @@
+# Guidance Improvement Plan: planner-test Agent
+# Created by planner-guidance based on self-review findings
+# Target: Fix guidance inconsistencies in planner-test agent files
+
+plan_name: "planner-test-guidance-remediation"
+worktree: "/home/code/AgenticEngineering-agenticguidance"
+branch: "agenticguidance"
+created: "2026-01-09"
+objective: |
+  Fix guidance inconsistencies in planner-test agent to ensure:
+  - Strategy names use consistent hyphen-case terminology
+  - All strategies have process mappings in manifest.yml
+  - user_simulator references removed (deprecated)
+  - Example file references point to existing files
+  - Output paths use absolute paths as required
+
+# Context from self-review findings
+friction_source: |
+  Self-review identified 8 issues:
+  1. Strategy naming mismatch between process.yml (smoke_test, service_test) and manifest.yml (smoke_test, agent_blind_test)
+  2. Missing process mappings for: agent-blind-test, test-suite, service_test
+  3. user_simulator process referenced in manifest but deprecated/removed
+  4. Missing file reference: plan_live_test.yml example doesn't exist
+  5. Example shows minimal test phases vs manifest's 6 phases
+  6. Output file path missing absolute path requirement
+  7. User stories reference gap in process.yml
+  8. Terminology inconsistency: underscore (smoke_test) vs hyphen (agent-blind-test)
+
+  USER DECISIONS:
+  - Add mappings for missing strategies: YES
+  - Remove user_simulator references: YES (deprecated overcomplicated process)
+  - CI/CD validation: planner-test handles this (confirmed)
+  - Example files: Remove old plan_live_test.yml refs, keep plan_example.yml
+  - Anchor syntax: Simplify if complexity outweighs gain
+
+inputs:
+  - location: "modules/AgenticGuidance/agents/planner/planner-test/inputs.yml"
+    description: "Current planner-test inputs configuration"
+  - location: "modules/AgenticGuidance/agents/planner/planner-test/process.yml"
+    description: "Current planner-test process definition"
+  - location: "modules/AgenticGuidance/agents/planner/planner-test/manifest.yml"
+    description: "Current planner-test manifest with test plan structure"
+  - location: "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+    description: "Loop definitions for test-fix-loop patterns"
+  - location: "modules/AgenticGuidance/assets/examples/planner/YYMMDDRepo_Branch/plan_example.yml"
+    description: "Unified plan example (replaces old plan_live_test.yml)"
+
+phases:
+  - name: "phase-1-terminology-standardization"
+    description: "Standardize strategy naming to hyphen-case across all files"
+    agent_category: "teacher"
+    success_criteria:
+      - "All strategy names use hyphen-case: smoke-test, agent-blind-test, test-suite, service-test, cicd-maintenance"
+      - "No underscore-case strategy names remain in process.yml, manifest.yml, or inputs.yml"
+      - "Consistent terminology between all three files"
+
+    tasks:
+      - id: "term_001"
+        name: "Standardize strategy names in process.yml"
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        inputs:
+          - "modules/AgenticGuidance/agents/planner/planner-test/process.yml"
+          - "modules/AgenticGuidance/assets/definitions/strategy-agent-blind-test.yml"
+          - "modules/AgenticGuidance/assets/definitions/strategy-test-suite.yml"
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-test/process.yml"
+        guidance: |
+          In the guidelines section (lines 70-76), update strategy names to hyphen-case:
+
+          CHANGE FROM:
+            - smoke_test -> smoke-test
+            - agent-blind-test (already correct)
+            - test-suite (already correct)
+            - service_test -> service-test
+            - cicd_maintenance -> cicd-maintenance
+
+          Updated text for guidelines section:
+            Test strategy selection (see inputs.yml for detailed test strategy definitions):
+            - smoke-test: Entry point validation during active development
+            - agent-blind-test: User simulator for UAT and documentation validation
+            - test-suite: End-to-end testing (only on explicit user request)
+            - service-test: Backend service lifecycle validation
+            - audit: Test quality review to detect reward hacking
+            - cicd-maintenance: CI/CD infrastructure validation
+        acceptance_criteria:
+          - "All strategy names in process.yml use hyphen-case"
+          - "No underscore characters in strategy names"
+
+      - id: "term_002"
+        name: "Standardize strategy names in manifest.yml"
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        inputs:
+          - "modules/AgenticGuidance/agents/planner/planner-test/manifest.yml"
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-test/manifest.yml"
+        guidance: |
+          Update strategy names in test_plan_structure and test_process_mapping sections:
+
+          In test_plan_structure (lines 25-52):
+          - "smoke_test process" -> "smoke-test process"
+          - "user_simulator process" -> REMOVE (deprecated, see term_003)
+
+          In test_process_mapping (lines 93-98):
+          - "smoke_test:" -> "smoke-test:"
+          - "cicd_maintenance:" -> "cicd-maintenance:"
+        acceptance_criteria:
+          - "All strategy names in manifest.yml use hyphen-case"
+          - "Consistent with process.yml terminology"
+
+      - id: "term_003"
+        name: "Remove deprecated user_simulator references"
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        inputs:
+          - "modules/AgenticGuidance/agents/planner/planner-test/manifest.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-test/inputs.yml"
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-test/manifest.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-test/inputs.yml"
+        guidance: |
+          USER DECISION: Remove all user_simulator references - deprecated overcomplicated process.
+
+          In manifest.yml test_plan_structure (around line 36):
+          REMOVE: "- User flow tests: user_simulator process (agent-blind-test strategy)"
+          REPLACE WITH: "- User flow tests: agent-blind-test strategy"
+
+          The agent-blind-test strategy is defined in:
+          modules/AgenticGuidance/assets/definitions/strategy-agent-blind-test.yml
+
+          In inputs.yml (line 19):
+          CHANGE: "user_simulator" -> "agent-blind-test"
+
+          Rationale: user_simulator was an overcomplicated wrapper. The agent-blind-test
+          strategy file contains all needed guidance for blind testing.
+        acceptance_criteria:
+          - "No references to user_simulator remain in manifest.yml or inputs.yml"
+          - "agent-blind-test strategy properly referenced instead"
+
+  - name: "phase-2-add-missing-process-mappings"
+    description: "Add process mappings for strategies that lack them"
+    agent_category: "teacher"
+    dependencies:
+      - "phase-1-terminology-standardization"
+    success_criteria:
+      - "All strategies have process mappings in manifest.yml"
+      - "Mappings point to existing strategy definition files or process files"
+
+    tasks:
+      - id: "map_001"
+        name: "Add missing strategy-to-process mappings in manifest.yml"
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        inputs:
+          - "modules/AgenticGuidance/agents/planner/planner-test/manifest.yml"
+          - "modules/AgenticGuidance/assets/definitions/strategy-agent-blind-test.yml"
+          - "modules/AgenticGuidance/assets/definitions/strategy-test-suite.yml"
+          - "modules/AgenticGuidance/assets/definitions/strategy-fresh-environment.yml"
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-test/manifest.yml"
+        guidance: |
+          Expand test_process_mapping section (lines 93-98) to include all strategies:
+
+          CURRENT:
+            test_process_mapping: |
+              Strategy to process mapping:
+              - smoke_test: modules/AgenticGuidance/agents/test/test-runner/process.yml
+              - audit: modules/AgenticGuidance/agents/test/test-audit/process.yml
+              - cicd_maintenance: modules/AgenticGuidance/agents/deploy/deploy-cicd/process.yml
+
+          REPLACE WITH:
+            test_process_mapping: |
+              Strategy to process mapping:
+              - smoke-test: modules/AgenticGuidance/agents/test/test-runner/process.yml
+              - agent-blind-test: modules/AgenticGuidance/assets/definitions/strategy-agent-blind-test.yml
+              - test-suite: modules/AgenticGuidance/assets/definitions/strategy-test-suite.yml
+              - service-test: modules/AgenticGuidance/assets/definitions/strategy-fresh-environment.yml
+              - audit: modules/AgenticGuidance/agents/test/test-audit/process.yml
+              - cicd-maintenance: modules/AgenticGuidance/agents/deploy/deploy-cicd/process.yml
+
+          NOTE: service-test maps to fresh-environment strategy because service tests
+          typically require fresh environment isolation. Adjust if incorrect.
+        acceptance_criteria:
+          - "All 6 strategies have process mappings"
+          - "All mapped files exist in the repository"
+          - "Hyphen-case naming used consistently"
+
+  - name: "phase-3-fix-example-references"
+    description: "Fix example file references to point to existing files"
+    agent_category: "teacher"
+    dependencies:
+      - "phase-1-terminology-standardization"
+    success_criteria:
+      - "All example references point to existing files"
+      - "No references to non-existent plan_live_test.yml"
+
+    tasks:
+      - id: "ref_001"
+        name: "Fix example reference in process.yml"
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        inputs:
+          - "modules/AgenticGuidance/agents/planner/planner-test/process.yml"
+          - "modules/AgenticGuidance/assets/examples/planner/YYMMDDRepo_Branch/plan_example.yml"
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-test/process.yml"
+        guidance: |
+          Fix the example reference in step 3 (around line 38-39):
+
+          CURRENT (line 38):
+            "Reference the example test plan from inputs (`live/plan_live_test.yml`) for:"
+
+          CHANGE TO:
+            "Reference the unified plan example (plan_example.yml) for:"
+
+          Rationale: plan_live_test.yml does not exist. The unified plan_example.yml
+          at modules/AgenticGuidance/assets/examples/planner/YYMMDDRepo_Branch/plan_example.yml
+          shows test phase structure including test-fix-loop patterns.
+
+          Also fix the step 2 reference (around line 27):
+          CURRENT: "Create/update `live/plan_live_test.yml` with your test phases"
+          CHANGE TO: "Create/update `live/plan_test.yml` with your test phases"
+        acceptance_criteria:
+          - "No references to plan_live_test.yml in process.yml"
+          - "References point to plan_example.yml or plan_test.yml (correct naming)"
+
+      - id: "ref_002"
+        name: "Fix example reference in reviewer guidelines"
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        inputs:
+          - "modules/AgenticGuidance/agents/planner/planner-test/process.yml"
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-test/process.yml"
+        guidance: |
+          Fix the reviewer guideline reference (around line 79):
+
+          CURRENT:
+            "Reference YYMMDDRepo_Branch/live/plan_live_test.yml example for valid structure patterns"
+
+          CHANGE TO:
+            "Reference YYMMDDRepo_Branch/plan_example.yml for valid test phase structure patterns"
+
+          Rationale: The plan_example.yml is the unified example that includes test phases.
+        acceptance_criteria:
+          - "Reviewer guideline references existing plan_example.yml"
+          - "No broken references in guidelines section"
+
+  - name: "phase-4-add-output-path-specification"
+    description: "Add absolute path requirement for output file"
+    agent_category: "teacher"
+    dependencies:
+      - "phase-3-fix-example-references"
+    success_criteria:
+      - "Output section specifies absolute path requirement"
+      - "Clear guidance on output file location"
+
+    tasks:
+      - id: "out_001"
+        name: "Add output specification to process.yml"
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        inputs:
+          - "modules/AgenticGuidance/agents/planner/planner-test/process.yml"
+          - "modules/AgenticGuidance/assets/definitions/plans.yml"
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-test/process.yml"
+        guidance: |
+          The outputs section (line 15) is currently empty. Add output specification:
+
+          CURRENT:
+            outputs: []
+
+          CHANGE TO:
+            outputs:
+              - location: "{planning_folder}/live/plan_test.yml"
+                description: "Test phases plan file. planning_folder is absolute path provided by orchestration."
+                format: "YAML plan with phases, tasks, and success criteria"
+
+          NOTE: The planning_folder variable is provided by orchestration-planning agent
+          and contains the absolute path to the planning folder (e.g.,
+          /home/code/MyProject/docs/plans/live/YYMMDDRepo_Branch/).
+        acceptance_criteria:
+          - "outputs section specifies the output file location"
+          - "Description clarifies that planning_folder is an absolute path"
+
+  - name: "phase-5-verification"
+    description: "Verify all changes are consistent and complete"
+    agent_category: "test"
+    dependencies:
+      - "phase-4-add-output-path-specification"
+    success_criteria:
+      - "All strategy names consistent across files (hyphen-case)"
+      - "All process mappings exist and point to valid files"
+      - "No references to deprecated user_simulator"
+      - "No references to non-existent files"
+      - "Output path specification complete"
+
+    tasks:
+      - id: "verify_001"
+        name: "Validate consistency across planner-test files"
+        agent_type: "test-final-output"
+        operation: "AUDIT"
+        inputs:
+          - "modules/AgenticGuidance/agents/planner/planner-test/inputs.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-test/process.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-test/manifest.yml"
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-test/inputs.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-test/process.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-test/manifest.yml"
+        guidance: |
+          Verify the following:
+
+          1. TERMINOLOGY CONSISTENCY:
+             - Search for underscore-case strategy names: smoke_test, service_test, cicd_maintenance
+             - All should be hyphen-case: smoke-test, service-test, cicd-maintenance
+             - agent-blind-test and test-suite should remain hyphen-case
+
+          2. NO DEPRECATED REFERENCES:
+             - Search for "user_simulator" - should not appear anywhere
+             - Search for "plan_live_test.yml" - should not appear anywhere
+
+          3. PROCESS MAPPING COMPLETENESS:
+             - manifest.yml should map all 6 strategies to valid files
+             - All mapped files should exist
+
+          4. OUTPUTS SPECIFICATION:
+             - process.yml outputs section should not be empty
+             - Should specify planning_folder-relative output path
+
+          5. FILE REFERENCE VALIDATION:
+             - All file paths in inputs.yml core_inputs should resolve to existing files
+             - All example references should point to existing files
+        acceptance_criteria:
+          - "Zero underscore-case strategy names found"
+          - "Zero user_simulator references found"
+          - "Zero plan_live_test.yml references found"
+          - "All 6 strategies mapped in manifest.yml"
+          - "outputs section populated in process.yml"
+
+success_criteria:
+  user_validation:
+    - "planner-test agent produces test plans with consistent strategy naming"
+    - "All referenced files exist and are accessible"
+    - "No confusion about deprecated user_simulator vs agent-blind-test"
+
+  technical_validation:
+    - "Hyphen-case naming for all strategies across all files"
+    - "Complete process mappings for all strategies"
+    - "No broken file references"
+    - "Output path specification present"
+
+notes:
+  - "This plan addresses 8 specific issues identified in self-review"
+  - "User decision to remove user_simulator was captured and applied"
+  - "Hyphen-case is the standard per existing strategy-*.yml file naming"
+  - "The unified plan_example.yml replaces scattered example references"
