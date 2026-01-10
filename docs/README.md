@@ -22,7 +22,7 @@ Contains active work. Each subfolder follows the naming convention `YYMMDDRepo_B
 
 | Folder | Description |
 |--------|-------------|
-| `260104AE_agenticguidance/` | Current AgenticGuidance development |
+| *(empty)* | No active plans - all work completed 2026-01-11 |
 
 Within each planning folder:
 - `live/` - Active plan files (`plan_*.yml`)
