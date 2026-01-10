@@ -34,9 +34,9 @@ High-level coordination of planning and execution workflows.
 
 | Agent | Purpose |
 |-------|---------|
-| `orchestration-planning` | Human-in-the-loop plan creation |
-| `orchestration-build` | Code implementation and testing |
-| `orchestration-guidance` | Context engineering for agent guidance |
+| `orchestration-planning` | Human-in-the-loop plan creation + MMD generation |
+| ~~`orchestration-build`~~ | **DEPRECATED** - use `orchestration-executor` |
+| ~~`orchestration-guidance`~~ | **DEPRECATED** - use `orchestration-executor` |
 | `orchestration-executor` | Dynamic agent routing from Plan-MMD |
 
 ### Test (7 agents)
@@ -136,9 +136,10 @@ Three top-level entrypoints for initiating workflows:
    - Outputs approved plan to `docs/plans/live/YYMMDDRepo_Branch/`
 
 2. **Execution Phase**: Use `_orchestrate.yml` to execute the approved plan
-   - Invokes `orchestration-build` agent
-   - Executes phases in order defined by plan
-   - Orchestrates builder and tester agents per phase definitions
+   - Invokes `orchestration-executor` agent
+   - Discovers `orchestration_*.mmd` file in plan folder
+   - Executes phases using dynamic AGENT_ROUTING from MMD metadata
+   - Orchestrates builder, tester, and teacher agents per phase definitions
 
 ## Path Resolution
 
