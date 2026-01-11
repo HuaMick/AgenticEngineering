@@ -2,7 +2,9 @@ name: orchestration-guidance
 description: |
   Guidance and context engineering workflows including agent teaching and process improvements.
   Coordinates guidance agents to enhance agent capabilities and workflows.
-version: "1.0"
+version: "2.0"
+# Version scheme: X.Y where X = architecture version, Y = iteration
+# 2.0 = reference layer architecture
 
 purpose: |
   Orchestration-guidance manages guidance and context engineering workflows by
@@ -10,6 +12,47 @@ purpose: |
   improvements, and documentation updates. Can delegate to orchestration-planning
   when no pre-approved plan exists, or execute directly when given a pre-approved
   plan via _plan_teach.yml entrypoint.
+
+# ==============================================
+# INPUTS
+# ==============================================
+inputs:
+  location: "modules/AgenticGuidance/agents/orchestration/orchestration-guidance/inputs.yml"
+  description: "Core inputs, layers, guidelines, and definitions for guidance orchestration"
+
+# ==============================================
+# SPAWNS FENCE
+# ==============================================
+# Only agents listed here may be invoked by this orchestrator
+spawns:
+  # Worktree and plan setup
+  - agent: "deploy-worktree"
+    purpose: "Create/verify worktree and plan folder structure"
+    when: "Start of workflow"
+
+  # Planning delegation (when no pre-approved plan)
+  - agent: "orchestration-planning"
+    purpose: "Create and approve guidance improvement plan"
+    when: "No approved_plan_path provided"
+
+  # Guidance modification agents
+  - agent: "teacher-update-guidance"
+    purpose: "Update agent-specific guidance (process.yml, inputs.yml)"
+    when: "Guidance improvement phase"
+
+  - agent: "teacher-update-assets"
+    purpose: "Update shared assets (definitions, guidelines, examples)"
+    when: "Shared asset modification needed"
+
+  # Guidance validation
+  - agent: "test-guidance-simulator"
+    purpose: "Execute guidance blind tests to validate improvements"
+    when: "After guidance changes, in guidance-test-loop"
+
+  # Final audit
+  - agent: "test-final-output"
+    purpose: "Validate final outputs and completion"
+    when: "Before marking plan complete"
 
 # ==============================================
 # LOOP CONTEXT
