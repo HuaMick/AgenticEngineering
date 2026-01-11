@@ -1,0 +1,71 @@
+agent: planner-cleaning
+category: planner
+clarity_score: 4
+completeness_score: 4
+consistency_score: 4
+
+issues:
+  - severity: medium
+    description: "User story validation phase references 'user_simulator agents' without explicit guidance on agent spawning. The manifest mentions using 'user_simulator agents' (line 48) but the concrete agent type is 'test-user-simulator', and there's no clear instruction on how the planner should request these agents within task definitions."
+    location: "manifest.yml:48, process.yml:n/a"
+
+  - severity: medium
+    description: "Ambiguous agent role references in audit phase. References 'Audit agent', 'Test agent', and 'Build agent' (manifest.yml:42-44) but does not clarify which specific agent types (test-audit, test-runner, build-python, etc.) should be used, or whether planner-cleaning should specify these or let orchestration decide."
+    location: "manifest.yml:40-46, definitions section"
+
+  - severity: medium
+    description: "Folder lifecycle documentation lacks clarity on the distinction between 'file-level moves' and 'folder-level copies'. The process describes both copy-and-sync for files and folder-level copy for entire plan, but doesn't clearly specify when each operation occurs or the exact conditions triggering the folder copy to docs/plans/completed/."
+    location: "process.yml:5,11-14, outputs section"
+
+  - severity: low
+    description: "Redundant phase ordering statements. The phase ordering is described three times: in manifest.yml purpose (lines 18-32), in definitions (line 99-119), and in process.yml step 3 (lines 62-68). While consistency is good, this creates maintenance overhead."
+    location: "manifest.yml:18-32, definitions, and process.yml:62-68"
+
+  - severity: low
+    description: "Inconsistent terminology for agent roles. Uses both capitalized forms ('Cleaner', 'Audit agent', 'Test agent', 'Build agent') and lowercase forms in loop definitions ('cleaner agent', 'test agent', 'explorer agent'). Not a critical issue but reduces visual consistency."
+    location: "manifest.yml:42-44 vs process.yml:20-23"
+
+  - severity: low
+    description: "Testing environments (Local, Docker, Cloud Build) are mentioned for user story validation (manifest.yml:50, 109) but Cloud Build is not clearly defined in the user-stories.yml reference. Unclear if planner-cleaning needs to account for Cloud Build environment or if test-user-simulator handles this internally."
+    location: "manifest.yml:50,109"
+
+issues_not_found:
+  - "Missing input file references: All referenced files (planner-core-system.yml, planner-core-guidelines.yml, planner-shared.yml, plan-completion.yml, agent-loops.yml, user-stories.yml, plan_example.yml, cleanup_phase.mmd) were verified to exist."
+  - "Broken cross-references: All cross-references between manifest, process, and inputs are consistent and point to valid locations."
+  - "Undefined phase structures: All four phase types (cleanup, audit, user story validation, documentation) are fully defined with structure requirements."
+
+recommendations:
+  - "Clarify agent spawning for user story validation: Add explicit guidance in process.yml step on how planner-cleaning should request test-user-simulator agents (e.g., 'Create one test-user-simulator task per user story file in inputs.yml'). Reference test-user-simulator manifest for required task structure."
+
+  - "Create agent role reference table: Add a simple mapping table in inputs.yml (optional section) showing: cleanup phase -> cleaner+explorer agents, audit phase -> test-audit agent, user story validation -> test-user-simulator agent, documentation -> (no agents needed). This makes it explicit which agents should be orchestrated for each phase."
+
+  - "Document folder lifecycle conditions: Expand process.yml step 6 to explicitly state: When plan is 'fully_completed' (all phases done), COPY entire folder to docs/plans/completed/ AND DELETE from docs/plans/live/. Clarify that intermediate file moves happen with each phase, but folder-level copy only happens at final completion."
+
+  - "Consolidate phase ordering into single source: Remove the repeated phase ordering from definitions section (lines 99-119 in manifest.yml) and replace with: 'See phase_creation_rules section for authoritative phase ordering.' This reduces maintenance overhead."
+
+  - "Standardize agent role terminology: Use lowercase consistently in all sections (e.g., 'cleanup phase uses cleaner and explorer agents') to match the formal agent-loops.yml definitions."
+
+  - "Add Cloud Build environment clarity: In manifest.yml user_story_validation_phase section, add a note: 'Cloud Build environment testing is handled by test-user-simulator agent when orchestrating; planner-cleaning should include it in user story file specification if needed.'"
+
+  - "Strengthen guidance on success criteria: Add explicit instruction that each phase must have measurable, testable success criteria, with examples: Cleanup: 'Verified zero references to removed files', Audit: 'All reward-hacking patterns documented', User Story: 'All story steps pass in local + Docker', Documentation: 'New users complete setup without errors'."
+
+strengths:
+  - "Comprehensive phase definitions: Each of the four finalization phases has detailed structure requirements, focus areas, and success criteria."
+  - "Good reference architecture: Consistent use of manifest.yml as authoritative source for definitions and clear cross-references from process.yml and inputs.yml."
+  - "Strong emphasis on PRIMARY SUCCESS CRITERIA: User Story Validation is clearly marked as the critical measure of implementation success (emphasized throughout)."
+  - "Clear input structure: inputs.yml uses the transitive layer loading pattern effectively, with explicit file-level inputs (not directory-level) for context routing."
+  - "Lifecycle documentation: Process clearly describes copy-and-sync pattern for file management and folder-level copy on completion."
+  - "Loop definitions properly externalized: Correctly references agent-loops.yml for cleaner-dependency-loop and audit-test-fix-loop rather than duplicating."
+
+summary: |
+  The planner-cleaning guidance is well-structured with clear definitions and good cross-referencing. The main areas for improvement are:
+
+  1. Agent Spawning Clarity: Need explicit guidance on how planner-cleaning should request specific agents (test-user-simulator, cleaner, explorer, test-audit) in task definitions.
+
+  2. Role-Agent Mapping: The manifest defines abstract agent roles (Cleaner, Audit agent, Test agent) but doesn't map these clearly to concrete agent types in the AgenticGuidance system.
+
+  3. Folder Lifecycle Conditions: The transition from file-level operations to folder-level copy needs clearer conditions and timing.
+
+  4. Terminology Consistency: Minor inconsistencies in capitalization of agent roles and terminology.
+
+  Overall, an agent following this guidance could successfully create cleanup, audit, user story validation, and documentation phases for finalizing implementation work. The PRIMARY SUCCESS CRITERIA (user story validation) is well-emphasized, and the phase ordering rationale is sound. The guidance would benefit from tighter agent-type specificity and clearer lifecycle conditions before reaching 5/5.

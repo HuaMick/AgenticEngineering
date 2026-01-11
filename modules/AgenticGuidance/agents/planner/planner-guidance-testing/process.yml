@@ -2,7 +2,7 @@ process:
   goal: |
     Create a guidance test plan that validates agent guidance completeness through
     walkthrough-based validation, ensuring agents can execute tasks using only
-    their guidance files (process.yml, inputs.yml, outputs.yml) without requiring
+    their guidance files (process.yml, inputs.yml) without requiring
     code inspection or codebase exploration.
 
   loop_context:
@@ -29,10 +29,18 @@ process:
       description: "Core planner-guidance-testing agent inputs and guidelines"
     - location: "modules/AgenticGuidance/assets/definitions/guidance-test-scenarios.yml"
       description: "Walkthrough validation scenarios and test structure"
-    - location: "modules/AgenticGuidance/assets/definitions/strategy-guidance-blind-test.yml"
+    - location: "modules/AgenticGuidance/assets/guidelines/strategy-guidance-blind-test.yml"
       description: "Blind test methodology for guidance validation"
 
-  outputs: []
+  outputs:
+    - name: "guidance_test_plan"
+      description: "Guidance walkthrough validation plan with test tasks for target agents"
+      location: "docs/plans/live/{plan_folder_name}/live/plan_live_test_guidance.yml"
+      required: true
+    - name: "friction_report"
+      description: "Summary of friction points found during walkthrough validation"
+      location: "Returned to orchestrator"
+      required: true
 
   steps:
     - |
@@ -62,7 +70,7 @@ process:
       - Friction detection test (are prerequisites and assumptions explicit?)
 
       WALKTHROUGH VALIDATION APPROACH:
-      Reference modules/AgenticGuidance/assets/definitions/strategy-guidance-blind-test.yml for:
+      Reference modules/AgenticGuidance/assets/guidelines/strategy-guidance-blind-test.yml for:
       - Minimal context principle (guidance files only, no code access)
       - Blind test constraints (no exploration beyond guidance)
       - Friction reporting structure
@@ -111,7 +119,6 @@ process:
           guidance_files_to_review:
             - "process.yml"
             - "inputs.yml"
-            - "outputs.yml"
           test_scenarios:
             - "task_completion_test"
             - "reference_resolution_test"
@@ -120,7 +127,7 @@ process:
             - "subagent_spawning_test"  # Only for orchestrator agents
           walkthrough_task: "Minimal task definition to complete using guidance only"
           constraints: "Use only guidance files - no code inspection or codebase exploration"
-          report_template: "modules/AgenticGuidance/assets/definitions/strategy-guidance-blind-test.yml#FRICTION_POINT"
+          report_template: "modules/AgenticGuidance/assets/guidelines/strategy-guidance-blind-test.yml#FRICTION_POINT"
       - acceptance_criteria:
           - "Agent completes walkthrough using guidance only"
           - "All input paths resolve correctly"
@@ -129,7 +136,6 @@ process:
       - files:
           - "modules/AgenticGuidance/agents/<category>/<agent-name>/process.yml"
           - "modules/AgenticGuidance/agents/<category>/<agent-name>/inputs.yml"
-          - "modules/AgenticGuidance/agents/<category>/<agent-name>/outputs.yml"
     - |
       TEST SCENARIO SELECTION RULES:
       - task_completion_test: ALWAYS include for all agents
@@ -141,7 +147,7 @@ process:
       MINIMAL CONTEXT PRINCIPLE (from strategy-guidance-blind-test.yml):
       - Walkthrough tasks should provide ONLY the goal, not implementation hints
       - Target agent must discover all paths through guidance alone
-      - No access to codebase beyond guidance files (process.yml, inputs.yml, outputs.yml)
+      - No access to codebase beyond guidance files (process.yml, inputs.yml)
       - No prior knowledge of agent implementation or codebase structure
       - Report friction points when guidance is insufficient
     - |
@@ -150,7 +156,7 @@ process:
   guidelines:
     # Core guidelines: See modules/AgenticGuidance/assets/guidelines/ (less-is-more.yml, iteration.yml, fix-the-source.yml, experiment-first.yml, context-minimisation.yml, worktree-and-branching.yml, response-audit.yml)
     # Core definitions: See modules/AgenticGuidance/assets/definitions/ (plans.yml, guidance.yml, friction.yml, domains.yml, workflows.yml, entrypoints.yml)
-    # Test strategies and processes: See inputs.yml definitions section and modules/AgenticGuidance/assets/definitions/strategy-*.yml files
+    # Test strategies and processes: See inputs.yml definitions section and modules/AgenticGuidance/assets/guidelines/strategy-*.yml files
     - |
       For complex guidance changes, always include a guidance-test-loop with walkthrough validation.
     - |
@@ -161,7 +167,7 @@ process:
       - loop_context_test: Validates loop participation metadata (conditional)
       - subagent_spawning_test: Validates orchestrator can spawn children (conditional)
     - |
-      Walkthrough validation strategy (see modules/AgenticGuidance/assets/definitions/strategy-guidance-blind-test.yml):
+      Walkthrough validation strategy (see modules/AgenticGuidance/assets/guidelines/strategy-guidance-blind-test.yml):
       - Spawn target agents to review their own guidance files
       - Provide minimal context (guidance files only, no code access)
       - Target agent reports friction points when guidance is insufficient

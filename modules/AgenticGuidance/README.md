@@ -85,7 +85,7 @@ Stable concepts and terminology that define "what is X". Key definitions include
 - `plans.yml` - Plan structure and lifecycle
 - `agent-loops.yml` - Loop patterns for iterative work
 - `fence.yml` / `fence-build-deploy.yml` - Boundary definitions
-- `escalation.yml` - When and how to escalate
+- `escalation.yml` - When and how to escalate (moved to guidelines/)
 
 ### Guidelines (15 files)
 Behavioral rules and constraints that define "how to act":

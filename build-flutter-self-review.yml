@@ -1,0 +1,107 @@
+agent: build-flutter
+category: build
+clarity_score: 3
+completeness_score: 2
+consistency_score: 2
+
+issues:
+  - severity: critical
+    description: "Three required file references point to wrong directory. Files are in 'guidelines/' not 'definitions/'. This breaks input resolution for the agent."
+    location: "inputs.yml:lines 56, 61, 66"
+    references:
+      - incorrect: "modules/AgenticGuidance/assets/definitions/minimal-sufficient-change.yml"
+        correct: "modules/AgenticGuidance/assets/guidelines/minimal-sufficient-change.yml"
+      - incorrect: "modules/AgenticGuidance/assets/definitions/iteration-approach.yml"
+        correct: "modules/AgenticGuidance/assets/guidelines/iteration-approach.yml"
+      - incorrect: "modules/AgenticGuidance/assets/definitions/component-verification.yml"
+        correct: "modules/AgenticGuidance/assets/guidelines/component-verification.yml"
+
+  - severity: high
+    description: "Process.yml comment at line 45 references the same three files with wrong paths (definitions/ instead of guidelines/). Creates confusion about where guidelines are located."
+    location: "process.yml:line 45"
+    current: "External files referenced in inputs.yml: builder-role.yml, minimal-sufficient-change.yml, iteration-approach.yml, component-verification.yml"
+    issue: "minimal-sufficient-change.yml, iteration-approach.yml, and component-verification.yml are in guidelines/ not definitions/"
+
+  - severity: high
+    description: "Process.yml step 1 has grammatically incorrect/ambiguous wording. Missing punctuation or conjunction makes intent unclear."
+    location: "process.yml:line 20"
+    current: "Review all inputs if an input cannot be found do not proceed."
+    issue: "Missing conjunction. Should be: 'Review all inputs. If an input cannot be found, do not proceed.' OR 'Review all inputs; if any input cannot be found, do not proceed.'"
+
+  - severity: medium
+    description: "Manifest.yml lacks root-level wrapper key. Structure starts directly with 'folders:' but process.yml references 'manifest.yml' as if it contains a 'manifest:' root key. Pattern inconsistent with other YAML artifact files."
+    location: "manifest.yml:line 1"
+    current: "folders:"
+    note: "While this may be intentional for folder manifest files, it creates inconsistency with other agent guidance files (process.yml, inputs.yml) which have proper root keys (process:, inputs:)"
+
+  - severity: medium
+    description: "Flutter verification command in inputs.yml may not be accurate or complete. 'dart compile exe test.dart' appears to be a generic example for import verification, but unclear if this is the recommended Flutter verification approach."
+    location: "inputs.yml:line 83"
+    current: "Import verification: dart compile exe test.dart"
+    issue: "This command creates an executable from a single test file, which is not typical Flutter verification. Missing 'flutter test' or more standard verification command. Unclear how this integrates with the verification in process.yml."
+
+  - severity: medium
+    description: "Inconsistent Flutter verification commands between inputs.yml and process.yml. They define different sets of verification steps without explanation of relationship or hierarchy."
+    location: "inputs.yml:lines 78-83 vs process.yml:lines 37-39"
+    inputs_defines:
+      - "dart analyze lib/"
+      - "flutter pub get"
+      - "dart format --set-exit-if-changed lib/"
+      - "dart compile exe test.dart"
+    process_defines:
+      - "flutter pub get"
+      - "dart analyze lib/"
+    issue: "Process.yml omits formatting checks and import verification that inputs.yml specifies. Unclear which set is authoritative or if agent should use both."
+
+  - severity: medium
+    description: "Missing context for Flutter-specific patterns and conventions. Inline definitions in inputs.yml are comprehensive but lack cross-references or links to external Flutter/Dart documentation."
+    location: "inputs.yml:lines 78-115"
+    issue: "Guidelines reference 'Follow Dart naming conventions' and 'Follow effective Dart style guide' without links or file references to where full style guide is located."
+
+  - severity: low
+    description: "Process.yml outputs field is empty list. No clarity on what the build-flutter agent should produce or communicate as output artifacts."
+    location: "process.yml:line 16"
+    current: "outputs: []"
+    issue: "Should define: Does the agent output modified files? Build artifacts? Success report? This is undefined."
+
+  - severity: low
+    description: "PILOT NOTES section at end of inputs.yml may not reflect actual folder structure. Notes mention '2 manifest/process files + 5 shared build definitions' but review shows only 1 manifest and 1 process file in this agent directory."
+    location: "inputs.yml:lines 117-123"
+    current: "(2 manifest/process files + 5 shared build definitions)"
+    issue: "This appears to be a template note not updated for build-flutter specifically. Unclear if this is intentional."
+
+  - severity: low
+    description: "No version consistency between files. manifest.yml, process.yml, and inputs.yml have different version patterns/none."
+    location: "manifest.yml vs process.yml vs inputs.yml"
+    issue: "manifest.yml: no version; process.yml: no version; inputs.yml:line 20 has 'version: 2.0-pilot'. Makes it unclear which version of guidance is current."
+
+recommendations:
+  - "CRITICAL: Update inputs.yml lines 56, 61, 66 to use correct paths in 'guidelines/' directory, not 'definitions/'"
+  - "CRITICAL: Update process.yml line 45 comment to reflect correct paths for the three files in guidelines/"
+  - "HIGH: Rewrite process.yml step 1 (line 20) for clarity. Suggest: 'Review all inputs to verify they exist in expected locations. If any required input cannot be found, do not proceed. If an input is found in a different location, update the path reference and flag the discrepancy in your output.'"
+  - "HIGH: Consolidate Flutter verification steps. Either choose one set of verification commands (process.yml's simpler set OR inputs.yml's comprehensive set) or clearly document when/why each is used."
+  - "MEDIUM: Add explicit section in inputs.yml or process.yml explaining relationship between flutter_verification in inputs.yml and the verification steps in process.yml steps."
+  - "MEDIUM: Replace 'dart compile exe test.dart' with standard Flutter verification (likely 'flutter test' or similar) or document why this specific command is recommended."
+  - "MEDIUM: Add root-level 'manifest:' wrapper key to manifest.yml for consistency with other YAML guidance files, or update process.yml to clarify that manifest.yml intentionally lacks wrapper."
+  - "MEDIUM: Define outputs field in process.yml. Should specify what artifacts or reports the build-flutter agent produces (e.g., 'built components, compilation reports, analysis results')."
+  - "MEDIUM: Update PILOT NOTES section in inputs.yml to reflect actual agent structure or remove if no longer accurate."
+  - "MEDIUM: Add links to external Dart/Flutter style guides where conventions are referenced (e.g., link to 'Effective Dart' guide)."
+  - "LOW: Establish consistent versioning scheme across all three files (manifest.yml, process.yml, inputs.yml)."
+  - "LOW: Consider whether 'context-minimisation' mentioned in inputs.yml comments is actually loaded through layers or needs explicit inclusion."
+
+summary: |
+  The build-flutter agent guidance has several critical path resolution issues that would break agent execution:
+  three required files are referenced in the wrong directory (definitions/ instead of guidelines/).
+
+  Additionally, there are clarity issues with step 1 wording and conflicting verification command definitions between
+  files that create ambiguity for an agent trying to follow the process.
+
+  The guidance is conceptually well-structured with good use of layer inheritance, but needs corrections to path
+  references and clarification of verification procedures before it can be reliably executed.
+
+  Overall Assessment:
+  - CLARITY: 3/5 (Wording is mostly clear but step 1 is confusing; verification commands conflict)
+  - COMPLETENESS: 2/5 (Missing explicit outputs definition; verification procedure incompletely specified;
+    Dart/Flutter reference links missing)
+  - CONSISTENCY: 2/5 (File path references wrong; version fields inconsistent; two different verification
+    command sets without clear hierarchy)

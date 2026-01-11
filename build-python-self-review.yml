@@ -1,0 +1,72 @@
+agent: build-python
+category: build
+clarity_score: 3
+completeness_score: 3
+consistency_score: 2
+
+issues:
+  - severity: high
+    description: "Path inconsistencies in inputs.yml: Three critical files are referenced with incorrect directory paths. Lines 56, 61, and 66 point to modules/AgenticGuidance/assets/definitions/ but the files actually exist in modules/AgenticGuidance/assets/guidelines/. These files are: minimal-sufficient-change.yml, iteration-approach.yml, and component-verification.yml."
+    location: "inputs.yml:56, inputs.yml:61, inputs.yml:66"
+
+  - severity: high
+    description: "Process step 1 (line 20) has grammatical error: 'Review all inputs if an input cannot be found do not proceed.' Should read: 'Review all inputs. If an input cannot be found, do not proceed.'"
+    location: "process.yml:20"
+
+  - severity: medium
+    description: "Process step 3 (line 31) is vague: 'Gather context and check assumptions' lacks specificity about what context to gather or which assumptions to validate. No concrete actions or deliverables defined."
+    location: "process.yml:31"
+
+  - severity: medium
+    description: "Process step 4 (line 33) is incomplete: 'Plan components needed to meet the success criteria' does not specify how success criteria should be obtained from the input plan. No reference to where success criteria are located in the plan structure."
+    location: "process.yml:33"
+
+  - severity: medium
+    description: "Outputs definition is empty (line 16): 'outputs: []' provides no guidance on what build-python should output (artifact paths, modified files, test results, deployment package, etc.). This creates ambiguity for downstream agents."
+    location: "process.yml:16"
+
+  - severity: medium
+    description: "Guidelines section (lines 48-50) is incomplete: Contains only comments pointing to external files without providing actual structured guidelines. The pattern used in inputs.yml layers is not followed here - guidelines should either be inline or properly referenced with required/optional status."
+    location: "process.yml:48-50"
+
+  - severity: medium
+    description: "Manifest folder structure is generic without validation examples: The manifest.yml describes the folder structure (services, domains, workflows, CLI) but provides no examples of what should be in each folder or validation criteria. This may lead agents to create incorrect structures."
+    location: "manifest.yml (entire file)"
+
+  - severity: low
+    description: "Loop definitions reference is incomplete: process.yml mentions 'test-fix-loop' in a comment (line 9) but doesn't specify when the build-python agent should use this loop or its relationship to the build process steps."
+    location: "process.yml:7-10"
+
+  - severity: low
+    description: "Inconsistency between manifest and process: manifest.yml mentions '<worktree>/tests/' structure but process.yml verification steps don't reference a separate test execution strategy. Unclear if build-python is responsible for basic import testing vs. unit test execution."
+    location: "manifest.yml:32-40 vs process.yml:42-46"
+
+  - severity: low
+    description: "Python verification section in inputs.yml (lines 78-83) mentions pylint and mypy as 'optional' but doesn't specify the criteria for when they should be used or how to handle missing tools gracefully."
+    location: "inputs.yml:78-83"
+
+recommendations:
+  - "Fix all three path references in inputs.yml (lines 56, 61, 66) to point to modules/AgenticGuidance/assets/guidelines/ instead of assets/definitions/"
+
+  - "Rewrite process.yml step 1 (line 20) with correct grammar: 'Review all inputs. If an input cannot be found, do not proceed. If an input is found in a different location, update the path and flag the discrepancy in your output.'"
+
+  - "Expand step 3 (line 31) with concrete actions: Include specific guidance on what context to gather (project dependencies, existing code patterns, architecture constraints) and how to validate assumptions against the manifest and plan inputs."
+
+  - "Expand step 4 (line 33) with clarity on: Where to find success criteria in the input plan, how to decompose them into component requirements, and reference to planning standards if applicable."
+
+  - "Define outputs in process.yml: Specify expected build artifacts (e.g., modified files, new modules, compiled binaries if applicable) and success indicators. Consider following the pattern in core-system.yml or similar structured definitions."
+
+  - "Replace process.yml guidelines section (lines 48-50) with properly structured references using the layer pattern from inputs.yml. Indicate which guidelines are required vs. conditional."
+
+  - "Enhance manifest.yml with concrete examples: Add 1-2 example implementations showing what a service, domain, workflow, and CLI entrypoint should look like. Reference existing examples from the codebase if available."
+
+  - "Clarify test responsibilities: Add explicit guidance on whether build-python should execute test files or only verify imports/syntax, or if test execution is deferred to test agents. Update both process.yml and manifest.yml for consistency."
+
+  - "Document tool availability handling: In the python_verification section (inputs.yml lines 78-83), specify fallback behavior when optional tools (mypy, pylint) are not available and what minimal verification is mandatory."
+
+  - "Align loop definitions more explicitly: If test-fix-loop is not used by build-python, remove the reference. If it is used, specify when and in what scenarios (only for components that have existing tests, etc.)."
+
+  - "Cross-reference validation: Add a verification step that checks manifest.yml folder structure against the actual project layout before proceeding with the build."
+
+summary: |
+  The build-python agent guidance is primarily clear in intent but suffers from three key issues: (1) Path errors that would prevent agents from finding required definitions, (2) Vague process steps lacking concrete implementation guidance, and (3) Empty outputs definition creating downstream ambiguity. The use of reference layers (core-system.yml, core-guidelines.yml) is a good design choice for reducing duplication, but internal consistency and completeness need improvement before agents can reliably follow this guidance. The guidance would benefit from concrete examples in the manifest and clearer delineation of build responsibilities (what is built vs. what is tested).
