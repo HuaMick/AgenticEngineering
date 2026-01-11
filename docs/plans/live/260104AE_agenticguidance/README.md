@@ -57,12 +57,26 @@ Spawned 23 agents to self-review their own guidance files:
 4. **XCUT-004 (HIGH)**: Inconsistent placeholder naming (plan_id vs plan_folder vs plan_folder_name)
 5. **XCUT-006 (HIGH)**: References to deleted success-criteria-teacher.yml
 
-### Remediation Plan Created - PENDING
-Created `live/plan_teach_self_review_remediation_r2.yml` for next session:
-- **Phase 1 (Critical)**: 2 tasks - Fix path references, define output schemas
-- **Phase 2 (High)**: 3 tasks - Resolve outputs.yml, standardize placeholders, update success-criteria refs
-- **Phase 3 (Validation)**: 6 tasks - Grep verification + spot-check self-review
-- Total: 11 tasks ready for execution
+### Self-Review Remediation R2 - COMPLETE
+Executed `completed/plan_teach_self_review_remediation_r2.yml`:
+
+1. **Phase 1 (Critical)** - COMPLETE
+   - crit_001: Fixed path references (definitions/ → guidelines/) in build-flutter and build-python inputs.yml
+   - crit_002: Defined output schema for planner-guidance-testing
+
+2. **Phase 2 (High)** - COMPLETE
+   - high_001: Removed all outputs.yml references from test-guidance-simulator and planner-guidance-testing
+   - high_002: Standardized placeholders to {plan_folder_name} in 6 planner files
+   - high_003: Updated success-criteria-teacher.yml references (4 process.yml files)
+
+3. **Phase 3 (Validation)** - COMPLETE
+   - val_002: No empty outputs:[] remaining (7 agents fixed)
+   - val_003: No outputs.yml references remaining
+   - val_004: No {plan_id} or {plan_folder} placeholders remaining
+   - val_005: No success-criteria-teacher references remaining
+   - val_006: Spot-check passed for planner-guidance-testing, build-flutter, test-runner
+
+**Additional fixes**: Defined output schemas for 7 agents (build-flutter, build-python, teacher-update-assets, test-builder, test-runner, test-service, test-user-simulator)
 
 ---
 
