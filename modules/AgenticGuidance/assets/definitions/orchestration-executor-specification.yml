@@ -298,6 +298,58 @@ feedback_triggers:
              - Suggested manual steps
              - Option to skip CI/CD validation
 
+    BUILD_FAILURE:
+      description: "Build process fails to complete successfully"
+      detection:
+        output_patterns:
+          - "build_status: failed"
+          - "compilation_error: true"
+          - "build_complete: false"
+        exit_codes:
+          - "Non-zero from build command"
+          - "Compilation or linking errors"
+
+      failure_categories:
+        compilation_error:
+          description: "Source code fails to compile"
+          severity: "MEDIUM"
+          response: "Fix code and retry build"
+
+        dependency_error:
+          description: "Missing or incompatible dependencies"
+          severity: "MEDIUM"
+          response: "Resolve dependencies and retry"
+
+        configuration_error:
+          description: "Build configuration is invalid"
+          severity: "LOW"
+          response: "Fix build config and retry"
+
+      response_actions:
+        retry: |
+          1. Re-spawn builder agent with failure context
+          2. Builder attempts fix based on build output
+          3. Re-run build
+          4. Increment retry counter (max: 5)
+
+        re_plan: |
+          1. Package BUILD_FAILURE context:
+             - failure_type: "BUILD_FAILURE"
+             - failure_category: compilation_error | dependency_error | configuration_error
+             - failure_details: build output, error messages
+             - original_plan_path: current plan location
+          2. Invoke orchestration-planning
+          3. Await updated plan approval
+          4. Resume from build phase
+
+        escalate: |
+          1. Mark build phase as 'blocked'
+          2. Generate build failure report
+          3. Present to user with:
+             - Error details
+             - Attempted fixes
+             - Suggested next steps
+
     GUIDANCE_GAP:
       description: "Guidance validation reveals missing or unclear guidance"
       detection:
@@ -612,13 +664,24 @@ fallback_behaviors:
     fallback_strategy:
       behavior: "Attempt to infer routing from phase names and plan context"
       inference_rules:
-        - "Phase contains 'Setup' or 'Environment': builder"
+        - "Phase contains 'Environment' (without 'Setup'): builder"
         - "Phase contains 'Build' or 'Implementation': builder"
         - "Phase contains 'Test': tester"
         - "Phase contains 'Validation' or 'Audit': tester"
         - "Phase contains 'Deploy' or 'CI' or 'CD': deployer"
         - "Phase contains 'Guidance' or 'Teach': teacher"
         - "Phase contains 'Clean' or 'Removal': cleaner"
+
+      ambiguous_patterns:
+        - pattern: "Phase contains 'Setup'"
+          possible_agents: ["builder", "deployer"]
+          resolution: |
+            'Setup' is ambiguous because it could mean:
+            - Environment setup (deployer for worktree/infrastructure)
+            - Project setup (builder for dependencies/configuration)
+            Inference confidence: LOW - escalate to user for clarification.
+          recommendation: "deployer"
+          reason: "Setup phases typically involve worktree or environment preparation"
 
       confidence_threshold: |
         Inferred routing is marked as 'inferred' with confidence level.

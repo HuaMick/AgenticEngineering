@@ -92,11 +92,47 @@ All deterministic operations offloaded to agentic-cli:
 | MMD Teaching Prerequisites | 7 | Completed |
 | MMD Implementation | 3 (partial) | Completed |
 
+## Session: 2026-01-11 (Ralph Loop)
+
+### Resolved Issues
+- **CRITICAL BLOCKER FIXED**: `orchestration-executor/inputs.yml` YAML syntax error at line 107
+  - `cli_commands_reference` was a dict key inside an inputs array
+  - Converted to proper list item format with `type: reference`
+
+### Test Fixture Validation (4/4 PASS)
+All orchestration test fixtures validated:
+- `parse_001_valid`: All metadata correctly formatted
+- `parse_002_missing_routing`: AGENT_ROUTING absence detectable
+- `parse_003_invalid_agents`: Invalid types detectable
+- `parse_004_malformed_triggers`: Malformed triggers detectable
+
+### Cleanup Completed
+- **Context condensed**: plan_agenticguidance.yml reduced from 237 to ~40 lines
+- **History archived**: `completed/plan_agenticguidance_history.yml` created
+- **Files archived**: 13+ historical files moved to `completed/audit/` and `completed/analysis/`
+
+### Recommendations for Future
+1. ~~Add BUILD_FAILURE to specification Section 3 trigger_types list~~ - RESOLVED
+2. ~~Clarify inference rule: "Setup" -> builder vs deployer~~ - RESOLVED
+
+## Session: 2026-01-11 (Ralph Loop Iteration 2)
+
+### Teaching Work Completed
+- **BUILD_FAILURE trigger**: Added ~50 lines to specification including detection patterns, failure categories, and response actions
+- **Inference rules clarified**: Updated inference_rules and added ambiguous_patterns section documenting Setup -> deployer recommendation
+
+### Specification Updates
+- File: `modules/AgenticGuidance/assets/definitions/orchestration-executor-specification.yml`
+- Total additions: ~60 lines
+
+### Session Status
+**CLOSED** - All teaching work complete. Changes uncommitted.
+
 ## Deferred Items
 
 | Item | Reason |
 |------|--------|
-| Integration test execution (mmd_005_002-005) | Requires focused testing session with actual executor invocation |
+| Integration test execution (mmd_005_002-005) | Requires runtime with actual agent spawning |
 | remod_plan_001 (orchestration-planning MMD refactoring) | Lower priority |
 | Integration test (CLI Fitness) | Out of scope |
 
@@ -105,20 +141,21 @@ All deterministic operations offloaded to agentic-cli:
 ```
 260104AE_agenticguidance/
 ├── README.md                 # This file
-├── analysis/                 # Viability assessments, friction analysis
-├── audit/                    # Self-review results, findings
-│   └── agent-reports/        # Individual agent reports
-├── completed/                # 33 archived plan files
-│   ├── plan_friction_remediation_phase1.yml
-│   ├── plan_friction_remediation_phase2.yml
-│   ├── plan_cli_offloading.yml
-│   ├── plan_mmd_implementation.yml
-│   ├── plan_mmd_teaching_prerequisites.yml
-│   └── ... (28 more)
-└── live/                     # Active files
+├── analysis/                 # Active references only (3 files)
+│   ├── consolidation_recommendations.yml
+│   ├── guidance_consistency_assessment.md
+│   └── orchestration-pattern-evaluation.yml
+├── audit/                    # Active audit files (7 files)
+│   └── audit_planner_*.yml
+├── completed/                # 50+ archived files
+│   ├── analysis/             # Historical analysis files
+│   ├── audit/                # Historical audit files + agent-reports/
+│   ├── plan_agenticguidance_history.yml  # Context log archive
+│   └── ... (plan files)
+└── live/                     # Active files (3 files)
     ├── orchestration_agenticguidance.mmd
-    ├── plan_agenticguidance.yml          # Master plan
-    └── plan_integration_testing.yml       # Deferred testing
+    ├── plan_agenticguidance.yml          # Master plan (condensed)
+    └── plan_integration_testing.yml       # Integration testing
 ```
 
 ## Related Plans
