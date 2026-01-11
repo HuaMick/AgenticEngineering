@@ -1,0 +1,167 @@
+# Unified Plan Structure Example
+# This file demonstrates a unified plan with multiple phases in a single file.
+#
+# DEFAULT: Keep all phases in ONE plan file.
+# SPLIT: Only when context minimisation provides clear benefit.
+#
+# See: modules/AgenticGuidance/assets/guidelines/context-minimisation.yml
+#
+# When to split plans:
+# - Plan exceeds ~500 lines (causes context dilution)
+# - Phases have completely independent inputs (no shared context)
+# - Different agents need strictly different subsets of information
+#
+# When to keep unified:
+# - Phases share context, inputs, or open_questions
+# - Total plan is manageable size
+# - Cross-phase dependencies exist
+#
+# This example demonstrates the unified approach as the sensible default.
+
+# ========================================
+# ROOT-LEVEL PLAN METADATA (Required)
+# ========================================
+name: "example-feature-implementation"
+worktree_path: "/home/code/MyProject-feature-branch"
+branch: "feature/new-capability"
+status: "active"
+priority: "high"
+
+# File paths for plan management
+worktree: "<repo_root>"
+plan_file: "docs/plans/live/<YYMMDDRepo_Branch>/live/plan_example.yml"
+
+# ========================================
+# CONTEXT (Narrative Updates)
+# ========================================
+# The context section provides a running narrative of progress across sessions.
+context: |
+  This plan orchestrates the implementation of a new capability using the
+  Domain -> Workflow -> Entrypoint architecture pattern.
+
+  UPDATE YYYY-MM-DD (Session 1): Initial planning completed. Environment setup done.
+  Domain services designed and implementation started.
+
+  UPDATE YYYY-MM-DD (Session 2): Domain layer complete with tests. Workflow layer
+  v1 implemented. Found friction in path resolution for entrypoints.
+
+  NEXT: Complete entrypoints, run integration tests, and address guidance friction.
+
+# ========================================
+# RELATED PLANS (Optional)
+# ========================================
+related_plans:
+  orchestration: "orchestration_example.mmd"  # Visual flow diagram (unified naming: plan_<name>.yml + orchestration_<name>.mmd)
+
+# ========================================
+# ROOT-LEVEL INPUTS (Pre-gathered Context)
+# ========================================
+# Shared context needed across multiple phases.
+inputs:
+  - location: "docs/ARCHITECTURE.md"
+    description: "Architecture patterns for proper layering"
+
+  - location: "pyproject.toml"
+    description: "Project dependencies and build configuration"
+
+# ========================================
+# OPEN QUESTIONS (Human-Authority Decisions)
+# ========================================
+# This section tracks questions/decisions that require human judgment.
+# CRITICAL: Answers provided by a HUMAN have absolute authority and MUST NOT
+# be overwritten by AI decisions or subsequent automated reasoning.
+open_questions:
+  - id: "QUESTION-001"
+    question: "Which dependency injection pattern should we use for the workflow layer?"
+    severity: "high"
+    status: "ANSWERED"
+    answer: "Use constructor injection for all workflow services."
+    answered_by: "HUMAN"  # Indicates this answer has authority
+    context: |
+      Multiple patterns (Service Locator, Container, Constructor) were discussed.
+      The human decided on constructor injection for testability and clarity.
+    options:
+      - "Constructor injection (Preferred)"
+      - "Service locator"
+      - "Dependency container"
+
+  - id: "QUESTION-002"
+    question: "Should the API support legacy XML responses during the transition?"
+    severity: "medium"
+    status: "OPEN"
+    context: "Old clients might still depend on XML, but JSON is the new standard."
+
+# ========================================
+# PHASES AND TASKS
+# ========================================
+# All phases in one file (default). Split only when context minimisation benefits.
+phases:
+  # ----------------------------------------
+  # PHASE 1: Development
+  # ----------------------------------------
+  - name: "Development Phase"
+    execution: sequential
+    description: "Implement core logic and interfaces"
+    tasks:
+      - id: "dev_001"
+        name: "Domain Layer Build"
+        description: "Implement pure business logic at src/domain/"
+        status: "completed"
+        completed_date: "YYYY-MM-DD"
+
+      - id: "dev_002"
+        name: "Workflow Layer Build"
+        description: "Orchestrate domain services at src/workflows/"
+        status: "in_progress"
+
+      - id: "dev_003"
+        name: "Entrypoint Layer Build"
+        description: "CLI and API interfaces at src/cli/ and src/api/"
+        status: "pending"
+
+  # ----------------------------------------
+  # PHASE 2: Validation
+  # ----------------------------------------
+  - name: "Validation Phase"
+    execution: sequential
+    description: "Verify implementation against requirements"
+    tasks:
+      - id: "val_001"
+        name: "Integration Testing (test-fix-loop)"
+        description: "Execute 'agent-blind-test' strategy across local and Docker layers to validate User Stories."
+        status: "pending"
+        loop: "test-fix-loop"
+        strategy: "agent-blind-test"
+
+      - id: "val_002"
+        name: "Final Quality Audit (audit-test-fix-loop)"
+        description: "Mandatory audit to detect reward-hacking and verify test quality before completion."
+        status: "pending"
+        loop: "audit-test-fix-loop"
+
+  # ----------------------------------------
+  # PHASE 3: Cleanup
+  # ----------------------------------------
+  - name: "Cleanup Phase"
+    execution: sequential
+    description: "Remove artifacts and finalize"
+    tasks:
+      - id: "clean_001"
+        name: "Remove development artifacts"
+        description: "Clean temp files, debug logs, unused imports"
+        status: "pending"
+
+      - id: "clean_002"
+        name: "Documentation review"
+        description: "Ensure docs match final implementation"
+        status: "pending"
+
+# ========================================
+# SUCCESS CRITERIA
+# ========================================
+success_criteria:
+  - "Users can execute commands via CLI and API"
+  - "Overall system health is reported correctly"
+  - "All integration tests pass in CI"
+  - "No temporary files remain"
+  - "Documentation complete and accurate"

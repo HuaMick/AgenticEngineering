@@ -15,7 +15,7 @@ AgenticGuidance/
 
 ## Agent Categories
 
-The module contains 6 implemented agent categories with 21 sub-agents:
+The module contains 6 implemented agent categories with 19 active sub-agents (plus 2 deprecated):
 
 ### Planner (6 agents)
 Create executable implementation plans from objectives.
@@ -29,15 +29,15 @@ Create executable implementation plans from objectives.
 | `planner-guidance-testing` | Guidance completeness testing |
 | `planner-reviewer` | Plan review and approval |
 
-### Orchestration (4 agents)
+### Orchestration (2 active, 2 deprecated)
 High-level coordination of planning and execution workflows.
 
 | Agent | Purpose |
 |-------|---------|
 | `orchestration-planning` | Human-in-the-loop plan creation + MMD generation |
-| ~~`orchestration-build`~~ | **DEPRECATED** - use `orchestration-executor` |
-| ~~`orchestration-guidance`~~ | **DEPRECATED** - use `orchestration-executor` |
 | `orchestration-executor` | Dynamic agent routing from Plan-MMD |
+| ~~`orchestration-build`~~ | **DEPRECATED** - replaced by `orchestration-executor` |
+| ~~`orchestration-guidance`~~ | **DEPRECATED** - replaced by `orchestration-executor` |
 
 ### Test (7 agents)
 Validation through testing and quality assurance.
@@ -153,12 +153,12 @@ AgenticGuidance uses two path resolution strategies:
 ## Implementation Status
 
 **Implemented**:
-- 6 agent categories with 21 sub-agents
+- 6 agent categories with 19 active sub-agents (plus 2 deprecated)
 - 86 definition files
 - 15 guideline files
+- 11 shared input configurations
 - 3 entrypoints
 - Example templates for all major workflows
-- Shared input configurations
 
 **Not Migrated** (may be deprecated):
 - `cleaner` category (cleanup logic exists in planner-cleaning)

@@ -1,0 +1,216 @@
+# Viability Assessment for Consolidated Teach Plan
+# Plan: 260104AE_agenticguidance
+# Date: 2026-01-07
+# Agent: planner-guidance
+# Purpose: Surface viability concerns and recommendations for planner-reviewer
+
+summary:
+  consolidated_plan: "live/plan_live_teach_consolidated.yml"
+  total_phases: 6
+  total_tasks: 28
+  viability_status: "VIABLE with noted concerns"
+  critical_concerns: 0
+  moderate_concerns: 3
+  low_concerns: 2
+
+# ============================================================================
+# ARCHITECTURE ALIGNMENT CHECK
+# ============================================================================
+architecture_alignment:
+  principles_checked:
+    - principle: "Context Minimization"
+      status: "ALIGNED"
+      evidence: |
+        - MMD examples are minimal and focused (one pattern per file)
+        - Consolidated plan removes duplicate tasks
+        - Each phase has clear scope boundaries
+
+    - principle: "Progressive Automation"
+      status: "ALIGNED"
+      evidence: |
+        - Tasks are teaching-focused, not CLI automation
+        - Existing CLI commands are documented, not duplicated
+        - Phase 4 asset creation enables future automation
+
+    - principle: "Fix the Source"
+      status: "ALIGNED"
+      evidence: |
+        - Fragment reference fix targets definition file, not workarounds
+        - Output schema tasks update process files at source
+        - Path resolution task creates new definition file
+
+    - principle: "Less is More"
+      status: "ALIGNED"
+      evidence: |
+        - MMD examples demonstrate single patterns
+        - Consolidated plan merges overlapping tasks
+        - Phase 6 marked as deferrable (low priority)
+
+# ============================================================================
+# VIABILITY CONCERNS
+# ============================================================================
+concerns:
+  moderate:
+    - id: "VC-001"
+      title: "Fragment reference syntax change requires cross-agent coordination"
+      description: |
+        TEACH-CON-001 changes fragment reference syntax to support dot-notation.
+        Existing references across multiple agents may break if not updated atomically.
+      affected_phases: ["Phase 1"]
+      affected_tasks: ["TEACH-CON-001"]
+      mitigation:
+        strategy: "Execute with backward compatibility"
+        details: |
+          1. Update fragment-references.yml to support BOTH syntaxes initially
+          2. Add deprecation notice for old syntax
+          3. Update agents in Phase 1 completion
+          4. Remove old syntax support in future phase
+      risk_level: "moderate"
+      recommendation: "Include backward compatibility in acceptance criteria"
+
+    - id: "VC-002"
+      title: "Asset creation (Phase 4) depends on Phase 1 completion"
+      description: |
+        New MMD examples will be wired to agent inputs.yml files using references.
+        If fragment reference resolution (TEACH-CON-001) is not complete first,
+        the new references may not resolve correctly.
+      affected_phases: ["Phase 4"]
+      affected_tasks: ["ASSET-001 through ASSET-006"]
+      mitigation:
+        strategy: "Enforce strict phase ordering"
+        details: |
+          Phase 4 MUST NOT start until Phase 1 TEACH-CON-001 is verified complete.
+          Use simple file references (not fragments) for initial wiring.
+      risk_level: "moderate"
+      recommendation: "Add explicit dependency gate between Phase 1 and Phase 4"
+
+    - id: "VC-003"
+      title: "Superseded plans may have in-flight tasks"
+      description: |
+        The consolidated plan supersedes 4 existing plans. If any sessions
+        are actively executing tasks from those plans, conflicts may arise.
+      affected_plans:
+        - "live/plan_live_teach.yml"
+        - "live/plan_agenticguidance.yml (Phase 2)"
+        - "live/plan_live_orchestration_remodel.yml"
+        - "../260106AE_friction_improvements/live/plan_live_teach.yml"
+      mitigation:
+        strategy: "Clear supersession notice"
+        details: |
+          1. NEXT_SESSION_CHECKLIST.md should mark old plans as superseded
+          2. Verify no in-progress tasks in source plans before executing
+          3. Consolidated plan includes supersedes section for reference
+      risk_level: "moderate"
+      recommendation: "Update NEXT_SESSION_CHECKLIST.md to reference consolidated plan"
+
+  low:
+    - id: "VC-004"
+      title: "Agent self-review validation capacity"
+      description: |
+        Some friction points (fi_001-fi_006) were identified by agent self-review.
+        The same agents cannot objectively validate improvements to their own guidance.
+      affected_phases: ["Phase 6"]
+      affected_tasks: ["CONTEXT-001 through CONTEXT-005"]
+      mitigation:
+        strategy: "Use external validation"
+        details: |
+          Use test-guidance-simulator (different agent) to validate improvements.
+          Cross-agent review provides independence.
+      risk_level: "low"
+      recommendation: "Include cross-agent validation in Phase 6 acceptance criteria"
+
+    - id: "VC-005"
+      title: "Cleaner-dependency-loop is new pattern"
+      description: |
+        REMOD-001 introduces cleaner-dependency-loop as replacement for
+        deprecated cleaner-voting-loop. This is a new pattern without
+        existing implementation reference.
+      affected_phases: ["Phase 5"]
+      affected_tasks: ["REMOD-001", "REMOD-002"]
+      mitigation:
+        strategy: "Create pattern documentation first"
+        details: |
+          1. cleanup_phase.mmd example (Phase 4) documents the pattern
+          2. REMOD-001 then references the example in definition
+          3. REMOD-002 updates planner-cleaning to use new pattern
+      risk_level: "low"
+      recommendation: "Ensure Phase 4 ASSET-004 completes before REMOD-001"
+
+# ============================================================================
+# RECOMMENDATIONS FOR PLANNER-REVIEWER
+# ============================================================================
+recommendations:
+  critical_path:
+    description: "Recommended execution order based on dependencies"
+    sequence:
+      - phase: "Phase 1: Critical Infrastructure"
+        rationale: "Unblocks all other phases"
+        must_complete_first:
+          - "TEACH-CON-001 (fragment references)"
+          - "TEACH-CON-002 (.mmd support)"
+
+      - phase: "Phase 4: Asset Creation"
+        rationale: "Creates examples referenced by other phases"
+        depends_on: ["Phase 1"]
+        must_complete_first:
+          - "ASSET-001 through ASSET-005 (MMD examples)"
+
+      - phase: "Phase 2: Output and Validation Contracts"
+        rationale: "Independent of Phase 4, can run in parallel after Phase 1"
+
+      - phase: "Phase 3: Centralization and Declaration"
+        rationale: "Can run after Phase 1 completes"
+
+      - phase: "Phase 5: Orchestration Remodel"
+        rationale: "Uses examples from Phase 4"
+        depends_on: ["Phase 4"]
+
+      - phase: "Phase 6: Loop Context (DEFERRABLE)"
+        rationale: "Low priority, can defer to future session"
+
+  acceptance_criteria_additions:
+    - task: "TEACH-CON-001"
+      add: "Backward compatibility: Both old and new syntax supported initially"
+
+    - task: "ASSET-006"
+      add: "References use simple file paths, not fragment syntax"
+
+    - task: "CONTEXT-001 through CONTEXT-005"
+      add: "Validation performed by test-guidance-simulator, not self"
+
+  plan_hygiene:
+    - action: "Mark source plans as superseded"
+      files:
+        - "live/plan_live_teach.yml"
+        - "live/plan_agenticguidance.yml"
+        - "live/plan_live_orchestration_remodel.yml"
+
+    - action: "Update NEXT_SESSION_CHECKLIST.md"
+      content: |
+        ## Consolidated Plan Reference
+        The following plans have been consolidated into plan_live_teach_consolidated.yml:
+        - plan_live_teach.yml (SUPERSEDED)
+        - plan_agenticguidance.yml Phase 2 (SUPERSEDED)
+        - plan_live_orchestration_remodel.yml (SUPERSEDED)
+
+        Execute tasks from plan_live_teach_consolidated.yml ONLY.
+
+# ============================================================================
+# SUMMARY
+# ============================================================================
+summary_assessment:
+  overall_viability: "VIABLE"
+  blocking_issues: 0
+  required_mitigations: 3
+  optional_deferrals: 1
+
+  key_points:
+    - "Consolidated plan is architecturally aligned with README.md principles"
+    - "Phase ordering is critical; dependency gates must be enforced"
+    - "Backward compatibility in Phase 1 prevents breaking changes"
+    - "Phase 6 is deferrable without impacting critical work"
+    - "MMD examples created and wired successfully"
+
+  next_action: |
+    Submit to planner-reviewer for approval.
+    If approved, update NEXT_SESSION_CHECKLIST.md with consolidated plan reference.

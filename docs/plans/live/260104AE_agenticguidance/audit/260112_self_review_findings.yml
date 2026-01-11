@@ -1,0 +1,384 @@
+# Agent Self-Review Findings
+# Date: 2026-01-12
+# Plan: 260104AE_agenticguidance
+# Reviewed by: Orchestration Agent (Ralph Loop)
+
+summary:
+  total_agents_reviewed: 23
+  average_clarity_score: 3.2
+  average_completeness_score: 2.9
+  average_consistency_score: 2.8
+  critical_issues: 18
+  high_issues: 32
+  medium_issues: 45
+  low_issues: 28
+
+# Agent Categories Reviewed
+categories:
+  test: 7  # test-runner, test-audit, test-guidance-simulator, test-builder, test-user-simulator, test-service, test-final-output
+  planner: 6  # planner-build, planner-cleaning, planner-guidance, planner-guidance-testing, planner-reviewer, planner-test
+  teacher: 2  # teacher-update-guidance, teacher-update-assets
+  deploy: 2  # deploy-worktree, deploy-cicd
+  build: 2  # build-flutter, build-python
+  orchestration: 4  # orchestration-executor, orchestration-planning, orchestration-build, orchestration-guidance
+
+# Cross-Cutting Issues (Patterns appearing across multiple agents)
+cross_cutting_issues:
+  - id: "XCUT-001"
+    severity: critical
+    description: "Path references pointing to definitions/ instead of guidelines/ after migration"
+    affected_agents:
+      - build-flutter
+      - build-python
+    affected_files:
+      - "inputs.yml lines referencing minimal-sufficient-change.yml, iteration-approach.yml, component-verification.yml"
+    remediation: "Update all path references from definitions/ to guidelines/ for migrated files"
+
+  - id: "XCUT-002"
+    severity: critical
+    description: "Empty outputs: [] in process.yml files despite agents producing artifacts"
+    affected_agents:
+      - test-runner
+      - test-service
+      - test-builder
+      - build-flutter
+      - build-python
+      - teacher-update-assets
+    remediation: "Define explicit output schemas in process.yml for all agents"
+
+  - id: "XCUT-003"
+    severity: high
+    description: "Missing outputs.yml file referenced but not existing"
+    affected_agents:
+      - test-guidance-simulator
+      - planner-guidance-testing
+    remediation: "Either create outputs.yml files or remove references"
+
+  - id: "XCUT-004"
+    severity: high
+    description: "Ambiguous placeholder/variable naming (plan_id vs plan_folder vs plan_folder_name)"
+    affected_agents:
+      - planner-build
+      - planner-guidance
+      - planner-guidance-testing
+    remediation: "Standardize on {plan_folder_name} across all planner agents"
+
+  - id: "XCUT-005"
+    severity: high
+    description: "Project-specific content in shared guidance files (myagents studio commands)"
+    affected_agents:
+      - test-service
+      - test-execution-workflow.yml references
+    remediation: "Abstract project-specific commands into configurable inputs"
+
+  - id: "XCUT-006"
+    severity: high
+    description: "Missing file references to success-criteria-teacher.yml (deleted in definitions audit)"
+    affected_agents:
+      - planner-reviewer
+      - planner-guidance
+    remediation: "Update references to point to success-criteria.yml"
+
+  - id: "XCUT-007"
+    severity: medium
+    description: "Vague escalation protocols without format specification"
+    affected_agents:
+      - test-final-output
+      - orchestration-build
+      - orchestration-guidance
+    remediation: "Define escalation context format and transmission mechanism"
+
+  - id: "XCUT-008"
+    severity: medium
+    description: "Transitive layer loading semantics undocumented"
+    affected_agents:
+      - test-service
+      - test-audit
+      - deploy-cicd
+    remediation: "Document layer loading order, conflict resolution, and fallbacks"
+
+  - id: "XCUT-009"
+    severity: medium
+    description: "Loop context sections incomplete or missing guidance-test-loop references"
+    affected_agents:
+      - test-builder
+      - test-guidance-simulator
+    remediation: "Add explicit loop_context with iteration strategy and boundary conditions"
+
+  - id: "XCUT-010"
+    severity: medium
+    description: "Version inconsistencies between manifest.yml and inputs.yml"
+    affected_agents:
+      - test-final-output (1.0 vs 2.0-pilot)
+      - teacher-update-assets (2.0 vs 2.0-p1)
+      - orchestration-guidance (1.0 vs 2.0 pattern)
+    remediation: "Align version scheme and document version numbering rules"
+
+# Agent-Specific Critical Issues
+agent_issues:
+  test-runner:
+    clarity: 3
+    completeness: 2
+    consistency: 2
+    critical_issues:
+      - "Empty outputs: [] but describes failure reports and live plan updates"
+      - "References acceptable-skips.yml which doesn't exist (only language-specific versions)"
+      - "Live plan file format and location not specified"
+
+  test-audit:
+    clarity: 3
+    completeness: 2
+    consistency: 3
+    critical_issues:
+      - "Missing acceptable-skips.yml (6 references to non-existent file)"
+      - "Test package input path uses unresolved {test_package} placeholder"
+
+  test-guidance-simulator:
+    clarity: 3
+    completeness: 3
+    consistency: 4
+    critical_issues:
+      - "Missing outputs.yml file referenced in multiple locations"
+      - "Contradictory language about outputs.yml being optional vs mandatory"
+
+  test-builder:
+    clarity: 3
+    completeness: 3
+    consistency: 3
+    high_issues:
+      - "Undefined test_fix_loop_context in inputs.yml"
+      - "References test-roles.yml which doesn't exist (should be test-builder-role.yml)"
+
+  test-user-simulator:
+    clarity: 3
+    completeness: 2
+    consistency: 2
+    critical_issues:
+      - "ARCHITECTURE.md path inconsistency (3 different paths referenced)"
+      - "Ambiguous context validation due to non-existent documentation paths"
+
+  test-service:
+    clarity: 3
+    completeness: 2
+    consistency: 2
+    critical_issues:
+      - "Path references to docs/testing/* point to wrong location (in modules/legacy/)"
+      - "Undefined output specification despite producing results"
+      - "TODO in test-execution-workflow.yml blocking generalization"
+
+  test-final-output:
+    clarity: 4
+    completeness: 3
+    consistency: 3
+    high_issues:
+      - "Dynamic input resolution mechanism not documented"
+      - "Escalation protocol underspecified"
+      - "Manifest minimal (5 lines only)"
+
+  planner-build:
+    clarity: 3
+    completeness: 3
+    consistency: 2
+    critical_issues:
+      - "Inconsistent placeholder names ({plan_folder} vs {plan_id} vs {plan_folder_name})"
+      - "Ambiguous path resolution for task inputs"
+      - "Undefined planner-build/planner-test coordination"
+
+  planner-cleaning:
+    clarity: 4
+    completeness: 4
+    consistency: 4
+    medium_issues:
+      - "User story agent spawning ambiguity"
+      - "Abstract agent role references without specific agent types"
+
+  planner-guidance:
+    clarity: 3
+    completeness: 3
+    consistency: 2
+    high_issues:
+      - "Inconsistent path template variables (plan_id vs plan_folder)"
+      - "Reference to non-existent success-criteria-teacher.yml"
+      - "Outdated layer references in guidelines section"
+
+  planner-guidance-testing:
+    clarity: 3
+    completeness: 3
+    consistency: 2
+    critical_issues:
+      - "Missing outputs.yml file referenced extensively"
+      - "Placeholder path not documented (YYMMDDRepo_Branch discovery)"
+      - "Hash-anchor YAML syntax unexplained"
+      - "outputs: [] contradicts agent purpose (creates guidance test plans)"
+
+  planner-reviewer:
+    clarity: 4
+    completeness: 4
+    consistency: 4
+    medium_issues:
+      - "Plan folder path assumption not clarified"
+      - "Correctly allocated agent types not defined"
+      - "Authoritative phase plan term undefined"
+
+  planner-test:
+    clarity: 4
+    completeness: 4
+    consistency: 4
+    medium_issues:
+      - "Loop definitions split across files without quick reference"
+      - "Project-specific workflow assumptions"
+
+  teacher-update-guidance:
+    clarity: 3
+    completeness: 3
+    consistency: 3
+    high_issues:
+      - "Ambiguous output location (plan audit folder undefined)"
+      - "Unclear authority for cross-agent updates"
+      - "Process step 1 unclear on path update authority"
+
+  teacher-update-assets:
+    clarity: 3
+    completeness: 3
+    consistency: 2
+    critical_issues:
+      - "Broken file path in process.yml:14 (invalid path structure)"
+      - "Missing asset type definition reference"
+      - "Semantic ambiguity in step 3 ('2+ modules/AgenticGuidance/agents/processes')"
+
+  deploy-worktree:
+    clarity: 3
+    completeness: 2
+    consistency: 3
+    critical_issues:
+      - "CLI output schema missing for agentic worktree status"
+      - "Workspace update contradiction (manual vs required output)"
+      - "Validation gap (YAML syntax validation promised but not implemented)"
+
+  deploy-cicd:
+    clarity: 4
+    completeness: 3
+    consistency: 4
+    high_issues:
+      - "CI/CD files at documented paths don't exist at project root"
+      - "Missing tests/ directory at project root"
+      - "Undefined target scope (which project to validate)"
+
+  build-flutter:
+    clarity: 3
+    completeness: 2
+    consistency: 2
+    critical_issues:
+      - "Three file paths reference wrong directory (definitions/ instead of guidelines/)"
+      - "Ambiguous step wording (missing punctuation)"
+      - "Conflicting verification commands between inputs.yml and process.yml"
+
+  build-python:
+    clarity: 3
+    completeness: 3
+    consistency: 2
+    critical_issues:
+      - "Three path references incorrect (definitions/ instead of guidelines/)"
+      - "Grammatical error in process step 1"
+      - "Vague process steps lack concrete actions"
+
+  orchestration-executor:
+    clarity: 3
+    completeness: 3
+    consistency: 2
+    high_issues:
+      - "Agent routing resolution algorithm undefined (python vs flutter)"
+      - "Deploy-cicd availability inconsistency"
+      - "Specification line count outdated (959 vs 1022)"
+      - "Feedback trigger detection patterns missing from process.yml"
+
+  orchestration-planning:
+    clarity: 4
+    completeness: 3
+    consistency: 3
+    critical_issues:
+      - "Missing _plan_test.yml entrypoint (referenced but doesn't exist)"
+    high_issues:
+      - "Incomplete manifest (missing planner-guidance-testing)"
+      - "UAT phase undefined in process.mmd"
+      - "Placeholder file creation structure undefined"
+
+  orchestration-build:
+    clarity: 4
+    completeness: 4
+    consistency: 3
+    high_issues:
+      - "Broken documentation link (docs/agent-role-scope-matrix.md path)"
+      - "Unclear path resolution for inputs"
+      - "Missing escalation protocol specification"
+
+  orchestration-guidance:
+    clarity: 2
+    completeness: 2
+    consistency: 3
+    critical_issues:
+      - "Manifest missing 'inputs:' section"
+      - "Manifest missing 'spawns:' section"
+      - "inputs.yml missing critical agent references"
+    high_issues:
+      - "Missing strategy-guidance-blind-test.yml from inputs.yml"
+      - "Teacher routing criteria undefined"
+      - "Version mismatch (1.0 vs 2.0)"
+
+# Priority Remediation Tasks
+remediation_priorities:
+  critical:
+    - task: "Fix path references from definitions/ to guidelines/ (XCUT-001)"
+      affected_files:
+        - "build-flutter/inputs.yml"
+        - "build-python/inputs.yml"
+      estimated_effort: "low"
+
+    - task: "Define output schemas for agents with empty outputs: [] (XCUT-002)"
+      affected_agents: 6
+      estimated_effort: "medium"
+
+    - task: "Resolve outputs.yml file references (XCUT-003)"
+      affected_agents: 2
+      estimated_effort: "low"
+
+    - task: "Fix broken path in teacher-update-assets/process.yml:14"
+      estimated_effort: "low"
+
+    - task: "Create _plan_test.yml entrypoint"
+      estimated_effort: "medium"
+
+  high:
+    - task: "Standardize placeholder naming to {plan_folder_name} (XCUT-004)"
+      affected_agents: 3
+      estimated_effort: "medium"
+
+    - task: "Update success-criteria-teacher.yml references to success-criteria.yml (XCUT-006)"
+      affected_agents: 2
+      estimated_effort: "low"
+
+    - task: "Define escalation protocols with format specs (XCUT-007)"
+      affected_agents: 3
+      estimated_effort: "medium"
+
+    - task: "Add missing spawns/inputs sections to orchestration-guidance manifest"
+      estimated_effort: "medium"
+
+  medium:
+    - task: "Abstract project-specific content from shared guidance (XCUT-005)"
+      affected_agents: 2
+      estimated_effort: "high"
+
+    - task: "Document transitive layer loading semantics (XCUT-008)"
+      affected_agents: 3
+      estimated_effort: "medium"
+
+    - task: "Align version numbering across all agents (XCUT-010)"
+      affected_agents: 3
+      estimated_effort: "low"
+
+next_steps:
+  - "Run _plan_teach.yml to create remediation plan from these findings"
+  - "Prioritize critical path fixes (definitions/ to guidelines/ migration fallout)"
+  - "Address cross-cutting issues before agent-specific issues"
+  - "Schedule blind tests after remediation complete"

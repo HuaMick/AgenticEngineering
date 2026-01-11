@@ -16,11 +16,78 @@ process:
     description: "Loop types (documentation-loop, test-fix-loop) defined in agent-loops.yml"
     # NOTE: Do not duplicate loop definitions here - see agent-loops.yml for full definitions
 
+  # ==============================================
+  # LOOP CONTEXT
+  # ==============================================
+  # Specifies how this agent participates in iterative loops
+  # ==============================================
+  loop_context:
+    participates_in:
+      - "documentation-loop"
+      - "test-fix-loop"
+    role: "validator"
+    description: |
+      test-user-simulator acts as a blind validator in loops. It tests user journeys
+      using only project documentation, validating that workflows are completable
+      without prior knowledge.
+    iteration_strategy: |
+      Each iteration executes a single user story in both local and Docker environments.
+      The agent does NOT fix issues - it reports failures and documentation gaps to
+      the orchestrator. In documentation-loop, failures trigger doc updates.
+      In test-fix-loop, failures trigger code/test fixes.
+    max_iterations: 3
+    escalation_on_max: "Report persistent journey failures with environment-specific details"
+    exit_conditions:
+      - "User story completes successfully in all environments"
+      - "All failures and documentation gaps reported to orchestrator"
+      - "Orchestrator signals loop termination"
+    state_management: |
+      test-user-simulator is stateless between iterations. Each invocation receives
+      the user story definition and documentation paths as input context.
+
   inputs:
     - location: "modules/AgenticGuidance/agents/test/test-user-simulator/inputs.yml"
       description: "Core test user simulator agent inputs and guidelines"
 
-  outputs: []
+  outputs:
+    - name: "user_story_results"
+      description: "Results of user story journey execution"
+      location: "Returned to orchestrator; optionally updated in live plan"
+      schema:
+        user_story_id: "string"
+        persona: "string"
+        overall_result: "enum(pass, fail)"
+        steps_tested: "integer"
+        steps_passed: "integer"
+        steps_failed: "integer"
+    - name: "environment_comparison"
+      description: "Comparison of local vs Docker execution results"
+      location: "Returned to orchestrator"
+      schema:
+        local_result: "enum(pass, fail)"
+        docker_result: "enum(pass, fail)"
+        differences: "array of strings - notable differences between environments"
+    - name: "documentation_gaps"
+      description: "Documentation issues discovered during journey execution"
+      location: "Returned to orchestrator"
+      schema:
+        - step: "string - journey step that had issue"
+          gap_type: "enum(missing_steps, unclear_wording, undiscoverable, outdated)"
+          description: "string"
+          recommendation: "string - suggested documentation fix"
+    - name: "failure_report"
+      description: "Structured failure report for test-fix-loop context"
+      location: "Updated in live plan when executing in test-fix-loop"
+      schema:
+        user_story_id: "string"
+        step: "string"
+        failure_type: "enum(documentation_gap, unexpected_error, unclear_instructions, docker_difference)"
+        description: "string"
+        user_impact: "string"
+        tested_environments: "array of strings"
+        local_result: "string"
+        docker_result: "string"
+        recommendation: "string"
 
   steps:
     - |

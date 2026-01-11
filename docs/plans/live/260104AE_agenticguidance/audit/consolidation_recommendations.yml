@@ -1,0 +1,336 @@
+# Consolidation Recommendations Report
+# Plan: 260104AE_agenticguidance
+# Generated: 2026-01-09
+# Agent: planner-guidance
+#
+# PURPOSE:
+# This report analyzes all files in the live plan folder and identifies
+# consolidation opportunities to reduce file proliferation and improve
+# maintainability.
+
+report_metadata:
+  source_folder: "docs/plans/live/260104AE_agenticguidance/live/"
+  analysis_date: "2026-01-09"
+  total_files_analyzed: 24
+  file_categories:
+    audit_files: 6
+    review_files: 6
+    remediation_plans: 6
+    teach_plans: 3
+    migration_plans: 2
+    orchestration_plans: 1
+
+# ============================================================
+# CONSOLIDATION RECOMMENDATION 1: AUDIT FILES
+# ============================================================
+consolidation_recommendations:
+  - id: "CONSOL-001"
+    category: "Audit Files"
+    files_to_merge:
+      - "audit_planner_guidance.yml"
+      - "audit_planner_build.yml"
+      - "audit_planner_cleaning.yml"
+      - "audit_planner_reviewer.yml"
+      - "audit_planner_test.yml"
+      - "audit_deploy_worktree.yml"
+    proposed_name: "audit_session3_input_analysis.yml"
+    rationale: |
+      All 6 audit files follow identical structure (iterations with issues_found,
+      exit_condition based on 2 consecutive zero-issue iterations). They were
+      generated in the same session and serve the same purpose: identifying
+      context overload issues in agent inputs.
+
+      Benefits of consolidation:
+      - Single file for cross-agent issue pattern analysis
+      - Easier to identify systemic issues (e.g., OVERLAP, PHANTOM_FILE appear across multiple agents)
+      - Reduces file count from 6 to 1
+      - Maintains traceability via agent_type keys within merged structure
+    risk_level: "low"
+    risk_details: |
+      Low risk because:
+      - Audit files are read-only artifacts (no execution dependencies)
+      - Original per-agent data preserved via nested structure
+      - No external references to individual audit files
+    proposed_structure: |
+      audit_session3_input_analysis:
+        metadata:
+          date: "2026-01-07"
+          purpose: "Agent input context overload analysis"
+          agents_audited: 6
+
+        agents:
+          planner_guidance:
+            # Content from audit_planner_guidance.yml
+          planner_build:
+            # Content from audit_planner_build.yml
+          # ... etc
+
+        cross_cutting_issues:
+          # Aggregated issues that appear in multiple agents
+
+  # ============================================================
+  # CONSOLIDATION RECOMMENDATION 2: REVIEW FILES
+  # ============================================================
+  - id: "CONSOL-002"
+    category: "Review Files"
+    files_to_merge:
+      - "review_planner_guidance.yml"
+      - "review_planner_build.yml"
+      - "review_planner_cleaning.yml"
+      - "review_planner_reviewer.yml"
+      - "review_planner_test.yml"
+      - "review_deploy_worktree.yml"
+    proposed_name: "review_session3_plan_reviews.yml"
+    rationale: |
+      All 6 review files are outputs from planner-reviewer analyzing remediation
+      plans. They follow the same structure: review_summary, user_decision_alignment,
+      checklist_results, issues, recommendations.
+
+      Benefits of consolidation:
+      - Single view of all plan review outcomes
+      - Easier to track which plans are APPROVED vs NEEDS_CHANGES
+      - Cross-plan recommendation comparison
+      - Reduces file count from 6 to 1
+    risk_level: "low"
+    risk_details: |
+      Low risk because:
+      - Review files are read-only artifacts documenting decisions
+      - No execution dependencies on individual files
+      - Consolidation preserves all review data via nested structure
+    proposed_structure: |
+      review_session3_plan_reviews:
+        metadata:
+          date: "2026-01-08"
+          reviewer_agent: "planner-reviewer"
+          total_plans_reviewed: 6
+
+        summary:
+          approved: 3
+          needs_changes: 2
+          pending: 1
+
+        plans:
+          planner_guidance_remediation:
+            status: "NEEDS_CHANGES"
+            # Content from review_planner_guidance.yml
+          planner_build_optimization:
+            status: "APPROVED"
+            # Content from review_planner_build.yml
+          # ... etc
+
+  # ============================================================
+  # CONSOLIDATION RECOMMENDATION 3: REMEDIATION PLANS
+  # ============================================================
+  - id: "CONSOL-003"
+    category: "Remediation Plans"
+    files_to_merge:
+      - "plan_planner_guidance_remediation.yml"
+      - "plan_live_guidance_planner_build.yml"
+      - "plan_live_guidance_cleaning_remediation.yml"
+      - "plan_guidance_reviewer_context.yml"
+      - "plan_live_planner_test_remediation.yml"
+      - "plan_guidance_deploy_worktree_remediation.yml"
+    proposed_name: "plan_input_audit_remediation_consolidated.yml"
+    rationale: |
+      All 6 remediation plans address the same category of issues: context
+      overload in agent inputs identified during the audit phase. They share:
+      - Same source methodology (input audits)
+      - Same execution pattern (phases with teacher agent tasks)
+      - Same success criteria structure (context reduction targets)
+      - Similar task types (UNUSED removal, OVERLAP consolidation, PHANTOM removal)
+
+      Benefits of consolidation:
+      - Unified execution tracking across all agents
+      - Shared cross-cutting concerns documented once
+      - Parallel execution opportunities visible at plan level
+      - Eliminates duplicate guidance (e.g., "Reference updates cascade" concern repeated 6 times)
+    risk_level: "medium"
+    risk_details: |
+      Medium risk because:
+      - Plans may have different approval statuses (some APPROVED, some NEEDS_CHANGES)
+      - Must preserve per-agent phase dependencies
+      - Task IDs need to be globally unique in merged plan
+
+      Mitigation:
+      - Only merge after all plans reach APPROVED status
+      - Use namespaced task IDs (e.g., "guidance.1.1", "build.1.1")
+      - Maintain separate success_criteria sections per agent
+    execution_consideration: |
+      IMPORTANT: Consolidation should happen AFTER all individual plans are approved.
+      The consolidated plan becomes the execution artifact; individual plans become
+      historical records moved to an archive/ subfolder.
+    proposed_structure: |
+      plan_input_audit_remediation_consolidated:
+        name: "Input Audit Remediation (6 Agents)"
+        objective: "Remediate context overload issues across 6 agents"
+
+        agents:
+          - id: "planner-guidance"
+            source_audit: "audit_planner_guidance.yml"
+            total_issues: 66
+            phases: [...]  # From plan_planner_guidance_remediation.yml
+
+          - id: "planner-build"
+            source_audit: "audit_planner_build.yml"
+            total_issues: 14
+            phases: [...]  # From plan_live_guidance_planner_build.yml
+
+          # ... etc for all 6 agents
+
+        shared_cross_cutting_concerns:
+          # Deduplicated concerns that apply to all agents
+
+  # ============================================================
+  # CONSOLIDATION RECOMMENDATION 4: TEACH PLANS (ALREADY DONE)
+  # ============================================================
+  - id: "CONSOL-004"
+    category: "Teach Plans"
+    status: "ALREADY_CONSOLIDATED"
+    files_involved:
+      - "plan_live_teach.yml (SUPERSEDED)"
+      - "plan_live_teach_consolidated.yml (ACTIVE)"
+      - "plan_live_orchestration_remodel.yml (SUPERSEDED)"
+    notes: |
+      Teach plans have ALREADY been consolidated correctly.
+
+      Current state:
+      - plan_live_teach_consolidated.yml is the active plan (709 lines)
+      - plan_live_teach.yml marked as superseded (line 22-24)
+      - plan_live_orchestration_remodel.yml content merged into Phase 5
+
+      The supersession chain is properly documented:
+      - plan_live_teach_consolidated.yml supersedes:
+        - live/plan_live_teach.yml
+        - plan_agenticguidance.yml Friction Remediation Phase 2
+        - live/plan_live_orchestration_remodel.yml
+    recommendation: |
+      No further action needed for teach plans.
+      Consider archiving the superseded files to reduce folder clutter:
+      - Move plan_live_teach.yml to archive/superseded/
+      - Move plan_live_orchestration_remodel.yml to archive/superseded/
+
+# ============================================================
+# FILES TO KEEP SEPARATE (DO NOT CONSOLIDATE)
+# ============================================================
+files_to_keep_separate:
+  - id: "KEEP-001"
+    file: "plan_agenticguidance.yml"
+    justification: |
+      This is the MASTER plan for the entire 260104AE project. It:
+      - Contains root-level metadata (worktree, branch, status)
+      - Links to all related plans via related_plans section
+      - Tracks overall project context and narrative updates
+      - Contains DECISION-001 and DECISION-002 which have project-wide impact
+
+      Consolidating this with other plans would lose its role as the central
+      coordination point.
+
+  - id: "KEEP-002"
+    file: "plan_live_build_migration.yml"
+    justification: |
+      This plan has a DIFFERENT PURPOSE than the remediation plans:
+      - Remediation plans: Fix context overload in existing agents
+      - Migration plan: Create new agents (test-user-simulator, test-service, test-builder)
+
+      Migration involves:
+      - Creating new folder structures
+      - Writing new manifest.yml, inputs.yml, process.yml files
+      - Updating agent-categories.yml
+
+      This is a BUILD activity, not a TEACH activity. Different agent types execute it.
+
+  - id: "KEEP-003"
+    file: "plan_live_cleanup_deprecation.yml"
+    justification: |
+      This plan has a UNIQUE PURPOSE: deprecating legacy agents.
+
+      It is:
+      - Small and focused (175 lines, 3 tasks)
+      - Near completion (just needs DEPRECATED.md files and verification)
+      - Different execution pattern (creates files in legacy/ folder, not agents/)
+
+      Merging with remediation plans would obscure its distinct purpose and
+      completion status.
+
+  - id: "KEEP-004"
+    file: "plan_live_teach_consolidated.yml"
+    justification: |
+      This is already the CONSOLIDATED teach plan. It:
+      - Merges 4 source plans into one
+      - Is the active execution artifact
+      - Has clear phase structure with 6 phases, 25+ tasks
+
+      Further consolidation with remediation plans would create an unwieldy
+      mega-plan that mixes TEACH (guidance refinement) and BUILD (agent migration)
+      activities.
+
+# ============================================================
+# EXECUTION RECOMMENDATIONS
+# ============================================================
+execution_recommendations:
+  - priority: 1
+    action: "Archive superseded teach plans"
+    files:
+      - "plan_live_teach.yml -> archive/superseded/"
+      - "plan_live_orchestration_remodel.yml -> archive/superseded/"
+    effort: "trivial"
+    impact: "Reduces live folder clutter by 2 files"
+
+  - priority: 2
+    action: "Consolidate audit files after remediation complete"
+    trigger: "All 6 remediation plans executed"
+    files: "6 audit files -> 1 consolidated audit"
+    effort: "low"
+    impact: "Reduces live folder by 5 files, improves analysis capability"
+
+  - priority: 3
+    action: "Consolidate review files after remediation complete"
+    trigger: "All 6 remediation plans executed"
+    files: "6 review files -> 1 consolidated review"
+    effort: "low"
+    impact: "Reduces live folder by 5 files, provides unified review record"
+
+  - priority: 4
+    action: "Consolidate remediation plans"
+    trigger: "All individual plans APPROVED by reviewer"
+    files: "6 remediation plans -> 1 consolidated remediation"
+    effort: "medium"
+    impact: |
+      Reduces live folder by 5 files.
+      Enables unified execution tracking.
+      Requires careful task ID namespacing.
+
+# ============================================================
+# SUMMARY
+# ============================================================
+summary:
+  current_file_count: 24
+  after_consolidation: 9
+  files_reduced: 15
+
+  consolidation_breakdown:
+    audit_files: "6 -> 1 (save 5)"
+    review_files: "6 -> 1 (save 5)"
+    remediation_plans: "6 -> 1 (save 5)"
+    teach_plans: "Already consolidated (archive 2 superseded)"
+
+  files_remaining:
+    - "plan_agenticguidance.yml (master plan)"
+    - "plan_live_teach_consolidated.yml (active teach plan)"
+    - "plan_live_build_migration.yml (agent migration)"
+    - "plan_live_cleanup_deprecation.yml (legacy deprecation)"
+    - "audit_session3_input_analysis.yml (consolidated audits)"
+    - "review_session3_plan_reviews.yml (consolidated reviews)"
+    - "plan_input_audit_remediation_consolidated.yml (consolidated remediation)"
+    - "orchestration_agenticguidance.mmd (orchestration diagram)"
+    - "README.md (folder documentation)"
+
+  risk_assessment: |
+    Overall consolidation risk: LOW to MEDIUM
+
+    - Audit/Review consolidation: LOW RISK (read-only artifacts)
+    - Remediation consolidation: MEDIUM RISK (requires approval status alignment)
+    - Teach consolidation: ALREADY DONE
+
+    Key mitigation: Execute consolidation in phases, starting with lowest-risk
+    artifacts (audits, reviews) before tackling remediation plans.

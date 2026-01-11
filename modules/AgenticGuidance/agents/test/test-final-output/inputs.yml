@@ -3,7 +3,7 @@
 # This agent validates test results, creates summaries, and determines overall pass/fail
 
 agent_context:
-  category: "modules/AgenticGuidance/assets/definitions/agent-categories.yml#test"
+  category: "modules/AgenticGuidance/assets/definitions/agent-categories.yml#agent_categories.test"
   role: "test-final-output"
 
 inputs:
@@ -42,16 +42,57 @@ inputs:
       required: true
 
     # Live plan for state tracking and validation
+    # RUNTIME RESOLUTION: These dynamic inputs are resolved by the orchestrator at runtime.
+    # The orchestrator replaces placeholders with actual paths/data when spawning the agent.
     - type: dynamic
       path: "<live_plan_path>"
       description: "The live plan file being executed (provided by orchestration agent)"
       required: true
+      runtime_resolution:
+        resolved_by: "orchestration-executor agent"
+        mechanism: "Orchestrator reads the plan path from its own context and passes it to spawned agents"
+        example_values:
+          - "plans/build-cli-tool/live-plan.yml"
+          - "plans/refactor-auth-module/live-plan.yml"
+          - "plans/add-feature-x/live-plan.yml"
+        example_content: |
+          # Example: The orchestrator might pass this as:
+          # "Read the live plan at plans/build-cli-tool/live-plan.yml to understand current state"
 
     # Execution data from orchestration
     - type: dynamic
       path: "<orchestration_execution_data>"
       description: "Execution data from orchestration agent: changes made, test results, failures, design decisions, user story test results (passed in prompt)"
       required: true
+      runtime_resolution:
+        resolved_by: "orchestration-executor agent"
+        mechanism: "Orchestrator accumulates execution data during plan execution and passes summary to test-final-output"
+        passed_as: "Inline in the agent prompt (not a file path)"
+        example_content: |
+          # Example: The orchestrator passes execution data like:
+          execution_summary:
+            phases_completed:
+              - phase: "build"
+                status: "completed"
+                changes:
+                  - file: "src/cli/main.py"
+                    action: "created"
+                  - file: "src/cli/commands.py"
+                    action: "created"
+              - phase: "test"
+                status: "completed"
+                test_results:
+                  passed: 12
+                  failed: 0
+                  skipped: 1
+            design_decisions:
+              - "Used Click library for CLI framework"
+              - "Followed existing project patterns for command structure"
+            user_story_results:
+              - story: "Developer can run help command"
+                status: "passed"
+              - story: "Developer can execute build"
+                status: "passed"
 
   # Guidelines that test-final-output agent should follow
   guidelines:

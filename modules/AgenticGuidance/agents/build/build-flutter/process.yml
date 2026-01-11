@@ -13,7 +13,24 @@ process:
     - location: "modules/AgenticGuidance/agents/build/build-flutter/inputs.yml"
       description: "Core build agent inputs and guidelines"
 
-  outputs: []
+  outputs:
+    - name: "components_built"
+      description: "List of Flutter components created or modified"
+      location: "lib/ directory in target project"
+      schema:
+        - file_path: "string - relative path to component"
+          component_type: "enum(widget, feature, core, test)"
+          action: "enum(created, modified)"
+    - name: "build_report"
+      description: "Summary of Flutter build activities"
+      location: "Returned to orchestrator"
+      schema:
+        worktree_path: "string - path to worktree used"
+        files_created: "integer"
+        files_modified: "integer"
+        dart_analyze_passed: "boolean"
+        pub_get_success: "boolean"
+        issues_encountered: "array of strings"
 
   steps:
     - |
@@ -32,7 +49,34 @@ process:
     - |
       Plan components needed to meet the success criteria.
     - |
-      Build components.
+      Build components following the builder-role pattern (see modules/AgenticGuidance/assets/definitions/builder-role.yml):
+
+      Substeps:
+      a) Identify the minimal component set required to meet success criteria
+         - Review the success criteria from the plan
+         - List only the components needed (avoid over-engineering)
+
+      b) For each component, implement following Flutter conventions:
+         - Use proper file naming (snake_case for files, PascalCase for classes)
+         - Follow project folder structure (lib/src/, lib/widgets/, etc.)
+         - Use existing patterns from the codebase as templates
+         - Add required imports at the top of each file
+
+      c) Manage dependencies:
+         - Add new packages to pubspec.yaml only when necessary
+         - Prefer existing dependencies over adding new ones
+         - Document why any new dependency was added
+
+      d) Follow architecture patterns:
+         - Match existing state management approach (Provider, Riverpod, Bloc, etc.)
+         - Use established widget composition patterns from the project
+         - Maintain separation between UI and business logic
+
+      Success criteria for this step:
+      - All components identified in planning step are implemented
+      - Code follows existing project patterns and conventions
+      - No unnecessary components or dependencies added
+      - Files are placed in correct directories per project structure
     - |
       Verify your code compiles and imports work correctly:
       - Run `flutter pub get` if dependencies changed

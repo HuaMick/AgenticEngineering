@@ -1,0 +1,643 @@
+# =============================================================================
+# SUPERSEDED PLAN - DO NOT USE
+# =============================================================================
+# This plan has been SUPERSEDED by: plan_live_planner_remediation_consolidated.yml
+# Supersession Date: 2026-01-09
+# Reason: Consolidated with plan_live_guidance_planner_build.yml and
+#         plan_live_planner_test_remediation.yml to eliminate duplicated T4 work
+#         and provide unified remediation across all planner agents.
+# =============================================================================
+
+# Guidance Plan: ALL Planner Agents Context Overload Remediation
+# Source audit: audit_planner_cleaning.yml
+# Objective: Reduce context usage across ALL planner agents from ~20% to ~12%
+# Scope: planner-cleaning, planner-build, planner-test, planner-guidance, planner-reviewer
+
+plan_name: "planner-all-context-remediation"
+status: "superseded"
+superseded_by: "plan_live_planner_remediation_consolidated.yml"
+worktree: "/home/code/AgenticEngineering-agenticguidance"
+branch: "agenticguidance"
+created: "2026-01-07"
+updated: "2026-01-08"
+status: "pending"
+
+objective: |
+  Remediate 11 context overload issues identified in planner-cleaning audit.
+  APPLY CHANGES TO ALL PLANNER AGENTS: planner-cleaning, planner-build, planner-test, planner-guidance, planner-reviewer.
+  Focus on high-impact changes that reduce token usage while maintaining agent effectiveness.
+  Target: ~40% reduction in context usage (from ~45,000 tokens to ~27,000 tokens).
+
+friction_source: "/home/code/AgenticEngineering-agenticguidance/docs/plans/live/260104AE_agenticguidance/live/audit_planner_cleaning.yml"
+target_agents:
+  - "planner-cleaning"
+  - "planner-build"
+  - "planner-test"
+  - "planner-guidance"
+  - "planner-reviewer"
+
+# Issue Summary from Audit:
+# - STALE (1): Layer files reference docs/ at repo root but files exist at modules/AgenticGuidance/docs/
+# - REDUNDANCY (3): File lifecycle duplication; phase ordering in 3 places; user story paths in multiple places
+# - OVERLAP (2): agent-loops.yml vs iteration.yml; ARCHITECTURE.md vs agent-role-scope-matrix.md
+# - EXCESSIVE (2): plan_live_audit_clean.yml (469 lines, ~8000 tokens); plans.yml examples verbose
+# - UNUSED (1): domains.yml, workflows.yml, entrypoints.yml not needed for planner agents
+# - MISSING_CONSOLIDATION (1): Layer system lacks agent-type filtering
+# - INCONSISTENT (1): user-stories.yml path vs inputs.yml path
+
+phases:
+  # =============================================================================
+  # PHASE 1: Fix Critical Path Issues (STALE + INCONSISTENT)
+  # =============================================================================
+  - name: "phase-1-fix-stale-references"
+    description: "Fix stale and inconsistent path references that cause file-not-found errors"
+    priority: "HIGH"
+    agent_category: "teacher"
+    estimated_token_savings: "0 (fixes correctness, not size)"
+
+    success_criteria:
+      - "All layer file paths resolve to existing files"
+      - "user-stories.yml path matches inputs.yml path"
+      - "No broken references when agent loads inputs"
+
+    tasks:
+      - id: "1.1"
+        description: "Update core-system.yml ARCHITECTURE.md path"
+        agent_type: "teacher-update-assets"
+        operation: "UPDATE"
+        status: "pending"
+        context:
+          target_file: "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/assets/inputs/core-system.yml"
+          issue: "References docs/ARCHITECTURE.md but file is at modules/AgenticGuidance/docs/ARCHITECTURE.md"
+          current_line: 'path: "docs/ARCHITECTURE.md"'
+          # NOTE: Path semantics in inputs.yml state paths are relative to MODULE ROOT
+          # The ARCHITECTURE.md IS at docs/ARCHITECTURE.md relative to modules/AgenticGuidance/
+          # Need to verify if this is actually stale or if path resolution is misunderstood
+        acceptance_criteria:
+          - "Path resolves correctly when agent loads core-system.yml"
+        files:
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/assets/inputs/core-system.yml"
+
+      - id: "1.2"
+        description: "Update planner-shared.yml agent-role-scope-matrix.md path"
+        agent_type: "teacher-update-assets"
+        operation: "UPDATE"
+        status: "pending"
+        context:
+          target_file: "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/assets/inputs/planner-shared.yml"
+          issue: "References docs/agent-role-scope-matrix.md - verify path resolution"
+          # Same note as 1.1 - need to verify path semantics
+        acceptance_criteria:
+          - "Path resolves correctly when agent loads planner-shared.yml"
+        files:
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/assets/inputs/planner-shared.yml"
+
+      - id: "1.3"
+        description: "Fix user-stories.yml path inconsistency"
+        agent_type: "teacher-update-assets"
+        operation: "UPDATE"
+        status: "pending"
+        context:
+          target_file: "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/assets/definitions/user-stories.yml"
+          issue: "States 'modules/AgenticGuidance/userstories/<project>/' but correct path is 'modules/AgenticGuidance/userstories/' (root contains MyAgents/, RemoteAgents/, MyAgentsFrontend/)"
+          required_change: "Remove '<project>/' suffix or clarify it refers to subdirectory structure"
+        acceptance_criteria:
+          - "user-stories.yml path matches actual directory structure"
+          - "Path is consistent with inputs.yml reference"
+        files:
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/assets/definitions/user-stories.yml"
+
+  # =============================================================================
+  # PHASE 2: Eliminate Redundancy (HIGH IMPACT) - ALL PLANNER AGENTS
+  # =============================================================================
+  - name: "phase-2-consolidate-redundancy"
+    description: "Remove duplicated content to reduce token usage across ALL planner agents"
+    priority: "HIGH"
+    agent_category: "teacher"
+    estimated_token_savings: "~3500 tokens per agent"
+    dependencies:
+      - "phase-1-fix-stale-references"
+
+    success_criteria:
+      - "File lifecycle documented in plans.yml only, process.yml references it"
+      - "Phase ordering defined in manifest.yml only, other files reference it"
+      - "User story path defined in one authoritative location"
+      - "Changes applied to ALL planner agents"
+
+    tasks:
+      - id: "2.1"
+        description: "Remove file lifecycle duplication from ALL planner process.yml files"
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        status: "pending"
+        context:
+          target_files:
+            - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-cleaning/process.yml"
+            - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-build/process.yml"
+            - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-test/process.yml"
+            - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-guidance/process.yml"
+            - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml"
+          issue: "File lifecycle patterns duplicated across planner process.yml files - already in assets/definitions/plans.yml"
+          current_state: "~40 lines of copy-and-sync pattern documentation per agent"
+          required_change: |
+            Replace detailed lifecycle documentation with:
+            - Brief summary (2-3 lines)
+            - Reference to plans.yml for authoritative definition
+            Example:
+              FILE LIFECYCLE:
+              Files follow copy-and-sync pattern. See assets/definitions/plans.yml#two_level_completion_pattern
+              for full lifecycle rules including incremental completion, full completion, and reactivation.
+        acceptance_criteria:
+          - "File lifecycle section reduced to ~5 lines (was ~40) in ALL planner agents"
+          - "Clear reference to plans.yml as authoritative source"
+          - "Agent behavior unchanged (can still follow lifecycle)"
+        files:
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-cleaning/process.yml"
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-build/process.yml"
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-test/process.yml"
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-guidance/process.yml"
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml"
+
+      - id: "2.2"
+        description: "Consolidate phase ordering to manifest.yml for ALL planner agents"
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        status: "pending"
+        context:
+          target_agents:
+            - planner-cleaning
+            - planner-build
+            - planner-test
+            - planner-guidance
+            - planner-reviewer
+          issue: "Phase ordering defined in 3 places per agent (manifest.yml, process.yml, inputs.yml)"
+          required_change: |
+            For EACH planner agent:
+            - Keep authoritative definition in manifest.yml (already exists)
+            - In process.yml, replace detailed ordering with reference
+            - In inputs.yml, remove phase_ordering definition if present
+        acceptance_criteria:
+          - "Phase ordering defined once in manifest.yml per agent"
+          - "Other files reference manifest.yml for ordering"
+        files:
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-cleaning/manifest.yml"
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-cleaning/process.yml"
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-cleaning/inputs.yml"
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-build/manifest.yml"
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-build/process.yml"
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-build/inputs.yml"
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-test/manifest.yml"
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-test/process.yml"
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-test/inputs.yml"
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-guidance/manifest.yml"
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-guidance/process.yml"
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-guidance/inputs.yml"
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-reviewer/manifest.yml"
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml"
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-reviewer/inputs.yml"
+
+      - id: "2.3"
+        description: "Consolidate user story path to single authoritative location"
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        status: "pending"
+        context:
+          issue: "User story path specified in inputs.yml, manifest.yml, process.yml, and user-stories.yml"
+          authoritative_source: "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/assets/definitions/user-stories.yml"
+          required_change: "Other files should reference user-stories.yml for the path, not redefine it"
+        acceptance_criteria:
+          - "User story path defined in user-stories.yml only"
+          - "All planner agents reference user-stories.yml for path"
+        files:
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/assets/definitions/user-stories.yml"
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-cleaning/inputs.yml"
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-build/inputs.yml"
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-test/inputs.yml"
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-guidance/inputs.yml"
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-reviewer/inputs.yml"
+
+  # =============================================================================
+  # PHASE 3: Reduce Excessive Content (MEDIUM IMPACT)
+  # =============================================================================
+  - name: "phase-3-trim-excessive-content"
+    description: "Reduce oversized example files and verbose documentation"
+    priority: "MEDIUM"
+    agent_category: "teacher"
+    estimated_token_savings: "~6000 tokens"
+    dependencies:
+      - "phase-2-consolidate-redundancy"
+
+    success_criteria:
+      - "plan_live_audit_clean.yml example reduced to ~150 lines (was 469)"
+      - "plans.yml concrete examples moved to separate example file"
+      - "Total example content provides sufficient guidance without excess"
+
+    tasks:
+      - id: "3.1"
+        description: "Create trimmed plan_live_audit_clean.yml example"
+        agent_type: "teacher-update-assets"
+        operation: "UPDATE"
+        status: "pending"
+        context:
+          target_file: "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/assets/examples/planner/YYMMDDRepo_Branch/live/plan_live_audit_clean.yml"
+          issue: "469 lines (~8000 tokens) is excessive for an example"
+          required_change: |
+            Trim to ~150 lines by:
+            - Keep one example phase (cleanup or audit) in full detail
+            - Show structure of second phase with abbreviated content
+            - Remove verbose guidance blocks (consolidate to key patterns)
+            - Remove repetitive execution_group examples
+            - Add comment pointing to full example if needed
+        acceptance_criteria:
+          - "Example file is ~150 lines (max 200)"
+          - "Key structural patterns are preserved"
+          - "Agent can still understand required output format"
+        files:
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/assets/examples/planner/YYMMDDRepo_Branch/live/plan_live_audit_clean.yml"
+
+      - id: "3.2"
+        description: "Extract plans.yml concrete examples to separate file"
+        agent_type: "teacher-update-assets"
+        operation: "UPDATE"
+        status: "pending"
+        context:
+          target_file: "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/assets/definitions/plans.yml"
+          issue: "Lines 143-177 contain concrete_example section that duplicates concepts already explained"
+          required_change: |
+            - Move concrete_example to assets/examples/plans/copy-and-sync-example.yml
+            - Replace in plans.yml with brief reference
+            - Reduce plans.yml by ~35 lines
+        acceptance_criteria:
+          - "plans.yml reduced to ~145 lines (was 178)"
+          - "Example exists at assets/examples/plans/copy-and-sync-example.yml"
+          - "plans.yml references example file"
+        files:
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/assets/definitions/plans.yml"
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/assets/examples/plans/copy-and-sync-example.yml"
+
+  # =============================================================================
+  # PHASE T4: Specialized Core Layer Audit (MANDATORY - NEW)
+  # =============================================================================
+  - name: "phase-t4-specialized-core-layer-audit"
+    description: "AUDIT planner agents to discover core file usage, create specialized planner-core layers"
+    priority: "HIGH"
+    agent_category: "auditor"
+    estimated_token_savings: "~4000+ tokens across all planner agents"
+    dependencies:
+      - "phase-3-trim-excessive-content"
+
+    success_criteria:
+      - "Complete audit of which core files each planner agent actually uses"
+      - "planner-core-guidelines.yml created with only planner-relevant guidelines"
+      - "planner-core-system.yml created with only planner-relevant system definitions"
+      - "ALL planner agents updated to use specialized layers"
+      - "Generic core-guidelines.yml and core-systems.yml no longer loaded by planners"
+
+    tasks:
+      - id: "T4.1"
+        description: "AUDIT all planner agents to discover core file usage"
+        agent_type: "auditor"
+        operation: "AUDIT"
+        status: "pending"
+        context:
+          scope: "All planner agents: planner-cleaning, planner-build, planner-test, planner-guidance, planner-reviewer"
+          audit_focus:
+            - "Which files from core-guidelines.yml are actually referenced by planner agents"
+            - "Which files from core-system.yml are actually referenced by planner agents"
+            - "Identify unused core files that can be excluded from planner layer"
+          current_core_files:
+            core_guidelines: "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/assets/inputs/core-guidelines.yml"
+            core_system: "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/assets/inputs/core-system.yml"
+          output_format: |
+            Document for each planner agent:
+            - Files actually used from core-guidelines.yml
+            - Files actually used from core-system.yml
+            - Files that can be excluded
+        acceptance_criteria:
+          - "Complete audit report of core file usage per planner agent"
+          - "Clear identification of shared vs unused core content"
+        files:
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/assets/inputs/core-guidelines.yml"
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/assets/inputs/core-system.yml"
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-cleaning/inputs.yml"
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-build/inputs.yml"
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-test/inputs.yml"
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-guidance/inputs.yml"
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-reviewer/inputs.yml"
+
+      - id: "T4.2"
+        description: "CREATE planner-core-guidelines.yml with planner-specific guidelines"
+        agent_type: "teacher-update-assets"
+        operation: "CREATE"
+        status: "pending"
+        dependencies:
+          - "T4.1"
+        context:
+          target_file: "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/assets/inputs/planner-core-guidelines.yml"
+          issue: "Generic core-guidelines.yml includes guidelines not relevant to planner agents"
+          required_change: |
+            Create specialized planner-core-guidelines.yml containing ONLY:
+            - Guidelines actually used by planner agents (from T4.1 audit)
+            - Exclude builder-specific, deployer-specific, and other non-planner guidelines
+            - Maintain same structure as core-guidelines.yml for compatibility
+        acceptance_criteria:
+          - "planner-core-guidelines.yml created"
+          - "Contains only planner-relevant guidelines"
+          - "Token count significantly reduced vs core-guidelines.yml"
+        files:
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/assets/inputs/planner-core-guidelines.yml"
+
+      - id: "T4.3"
+        description: "CREATE planner-core-system.yml with planner-specific system definitions"
+        agent_type: "teacher-update-assets"
+        operation: "CREATE"
+        status: "pending"
+        dependencies:
+          - "T4.1"
+        context:
+          target_file: "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/assets/inputs/planner-core-system.yml"
+          issue: "Generic core-system.yml includes system definitions not relevant to planner agents"
+          required_change: |
+            Create specialized planner-core-system.yml containing ONLY:
+            - System definitions actually used by planner agents (from T4.1 audit)
+            - Include plans.yml (required for all planners)
+            - Exclude domains.yml, workflows.yml, entrypoints.yml (builder-focused)
+            - Maintain same structure as core-system.yml for compatibility
+        acceptance_criteria:
+          - "planner-core-system.yml created"
+          - "Contains only planner-relevant system definitions"
+          - "Excludes unused architectural definitions"
+        files:
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/assets/inputs/planner-core-system.yml"
+
+      - id: "T4.4"
+        description: "UPDATE ALL planner agents to use specialized core layers"
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        status: "pending"
+        dependencies:
+          - "T4.2"
+          - "T4.3"
+        context:
+          target_files:
+            - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-cleaning/inputs.yml"
+            - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-build/inputs.yml"
+            - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-test/inputs.yml"
+            - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-guidance/inputs.yml"
+            - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-reviewer/inputs.yml"
+          required_change: |
+            For EACH planner agent inputs.yml:
+            - Replace core-guidelines.yml reference with planner-core-guidelines.yml
+            - Replace core-system.yml reference with planner-core-system.yml
+            - Verify all required inputs still resolve correctly
+        acceptance_criteria:
+          - "ALL planner agents use planner-core-guidelines.yml"
+          - "ALL planner agents use planner-core-system.yml"
+          - "No planner agent loads generic core-guidelines.yml or core-system.yml"
+          - "All planner agents still function correctly"
+        files:
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-cleaning/inputs.yml"
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-build/inputs.yml"
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-test/inputs.yml"
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-guidance/inputs.yml"
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-reviewer/inputs.yml"
+
+  # =============================================================================
+  # PHASE 4: Agent-Type Filtering (Refactored - builds on T4)
+  # =============================================================================
+  - name: "phase-4-layer-filtering"
+    description: "Further optimize layer filtering beyond T4 specialized layers"
+    priority: "MEDIUM"
+    agent_category: "teacher"
+    estimated_token_savings: "~2000 tokens (additional to T4 savings)"
+    dependencies:
+      - "phase-t4-specialized-core-layer-audit"
+
+    success_criteria:
+      - "Planner-specific layers further optimized based on T4 audit findings"
+      - "All planner agents load minimal required content"
+
+    tasks:
+      - id: "4.1"
+        description: "Verify and optimize planner-core layers based on T4 audit"
+        agent_type: "teacher-update-assets"
+        operation: "UPDATE"
+        status: "pending"
+        context:
+          issue: "After T4 creates specialized layers, verify they are minimal"
+          required_change: |
+            Review T4 audit findings and ensure:
+            - planner-core-guidelines.yml contains minimum necessary guidelines
+            - planner-core-system.yml contains minimum necessary definitions
+            - No redundant or overlapping content between layers
+        acceptance_criteria:
+          - "Specialized layers verified as minimal"
+          - "No unused content in planner-specific layers"
+        files:
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/assets/inputs/planner-core-guidelines.yml"
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/assets/inputs/planner-core-system.yml"
+
+  # =============================================================================
+  # PHASE 5: Clarify Overlapping Definitions (LOW IMPACT)
+  # =============================================================================
+  - name: "phase-5-clarify-overlaps"
+    description: "Clarify separation between overlapping definition files"
+    priority: "LOW"
+    agent_category: "teacher"
+    estimated_token_savings: "~1000 tokens (through consolidation)"
+    dependencies:
+      - "phase-4-layer-filtering"
+
+    success_criteria:
+      - "Clear separation between agent-loops.yml (structure) and iteration.yml (behavior)"
+      - "ARCHITECTURE.md agent table removed, references matrix"
+      - "No duplicate content between overlapping files"
+
+    tasks:
+      - id: "5.1"
+        description: "Clarify agent-loops.yml vs iteration.yml separation"
+        agent_type: "teacher-update-assets"
+        operation: "UPDATE"
+        status: "pending"
+        context:
+          target_files:
+            - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+            - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/assets/guidelines/iteration.yml"
+          issue: "Both files define loop patterns with overlapping content"
+          required_change: |
+            Clarify separation:
+            - agent-loops.yml: Structure definitions only (what loops exist, their purpose, max iterations)
+            - iteration.yml: Behavioral guidelines (how to behave during loops)
+            Remove behavioral content from agent-loops.yml
+            Add explicit cross-reference between files
+        acceptance_criteria:
+          - "agent-loops.yml contains only structural definitions"
+          - "iteration.yml contains only behavioral guidelines"
+          - "Each file references the other for complementary content"
+        files:
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/assets/guidelines/iteration.yml"
+
+      - id: "5.2"
+        description: "Remove agent table from ARCHITECTURE.md"
+        agent_type: "teacher-update-assets"
+        operation: "UPDATE"
+        status: "pending"
+        context:
+          target_file: "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/docs/ARCHITECTURE.md"
+          issue: "Lines 116-126 contain agent summary table that duplicates agent-role-scope-matrix.md"
+          required_change: |
+            Remove the Agents table (lines 114-127)
+            Replace with reference: "For agent roles and scopes, see [agent-role-scope-matrix.md](agent-role-scope-matrix.md)"
+        acceptance_criteria:
+          - "Agent table removed from ARCHITECTURE.md"
+          - "Reference to agent-role-scope-matrix.md preserved"
+          - "ARCHITECTURE.md reduced by ~15 lines"
+        files:
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/docs/ARCHITECTURE.md"
+
+  # =============================================================================
+  # PHASE 6: Verification (ALL PLANNER AGENTS)
+  # =============================================================================
+  - name: "phase-6-verification"
+    description: "Verify all changes maintain agent functionality across ALL planner agents"
+    priority: "REQUIRED"
+    agent_category: "test"
+    dependencies:
+      - "phase-5-clarify-overlaps"
+
+    success_criteria:
+      - "All file references resolve correctly for ALL planner agents"
+      - "ALL planner agents can load all required inputs"
+      - "Context usage reduced to target (~12%) for ALL planner agents"
+
+    tasks:
+      - id: "6.1"
+        description: "Verify all path references resolve for ALL planner agents"
+        agent_type: "test-final-output"
+        operation: "AUDIT"
+        status: "pending"
+        context:
+          scope: "All modified layer files, inputs.yml files, and definition files across ALL planner agents"
+          target_agents:
+            - "planner-cleaning"
+            - "planner-build"
+            - "planner-test"
+            - "planner-guidance"
+            - "planner-reviewer"
+          checks:
+            - "Every path in layer files resolves to existing file"
+            - "Every cross-reference in definitions resolves"
+            - "No broken fragment references (#anchor)"
+            - "Specialized planner-core layers load correctly"
+        acceptance_criteria:
+          - "Zero broken path references across ALL planner agents"
+          - "All layer files load successfully"
+        files:
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/assets/inputs/planner-core-guidelines.yml"
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/assets/inputs/planner-core-system.yml"
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-cleaning/inputs.yml"
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-build/inputs.yml"
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-test/inputs.yml"
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-guidance/inputs.yml"
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-reviewer/inputs.yml"
+
+      - id: "6.2"
+        description: "Measure context reduction for ALL planner agents"
+        agent_type: "test-final-output"
+        operation: "AUDIT"
+        status: "pending"
+        context:
+          scope: "ALL planner agents total input size"
+          target_agents:
+            - "planner-cleaning"
+            - "planner-build"
+            - "planner-test"
+            - "planner-guidance"
+            - "planner-reviewer"
+          baseline: "~45,000 tokens (18-22% of context) per agent"
+          target: "~27,000 tokens (~12% of context) per agent"
+          measurement_method: "Count lines and estimate tokens for all transitively loaded files per agent"
+        acceptance_criteria:
+          - "Total token usage reduced by at least 30% for ALL planner agents"
+          - "No critical guidance removed"
+        files:
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-cleaning/inputs.yml"
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-build/inputs.yml"
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-test/inputs.yml"
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-guidance/inputs.yml"
+          - "/home/code/AgenticEngineering-agenticguidance/modules/AgenticGuidance/agents/planner/planner-reviewer/inputs.yml"
+
+# =============================================================================
+# QUESTIONS FOR USER
+# =============================================================================
+questions_for_user:
+  design_decisions:
+    - question: "Path resolution semantics clarification needed"
+      context: |
+        The audit flagged core-system.yml and planner-shared.yml as having stale paths
+        (docs/ARCHITECTURE.md vs modules/AgenticGuidance/docs/ARCHITECTURE.md).
+        However, inputs.yml states paths are "relative to AgenticGuidance MODULE ROOT".
+        If the layer loading system correctly resolves paths from module root,
+        docs/ARCHITECTURE.md IS correct (it exists at modules/AgenticGuidance/docs/).
+      options:
+        - "Paths are correct as-is (module-relative resolution works)"
+        - "Paths need full path from repo root"
+        - "Need to verify actual path resolution behavior in loader"
+      impact: "Determines whether task 1.1 and 1.2 are needed"
+
+    - question: "Example file trimming approach"
+      context: |
+        plan_live_audit_clean.yml at 469 lines needs reduction.
+        Multiple trimming strategies possible.
+      options:
+        - "Keep one full phase, abbreviate others (proposed)"
+        - "Create minimal skeleton with annotation comments"
+        - "Split into multiple focused examples"
+        - "Keep full example but load only on-demand"
+      impact: "Determines how phase 3 is executed"
+
+  gap_identification:
+    - question: "Should iteration.yml be loaded by planner agents at all?"
+      context: |
+        iteration.yml provides behavioral guidelines for execution loops.
+        Planner agents define loop structures but don't execute them.
+        They may not need iteration.yml.
+      options:
+        - "Remove from planner inputs (planners don't execute loops)"
+        - "Keep (planners need to understand loop behavior to plan correctly)"
+      impact: "Additional ~2000 token savings if removed"
+
+success_criteria:
+  quantitative:
+    - metric: "Context token usage"
+      baseline: "~45,000 tokens per agent"
+      target: "~27,000 tokens per agent"
+      measurement: "Sum of line counts for all transitively loaded files, estimated at 2 tokens/line"
+      scope: "ALL planner agents"
+
+    - metric: "File count loaded"
+      baseline: "19 files per agent"
+      target: "~12 files per agent"
+      measurement: "Count unique files in transitive closure of inputs"
+      scope: "ALL planner agents"
+
+    - metric: "Redundant content"
+      baseline: "3 redundancy issues"
+      target: "0 redundancy issues"
+      measurement: "Audit for duplicated content across files"
+      scope: "ALL planner agents"
+
+  qualitative:
+    - "ALL planner agents can still create finalization phases correctly"
+    - "All required lifecycle patterns are discoverable from guidance"
+    - "Error messages guide to correct authoritative sources"
+    - "No loss of critical planning capability for any planner agent"
+
+notes:
+  - "SCOPE EXPANDED: This plan applies to ALL planner agents (cleaning, build, test, guidance, reviewer)"
+  - "Phase T4 is MANDATORY: Specialized core layers must be created and deployed"
+  - "All paths are fully qualified absolute paths"
+  - "Phase order is designed to fix correctness issues before optimization"
+  - "Estimated savings are conservative; actual may be higher"
+  - "Questions for user should be answered before phase T4 begins"

@@ -1,0 +1,82 @@
+flowchart TB
+    %% COMPONENT: Approval Gate
+    %% PURPOSE: Human approval checkpoint before proceeding
+    %% USAGE: Embed at critical decision points requiring human oversight
+    %% REUSABILITY: Works in any phase needing explicit human approval
+    %%
+    %% PATTERN SUMMARY:
+    %% 1. Present decision context to user
+    %% 2. Wait for user input (approve/reject/modify)
+    %% 3. Route based on decision
+    %%
+    %% COMMON USE CASES:
+    %% - Before destructive operations (cleanup, deletion)
+    %% - Before deployment to production
+    %% - When costs exceed threshold
+    %% - When risks are identified
+    %%
+    %% INPUTS (from embedding phase):
+    %% - decision_context: What the user is approving
+    %% - options: Available choices (default: approve/reject)
+    %% - artifacts_for_review: Documents/plans to present
+    %%
+    %% EXIT CONDITIONS:
+    %% - Approved: Proceed to next step
+    %% - Rejected: Escalate or return for revision
+    %% - Modified: Apply user modifications and proceed
+
+    %% ===== ENTRY =====
+    ApprovalGateStart((Approval Gate)) --> PrepareContext[Prepare Decision Context
+    - Summarize what is being approved
+    - List risks and implications
+    - Present relevant artifacts]
+
+    %% ===== PRESENTATION =====
+    PrepareContext --> PresentToUser[/Present to User/]
+
+    PresentToUser --> AwaitDecision[Await User Decision]
+
+    %% ===== DECISION ROUTING =====
+    AwaitDecision --> UserDecision{User Decision?}
+
+    %% ===== APPROVAL PATH =====
+    UserDecision -- "Approved" --> RecordApproval[Record Approval
+    - Timestamp
+    - User confirmation
+    - Context snapshot]
+
+    RecordApproval --> ApprovalGateComplete((Gate Passed: Proceed))
+
+    %% ===== REJECTION PATH =====
+    UserDecision -- "Rejected" --> RecordRejection[Record Rejection
+    - Reason if provided
+    - Timestamp]
+
+    RecordRejection --> DetermineAction{Rejection Handling?}
+
+    DetermineAction -- "Revise and Retry" --> ReturnForRevision((Return: Revise Artifact))
+
+    DetermineAction -- "Abort" --> ApprovalGateAbort((Gate Failed: Abort))
+
+    %% ===== MODIFICATION PATH =====
+    UserDecision -- "Modify" --> CaptureModifications[Capture User Modifications
+    - Specific changes requested
+    - New constraints added]
+
+    CaptureModifications --> ApplyModifications[Apply Modifications to Artifact]
+
+    ApplyModifications --> ApprovalGateComplete
+
+    %% ===== TIMEOUT HANDLING =====
+    AwaitDecision -- "Timeout" --> EscalateTimeout((Escalate: No Response))
+
+    %% ===== STYLING =====
+    classDef entrypoint fill:#90EE90,stroke:#228B22
+    classDef exitpoint fill:#FFB6C1,stroke:#DC143C
+    classDef usergate fill:#87CEEB,stroke:#4169E1
+    classDef returnpoint fill:#FFD700,stroke:#B8860B
+
+    class ApprovalGateStart,ApprovalGateComplete entrypoint
+    class ApprovalGateAbort,EscalateTimeout exitpoint
+    class PresentToUser,AwaitDecision usergate
+    class ReturnForRevision returnpoint

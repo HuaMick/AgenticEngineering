@@ -1,0 +1,230 @@
+# Agent Self-Review Findings
+# Date: 2026-01-11
+# Method: Spawned 4 audit agents to review 23 agents in parallel
+
+summary:
+  total_agents_reviewed: 23
+  agents_by_category:
+    test: 7 (test-runner, test-audit, test-guidance-simulator, test-builder, test-user-simulator, test-service, test-final-output)
+    planner: 6 (planner-test, planner-guidance-testing, planner-build, planner-cleaning, planner-reviewer, planner-guidance)
+    orchestration: 4 (orchestration-executor, orchestration-guidance, orchestration-planning, orchestration-build)
+    teacher: 2 (teacher-update-guidance, teacher-update-assets)
+    deploy: 2 (deploy-worktree, deploy-cicd)
+    build: 2 (build-flutter, build-python)
+
+  clarity_distribution:
+    high: 0
+    medium: 12
+    low: 11
+
+# ========================================
+# CRITICAL ISSUES (Blocking/Breaking)
+# ========================================
+critical_issues:
+  - id: "CRIT-001"
+    agents: ["teacher-update-assets"]
+    issue: "Broken path reference in process.yml"
+    detail: "References 'modules/AgenticGuidance/agents/teacher/teacher-update-modules/AgenticGuidance/assets/inputs.yml' which does not exist"
+    severity: "critical"
+    action: "Fix path immediately"
+
+  - id: "CRIT-002"
+    agents: ["orchestration-guidance", "orchestration-build"]
+    issue: "Deprecated agents still referenced throughout codebase"
+    detail: |
+      No deprecation markers in manifest.yml files. Category manifest, agents manifest,
+      and multiple input files still route to these deprecated agents.
+    severity: "critical"
+    action: "Add DEPRECATED flags to manifest.yml, update routing references"
+
+  - id: "CRIT-003"
+    agents: ["test-guidance-simulator"]
+    issue: "Subagent spawning mechanism undefined"
+    detail: "process.yml step 5 says 'spawn target agent' but provides no mechanism"
+    severity: "critical"
+    action: "Document how to spawn subagents for simulation"
+
+  - id: "CRIT-004"
+    agents: ["test-final-output"]
+    issue: "Dynamic input placeholders with no resolution mechanism"
+    detail: "<live_plan_path> and <orchestration_execution_data> use placeholder syntax with no way to resolve"
+    severity: "critical"
+    action: "Define placeholder resolution or use concrete examples"
+
+  - id: "CRIT-005"
+    agents: ["orchestration-executor"]
+    issue: "Conflicting plan_folder discovery location"
+    detail: |
+      process.yml says search <plan_folder>/live/ but inputs.yml shows plan_folder_path
+      already includes 'live/' in examples. Unclear if executor should search nested live/.
+    severity: "critical"
+    action: "Clarify path semantics unambiguously"
+
+# ========================================
+# CROSS-CUTTING ISSUES (Multiple Agents)
+# ========================================
+cross_cutting_issues:
+  - id: "CROSS-001"
+    pattern: "Impossible 'update path' instructions"
+    agents: ["test-runner", "test-builder", "test-service", "test-audit"]
+    issue: "All contain 'If an input is found in a different location, update the path' - agents cannot modify their own guidance files"
+    action: "Remove or reword to 'flag the discrepancy in output' only"
+
+  - id: "CROSS-002"
+    pattern: "Missing loop_context sections"
+    agents: ["test-runner", "test-builder", "test-user-simulator", "test-service", "test-final-output"]
+    issue: "Reference loop types but do not define loop_context section"
+    action: "Add loop_context section consistent with test-audit"
+
+  - id: "CROSS-003"
+    pattern: "Empty outputs: []"
+    agents: ["test-runner", "test-builder", "test-user-simulator", "test-service", "teacher-update-assets", "build-flutter", "build-python"]
+    issue: "process.yml has 'outputs: []' despite defining output structures in inputs.yml"
+    action: "Define outputs in process.yml or align with inputs.yml"
+
+  - id: "CROSS-004"
+    pattern: "Version inconsistencies"
+    agents: ["test-runner", "test-final-output", "teacher-update-assets"]
+    issue: "manifest.yml version differs from inputs.yml version"
+    action: "Synchronize version numbers across files"
+
+  - id: "CROSS-005"
+    pattern: "Missing required_inputs section"
+    agents: ["planner-reviewer", "planner-cleaning", "planner-guidance-testing"]
+    issue: "Do not have explicit required_inputs validation unlike other planners"
+    action: "Add required_inputs section for consistency"
+
+  - id: "CROSS-006"
+    pattern: "Missing test-shared.yml layer"
+    agents: ["test-guidance-simulator", "test-user-simulator"]
+    issue: "Do not include test-shared.yml layer unlike other test agents"
+    action: "Add test-shared.yml layer or document why excluded"
+
+  - id: "CROSS-007"
+    pattern: "Project-specific content"
+    agents: ["test-user-simulator", "test-service", "test-audit", "build-python"]
+    issue: "Hardcoded project-specific values (myagents, myagents-test, Studio test names)"
+    action: "Use placeholder syntax or move to project-specific configuration"
+
+  - id: "CROSS-008"
+    pattern: "MMD component files missing"
+    agents: ["planner-test", "planner-build", "planner-guidance", "planner-cleaning"]
+    issue: |
+      Referenced MMD components do not exist:
+      - build_phase.mmd, test_phase.mmd, cleanup_phase.mmd, uat_phase.mmd, teach_phase.mmd
+    action: "Create missing components or remove references"
+    note: "These were moved to phase_templates/ in this session - update references"
+
+  - id: "CROSS-009"
+    pattern: "Duplicate worktree detection code"
+    agents: ["build-flutter", "build-python"]
+    issue: "Identical worktree determination step duplicated across build agents"
+    action: "Extract to shared definition or layer"
+
+  - id: "CROSS-010"
+    pattern: "Minimal manifest files"
+    agents: ["deploy-worktree", "deploy-cicd", "build-flutter", "build-python"]
+    issue: "Missing structure, responsibilities, boundaries fields"
+    action: "Standardize manifest.yml structure"
+
+  - id: "CROSS-011"
+    pattern: "Vague process steps"
+    agents: ["build-flutter", "build-python"]
+    issue: "'Plan components' and 'Build components' steps lack substeps or criteria"
+    action: "Expand with specific guidance or reference to builder-role.yml"
+
+  - id: "CROSS-012"
+    pattern: "Loop terminology inconsistency"
+    agents: ["planner-test", "planner-guidance-testing", "test-audit"]
+    issue: "test-fix-loop, test-audit-fix-loop, audit-test-fix-loop used interchangeably"
+    action: "Consolidate to single consistent naming"
+
+  - id: "CROSS-013"
+    pattern: "Agent context reference format varies"
+    agents: ["multiple planners"]
+    issue: "Some use anchor syntax (#agent_categories.planner), some use just category name"
+    action: "Standardize agent_context reference format"
+
+  - id: "CROSS-014"
+    pattern: "MMD generation logic duplicated"
+    agents: ["planner-build", "planner-guidance"]
+    issue: "Both have 100+ line mmd_generation sections with slight variations"
+    action: "Extract MMD generation logic to shared reference document"
+
+# ========================================
+# DEPRECATION REFERENCE CLEANUP
+# ========================================
+deprecation_issues:
+  files_referencing_deprecated_orchestration_guidance:
+    - "/modules/AgenticGuidance/agents/orchestration/orchestration-planning/manifest.yml"
+    - "/modules/AgenticGuidance/agents/orchestration/manifest.yml"
+    - "/modules/AgenticGuidance/agents/manifest.yml"
+    - "/modules/AgenticGuidance/assets/definitions/orchestration-executor-specification.yml"
+
+  files_referencing_deprecated_orchestration_build:
+    - "/modules/AgenticGuidance/agents/orchestration/manifest.yml"
+    - "/modules/AgenticGuidance/agents/manifest.yml"
+    - "/modules/AgenticGuidance/assets/definitions/plan-mmd-schema.yml"
+    - "/modules/AgenticGuidance/assets/definitions/orchestration-executor-specification.yml"
+
+# ========================================
+# AGENT-SPECIFIC ISSUES (Selected)
+# ========================================
+agent_specific_issues:
+  orchestration_executor:
+    - "cleaner routing resolves to 'planner-cleaning' not a cleaner agent - semantically confusing"
+    - "Specification is 960 lines - very high cognitive load"
+    - "Dual-storage state model (MMD STATUS + YAML) creates desync risk"
+
+  orchestration_planning:
+    - "phase_file_strategy contradicts plan_example reference (separate vs unified)"
+    - "Output path template has duplicate 'live/' directory"
+    - "No max_iterations enforcement mechanism in process.mmd"
+
+  planner_guidance_testing:
+    - "Lowest clarity (low) among planners"
+    - "Uses different layer pattern (core-system.yml vs planner-core-system.yml)"
+    - "Terminology confusion: guidance-blind-test, guidance-test-loop, walkthrough validation"
+
+  planner_guidance:
+    - "Lowest clarity (low) among planners"
+    - "inputs.yml is 257 lines - largest of all planners"
+    - "19 core_inputs files - excessive context loading"
+
+  test_guidance_simulator:
+    - "Lowest clarity (low) among test agents"
+    - "Critical capability 'spawn target agent' undefined"
+    - "'Aggregate feedback from spawned agent sessions' has no mechanism"
+
+  test_final_output:
+    - "Lowest clarity (low) among test agents"
+    - "Escalation mechanism to orchestrator undefined"
+    - "Wait mechanism for data undefined"
+
+# ========================================
+# RECOMMENDATIONS PRIORITY
+# ========================================
+recommendations:
+  immediate:
+    - "Fix broken path in teacher-update-assets/process.yml"
+    - "Add deprecation flags to orchestration-build and orchestration-guidance manifest.yml"
+    - "Update component references to use new phase_templates/ location"
+
+  high_priority:
+    - "Remove impossible 'update path' instructions (4 agents)"
+    - "Add missing loop_context sections (5 agents)"
+    - "Define outputs in process.yml for agents with empty outputs (7 agents)"
+    - "Clarify orchestration-executor path semantics"
+    - "Document subagent spawning mechanism for test-guidance-simulator"
+
+  medium_priority:
+    - "Standardize loop terminology"
+    - "Standardize agent_context reference format"
+    - "Add required_inputs sections to planners missing them"
+    - "Extract MMD generation logic to shared reference"
+    - "Standardize manifest.yml structure across all agents"
+
+  low_priority:
+    - "Extract worktree determination to shared definition"
+    - "Reduce orchestration-executor specification size"
+    - "Remove project-specific content from test agents"
