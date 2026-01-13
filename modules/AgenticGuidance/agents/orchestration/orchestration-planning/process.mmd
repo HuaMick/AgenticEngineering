@@ -217,12 +217,22 @@ flowchart LR
         %% - Success/escalation endpoints
         %% - Proper subgraph encapsulation per schema
 
-        %% Step 5: Write MMD to output location
-        BuildFlowchart --> WriteMMD[Write orchestration_<name>.mmd to plan_folder/live/]
+        %% Step 5: Validate Node Granularity (MANDATORY)
+        %% FENCE: ValidateNodeGranularity MUST check that NO task-level nodes exist.
+        %% Pattern check: Nodes matching "deploy_\d+", "build_\d+", "test_\d+" are FORBIDDEN.
+        %% Pattern check: Nodes with "[Execute: ...]" labels are FORBIDDEN.
+        %% Correct pattern: "[Spawn X Agent]", "[Enter X Phase]", "{X Loop}"
+        BuildFlowchart --> ValidateNodeGranularity{Node Granularity Valid?}
+        ValidateNodeGranularity -- "No: Task-Level Nodes Detected" --> FixNodes[Remove Task-Level Nodes, Use High-Level]
+        FixNodes --> BuildFlowchart
+        ValidateNodeGranularity -- "Yes: High-Level Only" --> WriteMMD
+
+        %% Step 6: Write MMD to output location
+        WriteMMD[Write orchestration_<name>.mmd to plan_folder/live/]
         %% Output: <plan_folder>/live/orchestration_<name>.mmd
         %% where <name> is derived from plan folder name
 
-        %% Step 6: Validate MMD against schema before proceeding
+        %% Step 7: Validate MMD against schema before proceeding
         WriteMMD --> ValidateMMD{MMD Valid Against Schema?}
         ValidateMMD -- "No: Schema Error" --> FixMMD[Fix MMD Structure Per Schema]
         FixMMD --> BuildFlowchart
@@ -277,9 +287,11 @@ flowchart LR
     %% ========================================
     %% STYLING
     %% ========================================
-    %% Dotted lines for feedback loops (return paths from Human Approval and MMD fix)
+    %% Dotted lines for feedback loops (return paths from Human Approval and MMD/node fixes)
     %% These represent plan refinement cycles based on user feedback
-    %% Edge index 58 is: FixMMD --> BuildFlowchart (MMD fix loop)
-    %% Edge index 70 is: IdentifyAffectedPhases -.-> PlanningLoops (human feedback loop)
+    %% Feedback loops in this MMD:
+    %% - FixNodes --> BuildFlowchart (node granularity fix loop)
+    %% - FixMMD --> BuildFlowchart (MMD schema fix loop)
+    %% - IdentifyAffectedPhases -.-> PlanningLoops (human feedback loop)
     classDef dashedstroke stroke-dasharray: 5 5;
-    linkStyle 58,70 stroke:#888,stroke-width:2px,stroke-dasharray: 5 5;
+    linkStyle 61,65,77 stroke:#888,stroke-width:2px,stroke-dasharray: 5 5;

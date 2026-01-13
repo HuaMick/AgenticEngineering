@@ -52,6 +52,184 @@ runtime_inputs:
         planning_intent: "test"
         effect: "Prioritize planner-test, assume test strategy objective"
 
+# ##############################################
+# ##############################################
+# CRITICAL: MMD NODE GRANULARITY (READ FIRST)
+# ##############################################
+# ##############################################
+# This section MUST be read and applied when generating orchestration MMD files.
+# FENCE: Output must NOT contain task-level nodes - only high-level orchestration nodes.
+# ==============================================
+mmd_node_granularity:
+  principle: |
+    MMD diagrams represent orchestration flow at the phase, loop, and agent
+    spawn level. They do NOT represent individual task IDs or file operations.
+    Task-level details belong in plan YAML files, not MMD orchestration diagrams.
+
+  fence: |
+    STOP and regenerate if ANY of these patterns appear in generated MMD:
+    - Task ID nodes: deploy_\d+, build_\d+, test_\d+, teach_\d+, cleanup_\d+
+    - Execute labels: [Execute: ...]
+    - Individual file operations: [Edit ...], [Create ...], [Delete ...]
+
+    REQUIRED patterns for valid MMD:
+    - Phase nodes: [Enter X Phase], ((X Phase))
+    - Spawn nodes: [Spawn X Agent]
+    - Loop nodes: {X Loop}, subgraph X_Loop_SG
+    - Decision nodes: {X?}
+
+  correct_granularity:
+    description: "Nodes should represent these concepts"
+    node_types:
+      - type: "Phase nodes"
+        examples:
+          - "TeachPhaseStart((Teach Phase))"
+          - "BuildPhaseStart((Build Phase))"
+          - "TestPhaseStart((Test Phase))"
+          - "CleanupPhaseStart((Cleanup Phase))"
+        pattern: "<PhaseName>PhaseStart((<Phase> Phase))"
+
+      - type: "Loop nodes"
+        examples:
+          - "subgraph PlannerLoop_SG [\"Planner-Loop Subgraph\"]"
+          - "subgraph TestFixLoop_SG [\"Test-Fix-Loop Integration Subgraph\"]"
+          - "subgraph ArchLayers_SG [\"Architecture Layer Verification Subgraph\"]"
+        pattern: "subgraph <LoopName>_SG [\"<Loop Description> Subgraph\"]"
+
+      - type: "Agent spawn nodes"
+        examples:
+          - "SpawnPlannerGuidance[Spawn planner-guidance Agent]"
+          - "SpawnPlannerBuild[Spawn planner-build Agent]"
+          - "SpawnReviewer[Spawn planner-reviewer Agent]"
+        pattern: "Spawn<AgentName>[Spawn <agent-name> Agent]"
+
+      - type: "Decision nodes"
+        examples:
+          - "PlanCreated{Plan Created?}"
+          - "ReviewResult{Plan Approved?}"
+          - "CheckIterations{Max Iterations?}"
+        pattern: "<DecisionName>{<Question>?}"
+
+      - type: "Exit nodes"
+        examples:
+          - "TeachPhaseComplete((Teach Phase Complete))"
+          - "EscalateTeach((Escalate: Cannot Create Plan))"
+        pattern: "<PhaseName>Complete((<Phase> Phase Complete))"
+
+  incorrect_granularity:
+    description: "These should NOT appear as MMD nodes"
+    anti_patterns:
+      - type: "Task IDs"
+        examples:
+          - "build_001[Implement authentication]"
+          - "teach_003[Update inputs.yml]"
+          - "test_002[Write unit tests]"
+        reason: "Task IDs belong in plan YAML files, not orchestration MMD"
+
+      - type: "Individual file operations"
+        examples:
+          - "EditFile[Edit process.yml]"
+          - "WriteConfig[Write config.json]"
+          - "ReadManifest[Read manifest.yml]"
+        reason: "File operations are execution details, not orchestration flow"
+
+      - type: "Code-level operations"
+        examples:
+          - "AddFunction[Add validateUser function]"
+          - "FixBug[Fix null pointer error]"
+          - "RefactorClass[Refactor AuthService]"
+        reason: "Code operations belong in build task descriptions, not MMD"
+
+  phase_template_reference: "modules/AgenticGuidance/assets/examples/orchestration/phase_templates/"
+  note: "See teach_phase.mmd, build_phase.mmd, test_phase.mmd for correct patterns"
+
+# ##############################################
+# ##############################################
+# CRITICAL: LOOP SELECTION OWNERSHIP (READ FIRST)
+# ##############################################
+# ##############################################
+# Orchestrator owns loop selection; planners request validation needs.
+# Reference: modules/AgenticGuidance/assets/definitions/agent-loops.yml
+# ==============================================
+loop_selection_guidance:
+  ownership: |
+    ORCHESTRATOR owns loop selection decisions. Planners request validation
+    needs (e.g., "needs testing", "needs guidance validation"), but the
+    orchestrator determines which specific loop to use based on context.
+
+  phase_to_loop_mapping:
+    - phase: "teach"
+      primary_loop: "planner-loop"
+      description: "Iterative planning with reviewer feedback for guidance improvement"
+      validation_loops:
+        - "guidance-test-loop"
+        - "agent-self-review"
+        - "guidance-self-review-loop"
+
+    - phase: "build"
+      primary_loop: "planner-loop"
+      description: "Iterative planning with reviewer feedback for implementation"
+      execution_loop: "test-fix-loop"
+      note: "Build execution uses test-fix-loop for iterative development"
+
+    - phase: "test"
+      primary_loop: "planner-loop"
+      description: "Iterative planning with reviewer feedback for test strategy"
+      execution_loop: "test-fix-loop"
+      validation_loop: "audit-test-fix-loop"
+      note: "Audit loop is MANDATORY after test phase"
+
+    - phase: "cleanup"
+      primary_loop: "planner-loop"
+      description: "Iterative planning with reviewer feedback for cleanup"
+      execution_loop: "cleaner-dependency-loop"
+      validation_loop: "audit-test-fix-loop"
+      note: "Audit loop is MANDATORY after cleanup"
+
+    - phase: "discovery"
+      primary_loop: "exploration-loop"
+      description: "Iterative discovery and information gathering"
+
+    - phase: "documentation-validation"
+      primary_loop: "documentation-loop"
+      description: "Validate documentation through blind testing"
+
+    - phase: "user-story-validation"
+      primary_loop: "user-story-validation-loop"
+      description: "PRIMARY SUCCESS CRITERIA - validate complete user journeys"
+
+  alternative_loop_selection:
+    guidance_validation:
+      description: "Selecting between guidance validation approaches"
+      options:
+        - loop: "agent-self-review"
+          weight: "LIGHTEST"
+          use_when:
+            - "Quick validation during development"
+            - "Agent checking own process.yml, inputs.yml, manifest.yml"
+            - "Fast feedback cycle is priority"
+            - "No external perspective needed"
+
+        - loop: "guidance-self-review-loop"
+          weight: "LIGHT"
+          use_when:
+            - "Multiple agents need simultaneous guidance review"
+            - "Friction patterns identified but not localized"
+            - "Quick iteration on guidance changes needed"
+
+        - loop: "guidance-test-loop"
+          weight: "HEAVY"
+          use_when:
+            - "Guidance completeness needs blind simulation"
+            - "External perspective required (agent cannot validate itself)"
+            - "High-confidence verification before deployment"
+            - "New agent processes require validation"
+
+  loop_definition_reference: "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+
+# ==============================================
+# INPUTS
+# ==============================================
 inputs:
   # ==============================================
   # CLI COMMAND REFERENCE
@@ -148,162 +326,3 @@ inputs:
     description: "MMD component for cleanup phase orchestration pattern."
   - location: "modules/AgenticGuidance/assets/examples/orchestration/phase_templates/uat_phase.mmd"
     description: "MMD component for UAT phase orchestration pattern (MANDATORY)."
-
-  # ==============================================
-  # LOOP SELECTION GUIDANCE
-  # ==============================================
-  # Orchestrator owns loop selection; planners request validation needs.
-  # Reference: modules/AgenticGuidance/assets/definitions/agent-loops.yml
-  # ==============================================
-  loop_selection_guidance:
-    ownership: |
-      ORCHESTRATOR owns loop selection decisions. Planners request validation
-      needs (e.g., "needs testing", "needs guidance validation"), but the
-      orchestrator determines which specific loop to use based on context.
-
-    phase_to_loop_mapping:
-      - phase: "teach"
-        primary_loop: "planner-loop"
-        description: "Iterative planning with reviewer feedback for guidance improvement"
-        validation_loops:
-          - "guidance-test-loop"
-          - "agent-self-review"
-          - "guidance-self-review-loop"
-
-      - phase: "build"
-        primary_loop: "planner-loop"
-        description: "Iterative planning with reviewer feedback for implementation"
-        execution_loop: "test-fix-loop"
-        note: "Build execution uses test-fix-loop for iterative development"
-
-      - phase: "test"
-        primary_loop: "planner-loop"
-        description: "Iterative planning with reviewer feedback for test strategy"
-        execution_loop: "test-fix-loop"
-        validation_loop: "audit-test-fix-loop"
-        note: "Audit loop is MANDATORY after test phase"
-
-      - phase: "cleanup"
-        primary_loop: "planner-loop"
-        description: "Iterative planning with reviewer feedback for cleanup"
-        execution_loop: "cleaner-dependency-loop"
-        validation_loop: "audit-test-fix-loop"
-        note: "Audit loop is MANDATORY after cleanup"
-
-      - phase: "discovery"
-        primary_loop: "exploration-loop"
-        description: "Iterative discovery and information gathering"
-
-      - phase: "documentation-validation"
-        primary_loop: "documentation-loop"
-        description: "Validate documentation through blind testing"
-
-      - phase: "user-story-validation"
-        primary_loop: "user-story-validation-loop"
-        description: "PRIMARY SUCCESS CRITERIA - validate complete user journeys"
-
-    alternative_loop_selection:
-      guidance_validation:
-        description: "Selecting between guidance validation approaches"
-        options:
-          - loop: "agent-self-review"
-            weight: "LIGHTEST"
-            use_when:
-              - "Quick validation during development"
-              - "Agent checking own process.yml, inputs.yml, manifest.yml"
-              - "Fast feedback cycle is priority"
-              - "No external perspective needed"
-
-          - loop: "guidance-self-review-loop"
-            weight: "LIGHT"
-            use_when:
-              - "Multiple agents need simultaneous guidance review"
-              - "Friction patterns identified but not localized"
-              - "Quick iteration on guidance changes needed"
-
-          - loop: "guidance-test-loop"
-            weight: "HEAVY"
-            use_when:
-              - "Guidance completeness needs blind simulation"
-              - "External perspective required (agent cannot validate itself)"
-              - "High-confidence verification before deployment"
-              - "New agent processes require validation"
-
-    loop_definition_reference: "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
-
-  # ==============================================
-  # MMD NODE GRANULARITY GUIDANCE
-  # ==============================================
-  # Orchestration MMDs use phase/loop/agent granularity, NOT task IDs.
-  # Reference: phase_templates/ for proper node patterns
-  # ==============================================
-  mmd_node_granularity:
-    principle: |
-      MMD diagrams represent orchestration flow at the phase, loop, and agent
-      spawn level. They do NOT represent individual task IDs or file operations.
-      Task-level details belong in plan YAML files, not MMD orchestration diagrams.
-
-    correct_granularity:
-      description: "Nodes should represent these concepts"
-      node_types:
-        - type: "Phase nodes"
-          examples:
-            - "TeachPhaseStart((Teach Phase))"
-            - "BuildPhaseStart((Build Phase))"
-            - "TestPhaseStart((Test Phase))"
-            - "CleanupPhaseStart((Cleanup Phase))"
-          pattern: "<PhaseName>PhaseStart((<Phase> Phase))"
-
-        - type: "Loop nodes"
-          examples:
-            - "subgraph PlannerLoop_SG [\"Planner-Loop Subgraph\"]"
-            - "subgraph TestFixLoop_SG [\"Test-Fix-Loop Integration Subgraph\"]"
-            - "subgraph ArchLayers_SG [\"Architecture Layer Verification Subgraph\"]"
-          pattern: "subgraph <LoopName>_SG [\"<Loop Description> Subgraph\"]"
-
-        - type: "Agent spawn nodes"
-          examples:
-            - "SpawnPlannerGuidance[Spawn planner-guidance Agent]"
-            - "SpawnPlannerBuild[Spawn planner-build Agent]"
-            - "SpawnReviewer[Spawn planner-reviewer Agent]"
-          pattern: "Spawn<AgentName>[Spawn <agent-name> Agent]"
-
-        - type: "Decision nodes"
-          examples:
-            - "PlanCreated{Plan Created?}"
-            - "ReviewResult{Plan Approved?}"
-            - "CheckIterations{Max Iterations?}"
-          pattern: "<DecisionName>{<Question>?}"
-
-        - type: "Exit nodes"
-          examples:
-            - "TeachPhaseComplete((Teach Phase Complete))"
-            - "EscalateTeach((Escalate: Cannot Create Plan))"
-          pattern: "<PhaseName>Complete((<Phase> Phase Complete))"
-
-    incorrect_granularity:
-      description: "These should NOT appear as MMD nodes"
-      anti_patterns:
-        - type: "Task IDs"
-          examples:
-            - "build_001[Implement authentication]"
-            - "teach_003[Update inputs.yml]"
-            - "test_002[Write unit tests]"
-          reason: "Task IDs belong in plan YAML files, not orchestration MMD"
-
-        - type: "Individual file operations"
-          examples:
-            - "EditFile[Edit process.yml]"
-            - "WriteConfig[Write config.json]"
-            - "ReadManifest[Read manifest.yml]"
-          reason: "File operations are execution details, not orchestration flow"
-
-        - type: "Code-level operations"
-          examples:
-            - "AddFunction[Add validateUser function]"
-            - "FixBug[Fix null pointer error]"
-            - "RefactorClass[Refactor AuthService]"
-          reason: "Code operations belong in build task descriptions, not MMD"
-
-    phase_template_reference: "modules/AgenticGuidance/assets/examples/orchestration/phase_templates/"
-    note: "See teach_phase.mmd, build_phase.mmd, test_phase.mmd for correct patterns"
