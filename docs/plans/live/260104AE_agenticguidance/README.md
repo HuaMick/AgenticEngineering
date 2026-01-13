@@ -1,10 +1,22 @@
 # Plan: 260104AE_agenticguidance
 
-## Status: COMPLETE
+## Status: ACTIVE (Remediation/Refinement)
 
 **Updated**: 2026-01-12
 **Branch**: `agenticguidance`
 **Worktree**: `/home/code/AgenticEngineering-agenticguidance`
+
+## Current Work: Orchestration Loop Integration
+
+**Session 2026-01-13 (Orchestration Loop Integration)**
+
+### Loop Component Integration & Process Ownership - ACTIVE
+Diagnostics revealed over-engineered orchestration MMDs and a lack of orchestrator ownership over agent loops.
+- Created `live/plan_live_orchestration_loop_integration.yml` to refine roles.
+- Target: Orchestrator owns loop strategy; Planners request iteration needs.
+- Target: Orchestration MMDs standardized to Phase/Loop nodes.
+
+---
 
 ## Current Work: ALL 23 AGENTS PASS - Self-Review Complete
 

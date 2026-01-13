@@ -30,8 +30,9 @@ Added **plan_orchestration_decommission.yml** to complete the MMD-driven orchest
 | **5. Build: Entrypoint Migration** | 3 | Update `_orchestrate.yml` to route to orchestration-executor + update executor to discover .mmd |
 | **6. Test: Integration Testing** | 6 | Complete deferred tests (int_005-010) |
 | **7. Test: E2E Validation** | 3 | Full workflow validation (e2e_001-003) |
+| **8. Build: Loop Strategy Integration** | 4 | Orchestrator owns loop selection; Planners only request; Simplify MMD structure |
 
-**Total Estimated Effort**: 14-18 hours across 5-6 focused sessions
+**Total Estimated Effort**: 16-20 hours across 6-7 focused sessions
 
 ## Why This Matters
 

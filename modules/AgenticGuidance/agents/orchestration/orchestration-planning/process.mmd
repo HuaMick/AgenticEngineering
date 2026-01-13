@@ -4,6 +4,11 @@ flowchart LR
     %% GUIDELINE: PLANNING ONLY policy - no execution, no exploration loops.
     %% GUIDELINE: User provides all necessary context in their prompt - no discovery phase.
     %% GUIDELINE: modules/AgenticGuidance/assets/definitions/plans.yml - Plan types and folder structure
+    %% GUIDELINE: ORCHESTRATION-LOOP-OWNERSHIP
+    %% - Orchestrators OWN loop strategy selection (which loop, when to use)
+    %% - Planners REQUEST validation needs (e.g., "needs test-fix iteration")
+    %% - Planners do NOT dictate specific loop structures in their plans
+    %% - Loop definitions: modules/AgenticGuidance/assets/definitions/agent-loops.yml
     %% INPUT_PATH: modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml
     %%
     %% ENTRYPOINT AWARENESS:
@@ -73,7 +78,8 @@ flowchart LR
         %% Creates placeholder .yml files for each required phase
         PhaseDetermination --> AnalyzeObjective[Analyze Objective Type]
         AnalyzeObjective --> DeterminePhases[Determine Required Phases]
-        DeterminePhases --> PhasesDecided{Phases Decided?}
+        DeterminePhases --> SelectLoopStrategies[Select Loop Strategies per Phase]
+        SelectLoopStrategies --> PhasesDecided{Phases & Loops Decided?}
 
         %% List possible phases: teach, build, test, cleanup
         PhasesDecided -- "Yes" --> CreatePlaceholders[Create Phase Placeholder Files]
@@ -174,6 +180,13 @@ flowchart LR
     AllPhasesPlanned --> GenerateMMD[Enter MMD Generation Phase]
 
     subgraph MMDGeneration_SG ["MMD Generation Subgraph"]
+        %% FENCE: MMD-NODE-GRANULARITY
+        %% Generated MMD nodes MUST be high-level (phases, loops, agent spawns).
+        %% Task-level nodes (e.g., build_001, test_002) are FORBIDDEN in orchestration MMDs.
+        %% If task-level nodes detected in generated MMD, STOP and regenerate.
+        %% Correct: "SpawnPlannerBuild", "TestFixLoop", "BuildPhase"
+        %% Incorrect: "build_001", "Implement authentication feature", specific file operations
+
         %% Step 1: Read all plan_*.yml files from plan folder
         GenerateMMD --> ReadPlanFiles[Read All plan_*.yml Files from Plan Folder]
         ReadPlanFiles --> ExtractPhases[Extract Phases from Plan Files]
