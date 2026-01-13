@@ -1,0 +1,262 @@
+# Input Audit - planner-test
+# Exit condition: 2 consecutive iterations with 0 new issues
+
+agent_type: "planner-test"
+status: "completed"
+
+iterations:
+  - iteration_1:
+      timestamp: "2026-01-07T22:30:00Z"
+
+      context_assessment:
+        estimated_token_usage: "15-20%"
+        total_files_loaded: 42
+        heaviest_inputs:
+          - file: "assets/examples/planner/YYMMDDRepo_Branch/live/plan_live_test.yml"
+            reason: "437 lines - largest single file, detailed example with extensive guidance and success criteria"
+            estimated_tokens: 4500
+          - file: "docs/ARCHITECTURE.md"
+            reason: "224 lines - comprehensive architecture overview, includes agent tables and execution flow"
+            estimated_tokens: 2500
+          - file: "assets/definitions/plans.yml"
+            reason: "178 lines - detailed plan lifecycle, completion patterns, and folder taxonomy"
+            estimated_tokens: 2000
+          - file: "docs/agent-role-scope-matrix.md"
+            reason: "151 lines - complete matrix of all agent types with inputs and scope"
+            estimated_tokens: 1800
+          - file: "assets/guidelines/iteration.yml"
+            reason: "131 lines - extensive loop behavior definitions with examples"
+            estimated_tokens: 1500
+          - file: "assets/definitions/agent-loops.yml"
+            reason: "103 lines - loop type definitions duplicated in iteration.yml"
+            estimated_tokens: 1200
+          - file: "agents/test/test-audit/process.yml"
+            reason: "138 lines - detailed audit process with schema"
+            estimated_tokens: 1500
+          - file: "assets/definitions/strategy-agent-blind-test.yml"
+            reason: "93 lines - extensive three-layer testing documentation"
+            estimated_tokens: 1100
+
+      issues_found:
+        - category: "REDUNDANCY"
+          files:
+            - "assets/guidelines/iteration.yml"
+            - "assets/definitions/agent-loops.yml"
+          description: "Loop definitions duplicated. iteration.yml defines test-fix-loop, audit-test-fix-loop behavior with execution patterns. agent-loops.yml defines same loops with similar core_pattern. Both reference each other. Consolidate to single source."
+          severity: "medium"
+          recommendation: "Keep agent-loops.yml as canonical source for loop definitions; iteration.yml should reference it instead of duplicating"
+
+        - category: "OVERLAP"
+          files:
+            - "assets/definitions/testing-types.yml"
+            - "assets/definitions/strategy-user-simulation.yml"
+            - "assets/definitions/strategy-agent-blind-test.yml"
+          description: "testing-types.yml defines smoke_test, user_simulator, audit with brief descriptions. strategy-user-simulation.yml and strategy-agent-blind-test.yml provide detailed implementations of same concepts. Overlap in explaining what each test type does."
+          severity: "low"
+          recommendation: "testing-types.yml should be a brief index pointing to strategy-*.yml files for details"
+
+        - category: "OVERLAP"
+          files:
+            - "assets/definitions/user-stories.yml"
+            - "agents/planner/planner-test/manifest.yml"
+          description: "Both explain user story directory structure (userstories/<project>/), spawning patterns, and what agents receive. manifest.yml mandatory_user_stories section overlaps with user-stories.yml content."
+          severity: "low"
+          recommendation: "user-stories.yml should be canonical; manifest.yml should reference it"
+
+        - category: "REDUNDANCY"
+          files:
+            - "assets/definitions/folder-structure.yml"
+            - "assets/definitions/plans.yml"
+          description: "folder-structure.yml explicitly notes 'see assets/definitions/plans.yml (the authoritative source for plan structure)'. Both define plans_live, plans_completed paths. Redundant duplication."
+          severity: "medium"
+          recommendation: "folder-structure.yml should only define non-plan folders; remove plan folder definitions that are in plans.yml"
+
+        - category: "EXCESSIVE"
+          files:
+            - "assets/examples/planner/YYMMDDRepo_Branch/live/plan_live_test.yml"
+          description: "437-line example file with extremely detailed guidance blocks (80+ lines each). Includes 10 test agents with step-by-step journey definitions. While valuable as reference, most of this detail could be generated contextually rather than loaded upfront."
+          severity: "medium"
+          recommendation: "Create a condensed 100-line skeleton example showing structure; move detailed scenarios to separate optional reference files"
+
+        - category: "OVERLAP"
+          files:
+            - "docs/ARCHITECTURE.md"
+            - "docs/agent-role-scope-matrix.md"
+          description: "ARCHITECTURE.md includes agent tables (lines 116-126) that duplicate agent-role-scope-matrix.md. Matrix is more detailed but ARCHITECTURE.md provides summary version."
+          severity: "low"
+          recommendation: "ARCHITECTURE.md should reference agent-role-scope-matrix.md for agent details rather than duplicating summary"
+
+        - category: "UNUSED"
+          files:
+            - "assets/examples/planner/components/test_phase.mmd"
+            - "assets/examples/planner/components/uat_phase.mmd"
+          description: "MMD diagram files marked as required: false. For a planner-test agent creating YAML plans, Mermaid diagrams provide visual reference but are not actionable inputs for plan generation. Context cost without clear benefit."
+          severity: "low"
+          recommendation: "Remove from inputs.yml or move to documentation-only reference"
+
+        - category: "OVERLAP"
+          files:
+            - "assets/guidelines/testing.yml"
+            - "assets/definitions/strategy-*.yml (8 files)"
+          description: "testing.yml inputs section references all 8 strategy files. It then defines rules that summarize strategy concepts. Strategy files are then loaded separately. Double-loading of conceptually similar content."
+          severity: "medium"
+          recommendation: "testing.yml should be high-level principles only; strategy selection should load only the relevant strategy file, not all 8"
+
+        - category: "REDUNDANCY"
+          files:
+            - "assets/definitions/test-creation-principles.yml"
+            - "assets/definitions/reward-hacking.yml"
+          description: "test-creation-principles.yml section 2 'Avoid reward hacking patterns' duplicates content from reward-hacking.yml. Same examples: mocking, permissive assertions, help-text-only."
+          severity: "medium"
+          recommendation: "test-creation-principles.yml should reference reward-hacking.yml for anti-patterns"
+
+        - category: "MISSING_CONSOLIDATION"
+          files:
+            - "assets/definitions/test-builder-role.yml"
+            - "assets/definitions/test-structure.yml"
+            - "assets/definitions/test-creation-principles.yml"
+          description: "Three small test-related definition files (22, 27, 36 lines). All relate to test creation. Could be consolidated into single test-creation.yml."
+          severity: "low"
+          recommendation: "Consolidate into single file for reduced file count and clearer organization"
+
+        - category: "STALE"
+          files:
+            - "agents/planner/planner-test/manifest.yml"
+          description: "References test-user-simulator and test-service as NOT_MIGRATED with legacy paths (modules/legacy/MyAgents/...). These paths may not exist in current structure. No verification that legacy location is accessible."
+          severity: "high"
+          recommendation: "Verify legacy paths exist or update references; consider migrating remaining test agents"
+
+        - category: "OVERLAP"
+          files:
+            - "core-system.yml layer"
+            - "core-guidelines.yml layer"
+          description: "Both layers are required: true and loaded for all agents. Combined they reference 13 files that are always loaded. For a specialized planner-test agent, some content may be unnecessary (e.g., entrypoints.yml, domains.yml, worktree-and-branching.yml)."
+          severity: "low"
+          recommendation: "Consider if all 13 files are truly needed for every agent or if layers should be more specialized"
+
+      issues_count: 12
+
+      summary: |
+        Planner-test agent loads 42 files through layer architecture and core_inputs.
+        Primary issues are content duplication between guidelines and definitions (loop definitions,
+        testing strategies, plan folder structures) and excessive example file size.
+
+        High-priority fix: Verify/update stale legacy agent path references in manifest.yml.
+
+        Medium-priority consolidation opportunities:
+        - Merge iteration.yml and agent-loops.yml (loop definitions)
+        - Merge folder-structure.yml plan sections into plans.yml
+        - Reduce plan_live_test.yml example from 437 to ~100 lines
+        - Have test-creation-principles.yml reference reward-hacking.yml
+        - testing.yml should not reference all 8 strategy files
+
+        The layer architecture is well-structured but some referenced content is duplicated
+        across files rather than using single-source-of-truth pattern consistently.
+
+  - iteration_2:
+      timestamp: "2026-01-07T23:45:00Z"
+
+      audit_scope:
+        files_reviewed:
+          - "agents/planner/planner-test/inputs.yml"
+          - "agents/planner/planner-test/process.yml"
+          - "agents/planner/planner-test/manifest.yml"
+          - "assets/inputs/core-system.yml"
+          - "assets/inputs/core-guidelines.yml"
+          - "assets/inputs/planner-shared.yml"
+          - "assets/inputs/test-shared.yml"
+          - "assets/guidelines/iteration.yml"
+          - "assets/guidelines/testing.yml"
+          - "assets/guidelines/reward-hacking-prevention.yml"
+          - "assets/definitions/agent-loops.yml"
+          - "assets/definitions/testing-types.yml"
+          - "assets/definitions/user-stories.yml"
+          - "assets/definitions/folder-structure.yml"
+          - "assets/definitions/plans.yml"
+          - "assets/definitions/reward-hacking.yml"
+          - "assets/definitions/test-creation-principles.yml"
+          - "assets/definitions/test-builder-role.yml"
+          - "assets/definitions/test-structure.yml"
+          - "assets/definitions/iteration-approach.yml"
+          - "assets/definitions/test-execution-workflow.yml"
+          - "assets/definitions/testing-documentation.yml"
+          - "assets/definitions/acceptable-skips.yml"
+          - "assets/definitions/strategy-*.yml (9 files)"
+          - "assets/examples/planner/YYMMDDRepo_Branch/live/plan_live_test.yml"
+          - "assets/examples/planner/components/test_phase.mmd"
+          - "assets/examples/planner/components/uat_phase.mmd"
+          - "agents/test/test-runner/process.yml"
+          - "agents/test/test-audit/process.yml"
+          - "docs/ARCHITECTURE.md"
+          - "docs/agent-role-scope-matrix.md"
+
+        verification_checks:
+          - "All file references in inputs.yml resolve to existing files"
+          - "All layer files reference files that exist"
+          - "outcome-verification.yml and role-separation.yml exist (referenced in reward-hacking-prevention.yml)"
+          - "strategy-guidance-blind-test.yml exists as 9th strategy file (not loaded by planner-test)"
+          - "userstories/ directory exists with MyAgents/, MyAgentsFrontend/, RemoteAgents/ subdirs"
+          - "test-user-simulator, test-service, test-builder directories confirmed NOT_MIGRATED"
+
+      new_issues_found: []
+
+      new_issues_count: 0
+
+      analysis: |
+        Thorough review of all transitively loaded files revealed no new context overload issues
+        beyond those identified in iteration 1. The 12 issues found in iteration 1 comprehensively
+        cover:
+        - Content duplication patterns (loop definitions, test strategies, folder structures)
+        - Excessive file sizes (example plan at 436 lines)
+        - Overlap between guidelines and definitions
+        - Stale/NOT_MIGRATED agent references in manifest
+        - Unused MMD diagram files for YAML-generating agents
+        - Missing consolidation opportunities for small related files
+
+        All file paths verified to exist. Layer architecture is functioning correctly for
+        transitive loading. No phantom files, no additional redundancy patterns, no new
+        structural inconsistencies discovered.
+
+      exit_condition_met: false
+      reason: "First iteration with 0 new issues. Need 2 consecutive iterations with 0 new issues to exit."
+
+  - iteration_3:
+      timestamp: "2026-01-07T23:50:00Z"
+
+      audit_scope:
+        confirmation_review: |
+          Re-verified all inputs and transitively loaded files for planner-test agent.
+          Cross-referenced against iteration 1 issues to ensure no overlap.
+
+      new_issues_found: []
+
+      new_issues_count: 0
+
+      analysis: |
+        Confirmation review completed. No new context overload issues identified.
+        The 12 issues from iteration 1 remain the complete set of findings for this agent.
+
+      exit_condition_met: true
+      reason: "2 consecutive iterations (iteration_2 and iteration_3) with 0 new issues found."
+
+completion_summary: |
+  Input audit for planner-test completed with exit condition met.
+  Total issues found: 12 (all in iteration 1)
+
+  High severity (1):
+  - STALE: NOT_MIGRATED agent references in manifest.yml
+
+  Medium severity (5):
+  - REDUNDANCY: iteration.yml / agent-loops.yml loop definitions
+  - REDUNDANCY: folder-structure.yml / plans.yml plan folder definitions
+  - EXCESSIVE: plan_live_test.yml example at 436 lines
+  - OVERLAP: testing.yml references all 8 strategy-*.yml files
+  - REDUNDANCY: test-creation-principles.yml / reward-hacking.yml anti-patterns
+
+  Low severity (6):
+  - OVERLAP: testing-types.yml / strategy-*.yml
+  - OVERLAP: user-stories.yml / manifest.yml
+  - OVERLAP: ARCHITECTURE.md / agent-role-scope-matrix.md
+  - UNUSED: test_phase.mmd / uat_phase.mmd for YAML generation
+  - MISSING_CONSOLIDATION: 3 small test-related definition files
+  - OVERLAP: core layers load 13 files for all agents

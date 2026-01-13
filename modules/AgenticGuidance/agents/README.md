@@ -26,15 +26,15 @@ High-level orchestration agents that coordinate planning and execution workflows
 | Agent | Version | Description | Status |
 |-------|---------|-------------|--------|
 | orchestration-planning | 2.0 | Planning-only workflows - human-in-the-loop plan creation and approval | Complete |
-| orchestration-build | 2.0 | Code implementation workflows (features, bug fixes, refactoring) | Complete |
-| orchestration-guidance | 1.0 | Guidance/context engineering workflows (agent teaching, process improvements) | Complete |
+| ~~orchestration-build~~ | 2.0 | ~~Code implementation workflows~~ | **DEPRECATED** (use orchestration-executor) |
+| ~~orchestration-guidance~~ | 1.0 | ~~Guidance/context engineering workflows~~ | **DEPRECATED** (use orchestration-executor) |
 | orchestration-executor | 2.0 | Generic MMD-driven execution - dynamic agent routing from Plan-MMD metadata | Complete |
 
 **Routing Logic:**
-- `orchestration-planning`: Planning-only workflows, produces approved plans for downstream use
-- `orchestration-build`: Code implementation workflows (features, bug fixes, refactoring)
-- `orchestration-guidance`: Guidance/context engineering workflows (agent teaching, process improvements)
-- `orchestration-executor`: Generic MMD-driven execution (dynamic agent routing from Plan-MMD metadata)
+- `orchestration-planning`: Planning-only workflows, produces approved plans for downstream use. **Also generates orchestration_*.mmd** for executor consumption.
+- ~~`orchestration-build`~~: **DEPRECATED** - Replaced by `orchestration-executor` with dynamic MMD routing
+- ~~`orchestration-guidance`~~: **DEPRECATED** - Replaced by `orchestration-executor` with dynamic MMD routing
+- `orchestration-executor`: Generic MMD-driven execution (dynamic agent routing from Plan-MMD metadata). **Use this for all execution workflows.**
 
 ---
 

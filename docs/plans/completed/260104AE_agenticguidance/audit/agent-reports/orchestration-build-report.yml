@@ -1,0 +1,383 @@
+# Test Guidance Simulator Report
+# Agent: orchestration-build
+# Generated: 2026-01-06
+# Reviewer: test-guidance-simulator
+
+summary:
+  files_reviewed:
+    - process.mmd
+    - inputs.yml
+    - manifest.yml
+  missing_files:
+    - process.yml  # Referenced in initial request but does not exist; only process.mmd exists
+
+findings:
+  # ============================================================================
+  # PROCESS.MMD FINDINGS
+  # ============================================================================
+  process_mmd:
+    critical:
+      - id: PROC-CRIT-001
+        title: "Missing strategy-guidance-blind-test.yml definition file path"
+        description: |
+          Line 173 references "GUIDELINE: assets/definitions/strategy-guidance-blind-test.yml"
+          but this file is NOT listed in inputs.yml. The agent would need to search for
+          this file to understand the guidance validation strategy.
+        location: "process.mmd:173"
+        impact: "Agent may not load critical strategy definition during execution"
+        resolution: "Add strategy-guidance-blind-test.yml to inputs.yml guidelines section"
+
+      - id: PROC-CRIT-002
+        title: "Undefined linkStyle indices in Mermaid diagram"
+        description: |
+          Line 243 references linkStyle indices "29,35,47,48,49,54" but Mermaid links
+          are not explicitly numbered. These numbers appear to reference specific
+          connection indices that may shift if the diagram is modified.
+        location: "process.mmd:243"
+        impact: "Diagram rendering may have incorrect styling; maintenance risk"
+        resolution: "Add explicit link labels or document the link mapping"
+
+    high:
+      - id: PROC-HIGH-001
+        title: "Inconsistent agent naming: 'test-runner' vs documented agents"
+        description: |
+          Line 132 references "test-runner" but agent-categories.yml lists this as
+          a valid agent. However, the spawn pattern is unclear - no manifest or
+          process file path is provided for context loading.
+        location: "process.mmd:132"
+        impact: "Agent may not know which specific test runner to spawn"
+        resolution: "Reference test-runner manifest explicitly in spawn decision"
+
+      - id: PROC-HIGH-002
+        title: "Missing planner-guidance-testing in inputs.yml"
+        description: |
+          Line 179 spawns 'planner-guidance-testing' agent but this agent is not
+          referenced in inputs.yml. The agent process file exists at
+          agents/planner/planner-guidance-testing/process.yml but is not loaded.
+        location: "process.mmd:179"
+        impact: "No guidance on how to invoke or pass context to planner-guidance-testing"
+        resolution: "Add planner-guidance-testing reference to inputs.yml"
+
+      - id: PROC-HIGH-003
+        title: "Ambiguous failure categorization logic"
+        description: |
+          Lines 139-141 show "TestsPassed -- No: Escalate --> CategorizeTestFailure"
+          but no criteria defines when to escalate vs. retry in-iteration.
+          The decision between "No: Fix in Iteration" (line 134) and "No: Escalate"
+          (line 139) lacks clear decision rules.
+        location: "process.mmd:139-141"
+        impact: "Agent may inconsistently route failures"
+        resolution: "Add explicit criteria for escalation vs. in-iteration fix"
+
+      - id: PROC-HIGH-004
+        title: "CLI commands referenced but not all documented in inputs.yml"
+        description: |
+          Process uses 'agentic plan move tasks' and 'agentic plan move folder'
+          (lines 229-230) but inputs.yml only partially documents these commands.
+          The move_task, move_tasks, move_folder commands are listed but their
+          exact semantics (copy vs move) contradict the COPY-NOT-MOVE pattern.
+        location: "process.mmd:229-230, inputs.yml:53-55"
+        impact: "Confusion about whether to copy or move plan folders"
+        resolution: "Clarify CLI commands align with COPY-NOT-MOVE pattern from plans.yml"
+
+    medium:
+      - id: PROC-MED-001
+        title: "Handoff contract lacks schema definition"
+        description: |
+          Lines 58-59 describe handoff contract outputs (plan_live_build.yml,
+          plan_live_test.yml) but no schema reference is provided to validate
+          the structure of these files.
+        location: "process.mmd:58-59"
+        impact: "Agents cannot validate plan file structure"
+        resolution: "Reference plan file schema in assets/definitions/ or provide inline"
+
+      - id: PROC-MED-002
+        title: "AskUser and AskUserPlan terminal nodes lack guidance"
+        description: |
+          Multiple paths lead to AskUser (lines 26, 38) and AskUserPlan (lines 73, 96)
+          but no guidance on what information to collect or how to format the request.
+        location: "process.mmd:26, 38, 73, 96"
+        impact: "Inconsistent user interaction patterns"
+        resolution: "Add user interaction format guidance in inputs.yml"
+
+      - id: PROC-MED-003
+        title: "Subgraph naming inconsistency"
+        description: |
+          'PlanningDelegation' subgraph (line 63) uses CamelCase while
+          'Implementation' subgraph (line 121) uses single word. Minor but
+          affects diagram readability.
+        location: "process.mmd:63, 121"
+        impact: "Minor visual inconsistency"
+        resolution: "Standardize subgraph naming convention"
+
+    low:
+      - id: PROC-LOW-001
+        title: "Comments reference 'BEHAVIOR' without definition"
+        description: |
+          Multiple comments use "BEHAVIOR:" prefix (lines 122, 149) but this
+          term is not defined in the guidance framework vocabulary.
+        location: "process.mmd:122, 149"
+        impact: "Terminology inconsistency"
+        resolution: "Define BEHAVIOR in guidance vocabulary or use standard terms"
+
+      - id: PROC-LOW-002
+        title: "Loop iteration tracking not explicitly shown"
+        description: |
+          MAX_ITERATIONS is referenced (lines 113, 175) but the flow doesn't
+          show explicit iteration counters or the path when max is reached.
+        location: "process.mmd:113, 175"
+        impact: "Implementation ambiguity for iteration tracking"
+        resolution: "Add iteration counter state and max-reached exit path"
+
+  # ============================================================================
+  # INPUTS.YML FINDINGS
+  # ============================================================================
+  inputs_yml:
+    critical:
+      - id: INP-CRIT-001
+        title: "required_inputs section uses invalid 'OR' pattern"
+        description: |
+          Lines 19-24 define a single required input named "approved_plan_path OR planning_objective"
+          with validation "At least one must be provided". This is not standard YAML schema
+          and an agent cannot programmatically validate this conditional requirement.
+        location: "inputs.yml:19-24"
+        impact: "Agent cannot validate inputs; may proceed with missing context"
+        resolution: |
+          Use oneOf or conditional schema pattern:
+          required_inputs:
+            oneOf:
+              - approved_plan_path
+              - planning_objective
+
+      - id: INP-CRIT-002
+        title: "Duplicate input definitions for approved_plan_path and planning_objective"
+        description: |
+          Lines 19-24 define these in required_inputs, then lines 66-83 redefine them
+          in the inputs list with 'required: false'. This contradiction is confusing.
+        location: "inputs.yml:19-24, 66-83"
+        impact: "Agent receives conflicting signals about which inputs are required"
+        resolution: "Consolidate definitions; use single source of truth"
+
+    high:
+      - id: INP-HIGH-001
+        title: "failure_context schema lacks enum values"
+        description: |
+          Lines 89-93 define failure_context.failure_type as enum but only show
+          the type signature, not the actual values (TEST_FAILURE, CICD_FAILURE, etc.).
+          These are documented in process.mmd but not in the input schema.
+        location: "inputs.yml:89-93"
+        impact: "No validation that failure_type uses correct values"
+        resolution: "Define enum values explicitly: [TEST_FAILURE, CICD_FAILURE, GUIDANCE_GAP, AUDIT_FAILURE]"
+
+      - id: INP-HIGH-002
+        title: "Missing output_schema section"
+        description: |
+          inputs.yml defines inputs but no outputs. Process.mmd mentions outputs
+          (implemented code, tests, completed plans) but these are not structured.
+        location: "inputs.yml (missing section)"
+        impact: "Downstream agents cannot validate orchestration-build outputs"
+        resolution: "Add outputs section defining success artifacts and their locations"
+
+      - id: INP-HIGH-003
+        title: "CLI commands section mixes reference and executable"
+        description: |
+          Lines 40-56 define CLI commands as input context, but these are really
+          executable references. The structure doesn't distinguish between
+          informational context and actionable commands.
+        location: "inputs.yml:40-56"
+        impact: "Ambiguity about when to execute vs. reference commands"
+        resolution: "Separate into 'cli_reference' (informational) and 'cli_actions' (executable)"
+
+    medium:
+      - id: INP-MED-001
+        title: "Referenced file does not exist in inputs.yml"
+        description: |
+          Line 136 references "agents/test/test-final-output/process.yml" but
+          process.mmd also needs the inputs.yml for that agent to understand
+          expected context for spawning.
+        location: "inputs.yml:136-137"
+        impact: "Incomplete spawn context"
+        resolution: "Add test-final-output/inputs.yml reference"
+
+      - id: INP-MED-002
+        title: "Missing example for failure_context object"
+        description: |
+          Other inputs have 'example' fields (lines 70, 80) but failure_context
+          (lines 85-96) lacks a concrete example of the failure report structure.
+        location: "inputs.yml:85-96"
+        impact: "Agent may generate incorrect failure context format"
+        resolution: "Add example failure_context with all fields populated"
+
+      - id: INP-MED-003
+        title: "Guideline location 'docs/agent-role-scope-matrix.md' uses different path convention"
+        description: |
+          Line 134-135 references 'docs/agent-role-scope-matrix.md' using docs/ prefix
+          but header says paths are relative to AgenticGuidance module root. This file
+          is actually at docs/ within the module but the prefix is inconsistent with
+          assets/ paths used elsewhere.
+        location: "inputs.yml:134-135"
+        impact: "Path resolution confusion"
+        resolution: "Document that docs/ paths are module-relative like assets/ paths"
+
+    low:
+      - id: INP-LOW-001
+        title: "No version field in inputs.yml"
+        description: |
+          manifest.yml has version "1.0" but inputs.yml lacks version tracking.
+          Changes to inputs may break agents if versions diverge.
+        location: "inputs.yml (missing)"
+        impact: "No input compatibility tracking"
+        resolution: "Add version field matching manifest.yml"
+
+      - id: INP-LOW-002
+        title: "Guidelines section could benefit from categorization"
+        description: |
+          Lines 101-137 list many guidelines/definitions without grouping.
+          Could be organized into: 'policy', 'definitions', 'agent_references'.
+        location: "inputs.yml:101-137"
+        impact: "Reduced readability"
+        resolution: "Group inputs by category with headers"
+
+  # ============================================================================
+  # MANIFEST.YML FINDINGS
+  # ============================================================================
+  manifest_yml:
+    critical: []  # No critical issues
+
+    high:
+      - id: MAN-HIGH-001
+        title: "Manifest lacks category and boundaries"
+        description: |
+          agent-categories.yml defines orchestration category with boundaries
+          "Orchestration agents coordinate; they delegate work to specialist agents"
+          but manifest.yml doesn't reference this boundary definition.
+        location: "manifest.yml (missing)"
+        impact: "Agent may exceed scope without explicit boundary reference"
+        resolution: "Add category_reference: assets/definitions/agent-categories.yml#orchestration"
+
+      - id: MAN-HIGH-002
+        title: "Manifest lacks spawns definition"
+        description: |
+          process.mmd spawns multiple agents (deploy-worktree, orchestration-planning,
+          build-python, build-flutter, test-runner, deploy-cicd, planner-guidance-testing,
+          test-guidance-simulator, test-final-output) but manifest doesn't declare these.
+        location: "manifest.yml (missing)"
+        impact: "No validation that spawned agents exist and are compatible"
+        resolution: |
+          Add spawns section:
+          spawns:
+            - deploy-worktree
+            - orchestration-planning
+            - build-python
+            - build-flutter
+            # etc.
+
+    medium:
+      - id: MAN-MED-001
+        title: "Purpose mentions '_orchestrate.yml entrypoint' without explanation"
+        description: |
+          Line 11 references "_orchestrate.yml entrypoint" but this file/concept
+          is not explained in the manifest or inputs.
+        location: "manifest.yml:11"
+        impact: "Entry point mechanism unclear"
+        resolution: "Add entry_points section or link to explanation"
+
+      - id: MAN-MED-002
+        title: "Missing process_file reference"
+        description: |
+          Manifest should reference the process file (process.mmd) explicitly
+          so agents know where to find execution logic.
+        location: "manifest.yml (missing)"
+        impact: "Agents must infer process file location"
+        resolution: "Add process_file: process.mmd"
+
+    low:
+      - id: MAN-LOW-001
+        title: "Description could include loop participation"
+        description: |
+          Agent participates in test-fix-loop, guidance-test-loop, and others
+          but description doesn't mention loop roles.
+        location: "manifest.yml:3-4"
+        impact: "Incomplete role understanding"
+        resolution: "Add loop participation to description"
+
+  # ============================================================================
+  # CROSS-FILE CONSISTENCY FINDINGS
+  # ============================================================================
+  cross_file:
+    critical:
+      - id: CROSS-CRIT-001
+        title: "agent-role-scope-matrix.md missing orchestration-build entry"
+        description: |
+          The matrix has an 'orchestrator' entry but not 'orchestration-build'
+          or 'orchestration-planning' as separate entries. The inputs.yml
+          references this matrix for agent-task alignment but the matrix
+          doesn't cover orchestration sub-agents.
+        location: "docs/agent-role-scope-matrix.md:148-150"
+        impact: "Cannot perform agent-task alignment verification per orchestration-policy.yml"
+        resolution: "Add orchestration-build and orchestration-planning entries to matrix"
+
+    high:
+      - id: CROSS-HIGH-001
+        title: "Version mismatch risk between manifest and referenced definitions"
+        description: |
+          manifest.yml is version 1.0. Referenced files (agent-loops.yml,
+          agent-categories.yml, plans.yml) have no version. Changes to
+          definitions could break the orchestration-build process silently.
+        location: "manifest.yml:5, all referenced definitions"
+        impact: "Breaking changes may go undetected"
+        resolution: "Add version tracking to all referenced definitions"
+
+      - id: CROSS-HIGH-002
+        title: "process.mmd references agents not in agent-categories.yml"
+        description: |
+          process.mmd spawns 'planner-guidance-testing' (line 179) but
+          agent-categories.yml lists 'planner-guidance-testing' under planner.
+          This is correct but test-guidance-simulator is listed under test.
+          The spawn chain is valid but inputs.yml doesn't reference these.
+        location: "process.mmd:179-180, agent-categories.yml"
+        impact: "Incomplete input loading for spawned agents"
+        resolution: "Add all spawned agent references to inputs.yml"
+
+    medium:
+      - id: CROSS-MED-001
+        title: "Inconsistent target_project_path documentation"
+        description: |
+          orchestration-build/inputs.yml and orchestration-planning/inputs.yml
+          both define target_project_path with slightly different descriptions.
+          Should share a definition from assets/definitions/.
+        location: "inputs.yml:26-30, orchestration-planning/inputs.yml:25-29"
+        impact: "Potential drift in path handling between orchestrators"
+        resolution: "Create shared definition in assets/definitions/path.yml"
+
+      - id: CROSS-MED-002
+        title: "CLI commands duplicated between inputs.yml files"
+        description: |
+          Both orchestration-build/inputs.yml and orchestration-planning/inputs.yml
+          define identical cli_commands sections. Should be centralized.
+        location: "inputs.yml:40-56, orchestration-planning/inputs.yml:39-51"
+        impact: "Maintenance burden; risk of drift"
+        resolution: "Move to assets/definitions/cli-commands.yml and reference"
+
+recommendations:
+  immediate:
+    - "Add strategy-guidance-blind-test.yml to inputs.yml (PROC-CRIT-001)"
+    - "Fix required_inputs schema to use proper conditional pattern (INP-CRIT-001)"
+    - "Add orchestration-build entry to agent-role-scope-matrix.md (CROSS-CRIT-001)"
+
+  short_term:
+    - "Add output_schema section to inputs.yml (INP-HIGH-002)"
+    - "Add spawns declaration to manifest.yml (MAN-HIGH-002)"
+    - "Clarify escalation vs retry criteria for test failures (PROC-HIGH-003)"
+
+  long_term:
+    - "Centralize CLI commands to shared definition (CROSS-MED-002)"
+    - "Add version tracking to all definition files (CROSS-HIGH-001)"
+    - "Create comprehensive plan file schema (PROC-MED-001)"
+
+severity_summary:
+  critical: 4
+  high: 11
+  medium: 10
+  low: 5
+  total: 30

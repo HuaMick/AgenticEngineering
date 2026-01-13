@@ -75,6 +75,38 @@ process:
       - Ask agent to identify: ambiguities, broken references, missing context, unclear steps
       - Request agent attempt a minimal task execution to expose guidance gaps
       - Collect agent's feedback on friction points encountered
+
+      HOW TO SPAWN SUBAGENTS:
+      Use Claude Code's Task tool to spawn target agents as subagents. The Task tool creates
+      an isolated agent session that runs in its own context and returns results when complete.
+
+      Example Task tool invocation for self-review:
+      ```
+      Task tool parameters:
+        description: "Spawn target agent for guidance self-review"
+        prompt: |
+          You are executing agent: {target_agent_name}
+          Your guidance files are located at:
+          - process.yml: {path_to_process.yml}
+          - inputs.yml: {path_to_inputs.yml}
+
+          TASK: Perform a self-guided review of your own guidance.
+          1. Read your process.yml and inputs.yml files
+          2. Attempt to understand your task goal and execution steps
+          3. Report any friction points encountered:
+             - Ambiguities requiring interpretation
+             - Broken or missing file references
+             - Missing context or prerequisites
+             - Unclear or contradictory instructions
+          4. Attempt minimal task execution to expose guidance gaps
+          5. Return structured feedback on all issues found
+      ```
+
+      Collecting feedback from spawned sessions:
+      - The Task tool returns the subagent's complete output when the session ends
+      - Parse the returned output for friction points and issues reported
+      - Subagents run in their own isolated context with no shared state
+      - Each spawned agent only sees files explicitly mentioned in the prompt
     - |
       Aggregate feedback from spawned agent sessions:
       - Collect all reported ambiguities (unclear guidance requiring interpretation)
@@ -98,7 +130,7 @@ process:
 
   guidelines:
     # Core guidelines: See modules/AgenticGuidance/assets/guidelines/ (context-minimisation.yml, testing.yml)
-    # Core definitions: See modules/AgenticGuidance/assets/definitions/ (strategy-guidance-blind-test.yml, guidance-test-scenarios.yml)
+    # Core definitions: See modules/AgenticGuidance/assets/definitions/ (guidance-test-scenarios.yml, friction.yml)
     # Guidance simulator specifics: See inputs.yml for guidance_blind_test, target_agent, friction_categorization
     - |
       SPAWN target agents to perform self-guided review - this exposes authentic guidance issues.

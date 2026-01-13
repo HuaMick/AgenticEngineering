@@ -1,0 +1,318 @@
+# Live Plan Structure - Teach Phase
+# Plan: 260104AE_agenticguidance
+# Generated: 2026-01-06 (Session 3)
+# Source: Agent self-review testing results (audit/260106_session2_self_review_results.yml)
+#
+# KEY PRINCIPLES:
+# 1. INPUTS: Guidance files (process.yml, inputs.yml, manifest.yml, definitions)
+# 2. GUIDANCE: Focused on "Context Engineering" - improving paths, fences, and signposts
+# 3. SUCCESS CRITERIA: Experience-driven and observable
+# 4. NO CODE: Teaching is about refining the AI's "mental model" via documentation/guidance
+
+# ============================================================
+# SUPERSEDED NOTICE
+# ============================================================
+# This plan has been SUPERSEDED by: plan_live_teach_consolidated.yml
+# The consolidated plan merges tasks from:
+# - This file (plan_live_teach.yml)
+# - Friction Remediation Phase 2 from plan_agenticguidance.yml
+# - plan_live_orchestration_remodel.yml
+# DO NOT execute this plan - use plan_live_teach_consolidated.yml instead
+# ============================================================
+superseded_by: "live/plan_live_teach_consolidated.yml"
+superseded_date: "2026-01-07"
+status: "superseded"
+
+worktree: "/home/code/AgenticEngineering-agenticguidance"
+liveplan: "docs/plans/live/260104AE_agenticguidance/live/plan_live_teach.yml"
+completedplan: "docs/plans/live/260104AE_agenticguidance/completed/plan_completed_teach.yml"
+
+live-plans:
+  - id: TEACH-260106-001
+    title: Guidance Friction Remediation
+    description: |
+      Refine agent guidance to address friction points discovered during self-review testing.
+      180+ friction points identified across 19 agents. This plan focuses on cross-cutting
+      guidance improvements (teaching) rather than code changes (build).
+
+    phases:
+      # ========================================
+      # TEACH PHASE 1: Fragment Reference Resolution
+      # Priority: CRITICAL
+      # ========================================
+      - name: Fragment Reference Resolution
+        priority: critical
+        execution_groups:
+          - execution: sequential
+            agents:
+              - type: teacher
+                id: teach_frag_001
+                inputs:
+                  - assets/definitions/fragment-references.yml
+                  - assets/definitions/agent-loops.yml
+                  - assets/definitions/agent-categories.yml
+                guidance: |
+                  Context: Fragment references like 'agent-loops.yml#planner-loop' assume top-level
+                  keys, but actual file structure nests under 'loop_types.planner-loop'. Same issue
+                  for 'agent-categories.yml#planner' which is under 'agent_categories.planner'.
+
+                  Instructions:
+                  1. Update fragment-references.yml to support dot-notation for nested keys
+                     Example: agent-loops.yml#loop_types.planner-loop
+                  2. Add concrete examples showing both top-level and nested resolution
+                  3. Add a FENCE: "Fragment references MUST match actual file structure"
+
+                  Why this matters: Agents cannot resolve fragment references correctly, loading
+                  entire files instead of specific sections.
+                success_criteria:
+                  - fragment-references.yml documents dot-notation for nested keys
+                  - At least 3 concrete examples added (both valid and invalid patterns)
+                  - FENCE instruction explicitly states matching requirement
+
+      # ========================================
+      # TEACH PHASE 2: Process File Format Standardization
+      # Priority: CRITICAL
+      # ========================================
+      - name: Process File Format Standardization
+        priority: critical
+        execution_groups:
+          - execution: parallel
+            agents:
+              - type: teacher
+                id: teach_proc_001
+                inputs:
+                  - assets/definitions/agent-context-files.yml
+                  - docs/agent-role-scope-matrix.md
+                  - agents/orchestration/orchestration-planning/process.mmd
+                guidance: |
+                  Context: orchestration-planning and orchestration-build have process.mmd
+                  but current framework docs imply process.yml is mandatory. We want to
+                  standardize .mmd as a first-class citizen for orchestration logic.
+
+                  Instructions:
+                  1. Update agent-context-files.yml to explicitly allow .mmd for process logic
+                  2. Update agent-role-scope-matrix.md to reference .mmd files for orchestration
+                  3. Add SIGNPOST explaining when to use .mmd vs .yml formats
+                  4. Document the pattern in orchestration manifest files
+
+                  Why this matters: Consistent file patterns across agent types while
+                  supporting the visual clarity of Mermaid diagrams.
+                success_criteria:
+                  - assets/definitions/agent-context-files.yml documents .mmd as valid process format
+                  - agent-role-scope-matrix.md points to orchestration .mmd files
+                  - Documentation explains .mmd vs .yml usage pattern
+
+      # ========================================
+      # TEACH PHASE 3: Output Schema Documentation
+      # Priority: HIGH
+      # ========================================
+      - name: Output Schema Documentation
+        priority: high
+        execution_groups:
+          - execution: parallel
+            agents:
+              - type: teacher
+                id: teach_out_001
+                inputs:
+                  - agents/orchestration/orchestration-planning/inputs.yml
+                  - agents/planner/planner-build/process.yml
+                  - agents/planner/planner-guidance/process.yml
+                  - agents/planner/planner-test/process.yml
+                guidance: |
+                  Context: Process files declare outputs: [] but steps describe generating artifacts.
+                  No formal output schema for downstream consumers.
+
+                  Instructions:
+                  1. For each agent with outputs: [], populate with formal schema
+                  2. Schema should include: path templates, required fields, schema references
+                  3. Add FENCE: "Output must match declared schema before marking task complete"
+
+                  Why this matters: Downstream agents cannot validate expected outputs.
+                  No contract exists for output structure.
+                success_criteria:
+                  - All listed agents have populated outputs sections
+                  - Each output has path template and required fields documented
+                  - FENCE instruction enforces output validation
+
+      # ========================================
+      # TEACH PHASE 4: Required Input Validation
+      # Priority: HIGH
+      # ========================================
+      - name: Required Input Validation
+        priority: high
+        execution_groups:
+          - execution: parallel
+            agents:
+              - type: teacher
+                id: teach_inp_001
+                inputs:
+                  - agents/planner/planner-guidance/process.yml
+                  - agents/planner/planner-build/process.yml
+                  - agents/planner/planner-test/process.yml
+                guidance: |
+                  Context: inputs.yml defines required_inputs but process.yml step 1 only says
+                  "if an input cannot be found do not proceed" without explicit validation.
+
+                  Instructions:
+                  1. Update process.yml step 1 to explicitly list each required input by name
+                  2. Add error messaging pattern for missing inputs
+                  3. Add SIGNPOST showing proper validation sequence
+
+                  Why this matters: Agents may proceed without required inputs or fail silently.
+                success_criteria:
+                  - Step 1 explicitly lists all required inputs from inputs.yml
+                  - Error message template defined for each missing input
+                  - Example validation sequence documented
+
+      # ========================================
+      # TEACH PHASE 5: Version Alignment
+      # Priority: HIGH
+      # ========================================
+      - name: Version Alignment
+        priority: high
+        execution_groups:
+          - execution: sequential
+            agents:
+              - type: teacher
+                id: teach_ver_001
+                inputs:
+                  - agents/planner/planner-build/manifest.yml
+                  - agents/planner/planner-build/inputs.yml
+                  - agents/planner/planner-guidance/manifest.yml
+                  - agents/planner/planner-guidance/inputs.yml
+                guidance: |
+                  Context: Multiple agents have different versions in manifest.yml vs inputs.yml.
+                  Example: planner-build has manifest 1.0 but inputs 2.0-p1.
+
+                  Instructions:
+                  1. Align version numbers: manifest.yml is source of truth
+                  2. Document version scheme: "X.Y where X = architecture, Y = iteration"
+                  3. Add FENCE: "All files in agent folder MUST use same version as manifest.yml"
+
+                  Why this matters: Orchestrators checking version compatibility get confused.
+                success_criteria:
+                  - planner-build: manifest and inputs both show same version
+                  - planner-guidance: manifest and inputs both show same version
+                  - Version scheme documented in each manifest.yml
+
+      # ========================================
+      # TEACH PHASE 6: CLI Command Centralization
+      # Priority: HIGH
+      # ========================================
+      - name: CLI Command Centralization
+        priority: high
+        execution_groups:
+          - execution: sequential
+            agents:
+              - type: teacher
+                id: teach_cli_001
+                inputs:
+                  - agents/orchestration/orchestration-build/inputs.yml
+                  - agents/orchestration/orchestration-planning/inputs.yml
+                guidance: |
+                  Context: CLI commands are duplicated between inputs.yml files with slight
+                  variations. Maintenance burden and risk of drift.
+
+                  Instructions:
+                  1. Create assets/definitions/cli-commands.yml with all CLI commands
+                  2. Update orchestration-build/inputs.yml to reference shared definition
+                  3. Update orchestration-planning/inputs.yml to reference shared definition
+                  4. Add SIGNPOST showing how to extend CLI commands
+
+                  Why this matters: Single source of truth reduces maintenance and errors.
+                success_criteria:
+                  - assets/definitions/cli-commands.yml exists with all commands
+                  - Both orchestration inputs.yml files reference shared definition
+                  - CLI extension pattern documented
+
+      # ========================================
+      # TEACH PHASE 7: Spawns Declaration
+      # Priority: HIGH
+      # ========================================
+      - name: Spawns Declaration
+        priority: high
+        execution_groups:
+          - execution: parallel
+            agents:
+              - type: teacher
+                id: teach_spn_001
+                inputs:
+                  - agents/orchestration/orchestration-build/manifest.yml
+                  - agents/orchestration/orchestration-build/process.mmd
+                  - agents/orchestration/orchestration-planning/manifest.yml
+                  - agents/orchestration/orchestration-planning/process.mmd
+                guidance: |
+                  Context: Orchestration agents spawn many agents but don't declare these
+                  in manifest.yml. orchestration-build spawns 9+ agents. No validation that
+                  spawned agents exist and are compatible.
+
+                  Instructions:
+                  1. Add spawns section to orchestration-build/manifest.yml listing all agents
+                  2. Add spawns section to orchestration-planning/manifest.yml
+                  3. Add FENCE: "Only agents listed in spawns may be invoked"
+
+                  Why this matters: Cannot verify spawn chain integrity at load time.
+                success_criteria:
+                  - orchestration-build/manifest.yml has spawns section with all 9+ agents
+                  - orchestration-planning/manifest.yml has spawns section
+                  - FENCE instruction enforces spawn list
+
+      # ========================================
+      # TEACH PHASE 8: REPO_ROOT Variable Definition
+      # Priority: HIGH
+      # ========================================
+      - name: REPO_ROOT Variable Definition
+        priority: high
+        execution_groups:
+          - execution: sequential
+            agents:
+              - type: teacher
+                id: teach_repo_001
+                inputs:
+                  - agents/deploy/deploy-worktree/process.yml
+                  - agents/deploy/deploy-worktree/inputs.yml
+                guidance: |
+                  Context: deploy-worktree uses ${REPO_ROOT} in git commands but this variable
+                  is never defined or documented.
+
+                  Instructions:
+                  1. Add REPO_ROOT to deploy-worktree/inputs.yml required_inputs section
+                  2. Document that REPO_ROOT = target_project_path in most cases
+                  3. Add SIGNPOST showing variable usage in git commands
+
+                  Why this matters: Git worktree creation commands would fail without definition.
+                success_criteria:
+                  - REPO_ROOT defined in required_inputs
+                  - Relationship to target_project_path documented
+                  - Example usage in git commands shown
+
+# ========================================
+# DECISION ITEMS (Require Human Input)
+# ========================================
+decision_items:
+  - id: DECISION-001
+    title: "Legacy-only Agents: planner-phases and planner-teach"
+    severity: critical
+    status: RESOLVED
+    resolution: "Option B - Deprecate (see plan_live_cleanup_deprecation.yml)"
+    resolved_date: "2026-01-07"
+    context: |
+      These agents exist ONLY in legacy location and have NOT been migrated.
+      They are not listed in agent-categories.yml and no entrypoint references them.
+    coverage_verification:
+      planner_phases: "Covered by orchestration-planning Phase Determination Subgraph (process.mmd lines 47-61)"
+      planner_teach: "Covered by planner-guidance agent at modules/AgenticGuidance/agents/planner/planner-guidance/"
+
+  - id: DECISION-002
+    title: "NOT_MIGRATED Test Agents"
+    severity: critical
+    status: RESOLVED
+    resolution: "Option B - Migrate agents (see plan_live_build_migration.yml)"
+    resolved_date: "2026-01-07"
+    context: |
+      planner-test manifest references test agents that don't exist:
+      test-user-simulator, test-service, test-builder (all NOT_MIGRATED)
+    migration_target:
+      - "modules/AgenticGuidance/agents/test/test-user-simulator/"
+      - "modules/AgenticGuidance/agents/test/test-service/"
+      - "modules/AgenticGuidance/agents/test/test-builder/"

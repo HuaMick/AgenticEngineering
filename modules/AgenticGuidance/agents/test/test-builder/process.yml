@@ -15,33 +15,60 @@ process:
     description: "Loop types (test-fix-loop, audit-test-fix-loop) defined in agent-loops.yml"
     # NOTE: Do not duplicate loop definitions here - see agent-loops.yml for full definitions
 
+  # ==============================================
+  # LOOP CONTEXT
+  # ==============================================
+  # Specifies how this agent participates in iterative loops
+  # ==============================================
+  loop_context:
+    participates_in:
+      - "test-fix-loop"
+      - "audit-test-fix-loop"
+    role: "builder"
+    description: |
+      test-builder acts as the builder in test loops. It creates new tests or fixes
+      existing test issues identified by audit or runner agents.
+    iteration_strategy: |
+      Each iteration focuses on a specific test creation or fix task. In test-fix-loop,
+      the agent builds tests based on requirements. In audit-test-fix-loop, it fixes
+      issues identified by the auditor. The agent does NOT run tests to verify passing -
+      the test-runner validates the work.
+    max_iterations: 3
+    escalation_on_max: "Report unresolved issues to orchestrator with analysis of blockers"
+    exit_conditions:
+      - "Test code created/updated successfully"
+      - "Syntax check passes"
+      - "Orchestrator signals task completion"
+    state_management: |
+      test-builder is stateless between iterations. Each invocation receives the
+      specific task (test creation requirements or audit findings) as input context.
+
   inputs:
     - location: "modules/AgenticGuidance/agents/test/test-builder/inputs.yml"
       description: "Core test builder agent inputs and guidelines"
 
   outputs:
-    - name: "test_files"
-      description: "List of test files created or updated in tests/ directory"
+    - name: "test_files_created"
+      description: "List of test files created or modified"
+      location: "tests/ directory in target project"
+      schema:
+        - file_path: "string - relative path to test file"
+          test_type: "enum(smoke_test, component_test, integration_test, workflow_test)"
+          tests_added: "array of test function names"
+    - name: "build_report"
+      description: "Summary of test building activities"
       location: "Returned to orchestrator"
-      required: true
-    - name: "test_scope"
-      description: "Scope of tests built (smoketest-build, test-build, or audit-test-fix-loop)"
-      location: "Returned to orchestrator"
-      required: true
-    - name: "syntax_check_result"
-      description: "Results of syntax validation on built test code"
-      location: "Returned to orchestrator"
-      required: true
-    - name: "discrepancies"
-      description: "Any input path discrepancies found during review"
-      location: "Returned to orchestrator"
-      required: false
+      schema:
+        scope: "string - smoketest-build, test-build, or audit-test-fix-loop"
+        files_created: "integer"
+        files_modified: "integer"
+        syntax_verified: "boolean"
+        issues_encountered: "array of strings"
 
   steps:
     - |
       Review all inputs if an input cannot be found do not proceed.
-      If an input is found in a different location, update the path and flag
-      the discrepancy in your output.
+      If an input is found in a different location, note the discrepancy in your output report.
     - |
       Determine the scope of testing required:
       - Check the plan for specific directives (e.g., "smoketest-build", "test-build").

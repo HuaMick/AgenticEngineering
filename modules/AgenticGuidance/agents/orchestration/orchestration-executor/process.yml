@@ -47,15 +47,26 @@ process:
         If ANY required input is missing, report error and STOP.
 
     - id: "startup_load_mmd"
-      name: "Load Plan-MMD File"
+      name: "Discover and Load Plan-MMD File"
       description: |
-        1. Locate orchestration_*.mmd in plan folder
-        2. Parse Mermaid flowchart structure
-        3. Extract metadata comments:
+        PATH SEMANTICS:
+        - Input: plan_folder_path = the plan folder (e.g., "docs/plans/260110Repo_feature")
+        - The executor INTERNALLY appends /live/ to find files
+        - Files are located at: <plan_folder_path>/live/orchestration_*.mmd
+
+        MMD DISCOVERY PROCESS:
+        1. Construct search path: {plan_folder_path}/live/
+        2. Search for orchestration_*.mmd file in that directory
+        3. If multiple .mmd files found, use the one matching plan_id pattern
+        4. If NO .mmd file found: ERROR "No orchestration MMD found in {plan_folder_path}/live/"
+
+        MMD PARSING:
+        5. Parse Mermaid flowchart structure
+        6. Extract metadata comments:
            - GOAL: Plan objective
            - PROFILE: Should be "orchestrator"
            - PHASES: List of phase names
-           - AGENT_ROUTING: Phase-to-agent mappings
+           - AGENT_ROUTING: Phase-to-agent mappings (e.g., "Build -> builder")
            - FEEDBACK_TRIGGER: Trigger-to-target mappings
            - STATUS: Current phase statuses
            - LOOP_DEFINITION: Reference to agent-loops.yml
@@ -66,7 +77,7 @@ process:
     - id: "startup_load_yaml"
       name: "Load Plan YAML File"
       description: |
-        1. Locate plan_*.yml in plan folder
+        1. Locate plan_*.yml in {plan_folder_path}/live/ (same directory as MMD)
         2. Parse phases and tasks
         3. Extract success criteria
         4. Verify alignment with MMD phases

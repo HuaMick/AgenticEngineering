@@ -1,0 +1,148 @@
+# Completed Plan Items - 260104AE_agenticguidance
+# Entrypoint Refactor: _plan.yml → _plan_build.yml + _plan_teach.yml
+
+completed_items:
+  - id: GUIDANCE-ENTRYPOINT-REFACTOR-001
+    title: Update Guidance for Entrypoint Refactor
+    status: completed
+    completed_at: "2026-01-06"
+    commit: bfb3ec4
+
+    summary: |
+      Split _plan.yml into two specialized planning entrypoints:
+      - _plan_build.yml: Code implementation planning
+      - _plan_teach.yml: Guidance/teaching planning
+
+      Consolidated on _orchestrate.yml as single execution entrypoint.
+      Eliminated planned _teach.yml entrypoint as unnecessary.
+
+    final_architecture: |
+      Planning:
+        _plan_build.yml → orchestration-planning (code)
+        _plan_teach.yml → orchestration-planning (guidance)
+
+      Execution:
+        _orchestrate.yml → orchestration-build OR orchestration-guidance
+                          (routes based on plan type, not entrypoint)
+
+    verification_results:
+      - agent: teacher-update-guidance
+        task: Verify orchestration manifest changes
+        result: PASS
+        findings: |
+          - manifest.yml has both _plan_build.yml and _plan_teach.yml in routing_logic
+          - Clear distinction between build (code) and teach (guidance) planning
+          - No remaining references to old _plan.yml
+
+      - agent: teacher-update-guidance
+        task: Verify teacher example changes
+        result: PASS
+        findings: |
+          - concise.yml examples correctly show _plan_build.yml or _plan_teach.yml
+          - Both verbose and concise versions are consistent
+          - No outdated _plan.yml examples
+
+      - agent: test-audit
+        task: Audit for remaining _plan.yml references
+        result: PASS
+        findings: |
+          - 214 files searched
+          - Zero standalone _plan.yml references in active guidance
+          - All routing patterns consistent with entrypoint files
+
+      - agent: test-guidance-simulator
+        task: Test orchestration-planning guidance
+        result: PASS
+        findings: |
+          - Build planning routing is clear and unambiguous
+          - Teach planning routing is clear and correctly identified
+          - One medium friction point identified and fixed
+
+      - agent: test-guidance-simulator
+        task: Test planner agents' guidance understanding
+        result: PASS
+        findings: |
+          - planner-build correctly understands invocation via _plan_build.yml → orchestration-planning
+          - planner-guidance correctly understands invocation via _plan_teach.yml → orchestration-planning
+          - No hardcoded references to old _plan.yml in planner processes
+
+      - agent: orchestration-planning (self-review)
+        task: Self-review of guidance understanding
+        result: PASS with friction points
+        findings: |
+          - Understands invocation via both entrypoints
+          - Identified: process.mmd doesn't differentiate entrypoint invocations
+          - Identified: Missing invocation context in process files
+          - These are future improvements, not blockers
+
+    cli_entrypoint_validation:
+      - agent: teacher-update-guidance (review)
+        task: Comprehensive guidance review
+        result: PASS
+        findings: |
+          - All 5 core guidance files verified correct
+          - No standalone _plan.yml references anywhere
+          - Both verbose and concise examples show _plan_build.yml/_plan_teach.yml
+
+      - agent: test-audit
+        task: Residual reference audit
+        result: PASS
+        findings: |
+          - Searched 148+ YAML files across agents/ and assets/
+          - Zero standalone _plan.yml references
+          - Old _plan.yml confirmed NOT EXISTS in entrypoints/
+
+    design_decisions:
+      - id: DD-001
+        title: Consolidate on _orchestrate.yml as single execution entrypoint
+        decision: Remove _teach.yml, use _orchestrate.yml for all plan execution
+        rationale: |
+          - Simpler mental model: plan → execute (regardless of type)
+          - Plan carries its own execution context
+          - _orchestrate.yml routes based on plan content, not entrypoint choice
+          - One less entrypoint to maintain
+        alternatives_considered:
+          - Create _teach.yml for guidance execution (rejected - unnecessary complexity)
+
+    fixes_applied:
+      - file: modules/AgenticGuidance/entrypoints/_plan_teach.yml
+        line: 25
+        issue: Output referenced _orchestrate.yml instead of _teach.yml
+        fix: Changed to "ready for _teach.yml" to match manifest routing
+
+    files_changed:
+      - modules/AgenticGuidance/agents/orchestration/manifest.yml
+      - modules/AgenticGuidance/assets/examples/teacher/concise.yml
+      - modules/AgenticGuidance/entrypoints/_orchestrate.yml
+      - modules/AgenticGuidance/entrypoints/_plan_build.yml (new, renamed from _plan.yml)
+      - modules/AgenticGuidance/entrypoints/_plan_teach.yml (new)
+      - modules/AgenticGuidance/entrypoints/_plan.yml (deleted)
+
+    future_improvements:
+      - id: FI-001
+        title: Add entrypoint-awareness to orchestration-planning process.mmd
+        priority: LOW
+        description: Process doesn't differentiate which entrypoint invoked it
+
+      - id: FI-002
+        title: Add invocation_context section to planner process files
+        priority: LOW
+        description: Explicit documentation of invocation paths in process files
+
+      - id: FI-006
+        title: Improve loop context for teacher-update-guidance
+        priority: MEDIUM
+        description: process.yml says operates at "meta-level" but may be re-invoked if guidance validation fails
+
+      - id: FI-008
+        title: Sync planner examples to worktree
+        priority: LOW
+        description: |
+          Planner examples exist in main but not in agenticguidance worktree.
+          Examples checked - no _plan.yml references, structure is correct.
+          Worktree needs sync: git merge main or rebase.
+
+    status: COMPLETE
+    next_steps:
+      - Commit matching changes to git
+      - Sync worktrees

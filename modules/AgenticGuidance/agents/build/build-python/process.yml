@@ -14,22 +14,24 @@ process:
       description: "Core build agent inputs and guidelines"
 
   outputs:
-    - name: "code_changes"
-      description: "List of Python component files created or modified"
+    - name: "components_built"
+      description: "List of Python components created or modified"
+      location: "src/ directory in target project"
+      schema:
+        - file_path: "string - relative path to component"
+          component_type: "enum(service, domain, workflow, entrypoint, test)"
+          action: "enum(created, modified)"
+    - name: "build_report"
+      description: "Summary of Python build activities"
       location: "Returned to orchestrator"
-      required: true
-    - name: "build_result"
-      description: "Build verification status including syntax check and import validation results"
-      location: "Returned to orchestrator"
-      required: true
-    - name: "execution_result"
-      description: "Results from executing and testing the built code"
-      location: "Returned to orchestrator"
-      required: true
-    - name: "discrepancies"
-      description: "Any input path discrepancies found during review"
-      location: "Returned to orchestrator"
-      required: false
+      schema:
+        worktree_path: "string - path to worktree used"
+        files_created: "integer"
+        files_modified: "integer"
+        syntax_verified: "boolean"
+        imports_verified: "boolean"
+        execution_tested: "boolean"
+        issues_encountered: "array of strings"
 
   steps:
     - |
@@ -48,7 +50,36 @@ process:
     - |
       Plan components needed to meet the success criteria.
     - |
-      Build components.
+      Build components following the builder-role pattern (see modules/AgenticGuidance/assets/definitions/builder-role.yml):
+
+      Substeps:
+      a) Identify the minimal component set required to meet success criteria
+         - Review the success criteria from the plan
+         - List only the components needed (avoid over-engineering)
+
+      b) For each component, implement following Python conventions:
+         - Use proper file naming (snake_case for modules and functions)
+         - Follow project folder structure (src/, tests/, etc.)
+         - Use existing patterns from the codebase as templates
+         - Add required imports at the top of each file (stdlib, third-party, local)
+
+      c) Manage dependencies:
+         - Add new packages to requirements.txt or pyproject.toml only when necessary
+         - Prefer existing dependencies over adding new ones
+         - Pin versions appropriately
+         - Document why any new dependency was added
+
+      d) Follow architecture patterns:
+         - Match existing project structure (domains/, services/, workflows/, entrypoints/)
+         - Use established patterns from the project (dataclasses, Pydantic, etc.)
+         - Maintain separation between business logic and I/O
+         - Follow existing error handling patterns
+
+      Success criteria for this step:
+      - All components identified in planning step are implemented
+      - Code follows existing project patterns and conventions
+      - No unnecessary components or dependencies added
+      - Files are placed in correct directories per project structure
     - |
       Verify your code compiles and imports work correctly:
       - Check for syntax errors with `python -m py_compile <file>`

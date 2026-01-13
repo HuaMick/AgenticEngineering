@@ -1,0 +1,367 @@
+# Guidance Review Report: planner-guidance
+# Generated: 2026-01-06
+# Reviewer: test-guidance-simulator
+
+agent: planner-guidance
+files_reviewed:
+  - agents/planner/planner-guidance/process.yml
+  - agents/planner/planner-guidance/inputs.yml
+  - agents/planner/planner-guidance/manifest.yml
+  - agents/planner/planner-guidance/process.mmd (does not exist)
+
+summary:
+  total_issues: 16
+  critical: 2
+  high: 5
+  medium: 6
+  low: 3
+
+# =============================================================================
+# CRITICAL ISSUES - Blocking issues that would prevent execution
+# =============================================================================
+critical_issues:
+  - id: CRIT-001
+    file: process.yml
+    location: "loop_context.loop_definition"
+    issue: "Invalid path prefix for loop definition reference"
+    description: |
+      The loop_definition uses 'assets/definitions/agent-loops.yml#planner-loop'
+      but according to inputs.yml PATH RESOLUTION SEMANTICS, paths are relative
+      to MODULE ROOT (modules/AgenticGuidance/). However, the agent-loops.yml
+      fragment reference uses '#planner-loop' which resolves to 'loop_types.planner-loop'
+      in the actual file, not a top-level key 'planner-loop'.
+    evidence:
+      process_yml: "loop_definition: 'assets/definitions/agent-loops.yml#planner-loop'"
+      agent_loops_yml_structure: "loop_types:\n  planner-loop:\n    purpose: ..."
+    expected: "Top-level anchor 'planner-loop' for fragment resolution"
+    actual: "Nested under 'loop_types.planner-loop'"
+    recommendation: |
+      Either:
+      1. Change fragment-references.yml to support dot-notation (loop_types.planner-loop)
+      2. Restructure agent-loops.yml to have planner-loop as top-level key
+      3. Update fragment reference to 'agent-loops.yml#loop_types' and extract planner-loop
+
+  - id: CRIT-002
+    file: inputs.yml + process.yml
+    location: "required_inputs vs process.steps"
+    issue: "Required inputs not validated in process steps"
+    description: |
+      inputs.yml defines three required_inputs (friction_source, target_agent,
+      target_project_path) but process.yml step 1 only says "Review all inputs.
+      If an input cannot be found, do not proceed." without explicitly naming
+      which inputs are mandatory or how to validate them.
+    evidence:
+      inputs_yml: "required_inputs:\n  - name: 'friction_source'\n    required: true"
+      process_yml_step1: "Review all inputs. If an input cannot be found, do not proceed."
+    impact: |
+      Agent may proceed without required inputs or fail silently.
+      No explicit validation or error messaging pattern provided.
+    recommendation: |
+      Step 1 should explicitly list required inputs and validation:
+      "Verify required inputs are provided:
+       - friction_source: Path to friction report (REQUIRED)
+       - target_agent: Agent name to improve (REQUIRED)
+       - target_project_path: Absolute path to target project (REQUIRED)
+       If any required input is missing, escalate with specific error."
+
+# =============================================================================
+# HIGH ISSUES - Significant friction or ambiguity
+# =============================================================================
+high_issues:
+  - id: HIGH-001
+    file: manifest.yml
+    location: "version field"
+    issue: "Version mismatch between manifest and inputs"
+    description: |
+      manifest.yml declares version: "1.0" while inputs.yml declares
+      version: "2.0-p1". This creates confusion about which version is current.
+    evidence:
+      manifest_yml: "version: '1.0'"
+      inputs_yml: "version: '2.0-p1'"
+    recommendation: "Align versions. If inputs.yml is canonical, update manifest.yml to 2.0-p1"
+
+  - id: HIGH-002
+    file: process.yml
+    location: "outputs section"
+    issue: "Empty outputs array provides no schema for expected deliverables"
+    description: |
+      outputs: [] provides no guidance on what artifacts the agent produces.
+      Steps 4-5 describe outputs (friction-analysis.md, plan_live_teach.yml,
+      plan_live_audit_clean.yml, README.md) but these are not formally declared.
+    evidence:
+      process_yml: "outputs: []"
+      step_5: "Folder: docs/plans/live/YYMMDDRepo_Branch/"
+    impact: "Downstream consumers (planner-reviewer) have no formal contract to validate against"
+    recommendation: |
+      Populate outputs array with formal schema:
+      outputs:
+        - name: "friction-analysis"
+          path: "docs/plans/live/{plan_folder}/analysis/friction-analysis.md"
+          required: true
+        - name: "teach-plan"
+          path: "docs/plans/live/{plan_folder}/live/plan_live_teach.yml"
+          required: true
+        - name: "audit-plan"
+          path: "docs/plans/live/{plan_folder}/live/plan_live_audit_clean.yml"
+          required: true
+
+  - id: HIGH-003
+    file: process.yml
+    location: "steps[2] - Requirement about deploy-worktree"
+    issue: "Cross-agent dependency not expressed in loop_context"
+    description: |
+      Step 3 states: "Verify the planning folder docs/plans/live/YYMMDDRepo_Branch/
+      exists (created via deploy-worktree)." This implies a dependency on
+      deploy-worktree agent, but this is not captured in loop_context or inputs.
+    evidence:
+      step_3: "**Requirement**: Verify the planning folder...exists (created via deploy-worktree)"
+      loop_context: "participates_in: ['planner-loop']"
+    impact: "Agent may fail if deploy-worktree was not run. No escalation path defined."
+    recommendation: |
+      Add to loop_context or inputs:
+      dependencies:
+        - agent: deploy-worktree
+          precondition: "Planning folder must exist before planner-guidance runs"
+          fallback: "Escalate to orchestration if folder missing"
+
+  - id: HIGH-004
+    file: inputs.yml
+    location: "layers section"
+    issue: "Potentially unnecessary layer dependencies for guidance planning"
+    description: |
+      planner-guidance includes test-shared.yml and cleaner-shared.yml layers.
+      While these may provide useful guidelines (reward-hacking, overengineering),
+      they add significant context for a planner that creates guidance improvement
+      plans, not test or cleaner execution.
+    evidence:
+      layers: |
+        - path: "assets/inputs/test-shared.yml" (reward-hacking, test-structure, etc.)
+        - path: "assets/inputs/cleaner-shared.yml" (voting-system, overengineering, etc.)
+    impact: "Context bloat may reduce agent effectiveness per context-minimisation.yml"
+    recommendation: |
+      Review whether full layers are needed. Consider:
+      1. Extracting only needed guidelines (reward-hacking.yml, overengineering.yml)
+      2. Documenting why these layers are required for guidance planning
+      3. Creating a lightweight "guidance-planning-shared.yml" layer
+
+  - id: HIGH-005
+    file: inputs.yml
+    location: "PATH RESOLUTION SEMANTICS header"
+    issue: "Exception for docs/plans/ creates ambiguity"
+    description: |
+      The header states paths are relative to MODULE ROOT with an EXCEPTION
+      for docs/plans/ which is relative to TARGET PROJECT root. This dual
+      resolution system requires agents to track two different bases.
+    evidence:
+      header: |
+        All paths in this file are relative to the AgenticGuidance MODULE ROOT
+        EXCEPTION: docs/plans/ paths are relative to the TARGET PROJECT root.
+    impact: |
+      Agent must know when to use module root vs target_project_path.
+      Easy to make path resolution errors.
+    recommendation: |
+      Make path resolution explicit in each reference:
+      1. Use {module_root}/ prefix for module-relative paths
+      2. Use {project_root}/ prefix for project-relative paths
+      3. Or consolidate all paths to be module-relative and use
+         target_project_path input only for project paths
+
+# =============================================================================
+# MEDIUM ISSUES - Minor friction or inconsistencies
+# =============================================================================
+medium_issues:
+  - id: MED-001
+    file: process.yml
+    location: "guidelines section"
+    issue: "Guidelines comment references inputs.yml but actual guidelines are inline"
+    description: |
+      The guidelines comment lists what's in inputs.yml layers, but then
+      provides three inline guidelines. This mixed approach may confuse
+      which guidelines take precedence.
+    evidence:
+      comment: "# Core guidelines: See planner-guidance/inputs.yml..."
+      inline: "- Bias toward iteration...\n- Prefer in-process guidance...\n- Avoid over-generalizing..."
+    recommendation: |
+      Either:
+      1. Remove the comment (inputs.yml is already referenced)
+      2. Or move inline guidelines to a referenced file
+
+  - id: MED-002
+    file: inputs.yml
+    location: "guidelines section"
+    issue: "Empty guidelines array after detailed core_inputs"
+    description: |
+      guidelines: [] is empty despite inputs.yml referencing many guideline
+      files via layers. This may confuse whether guidelines apply.
+    evidence:
+      inputs_yml: "guidelines: []"
+      layers: "core-guidelines.yml includes fix-the-source, context-minimisation, etc."
+    recommendation: "Add comment: 'Guidelines loaded via layers - see core-guidelines.yml'"
+
+  - id: MED-003
+    file: inputs.yml
+    location: "core_inputs - agent logs comment"
+    issue: "Commented-out input pattern without clear activation criteria"
+    description: |
+      Agent logs pattern is commented out with a note about not being
+      systematically collected. No clear indication of when/how to enable.
+    evidence: |
+      # Note: Agent logs are not yet systematically collected. When available...
+      # - type: pattern
+      #   path: "docs/agent_logs/*.log"
+    recommendation: |
+      Either remove entirely or add clear activation criteria:
+      "Enable this pattern when docs/agent_logs/ structure is implemented per RFC-XXX"
+
+  - id: MED-004
+    file: process.yml
+    location: "steps[3] - live plan files"
+    issue: "Plan file naming uses specific structure without referencing definition"
+    description: |
+      Step 4 specifies plan_live_teach.yml and plan_live_audit_clean.yml
+      file names, but doesn't reference a definition for this naming convention.
+    evidence:
+      step_4: "Create standard live plan files in live/:\n  * plan_live_teach.yml"
+    recommendation: |
+      Reference folder-structure.yml or plan-inputs.yml for naming conventions:
+      "Create standard live plan files per folder-structure.yml#live-plan-naming"
+
+  - id: MED-005
+    file: inputs.yml
+    location: "agent_context"
+    issue: "Fragment reference syntax documented but resolution unclear"
+    description: |
+      agent_context references "assets/definitions/agent-categories.yml#planner"
+      with a comment about fragment-references.yml, but the 'planner' key is
+      nested under 'agent_categories', not at top level.
+    evidence:
+      inputs_yml: "category: 'assets/definitions/agent-categories.yml#planner'"
+      agent_categories_yml: "agent_categories:\n  planner:\n    name: 'Planner'"
+    impact: "Same resolution issue as CRIT-001 for loop definitions"
+    recommendation: "Align with fragment-references.yml resolution rules or update that definition"
+
+  - id: MED-006
+    file: process.yml
+    location: "inputs section"
+    issue: "Docs/plans/ input uses description but not full location metadata"
+    description: |
+      The third input for docs/plans/ target directory lacks the structured
+      metadata (type, required) used by inputs.yml entries.
+    evidence:
+      process_inputs: |
+        - location: "docs/plans/"
+          description: "Target directory for creating new planning folders"
+    recommendation: |
+      Align with inputs.yml structure:
+      - location: "docs/plans/"
+        type: directory
+        resolution: target_project
+        description: "Target directory..."
+        required: true
+
+# =============================================================================
+# LOW ISSUES - Suggestions for improvement
+# =============================================================================
+low_issues:
+  - id: LOW-001
+    file: manifest.yml
+    location: "entire file"
+    issue: "Minimal manifest lacks category, inputs_file, process_file references"
+    description: |
+      manifest.yml only has name, description, version. Other agents may
+      have category and file references for tooling/discovery.
+    evidence:
+      manifest: "name: planner-guidance\ndescription: ...\nversion: '1.0'"
+    recommendation: |
+      Consider adding:
+      category: planner
+      inputs_file: inputs.yml
+      process_file: process.yml
+
+  - id: LOW-002
+    file: process.yml
+    location: "steps[4] - validation guidance"
+    issue: "Reference to success-criteria-teacher.yml and outcome-verification.yml inline"
+    description: |
+      Step 4 references two definitions inline rather than in the inputs
+      section. While inputs.yml has them, the process cross-references
+      without using fragment notation.
+    evidence:
+      step_4: "Reference success-criteria-teacher.yml and outcome-verification.yml in inputs."
+    recommendation: |
+      Use consistent fragment notation if specific sections are needed,
+      or remove the reference since inputs.yml already loads these files.
+
+  - id: LOW-003
+    file: inputs.yml
+    location: "definitions section"
+    issue: "Only one custom definition despite rich terminology"
+    description: |
+      The definitions section has one entry (guidance_improvement_plan)
+      but the agent deals with many concepts (friction, paths, fences, etc.)
+    evidence:
+      definitions: |
+        definitions:
+          guidance_improvement_plan: ...
+    recommendation: |
+      Consider adding cross-references to key concept definitions:
+      definitions:
+        # See assets/definitions/ for:
+        # - path.yml (agent paths)
+        # - fence.yml (guardrails)
+        # - signpost.yml (teaching artifacts)
+
+# =============================================================================
+# MISSING FILE OBSERVATIONS
+# =============================================================================
+missing_files:
+  - file: "process.mmd"
+    status: "does not exist"
+    observation: |
+      process.mmd (Mermaid diagram) does not exist for planner-guidance.
+      Other agents may have visual process flows. This is optional but
+      could help with complex multi-step processes.
+    severity: "informational"
+
+# =============================================================================
+# POSITIVE OBSERVATIONS
+# =============================================================================
+positive_observations:
+  - observation: "Clear path resolution semantics header in inputs.yml"
+    location: "inputs.yml lines 1-10"
+    note: "Explicit documentation of path resolution rules is good practice"
+
+  - observation: "Required inputs section with examples"
+    location: "inputs.yml required_inputs"
+    note: "Clear required_inputs with types, descriptions, and examples"
+
+  - observation: "Loop context with max_iterations"
+    location: "process.yml loop_context"
+    note: "Explicit iteration limits prevent runaway loops"
+
+  - observation: "Layer-based input organization"
+    location: "inputs.yml layers"
+    note: "Transitive loading via layers promotes reuse and consistency"
+
+  - observation: "Inline guidelines with rationale"
+    location: "process.yml guidelines"
+    note: "Three inline guidelines provide actionable direction"
+
+# =============================================================================
+# RECOMMENDATIONS SUMMARY
+# =============================================================================
+recommendations_summary:
+  immediate:
+    - "Fix fragment reference resolution (CRIT-001, MED-005)"
+    - "Add required input validation to process step 1 (CRIT-002)"
+    - "Align manifest.yml version with inputs.yml (HIGH-001)"
+
+  short_term:
+    - "Populate outputs array with formal schema (HIGH-002)"
+    - "Document deploy-worktree dependency (HIGH-003)"
+    - "Review layer necessity for context minimization (HIGH-004)"
+
+  long_term:
+    - "Standardize path resolution with explicit prefixes (HIGH-005)"
+    - "Create process.mmd for visual process documentation"
+    - "Expand manifest.yml with full metadata"

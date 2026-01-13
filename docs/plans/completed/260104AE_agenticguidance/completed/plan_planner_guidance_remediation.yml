@@ -1,0 +1,1057 @@
+# Planner-Guidance Context Overload Remediation Plan
+# Generated: 2026-01-07
+# Updated: 2026-01-08 (Reviewer findings + T4 mandatory phase added)
+# Source Audit: audit_planner_guidance.yml (66 issues, 9 iterations)
+# Context Usage: 35-40% estimated
+#
+# REVISION NOTES:
+# - G1 CRITICAL: Phase 3 updated to REMOVE phantom refs (not create placeholders)
+#   User explicitly requested: "REMOVE ALL phantom references entirely"
+# - T4 MANDATORY: Phase 8 added for Specialized Core Layer Audit
+#   Creates planner-core-guidelines.yml and planner-core-system.yml
+
+plan_name: "Planner-Guidance Context Overload Remediation"
+objective: |
+  Remediate 66 context overload issues identified in planner-guidance audit.
+  Target: Reduce context usage from 35-40% to under 25% while improving clarity.
+  Additional T4 objective: Create specialized core layers for planner agents.
+
+status: "pending"
+total_issues: 66
+total_phases: 8
+total_tasks: 32
+
+# =============================================================================
+# QUESTIONS FOR USER
+# =============================================================================
+# These design decisions require user input before implementation proceeds.
+# Each question has implications for multiple remediation tasks.
+# =============================================================================
+
+questions_for_user:
+  - id: Q1
+    category: "Phantom Files"
+    question: "How should phantom file references be handled?"
+    status: "RESOLVED"
+    resolution: "User explicitly requested: REMOVE ALL phantom references entirely"
+    context: |
+      5 PHANTOM_FILE issues found. Referenced files that don't exist:
+      - outputs.yml (referenced extensively, never created)
+      - definitions.yml (referenced in ARCHITECTURE.md)
+      - context-offloading.yml (guideline referenced but missing)
+      - follow-the-expected-path.yml (guideline referenced but missing)
+      - assets/processes/ directory (referenced but doesn't exist)
+    decision: |
+      USER DECISION: Remove ALL phantom references entirely.
+      DO NOT create placeholder files for any phantom references.
+      Clean removal is preferred over creating stubs.
+    affects_tasks:
+      - "3.1"
+      - "3.2"
+      - "3.3"
+      - "3.4"
+      - "3.5"
+
+  - id: Q2
+    category: "Inputs Format Standardization"
+    question: "Which inputs.yml format should be canonical?"
+    context: |
+      Multiple structural inconsistencies found:
+      - Flat list vs structured layers: format
+      - agent_context at root vs nested under inputs:
+      - Some have PATH RESOLUTION SEMANTICS header, some don't
+      - Some have required_inputs section, most don't (only 4 of 14)
+    options:
+      - option: "Adopt planner-guidance format (structured layers + core_inputs)"
+        pros: "Most comprehensive, supports transitive loading"
+        cons: "Requires updating 10+ files"
+      - option: "Simplify to flat list everywhere"
+        pros: "Less complexity, easier to maintain"
+        cons: "Loses layer abstraction benefits"
+      - option: "Document both as valid patterns"
+        pros: "No migration needed"
+        cons: "Ongoing inconsistency"
+    recommendation: "Adopt structured format with layers: for shared inputs, core_inputs: for agent-specific. Add required_inputs: to all files that need runtime inputs."
+    affects_tasks:
+      - "5.1"
+      - "5.2"
+      - "5.3"
+
+  - id: Q3
+    category: "Definition/Guideline Consolidation"
+    question: "Should overlapping definition/guideline pairs be consolidated?"
+    context: |
+      11 OVERLAP issues where same concept appears in both definitions/ and guidelines/:
+      - context-minimisation.yml (definition) + context-minimisation.yml (guideline)
+      - reward-hacking.yml (definition) + reward-hacking-prevention.yml (guideline)
+      - iteration-approach.yml + iteration.yml + agent-loops.yml (3 files!)
+      - success-criteria.yml + success-criteria-teacher.yml + outcome-verification.yml
+      - fix-the-source.yml (guideline) + root-cause-analysis.yml (definition)
+    options:
+      - option: "Keep split (definitions describe, guidelines prescribe)"
+        pros: "Clear semantic distinction"
+        cons: "Content still overlaps, context waste"
+      - option: "Merge into single files per concept"
+        pros: "Single source of truth, less context"
+        cons: "Blurs definition/guideline boundary"
+      - option: "Keep definition canonical, guideline references it"
+        pros: "DRY principle, clear hierarchy"
+        cons: "Requires updating guideline format"
+    recommendation: "Option 3 - Keep definitions as canonical concept source; guidelines should reference definitions and add only prescriptive content"
+    affects_tasks:
+      - "2.1"
+      - "2.2"
+      - "2.3"
+      - "2.4"
+
+  - id: Q4
+    category: "Layer Relevance"
+    question: "Should planner-guidance drop test-shared and cleaner-shared layers?"
+    context: |
+      2 UNUSED issues: test-shared brings 6 definitions, cleaner-shared brings 7 files
+      that are not relevant for guidance planning. Combined ~380+ lines of context waste.
+    options:
+      - option: "Remove both layers from planner-guidance inputs"
+        pros: "Significant context reduction (~15%)"
+        cons: "If future guidance work targets test/cleaner agents, would need to re-add"
+      - option: "Keep layers, mark as optional"
+        pros: "Available when needed"
+        cons: "Still loaded by default, context waste"
+      - option: "Create minimal planner-guidance-layer with just needed refs"
+        pros: "Precise context control"
+        cons: "Another layer to maintain"
+    recommendation: "Remove both layers. If planner-guidance needs test/cleaner context for specific work, the orchestrator should pass it as required_inputs at runtime."
+    affects_tasks:
+      - "1.1"
+      - "1.2"
+
+# =============================================================================
+# REMEDIATION PHASES
+# =============================================================================
+# Organized by dependency and impact. Quick wins first, then structural changes.
+# Each phase can be executed independently once dependencies are met.
+# =============================================================================
+
+phases:
+  # ---------------------------------------------------------------------------
+  # PHASE 1: Quick Wins - Immediate Context Reduction
+  # ---------------------------------------------------------------------------
+  # Impact: ~15-20% context reduction
+  # Risk: Low - removes unused content
+  # Dependencies: None
+  # ---------------------------------------------------------------------------
+
+  - name: "phase-1-quick-wins"
+    description: "Remove unused layers, fix duplicates, prune excessive content"
+    priority: 1
+    estimated_context_reduction: "15-20%"
+    risk_level: "low"
+    dependencies: []
+
+    agent_guidance:
+      primary_agent: "teacher-update-guidance"
+      secondary_agent: "teacher-update-assets"
+      selection_rationale: "Direct edits to inputs.yml and definition files"
+
+    success_criteria:
+      - "planner-guidance/inputs.yml no longer references test-shared or cleaner-shared layers"
+      - "friction.yml contains single paragraph (duplicate removed)"
+      - "concise.yml reduced to 2-3 examples max"
+      - "teaching-plan-example.yml reduced to structural skeleton"
+
+    tasks:
+      - id: "1.1"
+        description: "Remove test-shared layer from planner-guidance inputs"
+        operation: "UPDATE"
+        category: "UNUSED"
+        files:
+          - "agents/planner/planner-guidance/inputs.yml"
+        current_state: |
+          inputs.yml includes test-shared layer bringing 6 test-specific definitions
+          not relevant for guidance planning work.
+        required_changes:
+          - "Remove test-shared.yml from layers: section"
+          - "Remove comment about test-shared in process.yml guidelines section"
+        acceptance_criteria:
+          - "No reference to test-shared.yml in planner-guidance inputs"
+          - "No reference to reward-hacking.yml via test-shared layer"
+        context_savings: "~6 definition files (~200 lines)"
+        question_dependency: "Q4"
+
+      - id: "1.2"
+        description: "Remove cleaner-shared layer from planner-guidance inputs"
+        operation: "UPDATE"
+        category: "UNUSED"
+        files:
+          - "agents/planner/planner-guidance/inputs.yml"
+        current_state: |
+          inputs.yml includes cleaner-shared layer bringing 7 cleaner-specific files
+          including 172+210 line example files not relevant for guidance planning.
+        required_changes:
+          - "Remove cleaner-shared.yml from layers: section"
+          - "Remove comment about cleaner-shared in process.yml guidelines section"
+        acceptance_criteria:
+          - "No reference to cleaner-shared.yml in planner-guidance inputs"
+          - "No reference to voting-system.yml, preserved-files.yml, dir-*.yml examples"
+        context_savings: "~7 files (~500 lines)"
+        question_dependency: "Q4"
+
+      - id: "1.3"
+        description: "Fix friction.yml duplicate paragraph"
+        operation: "UPDATE"
+        category: "REDUNDANCY"
+        files:
+          - "assets/definitions/friction.yml"
+        current_state: "Same paragraph appears twice (lines 1-11 duplicated as lines 13-24)"
+        required_changes:
+          - "Remove duplicate paragraph (keep only first instance)"
+        acceptance_criteria:
+          - "friction.yml contains single definition paragraph"
+          - "File is under 15 lines"
+        context_savings: "~12 lines"
+
+      - id: "1.4"
+        description: "Reduce concise.yml from 192 lines to 2-3 examples"
+        operation: "UPDATE"
+        category: "EXCESSIVE"
+        files:
+          - "assets/examples/teacher/concise.yml"
+        current_state: "192 line 'concise' guide is verbose - ironic context waste"
+        required_changes:
+          - "Keep 2-3 most instructive before/after examples"
+          - "Remove redundant examples that show same pattern"
+          - "Ensure remaining examples cover different domains (naming, structure, content)"
+        acceptance_criteria:
+          - "File is under 60 lines"
+          - "Remaining examples demonstrate distinct patterns"
+          - "Header explains selection rationale"
+        context_savings: "~130 lines"
+
+      - id: "1.5"
+        description: "Reduce teaching-plan-example.yml to structural skeleton"
+        operation: "UPDATE"
+        category: "EXCESSIVE"
+        files:
+          - "assets/examples/planner/teaching-plan-example.yml"
+        current_state: "169 line complete example - shorter structural template would suffice"
+        required_changes:
+          - "Convert to structural template showing required sections"
+          - "Keep one minimal task example per phase pattern"
+          - "Remove verbose context blocks"
+          - "Add comments explaining each section purpose"
+        acceptance_criteria:
+          - "File is under 80 lines"
+          - "Shows structure for phases, tasks, acceptance_criteria"
+          - "Comments guide usage without excessive prose"
+        context_savings: "~90 lines"
+
+  # ---------------------------------------------------------------------------
+  # PHASE 2: Definition/Guideline Consolidation
+  # ---------------------------------------------------------------------------
+  # Impact: ~10% context reduction, improved clarity
+  # Risk: Medium - changes reference patterns
+  # Dependencies: Phase 1 (establishes editing patterns)
+  # ---------------------------------------------------------------------------
+
+  - name: "phase-2-consolidate-overlaps"
+    description: "Consolidate overlapping definition/guideline pairs into canonical sources"
+    priority: 2
+    estimated_context_reduction: "10%"
+    risk_level: "medium"
+    dependencies:
+      - "phase-1-quick-wins"
+
+    agent_guidance:
+      primary_agent: "teacher-update-assets"
+      secondary_agent: "teacher-update-guidance"
+      selection_rationale: "Primarily asset changes in definitions/ and guidelines/"
+
+    success_criteria:
+      - "Each concept has single canonical definition file"
+      - "Guidelines reference definitions, don't duplicate content"
+      - "Iteration concept consolidated from 3 files to 1 authoritative source"
+      - "Success criteria concept consolidated from 3 files to 1 authoritative source"
+
+    tasks:
+      - id: "2.1"
+        description: "Consolidate iteration concepts (3 files -> 1)"
+        operation: "CONSOLIDATE"
+        category: "OVERLAP"
+        files:
+          - "assets/guidelines/iteration.yml"
+          - "assets/definitions/iteration-approach.yml"
+          - "assets/definitions/agent-loops.yml"
+        current_state: |
+          Iteration concepts spread across 3 files:
+          - iteration.yml (guideline): behavioral prescriptions
+          - iteration-approach.yml: iteration strategy definition
+          - agent-loops.yml: 7 loop types (103 lines)
+        required_changes:
+          - "Keep agent-loops.yml as canonical loop definition (trim to relevant loops)"
+          - "Merge iteration-approach.yml content into agent-loops.yml iteration section"
+          - "Update iteration.yml guideline to reference agent-loops.yml instead of duplicating"
+          - "Remove iteration-approach.yml (redirect references)"
+        acceptance_criteria:
+          - "Single authoritative source for iteration concepts"
+          - "Guidelines reference definition, don't duplicate"
+          - "All existing references updated or redirected"
+        question_dependency: "Q3"
+
+      - id: "2.2"
+        description: "Consolidate success criteria concepts (3 files -> 1)"
+        operation: "CONSOLIDATE"
+        category: "OVERLAP"
+        files:
+          - "assets/definitions/success-criteria.yml"
+          - "assets/definitions/success-criteria-teacher.yml"
+          - "assets/definitions/outcome-verification.yml"
+        current_state: |
+          Success criteria concepts in 3 files:
+          - success-criteria.yml: general concept
+          - success-criteria-teacher.yml: teacher-specific criteria
+          - outcome-verification.yml: verification patterns
+        required_changes:
+          - "Consolidate into success-criteria.yml with sections for general and teacher-specific"
+          - "Keep outcome-verification.yml as separate verification patterns (distinct concept)"
+          - "Remove success-criteria-teacher.yml, update references"
+        acceptance_criteria:
+          - "success-criteria.yml is comprehensive for all agent types"
+          - "outcome-verification.yml remains as distinct verification concept"
+          - "No duplicate outcome-based guidance content"
+        question_dependency: "Q3"
+
+      - id: "2.3"
+        description: "Consolidate context-minimisation definition and guideline"
+        operation: "CONSOLIDATE"
+        category: "OVERLAP"
+        files:
+          - "assets/definitions/context-minimisation.yml"
+          - "assets/guidelines/context-minimisation.yml"
+        current_state: "Same concept defined in both definitions/ and guidelines/"
+        required_changes:
+          - "Keep definition file as canonical concept source"
+          - "Update guideline to reference definition, add only prescriptive rules"
+          - "Remove duplicate content from guideline"
+        acceptance_criteria:
+          - "Definition explains what context minimisation is"
+          - "Guideline prescribes how to apply it, references definition"
+          - "No content duplication between files"
+        question_dependency: "Q3"
+
+      - id: "2.4"
+        description: "Consolidate fix-the-source and root-cause-analysis"
+        operation: "CONSOLIDATE"
+        category: "OVERLAP"
+        files:
+          - "assets/guidelines/fix-the-source.yml"
+          - "assets/definitions/root-cause-analysis.yml"
+        current_state: "Both cover same concept of fixing root causes vs symptoms"
+        required_changes:
+          - "Keep root-cause-analysis.yml as canonical definition"
+          - "Update fix-the-source.yml guideline to reference definition"
+          - "Remove duplicate analytical content from guideline"
+        acceptance_criteria:
+          - "Definition explains root cause analysis concept"
+          - "Guideline prescribes 'fix the source' behavior, references definition"
+        question_dependency: "Q3"
+
+      - id: "2.5"
+        description: "Consolidate path/fence/signpost into guidance-concepts.yml"
+        operation: "CONSOLIDATE"
+        category: "MISSING_CONSOLIDATION"
+        files:
+          - "assets/definitions/path.yml"
+          - "assets/definitions/fence.yml"
+          - "assets/definitions/signpost.yml"
+        current_state: "Three small files (7, 5, 5 lines) always used together"
+        required_changes:
+          - "Create guidance-concepts.yml with path, fence, signpost sections"
+          - "Each section: definition, examples, when-to-use"
+          - "Update all references to point to consolidated file"
+          - "Delete individual files after reference migration"
+        acceptance_criteria:
+          - "Single guidance-concepts.yml under 40 lines"
+          - "All three concepts clearly defined"
+          - "Original files deleted, references updated"
+
+      - id: "2.6"
+        description: "Consolidate definition/guideline/generalized-vs-specific meta-concepts"
+        operation: "CONSOLIDATE"
+        category: "MISSING_CONSOLIDATION"
+        files:
+          - "assets/definitions/definition.yml"
+          - "assets/definitions/guideline.yml"
+          - "assets/definitions/generalized-vs-specific.yml"
+        current_state: "Three small meta-concept files that cross-reference each other"
+        required_changes:
+          - "Create guidance-artifact-types.yml consolidating all three"
+          - "Include decision tree: when to use definition vs guideline vs example"
+          - "Update references to point to consolidated file"
+          - "Delete individual files"
+        acceptance_criteria:
+          - "Single guidance-artifact-types.yml under 50 lines"
+          - "Clear decision guidance for artifact type selection"
+
+  # ---------------------------------------------------------------------------
+  # PHASE 3: Phantom File Reference Removal
+  # ---------------------------------------------------------------------------
+  # Impact: Correctness (no broken refs)
+  # Risk: Low (removing dead refs only)
+  # Dependencies: Phase 1
+  # CRITICAL: User explicitly requested REMOVAL of ALL phantom references.
+  #           DO NOT create placeholder files - REMOVE the references entirely.
+  # ---------------------------------------------------------------------------
+
+  - name: "phase-3-phantom-removal"
+    description: "REMOVE ALL phantom file references entirely - do not create placeholders"
+    priority: 3
+    estimated_context_reduction: "N/A (correctness focus)"
+    risk_level: "low"
+    dependencies:
+      - "phase-1-quick-wins"
+
+    agent_guidance:
+      primary_agent: "teacher-update-guidance"
+      secondary_agent: "teacher-update-assets"
+      selection_rationale: "Removing references from documentation and inputs files"
+
+    success_criteria:
+      - "Zero broken file references in planner-guidance inputs"
+      - "ARCHITECTURE.md references only existing files"
+      - "All phantom references removed, NOT replaced with new files"
+
+    tasks:
+      - id: "3.1"
+        description: "Remove context-offloading.yml phantom reference"
+        operation: "DELETE_REFERENCE"
+        category: "PHANTOM_FILE"
+        files:
+          - "docs/ARCHITECTURE.md"
+        current_state: "Referenced in ARCHITECTURE.md but doesn't exist"
+        required_changes:
+          - "Search for all context-offloading.yml references"
+          - "Remove the references entirely from ARCHITECTURE.md"
+          - "DO NOT create the file - remove the reference"
+        acceptance_criteria:
+          - "No references to context-offloading.yml anywhere"
+          - "No new context-offloading.yml file created"
+
+      - id: "3.2"
+        description: "Remove follow-the-expected-path.yml phantom reference"
+        operation: "DELETE_REFERENCE"
+        category: "PHANTOM_FILE"
+        files:
+          - "docs/ARCHITECTURE.md"
+        current_state: "Referenced in ARCHITECTURE.md but doesn't exist"
+        required_changes:
+          - "Search for all follow-the-expected-path.yml references"
+          - "Remove the references entirely from ARCHITECTURE.md"
+          - "DO NOT create the file - remove the reference"
+        acceptance_criteria:
+          - "No references to follow-the-expected-path.yml anywhere"
+          - "No new follow-the-expected-path.yml file created"
+
+      - id: "3.3"
+        description: "Remove outputs.yml phantom references"
+        operation: "DELETE_REFERENCE"
+        category: "PHANTOM_FILE"
+        files:
+          - "docs/ARCHITECTURE.md"
+          - "agents/*/process.yml (multiple)"
+        current_state: "outputs.yml referenced extensively but never created"
+        required_changes:
+          - "Search for all outputs.yml references"
+          - "Remove or update to reflect actual output specification method"
+          - "Document that outputs are specified inline in process.yml outputs: section"
+        acceptance_criteria:
+          - "No references to standalone outputs.yml files"
+          - "Process.yml files document their own outputs inline"
+
+      - id: "3.4"
+        description: "Remove assets/processes/ phantom reference"
+        operation: "DELETE_REFERENCE"
+        category: "PHANTOM_FILE"
+        files:
+          - "docs/ARCHITECTURE.md"
+        current_state: "assets/processes/ directory referenced but doesn't exist"
+        required_changes:
+          - "Remove reference in ARCHITECTURE.md entirely"
+          - "Document actual process file locations (agents/*/process.yml)"
+        acceptance_criteria:
+          - "No reference to non-existent assets/processes/ directory"
+          - "Correct process.yml locations documented"
+
+      - id: "3.5"
+        description: "Remove definitions.yml phantom reference"
+        operation: "DELETE_REFERENCE"
+        category: "PHANTOM_FILE"
+        files:
+          - "docs/ARCHITECTURE.md"
+        current_state: "definitions.yml referenced but no such files exist"
+        required_changes:
+          - "Remove reference to definitions.yml pattern"
+          - "Update to reflect actual pattern: assets/definitions/*.yml if needed"
+        acceptance_criteria:
+          - "No reference to non-existent definitions.yml pattern"
+
+  # ---------------------------------------------------------------------------
+  # PHASE 4: Stale Reference Cleanup
+  # ---------------------------------------------------------------------------
+  # Impact: Correctness, reduced confusion
+  # Risk: Low
+  # Dependencies: Phases 2-3 (references may change)
+  # ---------------------------------------------------------------------------
+
+  - name: "phase-4-stale-cleanup"
+    description: "Fix stale references, broken paths, and outdated documentation"
+    priority: 4
+    estimated_context_reduction: "N/A (correctness focus)"
+    risk_level: "low"
+    dependencies:
+      - "phase-2-consolidate-overlaps"
+      - "phase-3-phantom-resolution"
+
+    agent_guidance:
+      primary_agent: "teacher-update-guidance"
+      selection_rationale: "Documentation and reference fixes"
+
+    success_criteria:
+      - "All file references in inputs.yml resolve to existing files"
+      - "Guidelines manifest matches actual guideline files"
+      - "ARCHITECTURE.md agent names match actual implementations"
+
+    tasks:
+      - id: "4.1"
+        description: "Fix knowledge-encapsulation.yml stale reference"
+        operation: "UPDATE"
+        category: "STALE"
+        files:
+          - "assets/definitions/knowledge-encapsulation.yml"
+        current_state: "References role-separation.yml which is not in any layer"
+        required_changes:
+          - "Remove or update role-separation.yml reference"
+          - "Reference relevant existing file or inline the needed content"
+        acceptance_criteria:
+          - "No broken references in knowledge-encapsulation.yml"
+
+      - id: "4.2"
+        description: "Fix testing.yml stale strategy references"
+        operation: "UPDATE"
+        category: "STALE"
+        files:
+          - "assets/guidelines/testing.yml"
+        current_state: "References 8 strategy definition files not in planner-guidance layers"
+        required_changes:
+          - "Update or remove strategy file references"
+          - "Keep references that are in loaded layers, remove others"
+        acceptance_criteria:
+          - "All references resolve to files in agent's loaded layers"
+
+      - id: "4.3"
+        description: "Sync guidelines manifest with actual files"
+        operation: "UPDATE"
+        category: "INCONSISTENT"
+        files:
+          - "assets/guidelines/manifest.yml"
+          - "assets/inputs/core-guidelines.yml"
+        current_state: "Manifest lists 11 guidelines, layer references only 8"
+        required_changes:
+          - "Audit actual guideline files vs manifest"
+          - "Update manifest to match actual files"
+          - "Update layer to reference all intended guidelines"
+        acceptance_criteria:
+          - "Manifest exactly matches actual guideline files"
+          - "Layer references same set as manifest"
+
+      - id: "4.4"
+        description: "Fix Teacher subagent naming inconsistency"
+        operation: "UPDATE"
+        category: "SEMANTIC_CONTRADICTION"
+        files:
+          - "docs/ARCHITECTURE.md"
+          - "assets/definitions/agent-categories.yml"
+          - "agents/teacher/manifest.yml"
+        current_state: |
+          Teacher subagent naming mismatch:
+          - teacher-process doesn't exist
+          - teacher-plan defined in categories but not implemented
+          - Actual agents: teacher-update-guidance, teacher-update-assets
+        required_changes:
+          - "Update ARCHITECTURE.md to match actual teacher agents"
+          - "Update agent-categories.yml sub_agents list"
+          - "Remove references to non-existent teacher-process"
+        acceptance_criteria:
+          - "All teacher agent references match actual implementations"
+          - "No references to non-existent teacher subagents"
+
+      - id: "4.5"
+        description: "Fix iteration.yml path inconsistencies"
+        operation: "UPDATE"
+        category: "STALE"
+        files:
+          - "assets/guidelines/iteration.yml"
+        current_state: "Path inconsistencies in related_guidelines references"
+        required_changes:
+          - "Audit all path references in iteration.yml"
+          - "Update to correct paths or remove broken references"
+        acceptance_criteria:
+          - "All paths in iteration.yml resolve correctly"
+
+  # ---------------------------------------------------------------------------
+  # PHASE 5: Structural Standardization
+  # ---------------------------------------------------------------------------
+  # Impact: Consistency, maintainability
+  # Risk: Medium - touches many files
+  # Dependencies: Phases 1-4
+  # ---------------------------------------------------------------------------
+
+  - name: "phase-5-standardize-structure"
+    description: "Standardize inputs.yml format and resolve structural inconsistencies"
+    priority: 5
+    estimated_context_reduction: "N/A (consistency focus)"
+    risk_level: "medium"
+    dependencies:
+      - "phase-4-stale-cleanup"
+
+    agent_guidance:
+      primary_agent: "teacher-update-guidance"
+      selection_rationale: "Structural updates to agent inputs files"
+
+    success_criteria:
+      - "All inputs.yml files follow same structural pattern"
+      - "agent_context consistently placed"
+      - "required_inputs section in files that need runtime inputs"
+      - "PATH RESOLUTION SEMANTICS header where needed"
+
+    tasks:
+      - id: "5.1"
+        description: "Document canonical inputs.yml format"
+        operation: "CREATE"
+        category: "STRUCTURAL_INCONSISTENCY"
+        files:
+          - "assets/definitions/inputs-format.yml"
+        current_state: "No documented standard; 6 different version formats, multiple structural patterns"
+        required_changes:
+          - "Create inputs-format.yml defining canonical structure"
+          - "Document: layers: vs core_inputs: vs flat list"
+          - "Document: required_inputs section usage"
+          - "Document: agent_context placement (root level)"
+          - "Document: version format (semantic: major.minor)"
+        acceptance_criteria:
+          - "Clear canonical format documented"
+          - "Examples of correct structure included"
+          - "Decision guidance for when to use each section type"
+        question_dependency: "Q2"
+
+      - id: "5.2"
+        description: "Add required_inputs to planner-guidance/inputs.yml"
+        operation: "UPDATE"
+        category: "AMBIGUOUS"
+        files:
+          - "agents/planner/planner-guidance/inputs.yml"
+        current_state: |
+          Unclear which inputs must exist vs be provided by orchestrator.
+          required_inputs section exists but other agents lack it.
+        required_changes:
+          - "Ensure required_inputs section is complete and accurate"
+          - "Document: friction_source, target_agent, target_project_path"
+          - "Add examples for each required input"
+        acceptance_criteria:
+          - "All runtime-required inputs documented in required_inputs section"
+          - "Clear examples and types for each"
+
+      - id: "5.3"
+        description: "Standardize agent_context placement across agents"
+        operation: "UPDATE"
+        category: "AGENT_CONTEXT_PLACEMENT_INCONSISTENCY"
+        files:
+          - "agents/planner/planner-guidance/inputs.yml"
+          - "agents/planner/planner-build/inputs.yml"
+          - "agents/deploy/deploy-worktree/inputs.yml"
+          - "agents/teacher/teacher-update-guidance/inputs.yml"
+          - "agents/build/build-python/inputs.yml"
+          - "agents/build/build-flutter/inputs.yml"
+        current_state: "agent_context at different nesting levels - root vs under inputs:"
+        required_changes:
+          - "Move agent_context to root level in all files"
+          - "Use consistent structure: agent_context at root, inputs: section below"
+        acceptance_criteria:
+          - "All inputs.yml files have agent_context at root level"
+          - "Consistent structure across all agent types"
+
+      - id: "5.4"
+        description: "Add loop_context to build agents"
+        operation: "UPDATE"
+        category: "STRUCTURAL_INCONSISTENCY"
+        files:
+          - "agents/build/build-python/process.yml"
+          - "agents/build/build-flutter/process.yml"
+        current_state: "Build agents lack loop_context despite participating in test-fix-loop"
+        required_changes:
+          - "Add loop_context section to both build agent process.yml files"
+          - "Reference test-fix-loop from agent-loops.yml"
+          - "Document max_iterations and participation pattern"
+        acceptance_criteria:
+          - "Both build agents have loop_context in process.yml"
+          - "Consistent with planner-guidance/planner-reviewer pattern"
+
+  # ---------------------------------------------------------------------------
+  # PHASE 6: Documentation Alignment
+  # ---------------------------------------------------------------------------
+  # Impact: Accuracy, reduced confusion
+  # Risk: Low
+  # Dependencies: Phases 1-5
+  # ---------------------------------------------------------------------------
+
+  - name: "phase-6-documentation-alignment"
+    description: "Align ARCHITECTURE.md with actual implementation"
+    priority: 6
+    estimated_context_reduction: "~5% (if ARCHITECTURE.md trimmed)"
+    risk_level: "low"
+    dependencies:
+      - "phase-5-standardize-structure"
+
+    agent_guidance:
+      primary_agent: "teacher-update-guidance"
+      selection_rationale: "Documentation updates"
+
+    success_criteria:
+      - "ARCHITECTURE.md reflects actual agent structure"
+      - "No phantom file references"
+      - "Agent counts match reality"
+
+    tasks:
+      - id: "6.1"
+        description: "Update ARCHITECTURE.md agent counts"
+        operation: "UPDATE"
+        category: "DOCUMENTATION_DRIFT"
+        files:
+          - "docs/ARCHITECTURE.md"
+        current_state: |
+          Layer files claim agent counts (27, 22, 10, 8, 6, 8) that don't match
+          actual ~15 migrated agents.
+        required_changes:
+          - "Audit actual agent count in agents/ directory"
+          - "Update ARCHITECTURE.md to reflect actual counts"
+          - "Update layer file descriptions if they mention counts"
+        acceptance_criteria:
+          - "Agent counts match actual agents/ directory structure"
+          - "No overstated agent counts"
+
+      - id: "6.2"
+        description: "Remove ARCHITECTURE.md duplication with agent-categories.yml"
+        operation: "UPDATE"
+        category: "REDUNDANCY"
+        files:
+          - "docs/ARCHITECTURE.md"
+        current_state: "ARCHITECTURE.md Agent Categories section duplicates agent-categories.yml"
+        required_changes:
+          - "Remove duplicate agent category content from ARCHITECTURE.md"
+          - "Replace with reference to assets/definitions/agent-categories.yml"
+          - "Keep high-level overview, remove detailed agent lists"
+        acceptance_criteria:
+          - "ARCHITECTURE.md references agent-categories.yml instead of duplicating"
+          - "File reduced by 50+ lines"
+
+      - id: "6.3"
+        description: "Fix version inconsistencies"
+        operation: "UPDATE"
+        category: "VERSION_INCONSISTENCY"
+        files:
+          - "agents/*/inputs.yml (multiple)"
+          - "agents/*/manifest.yml (multiple)"
+        current_state: |
+          Six different version formats: 1.0, 1.0-pilot, 2.0, 2.0-pilot, 2.0-p1
+          No standardized scheme documented.
+        required_changes:
+          - "Document version scheme in inputs-format.yml (from task 5.1)"
+          - "Standardize versions: use semantic versioning without pilot suffixes"
+          - "Or document pilot suffix meaning and graduation criteria"
+        acceptance_criteria:
+          - "Consistent version format across all agent files"
+          - "Version scheme documented"
+
+  # ---------------------------------------------------------------------------
+  # PHASE 7: Verification and Validation
+  # ---------------------------------------------------------------------------
+  # Impact: Ensure all changes are correct
+  # Risk: N/A (verification only)
+  # Dependencies: All previous phases
+  # ---------------------------------------------------------------------------
+
+  - name: "phase-7-verification"
+    description: "Verify all remediation changes are correct and complete"
+    priority: 7
+    estimated_context_reduction: "Validation phase"
+    risk_level: "none"
+    dependencies:
+      - "phase-6-documentation-alignment"
+
+    agent_guidance:
+      primary_agent: "test-final-output"
+      selection_rationale: "Validation and verification of all changes"
+
+    success_criteria:
+      - "Zero broken file references"
+      - "All consolidated files exist and are well-formed"
+      - "Context usage reduced to target range"
+      - "No regressions in existing functionality"
+
+    tasks:
+      - id: "7.1"
+        description: "Validate all file references resolve"
+        operation: "AUDIT"
+        files:
+          - "agents/planner/planner-guidance/inputs.yml"
+          - "agents/planner/planner-guidance/process.yml"
+        current_state: "Post-remediation state"
+        required_changes:
+          - "Run reference validation on planner-guidance inputs"
+          - "Verify all paths resolve to existing files"
+          - "Verify all layer references are valid"
+        acceptance_criteria:
+          - "Zero broken references"
+          - "All required files exist"
+
+      - id: "7.2"
+        description: "Measure final context usage"
+        operation: "AUDIT"
+        files:
+          - "agents/planner/planner-guidance/inputs.yml"
+        current_state: "Pre-remediation: 35-40% context usage"
+        required_changes:
+          - "Calculate total lines/tokens loaded by planner-guidance inputs"
+          - "Compare to pre-remediation baseline"
+          - "Document reduction percentage"
+        acceptance_criteria:
+          - "Context usage under 25%"
+          - "Reduction of at least 10 percentage points documented"
+
+      - id: "7.3"
+        description: "Run planner-guidance with sample task"
+        operation: "TEST"
+        files:
+          - "agents/planner/planner-guidance/"
+        current_state: "Post-remediation"
+        required_changes:
+          - "Execute planner-guidance on a sample friction analysis"
+          - "Verify it produces valid guidance plan"
+          - "Check for any missing context errors"
+        acceptance_criteria:
+          - "Agent completes without missing context errors"
+          - "Output plan is well-formed"
+          - "No regressions from baseline capability"
+
+  # ---------------------------------------------------------------------------
+  # PHASE 8: Specialized Core Layer Audit (T4 MANDATORY)
+  # ---------------------------------------------------------------------------
+  # Impact: Significant context reduction via specialized core layers
+  # Risk: Medium - creates new specialized layer files
+  # Dependencies: Phase 7 (verification complete before restructuring)
+  # MANDATORY: This phase addresses T4 cross-cutting requirement
+  # ---------------------------------------------------------------------------
+
+  - name: "phase-8-specialized-core-layer"
+    description: "Audit and create specialized core layers for planner-guidance agent"
+    priority: 8
+    estimated_context_reduction: "15-25% (specialized vs generic core layers)"
+    risk_level: "medium"
+    dependencies:
+      - "phase-7-verification"
+
+    agent_guidance:
+      primary_agent: "teacher-update-guidance"
+      secondary_agent: "teacher-update-assets"
+      selection_rationale: "Creating specialized layer files and updating agent inputs"
+
+    success_criteria:
+      - "Audit complete: know exactly which core definitions/guidelines planner-guidance uses"
+      - "planner-core-guidelines.yml created with only needed guidelines"
+      - "planner-core-system.yml created with only needed system definitions"
+      - "planner-guidance inputs.yml updated to use specialized layers"
+      - "Context reduction measured and documented"
+
+    tasks:
+      - id: "8.1"
+        description: "Audit planner-guidance core file usage"
+        operation: "AUDIT"
+        category: "CONTEXT_OPTIMIZATION"
+        files:
+          - "agents/planner/planner-guidance/process.yml"
+          - "agents/planner/planner-guidance/inputs.yml"
+          - "assets/inputs/core-guidelines.yml"
+          - "assets/inputs/core-systems.yml"
+        current_state: |
+          planner-guidance loads generic core-guidelines.yml and core-systems.yml
+          which contain definitions/guidelines for ALL agents, not just planners.
+          Unknown which files are actually referenced/used by planner-guidance.
+        required_changes:
+          - "Trace all file references in planner-guidance process.yml"
+          - "Identify which core-guidelines files are actually used"
+          - "Identify which core-systems files are actually used"
+          - "Document unused files that add unnecessary context"
+          - "Create audit report of used vs unused core files"
+        acceptance_criteria:
+          - "Complete list of core files actually used by planner-guidance"
+          - "Complete list of core files NOT used (context waste)"
+          - "Documented rationale for each inclusion/exclusion"
+
+      - id: "8.2"
+        description: "Create planner-core-guidelines.yml"
+        operation: "CREATE"
+        category: "CONTEXT_OPTIMIZATION"
+        files:
+          - "assets/inputs/planner-core-guidelines.yml"
+        current_state: "File does not exist; planner-guidance uses generic core-guidelines.yml"
+        required_changes:
+          - "Create planner-core-guidelines.yml in assets/inputs/"
+          - "Include ONLY guidelines identified in audit (task 8.1)"
+          - "Add header documenting this is planner-specific subset"
+          - "Include PATH RESOLUTION SEMANTICS header"
+          - "Reference only planner-relevant guidelines"
+        acceptance_criteria:
+          - "File exists at assets/inputs/planner-core-guidelines.yml"
+          - "Contains subset of guidelines relevant to planner agents"
+          - "Smaller than generic core-guidelines.yml"
+          - "All references resolve to existing files"
+
+      - id: "8.3"
+        description: "Create planner-core-system.yml"
+        operation: "CREATE"
+        category: "CONTEXT_OPTIMIZATION"
+        files:
+          - "assets/inputs/planner-core-system.yml"
+        current_state: "File does not exist; planner-guidance uses generic core-systems.yml"
+        required_changes:
+          - "Create planner-core-system.yml in assets/inputs/"
+          - "Include ONLY system definitions identified in audit (task 8.1)"
+          - "Add header documenting this is planner-specific subset"
+          - "Include PATH RESOLUTION SEMANTICS header"
+          - "Reference only planner-relevant system definitions"
+        acceptance_criteria:
+          - "File exists at assets/inputs/planner-core-system.yml"
+          - "Contains subset of system definitions relevant to planner agents"
+          - "Smaller than generic core-systems.yml"
+          - "All references resolve to existing files"
+
+      - id: "8.4"
+        description: "Update planner-guidance to use specialized layers"
+        operation: "UPDATE"
+        category: "CONTEXT_OPTIMIZATION"
+        files:
+          - "agents/planner/planner-guidance/inputs.yml"
+        current_state: |
+          inputs.yml references generic core-guidelines.yml and core-systems.yml
+          which load context for all agents, not just planners.
+        required_changes:
+          - "Replace core-guidelines.yml reference with planner-core-guidelines.yml"
+          - "Replace core-systems.yml reference with planner-core-system.yml"
+          - "Verify all transitive references still resolve"
+          - "Add comment explaining specialized layer usage"
+        acceptance_criteria:
+          - "planner-guidance inputs.yml uses planner-core-guidelines.yml"
+          - "planner-guidance inputs.yml uses planner-core-system.yml"
+          - "No broken references after update"
+          - "Context reduction documented"
+
+      - id: "8.5"
+        description: "Verify specialized core layer effectiveness"
+        operation: "AUDIT"
+        category: "CONTEXT_OPTIMIZATION"
+        files:
+          - "agents/planner/planner-guidance/inputs.yml"
+        current_state: "Post-specialization state"
+        required_changes:
+          - "Measure context size before and after specialization"
+          - "Run planner-guidance with specialized layers"
+          - "Verify no missing context errors"
+          - "Document context savings achieved"
+        acceptance_criteria:
+          - "Context reduction of at least 15% from specialized layers"
+          - "Agent functions correctly with specialized layers"
+          - "No missing references or functionality regressions"
+          - "Savings documented for future reference"
+
+# =============================================================================
+# CROSS-CUTTING CONCERNS
+# =============================================================================
+# Issues that affect multiple files and should be considered throughout all phases
+
+cross_cutting_concerns:
+  - concern: "Reference updates cascade"
+    description: |
+      When consolidating files (phase 2), all references must be updated.
+      Use grep to find all references before deleting any file.
+    affected_phases: [2, 3, 4, 8]
+    mitigation: "Create redirect comments in deleted files pointing to new location"
+
+  - concern: "Spelling consistency (British vs American)"
+    description: |
+      Files use both 'minimisation' and 'minimization' spellings.
+      Pick one and apply consistently.
+    affected_phases: [2, 4]
+    mitigation: "Use British spelling (minimisation) as current convention"
+
+  - concern: "Layer loading order"
+    description: |
+      When removing layers (phase 1), ensure no transitive dependencies break.
+      test-shared and cleaner-shared may have definitions used elsewhere.
+      Phase 8 specialized layers must maintain all required transitive dependencies.
+    affected_phases: [1, 8]
+    mitigation: "Verify definitions are not cross-referenced before removing layers"
+
+  - concern: "Empty section handling"
+    description: |
+      Multiple files have empty arrays (guidelines: [], outputs: [], participates_in: []).
+      Decide: remove empty sections or document as intentional placeholders.
+    affected_phases: [5, 6]
+    mitigation: "Remove truly empty sections; keep with comment if placeholder for future"
+
+  - concern: "Specialized core layer maintenance (T4)"
+    description: |
+      Phase 8 creates planner-specific core layers (planner-core-guidelines.yml,
+      planner-core-system.yml). These must be maintained when core files change.
+      Other planner agents may benefit from same specialized layers.
+    affected_phases: [8]
+    mitigation: "Document layer relationships; consider extending to other planner agents"
+
+# =============================================================================
+# EXECUTION GUIDANCE
+# =============================================================================
+
+execution_guidance:
+  recommended_order: |
+    1. Q1 RESOLVED: Remove all phantom references (user decision)
+    2. Get user answers to Q2-Q4 before starting remaining work
+    3. Execute Phase 1 (quick wins) - low risk, high impact
+    4. Execute Phase 2 (consolidation) - uses patterns from Phase 1
+    5. Execute Phase 3 (phantom removal) - remove all phantom refs per Q1 decision
+    6. Execute Phase 4 (stale cleanup) - depends on Phases 2-3 changes
+    7. Execute Phase 5 (standardization) - depends on Q2 answers
+    8. Execute Phase 6 (documentation) - depends on all previous
+    9. Execute Phase 7 (verification) - validates phases 1-6
+    10. Execute Phase 8 (specialized core layers) - T4 MANDATORY after verification
+
+  parallel_opportunities:
+    - "Tasks 1.1 and 1.2 can run in parallel"
+    - "Tasks 1.3, 1.4, 1.5 can run in parallel (independent files)"
+    - "Tasks 3.1 and 3.2 can run in parallel"
+    - "Tasks 3.3, 3.4, 3.5 can run in parallel"
+    - "Tasks 4.1, 4.2, 4.5 can run in parallel"
+    - "Tasks 8.2 and 8.3 can run in parallel (after 8.1 completes)"
+
+  iteration_expectation: |
+    Given the scope (66 issues, 8 phases, 32 tasks), expect:
+    - 3-4 planner-guidance iterations for plan refinement
+    - Multiple teacher agent executions per phase
+    - Verification phase may surface issues requiring phase revisits
+    - Phase 8 may require iteration if core layer audit reveals unexpected dependencies
+
+notes:
+  - "This plan addresses all 66 issues identified in audit_planner_guidance.yml"
+  - "Phases are sequenced to minimize risk and maximize early impact"
+  - "Q1 RESOLVED: User explicitly requested removal of ALL phantom references"
+  - "Questions Q2-Q4 require user input before certain tasks can proceed"
+  - "Context reduction targets are estimates based on file sizes"
+  - "Verification phase ensures no regressions before completion"
+  - "Phase 8 (T4 MANDATORY) adds specialized core layers for further context reduction"

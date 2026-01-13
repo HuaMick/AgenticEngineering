@@ -15,7 +15,7 @@ AgenticGuidance/
 
 ## Agent Categories
 
-The module contains 6 implemented agent categories with 21 sub-agents:
+The module contains 6 implemented agent categories with 19 active sub-agents (plus 2 deprecated):
 
 ### Planner (6 agents)
 Create executable implementation plans from objectives.
@@ -29,15 +29,15 @@ Create executable implementation plans from objectives.
 | `planner-guidance-testing` | Guidance completeness testing |
 | `planner-reviewer` | Plan review and approval |
 
-### Orchestration (4 agents)
+### Orchestration (2 active, 2 deprecated)
 High-level coordination of planning and execution workflows.
 
 | Agent | Purpose |
 |-------|---------|
-| `orchestration-planning` | Human-in-the-loop plan creation |
-| `orchestration-build` | Code implementation and testing |
-| `orchestration-guidance` | Context engineering for agent guidance |
+| `orchestration-planning` | Human-in-the-loop plan creation + MMD generation |
 | `orchestration-executor` | Dynamic agent routing from Plan-MMD |
+| ~~`orchestration-build`~~ | **DEPRECATED** - replaced by `orchestration-executor` |
+| ~~`orchestration-guidance`~~ | **DEPRECATED** - replaced by `orchestration-executor` |
 
 ### Test (7 agents)
 Validation through testing and quality assurance.
@@ -136,9 +136,10 @@ Three top-level entrypoints for initiating workflows:
    - Outputs approved plan to `docs/plans/live/YYMMDDRepo_Branch/`
 
 2. **Execution Phase**: Use `_orchestrate.yml` to execute the approved plan
-   - Invokes `orchestration-build` agent
-   - Executes phases in order defined by plan
-   - Orchestrates builder and tester agents per phase definitions
+   - Invokes `orchestration-executor` agent
+   - Discovers `orchestration_*.mmd` file in plan folder
+   - Executes phases using dynamic AGENT_ROUTING from MMD metadata
+   - Orchestrates builder, tester, and teacher agents per phase definitions
 
 ## Path Resolution
 
@@ -152,12 +153,12 @@ AgenticGuidance uses two path resolution strategies:
 ## Implementation Status
 
 **Implemented**:
-- 6 agent categories with 21 sub-agents
+- 6 agent categories with 19 active sub-agents (plus 2 deprecated)
 - 86 definition files
 - 15 guideline files
+- 11 shared input configurations
 - 3 entrypoints
 - Example templates for all major workflows
-- Shared input configurations
 
 **Not Migrated** (may be deprecated):
 - `cleaner` category (cleanup logic exists in planner-cleaning)

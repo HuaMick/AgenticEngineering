@@ -1,3 +1,47 @@
 name: deploy-cicd
-description: "Specializes in CI/CD pipeline configuration and validation."
-version: "1.0"
+description: |
+  Ensure CI/CD infrastructure files remain synchronized with the codebase.
+  Audits cloudbuild.yaml, Dockerfile.test, pytest.ini, and docker-compose.test.yml
+  to prevent CI failures caused by drift between test structure and CI configuration.
+# Version scheme: X.Y where X = architecture version, Y = iteration
+# 2.0 = reference layer architecture (inputs.yml uses transitive loading)
+version: "2.0"
+category: deploy
+
+structure:
+  - path: "modules/AgenticGuidance/agents/deploy/deploy-cicd/"
+    description: "Agent root directory"
+  - path: "modules/AgenticGuidance/agents/deploy/deploy-cicd/process.yml"
+    description: "Process definition with validation steps and outputs"
+  - path: "modules/AgenticGuidance/agents/deploy/deploy-cicd/inputs.yml"
+    description: "Input definitions including CI/CD validation procedures"
+
+responsibilities:
+  - Audit cloudbuild.yaml test steps against actual test directories
+  - Validate Dockerfile.test configuration and sed patterns
+  - Verify pytest.ini settings for CI compatibility
+  - Ensure docker-compose.test.yml mirrors cloudbuild.yaml configuration
+  - Check for platform-specific test considerations (root user, paths)
+  - Generate structured CI/CD synchronization reports
+
+boundaries:
+  - Does NOT create or modify test code (see test agents)
+  - Does NOT deploy to production environments
+  - Does NOT manage application configuration (only CI/CD config)
+  - Does NOT create worktrees or plan folders (see deploy-worktree)
+  - Does NOT execute actual CI/CD pipelines (validation only)
+
+outputs:
+  - type: "report"
+    name: "cicd_audit_report"
+    description: "Structured report with cloudbuild_audit, dockerfile_issues, pytest_issues, compose_drift, platform_issues, and recommended_fixes"
+    required: true
+  - type: "status"
+    name: "validation_status"
+    description: "Overall validation result (PASS, WARN, or FAIL)"
+    required: true
+    enum: ["PASS", "WARN", "FAIL"]
+  - type: "issues"
+    name: "blocking_issues"
+    description: "Issues that would cause CI failure if not fixed"
+    required: true
