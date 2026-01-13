@@ -1,0 +1,129 @@
+# Plan: Teach Decommissioning Over Deprecation Guideline
+# Teaching plan to add guidance for preferring decommissioning over deprecation
+#
+# OBJECTIVE: Ensure cleaner agents actively decommission deprecated components
+# rather than leaving DEPRECATED.md files as a permanent state.
+
+name: "teach-decommissioning-over-deprecation"
+status: "completed"
+completed_date: "2026-01-11"
+priority: "high"
+
+context: |
+  PROBLEM IDENTIFIED:
+  The plan folder shows that orchestration-build and orchestration-guidance were marked
+  as "DEPRECATED" with DEPRECATED.md files, but the actual folders still exist with their
+  content (inputs.yml, manifest.yml, process.mmd).
+
+  This is problematic because:
+  1. Deprecated items become noise for future agents
+  2. They appear in glob patterns, search results, and file trees
+  3. Future agents may read, reference, or accidentally modify them
+  4. Context tokens are wasted on stale information
+
+  SOLUTION:
+  Add a "decommissioning-over-deprecation" guideline that:
+  1. Makes complete removal the default action
+  2. Requires a strong case for deprecation (external consumers, migration timeline)
+  3. Treats DEPRECATED.md as a flag for cleanup, not a permanent state
+  4. Wires this guideline into planner-cleaning inputs
+
+inputs:
+  - location: "modules/AgenticGuidance/assets/definitions/signal-and-noise.yml"
+    description: "Stale context is noise - supports this guideline's rationale"
+  - location: "modules/AgenticGuidance/assets/guidelines/decommissioning-over-deprecation.yml"
+    description: "The new guideline to be created"
+  - location: "modules/AgenticGuidance/agents/planner/planner-cleaning/inputs.yml"
+    description: "Target inputs file to wire the guideline into"
+  - location: "modules/AgenticGuidance/agents/planner/planner-cleaning/process.yml"
+    description: "Process file to add explicit decommissioning guidance"
+
+phases:
+  - name: "Teach Phase - Create Guideline"
+    execution: sequential
+    description: "Create and wire the decommissioning-over-deprecation guideline"
+    tasks:
+      - id: "teach_001"
+        name: "Create decommissioning-over-deprecation.yml guideline"
+        description: |
+          Create new guideline at modules/AgenticGuidance/assets/guidelines/decommissioning-over-deprecation.yml
+          Rules to include:
+          - Decommission by default
+          - Strong case required for deprecation (external consumers, removal timeline)
+          - DEPRECATED.md is temporary - signals incomplete cleanup
+          - Archive valuable patterns to examples/ before deletion
+        status: "completed"
+        completed_date: "2026-01-11"
+
+      - id: "teach_002"
+        name: "Update guidelines manifest"
+        description: "Add decommissioning-over-deprecation.yml to manifest.yml quality section"
+        status: "completed"
+        completed_date: "2026-01-11"
+
+      - id: "teach_003"
+        name: "Wire guideline into planner-core-guidelines.yml"
+        description: "Add to shared planner guidelines layer for all planners"
+        status: "completed"
+        completed_date: "2026-01-11"
+
+      - id: "teach_004"
+        name: "Wire guideline into planner-cleaning inputs.yml"
+        description: "Add explicit reference with CRITICAL priority for cleaning agents"
+        status: "completed"
+        completed_date: "2026-01-11"
+
+      - id: "teach_005"
+        name: "Update planner-cleaning process.yml"
+        description: "Add DECOMMISSIONING OVER DEPRECATION section to cleanup phase requirements"
+        status: "completed"
+        completed_date: "2026-01-11"
+
+  - name: "Test Phase - Verify Guidance Effectiveness"
+    execution: sequential
+    description: "Spawn cleaner agents WITHOUT hints to see if they detect and decommission deprecated components"
+    tasks:
+      - id: "test_001"
+        name: "Spawn planner-cleaning agent for this plan folder"
+        description: |
+          Invoke planner-cleaning agent with:
+          - Plan folder: docs/plans/live/260104AE_agenticguidance/
+          - NO explicit mention of deprecated components
+          - Observe if agent identifies DEPRECATED.md files as cleanup candidates
+        status: "completed"
+        completed_date: "2026-01-11"
+        result: |
+          SUCCESS: Agent correctly identified BOTH deprecated folders as CRITICAL cleanup candidates:
+          - modules/AgenticGuidance/agents/orchestration/orchestration-build/
+          - modules/AgenticGuidance/agents/orchestration/orchestration-guidance/
+          Agent quoted the guideline: "DEPRECATED.md files signal INCOMPLETE cleanup, not a permanent state"
+        success_criteria:
+          - "Agent reads decommissioning-over-deprecation.yml guideline - PASS"
+          - "Agent identifies orchestration-build and orchestration-guidance as cleanup candidates - PASS"
+          - "Agent proposes tasks to fully delete deprecated folders (not just document) - PASS"
+
+      - id: "test_002"
+        name: "Verify cleanup plan includes full decommissioning"
+        description: |
+          Review the cleanup plan created by planner-cleaning:
+          - Must include deletion tasks for deprecated folders
+          - Must verify examples already archived (orchestration_build_reference.mmd exists)
+          - Must NOT treat DEPRECATED.md as a permanent state
+        status: "completed"
+        completed_date: "2026-01-11"
+        result: |
+          SUCCESS: Agent proposed clean_001 through clean_005 tasks including:
+          - clean_001: Verify reference examples preserved before deletion
+          - clean_002: Delete orchestration-build folder entirely
+          - clean_003: Delete orchestration-guidance folder entirely
+          - clean_004/005: Update documentation to remove deprecated mentions
+        success_criteria:
+          - "Plan includes rm -rf tasks for deprecated folders - PASS (clean_002, clean_003)"
+          - "Plan verifies example preservation before deletion - PASS (clean_001)"
+          - "Plan does not defer deprecation cleanup - PASS (marked CRITICAL priority)"
+
+success_criteria:
+  - "decommissioning-over-deprecation.yml guideline exists with clear rules"
+  - "Guideline is wired into planner-cleaning inputs and process"
+  - "Cleaner agents autonomously identify deprecated components as cleanup candidates"
+  - "Test confirms agents plan full decommissioning, not continued deprecation"

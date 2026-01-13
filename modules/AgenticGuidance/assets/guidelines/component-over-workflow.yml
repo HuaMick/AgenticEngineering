@@ -1,0 +1,137 @@
+# Component-Over-Workflow Guideline
+# Guides planners to prefer reusable components over hardcoded orchestration patterns.
+#
+# SCOPE: Architectural decision-making for orchestration flexibility
+# Related definitions: modules/AgenticGuidance/assets/definitions/planner-components.yml
+
+guideline:
+  name: "Component Over Workflow"
+  description: |
+    Planners should COMPOSE orchestrations from reusable components rather than
+    extending fixed workflow patterns. Components are the primary mechanism for
+    orchestration flexibility.
+
+  core_principle: |
+    PREFER reusable components over hardcoded orchestration patterns.
+    New orchestration patterns should become MMD components, not additions to
+    agent-loops.yml or other static workflow definitions.
+
+  component_locations:
+    phase_templates:
+      path: "modules/AgenticGuidance/assets/examples/orchestration/phase_templates/"
+      purpose: "Complete phase structures (Build, Test, UAT, Cleanup, Teach)"
+      examples:
+        - "build_phase.mmd - Complete build phase with iteration"
+        - "test_phase.mmd - Test execution and reporting"
+        - "uat_phase.mmd - User acceptance testing flows"
+        - "cleanup_phase.mmd - Cleanup with dependency checking"
+        - "teach_phase.mmd - Guidance teaching patterns"
+
+    reusable_components:
+      path: "modules/AgenticGuidance/assets/examples/planner/components/"
+      purpose: "Small, focused patterns embeddable in any phase"
+      examples:
+        - "feedback_loop.mmd - Generic iterative refinement"
+        - "approval_gate.mmd - Human approval checkpoints"
+        - "audit_test_fix_loop.mmd - Test quality validation"
+        - "guidance_self_review_loop.mmd - Agent self-review pattern"
+        - "guidance_blind_test.mmd - Blind testing for guidance validation"
+
+  behavioral_rules:
+    compose_dont_extend:
+      key_behavior: "Planners COMPOSE orchestrations from components, not extend fixed workflows"
+      justification: "Composition enables flexibility; extension creates coupling"
+      agent_responsibilities:
+        - "Select appropriate phase templates as starting points"
+        - "Embed reusable components to add required behaviors"
+        - "Customize flows by connecting component entry/exit points"
+        - "Avoid modifying agent-loops.yml for new patterns"
+
+    components_for_new_patterns:
+      key_behavior: "New patterns should become MMD components, not definition additions"
+      justification: "Components are reusable across orchestrations; definitions are static references"
+      agent_responsibilities:
+        - "When creating a new orchestration pattern, make it a component"
+        - "Place in planner/components/ if it's embeddable in any phase"
+        - "Place in phase_templates/ if it's a complete phase structure"
+        - "Only add to agent-loops.yml if it's a canonical loop type definition"
+
+    prefer_existing_components:
+      key_behavior: "Use existing components before creating new ones"
+      justification: "Reduces duplication and ensures pattern consistency"
+      agent_responsibilities:
+        - "Check planner/components/ before creating a new pattern"
+        - "Check phase_templates/ before designing a new phase structure"
+        - "Extend existing components only when necessary"
+
+  decision_tree:
+    description: "How to decide between component types"
+    questions:
+      - question: "Is this a complete phase (Build, Test, UAT, etc.)?"
+        yes: "Use or create a phase template in phase_templates/"
+        no: "Continue to next question"
+
+      - question: "Is this a small, embeddable pattern (loop, gate, review)?"
+        yes: "Use or create a component in planner/components/"
+        no: "Continue to next question"
+
+      - question: "Is this a canonical loop type definition that agents reference?"
+        yes: "Add to agent-loops.yml"
+        no: "Create an MMD component - this IS the default for new patterns"
+
+  examples:
+    good:
+      - description: "Planner composing from components"
+        example: |
+          Planning a guidance validation phase:
+          1. Start with teach_phase.mmd as base structure
+          2. Embed guidance_blind_test.mmd for validation
+          3. Add approval_gate.mmd before publishing
+          4. Connect components to phase flow
+          Result: Flexible, reusable orchestration
+
+      - description: "Creating new component instead of extending definitions"
+        example: |
+          Need: Multi-reviewer consensus pattern
+          WRONG: Add "multi-reviewer-loop" to agent-loops.yml
+          RIGHT: Create multi_reviewer_consensus.mmd in planner/components/
+          Result: Pattern is reusable, definitions stay clean
+
+      - description: "Reusing existing component"
+        example: |
+          Need: Feedback iteration in planning phase
+          Action: Embed existing feedback_loop.mmd
+          Result: Consistent pattern, no duplication
+
+    bad:
+      - description: "Extending agent-loops.yml for custom pattern"
+        example: |
+          Need: Custom validation pattern for specific project
+          WRONG: Add project-specific loop to agent-loops.yml
+          Result: Pollutes shared definitions with one-off patterns
+
+      - description: "Hardcoding workflow in orchestration"
+        example: |
+          Need: Approval before cleanup
+          WRONG: Write custom approval logic inline in orchestration
+          RIGHT: Use approval_gate.mmd component
+          Result: Duplicated code, inconsistent behavior
+
+      - description: "Creating duplicate component"
+        example: |
+          Need: Iterative improvement with feedback
+          WRONG: Create new_feedback_pattern.mmd without checking existing
+          RIGHT: Check planner/components/ first, use feedback_loop.mmd
+          Result: Unnecessary duplication
+
+  related_definitions:
+    - location: "modules/AgenticGuidance/assets/definitions/planner-components.yml"
+      description: "Component inventory and usage reference"
+    - location: "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+      description: "Canonical loop type definitions (reference only)"
+
+  related_guidelines:
+    - location: "modules/AgenticGuidance/assets/guidelines/orchestration-policy.yml"
+      description: "Multi-agent orchestration policies"
+    - location: "modules/AgenticGuidance/assets/guidelines/planning-standard.yml"
+      description: "Planning standards and requirements"

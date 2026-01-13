@@ -1,20 +1,62 @@
+# ==============================================
+# PATH RESOLUTION SEMANTICS
+# ==============================================
+# All paths in this file are relative to the REPOSITORY ROOT
+# (e.g., modules/AgenticGuidance/assets/), NOT the target project root.
+#
+# EXCEPTION: docs/plans/ paths are relative to the TARGET PROJECT root.
+# When an agent references docs/plans/live/ or docs/plans/completed/,
+# these exist in the project being worked on, not in AgenticGuidance.
+# ==============================================
+
+# ==============================================
+# REQUIRED INPUTS
+# ==============================================
+# These inputs MUST be provided by the parent orchestrator or user.
+# Without these, the agent cannot create a valid build plan.
+# ==============================================
+required_inputs:
+  - name: "objective"
+    type: "string"
+    description: "Build objective to plan for"
+    required: true
+    example: "Implement user authentication with JWT tokens"
+
+  - name: "target_project_path"
+    type: "string"
+    description: "Absolute path to target project root (for docs/plans/ resolution)"
+    required: true
+    example: "/home/code/MyProject"
+
+  - name: "plan_folder_name"
+    type: "string"
+    description: "Plan folder name in YYMMDDRepo_Branch format"
+    required: true
+    example: "260106MyProject_feature_auth"
+
 agent_context:
-  category: "assets/definitions/agent-categories.yml#planner"
+  category: "modules/AgenticGuidance/assets/definitions/agent-categories.yml#agent_categories.planner"
   role: "planner-build"
 
 inputs:
   agent_type: "planner-build"
-  version: "2.0-p1"
+  version: "2.0"  # MUST match manifest.yml version
 
   # Reference layers (transitive loading)
+  # NOTE: Uses specialized planner-core layers (T4 optimization) to reduce token usage
   layers:
     - type: layer
-      path: "assets/inputs/core-system.yml"
-      description: "Core system definitions (plans, domains, workflows, entrypoints, architecture)"
+      path: "modules/AgenticGuidance/assets/inputs/planner-core-system.yml"
+      description: "Planner-specific system definitions (plans.yml only - excludes architecture-pattern)"
       required: true
 
     - type: layer
-      path: "assets/inputs/planner-shared.yml"
+      path: "modules/AgenticGuidance/assets/inputs/planner-core-guidelines.yml"
+      description: "Planner-specific guidelines (excludes testing.yml, safety.yml)"
+      required: true
+
+    - type: layer
+      path: "modules/AgenticGuidance/assets/inputs/planner-shared.yml"
       description: "Planner shared inputs (agent-role-scope-matrix, plan-inputs, folder-structure, iteration)"
       required: true
 
@@ -22,20 +64,71 @@ inputs:
   core_inputs:
     # Build-specific architectural guidance
     - type: file
-      path: "agents/planner/planner-build/manifest.yml"
+      path: "modules/AgenticGuidance/agents/planner/planner-build/manifest.yml"
       description: "Architecture checklist and mandatory phase patterns (worktree specification, CI/CD validation triggers, domain->workflow->entrypoint alignment)"
       required: true
 
-    # Build plan example
+    # Unified plan example
     - type: file
-      path: "assets/examples/planner/YYMMDDRepo_Branch/live/plan_live_teach.yml"
-      description: "Build-focused live plan example showing proper plan structure with file-level inputs, detailed guidance, and measurable success criteria for build and environment setup phases"
+      path: "modules/AgenticGuidance/assets/examples/planner/YYMMDDRepo_Branch/plan_example.yml"
+      description: "Unified plan example showing how to coordinate multiple phases (Build, Test, Teach) in a single file with root-level inputs and context updates."
       required: true
 
-    # Existing plans for context
-    - type: pattern
-      path: "docs/plans/live/*/live/plan_live_teach.yml"
-      description: "Existing build phase plans in folder-based structure (YYMMDDRepo_Branch/live/) to understand current state"
+
+    # Orchestration MMD example
+    - type: file
+      path: "modules/AgenticGuidance/assets/examples/planner/YYMMDDRepo_Branch/orchestration_example.mmd"
+      description: "MMD orchestration example showing phase flow, feedback triggers, agent routing metadata, and status visualization"
+      required: false
+
+    # Plan MMD Schema (structural conventions for .mmd files)
+    - type: file
+      path: "modules/AgenticGuidance/assets/definitions/plan-mmd-schema.yml"
+      description: "Formal schema defining MMD structure: header comments, node naming, subgraphs, edge patterns, and loop definitions"
+      required: true
+
+    # SHARED structural patterns (same file used by planner-reviewer for validation)
+    - type: file
+      path: "modules/AgenticGuidance/assets/examples/planner/structural-patterns.yml"
+      description: "SHARED structural patterns for plan creation (used by planner-reviewer too)"
+      required: true
+
+    # README session tracking example
+    - type: file
+      path: "modules/AgenticGuidance/assets/examples/planner/YYMMDDRepo_Branch/README.md"
+      description: "README example showing consolidated session tracking (Session History, Status, Next Steps, Decision Items) - single document for session continuity"
+      required: false
+
+    # ==========================================================================
+    # MMD COMPONENT EXAMPLES - REUSABLE PATTERNS
+    # ==========================================================================
+    # These components demonstrate reusable MMD patterns for orchestration plans.
+    # USAGE: Adapt these patterns for plan-specific MMD generation.
+    # CONVENTIONS: All components follow plan-mmd-schema.yml structure.
+    # ==========================================================================
+    - type: file
+      path: "modules/AgenticGuidance/assets/examples/orchestration/phase_templates/build_phase.mmd"
+      description: "REUSABLE PATTERN: Build phase with architecture layers (Domain->Workflow->Entrypoint), planner-loop integration"
+      required: false
+
+    - type: file
+      path: "modules/AgenticGuidance/assets/examples/orchestration/phase_templates/test_phase.mmd"
+      description: "REUSABLE PATTERN: Test phase with test-fix-loop integration, failure capture, exit conditions"
+      required: false
+
+    - type: file
+      path: "modules/AgenticGuidance/assets/examples/orchestration/phase_templates/cleanup_phase.mmd"
+      description: "REUSABLE PATTERN: Cleanup phase with cleaner-dependency-loop, explorer integration, safety checks"
+      required: false
+
+    # ==========================================================================
+    # MMD GENERATION SUPPORT FILES
+    # ==========================================================================
+    # Reference these for routing patterns, trigger definitions, and complete examples.
+    # ==========================================================================
+    - type: file
+      path: "modules/AgenticGuidance/assets/definitions/orchestration-executor-specification.yml"
+      description: "Executor specification defining AGENT_ROUTING syntax, FEEDBACK_TRIGGERS patterns, state model, and phase execution protocol"
       required: false
 
   # Build-specific guidelines
@@ -44,11 +137,11 @@ inputs:
   # Build-specific definitions - keep minimal, reference definition files
   # Per context-minimisation.yml: "Provide only the information required for a process to complete its task"
   definitions:
-    # Loop definitions: See assets/definitions/agent-loops.yml (test-fix-loop, audit-test-fix-loop)
-    # Plan inputs: See assets/definitions/plan-inputs.yml
-    # Success criteria: See assets/definitions/user-stories.yml (UAT validation)
+    # Loop definitions: See modules/AgenticGuidance/assets/definitions/agent-loops.yml (test-fix-loop, audit-test-fix-loop)
+    # Plan inputs: See modules/AgenticGuidance/assets/definitions/plan-inputs.yml
+    # Success criteria: See modules/AgenticGuidance/assets/definitions/user-stories.yml (UAT validation)
     # Architecture: See docs/ARCHITECTURE.md (Domain -> Workflow -> Entrypoint)
-    # Overengineering: See assets/definitions/overengineering.yml
+    # Overengineering: See modules/AgenticGuidance/assets/definitions/overengineering.yml
 
     build_artifacts: |
       Build artifacts should be placed in build-artifacts/dist/ directory.

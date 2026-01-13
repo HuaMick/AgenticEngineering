@@ -1,7 +1,7 @@
 process:
   goal: |
     Add or update shared assets (definitions, guidelines, examples, shared inputs.yml entries) so
-    multiple agents can reuse core content without duplication. Operates on assets/ folder and
+    multiple agents can reuse core content without duplication. Operates on modules/AgenticGuidance/assets/ folder and
     shared input configurations that affect 2+ agents.
 
   loop_context:
@@ -9,12 +9,34 @@ process:
     note: "This agent operates at meta-level, not within iteration loops"
 
   inputs:
-    - location: "assets/definitions/signal-and-noise.yml"
+    - location: "modules/AgenticGuidance/assets/definitions/signal-and-noise.yml"
       description: "Signal vs noise definitions for context quality."
-    - location: "agents/teacher/teacher-update-assets/inputs.yml"
+    - location: "modules/AgenticGuidance/agents/teacher/teacher-update-assets/inputs.yml"
       description: "Core teacher-update-assets inputs, asset-type definitions, and manifests"
 
-  outputs: []
+  outputs:
+    - name: "assets_modified"
+      description: "List of shared asset files created or updated"
+      location: "modules/AgenticGuidance/assets/ directory"
+      schema:
+        - file_path: "string - path to asset file"
+          asset_type: "enum(definition, guideline, example, input-config)"
+          action: "enum(created, updated, deleted)"
+    - name: "manifest_updates"
+      description: "Updates made to manifest files"
+      location: "Returned to orchestrator"
+      schema:
+        guidelines_manifest_updated: "boolean"
+        examples_manifest_updated: "boolean"
+        entries_added: "array of strings"
+        entries_removed: "array of strings"
+    - name: "duplication_removal"
+      description: "Summary of duplicated content replaced with pointers"
+      location: "Returned to orchestrator"
+      schema:
+        - source_file: "string - file where duplication was removed"
+          shared_asset: "string - path to shared asset now referenced"
+          pointer_type: "string - See Also, reference, etc."
 
   steps:
     - |
@@ -36,13 +58,13 @@ process:
 
     - |
       Decide if it belongs in shared assets:
-      - Use shared assets when 2+ agents/processes will benefit
+      - Use shared assets when 2+ modules/AgenticGuidance/agents/processes will benefit
       - If only relevant to one agent, keep it in that agent's folder
 
       For inputs.yml entries:
       - Agent-specific inputs (unique to one agent) → use teacher-update-guidance
       - Shared inputs (used by 2+ agents) → use this agent (teacher-update-assets)
-      - When adding a new shared layer to assets/inputs/, update all referencing agents' inputs.yml
+      - When adding a new shared layer to modules/AgenticGuidance/assets/inputs/, update all referencing agents' inputs.yml
 
     - |
       Choose location and file name:
@@ -60,10 +82,10 @@ process:
 
     - |
       Update indexes and remove duplication:
-      - Add/remove guideline: update assets/guidelines/manifest.yml
-      - Add/remove example: update assets/examples/manifest.yml
+      - Add/remove guideline: update modules/AgenticGuidance/assets/guidelines/manifest.yml
+      - Add/remove example: update modules/AgenticGuidance/assets/examples/manifest.yml
       - Add definitions file: ensure discoverable via inputs/manifests
-      - Add/remove shared input layer: update assets/inputs/ and referencing agents' inputs.yml
+      - Add/remove shared input layer: update modules/AgenticGuidance/assets/inputs/ and referencing agents' inputs.yml
       - Replace duplicated content with pointer to shared asset
 
   guidelines:

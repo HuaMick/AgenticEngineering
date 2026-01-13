@@ -1,54 +1,328 @@
+# ==============================================
+# PATH RESOLUTION SEMANTICS
+# ==============================================
+# All paths in this file are relative to the REPOSITORY ROOT.
+# (e.g., modules/AgenticGuidance/assets/...).
+#
+# EXCEPTION: docs/plans/ paths are relative to the TARGET PROJECT root.
+# When an agent references docs/plans/live/ or docs/plans/completed/,
+# these exist in the project being worked on, not in AgenticGuidance.
+# ==============================================
+
+# ==============================================
+# REQUIRED INPUTS
+# ==============================================
+# These inputs MUST be provided by the user or parent orchestrator.
+# Without these, the agent cannot proceed.
+# ==============================================
+required_inputs:
+  - name: "planning_objective"
+    type: "string"
+    description: "High-level objective to plan for (e.g., 'Implement user authentication')"
+    required: true
+    example: "Add dark mode toggle to settings page"
+
+  - name: "target_project_path"
+    type: "string"
+    description: "Absolute path to the target project root where docs/plans/ will be created"
+    required: true
+    example: "/home/code/MyProject"
+
+# ==============================================
+# RUNTIME INPUTS
+# ==============================================
+# These inputs are passed at runtime by entrypoints to signal intent.
+# They influence phase determination and planner selection order.
+# ==============================================
+runtime_inputs:
+  - name: "planning_intent"
+    type: "enum"
+    values: ["build", "teach", "test"]
+    description: |
+      Intent signaled by the entrypoint that invoked this orchestrator.
+      Influences which planner agent is prioritized during phase determination.
+    examples:
+      - entrypoint: "_plan_build.yml"
+        planning_intent: "build"
+        effect: "Prioritize planner-build, assume implementation-focused objective"
+      - entrypoint: "_plan_teach.yml"
+        planning_intent: "teach"
+        effect: "Prioritize planner-guidance, assume guidance improvement objective"
+      - entrypoint: "_plan_test.yml"
+        planning_intent: "test"
+        effect: "Prioritize planner-test, assume test strategy objective"
+
+# ##############################################
+# ##############################################
+# CRITICAL: MMD NODE GRANULARITY (READ FIRST)
+# ##############################################
+# ##############################################
+# This section MUST be read and applied when generating orchestration MMD files.
+# FENCE: Output must NOT contain task-level nodes - only high-level orchestration nodes.
+# ==============================================
+mmd_node_granularity:
+  principle: |
+    MMD diagrams represent orchestration flow at the phase, loop, and agent
+    spawn level. They do NOT represent individual task IDs or file operations.
+    Task-level details belong in plan YAML files, not MMD orchestration diagrams.
+
+  fence: |
+    STOP and regenerate if ANY of these patterns appear in generated MMD:
+    - Task ID nodes: deploy_\d+, build_\d+, test_\d+, teach_\d+, cleanup_\d+
+    - Execute labels: [Execute: ...]
+    - Individual file operations: [Edit ...], [Create ...], [Delete ...]
+
+    REQUIRED patterns for valid MMD:
+    - Phase nodes: [Enter X Phase], ((X Phase))
+    - Spawn nodes: [Spawn X Agent]
+    - Loop nodes: {X Loop}, subgraph X_Loop_SG
+    - Decision nodes: {X?}
+
+  correct_granularity:
+    description: "Nodes should represent these concepts"
+    node_types:
+      - type: "Phase nodes"
+        examples:
+          - "TeachPhaseStart((Teach Phase))"
+          - "BuildPhaseStart((Build Phase))"
+          - "TestPhaseStart((Test Phase))"
+          - "CleanupPhaseStart((Cleanup Phase))"
+        pattern: "<PhaseName>PhaseStart((<Phase> Phase))"
+
+      - type: "Loop nodes"
+        examples:
+          - "subgraph PlannerLoop_SG [\"Planner-Loop Subgraph\"]"
+          - "subgraph TestFixLoop_SG [\"Test-Fix-Loop Integration Subgraph\"]"
+          - "subgraph ArchLayers_SG [\"Architecture Layer Verification Subgraph\"]"
+        pattern: "subgraph <LoopName>_SG [\"<Loop Description> Subgraph\"]"
+
+      - type: "Agent spawn nodes"
+        examples:
+          - "SpawnPlannerGuidance[Spawn planner-guidance Agent]"
+          - "SpawnPlannerBuild[Spawn planner-build Agent]"
+          - "SpawnReviewer[Spawn planner-reviewer Agent]"
+        pattern: "Spawn<AgentName>[Spawn <agent-name> Agent]"
+
+      - type: "Decision nodes"
+        examples:
+          - "PlanCreated{Plan Created?}"
+          - "ReviewResult{Plan Approved?}"
+          - "CheckIterations{Max Iterations?}"
+        pattern: "<DecisionName>{<Question>?}"
+
+      - type: "Exit nodes"
+        examples:
+          - "TeachPhaseComplete((Teach Phase Complete))"
+          - "EscalateTeach((Escalate: Cannot Create Plan))"
+        pattern: "<PhaseName>Complete((<Phase> Phase Complete))"
+
+  incorrect_granularity:
+    description: "These should NOT appear as MMD nodes"
+    anti_patterns:
+      - type: "Task IDs"
+        examples:
+          - "build_001[Implement authentication]"
+          - "teach_003[Update inputs.yml]"
+          - "test_002[Write unit tests]"
+        reason: "Task IDs belong in plan YAML files, not orchestration MMD"
+
+      - type: "Individual file operations"
+        examples:
+          - "EditFile[Edit process.yml]"
+          - "WriteConfig[Write config.json]"
+          - "ReadManifest[Read manifest.yml]"
+        reason: "File operations are execution details, not orchestration flow"
+
+      - type: "Code-level operations"
+        examples:
+          - "AddFunction[Add validateUser function]"
+          - "FixBug[Fix null pointer error]"
+          - "RefactorClass[Refactor AuthService]"
+        reason: "Code operations belong in build task descriptions, not MMD"
+
+  phase_template_reference: "modules/AgenticGuidance/assets/examples/orchestration/phase_templates/"
+  note: "See teach_phase.mmd, build_phase.mmd, test_phase.mmd for correct patterns"
+
+# ##############################################
+# ##############################################
+# CRITICAL: LOOP SELECTION OWNERSHIP (READ FIRST)
+# ##############################################
+# ##############################################
+# Orchestrator owns loop selection; planners request validation needs.
+# Reference: modules/AgenticGuidance/assets/definitions/agent-loops.yml
+# ==============================================
+loop_selection_guidance:
+  ownership: |
+    ORCHESTRATOR owns loop selection decisions. Planners request validation
+    needs (e.g., "needs testing", "needs guidance validation"), but the
+    orchestrator determines which specific loop to use based on context.
+
+  phase_to_loop_mapping:
+    - phase: "teach"
+      primary_loop: "planner-loop"
+      description: "Iterative planning with reviewer feedback for guidance improvement"
+      validation_loops:
+        - "guidance-test-loop"
+        - "agent-self-review"
+        - "guidance-self-review-loop"
+
+    - phase: "build"
+      primary_loop: "planner-loop"
+      description: "Iterative planning with reviewer feedback for implementation"
+      execution_loop: "test-fix-loop"
+      note: "Build execution uses test-fix-loop for iterative development"
+
+    - phase: "test"
+      primary_loop: "planner-loop"
+      description: "Iterative planning with reviewer feedback for test strategy"
+      execution_loop: "test-fix-loop"
+      validation_loop: "audit-test-fix-loop"
+      note: "Audit loop is MANDATORY after test phase"
+
+    - phase: "cleanup"
+      primary_loop: "planner-loop"
+      description: "Iterative planning with reviewer feedback for cleanup"
+      execution_loop: "cleaner-dependency-loop"
+      validation_loop: "audit-test-fix-loop"
+      note: "Audit loop is MANDATORY after cleanup"
+
+    - phase: "discovery"
+      primary_loop: "exploration-loop"
+      description: "Iterative discovery and information gathering"
+
+    - phase: "documentation-validation"
+      primary_loop: "documentation-loop"
+      description: "Validate documentation through blind testing"
+
+    - phase: "user-story-validation"
+      primary_loop: "user-story-validation-loop"
+      description: "PRIMARY SUCCESS CRITERIA - validate complete user journeys"
+
+  alternative_loop_selection:
+    guidance_validation:
+      description: "Selecting between guidance validation approaches"
+      options:
+        - loop: "agent-self-review"
+          weight: "LIGHTEST"
+          use_when:
+            - "Quick validation during development"
+            - "Agent checking own process.yml, inputs.yml, manifest.yml"
+            - "Fast feedback cycle is priority"
+            - "No external perspective needed"
+
+        - loop: "guidance-self-review-loop"
+          weight: "LIGHT"
+          use_when:
+            - "Multiple agents need simultaneous guidance review"
+            - "Friction patterns identified but not localized"
+            - "Quick iteration on guidance changes needed"
+
+        - loop: "guidance-test-loop"
+          weight: "HEAVY"
+          use_when:
+            - "Guidance completeness needs blind simulation"
+            - "External perspective required (agent cannot validate itself)"
+            - "High-confidence verification before deployment"
+            - "New agent processes require validation"
+
+  loop_definition_reference: "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+
+# ==============================================
+# INPUTS
+# ==============================================
 inputs:
+  # ==============================================
+  # CLI COMMAND REFERENCE
+  # ==============================================
+  # Centralized CLI commands - see shared definition for full documentation
+  cli_commands_reference: "modules/AgenticGuidance/assets/definitions/cli-commands.yml"
+  # Key commands used by orchestration-planning:
+  # - agentic worktree create: Create worktree with plan folder
+  # - agentic worktree status: Verify worktree configuration
+  # - agentic plan validate: Validate plan folder structure
+  # - agentic plan scaffold: Create plan folder from template
+  # ==============================================
+
+  # ==============================================
+  # GUIDELINES
+  # ==============================================
+
   # Guidelines relevant to planning
-  - location: "assets/guidelines/fix-the-source.yml"
+  - location: "modules/AgenticGuidance/assets/guidelines/fix-the-source.yml"
     description: "Fix root causes instead of symptoms."
-  - location: "assets/guidelines/context-minimisation.yml"
+  - location: "modules/AgenticGuidance/assets/guidelines/context-minimisation.yml"
     description: "Provide only required information, reduce noise."
-  - location: "assets/guidelines/worktree-and-branching.yml"
+  - location: "modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml"
     description: "Worktree + branching policy."
-  - location: "assets/guidelines/response-audit.yml"
+  - location: "modules/AgenticGuidance/assets/guidelines/response-audit.yml"
     description: "Mandatory response audit guideline."
-  - location: "assets/guidelines/iteration.yml"
+  - location: "modules/AgenticGuidance/assets/guidelines/iteration.yml"
     description: "Iteration patterns and small-change bias."
-  - location: "assets/guidelines/orchestration-policy.yml"
+  - location: "modules/AgenticGuidance/assets/guidelines/orchestration-policy.yml"
     description: "Orchestration policy: agent-task alignment, escalation, plan status management."
 
   # Definitions for planning context
-  - location: "assets/definitions/plans.yml"
+  - location: "modules/AgenticGuidance/assets/definitions/plans.yml"
     description: "Plan types and locations."
-  - location: "assets/definitions/agent-loops.yml"
+  - location: "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
     description: "Definition of agent loops and recursive planning."
-  - location: "assets/definitions/agent-categories.yml"
+  - location: "modules/AgenticGuidance/assets/definitions/agent-categories.yml"
     description: "Agent category definitions and boundaries."
 
+  # Plan-MMD Schema for orchestration MMD generation
+  - location: "modules/AgenticGuidance/assets/definitions/plan-mmd-schema.yml"
+    description: "Schema for orchestration MMD files: headers, nodes, edges, subgraphs, metadata requirements"
+
+  # Orchestration executor specification for agent routing patterns
+  - location: "modules/AgenticGuidance/assets/definitions/orchestration-executor-specification.yml"
+    description: "Runtime behavior spec: AGENT_ROUTING format, FEEDBACK_TRIGGERS patterns, STATUS management"
+
   # Planner manifest for routing decisions
-  - location: "agents/planner/manifest.yml"
+  - location: "modules/AgenticGuidance/agents/planner/manifest.yml"
     description: "Planner agent family manifest with sub-agents and routing logic."
 
   # Deploy agent for worktree setup
-  - location: "agents/deploy/deploy-worktree/process.yml"
+  - location: "modules/AgenticGuidance/agents/deploy/deploy-worktree/process.yml"
     description: "Process for worktree setup and verification."
 
   # Planner sub-agent processes for phase-specific planning
-  - location: "agents/planner/planner-build/process.yml"
+  - location: "modules/AgenticGuidance/agents/planner/planner-build/process.yml"
     description: "Process for planning code implementation and build tasks."
-  - location: "agents/planner/planner-test/process.yml"
+  - location: "modules/AgenticGuidance/agents/planner/planner-test/process.yml"
     description: "Process for planning test strategy and validation tasks."
-  - location: "agents/planner/planner-cleaning/process.yml"
+  - location: "modules/AgenticGuidance/agents/planner/planner-cleaning/process.yml"
     description: "Process for planning code cleanup and removal tasks."
-  - location: "agents/planner/planner-guidance/process.yml"
+  - location: "modules/AgenticGuidance/agents/planner/planner-guidance/process.yml"
     description: "Process for planning agent guidance and process improvements."
-  - location: "agents/planner/planner-reviewer/process.yml"
+  - location: "modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml"
     description: "Process for reviewing and approving implementation plans."
 
   # Plan examples for structure reference
-  - location: "assets/examples/planner/YYMMDDRepo_Branch/live/plan_live_teach.yml"
-    description: "Teach/implementation phase example (file-level inputs, guidance, success criteria)."
-  - location: "assets/examples/planner/YYMMDDRepo_Branch/live/plan_live_test.yml"
-    description: "Test phase example (test-fix-loop, component + user flow testing)."
-  - location: "assets/examples/planner/YYMMDDRepo_Branch/live/plan_live_audit_clean.yml"
-    description: "Cleanup/audit/docs phase example (cleanup before testing, audit-test-fix loop)."
-  - location: "assets/examples/planner/YYMMDDRepo_Branch/completed/plan_completed.yml"
-    description: "Completed plan example showing final state with items and success criteria tracking."
-  - location: "assets/examples/planner/teaching-plan-example.yml"
+  - location: "modules/AgenticGuidance/assets/examples/planner/YYMMDDRepo_Branch/plan_example.yml"
+    description: "Unified plan example showing integrated phases (Build, Test, Teach, Audit) in a single file with context updates and decision tracking."
+
+  # Phase file strategy guidance
+  phase_file_strategy: |
+    For multi-phase plans, create SEPARATE phase files:
+    - One plan_live_<phase>.yml per phase type (teach, build, test, cleanup)
+    - This enables Context Minimisation: agents read only their phase file
+    - Do NOT attempt to consolidate all phases into a single "unified" file
+
+    The plan_example.yml is a STRUCTURE reference, not a file organization template.
+  - location: "modules/AgenticGuidance/assets/examples/planner/YYMMDDRepo_Branch/README.md"
+    description: "README example showing consolidated session tracking, next steps, and decision items."
+  - location: "modules/AgenticGuidance/assets/examples/planner/teaching-plan-example.yml"
     description: "Teaching plan example for guidance improvements with phases and tasks."
+
+  # MMD Component Examples
+  # Orchestration can reference these when determining phase structure
+  - location: "modules/AgenticGuidance/assets/examples/orchestration/phase_templates/teach_phase.mmd"
+    description: "MMD component for teach phase orchestration pattern."
+  - location: "modules/AgenticGuidance/assets/examples/orchestration/phase_templates/build_phase.mmd"
+    description: "MMD component for build phase orchestration pattern."
+  - location: "modules/AgenticGuidance/assets/examples/orchestration/phase_templates/test_phase.mmd"
+    description: "MMD component for test phase orchestration pattern."
+  - location: "modules/AgenticGuidance/assets/examples/orchestration/phase_templates/cleanup_phase.mmd"
+    description: "MMD component for cleanup phase orchestration pattern."
+  - location: "modules/AgenticGuidance/assets/examples/orchestration/phase_templates/uat_phase.mmd"
+    description: "MMD component for UAT phase orchestration pattern (MANDATORY)."

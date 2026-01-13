@@ -1,0 +1,214 @@
+# Plan Review: reviewer_context_optimization
+# Reviewer: planner-reviewer
+# Date: 2026-01-08
+# Plan Source: docs/plans/live/260104AE_agenticguidance/live/plan_guidance_reviewer_context.yml
+
+status: NEEDS_CHANGES
+
+summary: |
+  The plan is well-structured and addresses the audit findings effectively.
+  However, there are misalignments with user decisions R1 and R2 that require
+  correction before approval. The plan references "plan-structure-reference.yml"
+  but user decision R1 specifies "structural-patterns.yml" as a shared file.
+
+user_decision_alignment:
+  R1_structural_patterns:
+    decision: "Create shared planner/structural-patterns.yml for both agents"
+    plan_alignment: MISALIGNED
+    details: |
+      Plan T1.1 creates "plan-structure-reference.yml" but user decision R1
+      specifies the file should be named "structural-patterns.yml" and be
+      shared between planner-guidance AND planner-reviewer agents.
+
+      Current plan:
+        - Creates: modules/AgenticGuidance/assets/examples/planner/plan-structure-reference.yml
+
+      Should be:
+        - Creates: modules/AgenticGuidance/assets/examples/planner/structural-patterns.yml
+        - Also update planner-guidance/inputs.yml to reference the shared file
+    required_changes:
+      - "Rename target file from 'plan-structure-reference.yml' to 'structural-patterns.yml'"
+      - "Add task to update planner-guidance/inputs.yml to reference the shared file"
+      - "Update all references in T1.3 and subsequent tasks to use correct filename"
+
+  R2_skip_consolidation:
+    decision: "Skip consolidation - just remove fix-the-source.yml and context-minimisation.yml from reviewer inputs"
+    plan_alignment: PARTIALLY_ALIGNED
+    details: |
+      Plan T3.2 correctly handles the Q2 decision but still includes conditional
+      logic for options A and B which will not be used. The guidance should be
+      simplified to only show option C (removal) since user has decided.
+
+      Additionally, T3.2 should be merged with T3.1 since both involve removing
+      items from inputs.yml. Separate tasks for "operational guidelines" vs
+      "philosophical guidelines" is unnecessary given user decision.
+    required_changes:
+      - "Simplify T3.2 guidance to only show removal action (option C)"
+      - "Remove conditional logic for options A and B from T3.2"
+      - "Consider merging T3.1 and T3.2 into single task for efficiency"
+      - "Remove 'blocked_by: Q2' since decision is made"
+
+  R3_keep_both_criteria:
+    decision: "Keep both inline criteria in process.yml AND success-criteria-teacher.yml reference"
+    plan_alignment: ALIGNED
+    details: |
+      Plan T2.2 correctly handles this by verifying the reference exists without
+      requiring changes. The guidance explicitly states "No changes needed unless
+      reference is missing or unclear" which aligns with keeping both.
+    required_changes: []
+
+issues:
+  critical:
+    - id: I1
+      title: "File naming mismatch with R1 decision"
+      location: "T1.1, T1.3"
+      description: |
+        The plan uses 'plan-structure-reference.yml' throughout but user decision
+        R1 explicitly specifies 'structural-patterns.yml'. This is a clear
+        misalignment that must be corrected.
+      resolution: "Rename all references to 'structural-patterns.yml'"
+
+    - id: I2
+      title: "Missing planner-guidance update for shared file"
+      location: "Phase 1"
+      description: |
+        R1 specifies the file should be shared between both agents, but the plan
+        only updates planner-reviewer/inputs.yml. Need additional task to update
+        planner-guidance/inputs.yml to reference the shared structural-patterns.yml.
+      resolution: |
+        Add task T1.4 or modify T1.3 to:
+        1. Update planner-guidance/inputs.yml to reference structural-patterns.yml
+        2. Ensure both agents use the same shared file
+
+  minor:
+    - id: I3
+      title: "Stale blocked_by references"
+      location: "T1.1, T2.2, T3.2"
+      description: |
+        Tasks reference blocked_by Q1, Q2, Q3 but user has already provided
+        decisions. These blockers should be removed and resolved to decisions.
+      resolution: |
+        Replace blocked_by references with:
+        - T1.1: "resolved: R1 - Create shared structural-patterns.yml"
+        - T2.2: "resolved: R3 - Keep both inline and reference"
+        - T3.2: "resolved: R2 - Skip consolidation, remove both files"
+
+    - id: I4
+      title: "Unnecessary conditional logic in T3.2"
+      location: "T3.2 guidance"
+      description: |
+        T3.2 guidance contains if/then branches for Q2 options A, B, C.
+        Since user selected C, simplify to only show removal instructions.
+      resolution: "Remove option A and B logic from T3.2 guidance"
+
+questions_for_user: []
+  # All questions from the plan have been answered by user decisions R1-R3.
+  # No additional clarification needed.
+
+recommendations:
+  - id: REC1
+    priority: HIGH
+    title: "Correct file naming per R1"
+    description: |
+      Update all references from 'plan-structure-reference.yml' to
+      'structural-patterns.yml' to align with user decision R1.
+    affected_tasks: ["T1.1", "T1.3", "T4.1", "T4.2"]
+
+  - id: REC2
+    priority: HIGH
+    title: "Add planner-guidance inputs update"
+    description: |
+      Add task to update planner-guidance/inputs.yml to reference the shared
+      structural-patterns.yml file. This ensures Single Source of Truth and
+      aligns with R1 "for both agents" requirement.
+    suggested_task: |
+      - id: T1.4
+        title: "Update planner-guidance inputs to use shared structural-patterns"
+        description: |
+          Modify planner-guidance/inputs.yml to reference the shared
+          structural-patterns.yml file for plan structure reference.
+        target_files:
+          - update: "modules/AgenticGuidance/agents/planner/planner-guidance/inputs.yml"
+        guidance: |
+          Add reference to shared structural-patterns.yml:
+          - path: "assets/examples/planner/structural-patterns.yml"
+            description: "Shared structural patterns for plan validation and creation"
+        success_criteria:
+          - "planner-guidance/inputs.yml references structural-patterns.yml"
+          - "Same file referenced by both planner agents"
+        agent_type: "teacher"
+        depends_on: ["T1.1"]
+
+  - id: REC3
+    priority: MEDIUM
+    title: "Simplify Phase 3 based on R2 decision"
+    description: |
+      Since R2 decision is to skip consolidation and just remove files,
+      T3.1 and T3.2 can be merged into a single task that removes all
+      5 unnecessary guidelines in one pass.
+    suggested_change: |
+      Merge T3.1 and T3.2 into single task:
+      - Remove worktree-and-branching.yml
+      - Remove response-audit.yml
+      - Remove experiment-first.yml
+      - Remove fix-the-source.yml (per R2)
+      - Remove context-minimisation.yml (per R2)
+
+  - id: REC4
+    priority: LOW
+    title: "Remove resolved blocked_by references"
+    description: |
+      Convert blocked_by Q1/Q2/Q3 to resolved references documenting
+      user decisions. This improves plan readability and execution flow.
+
+success_criteria_assessment:
+  overall_criteria_clear: true
+  overall_criteria_achievable: true
+  notes: |
+    The success criteria are well-defined and measurable:
+    - "60% or greater reduction in total input lines" - quantifiable
+    - "All process.yml checklist items can be validated" - testable
+    - "All inputs.yml entries are file-level references" - verifiable
+
+    The criteria appropriately balance quantitative (line reduction) and
+    qualitative (no functional regression) measures.
+
+task_dependencies_assessment:
+  dependencies_correct: true
+  notes: |
+    Task dependencies are logically ordered:
+    - T1.1 creates condensed examples (no deps)
+    - T1.2 extracts structure requirements (depends on T1.1 for pattern)
+    - T1.3 updates inputs (depends on T1.1, T1.2 outputs)
+    - T2.1 verifies no .mmd files (depends on T1.3)
+    - T3.1/T3.2 removes unused inputs (depends on T1.3)
+    - T4.1/T4.2 validates (depends on all previous)
+
+    The "blocked_by" references should be converted to "resolved" since
+    user has already provided decisions.
+
+single_source_of_truth_assessment:
+  principles_followed: PARTIALLY
+  issues:
+    - |
+      R1 decision creates shared file but plan only updates one agent's inputs.
+      Both planner-guidance and planner-reviewer should reference the same
+      structural-patterns.yml to maintain single source of truth.
+    - |
+      Plan correctly avoids creating new consolidated files per R2 decision,
+      instead just removing unnecessary inputs. This follows SSoT by not
+      creating near-duplicate content.
+  recommendations:
+    - "Ensure T1.1 output is referenced by both planner agents"
+    - "Document in structural-patterns.yml that it is a shared resource"
+
+final_verdict:
+  status: NEEDS_CHANGES
+  blocking_issues: 2
+  non_blocking_issues: 2
+  action_required: |
+    1. Rename 'plan-structure-reference.yml' to 'structural-patterns.yml' (I1)
+    2. Add task to update planner-guidance/inputs.yml for shared file (I2)
+    3. (Optional) Simplify conditional logic per R2 decision (I3, I4)
+
+    Once these changes are made, the plan should be re-submitted for approval.

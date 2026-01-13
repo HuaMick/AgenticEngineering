@@ -2,10 +2,55 @@ name: orchestration-planning
 description: |
   Planning-only workflows that produce approved plans for downstream use.
   Coordinates the creation and approval of implementation plans without executing them.
-version: "1.0"
+# Version scheme: X.Y where X = architecture version, Y = iteration
+# 2.0 = reference layer architecture
+version: "2.0"
 
 purpose: |
   Orchestration-planning handles workflows that require plan creation and approval
   before any execution begins. It spawns planning agents to create detailed plans,
   manages the review/approval process, and outputs approved plans that can be
   consumed by orchestration-build or orchestration-guidance agents.
+
+# FENCE: Only agents listed in spawns may be invoked by this orchestrator
+spawns:
+  # Worktree and plan folder setup
+  - agent: "deploy-worktree"
+    purpose: "Create/verify worktree and plan folder structure"
+    when: "Start of workflow"
+
+  # Planning agents (one per phase type)
+  - agent: "planner-guidance"
+    purpose: "Create guidance/teaching phase plans"
+    when: "Teach phase required"
+
+  - agent: "planner-build"
+    purpose: "Create implementation phase plans"
+    when: "Build phase required"
+
+  - agent: "planner-test"
+    purpose: "Create test validation phase plans"
+    when: "Test phase required"
+
+  - agent: "planner-cleaning"
+    purpose: "Create cleanup/audit phase plans"
+    when: "Cleanup phase required"
+
+  # Review agent (used for all phase types)
+  - agent: "planner-reviewer"
+    purpose: "Review and approve/reject phase plans"
+    when: "After each planner agent produces output"
+
+# Outputs produced by this orchestrator
+outputs:
+  - name: "orchestration_{plan_id}.mmd"
+    path_template: "docs/plans/live/{plan_id}/live/orchestration_{plan_id}.mmd"
+    description: "Mermaid flowchart for dynamic orchestration execution by orchestration-executor"
+    required: true
+    required_metadata:
+      - "GOAL"           # Plan objective
+      - "PROFILE"        # orchestrator
+      - "PHASES"         # List of phases in execution order
+      - "AGENT_ROUTING"  # Phase-to-agent mapping
+      - "STATUS"         # Phase status tracking (pending, in_progress, completed, blocked)
+    schema_reference: "modules/AgenticGuidance/assets/definitions/plan-mmd-schema.yml"

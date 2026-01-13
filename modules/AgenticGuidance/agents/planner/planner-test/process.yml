@@ -3,46 +3,61 @@ process:
     Create a phased test plan for validating the implementation using test-fix-loop
     and audit-test-fix-loop patterns with user story validation.
 
-  loop_definitions:
-    reference: "assets/definitions/agent-loops.yml"
-    description: "Loop types (test-fix-loop, audit-test-fix-loop) defined in agent-loops.yml"
-    # NOTE: Do not duplicate loop definitions here - see agent-loops.yml for full definitions
+  loop_context:
+    participates_in: ['test-fix-loop', 'audit-test-fix-loop']
+    note: "planner-test participates in these loops but does NOT select loop strategy"
+    # Loop strategy selection is owned by orchestration-planning.
+    # See orchestration-planning/inputs.yml#loop_selection_guidance
 
   inputs:
-    - location: "agents/planner/planner-test/inputs.yml"
+    - location: "modules/AgenticGuidance/agents/planner/planner-test/inputs.yml"
       description: "Core planner agent inputs and guidelines"
 
-  outputs: []
+  outputs:
+    # FENCE: Output must match declared schema before marking complete
+    - name: "plan_test.yml"
+      path_template: "docs/plans/live/{planning_folder}/live/plan_test.yml"
+      description: "Test phases plan file with test-fix-loop and audit-test-fix-loop patterns"
+      required_fields:
+        - "name"
+        - "status"
+        - "phases"         # Test phases with test-fix-loop patterns
+      schema_reference: "modules/AgenticGuidance/assets/examples/planner/YYMMDDRepo_Branch/plan_example.yml"
+      note: "planning_folder is absolute path provided by orchestration (used in path_template)"
 
   steps:
     - |
-      Review all inputs if an input cannot be found do not proceed.
-      If an input is found in a different location, update the path and flag
-      the discrepancy in your output.
+      VALIDATE REQUIRED INPUTS (from inputs.yml required_inputs):
+      The following inputs MUST be provided by the orchestrator or user:
+
+      1. planning_folder (string, required)
+         - Absolute path to planning folder containing build phase plans to test
+         - ERROR if missing: "STOP: No planning_folder provided. Cannot create test plan without knowing what to test."
+
+      2. build_phases (list, required)
+         - List of build phase plan files to create tests for
+         - ERROR if missing: "STOP: No build_phases provided. Cannot determine test targets."
+
+      If ANY required input is missing, report the specific error and STOP.
+      If an input is found in a different location, update the path and flag the discrepancy.
     - |
       PLAN FOLDER STRUCTURE:
-      Plans are now organized in folders, not single files. The planning folder structure is:
-
-      docs/plans/live/YYMMDDRepo_Branch/
-        - live/plan_live_*.yml           (Active phase files, one per phase)
-        - completed/plan_completed.yml   (Completed items from all phases)
-
-      YOUR RESPONSIBILITIES:
-      - Read all other phase .yml files in `live/` to understand what was built (your test targets)
-      - Create/update `live/plan_live_test.yml` with your test phases
-      - Move any completed items to `completed/plan_completed.yml` within the folder
-      - Output ONLY to `live/plan_live_test.yml` (do not modify other phase plans)
+      See modules/AgenticGuidance/assets/definitions/plans.yml for folder structure and lifecycle.
+      - Read all phase .yml files in `live/` to understand what was built (your test targets)
+      - Create/update `live/plan_test.yml` with your test phases
+      - Output ONLY to `live/plan_test.yml` (do not modify other phase plans)
     - |
       Create test plan phases following the patterns defined in inputs.yml.
       Reference user story integration guidelines from inputs.yml for:
       - User story selection criteria
       - Installation user story requirements (US-INSTALL-*)
-      - Three-layer testing approach (Local, Docker, Cloud Build)
+      - Testing layer selection (Local, Docker, Cloud Build) - see manifest.yml for recommendations
       - Environment setup prerequisites
-      - User simulator agent execution patterns
+      - User story validation patterns (user-story-validation-loop)
+      - Validation strategy options (strategy-validation.yml) - PLANNER CHOICE based on context
 
       PLAN STRUCTURE REQUIREMENTS:
-      Reference the example test plan from inputs (`live/plan_live_test.yml`) for:
+      Reference the unified plan example (plan_example.yml) for:
       - Test phase structure with test-fix-loop and audit-test-fix-loop patterns
       - File-level inputs for context routing
       - Detailed guidance and measurable success criteria patterns
@@ -54,43 +69,42 @@ process:
       - Use this to determine what needs to be tested and which files to include in test inputs
 
       OUTPUT TARGET (where you write):
-      - Write your test phases to `live/plan_live_test.yml` in the same planning folder
+      - Write your test phases to `live/plan_test.yml` in the same planning folder
       - This file contains ONLY test phases, not build or cleanup phases
 
       DUMPING GROUND: Use additional subfolders (e.g., `analysis/`, `test-results/`) to store agent artifacts
       like test logs, coverage reports, or analysis files to avoid polluting shared spaces.
     - |
-      The plan should include the following phases in this order:
-      1. Test-fix-loop: Incorporates BOTH component testing AND user flow testing
-      2. Cleanup phase: Spawned after initial implementation success
-      3. Audit-test-fix-loop: MANDATORY after cleanup (reviews skipped tests)
-      4. Test suite phase: End-to-end testing (optional, only if requested)
-      5. Documentation-loop: Final phase to update documentation
-
-      Reference inputs.yml for detailed phase requirements and ordering rationale.
+      The plan should include phases in the order defined in manifest.yml test_plan_structure.
+      See manifest.yml for authoritative phase ordering, testing_layers decision tree,
+      and mandatory_user_stories requirements.
     - |
       Provide the test plan back to the main orchestration agent for execution.
 
   guidelines:
-    # Core guidelines: See assets/guidelines/ (less-is-more.yml, iteration.yml, fix-the-source.yml, experiment-first.yml, context-minimisation.yml, worktree-and-branching.yml, response-audit.yml)
-    # Core definitions: See assets/definitions/ (plans.yml, guidance.yml, friction.yml, domains.yml, workflows.yml, entrypoints.yml)
-    # Test strategies and processes: See inputs.yml definitions section and assets/definitions/strategy-*.yml files
+    # Core guidelines: See modules/AgenticGuidance/assets/guidelines/ (less-is-more.yml, iteration.yml, fix-the-source.yml, experiment-first.yml, context-minimisation.yml, worktree-and-branching.yml, response-audit.yml)
+    # Core definitions: See modules/AgenticGuidance/assets/definitions/ (plans.yml, guidance.yml, friction.yml, domains.yml, workflows.yml, entrypoints.yml)
+    # Test strategies and processes: See inputs.yml definitions section and modules/AgenticGuidance/assets/guidelines/strategy-*.yml files
     # User story integration: See inputs.yml for detailed user story requirements
+    - |
+      NOTE: Planners may request validation/iteration needs but do NOT dictate loop
+      strategy. Loop selection is owned by orchestration-planning. See
+      orchestration-planning/inputs.yml#loop_selection_guidance.
     - |
       For complex plans, always include a test-fix-loop.
     - |
       Test strategy selection (see inputs.yml for detailed test strategy definitions):
-      - smoke_test: Entry point validation during active development
+      - smoke-test: Entry point validation during active development
       - agent-blind-test: User simulator for UAT and documentation validation
       - test-suite: End-to-end testing (only on explicit user request)
-      - service_test: Backend service lifecycle validation
+      - service-test: Backend service lifecycle validation
       - audit: Test quality review to detect reward hacking
-      - cicd_maintenance: CI/CD infrastructure validation
+      - cicd-maintenance: CI/CD infrastructure validation
     - |
       When reviewing plans (as a reviewer planner agent):
-      - Reference YYMMDDRepo_Branch/live/plan_live_test.yml example for valid structure patterns
+      - Reference YYMMDDRepo_Branch/plan_example.yml for valid test phase structure patterns
       - Verify user stories are incorporated into test-fix-loop phases
-      - CRITICAL: Verify test-audit-fix-loop is ALWAYS included after cleanup (mandatory)
+      - CRITICAL: Verify audit-test-fix-loop is ALWAYS included after cleanup (mandatory)
       - For plans modifying test structure, verify CI/CD validation phase is included
       - For changes to pyproject.toml, CLI entry points, or installation docs, verify US-INSTALL-* user stories are included
       - Only reject plans with genuine structural issues or missing critical phases

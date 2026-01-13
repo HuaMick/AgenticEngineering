@@ -1,0 +1,147 @@
+flowchart TB
+    %% ========================================
+    %% GUIDANCE BLIND TEST COMPONENT
+    %% ========================================
+    %% GOAL: Validate guidance effectiveness by spawning agents WITHOUT hints about expected behavior.
+    %% PROFILE: Planner-Component-GuidanceBlindTest
+    %% COMPONENT_TYPE: Reusable validation component for teaching/guidance plans
+    %% USAGE: Planners incorporate this after guidance changes to verify effectiveness.
+    %%
+    %% CORE PRINCIPLE:
+    %% If you have to TELL the agent what to do, the guidance failed.
+    %% Effective guidance causes correct behavior WITHOUT explicit instruction.
+    %%
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.guidance-test-loop
+    %% MAX_ITERATIONS: 3 (revert and iterate if test fails)
+    %% ESCALATION: If guidance cannot steer behavior after 3 iterations, human review needed.
+    %%
+    %% INPUTS (expected from orchestrator):
+    %% - behavior_gap: What agents do wrong (X) vs what they should do (Y)
+    %% - guidance_changes: Files modified (guidelines, definitions, inputs, process)
+    %% - target_agent: Agent whose behavior should change
+    %% - test_scenario: Context to spawn agent with (must NOT hint at expected behavior)
+    %%
+    %% EXIT CONDITIONS:
+    %% - Success: Agent autonomously detects and addresses the issue
+    %% - Failure: Agent ignores issue or takes wrong action -> iterate
+    %% - Escalate: Max iterations reached
+
+    %% ========================================
+    %% PHASE 1: BASELINE (Optional but Recommended)
+    %% ========================================
+    %% Establishes what agent does WITHOUT the new guidance
+    BlindTestStart((Guidance Blind Test)) --> BaselineCheck{Baseline Needed?}
+
+    BaselineCheck -- "Yes" --> SpawnBaseline["Spawn Target Agent (Pre-Change)
+    - Use scenario that exposes the gap
+    - Record agent behavior as baseline
+    - Confirms gap exists before fix"]
+
+    SpawnBaseline --> RecordBaseline[Record Baseline Behavior]
+    RecordBaseline --> ApplyChanges
+
+    BaselineCheck -- "No (Gap Already Documented)" --> ApplyChanges
+
+    %% ========================================
+    %% PHASE 2: APPLY GUIDANCE CHANGES
+    %% ========================================
+    ApplyChanges[Apply Guidance Changes
+    - Update guidelines.yml
+    - Update definitions.yml
+    - Wire into inputs.yml
+    - Update process.yml if needed]
+
+    ApplyChanges --> VerifyWiring{Changes Wired Correctly?}
+
+    VerifyWiring -- "No" --> FixWiring[Fix Input References]
+    FixWiring --> VerifyWiring
+
+    VerifyWiring -- "Yes" --> SpawnBlind
+
+    %% ========================================
+    %% PHASE 3: BLIND SPAWN (CRITICAL)
+    %% ========================================
+    %% FENCE: Do NOT mention the specific issue being tested
+    SpawnBlind["Spawn Target Agent BLIND
+
+    ALLOWED in spawn context:
+    - General task description
+    - Standard inputs and guidance
+    - Scenario that exposes the gap
+
+    FORBIDDEN in spawn context:
+    - Mention of specific issue
+    - Hints about expected behavior
+    - References to the guidance change
+    - Leading questions"]
+
+    SpawnBlind --> ObserveBehavior[Observe Agent Behavior
+    - What did agent detect?
+    - What action did agent take?
+    - Did agent cite the guidance?]
+
+    %% ========================================
+    %% PHASE 4: EVALUATE RESULTS
+    %% ========================================
+    ObserveBehavior --> EvaluateResult{Agent Behavior Correct?}
+
+    %% SUCCESS PATH
+    EvaluateResult -- "Yes: Auto-Detected Issue" --> VerifyNotFalsePositive{Different from Baseline?}
+
+    VerifyNotFalsePositive -- "Yes: Behavior Changed" --> TestPass((PASS: Guidance Effective))
+    VerifyNotFalsePositive -- "No: Same as Before" --> AnalyzeFailure
+
+    %% FAILURE PATH
+    EvaluateResult -- "No: Missed or Wrong Action" --> AnalyzeFailure
+
+    %% ========================================
+    %% PHASE 5: FAILURE ANALYSIS
+    %% ========================================
+    AnalyzeFailure[Analyze Failure Mode]
+
+    AnalyzeFailure --> ClassifyFailure{Failure Type?}
+
+    ClassifyFailure -- "Guidance Not Loaded" --> FixLoading[Fix: Check inputs.yml paths
+    Verify process loads inputs]
+
+    ClassifyFailure -- "Guidance Too Weak" --> StrengthenLanguage[Fix: Use MUST/ALWAYS/NEVER
+    Add explicit action verbs]
+
+    ClassifyFailure -- "Conflicting Guidance" --> AddPriority[Fix: Add priority/override
+    Resolve conflicts explicitly]
+
+    ClassifyFailure -- "Context Mismatch" --> BroadenTriggers[Fix: Broaden trigger language
+    Add synonyms/variants]
+
+    ClassifyFailure -- "Unknown" --> DiagnosticSpawn[Debug: Spawn with reasoning request
+    Ask agent to list guidelines]
+
+    %% ========================================
+    %% PHASE 6: ITERATE OR ESCALATE
+    %% ========================================
+    FixLoading --> RevertAndIterate
+    StrengthenLanguage --> RevertAndIterate
+    AddPriority --> RevertAndIterate
+    BroadenTriggers --> RevertAndIterate
+    DiagnosticSpawn --> RevertAndIterate
+
+    RevertAndIterate[Revert Changes
+    Apply Updated Fix] --> CheckIterations{Iteration Count?}
+
+    CheckIterations -- "< 3" --> ApplyChanges
+    CheckIterations -- ">= 3" --> EscalateGuidance((Escalate: Guidance Approach
+    May Need Rethinking))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef entrypoint fill:#90EE90,stroke:#228B22
+    classDef exitpoint fill:#FFB6C1,stroke:#DC143C
+    classDef successpoint fill:#98FB98,stroke:#006400
+    classDef critical fill:#FFD700,stroke:#FF8C00
+    classDef parallel fill:#DDA0DD,stroke:#8B008B
+
+    class BlindTestStart entrypoint
+    class TestPass successpoint
+    class EscalateGuidance exitpoint
+    class SpawnBlind critical

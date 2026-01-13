@@ -1,0 +1,287 @@
+# Teach Plan: Self-Review Remediation Round 2
+# Plan: 260104AE_agenticguidance
+# Status: pending
+# Phase Type: teach
+# Created: 2026-01-12
+# Source: audit/260112_self_review_findings.yml
+
+name: self-review-remediation-r2
+status: pending
+priority: high
+created: "2026-01-12"
+phase_type: teach
+
+objective: |
+  Remediate issues discovered during comprehensive agent self-review on 2026-01-12.
+  This round focuses on cross-cutting issues affecting multiple agents that were
+  identified as CRITICAL and HIGH priority. 23 agents were reviewed, identifying
+  18 critical issues and 32 high-priority issues across the codebase.
+
+inputs:
+  - location: "audit/260112_self_review_findings.yml"
+    description: "Consolidated findings from comprehensive agent self-review (2026-01-12)"
+
+phases:
+  # ========================================
+  # PHASE 1: Critical Fixes (XCUT-001, XCUT-002)
+  # ========================================
+  - name: "Teach: Critical Fixes"
+    execution: sequential
+    status: pending
+    priority: critical
+    description: "Fix CRITICAL cross-cutting issues that may block agent execution"
+    tasks:
+      - id: "crit_001"
+        name: "Audit path references for definitions/ vs guidelines/ consistency"
+        status: "pending"
+        description: |
+          XCUT-001: Verify and correct path references for migrated files.
+
+          Files to audit:
+          - modules/AgenticGuidance/agents/build/build-flutter/inputs.yml
+          - modules/AgenticGuidance/agents/build/build-python/inputs.yml
+
+          References to verify:
+          - minimal-sufficient-change.yml (currently in definitions/ - VERIFY this is correct)
+          - iteration-approach.yml (currently in definitions/ - VERIFY this is correct)
+          - component-verification.yml (currently in definitions/ - VERIFY this is correct)
+
+          NOTE: Initial investigation shows these files exist in definitions/. The finding
+          may indicate an expected migration that was not completed, OR the finding itself
+          was incorrect. Verify the intended location by checking:
+          1. Whether equivalent content exists in guidelines/
+          2. Whether definitions/ is the correct location per asset taxonomy
+          3. Update paths OR close as "not a defect" with justification
+        target_files:
+          - "modules/AgenticGuidance/agents/build/build-flutter/inputs.yml"
+          - "modules/AgenticGuidance/agents/build/build-python/inputs.yml"
+
+      - id: "crit_002"
+        name: "Define output schema for planner-guidance-testing"
+        status: "pending"
+        description: |
+          XCUT-002: Fix empty outputs: [] in process.yml file.
+
+          The planner-guidance-testing agent produces guidance test plans but has
+          outputs: [] in its process.yml. This contradicts the agent's purpose.
+
+          ACTION: Define explicit output schema matching the agent's actual outputs:
+          - guidance_test_plan: Plan file with walkthrough validation tasks
+          - friction_report: Summary of friction points found during validation
+
+          NOTE: Other agents mentioned in XCUT-002 (test-runner, test-service,
+          test-builder, build-flutter, build-python, teacher-update-assets) have
+          been verified to already have defined outputs. Only planner-guidance-testing
+          remains with empty outputs.
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-guidance-testing/process.yml"
+
+  # ========================================
+  # PHASE 2: High-Priority Fixes (XCUT-003, XCUT-004, XCUT-006)
+  # ========================================
+  - name: "Teach: High-Priority Fixes"
+    execution: parallel_groups
+    status: pending
+    priority: high
+    description: "Fix HIGH-priority cross-cutting issues affecting multiple agents"
+    tasks:
+      - id: "high_001"
+        name: "Resolve missing outputs.yml file references"
+        status: "pending"
+        description: |
+          XCUT-003: Two agents reference outputs.yml files that do not exist.
+
+          Affected agents:
+          - test-guidance-simulator
+          - planner-guidance-testing
+
+          DECISION REQUIRED: Either:
+          A) Create outputs.yml files with proper schema definitions, OR
+          B) Remove references to outputs.yml and consolidate outputs in process.yml
+
+          Recommendation: Option B (consolidate in process.yml) aligns with the pattern
+          used by most other agents. outputs.yml is only needed for complex output schemas
+          that would clutter process.yml.
+
+          ACTION:
+          1. Review process.yml for both agents to confirm outputs are defined there
+          2. Search for outputs.yml references and remove them OR create the files
+          3. Ensure consistency across agent structure
+        target_files:
+          - "modules/AgenticGuidance/agents/test/test-guidance-simulator/"
+          - "modules/AgenticGuidance/agents/planner/planner-guidance-testing/"
+
+      - id: "high_002"
+        name: "Standardize placeholder naming to {plan_folder_name}"
+        status: "pending"
+        description: |
+          XCUT-004: Inconsistent placeholder naming creates confusion.
+
+          Current state:
+          - {plan_id} used in process.yml path_template fields
+          - {plan_folder} used in manifest.yml location fields
+          - {plan_folder_name} is the documented standard
+
+          Affected agents:
+          - planner-build (process.yml: {plan_id}, manifest.yml: {plan_folder})
+          - planner-guidance (process.yml: {plan_id}, manifest.yml: {plan_folder})
+          - planner-guidance-testing (process.yml references plan folder but unclear placeholder)
+
+          ACTION: Standardize ALL placeholder references to {plan_folder_name}:
+          1. Update process.yml path_template fields
+          2. Update manifest.yml location fields
+          3. Add definition to shared definitions explaining the placeholder
+
+          NOTE: {plan_folder_name} follows pattern YYMMDDRepo_Branch (e.g., 260104AE_agenticguidance)
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-build/process.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-build/manifest.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-guidance/process.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-guidance/manifest.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-guidance-testing/process.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-test/process.yml"
+
+      - id: "high_003"
+        name: "Update success-criteria file references"
+        status: "pending"
+        description: |
+          XCUT-006: References to success-criteria-teacher.yml need evaluation.
+
+          Current state: Both files exist:
+          - success-criteria.yml (26 lines, comprehensive)
+          - success-criteria-teacher.yml (10 lines, brief)
+
+          Affected agents:
+          - planner-reviewer/inputs.yml (references success-criteria-teacher.yml)
+          - planner-guidance/inputs.yml (references success-criteria-teacher.yml)
+          - planner-guidance/process.yml (mentions success-criteria-teacher.yml)
+          - teacher-update-guidance/inputs.yml (references success-criteria-teacher.yml)
+          - teacher-update-guidance/process.yml (mentions success-criteria-teacher.yml)
+          - model-first-verification.yml (lists success-criteria-teacher.yml)
+
+          DECISION REQUIRED:
+          A) Consolidate to success-criteria.yml (more comprehensive), OR
+          B) Keep both files with clear differentiation (teacher version for teaching context)
+
+          Recommendation: Option A - Consolidate to success-criteria.yml. The teacher
+          version adds no unique content; it's a subset. Having one authoritative file
+          reduces confusion.
+
+          ACTION:
+          1. Update all references from success-criteria-teacher.yml to success-criteria.yml
+          2. Deprecate or delete success-criteria-teacher.yml
+          3. Update definitions/model-first-verification.yml reference list
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-reviewer/inputs.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-guidance/inputs.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-guidance/process.yml"
+          - "modules/AgenticGuidance/agents/teacher/teacher-update-guidance/inputs.yml"
+          - "modules/AgenticGuidance/agents/teacher/teacher-update-guidance/process.yml"
+          - "modules/AgenticGuidance/assets/definitions/model-first-verification.yml"
+          - "modules/AgenticGuidance/assets/definitions/success-criteria-teacher.yml"
+
+  # ========================================
+  # PHASE 3: Validation (Test Remediation)
+  # ========================================
+  - name: "Test: Validation"
+    execution: sequential
+    status: pending
+    priority: high
+    description: "Validate all remediations were applied correctly"
+    tasks:
+      - id: "val_001"
+        name: "Verify path reference consistency"
+        status: "pending"
+        description: |
+          Verify XCUT-001 remediation:
+          - Run grep for definitions/ and guidelines/ references
+          - Confirm all paths resolve to existing files
+          - Document any remaining path inconsistencies
+        validation_command: |
+          # Check for broken path references
+          grep -r "definitions/" modules/AgenticGuidance/agents/ | grep -v ".yml:" | head -20
+          grep -r "guidelines/" modules/AgenticGuidance/agents/ | grep -v ".yml:" | head -20
+
+      - id: "val_002"
+        name: "Verify no empty outputs arrays remain"
+        status: "pending"
+        description: |
+          Verify XCUT-002 remediation:
+          - Search for "outputs: []" in all process.yml files
+          - Confirm all agents have defined output schemas
+        validation_command: |
+          grep -r "outputs: \[\]" modules/AgenticGuidance/agents/*/process.yml
+          # Expected: No results (all outputs should be defined)
+
+      - id: "val_003"
+        name: "Verify outputs.yml references resolved"
+        status: "pending"
+        description: |
+          Verify XCUT-003 remediation:
+          - Search for outputs.yml references
+          - Confirm files exist OR references removed
+        validation_command: |
+          grep -r "outputs.yml" modules/AgenticGuidance/agents/
+          # Verify each reference has corresponding file OR is removed
+
+      - id: "val_004"
+        name: "Verify placeholder naming standardized"
+        status: "pending"
+        description: |
+          Verify XCUT-004 remediation:
+          - Search for {plan_id} and {plan_folder} placeholders
+          - Confirm all are updated to {plan_folder_name}
+        validation_command: |
+          grep -r "{plan_id}" modules/AgenticGuidance/agents/planner/
+          grep -r "{plan_folder}" modules/AgenticGuidance/agents/planner/
+          # Expected: No results (all should be {plan_folder_name})
+
+      - id: "val_005"
+        name: "Verify success-criteria references updated"
+        status: "pending"
+        description: |
+          Verify XCUT-006 remediation:
+          - Search for success-criteria-teacher.yml references
+          - Confirm all are updated OR file is properly deprecated
+        validation_command: |
+          grep -r "success-criteria-teacher" modules/AgenticGuidance/
+          # Expected: No results (all should reference success-criteria.yml)
+
+      - id: "val_006"
+        name: "Run agent self-review spot check"
+        status: "pending"
+        description: |
+          Spot-check remediation by running self-review on 3 affected agents:
+          - planner-guidance-testing (multiple fixes applied)
+          - build-flutter (path reference fix)
+          - planner-reviewer (success-criteria reference fix)
+
+          Each agent should report zero CRITICAL or HIGH severity friction points
+          related to the remediated issues.
+
+success_criteria:
+  - "XCUT-001: All path references verified or corrected (definitions/ vs guidelines/)"
+  - "XCUT-002: planner-guidance-testing has defined output schema (not empty [])"
+  - "XCUT-003: outputs.yml references resolved (files created or references removed)"
+  - "XCUT-004: All planner agents use consistent {plan_folder_name} placeholder"
+  - "XCUT-006: All success-criteria-teacher.yml references updated to success-criteria.yml"
+  - "Validation: grep commands return expected results (no broken references)"
+  - "Spot check: 3 affected agents pass self-review with zero HIGH/CRITICAL friction points"
+
+related_plans:
+  findings: "audit/260112_self_review_findings.yml"
+  previous_remediation: "completed/plan_teach_self_review_remediation.yml"
+  parent_plan: "live/plan_agenticguidance.yml"
+
+notes: |
+  This is Round 2 of self-review remediation following the comprehensive review
+  on 2026-01-12. Round 1 (completed 2026-01-11) addressed 4 critical and 5 cross-cutting
+  issues from the 2026-01-11 findings. This round addresses the remaining issues
+  from the more thorough 2026-01-12 review.
+
+  Investigation notes:
+  - XCUT-001: Files exist in definitions/. Need to verify if migration was intended.
+  - XCUT-002: Only planner-guidance-testing has empty outputs (others fixed in R1).
+  - XCUT-003: No outputs.yml files exist; need to decide: create or remove references.
+  - XCUT-004: Mixed placeholders ({plan_id}, {plan_folder}) need standardization.
+  - XCUT-006: Both success-criteria files exist; recommend consolidation.

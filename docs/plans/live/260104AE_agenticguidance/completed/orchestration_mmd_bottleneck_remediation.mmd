@@ -1,0 +1,130 @@
+flowchart LR
+    %% GOAL: Remediate MMD generation bottleneck by consolidating ownership to orchestration-planning and fixing sequence.
+    %% PROFILE: Orchestration-Planning
+    %% INPUT_PATH: modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml
+    %% OUTPUT: Remediated guidance files with clear MMD ownership, fixed orchestration sequence, and validated workflow.
+    %% GUIDELINE: ONLY orchestration-planning generates MMD files. Planners create YAML only.
+    %%
+    %% PHASES: Phase1_ConsolidateOwnership, Phase2_FixSequence, Phase3_UpdateMessaging, Phase4_Validation
+    %% AGENT_ROUTING: Phase1 -> teacher-update-guidance, Phase2 -> teacher-update-guidance, Phase3 -> teacher-update-guidance, Phase4 -> test-guidance-simulator
+    %% STATUS: Phase1_ConsolidateOwnership=pending, Phase2_FixSequence=pending, Phase3_UpdateMessaging=pending, Phase4_Validation=pending
+    %%
+    %% FEEDBACK_TRIGGER: GUIDANCE_GAP -> ReturnToPhase1
+    %% FEEDBACK_TRIGGER: VALIDATION_FAILURE -> ReturnToRelevantPhase
+
+    Start((Start)) --> LoadInputs[Load Plan & Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    LoadInputs --> ReviewInputs[Review Listed Inputs]
+    ReviewInputs --> CheckInputs{All Inputs Found?}
+    CheckInputs -- "No: Missing" --> AskUser((Ask User for Clarification))
+    CheckInputs -- "Yes: Verified" --> EnterPhase1
+
+    %% ========================================
+    %% PHASE 1: CONSOLIDATE MMD OWNERSHIP
+    %% ========================================
+    %% Remove MMD generation from planners, ensure only orchestration-planning generates MMD.
+    %% Tasks: teach_001 (planner-guidance), teach_002 (planner-build), teach_003 (verify orchestrator)
+
+    subgraph Phase1_SG ["Phase 1: Consolidate MMD Ownership Subgraph"]
+        EnterPhase1[Enter Phase 1: Consolidate Ownership] --> Task001[Remove MMD from planner-guidance]
+        Task001 --> Task002[Remove MMD from planner-build]
+        Task002 --> Task003[Verify orchestrator MMD capability]
+        Task003 --> Phase1Review{Phase 1 Complete?}
+        Phase1Review -- "No: Gaps Found" --> FixPhase1[Address Phase 1 Gaps]
+        FixPhase1 --> Task001
+        Phase1Review -- "Yes: Ownership Clear" --> Phase1Done[Phase 1 Complete]
+    end
+
+    Phase1Done --> EnterPhase2
+
+    %% ========================================
+    %% PHASE 2: FIX ORCHESTRATION SEQUENCE
+    %% ========================================
+    %% Reorder orchestration-planning so MMD generation happens BEFORE reviewer approval.
+    %% Critical fix: Planner -> MMD Generation -> Reviewer (not Planner -> Reviewer -> MMD)
+    %% Task: teach_004
+
+    subgraph Phase2_SG ["Phase 2: Fix Orchestration Sequence Subgraph"]
+        EnterPhase2[Enter Phase 2: Fix Sequence] --> Task004[Reorder process.mmd - MMD before Reviewer]
+        Task004 --> Phase2Review{Sequence Correct?}
+        Phase2Review -- "No: Still Wrong" --> FixPhase2[Fix Sequence Issues]
+        FixPhase2 --> Task004
+        Phase2Review -- "Yes: Deadlock Resolved" --> Phase2Done[Phase 2 Complete]
+    end
+
+    Phase2Done --> EnterPhase3
+
+    %% ========================================
+    %% PHASE 3: UPDATE REVIEWER MESSAGING
+    %% ========================================
+    %% Update reviewer error messages to reference orchestration-planning (not individual planners).
+    %% Task: teach_005
+
+    subgraph Phase3_SG ["Phase 3: Update Reviewer Messaging Subgraph"]
+        EnterPhase3[Enter Phase 3: Update Messaging] --> Task005[Update planner-reviewer error messages]
+        Task005 --> Phase3Review{Messaging Updated?}
+        Phase3Review -- "No: Incomplete" --> FixPhase3[Fix Messaging Issues]
+        FixPhase3 --> Task005
+        Phase3Review -- "Yes: Clear References" --> Phase3Done[Phase 3 Complete]
+    end
+
+    Phase3Done --> EnterPhase4
+
+    %% ========================================
+    %% PHASE 4: VALIDATION TESTING
+    %% ========================================
+    %% Test the updated workflow to verify the bottleneck is resolved.
+    %% Tasks: test_001 (sequence), test_002 (no planner MMD), test_003 (backlog remediation)
+    %%
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.guidance-test-loop
+    %% MAX_ITERATIONS: 3 (per guidance-test-loop definition)
+    %% ESCALATION: If max iterations reached without validation passing, stop and Ask User
+
+    subgraph Phase4_SG ["Phase 4: Validation Testing Subgraph"]
+        EnterPhase4[Enter Phase 4: Validation] --> Test001[Test orchestration generates MMD correctly]
+        Test001 --> Test002[Test planners have no MMD guidance]
+        Test002 --> Test003[Test backlog remediation via orchestrator]
+        Test003 --> AllTestsPass{All Tests Pass?}
+        AllTestsPass -- "No: Test Failures" --> IdentifyFailures[Identify Failed Tests]
+        IdentifyFailures --> ReturnToRelevantPhase{Which Phase Needs Fix?}
+        ReturnToRelevantPhase -- "Phase 1" --> EnterPhase1
+        ReturnToRelevantPhase -- "Phase 2" --> EnterPhase2
+        ReturnToRelevantPhase -- "Phase 3" --> EnterPhase3
+        AllTestsPass -- "Yes: All Pass" --> ValidationComplete[Validation Complete]
+    end
+
+    %% ========================================
+    %% HUMAN APPROVAL GATE
+    %% ========================================
+
+    subgraph HumanApproval_SG ["Human Approval Gate Subgraph"]
+        ValidationComplete --> PresentResults[Present Remediation Results to User]
+        PresentResults --> UserDecision{User Approves?}
+        UserDecision -- "No: Rejected" --> RejectEnd((End: Remediation Rejected))
+        UserDecision -- "Request Changes" --> IdentifyChanges[Identify Required Changes]
+        IdentifyChanges -.->|Return to relevant phase| EnterPhase1
+        UserDecision -- "Yes: Approved" --> ApprovalComplete[Remediation Approved]
+    end
+
+    %% ========================================
+    %% OUTPUT PHASE
+    %% ========================================
+
+    subgraph Output_SG ["Output Subgraph"]
+        ApprovalComplete --> GenerateReport[Generate Remediation Summary]
+        GenerateReport --> UpdatePlanStatus[Update Plan Status to Complete]
+        UpdatePlanStatus --> ArchivePlan[Archive Completed Plan]
+    end
+
+    ArchivePlan --> End((End: Bottleneck Remediated))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    %% Feedback loops use dashed lines to indicate return paths.
+
+    classDef dashedstroke stroke-dasharray: 5 5;
+    linkStyle 28,29,30 stroke:#888,stroke-width:2px,stroke-dasharray: 5 5;

@@ -1,6 +1,10 @@
 # Agent Loop Definitions
 # Conceptual definition of agent loops - what they are and when to use each type.
 # Process files contain specific implementation details (which agents, execution patterns).
+#
+# SCOPE: Structure definitions only (what loops exist, their purpose, max iterations)
+# For behavioral guidelines (how to behave during loops), see:
+#   modules/AgenticGuidance/assets/guidelines/iteration.yml
 
 agent_loop:
   concept: |
@@ -41,6 +45,35 @@ loop_types:
     when_to_use: "Before removing code - requires consensus to reduce false positives"
     maximum_iterations: 1
     core_pattern: "Vote → Aggregate → Escalate/Execute"
+    status: "deprecated"
+    deprecated_reason: |
+      Replaced by cleaner-dependency-loop which uses explorer agents for actual
+      dependency checking rather than voting consensus. Dependency checking is
+      more reliable and produces verifiable results.
+    replacement: "cleaner-dependency-loop"
+
+  cleaner-dependency-loop:
+    purpose: "Dependency-aware cleanup with explorer verification"
+    phase: "cleanup"
+    when_to_use: "Before removing code - uses explorer to verify no active dependencies"
+    maximum_iterations: 3
+    core_pattern:
+      - "Cleaner identifies target files/code for removal"
+      - "Explorer agent checks for dependencies/usages"
+      - "Decision point: Safe to remove or defer"
+      - "Execute removal or escalate with dependency report"
+    participants:
+      - "cleaner agent (identification)"
+      - "explorer agent (dependency checking)"
+      - "orchestrator (decision and execution)"
+    exit_conditions:
+      - "All targets removed (no dependencies found)"
+      - "Deferred targets documented (dependencies exist)"
+      - "Max iterations reached (escalate remaining)"
+    safety_checks:
+      - "Explorer must verify zero usages before removal"
+      - "Indirect dependencies must be traced (transitive)"
+      - "Test coverage must be checked (removes may break tests)"
 
   documentation-loop:
     purpose: "Validate documentation through blind testing"
@@ -48,6 +81,16 @@ loop_types:
     when_to_use: "To prove documentation is complete and usable"
     maximum_iterations: 3
     core_pattern: "Attempt journey → Report gaps → Fix → Repeat"
+
+  user-story-validation-loop:
+    purpose: "Validate complete user journeys through blind testing"
+    phase: "user-story-validation"
+    when_to_use: "After audit phase to confirm implementation meets user needs"
+    maximum_iterations: 3
+    core_pattern: "Execute story → Report gaps → Fix → Repeat"
+    note: |
+      User simulator agents execute story tests following documentation only.
+      This is the PRIMARY SUCCESS CRITERIA for implementation work.
 
   exploration-loop:
     purpose: "Iterative discovery and information gathering"
@@ -83,14 +126,90 @@ loop_types:
       - "No guidance gaps identified"
       - "Max iterations reached (escalate)"
 
+  agent-self-review:
+    purpose: "Agent reviews own guidance files for correctness and completeness"
+    phase: "guidance-validation"
+    when_to_use: "Lighter alternative to guidance-test-loop during guidance development"
+    alternative_to: "guidance-test-loop"
+    selection_criteria: |
+      Use agent-self-review (LIGHTEST) when:
+      - Quick validation of guidance changes during development
+      - Agent needs to check its own process.yml, inputs.yml, manifest.yml
+      - No external simulation or multi-agent coordination needed
+      - Fast feedback cycle is priority over comprehensive validation
+
+      Use guidance-test-loop (HEAVIER) when:
+      - Guidance completeness needs validation via blind simulation
+      - External perspective is needed (agent cannot validate itself)
+      - High-confidence verification required before deployment
+    maximum_iterations: 2
+    core_pattern:
+      - "Agent reads own guidance files (process.yml, inputs.yml, manifest.yml)"
+      - "Agent identifies issues, gaps, or inconsistencies"
+      - "Agent reports findings with specific recommendations"
+      - "Fix issues and repeat if needed"
+    participants:
+      - "any agent (self-reviewing)"
+    exit_conditions:
+      - "All checklist items pass"
+      - "No friction points identified"
+      - "Max iterations reached (escalate)"
+    note: |
+      This is the simplest guidance validation loop. The agent reviews its own
+      guidance without spawning external simulators or coordinating with other
+      agents. Good for iterative development but limited by agent's self-bias.
+      For objective validation, use guidance-test-loop with external simulator.
+
+  guidance-self-review-loop:
+    purpose: "Iterative guidance improvement through agent self-review"
+    phase: "guidance-improvement"
+    when_to_use: "When updating guidance for multiple agents based on identified friction"
+    alternative_to: "guidance-test-loop"
+    selection_criteria: |
+      Use guidance-self-review-loop (LIGHTER) when:
+      - Multiple agents need guidance improvements simultaneously
+      - Friction patterns have been identified but not localized
+      - Agent context files (inputs.yml, process.yml, manifest.yml) need review
+      - Quick iteration on guidance changes is needed
+
+      Use guidance-test-loop (HEAVIER) when:
+      - Guidance completeness needs validation via blind simulation
+      - New agent processes require external validation
+      - High-confidence verification is required before deployment
+      - User stories need full execution testing
+    maximum_iterations: 3
+    core_pattern:
+      - "Spawn target agents for self-review (parallel)"
+      - "Agents review their own inputs.yml, process.yml, manifest.yml"
+      - "Collect issues and questions requiring user decisions"
+      - "User provides answers to ambiguities"
+      - "Spawn planner-guidance agents to create remediation plans (parallel)"
+      - "Execute fixes via teacher-update-guidance agents"
+      - "Repeat until multiple agents report NO ISSUES REMAINING"
+    participants:
+      - "target planner agents (self-review)"
+      - "planner-guidance (remediation planning)"
+      - "teacher-update-guidance (execution)"
+    exit_conditions:
+      - "Multiple agents report no issues found"
+      - "All identified issues have remediation plans executed"
+      - "Max iterations reached (escalate)"
+    user_decision_gate: true
+    visual_reference: "modules/AgenticGuidance/assets/examples/orchestration/phase_templates/guidance_self_review_loop.mmd"
+    note: |
+      This loop includes a USER DECISION GATE between self-review and planning.
+      Questions/ambiguities from self-reviews must be resolved before creating
+      remediation plans. This ensures fixes align with user intent.
+
 phase_ordering:
   description: |
     Standard phase order for complete implementation cycles:
   order:
     - "1. test-fix-loop (active development)"
-    - "2. cleaner-voting-loop (cleanup)"
+    - "2. cleaner-dependency-loop (cleanup with explorer verification)"
     - "3. audit-test-fix-loop (MANDATORY after cleanup)"
-    - "4. documentation-loop (final phase)"
+    - "4. user-story-validation-loop (PRIMARY SUCCESS CRITERIA)"
+    - "5. documentation-loop (final phase)"
 
 mandatory_loops:
   audit-test-fix-loop:

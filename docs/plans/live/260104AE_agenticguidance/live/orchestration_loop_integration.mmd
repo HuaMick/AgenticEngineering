@@ -1,0 +1,127 @@
+%% PLAN_MMD_VERSION: 1.0
+%% GENERATED_BY: orchestration-planning
+%% PLAN_FOLDER: docs/plans/live/260104AE_agenticguidance
+%% GOAL: Execute teaching plan to integrate loop components into orchestration-planning agent.
+%% PROFILE: Orchestration-Teach
+%% INPUT_PATH: modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml
+%%
+%% PHASES: ResourceAlignment, ProcessRefinement, Verification, Cleanup
+%% AGENT_ROUTING: ResourceAlignment -> teacher-update-guidance, ProcessRefinement -> teacher-update-guidance, Verification -> test-final-output, Cleanup -> teacher-update-guidance
+%% FEEDBACK_TRIGGERS: GUIDANCE_GAP -> TeachLoop, AUDIT_FAILURE -> VerifyLoop
+%% STATUS: ResourceAlignment=completed, ProcessRefinement=completed, Verification=completed, Cleanup=completed
+%%
+%% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.planner-loop
+%% MAX_ITERATIONS: 5 (per planner-loop definition)
+%% ESCALATION: If max iterations reached, stop and Ask User
+
+flowchart LR
+    Start((Start)) --> LoadPlan[Load Plan: plan_live_orchestration_loop_integration.yml]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    LoadPlan --> ValidatePlan{Plan Structure Valid?}
+    ValidatePlan -- "No: Invalid" --> AskUser((Ask User for Clarification))
+    ValidatePlan -- "Yes: Valid" --> Phase1[Phase 1: Resource Alignment]
+
+    %% ========================================
+    %% PHASE 1: RESOURCE ALIGNMENT
+    %% ========================================
+    %% Tasks: teach_001, teach_002
+    %% Agent: teacher-update-guidance
+
+    subgraph ResourceAlignment_SG ["Resource Alignment Subgraph"]
+        Phase1 --> TeachLoop{Teach Loop - Resource Tasks}
+        TeachLoop --> SpawnTeacher1[Spawn teacher-update-guidance Agent]
+        SpawnTeacher1 --> Task001[Execute: teach_001 - Add Loop Selection Guidance]
+        Task001 --> SpawnTeacher2[Spawn teacher-update-guidance Agent]
+        SpawnTeacher2 --> Task002[Execute: teach_002 - Add MMD Node Granularity Guidance]
+        Task002 --> Phase1Complete{Phase 1 Complete?}
+        Phase1Complete -- "No: Guidance Gap" --> TeachLoop
+        Phase1Complete -- "Yes: Complete" --> Phase2
+    end
+
+    %% ========================================
+    %% PHASE 2: PROCESS REFINEMENT
+    %% ========================================
+    %% Tasks: teach_003, teach_004, teach_005
+    %% Agent: teacher-update-guidance
+
+    subgraph ProcessRefinement_SG ["Process Refinement Subgraph"]
+        Phase2[Phase 2: Process Refinement] --> ProcessLoop{Teach Loop - Process Tasks}
+        ProcessLoop --> SpawnTeacher3[Spawn teacher-update-guidance Agent]
+        SpawnTeacher3 --> Task003[Execute: teach_003 - Add ORCHESTRATION-LOOP-OWNERSHIP Policy]
+        Task003 --> SpawnTeacher4[Spawn teacher-update-guidance Agent]
+        SpawnTeacher4 --> Task004[Execute: teach_004 - Add MMD Generation Fence]
+        Task004 --> SpawnTeacher5[Spawn teacher-update-guidance Agent]
+        SpawnTeacher5 --> Task005[Execute: teach_005 - Add Loop Strategy Selection Node]
+        Task005 --> Phase2Complete{Phase 2 Complete?}
+        Phase2Complete -- "No: Guidance Gap" --> ProcessLoop
+        Phase2Complete -- "Yes: Complete" --> Phase3
+    end
+
+    %% ========================================
+    %% PHASE 3: VERIFICATION
+    %% ========================================
+    %% Tasks: verify_001, verify_002
+    %% Agent: test-final-output
+
+    subgraph Verification_SG ["Verification Subgraph"]
+        Phase3[Phase 3: Verification] --> VerifyLoop{Verification Loop}
+        VerifyLoop --> SpawnVerifier1[Spawn test-final-output Agent]
+        SpawnVerifier1 --> Verify001[Execute: verify_001 - Validate Guidance Consistency]
+        Verify001 --> SpawnVerifier2[Spawn test-final-output Agent]
+        SpawnVerifier2 --> Verify002[Execute: verify_002 - Confirm No Conflicting Guidance]
+        Verify002 --> VerifyComplete{Verification Complete?}
+        VerifyComplete -- "No: Audit Failure" --> VerifyLoop
+        VerifyComplete -- "No: Critical Issue" --> AskUser
+        VerifyComplete -- "Yes: All Pass" --> Phase4
+    end
+
+    %% ========================================
+    %% PHASE 4: CLEANUP (QUESTION-001 Option A)
+    %% ========================================
+    %% Tasks: cleanup_001, cleanup_002
+    %% Agent: teacher-update-guidance
+
+    subgraph Cleanup_SG ["Cleanup Subgraph - Strip Planner Loop Refs"]
+        Phase4[Phase 4: Cleanup] --> CleanupLoop{Cleanup Loop}
+        CleanupLoop --> SpawnTeacher6[Spawn teacher-update-guidance Agent]
+        SpawnTeacher6 --> Cleanup001[Execute: cleanup_001 - Remove Loop Refs from Core Guidelines]
+        Cleanup001 --> SpawnTeacher7[Spawn teacher-update-guidance Agent]
+        SpawnTeacher7 --> Cleanup002[Execute: cleanup_002 - Add Deferral Notes to Planners]
+        Cleanup002 --> CleanupComplete{Cleanup Complete?}
+        CleanupComplete -- "No: Issues Found" --> CleanupLoop
+        CleanupComplete -- "Yes: Complete" --> HumanApproval
+    end
+
+    %% ========================================
+    %% HUMAN APPROVAL GATE
+    %% ========================================
+
+    subgraph HumanApproval_SG ["Human Approval Gate Subgraph"]
+        HumanApproval[Present Results for Approval] --> UserDecision{User Decision?}
+        UserDecision -- "Approved" --> MarkComplete[Mark Plan Completed]
+        UserDecision -- "Changes Requested" --> CaptureChanges[Capture Feedback]
+        CaptureChanges -.->|Return to Teaching| Phase1
+        UserDecision -- "Rejected" --> RejectEnd((End: Plan Rejected))
+    end
+
+    %% ========================================
+    %% OUTPUT PHASE
+    %% ========================================
+
+    subgraph Output_SG ["Output Subgraph"]
+        MarkComplete --> ArchivePlan[Archive Plan to completed/]
+        ArchivePlan --> ReportSuccess[Report Success]
+    end
+
+    ReportSuccess --> End((End: Plan Completed))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    %% Feedback loops styled with dashed lines
+    classDef dashedstroke stroke-dasharray: 5 5;
+    classDef completed fill:#90EE90,stroke:#228B22;
+    linkStyle 18 stroke:#888,stroke-width:2px,stroke-dasharray: 5 5;

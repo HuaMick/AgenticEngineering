@@ -1,0 +1,32 @@
+entrypoint:
+  name: "_orchestrate"
+  goal: "Execute a pre-approved plan by orchestrating agents dynamically via Plan-MMD."
+  description: "Entrypoint that delegates execution to the generic orchestration-executor agent with MMD-driven dynamic routing."
+
+  # Orchestration agent that controls the execution workflow
+  # Note: The current session takes on the role of the orchestration-executor agent.
+  # The executor discovers orchestration_*.mmd inside the plan folder and routes dynamically.
+  orchestration: "modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml"
+
+  # Inputs are loaded by the orchestration agent from:
+  # modules/AgenticGuidance/agents/orchestration/orchestration-executor/inputs.yml
+  # Requires: Pre-approved plan folder path from _plan_build.yml or _plan_teach.yml output
+
+  steps:
+    - "Load orchestration process from modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml"
+    - "Discover orchestration_*.mmd file inside <plan_folder>/live/"
+    - "If .mmd not found: ERROR - 'No orchestration MMD found in plan folder'"
+    - "Load Plan-MMD and extract AGENT_ROUTING, PHASES, FEEDBACK_TRIGGERS, STATUS metadata"
+    - "Load plan_*.yml files from the same <plan_folder>/live/ directory"
+    - "Execute phases in order defined by MMD flowchart"
+    - "Route agents dynamically based on AGENT_ROUTING metadata"
+    - "Handle failures via FEEDBACK_TRIGGERS (loop, re-plan, or escalate)"
+    - "Report completion status and any blocking issues"
+
+  input:
+    - "plan_folder_path: Pre-approved plan folder path (from _plan_build.yml or _plan_teach.yml output)"
+
+  output:
+    - "Execution status (completed, blocked, failed)"
+    - "Phase completion report with per-phase timestamps"
+    - "Updated STATUS in MMD and plan YAML files"

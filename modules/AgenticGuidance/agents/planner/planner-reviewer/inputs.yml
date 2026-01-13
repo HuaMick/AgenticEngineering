@@ -1,19 +1,101 @@
+# Planner-Reviewer Agent Inputs
+# Reviews plans created by other planner agents for quality and completeness.
+#
+# PURPOSE:
+# Validate that plans meet quality standards before execution begins.
+# Provides approval/rejection decisions with actionable feedback.
+#
+# RESPONSIBILITIES:
+# - Review plan structure and completeness
+# - Validate success criteria are verifiable
+# - Check phase ordering and dependencies
+# - Ensure plans follow established patterns
+# - Provide approval/rejection with specific feedback
+
+# ==============================================
+# REQUIRED INPUTS
+# ==============================================
+# These inputs MUST be provided by the parent orchestrator or user.
+# Without these, the agent cannot perform plan review.
+# ==============================================
+required_inputs:
+  - name: "plan_folder_path"
+    type: "string"
+    description: "Path to the plan folder to review"
+    required: true
+    example: "docs/plans/live/260106MyProject_feature_auth/"
+
+  - name: "target_project_path"
+    type: "string"
+    description: "Absolute path to target project root (for path resolution)"
+    required: true
+    example: "/home/code/MyProject"
+
+agent_context:
+  category: "modules/AgenticGuidance/assets/definitions/agent-categories.yml#agent_categories.planner"
+  role: "planner-reviewer"
+
 inputs:
-  - location: "assets/definitions/plans.yml"
-    description: "plan types and locations"
-  - location: "assets/definitions/agent-loops.yml"
-    description: "standard agent loops and phase ordering"
-  - location: "assets/guidelines/fix-the-source.yml"
-    description: "fix root causes instead of symptoms"
-  - location: "assets/guidelines/experiment-first.yml"
-    description: "discover and experiment first when unsure"
-  - location: "assets/guidelines/context-minimisation.yml"
-    description: "provide only required information, reduce noise"
-  - location: "assets/guidelines/worktree-and-branching.yml"
-    description: "worktree + branching policy"
-  - location: "assets/guidelines/response-audit.yml"
-    description: "mandatory response audit guideline"
-  - location: "assets/definitions/success-criteria-teacher.yml"
-    description: "verifiable success criteria guidance"
-  - location: "assets/examples/planner/"
-    description: "reference examples for plan structure"
+  agent_type: "planner-reviewer"
+  version: "2.0"  # MUST match manifest.yml version
+
+  # Reference layers (transitive loading)
+  # NOTE: Uses reviewer-specific guidelines layer (Q2=C: excludes philosophical guidance)
+  layers:
+    - type: layer
+      path: "modules/AgenticGuidance/assets/inputs/planner-core-system.yml"
+      description: "Planner-specific system definitions (plans.yml only - excludes architecture-pattern)"
+      required: true
+
+    - type: layer
+      path: "modules/AgenticGuidance/assets/inputs/reviewer-core-guidelines.yml"
+      description: "Reviewer-specific guidelines (excludes philosophical guidance like fix-the-source)"
+      required: true
+
+    - type: layer
+      path: "modules/AgenticGuidance/assets/inputs/planner-shared.yml"
+      description: "Planner shared inputs (agent-role-scope-matrix, plan-inputs, folder-structure, iteration)"
+      required: true
+
+  # Reviewer-specific inputs
+  core_inputs:
+    # Plan structure requirements (extracted from plans.yml - focused on structure, not lifecycle)
+    - type: file
+      path: "modules/AgenticGuidance/assets/definitions/plan-structure-requirements.yml"
+      description: "Required fields and naming conventions for plan validation"
+      required: true
+
+    # Loop definitions for understanding phase ordering (reviewer-focused slice)
+    - type: file
+      path: "modules/AgenticGuidance/assets/inputs/reviewer-agent-loops.yml"
+      description: "Reviewer-focused loop definitions (planner-loop, mandatory_loops)"
+      required: true
+
+    # Success criteria for validation
+    - type: file
+      path: "modules/AgenticGuidance/assets/definitions/success-criteria.yml"
+      description: "Verifiable success criteria guidance"
+      required: true
+
+    # SHARED structural patterns (also used by planner-guidance)
+    - type: file
+      path: "modules/AgenticGuidance/assets/examples/planner/structural-patterns.yml"
+      description: "SHARED structural patterns for plan validation (used by planner-guidance too)"
+      required: true
+
+  # Reviewer-specific guidelines
+  # NOTE: Empty array is intentional - all guidelines come from reviewer-core-guidelines layer.
+  # Do not add guidelines here unless they are reviewer-specific and NOT in shared layers.
+  guidelines: []
+
+  # Reviewer-specific definitions
+  definitions:
+    review_decision: |
+      Review decisions must be one of:
+      - APPROVED: Plan meets all quality criteria and is ready for execution
+      - REJECTED: Plan has issues that must be addressed before execution
+      - NEEDS_REVISION: Plan has minor issues; specific feedback provided
+
+    review_output_format: |
+      Output review decisions to review_*.yml files in the plan folder.
+      Per scrap_file_taxonomy, review files move to analysis/ after processing.

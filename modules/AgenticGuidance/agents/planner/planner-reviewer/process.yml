@@ -3,12 +3,12 @@ process:
 
   loop_context:
     participates_in: ['planner-loop']
-    loop_definition: 'assets/definitions/agent-loops.yml#planner-loop'
+    loop_definition: 'modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.planner-loop'
     max_iterations: 5
     note: "Reviewer provides feedback for planner-guidance to address in iterative refinement cycles"
 
   inputs:
-    - location: "agents/planner/planner-reviewer/inputs.yml"
+    - location: "modules/AgenticGuidance/agents/planner/planner-reviewer/inputs.yml"
       description: "Core reviewer planner agent inputs and guidelines"
 
   steps:
@@ -30,7 +30,7 @@ process:
       SUCCESS CRITERIA CHECKLIST:
       - [ ] Each phase has measurable success criteria
       - [ ] Success criteria include user-focused validation (experience-driven checks)
-      - [ ] Technical validation criteria are verifiable (see success-criteria-teacher.yml in inputs)
+      - [ ] Technical validation criteria are verifiable (see success-criteria.yml in inputs)
       - [ ] Criteria define observable outcomes, not implementation details
 
       TASK STRUCTURE CHECKLIST:
@@ -43,11 +43,48 @@ process:
       - [ ] Tasks follow Domain -> Workflow -> Entrypoint patterns where applicable
       - [ ] Phase dependencies are explicitly declared
       - [ ] All mandatory loops included (audit-test-fix after cleanup, etc.)
+
+      MMD PRESENCE CHECKLIST (required for orchestrated plans):
+      NOTE: Orchestration-planning is responsible for generating MMD files.
+      Individual planners (planner-guidance, planner-build) create plan YAML only.
+      If MMD is missing, the orchestration sequence was incomplete.
+
+      - [ ] orchestration_*.mmd file exists in live/ folder alongside plan_*.yml files
+      - [ ] MMD contains GOAL header comment
+      - [ ] MMD contains AGENT_ROUTING header comment or metadata
+      - [ ] MMD contains PHASES list (can be in header or derived from flowchart structure)
+
+      FENCE: If orchestration_*.mmd is missing from the plan folder:
+      - REJECT the plan with feedback: "Missing orchestration MMD. The orchestration-planning
+        agent should have generated orchestration_<plan_name>.mmd before this review stage.
+        Return to orchestration-planning to complete MMD generation for this plan."
+      - Do NOT approve plans that require orchestrated execution without an MMD file.
+
+      EXCEPTION: Single-task plans or quick fixes that don't require agent coordination
+      may be approved without MMD. Check plan.phases - if only 1 phase with 1 task, MMD is optional.
     - |
       Decision:
       - APPROVE: If all checklist items pass and the plan is ready for execution.
       - REJECT: If any checklist items fail. Provide specific feedback for the planner agents to fix, referencing which checklist items failed and why.
     - "Report decision and feedback."
+    - |
+      POST-APPROVAL CLEANUP (execute only on APPROVE decision):
+
+      1. Report to orchestrator that remediation tasks should be merged:
+         "APPROVED: Merge tasks from [plan_name] into authoritative phase plan"
+
+      2. Specify artifacts to archive (paths relative to plan folder root):
+         - audit_*.yml related to this review -> move from live/ to audit/
+           Example: live/audit_planner_build.yml -> audit/audit_planner_build.yml
+         - review_*.yml (this decision file) -> move from live/ to analysis/
+           Example: live/review_planner_build.yml -> analysis/review_planner_build.yml
+
+      3. Specify remediation plan disposition:
+         - After tasks are merged into phase plan, DELETE the remediation plan from live/
+         - Do NOT archive remediation plans (tasks are preserved in merged phase plan)
+
+      FENCE: Do not execute cleanup on REJECT decisions. Rejected plans remain
+      in live/ for the next iteration of the planner-loop.
 
   guidelines:
     - "Only reject plans with genuine structural issues or missing critical information."

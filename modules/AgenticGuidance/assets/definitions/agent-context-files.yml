@@ -1,10 +1,80 @@
-agent_context_files: |
-  Agent context is stored in <agent_name>/:
-  - process.yml or processes/<name>.yml - Step-by-step instructions
-  - definitions.yml - Concept definitions agents may need
-  - manifest.yml - Folder structure and file locations
+# Agent Context Files Definition
+# Updated: 2026-01-09
+# Purpose: Document the standardized file structure for agent definitions
 
-  Agent role definitions are in .claude/agents/<agent>-agent.md
+agent_context_files:
+  description: |
+    Agent context is stored in the agent's folder at:
+    modules/AgenticGuidance/agents/<category>/<agent_name>/
 
-  When updating documentation, ensure agent manifests reference new docs
-  so agents can discover them.
+  required_files:
+    manifest.yml:
+      purpose: "Agent metadata, version, category, description"
+      required: true
+
+    inputs.yml:
+      purpose: "Context requirements, layer references, core inputs"
+      required: true
+
+    process_file:
+      purpose: "Step-by-step execution instructions and workflow logic"
+      required: true
+      format: "process.yml OR process.mmd (see format section)"
+
+  process_file_formats:
+    description: |
+      Process files can be in YAML or Mermaid format.
+      BOTH formats are first-class citizens in AgenticGuidance.
+
+    yaml_format:
+      extension: ".yml"
+      filename: "process.yml"
+      use_when:
+        - "Agent has linear step-by-step process"
+        - "No complex branching or subgraphs needed"
+        - "Simple input → steps → output flow"
+      example_agents:
+        - "planner-build"
+        - "test-audit"
+        - "deploy-worktree"
+
+    mermaid_format:
+      extension: ".mmd"
+      filename: "process.mmd"
+      use_when:
+        - "Agent has complex workflow with branching"
+        - "Agent needs visual representation of decision trees"
+        - "Agent orchestrates subgraphs (e.g., planning loops)"
+        - "Agent has feedback loops returning to earlier steps"
+      example_agents:
+        - "orchestration-planning (complex phase determination)"
+        - "orchestration-build (multiple validation phases with feedback)"
+        - "orchestration-guidance (guidance validation loops)"
+      mermaid_conventions:
+        - "Use flowchart LR for left-to-right flow"
+        - "Include %% GOAL, %% PROFILE, %% OUTPUT comments at top"
+        - "Use %% INPUT_PATH comment to specify inputs.yml location"
+        - "Use subgraph for related steps (Planning Delegation, Implementation, etc.)"
+        - "Use dotted lines (-.->|label|) for feedback loops"
+
+  folder_structure_example: |
+    modules/AgenticGuidance/agents/<category>/<agent_name>/
+    ├── manifest.yml     # Required: metadata
+    ├── inputs.yml       # Required: context layers
+    └── process.yml      # Required: process definition (OR process.mmd)
+        OR process.mmd
+
+  legacy_patterns:
+    processes_folder: |
+      Some legacy agents use processes/<name>.yml for multiple process variants.
+      New agents should use single process.yml or process.mmd at agent root.
+
+  agent_role_definitions:
+    claude_code_agents: ".claude/agents/<agent>-agent.md"
+    description: "Claude Code uses separate agent definition files"
+
+  note: |
+    When updating agent context, ensure:
+    - manifest.yml reflects actual version and category
+    - inputs.yml uses PATH RESOLUTION SEMANTICS header
+    - Process file (yml or mmd) is self-contained with clear goal

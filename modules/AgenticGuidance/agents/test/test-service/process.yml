@@ -1,0 +1,123 @@
+# ==============================================
+# PATH RESOLUTION SEMANTICS
+# ==============================================
+# All paths in this file are relative to the REPOSITORY ROOT
+# containing the modules/AgenticGuidance/ directory.
+# (e.g., modules/AgenticGuidance/assets/...).
+# ==============================================
+
+process:
+  goal: |
+    Validate backend service lifecycle: startup, stability, and health checks. Focus on infrastructure validation, not functional testing.
+
+  loop_definitions:
+    reference: "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+    description: "Loop types (test-fix-loop) defined in agent-loops.yml"
+    # NOTE: Do not duplicate loop definitions here - see agent-loops.yml for full definitions
+
+  # ==============================================
+  # LOOP CONTEXT
+  # ==============================================
+  # Specifies how this agent participates in iterative loops
+  # ==============================================
+  loop_context:
+    participates_in:
+      - "test-fix-loop"
+    role: "service-validator"
+    description: |
+      test-service acts as a service lifecycle validator in the test-fix-loop. It
+      validates backend service startup, stability, and health checks without
+      performing functional testing.
+    iteration_strategy: |
+      Each iteration validates service health after potential fixes. The agent
+      does NOT fix issues - it reports service failures to the orchestrator,
+      which spawns appropriate fix agents. After fixes, test-service is re-invoked
+      to verify service stability.
+    max_iterations: 5
+    escalation_on_max: "Report persistent service instability with logs and health check results"
+    exit_conditions:
+      - "Service starts and remains stable"
+      - "Health endpoints respond correctly"
+      - "All service failures reported to orchestrator"
+      - "Orchestrator signals loop termination"
+    state_management: |
+      test-service is stateless between iterations. Each invocation receives the
+      service configuration and any previous health check results as input context.
+
+  inputs:
+    - location: "modules/AgenticGuidance/agents/test/test-service/inputs.yml"
+      description: "Core test service agent inputs and guidelines"
+
+  outputs:
+    - name: "service_validation_report"
+      description: "Results of service lifecycle and health validation"
+      location: "Returned to orchestrator"
+      schema:
+        service_name: "string"
+        startup_status: "enum(success, failure)"
+        health_check_status: "enum(healthy, unhealthy, unreachable)"
+        stability_status: "enum(stable, unstable)"
+        validation_timestamp: "string - ISO 8601"
+    - name: "health_check_results"
+      description: "Detailed health endpoint validation results"
+      location: "Returned to orchestrator"
+      schema:
+        - endpoint: "string - health endpoint URL"
+          response_code: "integer"
+          response_time_ms: "integer"
+          result: "enum(pass, fail)"
+    - name: "log_analysis"
+      description: "Analysis of service logs for errors"
+      location: "Returned to orchestrator"
+      schema:
+        errors_found: "integer"
+        critical_messages: "array of strings"
+        warnings: "array of strings"
+    - name: "failure_report"
+      description: "Structured failure information for test-fix-loop context"
+      location: "Updated in live plan"
+      schema:
+        test_name: "string"
+        component: "string"
+        failure_description: "string"
+        expected_behavior: "string"
+        actual_behavior: "string"
+        files_involved: "array of strings"
+
+  steps:
+    - |
+      Review all inputs if an input cannot be found do not proceed.
+      If an input is found in a different location, note the discrepancy in your output report.
+    - |
+      Start the service and wait for initialization per delayed_validation in inputs.yml (10+ seconds).
+      Race conditions can mask failures - immediate status checks are unreliable.
+    - |
+      Validate service health by making actual HTTP requests to health endpoints.
+      Follow test_execution_workflow in inputs.yml for Studio service validation.
+      Don't rely solely on port availability - port checks only confirm process exists.
+    - |
+      Check logs for errors after the delayed validation period.
+      Flag ERROR, CRITICAL, FATAL level messages and exception traces per service_validation in inputs.yml.
+    - |
+      Verify service stability per delayed_validation guidance in inputs.yml:
+      - Initial status check after delay
+      - Follow-up checks during test execution
+      - Final status verification before reporting success
+    - |
+      Report results to orchestration agent per failure_reporting format in inputs.yml.
+      Include service status, health check results, and any logged errors.
+
+  guidelines:
+    # Core guidelines: See modules/AgenticGuidance/assets/guidelines/ (fix-the-source.yml, context-minimisation.yml, response-audit.yml, testing.yml, iteration.yml, safety.yml)
+    # Core definitions: See modules/AgenticGuidance/assets/definitions/ (plans.yml, workflows.yml, domains.yml, entrypoints.yml, test-roles.yml, studio-integration-tests.yml, acceptable-skips.yml, strategy-*.yml)
+    # Test guidelines: See modules/AgenticGuidance/assets/guidelines/ (test-organization.yml, test-execution-workflow.yml)
+    # Service test specifics: See inputs.yml for test_runner, service_validation, test_execution_workflow, studio_integration_tests, acceptable_skips, failure_reporting, delayed_validation
+    - |
+      NEVER debug or fix issues you find. On fail proceed with the next
+      test and report back all failures to the orchestration agent.
+    - |
+      Apply delayed_validation requirements from inputs.yml:
+      - Wait 10+ seconds after service start
+      - Make actual HTTP requests to health endpoints
+      - Check service status multiple times
+      - Review logs after delayed validation period

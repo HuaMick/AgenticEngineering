@@ -1,0 +1,330 @@
+# Plan: Orchestration Loop Integration
+# This plan integrates agent loop components into the orchestration-planning agent
+# and enforces orchestration-level ownership of agent loop strategy selection.
+#
+# TYPE: Teaching Plan (guidance improvement)
+# AGENT_CATEGORY: teacher
+# PRIORITY: high
+
+name: "orchestration-loop-integration"
+worktree_path: "/home/code/AgenticEngineering-agenticguidance"
+branch: "main"
+status: "completed"
+priority: "high"
+
+# File paths for plan management
+worktree: "/home/code/AgenticEngineering-agenticguidance"
+plan_file: "docs/plans/live/260104AE_agenticguidance/live/plan_live_orchestration_loop_integration.yml"
+
+context: |
+  Diagnostics revealed that orchestration-planning agents are over-engineering flowchart nodes
+  by including individual tasks instead of high-level agent loops. Furthermore, loop selection
+  components were not explicitly provided to the orchestrator's inputs, and there was no clear
+  guidance on which agent category owns loop strategy planning.
+
+  ROOT CAUSE ANALYSIS:
+  1. orchestration-planning/inputs.yml includes agent-loops.yml but lacks explicit guidance
+     on WHEN to use loop nodes vs task nodes in generated MMDs.
+  2. The MMD Generation phase in process.mmd has no fence preventing task-level node creation.
+  3. No ORCHESTRATION-LOOP-OWNERSHIP policy exists to clarify responsibility boundaries.
+
+  This plan:
+  1. Adds explicit loop selection guidance to orchestration-planning inputs.
+  2. Enforces ORCHESTRATION-LOOP-OWNERSHIP policy in the process.mmd.
+  3. Adds a fence in MMD Generation to prevent task-level node creation.
+
+related_plans:
+  orchestration: "orchestration_agenticguidance.mmd"
+
+# Root-level inputs shared across phases
+inputs:
+  - location: "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml"
+    description: "Orchestration planner inputs - target for loop guidance additions"
+  - location: "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+    description: "Orchestration planner process - target for policy and fence additions"
+  - location: "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+    description: "Loop definitions - source for loop selection criteria"
+  - location: "modules/AgenticGuidance/assets/examples/orchestration/phase_templates/"
+    description: "Phase template examples - source for high-level node patterns"
+  - location: "modules/AgenticGuidance/assets/inputs/planner-core-guidelines.yml"
+    description: "Shared planner guidelines - potential update location"
+
+open_questions:
+  - id: "QUESTION-001"
+    question: "Should we also strip loop-planning from generic planners (e.g. planner-build) now, or just provide the orchestration-level override?"
+    severity: "medium"
+    status: "RESOLVED"
+    resolution: "Option A: Strip loop references from planners entirely"
+    resolved_by: "Human approval gate"
+    resolved_date: "2026-01-13"
+    context: |
+      Generic planners currently reference agent-loops.yml in their shared guidelines.
+      Option A: Remove loop references from planners, making orchestrator sole owner.
+      Option B: Keep planners aware of loops for context, but document that orchestrator
+      decides final loop selection.
+    options:
+      - "A: Strip loop references from planners entirely"
+      - "B: Keep references but add deferral note to orchestrator"
+
+phases:
+  # ========================================
+  # PHASE 1: Resource Alignment
+  # ========================================
+  - name: "Resource Alignment"
+    execution: sequential
+    description: "Provide orchestrator with explicit loop selection guidance"
+    agent_category: "teacher"
+    tasks:
+      - id: "teach_001"
+        name: "Add Loop Selection Guidance to Orchestrator Inputs"
+        description: |
+          Add a new section to orchestration-planning/inputs.yml that provides explicit
+          guidance for selecting appropriate loops based on phase type and objective intent.
+          This makes the orchestrator the authoritative source for loop selection decisions.
+        status: "pending"
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        inputs:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml"
+          - "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+          - "modules/AgenticGuidance/assets/examples/orchestration/phase_templates/test_phase.mmd"
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml"
+        guidance: |
+          Add a new `loop_selection_guidance` section to inputs.yml containing:
+          1. Phase-to-loop mapping table (teach -> planner-loop, build -> test-fix-loop, etc.)
+          2. Criteria for selecting between alternative loops (e.g., guidance-test-loop vs agent-self-review)
+          3. Reference to agent-loops.yml for loop definitions
+          4. Explicit statement: "Orchestrator owns loop selection; planners request validation needs."
+        acceptance_criteria:
+          - "inputs.yml contains loop_selection_guidance section"
+          - "Phase-to-loop mapping is documented"
+          - "Loop selection criteria references agent-loops.yml definitions"
+          - "Ownership statement clarifies orchestrator vs planner responsibility"
+
+      - id: "teach_002"
+        name: "Add MMD Node Granularity Guidance"
+        description: |
+          Add guidance to orchestration-planning/inputs.yml specifying the correct
+          granularity for MMD nodes: high-level phases and loops, NOT individual tasks.
+        status: "pending"
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        inputs:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml"
+          - "modules/AgenticGuidance/assets/definitions/plan-mmd-schema.yml"
+          - "modules/AgenticGuidance/assets/examples/orchestration/orchestration_build_reference.mmd"
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml"
+        guidance: |
+          Add a `mmd_node_granularity` section to inputs.yml containing:
+          1. Correct granularity: "Phase nodes, Loop nodes, Agent spawn nodes"
+          2. Incorrect granularity: "Task IDs (e.g., build_001), individual file operations"
+          3. Examples of correct vs incorrect node naming
+          4. Reference to phase_templates/ for proper node patterns
+        acceptance_criteria:
+          - "inputs.yml contains mmd_node_granularity section"
+          - "Correct and incorrect examples are documented"
+          - "Phase template references are included"
+
+  # ========================================
+  # PHASE 2: Process Refinement
+  # ========================================
+  - name: "Process Refinement"
+    execution: sequential
+    description: "Update orchestrator process to enforce loop ownership and add MMD generation fence"
+    agent_category: "teacher"
+    tasks:
+      - id: "teach_003"
+        name: "Add ORCHESTRATION-LOOP-OWNERSHIP Policy to Process"
+        description: |
+          Add an explicit GUIDELINE comment block to orchestration-planning/process.mmd
+          documenting the ORCHESTRATION-LOOP-OWNERSHIP policy: orchestrators select loops,
+          planners only request validation/iteration requirements.
+        status: "pending"
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        inputs:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+          - "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+          - "modules/AgenticGuidance/assets/definitions/agent-categories.yml"
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+        guidance: |
+          Add a new GUIDELINE comment block near the top of process.mmd:
+          %% GUIDELINE: ORCHESTRATION-LOOP-OWNERSHIP
+          %% - Orchestrators OWN loop strategy selection (which loop, when to use)
+          %% - Planners REQUEST validation needs (e.g., "needs test-fix iteration")
+          %% - Planners do NOT dictate specific loop structures in their plans
+          %% - Loop definitions: modules/AgenticGuidance/assets/definitions/agent-loops.yml
+        acceptance_criteria:
+          - "process.mmd contains ORCHESTRATION-LOOP-OWNERSHIP guideline comment"
+          - "Guideline clarifies orchestrator vs planner responsibility"
+          - "Reference to agent-loops.yml is included"
+
+      - id: "teach_004"
+        name: "Add MMD Generation Fence for Node Granularity"
+        description: |
+          Add a FENCE comment block to the MMD Generation subgraph in process.mmd
+          that prevents task-level node creation and requires high-level loop nodes.
+        status: "pending"
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        inputs:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+          - "modules/AgenticGuidance/assets/definitions/fence.yml"
+          - "modules/AgenticGuidance/assets/examples/orchestration/phase_templates/build_phase.mmd"
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+        guidance: |
+          Add a FENCE comment in the MMD Generation subgraph (MMDGeneration_SG):
+          %% FENCE: MMD-NODE-GRANULARITY
+          %% Generated MMD nodes MUST be high-level (phases, loops, agent spawns).
+          %% Task-level nodes (e.g., build_001, test_002) are FORBIDDEN in orchestration MMDs.
+          %% If task-level nodes detected in generated MMD, STOP and regenerate.
+          %% Correct: "SpawnPlannerBuild", "TestFixLoop", "BuildPhase"
+          %% Incorrect: "build_001", "Implement authentication feature", specific file operations
+        acceptance_criteria:
+          - "process.mmd MMD Generation subgraph contains MMD-NODE-GRANULARITY fence"
+          - "Fence provides correct vs incorrect examples"
+          - "Fence specifies STOP action if task-level nodes detected"
+
+      - id: "teach_005"
+        name: "Add Loop Strategy Selection Node to Phase Determination"
+        description: |
+          Add a new node in the Phase Determination subgraph for selecting appropriate
+          loops based on the phases identified. This makes loop selection explicit in the flow.
+        status: "pending"
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        inputs:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+          - "modules/AgenticGuidance/assets/definitions/agent-loops.yml#phase_ordering"
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+        guidance: |
+          In the PhaseDetermination_SG subgraph, add after "DeterminePhases":
+          DeterminePhases --> SelectLoopStrategies[Select Loop Strategies per Phase]
+          SelectLoopStrategies --> PhasesDecided{Phases & Loops Decided?}
+
+          The new node documents that loop selection happens during phase determination,
+          not during MMD generation or delegated to planners.
+        acceptance_criteria:
+          - "PhaseDetermination_SG contains SelectLoopStrategies node"
+          - "Loop selection is explicitly part of phase determination flow"
+          - "Decision diamond updated to reflect both phases and loops"
+
+  # ========================================
+  # PHASE 3: Verification
+  # ========================================
+  - name: "Verification"
+    execution: sequential
+    description: "Verify all guidance updates are consistent and complete"
+    agent_category: "test"
+    tasks:
+      - id: "verify_001"
+        name: "Validate Guidance Consistency"
+        description: |
+          Verify that inputs.yml and process.mmd are consistent with each other
+          and reference the correct loop definitions and phase templates.
+        status: "pending"
+        agent_type: "test-final-output"
+        operation: "AUDIT"
+        inputs:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml"
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+          - "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml"
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+        acceptance_criteria:
+          - "All loop references in inputs.yml resolve to valid definitions in agent-loops.yml"
+          - "All GUIDELINE references in process.mmd have corresponding documentation in inputs.yml"
+          - "FENCE in MMD Generation aligns with mmd_node_granularity guidance in inputs"
+          - "SelectLoopStrategies node has supporting guidance in inputs.yml"
+
+      - id: "verify_002"
+        name: "Confirm No Conflicting Guidance in Planner Agents"
+        description: |
+          Verify that planner agents (planner-build, planner-test, planner-guidance)
+          do not have conflicting loop selection guidance that overrides orchestrator ownership.
+        status: "pending"
+        agent_type: "test-final-output"
+        operation: "AUDIT"
+        inputs:
+          - "modules/AgenticGuidance/agents/planner/planner-build/process.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-test/process.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-guidance/process.yml"
+          - "modules/AgenticGuidance/assets/inputs/planner-core-guidelines.yml"
+        target_files: []
+        acceptance_criteria:
+          - "Planner processes do not override orchestrator loop selection"
+          - "Planners reference loops for context but defer selection to orchestrator"
+          - "No conflicting GUIDELINE comments claim planner loop ownership"
+
+  # ========================================
+  # PHASE 4: Cleanup (QUESTION-001 Resolution: Option A)
+  # ========================================
+  - name: "Cleanup"
+    execution: sequential
+    description: "Strip loop references from generic planners per QUESTION-001 Option A resolution"
+    agent_category: "teacher"
+    tasks:
+      - id: "cleanup_001"
+        name: "Remove Loop References from planner-core-guidelines.yml"
+        description: |
+          Remove or comment out agent-loops.yml references from planner-core-guidelines.yml
+          since loop selection is now solely an orchestrator responsibility.
+        status: "pending"
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        inputs:
+          - "modules/AgenticGuidance/assets/inputs/planner-core-guidelines.yml"
+          - "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+        target_files:
+          - "modules/AgenticGuidance/assets/inputs/planner-core-guidelines.yml"
+        guidance: |
+          1. Locate any references to agent-loops.yml in planner-core-guidelines.yml
+          2. Remove or comment out these references
+          3. Add a note: "Loop strategy selection is an ORCHESTRATION responsibility. See orchestration-planning/inputs.yml"
+        acceptance_criteria:
+          - "No direct agent-loops.yml references in planner-core-guidelines.yml"
+          - "Deferral note to orchestration-planning added"
+          - "Existing loop_context sections in planner processes remain unchanged (those are participation declarations)"
+
+      - id: "cleanup_002"
+        name: "Add Deferral Notes to Planner Processes"
+        description: |
+          Add explicit deferral notes to planner-build, planner-test, and planner-guidance
+          clarifying that loop strategy is decided by the orchestrator.
+        status: "pending"
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        inputs:
+          - "modules/AgenticGuidance/agents/planner/planner-build/process.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-test/process.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-guidance/process.yml"
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-build/process.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-test/process.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-guidance/process.yml"
+        guidance: |
+          For each planner process.yml, add a note in the guidelines section:
+          "NOTE: Planners may request validation/iteration needs but do NOT dictate loop
+          strategy. Loop selection is owned by orchestration-planning. See
+          orchestration-planning/inputs.yml#loop_selection_guidance."
+        acceptance_criteria:
+          - "All three planner processes contain the orchestrator deferral note"
+          - "Existing loop_context sections preserved (participation declarations)"
+
+# ========================================
+# SUCCESS CRITERIA
+# ========================================
+success_criteria:
+  - "orchestration-planning/inputs.yml contains loop_selection_guidance section with phase-to-loop mapping"
+  - "orchestration-planning/inputs.yml contains mmd_node_granularity section with correct/incorrect examples"
+  - "orchestration-planning/process.mmd contains ORCHESTRATION-LOOP-OWNERSHIP guideline comment"
+  - "orchestration-planning/process.mmd MMD Generation subgraph contains MMD-NODE-GRANULARITY fence"
+  - "orchestration-planning/process.mmd Phase Determination contains SelectLoopStrategies node"
+  - "Generated orchestration MMDs will use high-level phase/loop nodes, NOT individual task IDs"
+  - "Orchestrator explicitly owns loop strategy selection; planners only request validation needs"

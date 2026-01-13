@@ -1,0 +1,263 @@
+# Teach Plan: Self-Review Remediation
+# Plan: 260104AE_agenticguidance
+# Status: completed
+# Phase Type: teach
+# Created: 2026-01-11
+# Completed: 2026-01-11
+# Source: audit/260111_self_review_findings.yml
+
+name: self-review-remediation
+status: completed
+completed_date: "2026-01-11"
+priority: high
+created: "2026-01-11"
+phase_type: teach
+
+objective: |
+  Remediate issues discovered during agent self-review testing on 2026-01-11.
+  23 agents were reviewed, identifying 5 critical issues, 14 cross-cutting patterns,
+  and numerous agent-specific friction points. This plan addresses the most
+  impactful issues first.
+
+inputs:
+  - location: "audit/260111_self_review_findings.yml"
+    description: "Consolidated findings from agent self-review"
+
+phases:
+  # ========================================
+  # PHASE 1: Critical Fixes (Blocking Issues)
+  # ========================================
+  - name: "Teach: Critical Fixes"
+    execution: sequential
+    status: completed
+    completed_date: "2026-01-11"
+    priority: critical
+    description: "Fix issues that block agent execution"
+    tasks:
+      - id: "crit_001"
+        name: "Fix broken path in teacher-update-assets"
+        status: "completed"
+        description: |
+          Fix broken path in process.yml line 14:
+          FROM: modules/AgenticGuidance/agents/teacher/teacher-update-modules/AgenticGuidance/assets/inputs.yml
+          TO: modules/AgenticGuidance/agents/teacher/teacher-update-assets/inputs.yml
+        target: "modules/AgenticGuidance/agents/teacher/teacher-update-assets/process.yml"
+
+      - id: "crit_002"
+        name: "Add deprecation flags to manifest.yml files"
+        status: "completed"
+        description: |
+          Add 'status: deprecated' field to:
+          - orchestration-guidance/manifest.yml
+          - orchestration-build/manifest.yml
+
+          Also update:
+          - agents/manifest.yml (mark deprecated in sub_agents list)
+          - orchestration/manifest.yml (mark deprecated in routing_logic)
+        target: "modules/AgenticGuidance/agents/orchestration/"
+
+      - id: "crit_003"
+        name: "Clarify orchestration-executor path semantics"
+        status: "completed"
+        description: |
+          Update orchestration-executor/inputs.yml and process.yml to clarify:
+          - plan_folder_path should NOT include trailing 'live/' when passed as input
+          - Executor searches <plan_folder>/live/ internally for orchestration_*.mmd
+          - Add explicit examples with correct path format
+        target: "modules/AgenticGuidance/agents/orchestration/orchestration-executor/"
+
+      - id: "crit_004"
+        name: "Update component references after phase_templates move"
+        status: "completed"
+        description: |
+          Update inputs.yml files that reference old component locations:
+          FROM: assets/examples/planner/components/build_phase.mmd (etc.)
+          TO: assets/examples/orchestration/phase_templates/build_phase.mmd
+
+          Affected agents:
+          - planner-test/inputs.yml
+          - planner-build/inputs.yml
+          - planner-guidance/inputs.yml
+          - planner-cleaning/inputs.yml
+          - orchestration-planning/inputs.yml
+        target: "modules/AgenticGuidance/agents/planner/"
+
+  # ========================================
+  # PHASE 2: Cross-Cutting Cleanup
+  # ========================================
+  - name: "Teach: Cross-Cutting Cleanup"
+    execution: parallel_groups
+    status: completed
+    completed_date: "2026-01-11"
+    priority: high
+    description: "Fix patterns affecting multiple agents"
+    tasks:
+      - id: "cross_001"
+        name: "Remove impossible 'update path' instructions"
+        status: "completed"
+        description: |
+          Remove or reword the instruction:
+          "If an input is found in a different location, update the path"
+          to: "If an input is found in a different location, note the discrepancy in output"
+
+          Affected: test-runner, test-builder, test-service, test-audit
+        target: "modules/AgenticGuidance/agents/test/"
+
+      - id: "cross_002"
+        name: "Add missing loop_context sections"
+        status: "completed"
+        description: |
+          Add loop_context sections to agents that reference loops but don't define context:
+          - test-runner/process.yml
+          - test-builder/process.yml
+          - test-user-simulator/process.yml
+          - test-service/process.yml
+          - test-final-output/process.yml
+
+          Use test-audit/process.yml as template.
+        target: "modules/AgenticGuidance/agents/test/"
+
+      - id: "cross_003"
+        name: "Define outputs in process.yml"
+        status: "completed"
+        description: |
+          Add output schemas to agents with empty outputs: []:
+          - test-runner, test-builder, test-user-simulator, test-service
+          - teacher-update-assets
+          - build-flutter, build-python
+
+          Align with output structures defined in inputs.yml where applicable.
+        target: "modules/AgenticGuidance/agents/"
+
+      - id: "cross_004"
+        name: "Synchronize version numbers"
+        status: "completed"
+        description: |
+          Sync manifest.yml and inputs.yml versions for:
+          - test-runner
+          - test-final-output
+          - teacher-update-assets
+
+          Use inputs.yml version as canonical.
+        target: "modules/AgenticGuidance/agents/"
+
+      - id: "cross_005"
+        name: "Add required_inputs sections"
+        status: "completed"
+        description: |
+          Add required_inputs section to planners missing them:
+          - planner-reviewer/inputs.yml
+          - planner-cleaning/inputs.yml
+          - planner-guidance-testing/inputs.yml
+
+          Use planner-build/inputs.yml as template.
+        target: "modules/AgenticGuidance/agents/planner/"
+
+  # ========================================
+  # PHASE 3: Standardization
+  # ========================================
+  - name: "Teach: Standardization"
+    execution: sequential
+    status: completed
+    completed_date: "2026-01-11"
+    priority: medium
+    description: "Standardize patterns across agent categories"
+    tasks:
+      - id: "std_001"
+        name: "Standardize loop terminology"
+        status: "completed"
+        description: |
+          Consolidate loop terminology to:
+          - test-fix-loop (not test-audit-fix-loop or audit-test-fix-loop)
+          - Use consistent naming in:
+            - agent-loops.yml (authoritative source)
+            - All planner and test agent process.yml files
+        target: "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+
+      - id: "std_002"
+        name: "Standardize agent_context reference format"
+        status: "completed"
+        description: |
+          Use consistent format across all agents:
+          agent_context: "modules/AgenticGuidance/assets/definitions/agent-categories.yml#agent_categories.<category>"
+
+          Currently some use just category name, some use anchor syntax.
+        target: "modules/AgenticGuidance/agents/"
+
+      - id: "std_003"
+        name: "Standardize manifest.yml structure"
+        status: "completed"
+        description: |
+          Add missing fields to minimal manifests:
+          - deploy-worktree, deploy-cicd, build-flutter, build-python
+
+          Required fields: name, description, version, structure, responsibilities, boundaries, outputs
+        target: "modules/AgenticGuidance/agents/"
+
+      - id: "std_004"
+        name: "Extract MMD generation logic to shared reference"
+        status: "deferred"
+        deferred_reason: "Requires significant refactoring; lower priority than other standardization tasks"
+        description: |
+          Create shared definition for MMD generation:
+          - modules/AgenticGuidance/assets/definitions/mmd-generation-guidance.yml
+          - Remove duplicated 100+ line sections from:
+            - planner-build/process.yml
+            - planner-guidance/process.yml
+          - Replace with reference to shared definition
+        target: "modules/AgenticGuidance/assets/definitions/"
+
+  # ========================================
+  # PHASE 4: Documentation Improvements
+  # ========================================
+  - name: "Teach: Documentation Improvements"
+    execution: parallel
+    status: completed
+    completed_date: "2026-01-11"
+    priority: medium
+    description: "Improve documentation for unclear mechanisms"
+    tasks:
+      - id: "doc_001"
+        name: "Document subagent spawning mechanism"
+        status: "completed"
+        description: |
+          Add guidance to test-guidance-simulator on how to spawn target agents:
+          - Reference to Claude Code Task tool usage
+          - Example prompt format for spawning
+          - How to collect feedback from spawned sessions
+        target: "modules/AgenticGuidance/agents/test/test-guidance-simulator/process.yml"
+
+      - id: "doc_002"
+        name: "Document placeholder resolution"
+        status: "completed"
+        description: |
+          For test-final-output, clarify how to resolve:
+          - <live_plan_path>
+          - <orchestration_execution_data>
+
+          Either provide concrete examples or document the resolution mechanism.
+        target: "modules/AgenticGuidance/agents/test/test-final-output/inputs.yml"
+
+      - id: "doc_003"
+        name: "Expand vague build process steps"
+        status: "completed"
+        description: |
+          Expand 'Build components' steps in:
+          - build-flutter/process.yml
+          - build-python/process.yml
+
+          Add substeps and success criteria, or reference builder-role.yml.
+        target: "modules/AgenticGuidance/agents/build/"
+
+success_criteria:
+  - "All critical issues (CRIT-001 to CRIT-004) resolved"
+  - "No broken path references in any process.yml"
+  - "Deprecated agents clearly marked in all manifest.yml files"
+  - "Component references updated to phase_templates/ location"
+  - "Cross-cutting issues (CROSS-001 to CROSS-014) addressed"
+  - "All agents have defined outputs in process.yml"
+  - "Loop terminology consistent across codebase"
+
+related_plans:
+  findings: "audit/260111_self_review_findings.yml"
+  documentation_fixes: "live/plan_documentation_fixes.yml"

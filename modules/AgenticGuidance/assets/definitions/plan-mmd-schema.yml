@@ -1,0 +1,840 @@
+# Plan-MMD Schema Definition
+# Defines the formal structure for Mermaid flowcharts used in orchestration processes.
+#
+# SCOPE: Structural definitions for .mmd files used by orchestration agents.
+# Plan-MMD files define agent workflows with phases, decisions, loops, and agent spawns.
+
+plan_mmd:
+  definition: |
+    A Plan-MMD file is a Mermaid flowchart (.mmd) that defines an orchestration workflow.
+    It serves as the executable process definition for orchestration agents, specifying:
+    - The sequence of phases and decision points
+    - Which agents to spawn and when
+    - Loop structures with iteration limits
+    - Feedback paths for re-planning
+    - Human approval gates
+
+  location_pattern: |
+    modules/AgenticGuidance/agents/orchestration/<orchestrator-name>/process.mmd
+
+# =============================================================================
+# HEADER COMMENTS SECTION
+# =============================================================================
+# Required and optional metadata comments at the top of the file.
+# These comments provide context for the orchestrator and enable validation.
+
+header_comments:
+  required:
+    GOAL:
+      description: "Primary purpose of the orchestrator in a single sentence."
+      pattern: "^%% GOAL: .+$"
+      example: "%% GOAL: Orchestrate agents to implement code changes, features, or bug fixes."
+
+    PROFILE:
+      description: "Orchestrator profile identifier for role identification."
+      pattern: "^%% PROFILE: [A-Za-z-]+$"
+      example: "%% PROFILE: Orchestration-Builder"
+
+    INPUT_PATH:
+      description: "Path to the orchestrator's inputs.yml file."
+      pattern: "^%% INPUT_PATH: modules/AgenticGuidance/agents/orchestration/[a-z-]+/inputs\\.yml$"
+      example: "%% INPUT_PATH: modules/AgenticGuidance/agents/orchestration/orchestration-build/inputs.yml"
+
+  optional:
+    OUTPUT:
+      description: "Description of expected outputs from the orchestrator."
+      pattern: "^%% OUTPUT: .+$"
+      example: "%% OUTPUT: Implemented code, tests, and completed plans in docs/plans/completed/"
+
+    GUIDELINE:
+      description: "Policy or behavioral constraint reference. Multiple allowed."
+      pattern: "^%% GUIDELINE: .+$"
+      multiple_allowed: true
+      examples:
+        - "%% GUIDELINE: BUILD FOCUS policy - code implementation and testing, not guidance-only changes."
+        - "%% GUIDELINE: modules/AgenticGuidance/assets/guidelines/testing.yml - Testing strategies and validation"
+
+    OUTPUTS_FENCE:
+      description: |
+        Structured output requirements with fence constraint.
+        Multi-line block defining expected outputs and schema references.
+      pattern: |
+        ^%% OUTPUTS \(FENCE: .+\):$
+        ^%% - .+$
+      example: |
+        %% OUTPUTS (FENCE: Output must match declared schema before marking complete):
+        %% - Plan folder: docs/plans/live/{plan_id}/ with required structure
+        %% - README.md: Plan overview and folder structure
+
+    ENTRYPOINT_AWARENESS:
+      description: |
+        Block comment explaining entrypoint context for the orchestrator.
+        Helps orchestrator understand how it was invoked.
+      pattern: |
+        ^%% ENTRYPOINT AWARENESS:$
+        ^%% This orchestrator is invoked via entrypoints .+$
+      example: |
+        %% ENTRYPOINT AWARENESS:
+        %% This orchestrator is invoked via entrypoints that signal planning intent:
+        %% - _plan_build.yml: Build/implementation planning (prioritize planner-build)
+
+    LOOP_DEFINITION:
+      description: "Reference to loop definition in agent-loops.yml with fragment."
+      pattern: "^%% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops\\.yml#.+$"
+      example: "%% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.test-fix-loop"
+
+    MAX_ITERATIONS:
+      description: "Maximum iteration count for the referenced loop."
+      pattern: "^%% MAX_ITERATIONS: \\d+ \\(per .+ definition\\)$"
+      example: "%% MAX_ITERATIONS: 5 (per test-fix-loop definition)"
+
+    ESCALATION:
+      description: "Escalation policy when max iterations reached."
+      pattern: "^%% ESCALATION: .+$"
+      example: "%% ESCALATION: If max iterations reached without tests passing, stop and Ask User"
+
+# =============================================================================
+# FLOWCHART STRUCTURE
+# =============================================================================
+
+flowchart_structure:
+  declaration:
+    description: "Flowchart type and direction declaration."
+    required: true
+    pattern: "^flowchart LR$"
+    note: "LR (left-to-right) is standard for orchestration flows."
+
+  start_node:
+    description: "Entry point for the workflow."
+    required: true
+    pattern: "Start\\(\\(Start\\)\\)"
+    example: "Start((Start)) --> LoadInputs[Load Context Inputs]"
+
+  end_nodes:
+    description: "Terminal nodes for workflow completion."
+    required: true
+    patterns:
+      success: "End\\(\\(End\\)\\)"
+      success_labeled: "End\\(\\(End: .+\\)\\)"
+      ask_user: "AskUser\\(\\(Ask User for Clarification\\)\\)"
+      rejection: ".+End\\(\\(End: .+ Rejected\\)\\)"
+    examples:
+      - "End((End))"
+      - "End((End: Approved Plan Ready))"
+      - "AskUser((Ask User for Clarification))"
+      - "RejectEnd((End: Plan Rejected))"
+
+# =============================================================================
+# NODE NAMING CONVENTIONS
+# =============================================================================
+
+node_naming:
+  action_nodes:
+    description: "Nodes that perform actions (load, spawn, execute, etc.)"
+    pattern: "^[A-Z][a-zA-Z]+\\[.+\\]$"
+    convention: "PascalCase identifier with descriptive label in brackets."
+    examples:
+      - "LoadInputs[Load Context Inputs]"
+      - "ReviewInputs[Review All Listed Inputs]"
+      - "SpawnBuilders[Spawn build-python/flutter agents]"
+      - "ExecutePhases[Execute Implementation Phases]"
+
+  decision_nodes:
+    description: "Nodes that branch based on conditions (diamond shape)."
+    pattern: "^[A-Z][a-zA-Z]+\\{.+\\?\\}$"
+    convention: "PascalCase identifier with question in braces ending with '?'"
+    examples:
+      - "CheckInputs{All Inputs Found?}"
+      - "TestsPassed{Tests Passed?}"
+      - "WorktreeValid{Worktree & Plan Valid?}"
+      - "UserDecision{User Decision?}"
+
+  terminal_nodes:
+    description: "Start, end, and escalation nodes (circle shape)."
+    pattern: "^[A-Z][a-zA-Z]+\\(\\(.+\\)\\)$"
+    convention: "PascalCase identifier with label in double parentheses."
+    examples:
+      - "Start((Start))"
+      - "End((End))"
+      - "AskUser((Ask User for Clarification))"
+      - "EscalatePhases((Ask User for Phase Guidance))"
+
+  spawn_nodes:
+    description: "Nodes that spawn other agents."
+    pattern: "^Spawn[A-Z][a-zA-Z]*\\[Spawn .+ Agent\\]$"
+    convention: "Spawn prefix followed by agent type, label describes spawn action."
+    examples:
+      - "SpawnDeployWorktree[Spawn deploy-worktree Agent]"
+      - "SpawnPlannerBuild[Spawn planner-build Agent]"
+      - "SpawnBuilders[Spawn build-python/flutter agents]"
+      - "SpawnTeachReviewer[Spawn planner-reviewer Agent]"
+
+  loop_nodes:
+    description: "Nodes marking loop entry points."
+    pattern: "^[A-Z][a-zA-Z]+Loop\\{.+ Loop\\}$"
+    convention: "Loop suffix on identifier, 'Loop' in label."
+    examples:
+      - "TeachPlanLoop{Teach Planning Loop}"
+      - "BuildPlanLoop{Build Planning Loop}"
+      - "TestPlanLoop{Test Planning Loop}"
+
+# =============================================================================
+# SUBGRAPH STRUCTURE
+# =============================================================================
+
+subgraph_structure:
+  description: |
+    Subgraphs group related nodes into logical phases.
+    Each major phase should be enclosed in a subgraph for clarity.
+
+  naming_convention:
+    pattern: "^subgraph [A-Z][a-zA-Z_]+ \\[\".+ Subgraph\"\\]$"
+    preferred_pattern: "^subgraph [A-Z][a-zA-Z_]+_SG \\[\".+ Subgraph\"\\]$"
+    convention: |
+      PascalCase identifier with human-readable name in quotes.
+      Preferred: Append _SG suffix for clarity (e.g., PlanningLoops_SG).
+      Acceptable: Plain PascalCase (e.g., Implementation) for simple subgraphs.
+    examples:
+      - 'subgraph PhaseDetermination_SG ["Phase Determination Subgraph"]'
+      - 'subgraph PlanningLoops_SG ["Planning Loops Subgraph"]'
+      - 'subgraph Implementation ["Implementation Loop Subgraph"]'
+      - 'subgraph PlanningDelegation ["Planning Delegation Subgraph"]'
+      - 'subgraph HumanApproval_SG ["Human Approval Gate Subgraph"]'
+
+  closure:
+    pattern: "^\\s*end$"
+    note: "Each subgraph must be closed with 'end' keyword."
+
+  standard_subgraphs:
+    input_validation:
+      purpose: "Verify all required inputs are available."
+      typical_nodes:
+        - "LoadInputs"
+        - "ReviewInputs"
+        - "CheckInputs decision"
+        - "SearchInputs (self-healing)"
+
+    planning_delegation:
+      purpose: "Handle plan loading or delegation to orchestration-planning."
+      typical_nodes:
+        - "CheckPlanInput decision"
+        - "LoadApprovedPlan"
+        - "ValidatePlan decision"
+        - "DelegatePlanning (spawn)"
+
+    planning_loops:
+      purpose: "Iterative planning with reviewer feedback."
+      typical_nodes:
+        - "Phase check decisions"
+        - "Planner spawn nodes"
+        - "Reviewer spawn nodes"
+        - "Approval decisions"
+
+    implementation:
+      purpose: "Execute the approved plan."
+      typical_nodes:
+        - "Builder spawn nodes"
+        - "Test runner nodes"
+        - "Test result decisions"
+
+    human_approval_gate:
+      purpose: "User approval checkpoint."
+      typical_nodes:
+        - "Present plan nodes"
+        - "User decision"
+        - "Approval/rejection paths"
+
+    output:
+      purpose: "Generate final outputs and report."
+      typical_nodes:
+        - "Report nodes"
+        - "Archive/move completed work"
+
+# =============================================================================
+# EDGE PATTERNS
+# =============================================================================
+
+edge_patterns:
+  standard_flow:
+    description: "Normal forward progression."
+    pattern: "NodeA --> NodeB"
+    example: "LoadInputs --> ReviewInputs"
+
+  labeled_flow:
+    description: "Conditional flow with label."
+    pattern: 'NodeA -- "Label" --> NodeB'
+    examples:
+      - 'CheckInputs -- "Yes: Verified" --> SpawnDeployWorktree'
+      - 'CheckInputs -- "No: Missing" --> SearchInputs'
+      - 'TestsPassed -- "No: Fix in Iteration" --> SpawnBuilders'
+
+  feedback_flow:
+    description: "Dashed line for feedback/return paths."
+    pattern: "NodeA -.->|Label| NodeB"
+    note: "Used for loops back to earlier phases, especially re-planning."
+    examples:
+      - "UpdatePlanTests -.->|Re-plan with TEST_FAILURE| DelegatePlanning"
+      - "IdentifyAffectedPhases -.->|Return to Planning Loops| PlanningLoops"
+      - "UpdatePlanGaps -.->|Return to Planning| SpawnOrchestrationPlanning"
+
+  decision_branches:
+    description: "Standard patterns for decision node outputs."
+    yes_patterns:
+      - '"Yes"'
+      - '"Yes: Verified"'
+      - '"Yes: Valid"'
+      - '"Yes: Approved"'
+      - '"Yes: Ready"'
+    no_patterns:
+      - '"No"'
+      - '"No: Missing"'
+      - '"No: Failed"'
+      - '"No: Escalate"'
+      - '"No: Refine"'
+      - '"No: Gaps Found"'
+
+# =============================================================================
+# LOOP DEFINITION SYNTAX
+# =============================================================================
+
+loop_definition:
+  description: |
+    Loops are defined through a combination of:
+    1. Comment block referencing agent-loops.yml
+    2. Decision node for loop entry
+    3. Iterative path back to earlier node
+    4. Exit conditions on decision branches
+
+  comment_block:
+    required_comments:
+      - "LOOP_DEFINITION: reference to agent-loops.yml#fragment"
+      - "MAX_ITERATIONS: N (per loop-name definition)"
+      - "ESCALATION: what happens at max iterations"
+    example: |
+      %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.test-fix-loop
+      %% MAX_ITERATIONS: 5 (per test-fix-loop definition)
+      %% ESCALATION: If max iterations reached without tests passing, stop and Ask User
+
+  loop_structure:
+    entry_decision:
+      description: "Decision node that controls loop entry."
+      example: "TestsPassed{Tests Passed?}"
+
+    iteration_path:
+      description: "Edge from failure outcome back to earlier action."
+      example: 'TestsPassed -- "No: Fix in Iteration" --> SpawnBuilders'
+
+    exit_path:
+      description: "Edge from success outcome to next phase."
+      example: 'TestsPassed -- "Yes: Passed" --> CICDCheck'
+
+    escalation_path:
+      description: "Edge for severe failures requiring re-planning."
+      example: 'TestsPassed -- "No: Escalate" --> CategorizeTestFailure'
+
+  planning_loop_pattern:
+    description: "Pattern for planner + reviewer iteration loops."
+    structure: |
+      CheckPhase{Phase Required?}
+      CheckPhase -- "Yes" --> PhasePlanLoop{Phase Planning Loop}
+      PhasePlanLoop --> SpawnPlanner[Spawn planner-X Agent]
+      SpawnPlanner --> SpawnReviewer[Spawn planner-reviewer Agent]
+      SpawnReviewer --> PlanApproved{Plan Approved?}
+      PlanApproved -- "No: Refine" --> SpawnPlannerFix[Spawn planner-X Agent]
+      SpawnPlannerFix --> SpawnReviewer
+      PlanApproved -- "Yes: Ready" --> NextPhase
+
+# =============================================================================
+# AGENT SPAWN REFERENCES
+# =============================================================================
+
+agent_spawn:
+  description: |
+    Agent spawn nodes follow a consistent pattern to indicate
+    which agent will be invoked and what role it plays.
+
+  spawn_node_format:
+    pattern: "Spawn<AgentType>[Spawn <agent-name> Agent]"
+    convention: |
+      - Node ID: Spawn + PascalCase agent type
+      - Label: "Spawn " + kebab-case agent name + " Agent"
+
+  common_spawns:
+    orchestration:
+      - "SpawnOrchestrationPlanning[Spawn orchestration-planning Agent]"
+
+    deploy:
+      - "SpawnDeployWorktree[Spawn deploy-worktree Agent]"
+      - "SpawnDeploy[Spawn deploy-cicd Audit]"
+
+    planners:
+      - "SpawnPlannerBuild[Spawn planner-build Agent]"
+      - "SpawnPlannerTest[Spawn planner-test Agent]"
+      - "SpawnPlannerTeach[Spawn planner-guidance Agent]"
+      - "SpawnPlannerCleanup[Spawn planner-cleaning Agent]"
+
+    reviewers:
+      - "SpawnBuildReviewer[Spawn planner-reviewer Agent]"
+      - "SpawnTestReviewer[Spawn planner-reviewer Agent]"
+      - "SpawnTeachReviewer[Spawn planner-reviewer Agent]"
+
+    builders:
+      - "SpawnBuilders[Spawn build-python/flutter agents]"
+
+    testers:
+      - "RunTests[Spawn test-runner]"
+      - "GuidanceTest[Spawn planner-guidance-testing]"
+      - "GuidanceSimulator[Spawn test-guidance-simulator]"
+
+    teachers:
+      - "SpawnTeachers[Spawn teacher agents]"
+
+    auditors:
+      - "SpawnFinalAudit[Spawn test-final-output Audit]"
+      - "SpawnAudit[Spawn test-final-output Audit]"
+
+# =============================================================================
+# STYLING CONVENTIONS
+# =============================================================================
+
+styling:
+  description: |
+    Mermaid styling is used to visually distinguish feedback loops
+    from normal flow edges.
+
+  feedback_loop_style:
+    purpose: "Visually distinguish return paths for re-planning."
+    class_definition: "classDef dashedstroke stroke-dasharray: 5 5;"
+    link_style_pattern: "linkStyle N stroke:#888,stroke-width:2px,stroke-dasharray: 5 5;"
+    note: |
+      Link indices must be manually counted from the flowchart edges.
+      Index 0 is the first edge defined in the file.
+
+  style_block_location: "Place at end of file after all nodes and edges."
+
+  example: |
+    %% Styling for feedback loops (return paths to DelegatePlanning)
+    classDef dashedstroke stroke-dasharray: 5 5;
+    linkStyle 29,35,47,48,49,54 stroke:#888,stroke-width:2px,stroke-dasharray: 5 5;
+
+# =============================================================================
+# PHASE COMMENTS
+# =============================================================================
+
+phase_comments:
+  description: |
+    Comment blocks separate major phases and provide context
+    for each section of the flowchart.
+
+  separator_pattern: |
+    %% ========================================
+    %% PHASE NAME
+    %% ========================================
+    %% Description of what this phase does.
+    %% Additional context and guidelines.
+
+  common_phases:
+    - "INPUT VALIDATION PHASE"
+    - "WORKTREE & PLAN FOLDER SETUP"
+    - "PLANNING DELEGATION SUBGRAPH"
+    - "PHASE DETERMINATION"
+    - "PLANNING LOOPS PHASE"
+    - "IMPLEMENTATION PHASE"
+    - "CI/CD VALIDATION PHASE"
+    - "GUIDANCE VALIDATION PHASE"
+    - "GUIDANCE REPAIR LOOP"
+    - "FINAL AUDIT PHASE"
+    - "HUMAN APPROVAL GATE"
+    - "OUTPUT PHASE"
+    - "FINALIZATION"
+    - "STYLING"
+
+# =============================================================================
+# VALIDATION CHECKLIST
+# =============================================================================
+
+validation_checklist:
+  header_validation:
+    - "GOAL comment present and descriptive"
+    - "PROFILE comment present with valid identifier"
+    - "INPUT_PATH comment present with valid path to inputs.yml"
+    - "At least one GUIDELINE comment if policies apply"
+
+  structure_validation:
+    - "Flowchart declaration is 'flowchart LR'"
+    - "Start((Start)) node exists"
+    - "At least one End((...)) node exists"
+    - "AskUser escalation node exists for error handling"
+
+  node_validation:
+    - "All node IDs use PascalCase"
+    - "Decision nodes end with '?' in label"
+    - "Spawn nodes follow Spawn prefix convention"
+    - "Terminal nodes use double parentheses (())"
+
+  subgraph_validation:
+    - "Major phases enclosed in subgraphs"
+    - "Subgraph IDs use PascalCase (preferred: end with _SG)"
+    - "All subgraphs properly closed with 'end'"
+
+  loop_validation:
+    - "Each loop has LOOP_DEFINITION comment"
+    - "Each loop has MAX_ITERATIONS comment"
+    - "Each loop has ESCALATION policy"
+    - "Feedback paths use dashed line syntax (-.->)"
+
+  edge_validation:
+    - "All decision branches have labels"
+    - "Yes/No patterns are consistent"
+    - "Feedback loops properly styled"
+
+  styling_validation:
+    - "classDef for dashed strokes defined"
+    - "linkStyle indices match feedback edges"
+    - "Styling block at end of file"
+
+  execution_metadata_validation:
+    - "AGENT_ROUTING comment present (required for orchestrators)"
+    - "All routed agents exist in manifest.yml spawns"
+    - "FEEDBACK_TRIGGERs reference valid flowchart nodes"
+    - "STATUS comment lists all major phases"
+    - "Trigger loop references match agent-loops.yml definitions"
+
+# =============================================================================
+# COMPLETE EXAMPLE
+# =============================================================================
+
+complete_example:
+  description: "Minimal but complete Plan-MMD file structure."
+  template: |
+    flowchart LR
+        %% GOAL: Orchestrate agents to accomplish X.
+        %% PROFILE: Orchestration-Example
+        %% OUTPUT: Description of expected outputs.
+        %% GUIDELINE: Policy reference or behavioral constraint.
+        %% INPUT_PATH: modules/AgenticGuidance/agents/orchestration/orchestration-example/inputs.yml
+
+        Start((Start)) --> LoadInputs[Load Context Inputs]
+
+        %% ========================================
+        %% INPUT VALIDATION PHASE
+        %% ========================================
+        LoadInputs --> ReviewInputs[Review All Listed Inputs]
+        ReviewInputs --> CheckInputs{All Inputs Found?}
+        CheckInputs -- "No: Missing" --> AskUser((Ask User for Clarification))
+        CheckInputs -- "Yes: Verified" --> MainPhase
+
+        %% ========================================
+        %% MAIN PHASE
+        %% ========================================
+        %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.example-loop
+        %% MAX_ITERATIONS: 3 (per example-loop definition)
+        %% ESCALATION: If max iterations reached, stop and Ask User
+
+        subgraph Main_SG ["Main Phase Subgraph"]
+            MainPhase[Enter Main Phase] --> SpawnAgent[Spawn example-agent Agent]
+            SpawnAgent --> CheckResult{Success?}
+            CheckResult -- "No: Retry" --> SpawnAgent
+            CheckResult -- "No: Escalate" --> AskUser
+            CheckResult -- "Yes: Done" --> Output
+        end
+
+        %% ========================================
+        %% OUTPUT PHASE
+        %% ========================================
+        subgraph Output_SG ["Output Subgraph"]
+            Output[Generate Output] --> Report[Report Results]
+        end
+
+        Report --> End((End))
+
+        %% ========================================
+        %% STYLING
+        %% ========================================
+        classDef dashedstroke stroke-dasharray: 5 5;
+
+# =============================================================================
+# EXECUTION METADATA PATTERNS
+# =============================================================================
+# The following sections define metadata patterns used by orchestration executors
+# to route agents, handle failures, and track execution state at runtime.
+
+# =============================================================================
+# AGENT_ROUTING PATTERN
+# =============================================================================
+# Agent routing comments map phases to specific agents for execution.
+# This enables executors to determine which agent handles each phase.
+
+agent_routing:
+  description: |
+    Agent routing defines which agent type handles each phase or subgraph.
+    Executors use this metadata to spawn correct agents during workflow execution.
+
+  comment_format:
+    pattern: "^# AGENT_ROUTING: .+ -> [a-z-]+(?:, .+ -> [a-z-]+)*$"
+    location: "After flowchart declaration, before Start node"
+    example: "# AGENT_ROUTING: Implementation -> build-python, Testing -> test-runner, Audit -> test-final-output"
+
+  valid_agent_types:
+    orchestration:
+      - "orchestration-planning"
+      - "orchestration-build"
+      - "orchestration-guidance"
+    deploy:
+      - "deploy-worktree"
+      - "deploy-cicd"
+    planners:
+      - "planner-build"
+      - "planner-test"
+      - "planner-guidance"
+      - "planner-cleaning"
+      - "planner-reviewer"
+      - "planner-guidance-testing"
+    builders:
+      - "build-python"
+      - "build-flutter"
+    testers:
+      - "test-runner"
+      - "test-guidance-simulator"
+      - "test-final-output"
+      - "test-audit"
+      - "test-user-simulator"
+    teachers:
+      - "teacher-update-guidance"
+      - "teacher-update-assets"
+
+  routing_examples:
+    build_orchestrator: |
+      # AGENT_ROUTING: Setup -> deploy-worktree, Implementation -> build-python, Testing -> test-runner, Audit -> test-final-output
+    teaching_orchestrator: |
+      # AGENT_ROUTING: Planning -> planner-guidance, Review -> planner-reviewer, Teaching -> teacher-update-guidance
+    planning_orchestrator: |
+      # AGENT_ROUTING: BuildPlanning -> planner-build, TestPlanning -> planner-test, Review -> planner-reviewer
+
+  validation:
+    - "Each phase name in routing must match a subgraph or node ID in the flowchart"
+    - "Each agent type must exist in the orchestrator's manifest.yml spawns list"
+    - "All spawn nodes in flowchart should have corresponding routing entry"
+
+# =============================================================================
+# FEEDBACK_TRIGGERS PATTERN
+# =============================================================================
+# Feedback triggers define failure conditions that cause re-planning or escalation.
+# These connect to loop definitions and enable automated failure recovery.
+
+feedback_triggers:
+  description: |
+    Feedback triggers define events that cause the workflow to re-enter planning
+    or escalate to human intervention. Triggers map failure types to actions.
+
+  comment_format:
+    pattern: "^# FEEDBACK_TRIGGER: [A-Z_]+ -> .+$"
+    location: "Within phase comment blocks where failure handling occurs"
+    example: "# FEEDBACK_TRIGGER: TEST_FAILURE -> DelegatePlanning"
+
+  standard_triggers:
+    TEST_FAILURE:
+      description: "Test execution failed after implementation"
+      severity_levels:
+        - "unit: Fix in current iteration"
+        - "integration: May require plan update"
+        - "e2e: Escalate to planning phase"
+      typical_action: "Re-plan with TEST_FAILURE context"
+      loop_reference: "agent-loops.yml#loop_types.test-fix-loop"
+
+    BUILD_FAILURE:
+      description: "Build/compilation failed during implementation"
+      typical_action: "Fix in iteration or escalate to planning"
+      loop_reference: "agent-loops.yml#loop_types.test-fix-loop"
+
+    CICD_FAILURE:
+      description: "CI/CD pipeline validation failed"
+      typical_action: "Re-plan with CICD_FAILURE context"
+      affected_agents:
+        - "deploy-cicd"
+
+    GUIDANCE_GAP:
+      description: "Guidance validation found missing or incomplete guidance"
+      subtypes:
+        - "build: Build process documentation gaps"
+        - "test: Test design documentation gaps"
+        - "guidance: Agent guidance documentation gaps"
+      typical_action: "Re-plan with GUIDANCE_GAP context"
+      loop_reference: "agent-loops.yml#loop_types.guidance-test-loop"
+
+    AUDIT_FAILURE:
+      description: "Final audit detected quality or completeness issues"
+      typical_action: "Re-plan with AUDIT_FAILURE context"
+      affected_agents:
+        - "test-final-output"
+
+  trigger_to_action_mapping:
+    description: |
+      Standard mapping from triggers to workflow actions:
+    mappings:
+      - trigger: "TEST_FAILURE"
+        severity: "low"
+        action: "Retry in current iteration"
+        target_node: "SpawnBuilders"
+
+      - trigger: "TEST_FAILURE"
+        severity: "high"
+        action: "Escalate to planning"
+        target_node: "DelegatePlanning"
+        context_package: "failure_type, failure_details, original_plan_path, iteration_count"
+
+      - trigger: "CICD_FAILURE"
+        action: "Re-plan with CI/CD context"
+        target_node: "DelegatePlanning"
+        context_package: "pipeline_config, error_details, affected_files"
+
+      - trigger: "GUIDANCE_GAP"
+        action: "Re-plan with gap type context"
+        target_node: "DelegatePlanning"
+        context_package: "gap_type, friction_report, affected_guidance"
+
+      - trigger: "AUDIT_FAILURE"
+        action: "Re-plan with audit findings"
+        target_node: "DelegatePlanning"
+        context_package: "audit_findings, severity, affected_outputs"
+
+  loop_connection:
+    description: |
+      Triggers connect to loop definitions in agent-loops.yml.
+      Each trigger should reference its governing loop for iteration limits.
+    example: |
+      %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.test-fix-loop
+      %% FEEDBACK_TRIGGER: TEST_FAILURE -> DelegatePlanning (after max_iterations)
+      %% MAX_ITERATIONS: 5 (per test-fix-loop definition)
+
+# =============================================================================
+# STATUS/STATE MANAGEMENT
+# =============================================================================
+# Status comments track execution state of phases during workflow execution.
+# Executors update these as phases complete or fail.
+
+status_management:
+  description: |
+    Status comments track the execution state of each phase in the workflow.
+    These are updated by the executor during runtime to enable resumption
+    and progress tracking.
+
+  comment_format:
+    pattern: "^# STATUS: [A-Za-z]+=(pending|in_progress|completed|failed|blocked)(?:, [A-Za-z]+=(pending|in_progress|completed|failed|blocked))*$"
+    location: "After AGENT_ROUTING comment, before Start node"
+    example: "# STATUS: InputValidation=completed, Planning=in_progress, Implementation=pending"
+
+  valid_status_values:
+    pending:
+      description: "Phase has not started"
+      can_transition_to:
+        - "in_progress"
+        - "blocked"
+
+    in_progress:
+      description: "Phase is currently executing"
+      can_transition_to:
+        - "completed"
+        - "failed"
+        - "blocked"
+
+    completed:
+      description: "Phase finished successfully"
+      can_transition_to: []
+      note: "Terminal state - cannot transition out"
+
+    failed:
+      description: "Phase encountered unrecoverable error"
+      can_transition_to:
+        - "pending"
+      note: "Can reset to pending for retry after re-planning"
+
+    blocked:
+      description: "Phase cannot proceed due to external dependency"
+      can_transition_to:
+        - "pending"
+        - "in_progress"
+      note: "Requires human intervention or upstream fix"
+
+  executor_update_rules:
+    - "Set phase to in_progress when spawning its agent"
+    - "Set phase to completed when agent reports success"
+    - "Set phase to failed when agent reports unrecoverable error"
+    - "Set phase to blocked when waiting on human input or external resource"
+    - "Reset phase to pending after re-planning for retry"
+
+  relationship_to_plan_yaml:
+    description: |
+      STATUS comments in MMD files track workflow-level phase state.
+      This differs from plan YAML phase status which tracks task completion.
+    mapping:
+      mmd_status: "Workflow execution state (pending/in_progress/completed/failed/blocked)"
+      yaml_status: "Plan task completion state (pending/in_progress/completed)"
+    synchronization: |
+      When MMD phase completes:
+      - Check all corresponding YAML tasks for that phase
+      - Phase can only be 'completed' if all its YAML tasks are completed
+      - If any YAML task failed, MMD phase should be 'failed'
+
+  initial_state_template: |
+    # STATUS: InputValidation=pending, Planning=pending, Implementation=pending, Testing=pending, Audit=pending
+
+# =============================================================================
+# VALIDATION RULES EXPANSION
+# =============================================================================
+# Extended validation rules for execution metadata patterns.
+
+validation_rules_execution:
+  agent_routing_validation:
+    - "AGENT_ROUTING comment must be present for orchestrator MMD files"
+    - "Each phase in routing must correspond to a subgraph or action node"
+    - "All agent types must be valid (see agent_routing.valid_agent_types)"
+    - "All routed agents must exist in orchestrator's manifest.yml spawns list"
+    - "No duplicate phase names in routing"
+
+  manifest_alignment:
+    description: |
+      Agent routing must align with the orchestrator's manifest.yml spawns.
+      This ensures only authorized agents are invoked.
+    validation_steps:
+      - "Load orchestrator's manifest.yml"
+      - "Extract spawns list (agent names)"
+      - "For each agent in AGENT_ROUTING, verify it exists in spawns"
+      - "Flag any routing to agents not in spawns list"
+    example_check: |
+      # In orchestration-build/process.mmd:
+      # AGENT_ROUTING: Implementation -> build-python
+      #
+      # Must verify orchestration-build/manifest.yml contains:
+      # spawns:
+      #   - agent: "build-python"
+
+  feedback_trigger_validation:
+    - "Each FEEDBACK_TRIGGER must reference a valid target node in the flowchart"
+    - "Trigger types must be from standard_triggers list"
+    - "Trigger actions should have corresponding feedback_flow edges (dashed lines)"
+    - "Triggers referencing loops must have matching LOOP_DEFINITION comment"
+
+  loop_reference_validation:
+    description: |
+      Triggers that reference loops must validate against agent-loops.yml.
+    validation_steps:
+      - "Extract loop reference from trigger (e.g., test-fix-loop)"
+      - "Verify loop exists in agent-loops.yml#loop_types"
+      - "Verify MAX_ITERATIONS matches loop definition"
+      - "Verify ESCALATION policy exists"
+
+  status_validation:
+    - "STATUS comment must list all major phases in the workflow"
+    - "Phase names in STATUS must match subgraph IDs or be recognizable phase labels"
+    - "Initial state should have all phases as 'pending' except entry phase"
+    - "No phase should be 'completed' in initial state"
+
+  cross_reference_validation:
+    description: |
+      Validation across multiple metadata patterns for consistency.
+    checks:
+      - "All phases in AGENT_ROUTING should appear in STATUS"
+      - "All phases with FEEDBACK_TRIGGERs should have 'failed' as possible state in STATUS"
+      - "Spawns in flowchart should match AGENT_ROUTING declarations"
+      - "Loop entry points should have STATUS tracking"

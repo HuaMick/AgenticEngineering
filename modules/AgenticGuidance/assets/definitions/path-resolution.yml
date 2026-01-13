@@ -1,0 +1,109 @@
+# Path Resolution Semantics
+# Created: 2026-01-09
+# Purpose: Document path resolution rules for AgenticGuidance assets and agents
+
+path_resolution:
+  description: |
+    AgenticGuidance uses two distinct path root contexts. All paths in YAML files
+    MUST be unambiguous about which root they reference.
+
+  roots:
+    module_root:
+      symbol: "{module_root}/"
+      description: |
+        Paths relative to the modules/AgenticGuidance/ directory.
+        Used for referencing AgenticGuidance assets, definitions, guidelines, and agents.
+      actual_path: "modules/AgenticGuidance/"
+      when_to_use:
+        - "Referencing AgenticGuidance assets (assets/definitions/, assets/guidelines/)"
+        - "Referencing AgenticGuidance agents (agents/planner/, agents/test/)"
+        - "Referencing AgenticGuidance examples (assets/examples/)"
+        - "Cross-agent references within the framework"
+      examples:
+        - path: "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+          context: "Referencing loop definitions from an agent inputs.yml"
+        - path: "modules/AgenticGuidance/agents/planner/planner-build/process.yml"
+          context: "Referencing another agent's process"
+        - path: "modules/AgenticGuidance/assets/inputs/core-system.yml"
+          context: "Layer reference in inputs.yml"
+
+    project_root:
+      symbol: "{project_root}/"
+      description: |
+        Paths relative to the TARGET PROJECT root where AgenticGuidance is being used.
+        Used for referencing project-specific files like plans, tests, and docs.
+      when_to_use:
+        - "Referencing live plans (docs/plans/live/)"
+        - "Referencing completed plans (docs/plans/completed/)"
+        - "Referencing project test files (tests/)"
+        - "Referencing project documentation (docs/)"
+      examples:
+        - path: "docs/plans/live/260104AE_agenticguidance/live/plan_agenticguidance.yml"
+          context: "Referencing a live plan file"
+        - path: "tests/workflows/health_check/"
+          context: "Referencing test package in target project"
+        - path: "docs/testing/README.md"
+          context: "Referencing project documentation"
+
+  header_convention:
+    description: |
+      All YAML files that contain paths SHOULD include a PATH RESOLUTION SEMANTICS
+      header comment block explaining which root context applies.
+
+    template: |
+      # ==============================================
+      # PATH RESOLUTION SEMANTICS
+      # ==============================================
+      # All paths in this file are relative to the REPOSITORY ROOT
+      # containing the modules/AgenticGuidance/ directory.
+      # (e.g., modules/AgenticGuidance/assets/...).
+      #
+      # EXCEPTION: docs/plans/ paths are relative to the TARGET PROJECT root.
+      # ==============================================
+
+    required_in:
+      - "All agent inputs.yml files"
+      - "All agent process.yml files"
+      - "Layer files in assets/inputs/"
+      - "Orchestration inputs.yml files"
+
+  fence:
+    rule: "All paths MUST be unambiguous regarding their root"
+    description: |
+      FENCE: When writing paths in YAML files:
+      1. Use full module paths for AgenticGuidance assets: modules/AgenticGuidance/...
+      2. Use project-relative paths for target project files: docs/, tests/
+      3. NEVER use ambiguous relative paths like "../" or "./assets/"
+      4. Include PATH RESOLUTION SEMANTICS header if file contains paths
+
+  common_mistakes:
+    - mistake: "assets/definitions/agent-loops.yml"
+      issue: "Missing module prefix - ambiguous resolution"
+      correct: "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+
+    - mistake: "../assets/guidelines/testing.yml"
+      issue: "Relative path is fragile and context-dependent"
+      correct: "modules/AgenticGuidance/assets/guidelines/testing.yml"
+
+    - mistake: "/home/code/project/docs/plans/live/"
+      issue: "Absolute path won't work across environments"
+      correct: "docs/plans/live/"
+
+  agent_guidance:
+    reading_paths: |
+      When an agent encounters a path in inputs.yml or process.yml:
+      1. Check for PATH RESOLUTION SEMANTICS header
+      2. Paths starting with "modules/AgenticGuidance/" → relative to repo root
+      3. Paths starting with "docs/", "tests/" → relative to target project
+      4. If ambiguous, ask for clarification
+
+    writing_paths: |
+      When an agent writes paths to YAML files:
+      1. Add PATH RESOLUTION SEMANTICS header if not present
+      2. Use full module paths for AgenticGuidance references
+      3. Use project-relative paths for target project files
+      4. Never use absolute paths
+
+related_definitions:
+  - "modules/AgenticGuidance/assets/definitions/fragment-references.yml"
+  - "modules/AgenticGuidance/assets/definitions/agent-context-files.yml"

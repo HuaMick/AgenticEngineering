@@ -1,0 +1,179 @@
+# Teaching Plan: Self-Review Remediation Round 3
+# Generated: 2026-01-12
+# Source: audit/260112_self_review_round3.yml
+# Purpose: Address critical and high-priority issues from Round 3 self-review
+
+plan:
+  name: "Self-Review Round 3 Remediation"
+  status: completed
+  created: "2026-01-12"
+  completed: "2026-01-12"
+  source_findings: "audit/260112_self_review_round3.yml"
+
+phases:
+  - phase: 1
+    name: "Critical Path Fixes"
+    status: completed
+    description: "Fix blocking issues that prevent agents from functioning"
+    tasks:
+      - id: "P1-T1"
+        description: "Fix test-user-simulator ARCHITECTURE.md path"
+        agent: "teacher-update-guidance"
+        details: |
+          Either:
+          a) Create docs/ARCHITECTURE.md at repo root with appropriate content
+          b) Update all references to use modules/AgenticGuidance/docs/ARCHITECTURE.md
+
+          Files to update:
+          - modules/AgenticGuidance/agents/test/test-user-simulator/inputs.yml:109
+          - modules/AgenticGuidance/agents/test/test-user-simulator/process.yml:51
+
+      - id: "P1-T2"
+        description: "Fix teacher-update-assets broken path"
+        agent: "teacher-update-guidance"
+        details: |
+          Fix malformed path in process.yml:14 and process.yml:86
+          Current: 'modules/AgenticGuidance/agents/teacher/teacher-update-modules/AgenticGuidance/assets/inputs.yml'
+          Should be: Either remove or fix to valid path (e.g., 'modules/AgenticGuidance/agents/teacher/teacher-update-assets/inputs.yml')
+
+      - id: "P1-T3"
+        description: "Add spawns/inputs sections to orchestration-guidance manifest"
+        agent: "teacher-update-guidance"
+        details: |
+          Update modules/AgenticGuidance/agents/orchestration/orchestration-guidance/manifest.yml
+          Add 'spawns:' section listing: deploy-worktree, orchestration-planning, teacher-update-guidance,
+          teacher-update-assets, test-guidance-simulator, test-final-output
+          Add 'inputs:' section referencing inputs.yml
+          Match structure from orchestration-build/manifest.yml
+
+      - id: "P1-T4"
+        description: "Fix orchestration-build path reference"
+        agent: "teacher-update-guidance"
+        details: |
+          Update modules/AgenticGuidance/agents/orchestration/orchestration-build/inputs.yml:121
+          Change: 'docs/agent-role-scope-matrix.md'
+          To: 'modules/AgenticGuidance/docs/agent-role-scope-matrix.md'
+
+      - id: "P1-T5"
+        description: "Define deploy-cicd target scope"
+        agent: "teacher-update-guidance"
+        details: |
+          Update modules/AgenticGuidance/agents/deploy/deploy-cicd/inputs.yml
+          Either:
+          a) Add explicit target_project input parameter with default
+          b) Update paths to point to actual project location (e.g., modules/legacy/MyAgents/...)
+          c) Document that files must be created before agent can run
+
+      - id: "P1-T6"
+        description: "Resolve acceptable-skips.yml references"
+        agent: "teacher-update-guidance"
+        details: |
+          Option A: Create modules/AgenticGuidance/assets/definitions/acceptable-skips.yml
+          Option B: Remove 6 references to acceptable-skips.yml from:
+          - test-audit/process.yml
+          - test-audit/inputs.yml
+
+  - phase: 2
+    name: "High-Priority Alignment"
+    status: completed
+    description: "Fix high-priority issues affecting agent consistency"
+    tasks:
+      - id: "P2-T1"
+        description: "Update orchestration-guidance version to 2.0"
+        agent: "teacher-update-guidance"
+        details: |
+          Update modules/AgenticGuidance/agents/orchestration/orchestration-guidance/manifest.yml:5
+          Change version from "1.0" to "2.0"
+          Add comment: "# 2.0 = reference layer architecture"
+
+      - id: "P2-T2"
+        description: "Complete planner-guidance manifest outputs"
+        agent: "teacher-update-guidance"
+        details: |
+          Update modules/AgenticGuidance/agents/planner/planner-guidance/manifest.yml
+          Add missing outputs:
+          - plan_live_audit_clean.yml
+          - friction-analysis.md
+          Match format from process.yml outputs section
+
+      - id: "P2-T3"
+        description: "Fix planner-test variable naming"
+        agent: "teacher-update-guidance"
+        details: |
+          Update modules/AgenticGuidance/agents/planner/planner-test/process.yml
+          Align path_template placeholder with required input:
+          Either change {plan_folder_name} to {planning_folder}
+          Or change required input name from 'planning_folder' to 'plan_folder_name'
+
+      - id: "P2-T4"
+        description: "Fix orchestration-executor specification references"
+        agent: "teacher-update-guidance"
+        details: |
+          Update modules/AgenticGuidance/agents/orchestration/orchestration-executor/inputs.yml
+          Fix section name references:
+          - Line 45: agent_routing_format -> agent_routing
+          - Line 58: agent_routing_pattern -> agent_routing
+          - Line 59: feedback_triggers_pattern -> feedback_triggers
+          - Line 60: status_state_management -> status_management
+
+      - id: "P2-T5"
+        description: "Create missing test-service documentation"
+        agent: "teacher-update-guidance"
+        details: |
+          Either:
+          a) Create docs/testing/README.md and docs/testing/LOCAL_TESTING.md
+          b) Update test-service/inputs.yml to point to existing docs in modules/legacy/...
+
+      - id: "P2-T6"
+        description: "Define deploy-worktree worktree_naming_convention"
+        agent: "teacher-update-guidance"
+        details: |
+          Add worktree_naming_convention definition to:
+          modules/AgenticGuidance/agents/deploy/deploy-worktree/inputs.yml
+          Include: naming pattern, examples, validation rules
+
+  - phase: 3
+    name: "Validation"
+    status: completed
+    description: "Verify all fixes and run spot-check self-review"
+    tasks:
+      - id: "P3-T1"
+        description: "Verify critical fixes with grep validation"
+        agent: "test-runner"
+        details: |
+          Run grep checks to verify:
+          - No broken ARCHITECTURE.md paths
+          - No malformed teacher-update-assets paths
+          - orchestration-guidance has spawns section
+          - All specification section names corrected
+
+      - id: "P3-T2"
+        description: "Spot-check self-review on fixed agents"
+        agent: "test-guidance-simulator"
+        details: |
+          Run targeted self-review on:
+          - test-user-simulator (R3-CRIT-001)
+          - teacher-update-assets (R3-CRIT-002)
+          - orchestration-guidance (R3-CRIT-004)
+          - orchestration-build (R3-CRIT-005)
+          - orchestration-executor (high priority fixes)
+          Verify scores improved from Round 3
+
+success_criteria:
+  - "All 6 critical issues (R3-CRIT-001 through R3-CRIT-006) resolved"
+  - "All high-priority alignment tasks completed"
+  - "Spot-check self-review shows improved scores for affected agents"
+  - "No new critical issues introduced"
+
+notes: |
+  Round 3 Progress Summary:
+  - 12 agents PASS (up from baseline)
+  - 11 agents NEEDS_ATTENTION
+  - All XCUT issues from R2 fully resolved
+  - 6 new critical issues identified requiring immediate attention
+
+  Key improvement areas:
+  - Path consistency across repository
+  - Manifest structure standardization for orchestration agents
+  - Variable naming consistency
+  - Missing definition files

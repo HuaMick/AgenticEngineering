@@ -3,10 +3,16 @@ Plans are organized by worktree to support parallel work across different branch
 
 There are 3 types of plans:
 - plans_live: Live plans organized by worktree in docs/plans/live/YYMMDDRepo_Branch/ folders (e.g., 251122MA_main).
-  Each folder MUST contain at least these subfolders:
-  - live/: Active phase files (multiple .yml files, one per phase, e.g., plan_live_teach.yml, plan_live_test.yml, plan_live_audit_clean.yml)
-  - completed/: Completed items (plan_completed.yml)
-  Additional folders (analysis/, design-specs/, etc.) should be used as a "dumping ground" for agent artifacts
+  Common subfolders (planning agent determines appropriate structure based on plan complexity):
+  - live/: Active phase files (recommended for multi-phase plans)
+  - completed/: Completed items (recommended when tracking completion)
+  - analysis/: Iteration logs and analysis artifacts (optional)
+  - audit/: Audit reports and findings (optional)
+
+  Note: Simple plans may have all files at root level. Complex plans benefit from subfolder
+  organization. The planning agent determines the appropriate structure based on plan complexity.
+
+  Additional folders (design-specs/, etc.) can be used as a "dumping ground" for agent artifacts
   (e.g., .md analysis files) to avoid polluting the project root or other shared spaces.
   Note: For staging and main branches, the plan name is omitted from the folder name. For other branches, a plan name may be appended (e.g., 251211MA_custom_agents).
   This structure reduces context window usage and keeps implementation artifacts organized.
@@ -65,8 +71,37 @@ file_taxonomy:
     purpose: "Iteration logs and analysis artifacts"
     contains: "plan_iteration_*.yml files and .md analysis documents"
 
+scrap_file_taxonomy:
+  description: "Transient artifacts from planning loops with different lifecycle than phase plans"
+
+  audit_files:
+    pattern: "audit_*.yml"
+    purpose: "Issue identification reports from audit loops"
+    lifecycle: "Move to audit/ subfolder after remediation plan is APPROVED"
+    retention: "Archive for historical reference, do not delete"
+
+  review_files:
+    pattern: "review_*.yml"
+    purpose: "Plan approval/rejection decisions from planner-reviewer"
+    lifecycle: "Move to analysis/ subfolder after decision is processed"
+    retention: "Archive for decision audit trail, do not delete"
+
+  remediation_plans:
+    pattern: "plan_*_remediation*.yml"
+    purpose: "Intermediate fix plans generated from audits"
+    lifecycle: "Merge approved tasks into authoritative phase plan, then delete from live/"
+    retention: "Tasks preserved in phase plan; original file deleted (not archived)"
+
 two_level_completion_pattern:
   Plans use a two-level completion model: item-level sync and folder-level copy.
+
+  SCRAP FILE FENCE:
+  The Copy-and-Sync pattern applies to PHASE PLANS (plan_live_*.yml).
+  SCRAP FILES (audit_*.yml, review_*.yml, plan_*_remediation*.yml) have different rules:
+  - They do NOT use Copy-and-Sync
+  - They MOVE (not copy) to target subfolders after processing
+  - remediation_plans are DELETED (not moved) after task merge
+  - Cleanup is triggered by APPROVAL, not by completion of all items
 
   FILE-LEVEL COMPLETION (Copy-and-Sync pattern):
   Files stay in live/ while work continues. Completed items are synced to a copy in completed/.
@@ -141,37 +176,5 @@ archived_vs_completed:
   Only users may perform archival operations.
 
 concrete_example:
-  Copy-and-Sync pattern in action:
-
-  Scenario: Work in progress with some items completed
-
-  docs/plans/live/251215MA_main/
-    live/
-      plan_live_enhance.yml        # Phase definition (reserved - stays in live/)
-      my_feature.yml               # 5 items: 3 completed, 2 pending (stays in live/)
-      another_task.yml             # All items pending (stays in live/)
-    completed/
-      my_feature.yml               # 3 items: only completed ones (synced copy)
-      old_feature.yml              # All items done, deleted from live/
-      plan_completed.yml           # Summary index (reserved)
-    analysis/
-      plan_iteration_1_results.yml # Iteration logs
-
-  State transitions:
-  1. my_feature.yml exists in BOTH locations (partial completion)
-     - live/ copy: all 5 items (working copy)
-     - completed/ copy: 3 completed items only (archive)
-  2. old_feature.yml exists ONLY in completed/ (full completion)
-     - Was deleted from live/ when all items completed
-  3. another_task.yml exists ONLY in live/ (no completion yet)
-     - Will get a completed/ copy when first item completes
-
-  When my_feature.yml finishes:
-  1. Sync final 2 items to completed/my_feature.yml
-  2. Delete live/my_feature.yml
-  3. File now exists only in completed/
-
-  If issues found in old_feature.yml:
-  1. Copy completed/old_feature.yml back to live/
-  2. Update affected items' status
-  3. Sync fixes back to completed/ as resolved
+  # See: modules/AgenticGuidance/assets/guidelines/plan-completion.yml
+  # Demonstrates the Copy-and-Sync pattern with folder structure and state transitions.

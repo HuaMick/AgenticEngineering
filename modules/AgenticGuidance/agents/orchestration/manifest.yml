@@ -2,7 +2,7 @@
 # Hub for orchestration agents that coordinate planning and execution workflows
 
 category:
-  definition: "assets/definitions/agent-categories.yml#orchestration"
+  definition: "modules/AgenticGuidance/assets/definitions/agent-categories.yml#orchestration"
 
 description: |
   The orchestration agent family coordinates high-level workflows by spawning and managing
@@ -13,18 +13,27 @@ sub_agents:
   - orchestration-planning
   - orchestration-build
   - orchestration-guidance
+  - orchestration-executor
 
 routing_logic: |
   Route to specific orchestration sub-agents based on workflow type:
   - orchestration-planning: Planning-only workflows, produces approved plans for downstream use
-  - orchestration-build: Code implementation workflows (features, bug fixes, refactoring)
-  - orchestration-guidance: Guidance/context engineering workflows (agent teaching, process improvements)
+  - orchestration-build: (DEPRECATED) Use orchestration-executor instead
+  - orchestration-guidance: (DEPRECATED) Use orchestration-executor instead
+  - orchestration-executor: Generic MMD-driven execution (dynamic agent routing from Plan-MMD metadata)
+
+  DEPRECATION NOTE:
+  orchestration-build and orchestration-guidance are deprecated in favor of orchestration-executor.
+  orchestration-executor provides generic MMD-driven execution that dynamically routes to agents
+  based on Plan-MMD AGENT_ROUTING metadata, eliminating the need for workflow-specific orchestrators.
 
   Entry patterns:
-  - _plan.yml entrypoint → orchestration-planning
-  - _execute.yml entrypoint → orchestration-build (with pre-approved plan)
-  - _teach.yml entrypoint → orchestration-guidance (with pre-approved plan)
+  - _plan_build.yml entrypoint → orchestration-planning (code implementation planning)
+  - _plan_teach.yml entrypoint → orchestration-planning (guidance/teaching planning)
+  - _execute.yml entrypoint → orchestration-executor (MMD-driven execution, replaces _orchestrate.yml)
+  - _orchestrate.yml entrypoint → (DEPRECATED) use _execute.yml with orchestration-executor
 
   Delegation pattern:
-  - orchestration-build and orchestration-guidance can delegate to orchestration-planning
-  - Pre-approved plans bypass the planning delegation
+  - orchestration-planning produces approved Plan-MMD files
+  - orchestration-executor consumes Plan-MMD and routes dynamically based on AGENT_ROUTING metadata
+  - Pre-approved plans can be executed directly via orchestration-executor

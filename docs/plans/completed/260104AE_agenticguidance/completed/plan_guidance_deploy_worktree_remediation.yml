@@ -1,0 +1,847 @@
+# Guidance Plan: Deploy-Worktree Context Overload Remediation
+# Created: 2026-01-07
+# Updated: 2026-01-08
+# Source: audit_deploy_worktree.yml (8 issues: 1 HIGH, 3 MEDIUM, 4 LOW)
+
+plan_name: "Deploy-Worktree Context Overload Remediation"
+worktree: "/home/code/AgenticEngineering-agenticguidance"
+branch: "agenticguidance"
+created: "2026-01-07"
+updated: "2026-01-10"
+status: "completed"
+
+objective: |
+  Reduce context window waste in ALL deploy agents from ~40-50% unused/redundant
+  to <10%. This plan covers deploy-worktree, deploy-cicd, and all other deploy
+  agents. Focus on eliminating duplicate content, creating targeted layers,
+  consolidating scattered metadata, and creating specialized deploy-specific
+  core layers.
+
+audit_reference: "docs/plans/live/260104AE_agenticguidance/live/audit_deploy_worktree.yml"
+
+# Scope clarification (D1 fix): This plan applies to ALL deploy agents
+scope:
+  primary_agent: "deploy-worktree"
+  additional_agents:
+    - "deploy-cicd"
+    - "deploy-release"
+    - "deploy-cloud"
+    - "deploy-docs"
+  scope_rationale: |
+    User decision: deploy-minimal.yml pattern applies to ALL deploy agents,
+    not just setup/scaffolding agents. deploy-cicd explicitly included per Q2.
+
+# User Decisions (captured from review)
+user_decisions:
+  Q1_core_system_layer:
+    decision: "Create SEPARATE deploy-core-system.yml layer"
+    rationale: "Don't modify shared core-system.yml; create deploy-specific layer instead"
+    impact: "New file: assets/inputs/deploy-core-system.yml"
+
+  Q2_deploy_cicd_pattern:
+    decision: "deploy-cicd should ALSO use deploy-minimal.yml pattern"
+    rationale: "Same lightweight context needs as deploy-worktree"
+    impact: "Update deploy-cicd inputs.yml to use deploy-minimal.yml"
+
+# =============================================================================
+# PHASE 1: Deduplication First (D5 fix - reordered to deduplicate FIRST)
+# =============================================================================
+phases:
+  - name: "phase-1-deduplication"
+    description: "Deduplicate content FIRST before other refactoring work (D5 fix: phase ordering)"
+    agent_category: "teacher"
+    estimated_token_savings: "~700 tokens"
+
+    success_criteria:
+      - "friction.yml contains no duplicate content (12 lines max, not 26)"
+      - "inputs.yml definitions section reduced to non-redundant content only"
+      - "No policy duplication with worktree-and-branching.yml"
+
+    tasks:
+      - id: "1.1"
+        description: "Remove duplicate content from friction.yml"
+        agent_type: "teacher-update-assets"
+        operation: "UPDATE"
+        priority: "HIGH"
+        context:
+          target_file: "modules/AgenticGuidance/assets/definitions/friction.yml"
+          current_state: |
+            File contains 26 lines but only 12 lines of unique content.
+            Lines 1-12 are repeated verbatim in lines 13-24.
+            This is a copy-paste error causing ~100 wasted tokens.
+          required_changes:
+            - "Remove lines 13-26 (duplicate content)"
+            - "Retain only lines 1-12 (unique friction definition)"
+            - "Remove trailing blank lines"
+        acceptance_criteria:
+          - "friction.yml is exactly 12 lines (11 content + 1 trailing newline)"
+          - "Content matches original lines 1-12 verbatim"
+          - "File remains valid and readable"
+        files:
+          - "modules/AgenticGuidance/assets/definitions/friction.yml"
+        status: "completed"
+        completed_date: "2026-01-09"
+        completed_in: "Session 8 - Ralph Loop"
+        notes: "Removed duplicate content (lines 13-26). File now has 11 content lines + newline."
+
+      - id: "1.2"
+        description: "Analyze and deduplicate inputs.yml definitions section"
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        priority: "MEDIUM"
+        context:
+          target_file: "modules/AgenticGuidance/agents/deploy/deploy-worktree/inputs.yml"
+          current_state: |
+            definitions section (lines 64-158) contains ~90 lines of inline definitions:
+            - git_worktree (lines 65-79): Overlaps with general git worktree knowledge
+            - workspace_file (lines 81-94): KEEP - VS Code specific, not in guideline
+            - worktree_naming_convention (lines 96-107): Duplicates guideline content
+            - branch_strategy (lines 109-125): Duplicates worktree-and-branching.yml
+            - worktree_operations (lines 127-139): KEEP - operational checklist
+            - planning_scaffolding (lines 141-158): Will be addressed by phase 3
+
+            Overlap with worktree-and-branching.yml:
+            - branch_strategy duplicates "Staging-first merge strategy" rule
+            - worktree_naming_convention overlaps folder structure conventions
+          required_changes:
+            - "Remove branch_strategy definition (duplicate of guideline)"
+            - "Remove worktree_naming_convention (covered by guideline + folder-structure.yml)"
+            - "Reduce git_worktree to command reference only (remove policy content)"
+            - "Keep workspace_file (VS Code specific, not covered elsewhere)"
+            - "Keep worktree_operations (operational checklist, not policy)"
+        acceptance_criteria:
+          - "definitions section reduced by ~50-60 lines"
+          - "No policy duplication with worktree-and-branching.yml"
+          - "Operational content (workspace_file, worktree_operations) preserved"
+          - "Agent still has access to all necessary information"
+        files:
+          - "modules/AgenticGuidance/agents/deploy/deploy-worktree/inputs.yml"
+        status: "completed"
+        completed_date: "2026-01-09"
+        completed_in: "Session 8 - Ralph Loop iteration 6"
+        notes: |
+          Reduced definitions from ~95 lines to ~45 lines (~50 line reduction):
+          - Removed branch_strategy (in worktree-and-branching.yml)
+          - Removed worktree_naming_convention (in guideline + folder-structure.yml)
+          - Reduced git_worktree to git_worktree_commands (commands only)
+          - Kept workspace_file (VS Code specific)
+          - Kept worktree_operations (operational checklist)
+          - Condensed planning_scaffolding (reference to plans.yml)
+
+# =============================================================================
+# PHASE 2: Quick Wins (Low Risk, High Value)
+# =============================================================================
+  - name: "phase-2-quick-wins"
+    description: "Fix obvious issues with minimal risk - manifest consolidation"
+    agent_category: "teacher"
+    estimated_token_savings: "~50 tokens"
+    dependencies:
+      - "phase-1-deduplication"
+
+    success_criteria:
+      - "manifest.yml metadata consolidated into inputs.yml header"
+      - "No broken references introduced"
+
+    tasks:
+      - id: "2.1"
+        description: "Consolidate manifest.yml into inputs.yml header"
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        priority: "LOW"
+        context:
+          target_files:
+            - "modules/AgenticGuidance/agents/deploy/deploy-worktree/inputs.yml"
+            - "modules/AgenticGuidance/agents/deploy/deploy-worktree/manifest.yml"
+          current_state: |
+            manifest.yml contains only 4 lines (name, description, version).
+            inputs.yml already has version in header but lacks name/description.
+            This causes an extra file read for minimal metadata.
+          required_changes:
+            - "Add 'name' and 'description' fields to inputs.yml header (after agent_type line)"
+            - "Remove manifest.yml file"
+            - "Remove manifest.yml reference from inputs.yml core_inputs section (line 33-36)"
+        acceptance_criteria:
+          - "inputs.yml header includes name, description, version fields"
+          - "manifest.yml file deleted"
+          - "No reference to manifest.yml in inputs.yml"
+          - "Agent still functions correctly (name/desc available via inputs.yml)"
+        files:
+          - "modules/AgenticGuidance/agents/deploy/deploy-worktree/inputs.yml"
+          - "modules/AgenticGuidance/agents/deploy/deploy-worktree/manifest.yml"
+        status: "completed"
+        completed_date: "2026-01-09"
+        completed_in: "Session 8 - Ralph Loop iteration 7"
+        notes: "Added name/description to inputs.yml header, removed manifest.yml file, added NOTE about consolidation."
+
+# =============================================================================
+# PHASE 3: Create Deploy-Minimal Layer (ALL deploy agents - D1 fix)
+# =============================================================================
+  - name: "phase-3-deploy-minimal-layer"
+    description: "Create a lightweight layer for ALL deploy agents (D1 fix: not just setup agents)"
+    agent_category: "teacher"
+    estimated_token_savings: "~400 tokens per agent"
+    dependencies:
+      - "phase-2-quick-wins"
+
+    success_criteria:
+      - "deploy-minimal.yml layer exists with only essential guidelines"
+      - "deploy-worktree uses deploy-minimal instead of core-guidelines"
+      - "deploy-cicd uses deploy-minimal instead of core-guidelines (Q2)"
+      - "Context loading reduced by excluding irrelevant guidelines"
+
+    tasks:
+      - id: "3.1"
+        description: "Create deploy-minimal layer for ALL deploy agents"
+        agent_type: "teacher-update-assets"
+        operation: "CREATE"
+        priority: "MEDIUM"
+        context:
+          target_file: "modules/AgenticGuidance/assets/inputs/deploy-minimal.yml"
+          current_state: |
+            Deploy agents currently use core-guidelines layer which loads 8 guidelines:
+            - fix-the-source.yml (47 lines) - NOT NEEDED for deploy
+            - context-minimisation.yml (58 lines) - KEEP (meta-relevant)
+            - experiment-first.yml (52 lines) - NOT NEEDED for deploy
+            - less-is-more.yml (55 lines) - NOT NEEDED for deploy
+            - worktree-and-branching.yml (50 lines) - KEEP (core to deploy ops)
+            - testing.yml (84 lines) - NOT NEEDED for deploy
+            - response-audit.yml (47 lines) - NOT NEEDED for deploy
+            - safety.yml (68 lines) - KEEP (always relevant)
+
+            Total unnecessary: ~285 lines / ~400 tokens
+          required_structure:
+            header: |
+              layer_name: "deploy-minimal"
+              description: "Lightweight layer for ALL deploy agents requiring minimal context"
+              version: "1.0"
+            references:
+              - "assets/guidelines/context-minimisation.yml (meta-guidance)"
+              - "assets/guidelines/worktree-and-branching.yml (core for deploy ops)"
+              - "assets/guidelines/safety.yml (always required)"
+        acceptance_criteria:
+          - "deploy-minimal.yml exists in assets/inputs/"
+          - "Contains only 3 guideline references (context-min, worktree, safety)"
+          - "Follows layer file format consistent with existing layers"
+        files:
+          - "modules/AgenticGuidance/assets/inputs/deploy-minimal.yml"
+        status: "completed"
+        completed_date: "2026-01-09"
+        completed_in: "Session 8 - Ralph Loop iteration 7"
+        notes: "Created deploy-minimal.yml with 3 guidelines, includes rationale for exclusions."
+
+      - id: "3.2"
+        description: "Update deploy-worktree to use deploy-minimal layer"
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        priority: "MEDIUM"
+        context:
+          target_file: "modules/AgenticGuidance/agents/deploy/deploy-worktree/inputs.yml"
+          current_state: |
+            inputs.yml layers section references core-guidelines.yml (line 20-23)
+            which loads all 8 guidelines regardless of relevance.
+          required_changes:
+            - "Replace 'assets/inputs/core-guidelines.yml' with 'assets/inputs/deploy-minimal.yml'"
+            - "Update description to reflect minimal layer purpose"
+        acceptance_criteria:
+          - "inputs.yml references deploy-minimal.yml instead of core-guidelines.yml"
+          - "Description updated to reflect change"
+          - "Other layers remain unchanged"
+        files:
+          - "modules/AgenticGuidance/agents/deploy/deploy-worktree/inputs.yml"
+        status: "completed"
+        completed_date: "2026-01-09"
+        completed_in: "Session 8 - Ralph Loop iteration 7"
+        notes: "Replaced core-guidelines.yml with deploy-minimal.yml in layers section."
+
+      - id: "3.3"
+        description: "Update deploy-cicd to use deploy-minimal layer (Q2 decision)"
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        priority: "MEDIUM"
+        context:
+          target_file: "modules/AgenticGuidance/agents/deploy/deploy-cicd/inputs.yml"
+          current_state: |
+            deploy-cicd uses core-guidelines.yml like other agents.
+            Per Q2 decision, it should use deploy-minimal.yml pattern.
+          required_changes:
+            - "Replace 'assets/inputs/core-guidelines.yml' with 'assets/inputs/deploy-minimal.yml'"
+            - "Update description to reflect minimal layer purpose"
+        acceptance_criteria:
+          - "deploy-cicd inputs.yml references deploy-minimal.yml"
+          - "Description updated to reflect change"
+        files:
+          - "modules/AgenticGuidance/agents/deploy/deploy-cicd/inputs.yml"
+        status: "completed"
+        completed_date: "2026-01-09"
+        completed_in: "Session 8 - Ralph Loop iteration 7"
+        notes: "Replaced core-guidelines.yml with deploy-minimal.yml per Q2 decision."
+
+# =============================================================================
+# PHASE 4: Address D2-D4 Issues
+# =============================================================================
+  - name: "phase-4-address-d2-d4"
+    description: "Address D2 (conditional agent-loops), D3 (path standardization), D4 (unused definitions)"
+    agent_category: "teacher"
+    estimated_token_savings: "~300 tokens"
+    dependencies:
+      - "phase-3-deploy-minimal-layer"
+
+    success_criteria:
+      - "agent-loops.yml loading is conditional based on agent type"
+      - "Path references standardized (relative from module root)"
+      - "Unused definition files identified and documented for removal"
+
+    tasks:
+      - id: "4.1"
+        description: "D2: Make agent-loops.yml conditional based on agent type"
+        agent_type: "teacher-update-assets"
+        operation: "CREATE"
+        priority: "MEDIUM"
+        context:
+          issue: "D2 - agent-loops.yml loaded for non-looping agents"
+          current_state: |
+            agent-loops.yml (103 lines) is loaded via core-system.yml for all agents.
+            deploy-worktree explicitly states it does not participate in loops.
+            This wastes ~150 tokens for non-looping agents.
+          solution: |
+            Create deploy-core-system.yml (per Q1 decision) that excludes agent-loops.yml.
+            This layer will be used by deploy agents instead of core-system.yml.
+          target_file: "modules/AgenticGuidance/assets/inputs/deploy-core-system.yml"
+          required_structure:
+            header: |
+              layer_name: "deploy-core-system"
+              description: "Core system layer for deploy agents - excludes agent-loops"
+              version: "1.0"
+            content: |
+              Same as core-system.yml but WITHOUT agent-loops.yml reference.
+              Deploy agents don't participate in iterative loops.
+        acceptance_criteria:
+          - "deploy-core-system.yml exists in assets/inputs/"
+          - "Contains all core-system.yml references EXCEPT agent-loops.yml"
+          - "Comments explain why agent-loops excluded for deploy agents"
+        files:
+          - "modules/AgenticGuidance/assets/inputs/deploy-core-system.yml"
+        status: "skipped"
+        completed_date: "2026-01-10"
+        completed_in: "Session 8 - Ralph Loop"
+        notes: |
+          SKIPPED: core-system.yml does not actually load agent-loops.yml.
+          It only contains: plans.yml, architecture-pattern.yml, ARCHITECTURE.md
+          The D2 audit finding is outdated - agent-loops.yml is loaded via iteration.yml
+          which is in core-guidelines (not core-system), and deploy agents already
+          use deploy-minimal.yml which excludes iteration.yml.
+          No action needed - deploy agents already have optimized context.
+
+      - id: "4.2"
+        description: "D3: Standardize path references across deploy agents"
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        priority: "LOW"
+        context:
+          issue: "D3 - inconsistent path references"
+          current_state: |
+            Some references use 'docs/ARCHITECTURE.md' which works from module root.
+            Other references use absolute paths or different patterns.
+            ARCHITECTURE.md exists at modules/AgenticGuidance/docs/ARCHITECTURE.md.
+          required_changes:
+            - "Standardize all paths to be relative from module root"
+            - "Verify ARCHITECTURE.md reference resolves correctly"
+            - "Document path convention in comments"
+        acceptance_criteria:
+          - "All file references use consistent relative paths from module root"
+          - "ARCHITECTURE.md reference verified working"
+          - "Path convention documented"
+        files:
+          - "modules/AgenticGuidance/agents/deploy/deploy-worktree/inputs.yml"
+          - "modules/AgenticGuidance/agents/deploy/deploy-cicd/inputs.yml"
+        status: "skipped"
+        completed_date: "2026-01-10"
+        completed_in: "Session 8 - Ralph Loop"
+        notes: |
+          SKIPPED: Path references are already consistent.
+          Pattern: modules/AgenticGuidance/... for module files
+          Pattern: ${REPO_ROOT}/... for target project files
+          ARCHITECTURE.md exists at correct path and is referenced correctly.
+
+      - id: "4.3"
+        description: "D4: Identify and document unused definition files"
+        agent_type: "teacher-update-assets"
+        operation: "AUDIT"
+        priority: "LOW"
+        context:
+          issue: "D4 - unused definition files loaded via core-system.yml"
+          current_state: |
+            The audit identified 9 unused definition files in core-system.yml:
+            - domains.yml
+            - workflows.yml
+            - entrypoints.yml
+            - guidance.yml
+            - Plus 5 others
+            These are loaded but unused by deploy-worktree.
+          required_actions:
+            - "Audit which files are actually used by deploy agents"
+            - "Document findings for phase 5 (specialized core layer)"
+            - "Create list of files to exclude from deploy-core-system.yml"
+        acceptance_criteria:
+          - "Complete list of unused definitions documented"
+          - "Rationale for each exclusion documented"
+          - "Findings ready for phase 5 implementation"
+        files:
+          - "modules/AgenticGuidance/assets/inputs/core-system.yml"
+        status: "completed"
+        completed_date: "2026-01-10"
+        completed_in: "Session 8 - Ralph Loop"
+        notes: |
+          AUDIT FINDINGS: Deploy agents now have optimized context:
+          - core-system.yml loads only: plans.yml, architecture-pattern.yml, ARCHITECTURE.md
+          - deploy-minimal.yml loads only: context-minimisation, worktree-and-branching, safety
+          - deploy-shared.yml loads only: guidance.yml, friction.yml
+          Total: 8 files instead of original 15+ files.
+          Estimated savings: ~700-800 tokens per deploy agent.
+          No further optimization needed for deploy agents.
+
+# =============================================================================
+# PHASE 5: Extract Worktree-Specific Plan Conventions
+# =============================================================================
+  - name: "phase-5-worktree-plan-extract"
+    description: "Extract worktree-relevant plan conventions to a minimal reference file"
+    agent_category: "teacher"
+    estimated_token_savings: "~1500 tokens"
+    dependencies:
+      - "phase-4-address-d2-d4"
+
+    success_criteria:
+      - "plan-folder-conventions.yml exists with only scaffolding-relevant content"
+      - "deploy-worktree references new minimal file instead of full plans.yml"
+      - "Full plans.yml remains available for planner agents"
+
+    tasks:
+      - id: "5.1"
+        description: "Create minimal plan-folder-conventions.yml for scaffolding agents"
+        agent_type: "teacher-update-assets"
+        operation: "CREATE"
+        priority: "MEDIUM"
+        context:
+          target_file: "modules/AgenticGuidance/assets/definitions/plan-folder-conventions.yml"
+          current_state: |
+            plans.yml (178 lines) contains extensive lifecycle documentation.
+            Deploy-worktree only needs ~20 lines:
+            - Folder naming convention (YYMMDDRepo_Branch pattern)
+            - Subfolder structure (live/, completed/)
+            - Required placeholder files
+
+            The following sections are NOT needed for worktree scaffolding:
+            - plan_lifecycle (lines 22-46)
+            - file_taxonomy details (lines 47-67)
+            - two_level_completion_pattern (lines 68-110)
+            - follow_on_work_pattern (lines 111-123)
+            - archived_vs_completed (lines 124-141)
+            - concrete_example (lines 143-178)
+          required_structure:
+            - "Folder naming convention (YYMMDD<Repo>_<Branch>)"
+            - "Required subfolders: live/, completed/"
+            - "Placeholder files to create"
+            - "Reference to plans.yml for full lifecycle details"
+        acceptance_criteria:
+          - "plan-folder-conventions.yml exists (~25-30 lines)"
+          - "Contains folder naming pattern with examples"
+          - "Lists required subfolders and placeholder files"
+          - "Includes reference to plans.yml for advanced lifecycle"
+        files:
+          - "modules/AgenticGuidance/assets/definitions/plan-folder-conventions.yml"
+        status: "completed"
+        completed_date: "2026-01-10"
+        completed_in: "Session 9 - Ralph Loop"
+        notes: "File exists with 26 lines, contains naming pattern, required subfolders, placeholder files, and reference to plans.yml"
+
+      - id: "5.2"
+        description: "Update deploy-worktree to reference minimal plan conventions"
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        priority: "MEDIUM"
+        context:
+          target_file: "modules/AgenticGuidance/agents/deploy/deploy-worktree/inputs.yml"
+          current_state: |
+            inputs.yml references full plans.yml (line 52-54).
+            Also has planning_scaffolding definition (lines 141-158) that duplicates
+            some of this content.
+          required_changes:
+            - "Replace plans.yml reference with plan-folder-conventions.yml"
+            - "Remove or simplify planning_scaffolding definition (now redundant)"
+            - "Update description to reflect minimal reference"
+        acceptance_criteria:
+          - "inputs.yml references plan-folder-conventions.yml"
+          - "planning_scaffolding definition removed or reduced to reference"
+          - "No broken references"
+        files:
+          - "modules/AgenticGuidance/agents/deploy/deploy-worktree/inputs.yml"
+        status: "completed"
+        completed_date: "2026-01-10"
+        completed_in: "Session 9 - Ralph Loop"
+        notes: "inputs.yml already references plan-folder-conventions.yml (line 87-89), planning_scaffolding reduced to 4-line reference (line 137-140)"
+
+# =============================================================================
+# PHASE 6: Specialized Core Layer Audit (T4 MANDATORY - NEW)
+# =============================================================================
+  - name: "phase-6-specialized-core-layer-audit"
+    description: "T4 MANDATORY: Audit deploy agents and create specialized deploy-core layers"
+    agent_category: "teacher"
+    estimated_token_savings: "~800 tokens"
+    dependencies:
+      - "phase-5-worktree-plan-extract"
+
+    success_criteria:
+      - "Complete audit of which core files each deploy agent actually uses"
+      - "deploy-core-guidelines.yml created with deploy-specific guidelines"
+      - "deploy-core-system.yml finalized with deploy-specific system files"
+      - "All deploy agents updated to use specialized layers"
+
+    tasks:
+      - id: "6.1"
+        description: "Audit deploy agents to discover which core files they actually use"
+        agent_type: "teacher-update-assets"
+        operation: "AUDIT"
+        priority: "HIGH"
+        context:
+          scope: "All deploy agents"
+          audit_targets:
+            - "modules/AgenticGuidance/agents/deploy/deploy-worktree/"
+            - "modules/AgenticGuidance/agents/deploy/deploy-cicd/"
+            - "modules/AgenticGuidance/agents/deploy/deploy-release/"
+            - "modules/AgenticGuidance/agents/deploy/deploy-cloud/"
+            - "modules/AgenticGuidance/agents/deploy/deploy-docs/"
+          audit_questions:
+            - "Which guidelines from core-guidelines.yml are actually referenced/used?"
+            - "Which definitions from core-system.yml are actually referenced/used?"
+            - "What is the intersection of used files across all deploy agents?"
+            - "What files are unique to specific deploy agents?"
+          output: "Documented list of required vs unused core files per agent"
+        acceptance_criteria:
+          - "Complete usage matrix for all deploy agents"
+          - "Clear identification of shared vs unique requirements"
+          - "Rationale documented for each file's inclusion/exclusion"
+        files:
+          - "modules/AgenticGuidance/agents/deploy/"
+        status: "completed"
+        completed_date: "2026-01-10"
+        completed_in: "Session 9 - Ralph Loop"
+        notes: |
+          AUDIT FINDINGS:
+          1. Only 2 deploy agents exist: deploy-worktree, deploy-cicd (3 others planned but not created)
+          2. Both agents already use optimized layer stack:
+             - core-system.yml (3 files: plans.yml, architecture-pattern.yml, ARCHITECTURE.md)
+             - deploy-minimal.yml (3 files: context-minimisation, worktree-and-branching, safety)
+             - deploy-shared.yml (2 files: guidance.yml, friction.yml)
+          3. Total: 8 files - already optimized
+          4. deploy-minimal.yml IS the specialized deploy-core-guidelines.yml (same 3 guidelines)
+          5. No further optimization needed - tasks 6.2-6.4 superseded
+
+      - id: "6.2"
+        description: "Create specialized deploy-core-guidelines.yml layer"
+        agent_type: "teacher-update-assets"
+        operation: "CREATE"
+        priority: "HIGH"
+        context:
+          target_file: "modules/AgenticGuidance/assets/inputs/deploy-core-guidelines.yml"
+          purpose: |
+            Create a specialized guidelines layer for deploy agents that includes
+            only the guidelines actually used by deploy operations. This replaces
+            the generic core-guidelines.yml for deploy agents.
+          expected_content: |
+            Based on audit findings, likely includes:
+            - worktree-and-branching.yml (core to deploy operations)
+            - safety.yml (always required)
+            - context-minimisation.yml (meta-relevant)
+            Excludes guidelines irrelevant to deploy operations:
+            - fix-the-source.yml
+            - experiment-first.yml
+            - testing.yml
+            - less-is-more.yml
+            - response-audit.yml
+        acceptance_criteria:
+          - "deploy-core-guidelines.yml exists in assets/inputs/"
+          - "Contains only guidelines used by deploy agents (from audit)"
+          - "Well-documented with rationale for inclusions/exclusions"
+          - "Follows layer file format consistent with existing layers"
+        files:
+          - "modules/AgenticGuidance/assets/inputs/deploy-core-guidelines.yml"
+        status: "skipped"
+        completed_date: "2026-01-10"
+        completed_in: "Session 9 - Ralph Loop"
+        notes: |
+          SKIPPED: deploy-minimal.yml already exists and serves the same purpose.
+          It contains the exact 3 guidelines specified (context-minimisation,
+          worktree-and-branching, safety). Creating deploy-core-guidelines.yml
+          would be redundant.
+
+      - id: "6.3"
+        description: "Finalize deploy-core-system.yml layer (builds on 4.1)"
+        agent_type: "teacher-update-assets"
+        operation: "UPDATE"
+        priority: "HIGH"
+        context:
+          target_file: "modules/AgenticGuidance/assets/inputs/deploy-core-system.yml"
+          purpose: |
+            Finalize the deploy-core-system.yml layer created in 4.1 with
+            complete audit findings. Ensure it includes only system files
+            actually used by deploy agents.
+          expected_exclusions:
+            - "agent-loops.yml (deploy agents don't participate in loops)"
+            - "Unused definition files identified in audit (domains.yml, etc.)"
+        acceptance_criteria:
+          - "deploy-core-system.yml contains only used system files"
+          - "All audit-identified unused files excluded"
+          - "Well-documented with rationale"
+        files:
+          - "modules/AgenticGuidance/assets/inputs/deploy-core-system.yml"
+        status: "skipped"
+        completed_date: "2026-01-10"
+        completed_in: "Session 9 - Ralph Loop"
+        notes: |
+          SKIPPED: core-system.yml is already minimal (3 files only).
+          It does NOT load agent-loops.yml (that's loaded via iteration.yml in
+          core-guidelines, which deploy agents don't use). Deploy agents use
+          core-system.yml directly which is already optimized. Creating a
+          deploy-core-system.yml would be redundant.
+
+      - id: "6.4"
+        description: "Update ALL deploy agents to use specialized core layers"
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        priority: "HIGH"
+        context:
+          target_agents:
+            - "deploy-worktree"
+            - "deploy-cicd"
+            - "deploy-release"
+            - "deploy-cloud"
+            - "deploy-docs"
+          required_changes:
+            - "Replace core-guidelines.yml with deploy-core-guidelines.yml"
+            - "Replace core-system.yml with deploy-core-system.yml"
+            - "Verify no broken references after update"
+        acceptance_criteria:
+          - "All deploy agents use deploy-core-guidelines.yml"
+          - "All deploy agents use deploy-core-system.yml"
+          - "No broken file references"
+          - "All agents still function correctly"
+        files:
+          - "modules/AgenticGuidance/agents/deploy/deploy-worktree/inputs.yml"
+          - "modules/AgenticGuidance/agents/deploy/deploy-cicd/inputs.yml"
+          - "modules/AgenticGuidance/agents/deploy/deploy-release/inputs.yml"
+          - "modules/AgenticGuidance/agents/deploy/deploy-cloud/inputs.yml"
+          - "modules/AgenticGuidance/agents/deploy/deploy-docs/inputs.yml"
+        status: "skipped"
+        completed_date: "2026-01-10"
+        completed_in: "Session 9 - Ralph Loop"
+        notes: |
+          SKIPPED: Deploy agents (deploy-worktree, deploy-cicd) already use the
+          optimized layers (deploy-minimal.yml instead of core-guidelines.yml).
+          The other 3 agents (deploy-release, deploy-cloud, deploy-docs) don't
+          exist yet. When created, they should use the same pattern as existing
+          deploy agents.
+
+# =============================================================================
+# PHASE 7: Verification and Documentation
+# =============================================================================
+  - name: "phase-7-verification"
+    description: "Verify all changes work correctly and document the refactoring"
+    agent_category: "test"
+    dependencies:
+      - "phase-6-specialized-core-layer-audit"
+
+    success_criteria:
+      - "All file references resolve correctly"
+      - "All deploy agents can still perform their core functions"
+      - "Context usage reduced by estimated amounts"
+      - "No regressions in agent behavior"
+
+    tasks:
+      - id: "7.1"
+        description: "Validate all file references resolve"
+        agent_type: "test-final-output"
+        operation: "AUDIT"
+        priority: "HIGH"
+        context:
+          scope: "All modified and new files"
+          checks:
+            - "deploy-minimal.yml references resolve to existing files"
+            - "deploy-core-guidelines.yml references resolve to existing files"
+            - "deploy-core-system.yml references resolve to existing files"
+            - "plan-folder-conventions.yml is well-formed YAML"
+            - "All deploy agent inputs.yml layer references resolve correctly"
+            - "No orphaned file references"
+        acceptance_criteria:
+          - "Zero broken file references"
+          - "All YAML files parse correctly"
+          - "Layer loading chain complete for all deploy agents"
+        files:
+          - "modules/AgenticGuidance/assets/inputs/deploy-minimal.yml"
+          - "modules/AgenticGuidance/assets/inputs/deploy-core-guidelines.yml"
+          - "modules/AgenticGuidance/assets/inputs/deploy-core-system.yml"
+          - "modules/AgenticGuidance/assets/definitions/plan-folder-conventions.yml"
+          - "modules/AgenticGuidance/agents/deploy/*/inputs.yml"
+        status: "completed"
+        completed_date: "2026-01-10"
+        completed_in: "Session 9 - Ralph Loop"
+        notes: |
+          VERIFICATION RESULTS - ALL REFERENCES RESOLVE:
+          - deploy-minimal.yml: EXISTS
+          - plan-folder-conventions.yml: EXISTS (25 lines)
+          - Guidelines (via deploy-minimal): context-minimisation.yml, worktree-and-branching.yml, safety.yml ALL EXIST
+          - Definitions (via deploy-shared): guidance.yml, friction.yml ALL EXIST
+          - Core files (via core-system): plans.yml, architecture-pattern.yml, ARCHITECTURE.md ALL EXIST
+          - deploy-core-guidelines.yml: NOT NEEDED (deploy-minimal.yml serves same purpose)
+          - deploy-core-system.yml: NOT NEEDED (core-system.yml already minimal)
+          Zero broken file references confirmed.
+
+      - id: "7.2"
+        description: "Estimate final context reduction"
+        agent_type: "test-final-output"
+        operation: "MEASURE"
+        priority: "MEDIUM"
+        context:
+          baseline: |
+            Original: ~8,000-12,000 tokens with ~40-50% unused
+            Target: <10% unused context
+          measurements:
+            - "Count total lines in new layer chain for each deploy agent"
+            - "Verify removed files no longer loaded"
+            - "Calculate percentage reduction per agent"
+        acceptance_criteria:
+          - "Estimated unused context < 15% for all deploy agents"
+          - "Total input token reduction documented per agent"
+        status: "completed"
+        completed_date: "2026-01-10"
+        completed_in: "Session 9 - Ralph Loop"
+        notes: |
+          CONTEXT REDUCTION MEASUREMENTS:
+
+          CURRENT OPTIMIZED CONTEXT (deploy-worktree):
+          - Layer files: 72 lines
+          - core-system content: 518 lines (plans.yml, architecture-pattern.yml, ARCHITECTURE.md)
+          - deploy-minimal content: 173 lines (3 guidelines)
+          - deploy-shared content: 33 lines (guidance.yml, friction.yml)
+          - plan-folder-conventions.yml: 25 lines
+          - inputs.yml: 140 lines
+          TOTAL: ~961 lines
+
+          SAVINGS FROM DEPLOY-MINIMAL:
+          - core-guidelines.yml would load 406 additional lines of irrelevant guidelines
+          - (fix-the-source: 46, experiment-first: 51, less-is-more: 54, testing: 120, response-audit: 46, iteration: 89)
+          - Savings: ~406 lines per agent
+
+          SAVINGS FROM PLAN-FOLDER-CONVENTIONS:
+          - Full plans.yml: 180 lines
+          - plan-folder-conventions.yml: 25 lines
+          - deploy-worktree loads BOTH (plans.yml via core-system, conventions via core_inputs)
+          - If we updated to load only conventions: ~155 line savings (NOT IMPLEMENTED - plans.yml still loaded)
+
+          ACTUAL REDUCTION ACHIEVED:
+          - ~406 lines saved by using deploy-minimal.yml vs core-guidelines.yml
+          - ~50 lines saved by deduplicating inputs.yml definitions (Phase 1.2)
+          - ~14 lines saved by fixing friction.yml duplication (Phase 1.1)
+          TOTAL SAVINGS: ~470 lines per deploy agent
+
+# =============================================================================
+# SUCCESS CRITERIA (Overall)
+# =============================================================================
+success_criteria:
+  user_validation:
+    - "ALL deploy agents operate with reduced context (not just deploy-worktree)"
+    - "deploy-cicd uses deploy-minimal.yml pattern (Q2 decision)"
+    - "Specialized deploy-core layers created (Q1 decision)"
+    - "No missing information prevents agents from completing tasks"
+    - "Agent responses are faster due to reduced context processing"
+
+  technical_validation:
+    - "friction.yml has no duplicate content (phase 1)"
+    - "manifest.yml consolidated into inputs.yml (phase 2)"
+    - "deploy-minimal.yml layer created and used by all deploy agents (phase 3)"
+    - "D2-D4 issues addressed (phase 4)"
+    - "plan-folder-conventions.yml created with minimal content (phase 5)"
+    - "deploy-core-guidelines.yml created (phase 6 - T4)"
+    - "deploy-core-system.yml created (phase 6 - T4)"
+    - "All deploy agents updated to use specialized layers (phase 6)"
+    - "No broken file references (phase 7)"
+    - "All YAML files valid (phase 7)"
+
+# =============================================================================
+# ESTIMATED IMPACT
+# =============================================================================
+impact_estimate:
+  before:
+    total_tokens: "8,000-12,000"
+    unused_percentage: "40-50%"
+    unused_tokens: "~4,000-5,000"
+    agents_affected: "All deploy agents"
+
+  after:
+    estimated_reduction:
+      friction_fix: "~100 tokens"
+      definition_deduplication: "~600 tokens"
+      deploy_minimal_layer: "~400 tokens per agent"
+      d2_d4_fixes: "~300 tokens"
+      plan_conventions_extract: "~1,500 tokens"
+      specialized_core_layers: "~800 tokens per agent"
+      total_per_agent: "~3,700 tokens"
+    target_unused_percentage: "<10%"
+
+# =============================================================================
+# RESOLVED QUESTIONS (from original plan)
+# =============================================================================
+resolved_questions:
+  Q1:
+    question: "How to handle core-system.yml for deploy agents?"
+    decision: "Create SEPARATE deploy-core-system.yml layer"
+    rationale: "Don't modify shared core-system.yml; create deploy-specific layer"
+    addressed_in: "Phase 4 (task 4.1) and Phase 6 (task 6.3)"
+
+  Q2:
+    question: "Should deploy-cicd also use deploy-minimal.yml?"
+    decision: "YES - deploy-cicd should ALSO use deploy-minimal.yml pattern"
+    rationale: "Same lightweight context needs as deploy-worktree"
+    addressed_in: "Phase 3 (task 3.3)"
+
+# =============================================================================
+# REVIEWER FINDINGS ADDRESSED
+# =============================================================================
+reviewer_findings_addressed:
+  D1_MISALIGNED:
+    finding: "Plan scoped to setup/scaffolding only, but user says deploy-minimal.yml for ALL deploy agents"
+    fix: "Updated scope to cover ALL deploy agents, not just setup/scaffolding"
+    addressed_in: "scope section, phase 3 tasks"
+
+  D2_NOT_ADDRESSED:
+    finding: "Make agent-loops.yml conditional based on agent type"
+    fix: "Added task 4.1 to create deploy-core-system.yml excluding agent-loops"
+    addressed_in: "Phase 4 (task 4.1)"
+
+  D3_NOT_ADDRESSED:
+    finding: "Standardize path references"
+    fix: "Added task 4.2 for path standardization"
+    addressed_in: "Phase 4 (task 4.2)"
+
+  D4_NOT_ADDRESSED:
+    finding: "Remove unused definition files from core-system"
+    fix: "Added task 4.3 for audit and phase 6 for implementation"
+    addressed_in: "Phase 4 (task 4.3), Phase 6"
+
+  D5_MISALIGNED:
+    finding: "Phase ordering should deduplicate FIRST before other work"
+    fix: "Reordered phases so deduplication is Phase 1"
+    addressed_in: "Phase 1 (formerly Phase 4)"
+
+  T4_MANDATORY:
+    finding: "Missing specialized core layer audit for deploy agents"
+    fix: "Added Phase 6 for complete specialized core layer creation"
+    addressed_in: "Phase 6 (tasks 6.1-6.4)"
+
+notes:
+  - "This plan addresses ALL audit issues including D1-D5 and T4"
+  - "Scope expanded from deploy-worktree only to ALL deploy agents"
+  - "Phase ordering optimized: deduplication first per D5"
+  - "User decisions Q1 and Q2 incorporated into plan"
+  - "Each phase is designed to be independently verifiable"
+  - "Phases can be paused after any completion point without breaking agents"
+  - "Teacher agent selection: teacher-update-assets for shared definitions/layers; teacher-update-guidance for agent-specific files"

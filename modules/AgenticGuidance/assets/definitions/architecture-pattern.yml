@@ -1,0 +1,157 @@
+# Architecture Pattern: Domains, Workflows, Entrypoints
+# Consolidated from: domains.yml, workflows.yml, entrypoints.yml
+# Purpose: Single-source definition of the core architecture pattern
+#
+# This file defines the three-layer architecture pattern:
+#   Entrypoints -> Workflows -> Domains
+#
+# Each layer has a specific responsibility in the system structure.
+
+domains:
+  definition: |
+    Domains are a representation of a human understandable concept.
+    They should be created as a package so that they can scale to multiple files as needed.
+
+  structure_example: |
+    backend/services/agents/src/domains/
+      __init__.py
+      planner_agent/
+        __init__.py
+        planner.py
+        plan_generator.py
+
+  real_world_example: |
+    backend/services/agents/src/domains/
+      __init__.py
+      research_agent/
+        __init__.py
+        research.py
+        report.py
+      compliance_agent/
+        __init__.py
+        validator.py
+        rules.py
+
+  signals:
+    - Package structure allows scaling to multiple files
+    - Domain encapsulates a single human-understandable concept
+    - Self-contained logic for a specific responsibility
+
+workflows:
+  definition: |
+    Workflows are orchestrations of domains.
+    Each file should represent a single workflow.
+    Workflows should only focus on the orchestration of domain logic: they should import
+    domains and call their methods to achieve the objective.
+
+  entrypoint_guidance: |
+    Workflows should have a single entrypoint with parameters that allow the workflow to handle
+    multiple use cases.
+
+    Workflows can support multiple entrypoints/options that mutate their process, allowing
+    a single workflow to handle multiple CLI commands or use cases through configuration
+    options rather than separate implementations.
+
+  basic_example: |
+    # agent_orchestration.py
+    from domains.planner_agent import PlannerAgent
+    from domains.build_agent import BuildAgent
+
+    def orchestrate_build_workflow(task: str, context: dict):
+        """Main workflow for orchestrating agent-based builds"""
+        planner = PlannerAgent()
+        plan = planner.create_plan(task=task, context=context)
+
+        builder = BuildAgent()
+        result = builder.execute_plan(plan=plan)
+
+        return result
+
+  multi_option_example: |
+    # health_check_workflow.py
+    def run_health_check(mode: str = "auto", verbose: bool = False, **options):
+        """
+        Run health check workflow with different modes.
+
+        Options:
+        - mode: "cli_check" | "project_check" | "full_check" | "auto"
+        - verbose: Show detailed output
+        """
+        if mode == "cli_check":
+            return check_cli_health(**options)
+        elif mode == "project_check":
+            return check_project_health(**options)
+        elif mode == "full_check":
+            return full_health_check(**options)
+        else:  # auto
+            return auto_detect_and_check(**options)
+
+  signals:
+    - File represents a single workflow
+    - Imports and orchestrates domains
+    - Configuration options instead of separate implementations
+
+entrypoints:
+  definition: |
+    Entrypoints act as routers for user or agent interaction to backend workflows.
+    All entrypoints should route to a single workflow.
+
+  location_guidance: |
+    Entrypoints can be a main.py or dedicated entrypoints.py file.
+
+  example: |
+    # main.py - CLI entrypoint
+    import click
+    from src.workflows.agent_orchestration import orchestrate_build_workflow
+
+    @click.group()
+    def cli():
+        pass
+
+    @cli.command()
+    @click.argument('task')
+    @click.option('--context', default='{}')
+    def build(task: str, context: str):
+        """CLI entrypoint for agent build workflow"""
+        import json
+        result = orchestrate_build_workflow(
+            task=task,
+            context=json.loads(context)
+        )
+        print(result)
+
+    # api.py - API entrypoint
+    from fastapi import FastAPI
+    from src.workflows.agent_orchestration import orchestrate_build_workflow
+
+    app = FastAPI()
+
+    @app.post("/agent/build")
+    def build_api(request: BuildRequest):
+        """API entrypoint for agent build workflow"""
+        result = orchestrate_build_workflow(
+            task=request.task,
+            context=request.context
+        )
+        return result
+
+  signals:
+    - Routes user/agent interaction to workflows
+    - Each entrypoint routes to a single workflow
+    - Can be CLI (main.py) or API (api.py) based
+
+relationships:
+  flow: |
+    User/Agent -> Entrypoint -> Workflow -> Domain(s)
+
+  layer_responsibilities:
+    entrypoints: "Input parsing, routing, response formatting"
+    workflows: "Orchestration, sequencing, coordination between domains"
+    domains: "Business logic, data transformation, core functionality"
+
+  design_principles:
+    - Entrypoints are thin: minimal logic, just routing
+    - Workflows coordinate: import domains, call methods, handle flow
+    - Domains encapsulate: contain all logic for their concept
+    - Dependencies flow inward: Entrypoints -> Workflows -> Domains
+    - Domains never import workflows or entrypoints

@@ -1,0 +1,918 @@
+# Orchestration Test Scenarios
+# Defines test scenarios for validating orchestration executor behavior.
+# Each scenario tests a specific aspect of executor functionality against the specification.
+#
+# PURPOSE:
+# Provide comprehensive test coverage for the orchestration executor to ensure:
+# - Correct parsing of Plan-MMD metadata
+# - Accurate agent routing based on AGENT_ROUTING header
+# - Proper handling of feedback triggers and failure scenarios
+# - Reliable state persistence and resume capability
+#
+# USAGE:
+# - Executor validation tests reference these scenarios during development
+# - CI/CD pipelines use these scenarios for regression testing
+# - Manual QA uses these scenarios for acceptance testing
+#
+# CONTEXT:
+# These scenarios validate behavior defined in:
+# modules/AgenticGuidance/assets/definitions/orchestration-executor-specification.yml
+
+test_scenarios:
+  mmd_parsing_test:
+    id: "MMD_PARSING_TEST"
+    name: "Plan-MMD Metadata Parsing Validation"
+    purpose: "Verify executor parses Plan-MMD metadata correctly"
+    description: |
+      Validates that the orchestration executor can correctly parse all metadata
+      from Plan-MMD header comments. Tests extraction of PHASES, AGENT_ROUTING,
+      STATUS, FEEDBACK_TRIGGERS, and other required headers. Ensures proper
+      error handling for malformed or incomplete metadata.
+
+    test_cases:
+      valid_mmd_all_metadata:
+        id: "PARSE_001"
+        name: "Parse valid MMD with all required metadata"
+        description: "Executor successfully parses a complete, valid Plan-MMD file"
+        inputs:
+          mmd_content: |
+            %% PLAN_MMD_VERSION: 1.1
+            %% GOAL: Implement feature X
+            %% PROFILE: Build
+            %% PLAN_FOLDER: docs/plans/live/250110Repo_feature-x
+            %% PHASES: Environment_Setup, Domain_Build, Integration_Test
+            %% AGENT_ROUTING: Environment_Setup -> builder, Domain_Build -> builder, Integration_Test -> tester
+            %% STATUS: Environment_Setup=pending, Domain_Build=pending, Integration_Test=pending
+            %% FEEDBACK_TRIGGERS: TEST_FAILURE -> retry(3), CICD_FAILURE -> re_plan
+
+            graph TD
+                Start((Start)) --> Phase1[Environment_Setup]
+                Phase1 --> Phase2[Domain_Build]
+                Phase2 --> Phase3[Integration_Test]
+                Phase3 --> End((End))
+        expected_outputs:
+          parsing_success: true
+          extracted_metadata:
+            version: "1.1"
+            goal: "Implement feature X"
+            profile: "Build"
+            plan_folder: "docs/plans/live/250110Repo_feature-x"
+            phases:
+              - "Environment_Setup"
+              - "Domain_Build"
+              - "Integration_Test"
+            agent_routing:
+              Environment_Setup: "builder"
+              Domain_Build: "builder"
+              Integration_Test: "tester"
+            status:
+              Environment_Setup: "pending"
+              Domain_Build: "pending"
+              Integration_Test: "pending"
+            feedback_triggers:
+              TEST_FAILURE: "retry(3)"
+              CICD_FAILURE: "re_plan"
+          errors: []
+        validation_criteria:
+          - "All header fields extracted without data loss"
+          - "Phase order preserved as declared"
+          - "Agent routing correctly maps each phase"
+          - "Status values parsed for each phase"
+          - "Feedback triggers parsed with parameters"
+
+      missing_agent_routing:
+        id: "PARSE_002"
+        name: "Handle MMD with missing AGENT_ROUTING"
+        description: "Executor detects missing AGENT_ROUTING and reports error or uses defaults"
+        inputs:
+          mmd_content: |
+            %% PLAN_MMD_VERSION: 1.1
+            %% GOAL: Implement feature X
+            %% PROFILE: Build
+            %% PLAN_FOLDER: docs/plans/live/250110Repo_feature-x
+            %% PHASES: Setup, Build, Test
+            %% STATUS: Setup=pending, Build=pending, Test=pending
+
+            graph TD
+                Start((Start)) --> Phase1[Setup]
+                Phase1 --> Phase2[Build]
+                Phase2 --> Phase3[Test]
+                Phase3 --> End((End))
+        expected_outputs:
+          parsing_success: true
+          extracted_metadata:
+            phases:
+              - "Setup"
+              - "Build"
+              - "Test"
+            agent_routing: null
+          errors:
+            - error_type: "MISSING_AGENT_ROUTING"
+              severity: "WARNING"
+              message: "AGENT_ROUTING header not found; will attempt inference"
+          fallback_behavior:
+            action: "infer_routing"
+            inferred_routing:
+              Setup: "builder"
+              Build: "builder"
+              Test: "tester"
+            confidence: "HIGH"
+        validation_criteria:
+          - "Missing AGENT_ROUTING detected and reported"
+          - "Fallback inference attempted based on phase names"
+          - "Inferred routing has confidence level assigned"
+          - "Execution can proceed with user confirmation"
+
+      invalid_agent_types:
+        id: "PARSE_003"
+        name: "Handle MMD with invalid agent types in routing"
+        description: "Executor detects and reports invalid agent types in AGENT_ROUTING"
+        inputs:
+          mmd_content: |
+            %% PLAN_MMD_VERSION: 1.1
+            %% GOAL: Implement feature X
+            %% PROFILE: Build
+            %% PLAN_FOLDER: docs/plans/live/250110Repo_feature-x
+            %% PHASES: Setup, Build, Deploy
+            %% AGENT_ROUTING: Setup -> builder, Build -> coder, Deploy -> shipper
+            %% STATUS: Setup=pending, Build=pending, Deploy=pending
+
+            graph TD
+                Start((Start)) --> Phase1[Setup]
+                Phase1 --> Phase2[Build]
+                Phase2 --> Phase3[Deploy]
+                Phase3 --> End((End))
+        expected_outputs:
+          parsing_success: true
+          extracted_metadata:
+            phases:
+              - "Setup"
+              - "Build"
+              - "Deploy"
+            agent_routing:
+              Setup: "builder"
+              Build: "coder"
+              Deploy: "shipper"
+          errors:
+            - error_type: "INVALID_AGENT_TYPE"
+              severity: "CRITICAL"
+              phase: "Build"
+              invalid_type: "coder"
+              message: "Unknown agent type 'coder' for phase 'Build'. Valid types: builder, tester, deployer, teacher, cleaner, planner, auditor"
+            - error_type: "INVALID_AGENT_TYPE"
+              severity: "CRITICAL"
+              phase: "Deploy"
+              invalid_type: "shipper"
+              message: "Unknown agent type 'shipper' for phase 'Deploy'. Valid types: builder, tester, deployer, teacher, cleaner, planner, auditor"
+          execution_blocked: true
+        validation_criteria:
+          - "Each invalid agent type identified"
+          - "Error message lists valid agent types"
+          - "Execution blocked until routing corrected"
+          - "All invalid types reported (not just first)"
+
+      malformed_feedback_triggers:
+        id: "PARSE_004"
+        name: "Handle MMD with malformed FEEDBACK_TRIGGER syntax"
+        description: "Executor handles syntax errors in FEEDBACK_TRIGGERS header"
+        inputs:
+          mmd_content: |
+            %% PLAN_MMD_VERSION: 1.1
+            %% GOAL: Implement feature X
+            %% PROFILE: Build
+            %% PLAN_FOLDER: docs/plans/live/250110Repo_feature-x
+            %% PHASES: Setup, Build, Test
+            %% AGENT_ROUTING: Setup -> builder, Build -> builder, Test -> tester
+            %% STATUS: Setup=pending, Build=pending, Test=pending
+            %% FEEDBACK_TRIGGERS: TEST_FAILURE retry, CICD_FAILURE => escalate, GUIDANCE_GAP
+
+            graph TD
+                Start((Start)) --> Phase1[Setup]
+                Phase1 --> Phase2[Build]
+                Phase2 --> Phase3[Test]
+                Phase3 --> End((End))
+        expected_outputs:
+          parsing_success: true
+          extracted_metadata:
+            phases:
+              - "Setup"
+              - "Build"
+              - "Test"
+            feedback_triggers: null
+          errors:
+            - error_type: "MALFORMED_FEEDBACK_TRIGGER"
+              severity: "WARNING"
+              raw_value: "TEST_FAILURE retry"
+              message: "Invalid FEEDBACK_TRIGGER syntax. Expected 'TRIGGER_TYPE -> action(params)'"
+            - error_type: "MALFORMED_FEEDBACK_TRIGGER"
+              severity: "WARNING"
+              raw_value: "CICD_FAILURE => escalate"
+              message: "Invalid separator '=>'. Use '->' for trigger mappings"
+            - error_type: "MALFORMED_FEEDBACK_TRIGGER"
+              severity: "WARNING"
+              raw_value: "GUIDANCE_GAP"
+              message: "Missing action for trigger GUIDANCE_GAP"
+          fallback_behavior:
+            action: "use_default_triggers"
+            default_triggers:
+              TEST_FAILURE: "retry(3)"
+              CICD_FAILURE: "re_plan"
+              GUIDANCE_GAP: "re_plan"
+        validation_criteria:
+          - "Each malformed trigger identified separately"
+          - "Specific syntax error described"
+          - "Default triggers applied as fallback"
+          - "Execution can proceed with warnings"
+
+    success_criteria:
+      - "All valid MMD files parse without errors"
+      - "All required metadata fields extracted correctly"
+      - "Invalid/missing metadata generates appropriate errors"
+      - "Fallback behaviors activate when appropriate"
+      - "Error messages are actionable (suggest fixes)"
+
+    notes:
+      test_data_requirements:
+        - "Sample MMD files with various valid configurations"
+        - "Sample MMD files with intentional errors"
+        - "Reference to valid agent types from agent-categories.yml"
+      related_spec_sections:
+        - "orchestration-executor-specification.yml#agent_routing"
+        - "orchestration-executor-specification.yml#fallback_behaviors.missing_agent_routing"
+        - "plan-mmd-schema.yml#header_metadata"
+
+  agent_routing_test:
+    id: "AGENT_ROUTING_TEST"
+    name: "Agent Routing and Spawning Validation"
+    purpose: "Verify executor spawns correct agents per phase"
+    description: |
+      Validates that the orchestration executor correctly resolves agent types
+      from AGENT_ROUTING metadata and spawns the appropriate agents. Tests
+      the mapping from abstract agent types (builder, tester) to concrete
+      agents (build-python, test-runner) and validates manifest fence compliance.
+
+    test_cases:
+      route_builder:
+        id: "ROUTE_001"
+        name: "Route 'builder' type spawns build-python"
+        description: "Verify builder routing resolves to appropriate build agent"
+        inputs:
+          phase_name: "Domain_Build"
+          agent_routing:
+            Domain_Build: "builder"
+          project_context:
+            project_type: "python"
+            language: "python"
+          orchestrator_manifest:
+            spawns:
+              - "build-python"
+              - "build-flutter"
+        expected_outputs:
+          resolved_agent: "build-python"
+          spawn_success: true
+          resolution_reason: "Project type is 'python', routing to build-python"
+        validation_criteria:
+          - "Agent type 'builder' correctly resolved to build-python"
+          - "Resolution considers project_type context"
+          - "Resolved agent is in spawns fence"
+          - "Agent spawn initiated with phase tasks"
+
+      route_tester:
+        id: "ROUTE_002"
+        name: "Route 'tester' type spawns test-runner"
+        description: "Verify tester routing resolves to test-runner agent"
+        inputs:
+          phase_name: "Integration_Test"
+          agent_routing:
+            Integration_Test: "tester"
+          task_context:
+            task_type: "execute_tests"
+          orchestrator_manifest:
+            spawns:
+              - "test-runner"
+              - "test-builder"
+        expected_outputs:
+          resolved_agent: "test-runner"
+          spawn_success: true
+          resolution_reason: "Task type is 'execute_tests', routing to test-runner"
+        validation_criteria:
+          - "Agent type 'tester' correctly resolved to test-runner"
+          - "Resolution considers task_type context"
+          - "test-runner receives test execution tasks"
+
+      route_teacher:
+        id: "ROUTE_003"
+        name: "Route 'teacher' type spawns teacher-update-guidance"
+        description: "Verify teacher routing resolves to appropriate teacher agent"
+        inputs:
+          phase_name: "Guidance_Update"
+          agent_routing:
+            Guidance_Update: "teacher"
+          task_context:
+            task_type: "update_agent_guidance"
+            target: "process.yml"
+          orchestrator_manifest:
+            spawns:
+              - "teacher-update-guidance"
+              - "teacher-update-assets"
+        expected_outputs:
+          resolved_agent: "teacher-update-guidance"
+          spawn_success: true
+          resolution_reason: "Target is agent guidance file, routing to teacher-update-guidance"
+        validation_criteria:
+          - "Agent type 'teacher' correctly resolved based on target"
+          - "teacher-update-guidance selected for process.yml targets"
+          - "teacher-update-assets selected for asset file targets"
+
+      route_nonexistent_type:
+        id: "ROUTE_004"
+        name: "Route to non-existent agent type fails"
+        description: "Verify executor handles routing to unknown agent types"
+        inputs:
+          phase_name: "Custom_Phase"
+          agent_routing:
+            Custom_Phase: "reviewer"
+          orchestrator_manifest:
+            spawns:
+              - "build-python"
+              - "test-runner"
+        expected_outputs:
+          resolved_agent: null
+          spawn_success: false
+          error:
+            error_type: "UNKNOWN_AGENT_TYPE"
+            severity: "CRITICAL"
+            message: "Cannot resolve agent type 'reviewer'. Valid types: builder, tester, deployer, teacher, cleaner, planner, auditor"
+          phase_status: "blocked"
+        validation_criteria:
+          - "Unknown agent type detected before spawn attempt"
+          - "Clear error message with valid types listed"
+          - "Phase marked as blocked"
+          - "Execution does not proceed to subsequent phases"
+
+      route_agent_not_in_manifest:
+        id: "ROUTE_005"
+        name: "Route to agent not in manifest spawns fence"
+        description: "Verify executor rejects agents not in orchestrator's spawns list"
+        inputs:
+          phase_name: "Deploy_CICD"
+          agent_routing:
+            Deploy_CICD: "deployer"
+          project_context:
+            deployment_target: "github_actions"
+          orchestrator_manifest:
+            name: "orchestration-build"
+            spawns:
+              - "build-python"
+              - "test-runner"
+              # Note: deploy-cicd is NOT in spawns
+        expected_outputs:
+          resolved_agent: "deploy-cicd"
+          spawn_success: false
+          error:
+            error_type: "AGENT_NOT_IN_FENCE"
+            severity: "CRITICAL"
+            resolved_agent: "deploy-cicd"
+            orchestrator: "orchestration-build"
+            message: "Agent 'deploy-cicd' is not in orchestration-build spawns fence. Add 'deploy-cicd' to manifest.yml spawns list or use a different orchestrator."
+          phase_status: "blocked"
+        validation_criteria:
+          - "Agent resolves correctly from type"
+          - "Manifest fence check prevents unauthorized spawn"
+          - "Error message identifies orchestrator and missing agent"
+          - "Suggests actionable fix (add to spawns)"
+
+    success_criteria:
+      - "All valid routing resolves to correct concrete agents"
+      - "Resolution considers project and task context"
+      - "Manifest fence strictly enforced"
+      - "Clear errors for invalid or unauthorized routing"
+      - "Phase status correctly reflects routing failures"
+
+    notes:
+      test_data_requirements:
+        - "Sample orchestrator manifest.yml files with various spawns lists"
+        - "Project context configurations for different project types"
+        - "Agent category mappings from agent-categories.yml"
+      related_spec_sections:
+        - "orchestration-executor-specification.yml#agent_routing.valid_types"
+        - "orchestration-executor-specification.yml#agent_routing.validation_rules.manifest_alignment"
+        - "agent-categories.yml#categories"
+
+  feedback_trigger_test:
+    id: "FEEDBACK_TRIGGER_TEST"
+    name: "Feedback Trigger Handling Validation"
+    purpose: "Verify executor handles failure scenarios correctly"
+    description: |
+      Validates that the orchestration executor correctly detects feedback triggers
+      from agent outputs and executes appropriate response actions. Tests retry
+      logic, re-planning delegation, escalation paths, and iteration limits.
+
+    test_cases:
+      test_failure_with_retry:
+        id: "TRIGGER_001"
+        name: "TEST_FAILURE with retry allowed re-runs test phase"
+        description: "Verify executor retries test phase when failures occur within iteration limit"
+        inputs:
+          phase_name: "Integration_Test"
+          current_iteration: 1
+          max_iterations: 5
+          agent_output:
+            status: "failed"
+            test_results:
+              tests_run: 42
+              tests_passed: 39
+              tests_failed: 3
+              failures:
+                - test: "test_user_authentication"
+                  error: "AssertionError: Expected 200, got 401"
+                - test: "test_data_validation"
+                  error: "TypeError: NoneType has no attribute 'items'"
+                - test: "test_api_response"
+                  error: "TimeoutError: Request timed out after 30s"
+          feedback_triggers:
+            TEST_FAILURE: "retry(5)"
+        expected_outputs:
+          trigger_detected: "TEST_FAILURE"
+          response_action: "retry"
+          new_iteration: 2
+          phase_status: "in_progress"
+          builder_context:
+            failure_type: "TEST_FAILURE"
+            failures: 3
+            failure_details:
+              - "test_user_authentication: AssertionError"
+              - "test_data_validation: TypeError"
+              - "test_api_response: TimeoutError"
+            instruction: "Fix failing tests based on error messages"
+        validation_criteria:
+          - "TEST_FAILURE trigger detected from agent output"
+          - "Retry action selected (iteration < max)"
+          - "Iteration counter incremented"
+          - "Builder agent re-spawned with failure context"
+          - "Test phase re-runs after builder fix"
+
+      test_failure_max_iterations:
+        id: "TRIGGER_002"
+        name: "TEST_FAILURE at max iterations escalates to planning"
+        description: "Verify executor escalates when retry limit reached"
+        inputs:
+          phase_name: "Integration_Test"
+          current_iteration: 5
+          max_iterations: 5
+          agent_output:
+            status: "failed"
+            test_results:
+              tests_run: 42
+              tests_passed: 40
+              tests_failed: 2
+          feedback_triggers:
+            TEST_FAILURE: "retry(5)"
+        expected_outputs:
+          trigger_detected: "TEST_FAILURE"
+          response_action: "escalate_to_planning"
+          phase_status: "blocked"
+          escalation_context:
+            failure_type: "TEST_FAILURE"
+            iterations_attempted: 5
+            remaining_failures: 2
+            pattern_analysis: "Persistent test failures after 5 fix attempts"
+          planning_delegation:
+            target_agent: "orchestration-planning"
+            context_provided:
+              - "Original plan path"
+              - "Iteration history with failure patterns"
+              - "Most recent test output"
+        validation_criteria:
+          - "Max iteration limit detected"
+          - "No further retry attempted"
+          - "Phase marked as blocked pending re-plan"
+          - "Full failure context packaged for planning agent"
+          - "orchestration-planning invoked with context"
+
+      cicd_failure_triggers_replan:
+        id: "TRIGGER_003"
+        name: "CICD_FAILURE delegates to orchestration-planning"
+        description: "Verify executor delegates CI/CD failures to planning agent"
+        inputs:
+          phase_name: "CI_CD_Validation"
+          current_iteration: 1
+          agent_output:
+            status: "failed"
+            cicd_results:
+              validation_status: "invalid"
+              errors:
+                - type: "configuration_error"
+                  file: ".github/workflows/ci.yml"
+                  message: "Invalid workflow syntax at line 42"
+                - type: "integration_error"
+                  message: "Job 'test' references undefined secret 'API_KEY'"
+          feedback_triggers:
+            CICD_FAILURE: "re_plan"
+        expected_outputs:
+          trigger_detected: "CICD_FAILURE"
+          response_action: "re_plan"
+          phase_status: "blocked"
+          planning_delegation:
+            target_agent: "orchestration-planning"
+            failure_context:
+              failure_type: "CICD_FAILURE"
+              failure_category: "configuration_error"
+              affected_files:
+                - ".github/workflows/ci.yml"
+              error_details:
+                - "Invalid workflow syntax at line 42"
+                - "Undefined secret 'API_KEY'"
+              original_plan_path: "current_plan_path"
+        validation_criteria:
+          - "CICD_FAILURE trigger detected"
+          - "re_plan action selected (not retry)"
+          - "orchestration-planning receives full context"
+          - "Affected files and error details included"
+          - "Execution pauses until new plan approved"
+
+      guidance_gap_triggers_teaching:
+        id: "TRIGGER_004"
+        name: "GUIDANCE_GAP triggers teaching loop"
+        description: "Verify executor routes guidance gaps to teaching workflow"
+        inputs:
+          phase_name: "Guidance_Validation"
+          agent_output:
+            status: "failed"
+            guidance_complete: false
+            friction_report:
+              agent: "build-python"
+              gaps_found: 3
+              friction_points:
+                - severity: "HIGH"
+                  issue: "inputs.yml missing required path"
+                  guidance_gap: "pyproject.toml location not specified"
+                - severity: "MEDIUM"
+                  issue: "process.yml step ambiguous"
+                  guidance_gap: "Build step lacks error handling guidance"
+                - severity: "LOW"
+                  issue: "outputs.yml incomplete"
+                  guidance_gap: "Build artifacts not fully specified"
+          feedback_triggers:
+            GUIDANCE_GAP: "re_plan"
+        expected_outputs:
+          trigger_detected: "GUIDANCE_GAP"
+          response_action: "re_plan"
+          gap_categorization:
+            category: "guidance"
+            severity: "HIGH"
+            affected_agents:
+              - "build-python"
+          planning_delegation:
+            target_agent: "planner-guidance"
+            context:
+              friction_report: "full_report_included"
+              gap_category: "guidance"
+              affected_agents:
+                - "build-python"
+          remediation_path:
+            - "planner-guidance creates remediation plan"
+            - "teacher-update-guidance executes fixes"
+            - "guidance validation re-runs"
+        validation_criteria:
+          - "GUIDANCE_GAP trigger detected"
+          - "Friction points categorized by severity"
+          - "planner-guidance receives friction report"
+          - "Teaching loop initiated for remediation"
+          - "Re-validation scheduled after fixes"
+
+      multiple_simultaneous_failures:
+        id: "TRIGGER_005"
+        name: "Handle multiple simultaneous failures"
+        description: "Verify executor handles multiple failure types in single output"
+        inputs:
+          phase_name: "Integration_Test"
+          current_iteration: 1
+          agent_output:
+            status: "failed"
+            test_results:
+              tests_failed: 5
+            guidance_complete: false
+            friction_points:
+              - severity: "MEDIUM"
+                issue: "Test configuration unclear"
+        expected_outputs:
+          triggers_detected:
+            - "TEST_FAILURE"
+            - "GUIDANCE_GAP"
+          priority_order:
+            - trigger: "GUIDANCE_GAP"
+              reason: "Guidance issues may cause test failures"
+            - trigger: "TEST_FAILURE"
+              reason: "Address after guidance fixed"
+          response_action: "sequential_handling"
+          handling_sequence:
+            - step: 1
+              trigger: "GUIDANCE_GAP"
+              action: "Route to planner-guidance"
+            - step: 2
+              trigger: "TEST_FAILURE"
+              action: "Re-evaluate after guidance fix (may resolve)"
+        validation_criteria:
+          - "All failure types detected from output"
+          - "Failures prioritized by root cause likelihood"
+          - "Guidance gaps addressed before test retries"
+          - "Test failures re-evaluated after guidance fix"
+          - "Clear handling sequence logged"
+
+    success_criteria:
+      - "All trigger types correctly detected from agent output"
+      - "Retry logic respects iteration limits"
+      - "Escalation invoked when limits reached"
+      - "Planning delegation includes full failure context"
+      - "Multiple failures handled in priority order"
+
+    notes:
+      test_data_requirements:
+        - "Sample agent outputs with various failure patterns"
+        - "Iteration history records for max-iteration scenarios"
+        - "Friction reports from test-guidance-simulator"
+      related_spec_sections:
+        - "orchestration-executor-specification.yml#feedback_triggers"
+        - "orchestration-executor-specification.yml#feedback_triggers.max_iterations_handling"
+        - "agent-loops.yml#test-fix-loop"
+
+  state_persistence_test:
+    id: "STATE_PERSISTENCE_TEST"
+    name: "State Persistence and Resume Validation"
+    purpose: "Verify executor maintains state across phases and interruptions"
+    description: |
+      Validates that the orchestration executor correctly persists execution state
+      in both Plan-MMD STATUS headers and plan YAML files. Tests state synchronization,
+      resume capability after interruption, and final state accuracy.
+
+    test_cases:
+      execute_partial_phases:
+        id: "STATE_001"
+        name: "Execute 5-phase plan, complete phases 1-3"
+        description: "Verify state updates correctly as phases complete"
+        inputs:
+          plan_mmd:
+            phases:
+              - "Environment_Setup"
+              - "Domain_Build"
+              - "Integration_Build"
+              - "Test_Execution"
+              - "CICD_Validation"
+            initial_status:
+              Environment_Setup: "pending"
+              Domain_Build: "pending"
+              Integration_Build: "pending"
+              Test_Execution: "pending"
+              CICD_Validation: "pending"
+          execution_sequence:
+            - phase: "Environment_Setup"
+              outcome: "completed"
+              duration: "15m"
+            - phase: "Domain_Build"
+              outcome: "completed"
+              duration: "25m"
+            - phase: "Integration_Build"
+              outcome: "completed"
+              duration: "20m"
+        expected_outputs:
+          mmd_status_header: "Environment_Setup=completed, Domain_Build=completed, Integration_Build=completed, Test_Execution=pending, CICD_Validation=pending"
+          yaml_state:
+            phases:
+              - name: "Environment_Setup"
+                status: "completed"
+                started_at: "timestamp"
+                completed_at: "timestamp"
+                agent_used: "deploy-worktree"
+              - name: "Domain_Build"
+                status: "completed"
+                started_at: "timestamp"
+                completed_at: "timestamp"
+                agent_used: "build-python"
+              - name: "Integration_Build"
+                status: "completed"
+                started_at: "timestamp"
+                completed_at: "timestamp"
+                agent_used: "build-python"
+              - name: "Test_Execution"
+                status: "pending"
+              - name: "CICD_Validation"
+                status: "pending"
+          state_consistency:
+            mmd_yaml_sync: true
+            phase_order_preserved: true
+        validation_criteria:
+          - "STATUS header shows phases 1-3 completed"
+          - "STATUS header shows phases 4-5 pending"
+          - "YAML has timestamps for completed phases"
+          - "YAML records agent_used for each phase"
+          - "MMD and YAML are synchronized"
+
+      verify_status_header:
+        id: "STATE_002"
+        name: "Verify STATUS header reflects accurate phase states"
+        description: "Validate STATUS header format and content accuracy"
+        inputs:
+          execution_state:
+            completed_phases:
+              - "Phase1"
+              - "Phase2"
+              - "Phase3"
+            in_progress_phase: null
+            pending_phases:
+              - "Phase4"
+              - "Phase5"
+        expected_outputs:
+          status_header_format: "Phase1=completed, Phase2=completed, Phase3=completed, Phase4=pending, Phase5=pending"
+          format_validation:
+            uses_equals_sign: true
+            comma_separated: true
+            phase_order_matches_declaration: true
+            no_extra_whitespace: true
+        validation_criteria:
+          - "Status uses '=' for phase-status assignment"
+          - "Phases are comma-separated"
+          - "Phase order matches PHASES header order"
+          - "All phases have status entry"
+          - "Status values are valid (pending, in_progress, completed, etc.)"
+
+      simulate_interruption_resume:
+        id: "STATE_003"
+        name: "Simulate interruption, verify resume at Phase4"
+        description: "Executor resumes correctly after crash/interruption"
+        inputs:
+          pre_interruption_state:
+            mmd_status: "Phase1=completed, Phase2=completed, Phase3=completed, Phase4=in_progress, Phase5=pending"
+            yaml_state:
+              phases:
+                - name: "Phase4"
+                  status: "in_progress"
+                  started_at: "2025-01-10T14:00:00Z"
+                  iteration: 1
+          interruption_type: "session_timeout"
+        expected_outputs:
+          resume_point_detection:
+            method: "yaml_status_scan"
+            identified_phase: "Phase4"
+            identified_status: "in_progress"
+            reason: "Phase4 has status 'in_progress' in YAML"
+          resume_behavior:
+            action: "restart_phase_from_beginning"
+            context_restored:
+              - "iteration_count: 1"
+              - "started_at preserved"
+            increment_iteration: true
+            new_iteration: 2
+          post_resume_state:
+            mmd_status: "Phase1=completed, Phase2=completed, Phase3=completed, Phase4=in_progress, Phase5=pending"
+            phase4_iteration: 2
+        validation_criteria:
+          - "Executor detects in_progress phase from YAML"
+          - "Resume starts at Phase4 (not Phase1)"
+          - "Iteration count incremented (crash = failed attempt)"
+          - "Previous context (started_at) preserved"
+          - "No completed phases re-executed"
+
+      complete_remaining_verify_final:
+        id: "STATE_004"
+        name: "Complete remaining phases, verify final state"
+        description: "Verify final state after full plan completion"
+        inputs:
+          resume_state:
+            mmd_status: "Phase1=completed, Phase2=completed, Phase3=completed, Phase4=in_progress, Phase5=pending"
+          remaining_execution:
+            - phase: "Phase4"
+              outcome: "completed"
+            - phase: "Phase5"
+              outcome: "completed"
+        expected_outputs:
+          final_mmd_status: "Phase1=completed, Phase2=completed, Phase3=completed, Phase4=completed, Phase5=completed"
+          final_yaml_state:
+            phases:
+              - name: "Phase1"
+                status: "completed"
+              - name: "Phase2"
+                status: "completed"
+              - name: "Phase3"
+                status: "completed"
+              - name: "Phase4"
+                status: "completed"
+              - name: "Phase5"
+                status: "completed"
+            execution_summary:
+              total_phases: 5
+              completed_phases: 5
+              failed_phases: 0
+              total_iterations: 7
+          archival_triggered: true
+          archive_location: "docs/plans/completed/"
+        validation_criteria:
+          - "All phases show completed status"
+          - "MMD and YAML fully synchronized"
+          - "Execution summary generated"
+          - "Plan folder archived to completed/"
+          - "No data loss during full execution"
+
+      state_conflict_resolution:
+        id: "STATE_005"
+        name: "Handle MMD-YAML state conflict"
+        description: "Verify YAML is trusted when states conflict"
+        inputs:
+          conflicting_state:
+            mmd_status: "Phase1=completed, Phase2=completed, Phase3=pending"
+            yaml_state:
+              phases:
+                - name: "Phase1"
+                  status: "completed"
+                - name: "Phase2"
+                  status: "in_progress"
+                - name: "Phase3"
+                  status: "pending"
+        expected_outputs:
+          conflict_detected: true
+          conflict_details:
+            phase: "Phase2"
+            mmd_status: "completed"
+            yaml_status: "in_progress"
+          resolution:
+            source_of_truth: "yaml"
+            action: "regenerate_mmd_status"
+            resolved_mmd_status: "Phase1=completed, Phase2=in_progress, Phase3=pending"
+          warning_logged: true
+          warning_message: "MMD STATUS conflicted with YAML for Phase2. YAML trusted. MMD regenerated."
+        validation_criteria:
+          - "Conflict detected during state load"
+          - "YAML status trusted as source of truth"
+          - "MMD STATUS regenerated from YAML"
+          - "Warning logged for diagnostics"
+          - "Execution proceeds with YAML state"
+
+    success_criteria:
+      - "State persists correctly across all phase transitions"
+      - "Resume identifies correct restart point"
+      - "Iteration counts preserved through interruptions"
+      - "MMD-YAML conflicts resolved with YAML as truth"
+      - "Final state accurately reflects full execution"
+
+    notes:
+      test_data_requirements:
+        - "Sample 5-phase plan MMD and YAML files"
+        - "Pre-configured states for various interruption scenarios"
+        - "Conflicting state examples for resolution testing"
+      related_spec_sections:
+        - "orchestration-executor-specification.yml#state_model"
+        - "orchestration-executor-specification.yml#state_model.resume_capability"
+        - "orchestration-executor-specification.yml#state_model.persistence.sync_protocol"
+
+# =============================================================================
+# TEST EXECUTION GUIDANCE
+# =============================================================================
+
+test_execution_guidance:
+  execution_order:
+    description: "Recommended order for executing test scenarios"
+    order:
+      - scenario: "MMD_PARSING_TEST"
+        reason: "Parsing is prerequisite for all other functionality"
+      - scenario: "AGENT_ROUTING_TEST"
+        reason: "Routing must work before execution can proceed"
+      - scenario: "FEEDBACK_TRIGGER_TEST"
+        reason: "Failure handling critical for robust execution"
+      - scenario: "STATE_PERSISTENCE_TEST"
+        reason: "State management enables resume and tracking"
+
+  test_environment:
+    requirements:
+      - "Access to sample Plan-MMD files"
+      - "Mock agent spawn capability"
+      - "Writable plan folder for state persistence"
+      - "Sample orchestrator manifest.yml files"
+
+  isolation:
+    description: "Each test case should run in isolation"
+    requirements:
+      - "Fresh state for each test case"
+      - "No cross-test dependencies"
+      - "Rollback state after each test"
+
+  reporting:
+    format: "structured_test_report"
+    fields:
+      - "scenario_id"
+      - "test_case_id"
+      - "result: pass | fail | skip"
+      - "actual_output"
+      - "expected_output"
+      - "validation_failures"
+      - "duration"
+
+# =============================================================================
+# RELATED ARTIFACTS
+# =============================================================================
+
+related_artifacts:
+  specification: "modules/AgenticGuidance/assets/definitions/orchestration-executor-specification.yml"
+  guidance_test_scenarios: "modules/AgenticGuidance/assets/definitions/guidance-test-scenarios.yml"
+  plan_mmd_schema: "modules/AgenticGuidance/assets/definitions/plan-mmd-schema.yml"
+  agent_loops: "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+  agent_categories: "modules/AgenticGuidance/assets/definitions/agent-categories.yml"

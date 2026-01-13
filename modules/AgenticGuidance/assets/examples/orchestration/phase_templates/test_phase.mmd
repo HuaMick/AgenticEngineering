@@ -1,0 +1,99 @@
+flowchart LR
+    %% ========================================
+    %% TEST PHASE COMPONENT
+    %% ========================================
+    %% GOAL: Plan test strategy using planner-test + reviewer loop with test-fix-loop integration.
+    %% PROFILE: Planner-Component-Test
+    %% COMPONENT_TYPE: Reusable phase component for orchestration plans
+    %% USAGE: Planners incorporate this pattern when test planning is required.
+    %%
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.planner-loop
+    %% MAX_ITERATIONS: 5 (per planner-loop definition)
+    %% ESCALATION: If max iterations reached without approval, stop and Ask User
+    %%
+    %% INTEGRATED LOOP: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.test-fix-loop
+    %% TEST-FIX MAX_ITERATIONS: 5 (per test-fix-loop definition)
+    %%
+    %% INPUTS (expected from orchestrator):
+    %% - build_plan: Reference to approved build plan for test coverage
+    %% - target_project_path: Project root for test execution
+    %% - test_scope: Unit, integration, e2e, or combination
+    %%
+    %% EXIT CONDITIONS:
+    %% - Success: Test plan approved with test-fix-loop structure defined
+    %% - Escalate: Max iterations reached or cannot create valid plan
+
+    %% ========================================
+    %% ENTRY POINT
+    %% ========================================
+    %% Assumes phase determination has identified testing as needed.
+    TestPhaseStart((Test Phase)) --> SpawnPlannerTest[Spawn planner-test Agent]
+
+    %% ========================================
+    %% PLANNER-LOOP: PLAN CREATION
+    %% ========================================
+    %% planner-test creates test strategy plan with coverage mapping.
+    %% Plan includes: test types, agents, exit conditions, failure handling.
+    SpawnPlannerTest --> PlanCreated{Plan Created?}
+
+    PlanCreated -- "No: Error" --> EscalateTest((Escalate: Cannot Create Plan))
+    PlanCreated -- "Yes" --> SpawnReviewer[Spawn planner-reviewer Agent]
+
+    %% ========================================
+    %% PLANNER-LOOP: REVIEW ITERATION
+    %% ========================================
+    %% REVIEWER CRITERIA:
+    %% - Coverage strategy aligned with build plan
+    %% - Test types appropriate for scope (unit, integration, e2e)
+    %% - Clear exit conditions and failure escalation
+    SpawnReviewer --> ReviewResult{Plan Approved?}
+
+    %% Iterative refinement loop
+    subgraph PlannerLoop_SG ["Planner-Loop Subgraph"]
+        ReviewResult -- "No: Refine" --> CaptureFeedback[Capture Reviewer Feedback]
+        CaptureFeedback --> CheckIterations{Max Iterations?}
+        CheckIterations -- "No: Continue" --> SpawnPlannerTestFix[Spawn planner-test Agent]
+        SpawnPlannerTestFix --> SpawnReviewer
+        CheckIterations -- "Yes: Limit Reached" --> EscalateTest
+    end
+
+    %% Approved plan requires test-fix-loop structure verification
+    ReviewResult -- "Yes: Approved" --> VerifyTestFixLoop[Verify Test-Fix-Loop Structure]
+
+    %% ========================================
+    %% TEST-FIX-LOOP INTEGRATION
+    %% ========================================
+    %% Test plans MUST define test-fix-loop execution structure.
+    %% This validates the plan includes iterative test/fix capability.
+    subgraph TestFixLoop_SG ["Test-Fix-Loop Integration Subgraph"]
+        %% Test-fix-loop execution pattern:
+        %% 1. Test agents execute test suite
+        %% 2. Failures captured in structured format
+        %% 3. Build agents fix failures
+        %% 4. Loop until all pass or max iterations
+        VerifyTestFixLoop --> CheckTestAgents{Test Agents Defined?}
+        CheckTestAgents -- "Yes" --> CheckFailureCapture{Failure Capture Defined?}
+        CheckFailureCapture -- "Yes" --> CheckBuildAgents{Build Agents for Fixes?}
+        CheckBuildAgents -- "Yes" --> CheckExitConditions{Exit Conditions Clear?}
+        CheckExitConditions -- "Yes" --> LoopValid[Test-Fix-Loop Valid]
+
+        %% Missing components trigger refinement with specific feedback
+        CheckTestAgents -- "No" --> MissingComponent[Flag Missing Component]
+        CheckFailureCapture -- "No" --> MissingComponent
+        CheckBuildAgents -- "No" --> MissingComponent
+        CheckExitConditions -- "No" --> MissingComponent
+        MissingComponent -.->|Return with feedback| CaptureFeedback
+    end
+
+    LoopValid --> TestPhaseComplete((Test Phase Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef entrypoint fill:#90EE90,stroke:#228B22
+    classDef exitpoint fill:#FFB6C1,stroke:#DC143C
+    classDef dashedstroke stroke-dasharray: 5 5
+    class TestPhaseStart,TestPhaseComplete entrypoint
+    class EscalateTest exitpoint
+    %% Dashed line for feedback loop
+    linkStyle 14 stroke:#888,stroke-width:2px,stroke-dasharray: 5 5

@@ -1,15 +1,109 @@
-acceptable_skips: |
-  Only the following test skips are acceptable:
+# Acceptable Test Skips Definition
+# Defines criteria for when test skips are acceptable vs. requiring remediation
+# Used by: test-audit, test-runner
 
-  1. **Registry Authentication Tests** (5 tests):
-     - Require GCP Artifact Registry credentials
-     - Skip reason: "Registry authentication packages not available"
-     - These are integration tests requiring external GCP infrastructure
+acceptable_skips:
+  description: |
+    Not all skipped tests are problems. This definition provides criteria for
+    distinguishing between acceptable skips (temporary, documented, intentional)
+    and problematic skips (forgotten, undocumented, stale).
 
-  2. **Shellcheck Test** (1 test):
-     - Requires shellcheck binary installed
-     - Skip reason: "shellcheck not found"
-     - This is optional validation tooling
+  categories:
+    infrastructure_dependency:
+      description: "Tests requiring infrastructure not available in test environment"
+      acceptable_when:
+        - "Skip reason clearly states infrastructure requirement"
+        - "Infrastructure is genuinely unavailable (not just inconvenient)"
+        - "Tracking issue exists for enabling test when infrastructure available"
+      examples:
+        - "Requires external API not available in CI"
+        - "Requires database seed data from production"
+        - "Requires hardware device (mobile, IoT)"
 
-  Any other skips indicate a problem that needs to be fixed.
-  Especially: Studio tests should NOT skip - start Studio first.
+    platform_specific:
+      description: "Tests only applicable on certain platforms"
+      acceptable_when:
+        - "Skip condition is platform-based (sys.platform, os detection)"
+        - "Test is genuinely platform-specific (not just untested elsewhere)"
+      examples:
+        - "Windows-only registry operations"
+        - "macOS-specific Keychain access"
+        - "Linux-only systemd integration"
+
+    feature_flag:
+      description: "Tests for features behind flags or not yet enabled"
+      acceptable_when:
+        - "Feature flag is documented and intentional"
+        - "Test will run when flag enabled"
+        - "Skip reason references feature flag"
+      examples:
+        - "Feature X not enabled in current release"
+        - "Experimental API behind --enable-experimental"
+
+    known_issue:
+      description: "Tests skipped due to known bugs being tracked"
+      acceptable_when:
+        - "Skip reason includes issue tracker reference (e.g., #1234)"
+        - "Issue is actively tracked and not stale (< 90 days)"
+        - "Issue has clear owner or milestone"
+      examples:
+        - "Skip: Known flaky test, tracking in #1234"
+        - "Skip: Blocked by upstream bug ISSUE-5678"
+
+    performance_cost:
+      description: "Tests too slow for regular CI runs"
+      acceptable_when:
+        - "Test runs in dedicated performance suite"
+        - "Skip is conditional on CI environment"
+        - "Full test can be run manually or in nightly builds"
+      examples:
+        - "Load test runs in nightly suite only"
+        - "Skip in CI, run manually for perf validation"
+
+  unacceptable_patterns:
+    description: "Skip patterns that indicate problems requiring remediation"
+    patterns:
+      - pattern: "TODO"
+        severity: "high"
+        reason: "Indefinite skip without tracking"
+        remediation: "Add issue tracker reference or remove skip"
+
+      - pattern: "Skip for now"
+        severity: "high"
+        reason: "Vague, no timeline or tracking"
+        remediation: "Document specific reason and add issue reference"
+
+      - pattern: "Broken"
+        severity: "critical"
+        reason: "Test detecting real issue is being suppressed"
+        remediation: "Fix the underlying issue or document why acceptable"
+
+      - pattern: "Flaky"
+        severity: "medium"
+        reason: "Non-determinism in test suite"
+        remediation: "Fix flakiness root cause, don't just skip"
+
+      - pattern: "Skip"
+        severity: "low"
+        reason: "No reason provided"
+        remediation: "Add skip reason documenting why skip is acceptable"
+
+  audit_checklist:
+    description: "Questions test-audit should ask for each skip"
+    questions:
+      - "Does the skip have a documented reason?"
+      - "Is the skip conditional or blanket?"
+      - "Does the skip reference a tracking issue?"
+      - "Is the tracking issue still active (not closed, not stale)?"
+      - "Is there a plan to remove the skip?"
+      - "Is the skip temporary (< 90 days) or permanent?"
+
+  remediation_guidance:
+    description: "How to address unacceptable skips"
+    steps:
+      - "Identify why the test was skipped"
+      - "If infrastructure issue: document and add tracking issue"
+      - "If flaky: fix root cause (timing, ordering, state)"
+      - "If broken: fix underlying code or test"
+      - "If unclear: contact original author or remove skip and see what breaks"
+      - "Update skip reason to match acceptable categories above"

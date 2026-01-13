@@ -1,0 +1,83 @@
+guideline:
+  name: "Decommissioning Over Deprecation"
+  description: |
+    Prefer complete removal (decommissioning) over soft deprecation when code,
+    agents, or components are no longer needed. Deprecated items become noise
+    that confuses future agents and clutters the codebase.
+
+  inputs:
+    - location: "modules/AgenticGuidance/assets/definitions/signal-and-noise.yml"
+      description: "Stale context is noise that causes attentional drift"
+    - location: "modules/AgenticGuidance/assets/definitions/leftover-folders.yml"
+      description: "Detection and removal of leftover directories"
+
+  rules:
+    - rule: "Decommission by default"
+      description: |
+        When a component, agent, or file is no longer needed, delete it entirely.
+        Do NOT mark it as deprecated and leave it in place.
+      justification: |
+        Deprecated items remain in glob patterns, search results, and file trees.
+        Future agents may read, reference, or accidentally modify them, causing
+        confusion and wasted context tokens. Removal eliminates the noise entirely.
+      characteristics:
+        - "Delete the folder/file completely"
+        - "Update any references to point to the replacement"
+        - "Archive reference documentation in examples/ if patterns are valuable"
+
+    - rule: "Strong case required for deprecation"
+      description: |
+        Deprecation (marking as deprecated but keeping in place) is only acceptable
+        when ALL of the following conditions are met:
+        1. External consumers depend on the component and cannot be updated
+        2. A migration timeline has been established
+        3. The deprecation notice includes a removal date
+        4. There is an active tracking mechanism for the migration
+      justification: |
+        Without these conditions, "deprecated" items become permanent noise.
+        If you don't have external consumers, just delete it.
+
+    - rule: "DEPRECATED.md is temporary"
+      description: |
+        If a DEPRECATED.md file exists, it signals incomplete decommissioning.
+        Cleanup agents should treat DEPRECATED.md as a flag for full removal,
+        not as a permanent state.
+      justification: |
+        DEPRECATED.md files are a waypoint, not a destination. The cleanup phase
+        should complete the decommissioning that was deferred.
+
+    - rule: "Archive valuable patterns, delete the rest"
+      description: |
+        If a deprecated component contains useful patterns or examples, extract
+        them to assets/examples/ before deletion. Then delete the original.
+      justification: |
+        Preserves knowledge while eliminating noise. Examples are meant to be
+        read; deprecated folders are not.
+      examples:
+        right: |
+          - Copy orchestration-build/process.mmd to assets/examples/orchestration/orchestration_build_reference.mmd
+          - Delete modules/AgenticGuidance/agents/orchestration/orchestration-build/
+        wrong: |
+          - Leave orchestration-build/ with DEPRECATED.md indefinitely
+          - Keep both the example copy AND the deprecated folder
+
+  anti_patterns:
+    - "Creating DEPRECATED.md files without a removal timeline"
+    - "Leaving deprecated folders that have no external consumers"
+    - "Marking internal-only components as deprecated instead of deleting"
+    - "Keeping deprecated code for hypothetical future reference"
+    - "Assuming deprecation is safer than deletion"
+
+  decision_checklist:
+    question: "Should I deprecate or decommission this component?"
+    steps:
+      - "Does it have external consumers outside this repository? If NO -> Decommission"
+      - "Can all internal references be updated in this session? If YES -> Decommission"
+      - "Is there a hard external dependency? If NO -> Decommission"
+      - "If deprecation is unavoidable: Set a removal date and track it"
+
+  related_guidelines:
+    - location: "modules/AgenticGuidance/assets/guidelines/context-minimisation.yml"
+      description: "Reducing information noise"
+    - location: "modules/AgenticGuidance/assets/guidelines/less-is-more.yml"
+      description: "Minimal sufficient change principles"

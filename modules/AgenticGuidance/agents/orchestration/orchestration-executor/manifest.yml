@@ -1,0 +1,89 @@
+name: orchestration-executor
+description: |
+  Generic MMD-driven orchestration executor. Reads Plan-MMD files and dynamically
+  routes execution to appropriate agents based on AGENT_ROUTING metadata.
+# Version scheme: X.Y where X = architecture version, Y = iteration
+# 2.0 = reference layer architecture
+version: "2.0"
+
+purpose: |
+  Orchestration-executor is a RUNTIME engine that reads Plan-MMD flowcharts and
+  executes them dynamically. Unlike orchestration-build (hardcoded flows), this
+  executor determines agent routing from MMD metadata at runtime.
+
+  SCOPE: Execution only. Does NOT perform planning.
+  INPUT: Pre-approved plan folder with plan YAML and orchestration MMD
+  OUTPUT: Execution status, phase completion, state updates
+
+# Specification reference (959 lines of detailed behavior)
+specification: "modules/AgenticGuidance/assets/definitions/orchestration-executor-specification.yml"
+
+# FENCE: Only agents listed in spawns may be invoked by this orchestrator
+# This is the comprehensive list - actual routing determined by MMD AGENT_ROUTING
+spawns:
+  # Builders
+  - agent: "build-python"
+    routing_type: "builder"
+    purpose: "Python code implementation"
+
+  - agent: "build-flutter"
+    routing_type: "builder"
+    purpose: "Flutter/Dart code implementation"
+
+  # Testers
+  - agent: "test-runner"
+    routing_type: "tester"
+    purpose: "Execute tests and report results"
+
+  - agent: "test-guidance-simulator"
+    routing_type: "tester"
+    purpose: "Execute guidance blind tests"
+
+  - agent: "test-final-output"
+    routing_type: "auditor"
+    purpose: "Validate final outputs"
+
+  - agent: "test-audit"
+    routing_type: "auditor"
+    purpose: "Audit test quality and coverage"
+
+  # Deployers
+  - agent: "deploy-worktree"
+    routing_type: "deployer"
+    purpose: "Create/verify worktree and plan folder"
+
+  - agent: "deploy-cicd"
+    routing_type: "deployer"
+    purpose: "CI/CD configuration validation"
+
+  # Teachers
+  - agent: "teacher-update-guidance"
+    routing_type: "teacher"
+    purpose: "Execute guidance improvements"
+
+  - agent: "teacher-update-assets"
+    routing_type: "teacher"
+    purpose: "Create/update shared assets"
+
+  # Cleaners
+  - agent: "planner-cleaning"
+    routing_type: "cleaner"
+    purpose: "Plan cleanup phases"
+
+  # Re-planning (for feedback loops)
+  - agent: "orchestration-planning"
+    routing_type: "planner"
+    purpose: "Re-plan on failure (TEST_FAILURE, CICD_FAILURE, etc.)"
+
+inputs:
+  - type: "file"
+    path: "modules/AgenticGuidance/agents/orchestration/orchestration-executor/inputs.yml"
+    description: "Executor inputs including specification and schema references"
+
+outputs:
+  - type: "execution_status"
+    description: "completed | blocked | failed"
+  - type: "phase_report"
+    description: "Status of each phase executed"
+  - type: "state_updates"
+    description: "Updated STATUS in MMD and plan YAML"

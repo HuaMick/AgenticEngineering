@@ -3,21 +3,75 @@ process:
     Execute existing tests and accurately report their status. Identify defects through test failures.
 
   loop_definitions:
-    reference: "assets/definitions/agent-loops.yml"
+    reference: "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
     description: "Loop types (test-fix-loop) defined in agent-loops.yml"
     # NOTE: Do not duplicate loop definitions here - see agent-loops.yml for full definitions
 
+  # ==============================================
+  # LOOP CONTEXT
+  # ==============================================
+  # Specifies how this agent participates in iterative loops
+  # ==============================================
+  loop_context:
+    participates_in:
+      - "test-fix-loop"
+    role: "executor"
+    description: |
+      test-runner acts as the executor in the test-fix-loop. It runs tests, captures
+      results, and reports findings back to the orchestrator without attempting fixes.
+    iteration_strategy: |
+      Each iteration executes the assigned test scope and reports results. The agent
+      does NOT fix issues - it reports failures to the orchestrator, which spawns
+      builder agents to address them. After fixes, test-runner is re-invoked to
+      verify the fix resolved the issue.
+    max_iterations: 5
+    escalation_on_max: "Report unresolved failures to orchestrator for manual review"
+    exit_conditions:
+      - "All tests in assigned scope pass"
+      - "All failures have been reported to orchestrator"
+      - "Orchestrator signals loop termination"
+    state_management: |
+      test-runner is stateless between iterations. Each invocation receives the
+      test scope and any previous results as input context.
+
   inputs:
-    - location: "agents/test/test-runner/inputs.yml"
+    - location: "modules/AgenticGuidance/agents/test/test-runner/inputs.yml"
       description: "Core test agent inputs and guidelines"
 
-  outputs: []
+  outputs:
+    - name: "test_results_report"
+      description: "Summary of test execution results including pass/fail/skip counts"
+      location: "Returned to orchestrator"
+      schema:
+        total_tests: "integer"
+        passed: "integer"
+        failed: "integer"
+        skipped: "integer"
+        execution_time: "string - duration"
+        environment: "string - local or docker"
+    - name: "failure_details"
+      description: "Detailed failure information for each failing test"
+      location: "Returned to orchestrator; optionally updated in live plan"
+      schema:
+        - test_name: "string"
+          component: "string"
+          failure_description: "string"
+          expected_behavior: "string"
+          actual_behavior: "string"
+          files_involved: "array of strings"
+          evidence: "string - actual test output, error messages, stack trace"
+    - name: "skip_analysis"
+      description: "Analysis of skipped tests against acceptable-skips criteria"
+      location: "Returned to orchestrator"
+      schema:
+        - test_name: "string"
+          skip_reason: "string"
+          verdict: "enum(acceptable, needs_investigation)"
 
   steps:
     - |
       Review all inputs if an input cannot be found do not proceed.
-      If an input is found in a different location, update the path and flag
-      the discrepancy in your output.
+      If an input is found in a different location, note the discrepancy in your output report.
     - |
       Discover tests to run:
       - Identify the relevant test directory or markers based on the plan.
@@ -41,8 +95,9 @@ process:
       - STRICTLY ADHERE to the rule: DO NOT FIX ANYTHING.
 
   guidelines:
-    # Core guidelines: See assets/guidelines/ (fix-the-source.yml, context-minimisation.yml, response-audit.yml, testing.yml, reward-hacking-prevention.yml, safety.yml)
-    # Core definitions: See assets/definitions/ (plans.yml, workflows.yml, domains.yml, entrypoints.yml, test-roles.yml, test-execution-workflow.yml, acceptable-skips.yml, strategy-*.yml)
+    # Core guidelines: See modules/AgenticGuidance/assets/guidelines/ (fix-the-source.yml, context-minimisation.yml, response-audit.yml, testing.yml, reward-hacking-prevention.yml, safety.yml)
+    # Core definitions: See modules/AgenticGuidance/assets/definitions/ (plans.yml, workflows.yml, domains.yml, entrypoints.yml, test-roles.yml, acceptable-skips.yml, strategy-*.yml)
+    # Test guidelines: See modules/AgenticGuidance/assets/guidelines/ (test-execution-workflow.yml)
     # Test runner specifics: See inputs.yml for test_runner_role, test_execution_workflow, acceptable_skips, failure_reporting, evidence_based_reporting, reward_hacking_prevention
     - |
       NEVER debug or fix issues you find. Your job is purely OBSERVATION and REPORTING.

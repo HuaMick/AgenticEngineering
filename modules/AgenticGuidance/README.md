@@ -1,90 +1,169 @@
 # AgenticGuidance
 
-> **Note**: This project is in early development. This document describes the module's purpose and direction, not its current implementation state.
+The guidance layer for Claude Code sessions within the AgenticEngineering ecosystem. AgenticGuidance provides structured agents, definitions, guidelines, and examples that shape how Claude Code works on complex tasks.
 
-The guidance layer for Claude Code sessions within the AgenticEngineering ecosystem. AgenticGuidance provides the constraints, patterns, and behavioral rules that shape how Claude Code works.
-
-## Purpose
-
-Claude Code is the agent. AgenticGuidance provides the **knowledge layer** that helps Claude Code work more effectively by supplying:
-
-- **Definitions**: Stable concepts and terminology ("what is X?")
-- **Guidelines**: Behavioral rules and constraints ("how to act")
-- **Patterns**: Reusable approaches for common situations
-- **Boundaries**: Scope limits that prevent drift
-
-The goal is focused, consistent agent behavior through minimal, well-structured guidance.
-
-## Current State
-
-**Implemented**: Nothing yet. This directory is a placeholder for future development.
-
-**Planned**: A structured system for organizing and delivering guidance to Claude Code sessions.
-
-## Design Direction
-
-### Core Guidance Types
-
-Based on patterns from the legacy MyAgentsGuidance system, guidance falls into two primary categories:
-
-| Type | Purpose | Character |
-|------|---------|-----------|
-| **Definitions** | Name concepts and explain meaning | Descriptive ("what it is") |
-| **Guidelines** | Shape behavior and decisions | Prescriptive ("what to do") |
-
-**Definitions** should be:
-- Stable, concise, and broadly applicable
-- Reusable across different contexts
-- Free of project-specific details where possible
-
-**Guidelines** should be:
-- Actionable and testable where possible
-- Include minimal rationale to prevent misapplication
-- Reference definitions rather than duplicating explanations
-
-### Foundational Principles
-
-These principles from the legacy system inform the direction:
-
-**Context Minimization**
-Provide only what's needed. Irrelevant context dilutes attention and increases error risk. Load guidance just-in-time for the current task.
-
-**Less is More**
-Make minimal sufficient changes. Complete requirements without "nice-to-have" additions. Stop when success criteria are met.
-
-**Fix the Source**
-Address root causes, not symptoms. Symptom-masking creates technical debt. Trace problems back to their origin.
-
-### Planned Structure
+## Module Structure
 
 ```
 AgenticGuidance/
-├── definitions/           # Stable concepts
-│   ├── context-minimization.yml
-│   ├── minimal-sufficient-change.yml
-│   └── ...
-├── guidelines/            # Behavioral rules
-│   ├── less-is-more.yml
-│   ├── fix-the-source.yml
-│   └── ...
-├── patterns/              # Reusable approaches (TBD)
-└── examples/              # Reference implementations (TBD)
+├── agents/           # Agent definitions organized by category
+├── assets/           # Shared definitions, guidelines, examples, inputs
+├── entrypoints/      # Top-level workflow entry points
+├── docs/             # Module documentation
+└── userstories/      # User story definitions (legacy reference)
 ```
 
-### Path Resolution
+## Agent Categories
+
+The module contains 6 implemented agent categories with 19 active sub-agents (plus 2 deprecated):
+
+### Planner (6 agents)
+Create executable implementation plans from objectives.
+
+| Agent | Purpose |
+|-------|---------|
+| `planner-build` | Implementation planning for code changes |
+| `planner-test` | Test planning with execution loops |
+| `planner-cleaning` | Cleanup and audit planning |
+| `planner-guidance` | Guidance improvement planning |
+| `planner-guidance-testing` | Guidance completeness testing |
+| `planner-reviewer` | Plan review and approval |
+
+### Orchestration (2 active, 2 deprecated)
+High-level coordination of planning and execution workflows.
+
+| Agent | Purpose |
+|-------|---------|
+| `orchestration-planning` | Human-in-the-loop plan creation + MMD generation |
+| `orchestration-executor` | Dynamic agent routing from Plan-MMD |
+| ~~`orchestration-build`~~ | **DEPRECATED** - replaced by `orchestration-executor` |
+| ~~`orchestration-guidance`~~ | **DEPRECATED** - replaced by `orchestration-executor` |
+
+### Test (7 agents)
+Validation through testing and quality assurance.
+
+| Agent | Purpose |
+|-------|---------|
+| `test-runner` | Execute Python tests and report results |
+| `test-audit` | Review test quality and detect reward hacking |
+| `test-final-output` | Validate final outputs and execution data |
+| `test-guidance-simulator` | Execute walkthrough-based guidance validation |
+| `test-builder` | Build test implementations |
+| `test-service` | Service-level testing |
+| `test-user-simulator` | User interaction simulation |
+
+### Teacher (2 agents)
+Improve agent guidance by building paths, fences, and signposts.
+
+| Agent | Purpose |
+|-------|---------|
+| `teacher-update-guidance` | Improve process.yml and inputs.yml files |
+| `teacher-update-assets` | Create/update shared assets (definitions, guidelines) |
+
+### Build (2 agents)
+Building and compiling code for production deployment.
+
+| Agent | Purpose |
+|-------|---------|
+| `build-python` | Python-specific build for backend services and CLI |
+| `build-flutter` | Flutter-specific build for mobile/web frontend |
+
+### Deploy (2 agents)
+Infrastructure and deployment tooling.
+
+| Agent | Purpose |
+|-------|---------|
+| `deploy-worktree` | Git worktree and VS Code workspace management |
+| `deploy-cicd` | CI/CD pipeline configuration |
+
+## Assets
+
+### Definitions (86 files)
+Stable concepts and terminology that define "what is X". Key definitions include:
+- `context-minimisation.yml` - Core principle for reducing context
+- `agent-categories.yml` - Agent taxonomy
+- `plans.yml` - Plan structure and lifecycle
+- `agent-loops.yml` - Loop patterns for iterative work
+- `fence.yml` / `fence-build-deploy.yml` - Boundary definitions
+- `escalation.yml` - When and how to escalate (moved to guidelines/)
+
+### Guidelines (15 files)
+Behavioral rules and constraints that define "how to act":
+- `less-is-more.yml` - Minimal sufficient changes
+- `fix-the-source.yml` - Address root causes
+- `context-minimisation.yml` - Just-in-time context loading
+- `iteration.yml` - Iterative development approach
+- `testing.yml` - Testing standards
+- `safety.yml` - Safety constraints
+- `reward-hacking-prevention.yml` - Prevent gaming metrics
+- `orchestration-policy.yml` - Orchestration behavior rules
+- `worktree-and-branching.yml` - Git workflow standards
+
+### Examples
+Reference implementations organized by agent category:
+- `planner/` - Plan structure examples, phase templates (build, test, teach, cleanup, UAT)
+- `teacher/` - Concise guidance examples
+- `test/` - Test plan examples, final outcome reports
+- `cleaner/` - Directory preservation rules
+
+### Inputs (11 files)
+Shared input configurations for agents:
+- `core-system.yml` / `core-guidelines.yml` - Base system context
+- `planner-shared.yml` / `planner-core-*.yml` - Planner configurations
+- `test-shared.yml` - Test agent inputs
+- `deploy-shared.yml` / `deploy-minimal.yml` - Deploy configurations
+- `cleaner-shared.yml` - Cleaner configurations
+
+### Test Fixtures
+Test data and fixtures for guidance validation.
+
+## Entrypoints
+
+Three top-level entrypoints for initiating workflows:
+
+| Entrypoint | Purpose |
+|------------|---------|
+| `_plan_build.yml` | Create implementation plans for code changes |
+| `_plan_teach.yml` | Create guidance plans for teaching/documentation |
+| `_orchestrate.yml` | Execute a pre-approved plan |
+
+### Workflow
+
+1. **Planning Phase**: Use `_plan_build.yml` or `_plan_teach.yml` to create a plan
+   - Invokes `orchestration-planning` agent
+   - Spawns `deploy-worktree` for workspace setup
+   - Runs planning loops with specialized planners and reviewers
+   - Outputs approved plan to `docs/plans/live/YYMMDDRepo_Branch/`
+
+2. **Execution Phase**: Use `_orchestrate.yml` to execute the approved plan
+   - Invokes `orchestration-executor` agent
+   - Discovers `orchestration_*.mmd` file in plan folder
+   - Executes phases using dynamic AGENT_ROUTING from MMD metadata
+   - Orchestrates builder, tester, and teacher agents per phase definitions
+
+## Path Resolution
 
 AgenticGuidance uses two path resolution strategies:
 
-| Path Type | Convention | Resolved Against | Example |
-|-----------|------------|------------------|---------|
-| **Module-relative** | Paths NOT starting with `docs/` | AgenticGuidance module root | `assets/`, `agents/`, `definitions/` |
-| **Repo-relative** | Paths starting with `docs/` | Target repository root (at orchestration time) | `docs/userstories/`, `docs/plans/` |
+| Path Type | Convention | Resolved Against |
+|-----------|------------|------------------|
+| Module-relative | Paths NOT starting with `docs/` | AgenticGuidance module root |
+| Repo-relative | Paths starting with `docs/` | Target repository root |
 
-**Why this distinction?**
-- Module-relative paths reference AgenticGuidance's own resources (definitions, guidelines, assets)
-- Repo-relative paths reference artifacts that belong to the target project being worked on (user stories, plans, documentation)
+## Implementation Status
 
-The orchestration layer resolves repo-relative paths against whichever repository AgenticGuidance is operating within.
+**Implemented**:
+- 6 agent categories with 19 active sub-agents (plus 2 deprecated)
+- 86 definition files
+- 15 guideline files
+- 11 shared input configurations
+- 3 entrypoints
+- Example templates for all major workflows
+
+**Not Migrated** (may be deprecated):
+- `cleaner` category (cleanup logic exists in planner-cleaning)
+- `explore` category
+- `documentation` category
 
 ## Relationship to AgenticEngineering
 
@@ -97,53 +176,6 @@ AgenticEngineering/
 │   ├── AgenticFrontend/   # Frontend UI
 │   └── AgenticGuidance/   # This module - guidance layer
 ```
-
-The main `docs/README.md` describes the overall architecture. AgenticGuidance serves the **Guidance Files** component in that architecture:
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                     Claude Code                          │
-└─────────────────────────┬───────────────────────────────┘
-                          │
-         ┌────────────────┼────────────────┐
-         ▼                ▼                ▼
-    ┌─────────┐    ┌───────────┐    ┌───────────┐
-    │   CLI   │    │  Planning │    │  Guidance │  ← AgenticGuidance
-    │ Commands│    │  Folders  │    │   Files   │
-    └─────────┘    └───────────┘    └───────────┘
-```
-
-## Legacy Reference
-
-The `modules/legacy/MyAgents/projects/MyAgentsGuidance/` directory contains the previous guidance system, which organized guidance for a 9-category, 35+ sub-agent framework:
-
-**Key legacy patterns to draw from:**
-- `assets/definitions/`: 70+ definition files covering concepts from context-minimization to test structures
-- `assets/guidelines/`: 15+ guideline files for behavioral rules (less-is-more, fix-the-source, etc.)
-- `assets/examples/`: Project-specific reference implementations
-- YAML-based structure with cross-references between files
-
-**What's different now:**
-- Claude Code's capabilities have advanced, reducing the need for specialized sub-agents
-- Focus shifts from orchestrating many agents to guiding a single, capable agent (Claude Code)
-- Simpler structure needed: fewer categories, more focused guidance
-
-## Aspirations
-
-1. **Deliver focused guidance** that improves Claude Code session quality without overwhelming context
-2. **Capture proven patterns** from actual Claude Code usage (via LangSmith traces when configured)
-3. **Evolve through evidence** - guidance that doesn't improve outcomes should be removed
-4. **Stay minimal** - the best guidance is the guidance you don't need to write
-
-## Contributing
-
-This project follows the AgenticEngineering contribution model:
-
-1. Claude Code works on tasks
-2. Friction points are identified (via traces or manual analysis)
-3. Patterns that address friction are documented as guidance
-4. Guidance is validated through actual use
-5. Ineffective guidance is removed
 
 ---
 

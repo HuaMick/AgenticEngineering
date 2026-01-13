@@ -1,0 +1,85 @@
+# Plan: MMD Bottleneck Remediation
+# Objective: Resolve the deadlock preventing .mmd generation in planning folders.
+# STATUS: COMPLETED - All remediation tasks executed via plan_live_teach_mmd_bottleneck.yml
+
+name: mmd_bottleneck_remediation
+worktree_path: /home/code/AgenticEngineering-agenticguidance
+branch: agenticguidance
+status: completed
+
+# SOLUTION IMPLEMENTED:
+# - Only orchestration-planning generates MMD files (single ownership)
+# - Planners (planner-guidance, planner-build) create YAML only
+# - Handover model: Planner → Orchestrator (generates MMD) → Reviewer
+
+live-plans:
+  - id: MMD-DEADLOCK-001
+    title: Identify and List MMD Orchestration Issues
+    description: |
+      Diagnostics have revealed a structural deadlock preventing the generation of .mmd files
+      during the planning phase, leading to empty live plan folders (except for legacy files).
+
+    phases:
+      - name: Issue Identification (Diagnostic Phase)
+        status: completed
+        tasks:
+          - id: diag_001
+            name: "Audit Approval Deadlock"
+            description: |
+              Identify the catch-22 between the reviewer and orchestrator.
+              - Reviewer (planner-reviewer) expects MMD *before* approval.
+              - Orchestrator (orchestration-planning) only generates MMD *after* approval.
+            status: completed
+
+          - id: diag_002
+            name: "Analyze Guidance Conflicts"
+            description: |
+              Both the orchestration-planning agent (orchestrator) and the planner-guidance
+              agent (planner) have sections for MMD generation, creating confusion over ownership.
+            status: completed
+
+          - id: diag_003
+            name: "Check Planner Step Integration"
+            description: |
+              Verify that the planner-guidance agent's main 'steps' array lacks a trigger
+              for the 'mmd_generation' logic defined later in its process file.
+            status: completed
+
+          - id: diag_004
+            name: "Evaluate Naming Conventions"
+            description: |
+              Detect inconsistencies between {plan_id} (standard) and {plan_name} (derived)
+              placeholders across manifest and process files.
+            status: completed
+
+          - id: diag_005
+            name: "Audit Entrypoint Outputs"
+            description: |
+              Check _plan_teach.yml entrypoint to see if it lists the .mmd file as a
+              declaration of success, influencing agent priority.
+            status: completed
+
+      - name: Remediation Phase
+        status: completed
+        implementation_plan: "plan_live_teach_mmd_bottleneck.yml"
+        tasks:
+          - id: rem_001
+            name: "Resolve Reviewer/Orchestrator Deadlock"
+            description: "Shift MMD generation responsibility or update reviewer fence to allow YAML-only approval first."
+            status: completed
+            resolution: "Consolidated MMD ownership to orchestration-planning only. Sequence is now: Planner → Orchestrator (MMD) → Reviewer"
+          - id: rem_002
+            name: "Standardize MMD Generation Ownership"
+            description: "Clarify if the Planner (draft) or Orchestrator (final) is the canonical author."
+            status: completed
+            resolution: "Orchestrator is canonical author. Removed mmd_generation from planner-guidance and generate_plan_mmd from planner-build."
+          - id: rem_003
+            name: "Fix Planner Step Sequencing"
+            description: "Integrate mmd_generation into the sequential steps of planner-guidance."
+            status: completed
+            resolution: "No longer needed - planners don't generate MMD. Orchestration-planning/process.mmd already has correct sequence."
+          - id: rem_004
+            name: "Update Entrypoint Output Declarations"
+            description: "Add orchestration_*.mmd to the output section of _plan_teach.yml."
+            status: completed
+            resolution: "Not needed - MMD is orchestrator output, not planner output. Entrypoints already reference orchestrator."

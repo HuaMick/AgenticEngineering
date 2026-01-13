@@ -1,0 +1,137 @@
+# Fragment Reference Syntax Documentation
+# Version: 2.0
+# Updated: 2026-01-09
+# Purpose: Document how #fragment references are resolved in AgenticGuidance
+
+definition:
+  name: "Fragment References"
+  description: |
+    Fragment references use the syntax `path/to/file.yml#anchor` to reference
+    a specific section within a YAML file. This allows precise referencing of
+    definitions, categories, or loops without loading the entire file.
+
+syntax:
+  format: "<file_path>#<anchor_path>"
+  dot_notation: |
+    CRITICAL: Fragment anchors support dot-notation for nested keys.
+    The anchor path MUST match the actual file structure.
+
+    Format: file.yml#parent_key.child_key.grandchild_key
+
+  examples:
+    # VALID: Matches actual file structure using dot notation
+    - reference: "agent-categories.yml#agent_categories.planner"
+      resolves_to: "The 'planner' entry under 'agent_categories' top-level key"
+      valid: true
+
+    - reference: "agent-loops.yml#loop_types.test-fix-loop"
+      resolves_to: "The 'test-fix-loop' entry under 'loop_types' top-level key"
+      valid: true
+
+    # INVALID: These assume wrong file structure (top-level key)
+    - reference: "agent-categories.yml#planner"
+      error: "No top-level key 'planner' exists - actual key is 'agent_categories.planner'"
+      valid: false
+
+    - reference: "agent-loops.yml#test-fix-loop"
+      error: "No top-level key 'test-fix-loop' exists - actual key is 'loop_types.test-fix-loop'"
+      valid: false
+
+resolution_rules:
+  - rule: "Dot-notation path resolution"
+    description: |
+      The anchor path is resolved by traversing the YAML structure using dots as
+      separators. For `file.yml#parent.child`, the system navigates:
+        root → parent → child
+
+      FENCE: Fragment anchors MUST match actual YAML file structure.
+      Before using a fragment reference, verify the target file's structure.
+    example:
+      file_content: |
+        agent_categories:
+          planner:
+            purpose: "Create executable plans"
+          test:
+            purpose: "Validation through testing"
+      reference: "file.yml#agent_categories.planner"
+      resolves_to: |
+        planner:
+          purpose: "Create executable plans"
+
+  - rule: "Categories in agent-categories.yml"
+    description: |
+      agent-categories.yml nests categories under 'agent_categories' key.
+      CORRECT: Use #agent_categories.category_name
+    valid_anchors:
+      - "agent_categories.planner"
+      - "agent_categories.test"
+      - "agent_categories.teacher"
+      - "agent_categories.deploy"
+      - "agent_categories.orchestration"
+      - "agent_categories.build"
+      - "agent_categories.cleaner"
+      - "agent_categories.explore"
+      - "agent_categories.documentation"
+
+  - rule: "Loops in agent-loops.yml"
+    description: |
+      agent-loops.yml nests loop definitions under 'loop_types' key.
+      CORRECT: Use #loop_types.loop_name
+    valid_anchors:
+      - "loop_types.test-fix-loop"
+      - "loop_types.audit-test-fix-loop"
+      - "loop_types.guidance-test-loop"
+      - "loop_types.planner-loop"
+      - "loop_types.documentation-loop"
+      - "loop_types.user-story-validation-loop"
+      - "loop_types.exploration-loop"
+      - "loop_types.cleaner-voting-loop"
+      - "loop_types.guidance-self-review-loop"
+
+agent_usage:
+  reading_fragments: |
+    When an agent encounters a fragment reference, it should:
+    1. Load the referenced file
+    2. Parse the anchor path using dot-notation
+    3. Navigate to the target key following the path
+    4. Extract only that section for context (context-minimisation)
+
+  writing_fragments: |
+    Use fragment references when:
+    - Referencing a specific category definition for agent_context
+    - Referencing a specific loop pattern for loop_context
+    - Pointing to one definition within a multi-definition file
+
+    FENCE: Always verify the target file's structure before writing a fragment reference.
+    Fragment anchors that don't match actual file structure will fail resolution.
+
+common_files_with_fragments:
+  - file: "modules/AgenticGuidance/assets/definitions/agent-categories.yml"
+    top_level_key: "agent_categories"
+    anchors:
+      - "agent_categories.planner"
+      - "agent_categories.test"
+      - "agent_categories.teacher"
+      - "agent_categories.deploy"
+      - "agent_categories.orchestration"
+      - "agent_categories.build"
+      - "agent_categories.cleaner"
+      - "agent_categories.explore"
+      - "agent_categories.documentation"
+
+  - file: "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+    top_level_key: "loop_types"
+    anchors:
+      - "loop_types.test-fix-loop"
+      - "loop_types.audit-test-fix-loop"
+      - "loop_types.guidance-test-loop"
+      - "loop_types.planner-loop"
+      - "loop_types.documentation-loop"
+      - "loop_types.user-story-validation-loop"
+
+notes:
+  - "Fragment references are NOT universally supported by YAML parsers"
+  - "AgenticGuidance uses fragment syntax as a convention for agent context"
+  - "Resolution is performed by the agent reading the file, not by tooling"
+  - "FENCE: Fragment anchors MUST match actual YAML file structure"
+  - "If a fragment cannot be resolved, the agent should ask for clarification"

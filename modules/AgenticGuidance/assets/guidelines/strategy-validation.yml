@@ -1,0 +1,131 @@
+# Validation Strategies
+# STATUS: OPTIONAL - Planners choose the strategy appropriate for their context
+# See also: strategy-multi-layer.yml (5-layer testing), testing-types.yml (test type index)
+
+validation-strategies:
+  description: |
+    Defines validation strategy options for test planning. Planners have autonomy
+    to select the strategy most appropriate for their project's needs, risk profile,
+    and timeline constraints.
+
+  key_principle: |
+    Validation strategy is a PLANNER CHOICE, not a mandatory requirement.
+    The goal is effective validation, not checkbox compliance.
+
+  available_strategies:
+    three-layer:
+      description: |
+        Comprehensive 3-layer validation covering unit, integration, and user acceptance.
+        Provides high confidence through complementary testing approaches.
+      layers:
+        unit:
+          scope: "Component level"
+          catches: "Logic errors, boundary conditions, edge cases"
+          tools: "pytest with unit markers, isolated fixtures"
+        integration:
+          scope: "System level"
+          catches: "Component interaction issues, API contracts, data flow"
+          tools: "pytest with integration markers, test databases, mock services"
+        uat:
+          scope: "User acceptance level"
+          catches: "User experience issues, workflow gaps, documentation accuracy"
+          tools: "User simulator agents, blind tests, manual walkthroughs"
+      when_to_use:
+        - "Production-ready releases requiring high confidence"
+        - "Complex systems with multiple interacting components"
+        - "Regulated environments requiring validation evidence"
+        - "Changes affecting multiple user journeys"
+      trade_offs:
+        pros: "High confidence, catches issues at multiple levels"
+        cons: "Higher time investment, may slow iteration"
+
+    single-layer:
+      description: |
+        Focused testing at a single level, typically unit or integration.
+        Appropriate when scope is narrow and risk is well-understood.
+      typical_choice: "unit OR integration (pick one based on change scope)"
+      when_to_use:
+        - "Small, isolated changes with clear boundaries"
+        - "Rapid iteration cycles where speed matters"
+        - "Well-tested existing code with minor modifications"
+        - "Internal tools with limited user exposure"
+      trade_offs:
+        pros: "Fast feedback, minimal overhead"
+        cons: "May miss integration or user-level issues"
+
+    integration-only:
+      description: |
+        Focus on integration tests that validate component interactions.
+        Skips unit tests when component logic is stable.
+      when_to_use:
+        - "Changes primarily affect component wiring, not logic"
+        - "Adding new integrations to stable components"
+        - "API contract changes between services"
+        - "Configuration or dependency updates"
+      trade_offs:
+        pros: "Tests real component interactions, catches integration bugs"
+        cons: "May miss edge cases caught by unit tests"
+
+    uat-only:
+      description: |
+        Focus on user acceptance testing when code logic is stable
+        but user experience needs validation.
+      when_to_use:
+        - "UI/UX changes with stable backend"
+        - "Documentation-driven development (docs-first)"
+        - "Workflow changes without code modifications"
+        - "User story completion validation"
+      trade_offs:
+        pros: "Directly validates user experience"
+        cons: "May miss underlying logic errors"
+
+    full-coverage:
+      description: |
+        Extends 3-layer validation with additional layers (fresh environment,
+        documentation validation, blind testing). Maximum confidence approach.
+      layers_included:
+        - "Unit tests"
+        - "Integration tests"
+        - "User acceptance tests"
+        - "Fresh environment tests"
+        - "Documentation validation"
+        - "Blind testing"
+      when_to_use:
+        - "Major releases or version bumps"
+        - "Security-sensitive changes"
+        - "Breaking changes requiring migration"
+        - "First release to new platforms"
+      trade_offs:
+        pros: "Maximum confidence, catches all issue classes"
+        cons: "Significant time investment, may block rapid iteration"
+      reference: "See strategy-multi-layer.yml for 5-layer detail"
+
+selection_guidance:
+  decision_factors:
+    - name: "Change scope"
+      guidance: "Narrow scope -> single-layer; Wide scope -> 3-layer or full-coverage"
+    - name: "Risk tolerance"
+      guidance: "High risk tolerance -> single-layer; Low risk tolerance -> 3-layer+"
+    - name: "Timeline pressure"
+      guidance: "Tight timeline -> single-layer or integration-only; Flexible -> 3-layer"
+    - name: "User impact"
+      guidance: "User-facing changes -> include UAT; Backend only -> may skip UAT"
+    - name: "Existing coverage"
+      guidance: "Well-tested codebase -> can skip some layers; New code -> more layers"
+
+  planner_autonomy: |
+    Planners should document their strategy choice and reasoning in the test plan.
+    There is no single "correct" strategy - the right choice depends on context.
+
+    Example documentation:
+      strategy: "integration-only"
+      rationale: "Change affects API wiring between stable components; unit logic unchanged"
+
+fence:
+  note: |
+    FENCE: UAT remains MANDATORY as defined in testing.yml
+    While validation strategy selection is optional, UAT must still be included
+    in plans per the testing.yml UAT requirements fence. The strategy choice
+    determines HOW to implement UAT (user-simulator, blind-test, etc.), not
+    WHETHER to include it.
+  reference: "modules/AgenticGuidance/assets/guidelines/testing.yml#uat_requirements"

@@ -1,0 +1,85 @@
+# Live Plan - Audit and Cleanup Phase
+# Plan: 260104AE_agenticguidance
+# Objective: Audit guidance updates and clean up any remaining issues
+
+worktree: /home/code/AgenticEngineering-agenticguidance
+liveplan: "docs/plans/live/260104AE_agenticguidance/live/plan_live_audit_clean.yml"
+completedplan: "docs/plans/live/260104AE_agenticguidance/completed/plan_completed.yml"
+
+previous_phases:
+  teach_plan: plan_live_teach.yml
+  test_plan: plan_live_test.yml
+
+live-plans:
+  - id: GUIDANCE-ENTRYPOINT-REFACTOR-001
+    title: Audit and Cleanup for Entrypoint Refactor
+
+    phases:
+      # ========================================
+      # AUDIT PHASE
+      # ========================================
+      - name: Audit Phase
+        execution_groups:
+          - execution: audit-test-fix-loop
+            name: Audit guidance completeness
+            agents:
+              - type: audit
+                inputs:
+                  - modules/AgenticGuidance/agents/orchestration/manifest.yml
+                  - modules/AgenticGuidance/entrypoints/_plan_build.yml
+                  - modules/AgenticGuidance/entrypoints/_plan_teach.yml
+                  - modules/AgenticGuidance/entrypoints/_orchestrate.yml
+                  - modules/AgenticGuidance/assets/examples/teacher/concise.yml
+                guidance: |
+                  Context: Audit the guidance updates for completeness and consistency.
+
+                  Audit Checklist:
+                  1. Consistency Check:
+                     - Do all entrypoint references use the new names?
+                     - Are manifest routing rules consistent with entrypoint files?
+                     - Do examples match actual entrypoint names?
+
+                  2. Completeness Check:
+                     - Are both _plan_build.yml and _plan_teach.yml properly documented?
+                     - Is the distinction between build and teach planning clear?
+                     - Are all downstream consumers updated?
+
+                  3. Residual Reference Check:
+                     - Search for any remaining "_plan.yml" (standalone, not *_plan.yml)
+                     - Flag any outdated references
+
+                  4. Reward Hacking Check:
+                     - Were any changes superficial (just renamed without semantic update)?
+                     - Do the changes actually improve clarity?
+                success_criteria:
+                  - Zero standalone _plan.yml references found
+                  - All guidance files consistent with new structure
+                  - Clear distinction between build and teach planning
+
+      # ========================================
+      # CLEANUP PHASE
+      # ========================================
+      - name: Cleanup Phase
+        execution_groups:
+          - execution: sequential
+            name: Remove old entrypoint if exists
+            agents:
+              - type: cleaner
+                inputs:
+                  - modules/AgenticGuidance/entrypoints/
+                guidance: |
+                  Context: The old _plan.yml entrypoint should be removed if it still exists.
+
+                  Instructions:
+                  1. Check if modules/AgenticGuidance/entrypoints/_plan.yml exists
+                  2. If it exists, verify it's safe to remove (no active references)
+                  3. Remove the file
+                  4. Verify no broken references result
+
+                  Safety check:
+                  - Search codebase for direct imports/references to _plan.yml
+                  - Only remove if no active references found
+                success_criteria:
+                  - Old _plan.yml removed (if it existed)
+                  - No broken references
+                  - Entrypoints folder only contains valid, current entrypoints

@@ -3,12 +3,14 @@
 
 name: planner-test
 description: |
-  Create phased test plans for validating implementations. Includes component testing (smoke_test),
-  user flow testing (agent_blind_test with user stories), cleanup phases, test-audit-fix loops
+  Create phased test plans for validating implementations. Includes component testing (smoke-test),
+  user flow testing (agent-blind-test with user stories), cleanup phases, test-audit-fix loops
   (MANDATORY), test suite phases (OPTIONAL, only if requested), and documentation validation. Plans incorporate user stories
   from modules/AgenticGuidance/userstories/<project>/ into test-fix-loop phases and include environment setup tasks.
 
-version: "1.0"
+# Version scheme: X.Y where X = architecture version, Y = iteration
+# 2.0 = reference layer architecture (inputs.yml uses transitive loading)
+version: "2.0"
 
 # Purpose and scope
 purpose: |
@@ -17,7 +19,7 @@ purpose: |
   and success criteria for testing.
 
 # Example plan structure reference
-example_plan: "assets/examples/planner/YYMMDDRepo_Branch/live/plan_live_test.yml"
+example_plan: "modules/AgenticGuidance/assets/examples/planner/YYMMDDRepo_Branch/plan_example.yml"
 
 # Test plan structure requirements
 test_plan_structure: |
@@ -30,8 +32,8 @@ test_plan_structure: |
      - Ensures UAT tests latest code, not stale installed version
 
   2. Test-fix-loop (incorporates BOTH component AND user flow testing):
-     - Component tests: smoke_test process (entry point testing strategy)
-     - User flow tests: user_simulator process (agent-blind-test strategy)
+     - Component tests: smoke-test process (entry point testing strategy)
+     - User flow tests: agent-blind-test strategy
      - One agent per user story FILE (tests all stories in file)
      - Each agent tests specified layers (typically local + docker, sometimes cloud_build)
 
@@ -48,15 +50,16 @@ test_plan_structure: |
 
   6. Documentation-loop (at very end)
 
-# Testing layers decision tree
+# Testing layers decision tree (RECOMMENDATIONS, not mandatory)
+# See also: modules/AgenticGuidance/assets/guidelines/strategy-validation.yml for full strategy options
 testing_layers: |
-  Layer selection checklist:
+  Layer selection guidance (PLANNER CHOICE - select based on context):
 
-  ALWAYS INCLUDE: Local + Docker (baseline for all test plans)
+  RECOMMENDED BASELINE: Local + Docker (good default for most test plans)
   - Local: Validates developer workflow (installed CLI)
   - Docker: Validates CI/CD parity (shared pre-built image)
 
-  ALSO INCLUDE Cloud Build when changes touch:
+  CONSIDER Cloud Build when changes touch:
   - pyproject.toml (dependencies, packaging)
   - Dockerfile.test or docker-compose.test.yml
   - cloudbuild.yaml or cloudbuild-pr.yaml
@@ -69,6 +72,10 @@ testing_layers: |
   - Local: Catches Python logic errors, API issues, local config problems
   - Docker: Catches Dockerfile issues, container runtime, dependency packaging
   - Cloud Build: Catches workspace restructuring, CI/CD integration failures
+
+  VALIDATION STRATEGY OPTIONS:
+  Planners may choose from: 3-layer, single-layer, integration-only, uat-only, full-coverage
+  See strategy-validation.yml for detailed guidance on when to use each strategy.
 
 # Mandatory user stories
 mandatory_user_stories: |
@@ -86,19 +93,14 @@ mandatory_user_stories: |
   dependencies blocking pip/pipx install, missing docs, CLI inaccessibility).
 
 # Test process mapping
-# NOTE: Some test agents have been migrated to AgenticGuidance (2026-01-03).
-# Others remain in legacy location until migration is complete.
+# Maps test strategies to their process definition files.
+# Only includes agents that have been migrated to AgenticGuidance.
 test_process_mapping: |
   Strategy to process mapping:
-  # MIGRATED: 2026-01-03
-  - smoke_test: agents/test/test-runner/process.yml
-  # NOT_MIGRATED: test-user-simulator - see modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/test-user-simulator/process.yml
-  - agent-blind-test: agents/test/test-user-simulator/process.yml
-  # NOT_MIGRATED: test-service - see modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/test-service/process.yml
-  - service_test: agents/test/test-service/process.yml
-  # NOT_MIGRATED: test-builder - see modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/test/test-builder/process.yml
-  - test-builder: agents/test/test-builder/process.yml
-  # MIGRATED: 2026-01-03
-  - audit: agents/test/test-audit/process.yml
-  # NOT_MIGRATED: deploy-cicd - see modules/legacy/MyAgents/projects/MyAgentsGuidance/agents/deploy/deploy-cicd/process.yml
-  - cicd_maintenance: agents/deploy/deploy-cicd/process.yml
+  - smoke-test: modules/AgenticGuidance/agents/test/test-runner/process.yml
+  - agent-blind-test: modules/AgenticGuidance/agents/test/test-user-simulator/process.yml  # MIGRATED 2026-01-09
+  - test-suite: modules/AgenticGuidance/assets/guidelines/strategy-test-suite.yml
+  - service-test: modules/AgenticGuidance/agents/test/test-service/process.yml  # MIGRATED 2026-01-09
+  - test-build: modules/AgenticGuidance/agents/test/test-builder/process.yml  # MIGRATED 2026-01-09
+  - audit: modules/AgenticGuidance/agents/test/test-audit/process.yml
+  - cicd-maintenance: modules/AgenticGuidance/agents/deploy/deploy-cicd/process.yml

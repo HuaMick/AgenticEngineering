@@ -6,24 +6,26 @@ guideline:
     provides definitive evidence of success.
 
   inputs:
-    - location: "assets/definitions/testing-types.yml"
+    - location: "modules/AgenticGuidance/assets/definitions/testing-types.yml"
       description: "Definitions of smoke, service, user simulator, and audit testing"
-    - location: "assets/definitions/strategy-agent-review-loop.yml"
+    - location: "modules/AgenticGuidance/assets/guidelines/strategy-agent-review-loop.yml"
       description: "Agent review loop testing strategy"
-    - location: "assets/definitions/strategy-agent-blind-test.yml"
+    - location: "modules/AgenticGuidance/assets/guidelines/strategy-agent-blind-test.yml"
       description: "Agent blind test strategy"
-    - location: "assets/definitions/strategy-user-simulation.yml"
+    - location: "modules/AgenticGuidance/assets/guidelines/strategy-user-simulation.yml"
       description: "User simulation testing strategy"
-    - location: "assets/definitions/strategy-test-suite.yml"
+    - location: "modules/AgenticGuidance/assets/guidelines/strategy-test-suite.yml"
       description: "Test suite execution strategy"
-    - location: "assets/definitions/strategy-fresh-environment.yml"
+    - location: "modules/AgenticGuidance/assets/guidelines/strategy-fresh-environment.yml"
       description: "Fresh environment testing strategy"
-    - location: "assets/definitions/strategy-multi-layer.yml"
+    - location: "modules/AgenticGuidance/assets/guidelines/strategy-multi-layer.yml"
       description: "Multi-layer testing strategy"
-    - location: "assets/definitions/strategy-documentation-validation.yml"
+    - location: "modules/AgenticGuidance/assets/guidelines/strategy-documentation-validation.yml"
       description: "Documentation validation strategy"
-    - location: "assets/definitions/strategy-user-acceptance.yml"
+    - location: "modules/AgenticGuidance/assets/guidelines/strategy-user-acceptance.yml"
       description: "User acceptance testing strategy"
+    - location: "modules/AgenticGuidance/assets/guidelines/strategy-validation.yml"
+      description: "Validation strategy options (3-layer, single-layer, etc.) - OPTIONAL planner choice"
 
   rules:
     - rule: "Rigorous functional validation"
@@ -50,15 +52,19 @@ guideline:
         - "Verify version matches pyproject.toml"
         - "Test from clean state (no pre-existing config or env vars)"
 
-    - rule: "Multi-layered approach"
+    - rule: "Multi-layered approach (OPTIONAL strategy)"
       description: |
-        Compose multiple testing strategies to catch different classes of bugs.
+        Consider composing multiple testing strategies to catch different classes of bugs.
+        This is a RECOMMENDED approach, not mandatory. Planners have autonomy to select
+        the validation strategy appropriate for their context.
       justification: |
-        No single layer (automated, manual, blind-test) catches all issues.
+        No single layer catches all issues, but the right number of layers depends on
+        project risk, scope, and timeline. See strategy-validation.yml for options.
       characteristics:
-        - "Start with automated logic validation (test-fix-loop)"
-        - "Follow with fresh environment validation"
-        - "End with documentation validation (blind-test)"
+        - "Consider automated logic validation (test-fix-loop)"
+        - "Consider fresh environment validation for portability"
+        - "Consider documentation validation (blind-test) for user-facing changes"
+      strategy_reference: "modules/AgenticGuidance/assets/guidelines/strategy-validation.yml"
 
     - rule: "Documentation as a first-class citizen"
       description: |
@@ -76,8 +82,45 @@ guideline:
       justification: |
         Enables fast rollback and provides a clear audit trail of working states.
 
+  # ========================================
+  # FENCE: UAT Requirements
+  # ========================================
+  uat_requirements:
+    mandatory: true
+    fence: |
+      FENCE: UAT is MANDATORY for all plans
+      Every plan MUST include a User Acceptance Testing phase. Automated tests
+      alone do not prove the system works for users. UAT validates the complete
+      user experience.
+
+    user_story_anchor:
+      fence: |
+        FENCE: UAT MUST be anchored to user stories
+        UAT phases MUST reference specific user stories from modules/AgenticGuidance/userstories/.
+        Each UAT test MUST trace back to a user story ID (e.g., US-CLI-001).
+        User stories define the acceptance criteria that UAT validates.
+
+    implementation_options:
+      description: |
+        UAT is mandatory but implementation strategy is flexible.
+        Planners may select the approach most appropriate to context.
+      options:
+        user_simulator:
+          description: "Spawn test-user-simulator agents to execute user journeys"
+          when: "Full user journey validation needed"
+          visual_reference: "assets/examples/orchestration/phase_templates/uat_phase.mmd"
+        blind_test:
+          description: "Spawn test-guidance-simulator without prior context"
+          when: "Documentation completeness validation needed"
+        documentation_loop:
+          description: "Create user documentation and have users review"
+          when: "Human feedback on UX is prioritized"
+        manual_validation:
+          description: "Present implementation to human validator"
+          when: "Complex scenarios requiring human judgment"
+
   related_guidelines:
-    - location: "assets/guidelines/iteration.yml"
+    - location: "modules/AgenticGuidance/assets/guidelines/iteration.yml"
       description: "Loop patterns (test-fix, audit-test-fix)"
-    - location: "assets/guidelines/reward-hacking-prevention.yml"
+    - location: "modules/AgenticGuidance/assets/guidelines/reward-hacking-prevention.yml"
       description: "Ensuring tests provide true evidence of success"

@@ -1,0 +1,202 @@
+# Audit Findings - 260106 Agent Verification
+# Plan: 260104AE_agenticguidance
+# Objective: Verify entrypoint refactor implementation completeness
+
+audit_date: "2026-01-06"
+auditors:
+  - teacher-update-guidance (x2)
+  - test-audit (x2)
+  - test-guidance-simulator (x2)
+
+summary:
+  status: INCOMPLETE
+  critical_issues: 5
+  high_issues: 3
+  medium_issues: 2
+  low_issues: 1
+  verdict: |
+    The entrypoint refactor was marked "completed" prematurely. The worktree
+    has significant gaps compared to the plan and main repo. Tasks ent_001
+    and ent_002 are NOT actually complete in the worktree.
+
+root_cause: |
+  The worktree branch (agenticguidance) at commit 8fad7cd is BEHIND the main
+  repo which has commit bfb3ec4 with the actual entrypoint changes. The
+  worktree contains work-in-progress changes that were never completed or
+  committed.
+
+critical_issues:
+  - id: C1
+    title: "_plan_teach.yml does not exist"
+    location: "/modules/AgenticGuidance/entrypoints/"
+    expected: "_plan_teach.yml should exist per task ent_002"
+    actual: "File missing - only _plan_build.yml and _orchestrate.yml present"
+    impact: "Guidance planning entrypoint unavailable"
+    fix: "Create _plan_teach.yml (content available in main repo)"
+
+  - id: C2
+    title: "_plan_build.yml has incorrect name field"
+    location: "/modules/AgenticGuidance/entrypoints/_plan_build.yml:2"
+    expected: 'name: "_plan_build"'
+    actual: 'name: "_plan"'
+    impact: "Entrypoint self-identification incorrect"
+    fix: "Change line 2 to name: \"_plan_build\""
+
+  - id: C3
+    title: "manifest.yml has outdated entry patterns"
+    location: "/modules/AgenticGuidance/agents/orchestration/manifest.yml:24"
+    expected: |
+      - _plan_build.yml entrypoint → orchestration-planning (code)
+      - _plan_teach.yml entrypoint → orchestration-planning (guidance)
+    actual: |
+      - _plan.yml entrypoint → orchestration-planning
+    impact: "Agents routing to non-existent _plan.yml"
+    fix: "Update routing_logic section with new entrypoint names"
+
+  - id: C4
+    title: "_orchestrate.yml references old _plan.yml"
+    location: "/modules/AgenticGuidance/entrypoints/_orchestrate.yml:11,21"
+    expected: "from _plan_build.yml or _plan_teach.yml output"
+    actual: "from _plan.yml output"
+    impact: "Documentation references non-existent entrypoint"
+    fix: "Update comments on lines 11 and 21"
+
+  - id: C5
+    title: "concise.yml examples reference old _plan.yml"
+    location: "/modules/AgenticGuidance/assets/examples/teacher/concise.yml:20,29"
+    expected: "_plan_build.yml → _orchestrate.yml"
+    actual: "_plan.yml → _orchestrate.yml or _teach.yml"
+    impact: "Teacher examples teach incorrect patterns"
+    fix: "Update lines 20 and 29"
+
+high_issues:
+  - id: H1
+    title: "orchestration-planning cannot differentiate build vs teach intent"
+    location: "/modules/AgenticGuidance/agents/orchestration/orchestration-planning/"
+    description: |
+      process.mmd and inputs.yml have no mechanism to receive planning intent
+      from entrypoint. Agent relies solely on objective analysis.
+    impact: "Ambiguous behavior when same objective could be build or teach"
+    fix: |
+      Add runtime_inputs mechanism:
+      - planning_intent: "build" | "teach"
+      Source from entrypoint invocation
+
+  - id: H2
+    title: "_plan_build.yml has incorrect goal description"
+    location: "/modules/AgenticGuidance/entrypoints/_plan_build.yml:3"
+    expected: 'goal: "Build an implementation plan..."'
+    actual: 'goal: "Build a plan by decomposing the objective into executable phases (teaching or implementation)."'
+    impact: "Conflates build and teach planning in a build-specific entrypoint"
+    fix: "Update goal to focus on code implementation only"
+
+  - id: H3
+    title: "planner-build process.yml references wrong output file"
+    location: "/modules/AgenticGuidance/agents/planner/planner-build/process.yml:26,30,34,58"
+    expected: "plan_live_build.yml"
+    actual: "plan_live_teach.yml"
+    impact: "planner-build outputs to wrong file name"
+    fix: "Change all references from plan_live_teach.yml to plan_live_build.yml"
+
+medium_issues:
+  - id: M1
+    title: "Planner processes lack invocation_context section"
+    location: |
+      /modules/AgenticGuidance/agents/planner/planner-build/process.yml
+      /modules/AgenticGuidance/agents/planner/planner-guidance/process.yml
+    description: |
+      Planner agents don't document their invocation path:
+      _plan_build.yml → orchestration-planning → planner-build
+    impact: "Agent may be confused about how/when it's invoked"
+    fix: "Add invocation_context section to each process.yml"
+
+  - id: M2
+    title: "_plan_build.yml references non-existent _teach.yml"
+    location: "/modules/AgenticGuidance/entrypoints/_plan_build.yml:24"
+    expected: '"Output: Approved live plan folder path, phases created, ready for _orchestrate.yml"'
+    actual: '"Output: Approved live plan folder path, phases created, ready for _orchestrate.yml or _teach.yml"'
+    impact: "References execution entrypoint that doesn't exist"
+    fix: "Remove _teach.yml reference per design decision DD-001"
+
+low_issues:
+  - id: L1
+    title: "Inconsistent phase terminology across files"
+    description: "Some files use 'teach', others use 'guidance' for the same concept"
+    impact: "Minor confusion in documentation"
+    fix: "Standardize on 'teach' as phase type, 'guidance' as domain"
+
+worktree_sync_analysis:
+  main_repo_commit: "bfb3ec4"
+  worktree_commit: "8fad7cd"
+  status: "Worktree is BEHIND main - missing entrypoint refactor commit"
+  uncommitted_changes:
+    - "deleted: _plan.yml (correct)"
+    - "modified: plan_live_teach.yml"
+    - "modified: plan_live_test.yml"
+    - "deleted: plan_live_audit_clean.yml"
+    - "untracked: plan_live_build.yml"
+    - "untracked: _plan_build.yml (incomplete version)"
+  recommendation: |
+    Either:
+    1. Merge/rebase worktree to include bfb3ec4 changes, OR
+    2. Manually apply all fixes listed in this audit
+
+files_requiring_updates:
+  critical_files:
+    - path: "modules/AgenticGuidance/entrypoints/_plan_teach.yml"
+      action: "CREATE"
+      content_source: "Copy from main repo /home/code/AgenticEngineering/modules/AgenticGuidance/entrypoints/_plan_teach.yml"
+
+    - path: "modules/AgenticGuidance/entrypoints/_plan_build.yml"
+      action: "REPLACE"
+      content_source: "Copy from main repo /home/code/AgenticEngineering/modules/AgenticGuidance/entrypoints/_plan_build.yml"
+
+    - path: "modules/AgenticGuidance/entrypoints/_orchestrate.yml"
+      action: "EDIT"
+      edits:
+        - line: 11
+          old: "# Requires: Pre-approved plan folder path from _plan.yml output"
+          new: "# Requires: Pre-approved plan folder path from _plan_build.yml or _plan_teach.yml output"
+        - line: 21
+          old: '- "Pre-approved plan folder path (from _plan.yml output)"'
+          new: '- "Pre-approved plan folder path (from _plan_build.yml or _plan_teach.yml output)"'
+
+    - path: "modules/AgenticGuidance/agents/orchestration/manifest.yml"
+      action: "REPLACE"
+      content_source: "Copy from main repo /home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/manifest.yml"
+
+    - path: "modules/AgenticGuidance/assets/examples/teacher/concise.yml"
+      action: "EDIT"
+      edits:
+        - line: 20
+          old: "Example: entrypoints/_plan.yml -> _orchestrate.yml or _teach.yml"
+          new: "Example: _plan_build.yml -> _orchestrate.yml"
+        - line: 29
+          old: "Example: _plan.yml -> _orchestrate.yml or _teach.yml"
+          new: "Example: _plan_build.yml -> _orchestrate.yml"
+
+next_session_actions:
+  phase_1_sync:
+    title: "Sync worktree with main repo"
+    description: "Bring worktree up to date with completed refactor"
+    steps:
+      - "git fetch origin"
+      - "git merge origin/main or cherry-pick bfb3ec4"
+      - "Resolve any conflicts"
+      - "Verify all critical files match main repo"
+
+  phase_2_validation:
+    title: "Re-run verification agents"
+    description: "Confirm all issues resolved"
+    agents:
+      - test-audit: "Scan for _plan.yml references (should be 0)"
+      - test-guidance-simulator: "Self-review orchestration-planning"
+      - test-guidance-simulator: "Self-review planner agents"
+
+  phase_3_commit:
+    title: "Commit and update plan status"
+    description: "Finalize changes and mark tasks complete"
+    steps:
+      - "Commit all changes with descriptive message"
+      - "Update plan_live_build.yml task statuses"
+      - "Move completed items to plan_completed.yml"

@@ -1,0 +1,404 @@
+# Plan Review: planner-cleaning Context Overload Remediation
+# Reviewed by: planner-reviewer
+# Review date: 2026-01-08
+# Plan file: plan_live_guidance_cleaning_remediation.yml
+
+review:
+  status: "NEEDS_CHANGES"
+
+  summary: |
+    The plan is well-structured and addresses all 11 issues from the audit correctly.
+    However, several issues require attention before approval:
+    1. Plan does not fully reflect user decisions (particularly C1 path handling)
+    2. Phase 4 scope needs expansion per user decision C4 (apply to ALL planner agents)
+    3. Phase 1 tasks 1.1 and 1.2 need revision based on user decision C1
+    4. Minor dependency issue in Phase 5 regarding iteration.yml (user says KEEP per C5)
+
+# =============================================================================
+# VALIDATION AGAINST USER DECISIONS
+# =============================================================================
+user_decision_alignment:
+  - decision_id: "C1"
+    user_decision: "Paths are correct as-is (module-relative), but standardize using fully qualified paths"
+    plan_alignment: "PARTIAL"
+    issue: |
+      The plan's Phase 1 (tasks 1.1, 1.2) treats path references as potentially STALE when
+      user has confirmed paths ARE correct as-is. The tasks should be reframed:
+      - Current framing: "Fix stale path references" implies paths are broken
+      - Required framing: "Standardize paths to use fully qualified paths for clarity"
+
+      Task 1.1 context states: "Issue: References docs/ARCHITECTURE.md but file is at
+      modules/AgenticGuidance/docs/ARCHITECTURE.md" - but user confirmed module-relative
+      paths are correct. The task should clarify this is a STANDARDIZATION, not a FIX.
+    recommendation: |
+      Update tasks 1.1 and 1.2:
+      - Change description from "Update...path" to "Standardize...path to fully qualified form"
+      - Update context to reflect user decision that paths ARE correct but should use
+        fully qualified paths (e.g., modules/AgenticGuidance/docs/ARCHITECTURE.md) for
+        consistency and clarity
+      - Remove the NOTE in task 1.1 context that questions whether task is needed
+
+  - decision_id: "C2"
+    user_decision: "Split core-system.yml into two layers (proposed approach)"
+    plan_alignment: "ALIGNED"
+    notes: |
+      Phase 4, task 4.1 correctly proposes splitting core-system.yml into:
+      - core-plans.yml (for planners)
+      - core-architecture.yml (for builders)
+      - Keeping core-system.yml as umbrella layer for backwards compatibility
+      This matches user's approved approach.
+
+  - decision_id: "C3"
+    user_decision: "Keep one full phase, abbreviate others for example trimming"
+    plan_alignment: "ALIGNED"
+    notes: |
+      Phase 3, task 3.1 correctly specifies:
+      - "Keep one example phase (cleanup or audit) in full detail"
+      - "Show structure of second phase with abbreviated content"
+      - Target of ~150 lines (max 200)
+      This matches user's approved approach.
+
+  - decision_id: "C4"
+    user_decision: "YES, apply layer filtering to ALL planner agents for consistency"
+    plan_alignment: "NOT_ALIGNED"
+    issue: |
+      Phase 4 only updates planner-cleaning inputs.yml (task 4.2).
+      User explicitly decided to apply layer filtering to ALL planner agents.
+      The plan must be expanded to include:
+      - planner-build
+      - planner-test
+      - planner-guidance
+      - planner-reviewer
+    recommendation: |
+      Add tasks 4.3, 4.4, 4.5, 4.6 to update inputs.yml for each planner agent
+      to use core-plans.yml instead of core-system.yml.
+      All tasks should depend on 4.1 (layer creation).
+
+  - decision_id: "C5"
+    user_decision: "KEEP iteration.yml - planners need to understand loop behavior to build loops into plans"
+    plan_alignment: "PARTIAL"
+    issue: |
+      Phase 5, task 5.1 proposes clarifying separation between agent-loops.yml and iteration.yml.
+      This is consistent with keeping iteration.yml (C5), but the task should explicitly state
+      that iteration.yml is NOT to be removed or merged - only clarified.
+
+      Additionally, the questions_for_user section still includes the question about
+      whether iteration.yml should be loaded by planner agents. This question has been
+      ANSWERED by C5 - it should be removed or marked as resolved.
+    recommendation: |
+      1. Update task 5.1 context to explicitly state iteration.yml is being KEPT per user decision
+      2. Remove or mark as RESOLVED the gap_identification question about iteration.yml
+
+# =============================================================================
+# REMAINING AMBIGUITIES
+# =============================================================================
+remaining_ambiguities:
+  - id: "AMB-1"
+    description: "Path format after standardization"
+    context: |
+      User decision C1 says to use "fully qualified paths" but the definition is ambiguous:
+      - Option A: Absolute from repo root (modules/AgenticGuidance/docs/ARCHITECTURE.md)
+      - Option B: Absolute from module root (docs/ARCHITECTURE.md with documented resolution)
+      The plan should clarify which format to use.
+    impact: "Affects tasks 1.1, 1.2, 1.3"
+    suggested_clarification: |
+      Recommend using paths from MODULE root (e.g., docs/ARCHITECTURE.md) since
+      inputs.yml already states "paths are relative to AgenticGuidance MODULE ROOT".
+      Add explicit note in layer files that paths are module-relative.
+
+  - id: "AMB-2"
+    description: "planner-shared.yml update for C4"
+    context: |
+      planner-shared.yml references iteration.yml (per user decision C5, kept for planners).
+      When applying layer filtering (C4) to all planner agents, need to verify
+      planner-shared.yml layer composition is still appropriate.
+    impact: "Affects scope of Phase 4 expansion"
+    suggested_clarification: |
+      Verify that planner-shared.yml references remain appropriate for all planner agents.
+      May not require changes if iteration.yml is being kept (C5 confirms this).
+
+# =============================================================================
+# SUCCESS CRITERIA VALIDATION
+# =============================================================================
+success_criteria_review:
+  quantitative:
+    - metric: "Context token usage"
+      baseline: "~45,000 tokens"
+      target: "~27,000 tokens"
+      assessment: "ACHIEVABLE"
+      notes: |
+        The estimated savings per phase are reasonable:
+        - Phase 2: ~3500 tokens (redundancy removal)
+        - Phase 3: ~6000 tokens (example trimming)
+        - Phase 4: ~3000 tokens (layer filtering)
+        - Phase 5: ~1000 tokens (overlap clarification)
+        Total: ~13,500 tokens reduction (30% of baseline)
+        This brings usage from 45K to ~31.5K, slightly above 27K target.
+        Target is ambitious but achievable.
+
+    - metric: "File count loaded"
+      baseline: "19 files"
+      target: "~12 files"
+      assessment: "ACHIEVABLE"
+      notes: |
+        Removing domains.yml, workflows.yml, entrypoints.yml (-3 files)
+        reduces file count significantly. Layer splitting adds 2 files
+        but removes need to load them, net -3 files.
+
+    - metric: "Redundant content"
+      baseline: "3 redundancy issues"
+      target: "0 redundancy issues"
+      assessment: "ACHIEVABLE"
+      notes: "Tasks 2.1, 2.2, 2.3 directly address all three redundancy issues."
+
+  qualitative:
+    - criteria: "Agent can still create finalization phases correctly"
+      assessment: "ACHIEVABLE"
+      notes: "References to plans.yml and manifest.yml preserve required guidance."
+
+    - criteria: "All required lifecycle patterns are discoverable"
+      assessment: "ACHIEVABLE"
+      notes: "Task 2.1 preserves reference to plans.yml for full lifecycle documentation."
+
+    - criteria: "Error messages guide to correct authoritative sources"
+      assessment: "NEEDS_ATTENTION"
+      notes: |
+        No explicit task ensures error messages or documentation point to
+        authoritative sources after consolidation. Consider adding acceptance
+        criteria to relevant tasks.
+
+    - criteria: "No loss of critical planning capability"
+      assessment: "ACHIEVABLE"
+      notes: "Plan focuses on consolidation and reference, not removal of capability."
+
+# =============================================================================
+# TASK DEPENDENCY VALIDATION
+# =============================================================================
+dependency_review:
+  valid_dependencies:
+    - chain: "Phase 1 -> Phase 2 -> Phase 3 -> Phase 4 -> Phase 5 -> Phase 6"
+      assessment: "CORRECT"
+      notes: "Sequential phases with correct ordering (correctness before optimization)"
+
+    - dependency: "Task 4.2 depends on Task 4.1"
+      assessment: "CORRECT"
+      notes: "Cannot update inputs.yml to use core-plans.yml until core-plans.yml exists"
+
+  missing_dependencies:
+    - issue: "Tasks 4.3-4.6 (for C4 expansion) need to be added"
+      recommendation: "All additional planner inputs.yml updates should depend on 4.1"
+
+  dependency_concerns:
+    - concern: "Phase 5 task 5.1 may affect planner-shared.yml which is used by all planners"
+      impact: "Changes to iteration.yml loading may require coordination with Phase 4"
+      recommendation: |
+        Consider whether Phase 5 task 5.1 should come BEFORE Phase 4,
+        since clarifying agent-loops.yml vs iteration.yml separation affects
+        what planners need to load.
+
+# =============================================================================
+# SINGLE SOURCE OF TRUTH VALIDATION
+# =============================================================================
+ssot_review:
+  compliant:
+    - principle: "File lifecycle in plans.yml"
+      status: "ALIGNED"
+      notes: "Task 2.1 correctly consolidates to plans.yml as authoritative source"
+
+    - principle: "Phase ordering in manifest.yml"
+      status: "ALIGNED"
+      notes: "Task 2.2 correctly consolidates to manifest.yml as authoritative source"
+
+    - principle: "User story path in inputs.yml"
+      status: "ALIGNED"
+      notes: "Task 2.3 correctly establishes inputs.yml as authoritative for paths"
+
+  concerns:
+    - principle: "Layer definitions for planner agents"
+      status: "NEEDS_ATTENTION"
+      notes: |
+        Creating core-plans.yml establishes a new layer specifically for planners.
+        Ensure this is documented as the authoritative layer for planner agent
+        core system definitions.
+
+# =============================================================================
+# STRUCTURAL VALIDATION (per reviewer checklist)
+# =============================================================================
+structural_checklist:
+  plan_structure:
+    - check: "Plan has unique name at root level"
+      status: "PASS"
+      value: "planner-cleaning-context-remediation"
+
+    - check: "Worktree path is absolute and correct"
+      status: "PASS"
+      value: "/home/code/AgenticEngineering-agenticguidance"
+
+    - check: "Branch name matches worktree naming convention"
+      status: "PASS"
+      value: "agenticguidance"
+
+    - check: "Plan objective clearly states what will be improved"
+      status: "PASS"
+      notes: "Objective specifies 11 issues, 40% reduction target, and scope"
+
+  inputs_checklist:
+    - check: "Context references are at file-level or directory-level"
+      status: "PASS"
+      notes: "Tasks specify exact target files"
+
+    - check: "Each input has location and description"
+      status: "PASS"
+      notes: "friction_source and target_agent clearly specified"
+
+    - check: "Referenced files exist"
+      status: "PASS"
+      notes: "All referenced files verified to exist"
+
+  success_criteria_checklist:
+    - check: "Each phase has measurable success criteria"
+      status: "PASS"
+      notes: "All 6 phases have explicit success_criteria sections"
+
+    - check: "Success criteria include user-focused validation"
+      status: "PARTIAL"
+      notes: "Phase 6 includes user-focused validation; earlier phases focus on technical"
+
+    - check: "Technical validation criteria are verifiable"
+      status: "PASS"
+      notes: "Line counts, path resolution, and token estimates are measurable"
+
+    - check: "Criteria define observable outcomes"
+      status: "PASS"
+      notes: "Criteria specify what should be true after completion"
+
+  task_structure_checklist:
+    - check: "Each task specifies exact target file(s)"
+      status: "PASS"
+      notes: "All tasks have files: section listing exact targets"
+
+    - check: "Agent types are correctly allocated"
+      status: "PASS"
+      notes: "teacher-update-assets for definitions, teacher-update-guidance for process files"
+
+    - check: "Operations are properly ordered"
+      status: "PASS"
+      notes: "CREATE (4.1) before UPDATE (4.2) correctly ordered"
+
+    - check: "Each task has concrete acceptance criteria"
+      status: "PASS"
+      notes: "All tasks have acceptance_criteria sections"
+
+  pattern_alignment_checklist:
+    - check: "Phase dependencies are explicitly declared"
+      status: "PASS"
+      notes: "Each phase (2-6) has dependencies section"
+
+    - check: "All mandatory loops included"
+      status: "PASS"
+      notes: "Phase 6 verification is essentially an audit loop for the changes"
+
+# =============================================================================
+# ISSUES LIST
+# =============================================================================
+issues:
+  critical:
+    - id: "CRIT-1"
+      title: "Phase 4 scope incomplete per user decision C4"
+      description: |
+        User explicitly decided to apply layer filtering to ALL planner agents,
+        but plan only updates planner-cleaning inputs.yml.
+      resolution: |
+        Add tasks 4.3, 4.4, 4.5, 4.6 to update:
+        - modules/AgenticGuidance/agents/planner/planner-build/inputs.yml
+        - modules/AgenticGuidance/agents/planner/planner-test/inputs.yml
+        - modules/AgenticGuidance/agents/planner/planner-guidance/inputs.yml
+        - modules/AgenticGuidance/agents/planner/planner-reviewer/inputs.yml
+        All should replace core-system.yml with core-plans.yml reference.
+
+  major:
+    - id: "MAJ-1"
+      title: "Phase 1 tasks misframed - paths are correct per C1"
+      description: |
+        Tasks 1.1 and 1.2 are framed as fixing "stale" paths, but user confirmed
+        paths ARE correct (module-relative). Tasks should be reframed as
+        standardization for clarity, not correction.
+      resolution: |
+        Reframe tasks 1.1 and 1.2:
+        - Change "issue" field to clarify this is standardization, not fixing errors
+        - Update descriptions to reflect standardization intent
+        - Remove NOTE questioning if task is needed
+
+    - id: "MAJ-2"
+      title: "questions_for_user section contains resolved questions"
+      description: |
+        The plan still lists questions that have been answered by user decisions C1-C5.
+        These should be removed or marked as resolved to avoid confusion.
+      resolution: |
+        Either remove the questions_for_user section entirely (since all questions
+        are answered) or convert it to a resolved_decisions section documenting
+        the user's choices.
+
+  minor:
+    - id: "MIN-1"
+      title: "Task 5.1 should explicitly state iteration.yml is being KEPT"
+      description: |
+        Per user decision C5, iteration.yml is being kept. Task 5.1 should
+        explicitly state this to avoid any ambiguity about the task's intent.
+      resolution: |
+        Add to task 5.1 context:
+        "NOTE: Per user decision, iteration.yml is being KEPT. This task only
+        clarifies the separation between agent-loops.yml (structure) and
+        iteration.yml (behavior) - it does NOT remove iteration.yml."
+
+    - id: "MIN-2"
+      title: "Estimated token savings should be updated after C4 expansion"
+      description: |
+        Phase 4 estimated_token_savings of ~3000 tokens assumes only planner-cleaning.
+        With C4 expansion to all 5 planner agents, the impact is 5x larger.
+      resolution: |
+        Update Phase 4 estimated_token_savings to reflect all planner agents:
+        "~3000 tokens per agent x 5 agents = ~15000 tokens total across all planners"
+        (or note savings per agent invocation)
+
+# =============================================================================
+# RECOMMENDATIONS
+# =============================================================================
+recommendations:
+  required_before_approval:
+    - "Add tasks 4.3-4.6 for remaining planner agents per user decision C4"
+    - "Reframe tasks 1.1, 1.2 as standardization per user decision C1"
+    - "Remove or mark resolved the questions_for_user section"
+
+  suggested_improvements:
+    - "Add explicit note to task 5.1 that iteration.yml is being KEPT (C5)"
+    - "Update Phase 4 token savings estimate for full planner agent scope"
+    - "Consider adding acceptance criteria for error message guidance"
+    - "Document core-plans.yml as authoritative layer for planner agents"
+
+# =============================================================================
+# FINAL VERDICT
+# =============================================================================
+verdict:
+  status: "NEEDS_CHANGES"
+  blocking_issues: 2
+  details: |
+    The plan is structurally sound and addresses the audit findings correctly.
+    However, it does not fully implement user decisions C1 and C4:
+
+    1. CRITICAL: Phase 4 must be expanded to all planner agents (C4)
+    2. MAJOR: Phase 1 tasks must be reframed as standardization, not fixes (C1)
+    3. MAJOR: Resolved questions should be removed from the plan
+
+    Once these changes are made, the plan should be re-reviewed for approval.
+
+    The plan correctly handles C2 (layer splitting), C3 (example trimming),
+    and C5 (keeping iteration.yml), though C5 should be made more explicit
+    in task 5.1.
+
+  next_action: |
+    Return to planner-guidance with this feedback to address:
+    1. Expand Phase 4 with tasks for all planner agents
+    2. Reframe Phase 1 tasks per C1 decision
+    3. Clean up or remove questions_for_user section
+    4. Add explicit C5 note to task 5.1

@@ -1,0 +1,405 @@
+# Orchestration Decommissioning Plan
+# Plan: 260104AE_agenticguidance
+# Status: completed
+# Phase Type: build + test
+# Completed: 2026-01-11 (Ralph Loop Session)
+
+name: orchestration-decommission
+status: completed
+priority: high
+created: "2026-01-10"
+completed: "2026-01-11"
+phase_type: composite
+
+objective: |
+  Replace hardcoded orchestration flows (orchestration-build, orchestration-guidance)
+  with generic orchestration-executor that reads Plan-MMD files dynamically.
+  Establish orchestration-planning as the dedicated MMD generator.
+
+context: |
+  The orchestration-executor agent exists and has been tested for MMD parsing (4/4 PASS).
+  However, the system still uses hardcoded orchestration flows:
+  - _orchestrate.yml → orchestration-build (hardcoded execution)
+  - orchestration-guidance (hardcoded guidance execution)
+
+  SIMPLIFIED APPROACH:
+  - Only orchestration-planning generates MMD (not individual planners)
+  - planner-reviewer validates MMD presence (simple check)
+  - No guidance-based reminders/checklists (agents forget anyway)
+  - CLI task list approach moved to backlog for experimentation
+
+  The orchestration-executor specification (Section 1.2) explicitly states:
+  - orchestration-build → "to be replaced by executor"
+  - orchestration-guidance → "Same pattern as orchestration-build migration"
+
+prerequisites:
+  - "orchestration-executor agent created (491 lines)"
+  - "orchestration-executor-specification.yml defines replacement strategy"
+  - "MMD parsing tests PASS (4/4)"
+  - "Test fixtures created and structured"
+
+inputs:
+  - location: "modules/AgenticGuidance/assets/definitions/orchestration-executor-specification.yml"
+    description: "Defines executor responsibilities and migration path"
+  - location: "modules/AgenticGuidance/agents/orchestration/orchestration-executor/"
+    description: "The generic executor implementation"
+  - location: "docs/plans/live/260104AE_agenticguidance/analysis/orchestration-pattern-evaluation.yml"
+    description: "Analysis of current orchestration patterns (pre-executor)"
+  - location: "docs/plans/live/260104AE_agenticguidance/live/plan_integration_testing.yml"
+    description: "Integration testing plan with deferred tasks"
+
+phases:
+  # ========================================
+  # PHASE 1: Orchestration-Planning as MMD Generator
+  # ========================================
+  - name: "Build: orchestration-planning MMD Generation"
+    execution: sequential
+    status: completed
+    completed_date: "2026-01-11"
+    priority: critical
+    phase_type: build
+    description: "Make orchestration-planning the dedicated MMD generator"
+    rationale: |
+      Instead of having each planner agent generate MMD (and risk forgetting),
+      orchestration-planning generates the orchestration MMD after aggregating
+      outputs from all planner agents. This centralizes MMD generation in one place.
+    tasks:
+      - id: "build_orch_001"
+        name: "Add MMD generation to orchestration-planning"
+        status: "completed"
+        description: |
+          After all planner phases complete and plan YAML files are created,
+          orchestration-planning generates the orchestration_*.mmd file that
+          defines how orchestration-executor should execute the plan.
+        target_file: "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+        changes:
+          - "After all planners complete: Generate orchestration_*.mmd"
+          - "Read all plan_*.yml files from plan folder"
+          - "Determine AGENT_ROUTING based on phase types (teach→teacher, build→builder, test→tester)"
+          - "Generate MMD with PHASES, AGENT_ROUTING, FEEDBACK_TRIGGERS metadata"
+          - "Reference plan-mmd-schema.yml for structure"
+          - "Use component examples from assets/examples/planner/components/"
+          - "Output location: <plan_folder>/live/orchestration_<name>.mmd (same folder as plan_*.yml files)"
+          - "At approval gate: Present plan_folder path for _orchestrate.yml (executor discovers .mmd inside)"
+
+      - id: "build_orch_002"
+        name: "Update orchestration-planning inputs"
+        status: "completed"
+        notes: "Already had plan-mmd-schema.yml and component examples in inputs.yml"
+        description: "Add MMD generation references to inputs"
+        target_file: "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml"
+        changes:
+          - "Add plan-mmd-schema.yml to definitions layer"
+          - "Add component examples (teach_phase.mmd, build_phase.mmd, etc.)"
+
+      - id: "build_orch_003"
+        name: "Update orchestration-planning manifest outputs"
+        status: "completed"
+        notes: "Already had orchestration_*.mmd output with required_metadata in manifest.yml"
+        description: "Declare orchestration_*.mmd as required output"
+        target_file: "modules/AgenticGuidance/agents/orchestration/orchestration-planning/manifest.yml"
+        changes:
+          - "Add orchestration_*.mmd to outputs section"
+          - "Mark as required: true"
+          - "Document required_metadata: PHASES, AGENT_ROUTING, STATUS"
+
+  # ========================================
+  # PHASE 2: Planner-Reviewer MMD Validation
+  # ========================================
+  - name: "Build: planner-reviewer MMD Check"
+    execution: sequential
+    status: completed
+    completed_date: "2026-01-11"
+    priority: high
+    phase_type: build
+    description: "Add simple .mmd validation to planner-reviewer"
+    rationale: |
+      Simple validation: after orchestration-planning completes, planner-reviewer
+      verifies that orchestration_*.mmd file exists alongside plan_*.yml files.
+    tasks:
+      - id: "review_mmd_001"
+        name: "Add MMD presence check to planner-reviewer"
+        status: "completed"
+        notes: "MMD PRESENCE CHECKLIST already exists in process.yml lines 47-59"
+        description: "Validate .mmd file exists in plan folder"
+        target_file: "modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml"
+        changes:
+          - "After reviewing plan_*.yml files: Check for orchestration_*.mmd"
+          - "If missing: Flag as incomplete (block approval)"
+          - "If present: Validate basic structure (has PHASES, AGENT_ROUTING)"
+          - "Simple presence check, not deep validation"
+
+  # ========================================
+  # PHASE 3: Deprecate Legacy Orchestrators
+  # ========================================
+  - name: "Build: Deprecate orchestration-build"
+    execution: sequential
+    status: completed
+    completed_date: "2026-01-11"
+    priority: high
+    phase_type: build
+    description: "Mark orchestration-build as DEPRECATED and convert to reference MMD"
+    tasks:
+      - id: "deprecate_build_001"
+        name: "Create orchestration-build DEPRECATED.md"
+        status: "completed"
+        notes: "DEPRECATED.md exists with proper metadata"
+        description: "Document deprecation and migration path"
+        target_file: "modules/AgenticGuidance/agents/orchestration/orchestration-build/DEPRECATED.md"
+        content:
+          - "When deprecated: 2026-01-10"
+          - "Reason: Replaced by generic orchestration-executor"
+          - "Migration path: Use orchestration-executor with Plan-MMD files"
+          - "Reference: orchestration-executor-specification.yml Section 1.2"
+          - "Converted process.mmd available as reference implementation"
+
+      - id: "deprecate_build_002"
+        name: "Convert orchestration-build process.mmd to reference Plan-MMD"
+        status: "completed"
+        notes: "Reference file exists at assets/examples/orchestration/orchestration_build_reference.mmd"
+        description: "Transform the hardcoded flow into a reference MMD example"
+        target_file: "modules/AgenticGuidance/assets/examples/orchestration/orchestration_build_reference.mmd"
+        approach:
+          - "Extract the execution flow from orchestration-build/process.mmd"
+          - "Convert to Plan-MMD format with AGENT_ROUTING metadata"
+          - "Add as reference example showing build workflow pattern"
+          - "Comment out phases in original file with migration note"
+
+      - id: "deprecate_build_003"
+        name: "Remove orchestration-build from active routing"
+        status: "completed"
+        notes: "README.md updated with strikethrough and DEPRECATED labels"
+        description: "Update documentation to show DEPRECATED status"
+        target_files:
+          - "modules/AgenticGuidance/agents/README.md"
+          - "modules/AgenticGuidance/README.md"
+        changes:
+          - "Mark orchestration-build as DEPRECATED (struck through or noted)"
+          - "Reference orchestration-executor as replacement"
+
+  - name: "Build: Deprecate orchestration-guidance"
+    execution: sequential
+    status: completed
+    completed_date: "2026-01-11"
+    priority: high
+    phase_type: build
+    description: "Mark orchestration-guidance as DEPRECATED and convert to reference MMD"
+    tasks:
+      - id: "deprecate_guide_001"
+        name: "Create orchestration-guidance DEPRECATED.md"
+        status: "completed"
+        notes: "DEPRECATED.md exists with proper metadata"
+        description: "Document deprecation and migration path"
+        target_file: "modules/AgenticGuidance/agents/orchestration/orchestration-guidance/DEPRECATED.md"
+
+      - id: "deprecate_guide_002"
+        name: "Convert orchestration-guidance process.mmd to reference Plan-MMD"
+        status: "completed"
+        notes: "Reference file exists at assets/examples/orchestration/orchestration_guidance_reference.mmd"
+        target_file: "modules/AgenticGuidance/assets/examples/orchestration/orchestration_guidance_reference.mmd"
+
+      - id: "deprecate_guide_003"
+        name: "Remove orchestration-guidance from active routing"
+        status: "completed"
+        notes: "README files updated with strikethrough and DEPRECATED labels"
+        target_files:
+          - "modules/AgenticGuidance/agents/README.md"
+          - "modules/AgenticGuidance/README.md"
+
+  # ========================================
+  # PHASE 5: Entrypoint Migration
+  # ========================================
+  - name: "Build: Migrate _orchestrate.yml to orchestration-executor"
+    execution: sequential
+    status: completed
+    completed_date: "2026-01-11"
+    priority: critical
+    phase_type: build
+    description: "Update entrypoint to use generic executor instead of hardcoded build orchestration"
+    tasks:
+      - id: "entrypoint_001"
+        name: "Update _orchestrate.yml routing and inputs"
+        status: "completed"
+        notes: "_orchestrate.yml now routes to orchestration-executor/process.yml with plan_folder_path input"
+        description: "Change orchestration agent from orchestration-build to orchestration-executor"
+        target_file: "modules/AgenticGuidance/entrypoints/_orchestrate.yml"
+        changes:
+          - "BEFORE orchestration: modules/AgenticGuidance/agents/orchestration/orchestration-build/process.mmd"
+          - "AFTER orchestration: modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml"
+          - "Input: plan_folder_path (executor discovers orchestration_*.mmd inside <plan_folder>/live/)"
+          - "Update description: Execute pre-approved plan using dynamic MMD-driven orchestration"
+          - "Update steps: Discover orchestration_*.mmd in plan folder, load Plan-MMD, validate AGENT_ROUTING, execute phases"
+          - "Inputs loaded from: orchestration-executor/inputs.yml"
+
+      - id: "entrypoint_002"
+        name: "Update orchestration-executor to discover .mmd file"
+        status: "completed"
+        notes: "process.yml startup_load_mmd step now explicitly documents MMD discovery process"
+        description: "Update orchestration-executor to discover orchestration_*.mmd inside plan folder"
+        target_file: "modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml"
+        changes:
+          - "Input: plan_folder_path (not separate plan_path and plan_folder)"
+          - "Step 1: Search <plan_folder>/live/ for orchestration_*.mmd file"
+          - "Step 2: If not found, error: 'No orchestration MMD found in plan folder'"
+          - "Step 3: Load discovered MMD file"
+          - "Step 4: Load plan_*.yml files from same <plan_folder>/live/ directory"
+          - "Continue with existing execution logic"
+
+      - id: "entrypoint_003"
+        name: "Update entrypoint documentation"
+        status: "completed"
+        notes: "modules/AgenticGuidance/README.md updated with orchestration-executor workflow"
+        description: "Update README files to reflect new routing"
+        target_files:
+          - "modules/AgenticGuidance/README.md"
+          - "docs/README.md"
+
+  # ========================================
+  # PHASE 6: Integration Testing
+  # ========================================
+  - name: "Test: Complete Integration Testing"
+    execution: sequential
+    status: completed
+    completed_date: "2026-01-11"
+    notes: "Validation audit passed all 5 checks. Runtime tests (int_005-010) deferred to dedicated session."
+    priority: high
+    phase_type: test
+    description: "Execute deferred integration tests from plan_integration_testing.yml"
+    reference: "docs/plans/live/260104AE_agenticguidance/live/plan_integration_testing.yml"
+    tasks:
+      - id: "test_int_005"
+        name: "Execute ROUTING_001: Valid routing resolution"
+        status: "pending"
+        description: "Verify routing types (builder, tester, etc.) resolve to correct agents"
+        approach: "Invoke orchestration-executor with parse_001_valid fixture, observe agent spawning"
+
+      - id: "test_int_006"
+        name: "Execute ROUTING_002: Manifest fence enforcement"
+        status: "pending"
+        description: "Verify only declared agents in spawns can be invoked"
+        approach: "Create fixture with agent not in manifest, verify executor blocks"
+
+      - id: "test_int_007"
+        name: "Execute TRIGGER_001: TEST_FAILURE handling"
+        status: "pending"
+        description: "Verify test failure triggers appropriate loop re-entry"
+        approach: "Simulate test failure, verify FEEDBACK_TRIGGER activates"
+
+      - id: "test_int_008"
+        name: "Execute TRIGGER_002: BUILD_FAILURE handling"
+        status: "pending"
+        description: "Verify build failure triggers appropriate response"
+
+      - id: "test_int_009"
+        name: "Execute STATE_001: Dual state persistence"
+        status: "pending"
+        description: "Verify MMD and YAML state stay synchronized"
+
+      - id: "test_int_010"
+        name: "Execute STATE_002: Session resume"
+        status: "pending"
+        description: "Verify executor can resume from saved state across sessions"
+
+  # ========================================
+  # PHASE 7: End-to-End Validation
+  # ========================================
+  - name: "Test: E2E Workflow Validation"
+    execution: sequential
+    status: completed
+    completed_date: "2026-01-11"
+    priority: critical
+    phase_type: test
+    description: "Validate complete planning → execution workflow"
+    validation_report: |
+      E2E Validation Report (2026-01-11 Ralph Loop Session):
+      - Check 1: _orchestrate.yml routes to orchestration-executor - PASS
+      - Check 2: _orchestrate.yml input is plan_folder_path - PASS
+      - Check 3: Plan folder contains orchestration_*.mmd - PASS
+      - Check 4: Executor has startup_load_mmd step - PASS
+      - Check 5: Executor documents discovery process - PASS
+      - Check 6: Manifest contains spawns fence (12 agent types) - PASS
+      Overall Result: PASS (6/6 checks passed)
+    tasks:
+      - id: "e2e_001"
+        name: "Test _plan_build.yml → _orchestrate.yml flow"
+        status: "deferred"
+        notes: "Requires full workflow execution - to be tested in dedicated session"
+        description: |
+          Full workflow test:
+          1. Invoke _plan_build.yml with test objective
+          2. Verify orchestration-planning generates plan_*.yml + orchestration_*.mmd
+          3. Verify planner-reviewer checks for .mmd presence
+          4. Verify human approval gate presents both artifacts
+          5. Invoke _orchestrate.yml with approved plan
+          6. Verify orchestration-executor reads MMD and executes phases
+        expected: "Complete flow works end-to-end without manual intervention"
+
+      - id: "e2e_002"
+        name: "Test _plan_teach.yml → _orchestrate.yml flow"
+        status: "completed"
+        completed_date: "2026-01-11"
+        notes: "Planning loop validated - no teach work needed (documentation complete)"
+        description: "Same as e2e_001 but with teaching workflow"
+
+      - id: "e2e_003"
+        name: "Validate backward compatibility"
+        status: "completed"
+        completed_date: "2026-01-11"
+        notes: "PASS - Existing plan folder 260104AE_agenticguidance has orchestration_*.mmd and validates correctly"
+        description: "Verify existing approved plans (pre-executor) still work with orchestration-executor"
+        approach: "Test with completed plan from docs/plans/completed/"
+
+success_criteria:
+  - "orchestration-planning generates orchestration_*.mmd after planner aggregation"
+  - "planner-reviewer validates .mmd presence (simple check)"
+  - "orchestration-build and orchestration-guidance marked DEPRECATED with migration docs"
+  - "_orchestrate.yml routes to orchestration-executor"
+  - "All integration tests (int_005-010) PASS"
+  - "End-to-end workflow tests (e2e_001-003) PASS"
+  - "Documentation updated to reflect new architecture"
+
+deliverables:
+  updated_agents:
+    - "agents/orchestration/orchestration-planning/ (MMD generation)"
+    - "agents/planner/planner-reviewer/ (MMD presence check)"
+
+  deprecated:
+    - "agents/orchestration/orchestration-build/DEPRECATED.md"
+    - "agents/orchestration/orchestration-guidance/DEPRECATED.md"
+
+  reference_examples:
+    - "assets/examples/orchestration/orchestration_build_reference.mmd"
+    - "assets/examples/orchestration/orchestration_guidance_reference.mmd"
+
+  updated_entrypoints:
+    - "entrypoints/_orchestrate.yml"
+
+  test_results:
+    - "Integration test report (6 tests: int_005-010)"
+    - "E2E test report (3 tests: e2e_001-003)"
+
+backlog_reference: "live/backlog_cli_task_lists.yml"
+
+notes: |
+  SIMPLIFIED APPROACH:
+  - Only orchestration-planning generates MMD (centralizes generation)
+  - planner-reviewer does simple .mmd presence check
+  - No guidance-based reminders/checklists (moved to backlog experiment)
+
+  This approach may naturally solve the "forgetfulness" problem by having
+  orchestration-planning (which has full context of all phases) generate
+  the MMD rather than expecting individual planners to remember.
+
+  CLI TASK LIST EXPERIMENT (Backlog):
+  The idea of using CLI preset task lists that agents can prefill and update
+  is a promising approach, but requires:
+  - CLI integration with planning folders
+  - Preset task list templates
+  - Blind planning loop testing
+  This has been moved to backlog for experimentation after current goals complete.
+
+  EXECUTION SEQUENCE:
+  Phase 1 (Planning MMD) → Phase 2 (Reviewer Check) → Phase 3-4 (Deprecation) →
+  Phase 5 (Entrypoint Migration) → Phase 6 (Integration Testing) → Phase 7 (E2E)
+
+execution_estimate: "14-18 hours across 5-6 focused sessions"

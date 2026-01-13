@@ -1,0 +1,79 @@
+flowchart LR
+    %% GOAL: Execute guidance effectiveness remediation to fix MMD node granularity issues.
+    %% PROFILE: Orchestration-Guidance-Remediation
+    %% PLAN_FILE: plan_live_guidance_effectiveness_remediation.yml
+    %% INPUT_PATH: modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml
+    %%
+    %% AGENT_ROUTING: GuidanceRepositioning -> teacher-update-guidance, FenceStrengthening -> teacher-update-guidance, Verification -> test-final-output
+    %% FEEDBACK_TRIGGERS: GUIDANCE_GAP -> TeachPhase, TEST_FAILURE -> VerificationPhase
+    %% STATUS: GuidanceRepositioning=completed, FenceStrengthening=completed, Verification=completed
+    %%
+    %% CONTEXT:
+    %% This plan addresses blind test failures where orchestration-planning generated
+    %% task-level nodes instead of high-level nodes in MMD files.
+    %% ROOT CAUSE: mmd_node_granularity guidance was too far down in inputs.yml (line ~240)
+
+    Start((Start)) --> LoadPlan[Load Plan Context]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    LoadPlan --> ValidatePlan{Plan Valid?}
+    ValidatePlan -- "No: Missing" --> AskUser((Ask User for Clarification))
+    ValidatePlan -- "Yes: Verified" --> TeachPhase
+
+    %% ========================================
+    %% PHASE 1: GUIDANCE REPOSITIONING
+    %% ========================================
+    %% Teacher agents reposition critical guidance to prominent locations
+    %% in inputs.yml to ensure agents see it early when loading context.
+
+    subgraph TeachPhase_SG ["Guidance Repositioning Phase"]
+        TeachPhase[Enter Guidance Repositioning Phase] --> SpawnTeacherReposition[Spawn teacher-update-guidance Agent]
+        SpawnTeacherReposition --> RepositionComplete{Repositioning Complete?}
+        RepositionComplete -- "No: Incomplete" --> SpawnTeacherReposition
+        RepositionComplete -- "Yes: Done" --> FencePhase
+    end
+
+    %% ========================================
+    %% PHASE 2: FENCE STRENGTHENING
+    %% ========================================
+    %% Teacher agents add validation steps and FENCE declarations
+    %% to process.mmd and inputs.yml for stronger constraint enforcement.
+
+    subgraph FencePhase_SG ["Fence Strengthening Phase"]
+        FencePhase[Enter Fence Strengthening Phase] --> SpawnTeacherFence[Spawn teacher-update-guidance Agent]
+        SpawnTeacherFence --> FenceComplete{Fence Strengthening Complete?}
+        FenceComplete -- "No: Incomplete" --> SpawnTeacherFence
+        FenceComplete -- "Yes: Done" --> VerificationPhase
+    end
+
+    %% ========================================
+    %% PHASE 3: VERIFICATION (BLIND TEST)
+    %% ========================================
+    %% Test agent performs blind test to verify guidance effectiveness.
+    %% Spawns orchestration-planning without hints to regenerate MMD.
+
+    subgraph VerificationPhase_SG ["Verification Phase"]
+        VerificationPhase[Enter Verification Phase] --> SpawnVerification[Spawn test-final-output Agent]
+        SpawnVerification --> VerificationResult{Guidance Effective?}
+        VerificationResult -- "No: Task-Level Nodes" --> TeachPhase
+        VerificationResult -- "Yes: High-Level Only" --> OutputPhase
+    end
+
+    %% ========================================
+    %% OUTPUT PHASE
+    %% ========================================
+    subgraph Output_SG ["Output Subgraph"]
+        OutputPhase[Generate Output] --> ReportSuccess[Report Remediation Success]
+        ReportSuccess --> MarkComplete[Mark Plan Completed]
+    end
+
+    MarkComplete --> End((End: Guidance Remediation Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    %% Feedback loop from Verification back to Teach phase
+    classDef dashedstroke stroke-dasharray: 5 5;
+    linkStyle 11 stroke:#888,stroke-width:2px,stroke-dasharray: 5 5;

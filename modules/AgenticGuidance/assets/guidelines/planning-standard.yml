@@ -1,0 +1,184 @@
+guideline:
+  name: "Planning Standards"
+  description: |
+    Standards for plan structure and required phases. Ensures consistency across all
+    orchestration plans and mandates critical validation phases.
+
+  inputs:
+    - location: "modules/AgenticGuidance/assets/definitions/plans.yml"
+      description: "Plan status values, completion patterns, and structure definitions"
+    - location: "modules/AgenticGuidance/userstories/"
+      description: "User stories location - UAT must reference stories from here"
+
+  rules:
+    # ========================================
+    # FENCE: UAT IS MANDATORY
+    # ========================================
+    - rule: "UAT Phase Mandatory"
+      mandatory: true
+      fence: |
+        FENCE: UAT is MANDATORY for all plans.
+        Every orchestration plan MUST include a User Acceptance Testing (UAT) phase.
+        Plans without UAT are incomplete and must not be marked fully_completed.
+      justification: |
+        Automated tests alone do not prove the system works for users. UAT validates
+        the complete user experience against acceptance criteria defined in user stories.
+        Without UAT, there is no evidence that deliverables satisfy user needs.
+      characteristics:
+        - "UAT phase required regardless of plan complexity"
+        - "UAT must occur after implementation phases complete"
+        - "UAT failure blocks plan completion"
+        - "UAT success measured against user story acceptance criteria"
+
+    # ========================================
+    # FENCE: USER STORY ANCHORING
+    # ========================================
+    - rule: "UAT User Story Anchoring"
+      mandatory: true
+      fence: |
+        FENCE: UAT MUST be anchored to user stories.
+        UAT phases cannot proceed without defined user stories. Each UAT test
+        must trace back to a user story ID. User stories define the acceptance
+        criteria that UAT validates.
+      justification: |
+        Without user stories, UAT has no objective success criteria. User stories
+        provide the acceptance criteria that determine pass/fail. Ad-hoc UAT
+        without story anchoring risks validating the wrong things or missing
+        critical user requirements.
+      execution_pattern:
+        - "Identify relevant user stories: `agentic stories find`"
+        - "Map each story to implementation artifacts"
+        - "Execute UAT against story acceptance criteria"
+        - "Document pass/fail per story ID (e.g., US-CLI-001)"
+      characteristics:
+        - "Stories discovered via: agentic stories find [--project <project>]"
+        - "Stories location: modules/AgenticGuidance/userstories/"
+        - "Each UAT test traces to specific story ID"
+        - "Acceptance criteria from stories define UAT success"
+
+    # ========================================
+    # UAT IMPLEMENTATION FLEXIBILITY
+    # ========================================
+    - rule: "UAT Implementation Flexibility"
+      description: |
+        UAT is mandatory but implementation strategy is at the planner's discretion.
+        Planners select the approach most appropriate to the plan's context.
+      justification: |
+        Different plans have different validation needs. A CLI tool benefits from
+        user simulation, while a guidance update benefits from blind testing. Rigid
+        mandates on strategy would reduce effectiveness.
+      implementation_options:
+        test-user-simulator:
+          description: |
+            Spawn test-user-simulator agents to execute simulated user journeys.
+            Agent walks through user stories as if they were a real user.
+          when_to_use:
+            - "Full user journey validation needed"
+            - "CLI tools or interactive features"
+            - "Repeatable automated validation desired"
+            - "User flow complexity requires step-by-step execution"
+          agent: "test-user-simulator"
+
+        guidance-blind-test:
+          description: |
+            Spawn test-guidance-simulator without prior context. Agent attempts
+            to complete tasks using only documentation and guidance.
+          when_to_use:
+            - "Documentation completeness validation needed"
+            - "Guidance or instruction updates"
+            - "Validating that guidance is self-contained"
+            - "Testing that new users can follow instructions"
+          agent: "test-guidance-simulator"
+
+        documentation-loop:
+          description: |
+            Create user documentation and have the user review it. User validates
+            that documentation accurately represents the implementation.
+          when_to_use:
+            - "End-user facing features needing docs validation"
+            - "Human feedback on UX is prioritized"
+            - "Documentation is primary deliverable"
+            - "User must approve final wording"
+          agent: "documentation-writer (user reviews output)"
+
+        manual:
+          description: |
+            Present implementation to human validator. Human executes user stories
+            manually and provides feedback.
+          when_to_use:
+            - "Complex scenarios requiring human judgment"
+            - "Subjective quality assessment needed"
+            - "Critical features requiring human approval"
+            - "Automated simulation insufficient"
+          agent: "None (human-in-the-loop)"
+
+  uat_phase_component:
+    location: "modules/AgenticGuidance/assets/examples/orchestration/phase_templates/uat_phase.mmd"
+    description: |
+      Reusable UAT phase component for orchestration plans. Provides flow diagram
+      showing strategy selection, story validation fence, iteration loop, and
+      exit conditions. Planners should reference this component for UAT structure.
+    usage: |
+      Include in orchestration plans as the final validation phase. The component
+      handles:
+      - User story existence validation (fence)
+      - Strategy selection (simulator, blind-test, doc-loop, manual)
+      - Results aggregation across strategies
+      - Iteration on failures (max 3 per loop definition)
+      - Escalation when stories missing or max iterations reached
+
+  examples:
+    good:
+      - description: "Plan with properly anchored UAT"
+        example: |
+          phases:
+            - name: "Implementation"
+              # ... implementation tasks ...
+            - name: "UAT"
+              user_stories:
+                - "US-CLI-001: User can install CLI tool"
+                - "US-CLI-002: User can run basic commands"
+              strategy: "test-user-simulator"
+              acceptance_criteria:
+                - "All referenced stories pass validation"
+                - "User simulator completes journeys without errors"
+
+      - description: "Strategy selection based on context"
+        example: |
+          # For a guidance update plan:
+          uat:
+            strategy: "guidance-blind-test"
+            rationale: "Testing guidance completeness - blind agent should succeed with docs alone"
+            stories:
+              - "US-GUIDE-001: Agent can follow process without prior context"
+
+    bad:
+      - description: "Plan without UAT phase"
+        example: |
+          # WRONG: Plan ends at implementation
+          phases:
+            - name: "Build"
+              tasks: [...]
+            - name: "Test"  # This is automated testing, NOT UAT
+              tasks: [...]
+          # Missing UAT phase - plan cannot be marked complete
+
+      - description: "UAT without user story anchoring"
+        example: |
+          # WRONG: UAT has no story references
+          uat:
+            strategy: "manual"
+            description: "Have someone test it"
+            # No stories, no acceptance criteria - how do we know if it passes?
+
+  related_guidelines:
+    - location: "modules/AgenticGuidance/assets/guidelines/testing.yml"
+      description: "Testing guidelines including UAT requirements section"
+    - location: "modules/AgenticGuidance/assets/guidelines/iteration.yml"
+      description: "Loop patterns for UAT iteration"
+    - location: "modules/AgenticGuidance/assets/guidelines/orchestration-policy.yml"
+      description: "Orchestration patterns for spawning UAT agents"
+
+  related_components:
+    - location: "modules/AgenticGuidance/assets/examples/orchestration/phase_templates/uat_phase.mmd"
+      description: "UAT phase flow diagram component"

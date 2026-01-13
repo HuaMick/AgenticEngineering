@@ -7,26 +7,28 @@ description: |
   task completion testing (guidance-only execution), reference resolution testing (path validation),
   loop context testing (loop participant metadata), subagent spawning testing (orchestrator guidance),
   and gap analysis phases (friction categorization). Plans incorporate test scenarios from
-  assets/definitions/guidance-test-scenarios.yml and follow guidance-test-loop pattern.
+  modules/AgenticGuidance/assets/definitions/guidance-test-scenarios.yml and follow guidance-test-loop pattern.
 
-version: "1.0"
+# Version scheme: X.Y where X = architecture version, Y = iteration
+# 2.0 = reference layer architecture (inputs.yml uses transitive loading)
+version: "2.0"
 
 # Purpose and scope
 purpose: |
   Planner-guidance-testing agents create phased guidance test execution plans that orchestration agents
   use to spawn and coordinate test-guidance-simulator agents. Plans include test scenarios,
   guidance-test-loop patterns, and success criteria for validating that agents can execute tasks
-  using only their guidance files (process.yml, inputs.yml, outputs.yml).
+  using only their guidance files (process.yml, inputs.yml).
 
 # Example plan structure reference
-example_plan: "assets/examples/test/guidance-test-plan.yml"
+example_plan: "modules/AgenticGuidance/assets/examples/test/guidance-test-plan.yml"
 
 # Guidance test plan structure requirements
 guidance_test_plan_structure: |
   Plans must include these phases in order:
   1. Guidance-test-loop (core validation with minimal context):
      - One test-guidance-simulator per target agent
-     - Each simulator receives ONLY: process.yml, inputs.yml, outputs.yml
+     - Each simulator receives ONLY: process.yml, inputs.yml
      - Minimal test task (goal only, no implementation hints)
      - Test scenarios selected based on agent capabilities
 
@@ -41,7 +43,7 @@ guidance_test_plan_structure: |
      - Uses audit process
 
   4. Documentation-loop (update guidance based on findings):
-     - Fix guidance gaps in process.yml, inputs.yml, outputs.yml
+     - Fix guidance gaps in process.yml, inputs.yml
      - Add missing references, clarify steps, specify loop_context
      - Validate fixes with re-run of guidance-test-loop
 
@@ -49,9 +51,10 @@ guidance_test_plan_structure: |
 test_scenario_selection: |
   Scenario selection checklist:
 
-  ALWAYS INCLUDE: task_completion_test + reference_resolution_test (baseline for all agents)
+  ALWAYS INCLUDE: task_completion_test + reference_resolution_test + friction_detection_test (baseline for all agents)
   - task_completion_test: Can agent complete task with guidance only?
   - reference_resolution_test: Do all paths in inputs.yml resolve correctly?
+  - friction_detection_test: Are prerequisites and assumptions explicit?
 
   ALSO INCLUDE loop_context_test when agent participates in loops:
   - Check process.yml for loop_context section
@@ -71,6 +74,7 @@ test_scenario_selection: |
   Test scenario capabilities:
   - task_completion_test: Validates guidance completeness for task execution
   - reference_resolution_test: Validates all input file paths exist and are unambiguous
+  - friction_detection_test: Validates prerequisites and assumptions are explicit
   - loop_context_test: Validates loop participation metadata is explicit
   - subagent_spawning_test: Validates orchestrator can spawn children from guidance alone
   - cross_agent_dependency_test: Validates inter-agent dependencies are explicit
@@ -130,9 +134,9 @@ gap_categorization: |
 test_process_mapping: |
   Strategy to process mapping:
   # MIGRATED: test-guidance-simulator - 2026-01-03
-  - guidance-blind-test: agents/test/test-guidance-simulator/process.yml
+  - guidance-blind-test: modules/AgenticGuidance/agents/test/test-guidance-simulator/process.yml
   # MIGRATED: test-audit - 2026-01-03
-  - audit: agents/test/test-audit/process.yml
+  - audit: modules/AgenticGuidance/agents/test/test-audit/process.yml
 
 # Tool requirements
 tools:
@@ -147,7 +151,7 @@ dependencies:
     - test-guidance-simulator
     - test-audit
   definitions:
-    - strategy-guidance-blind-test.yml
+    - guidance_blind_test.mmd
     - guidance-test-scenarios.yml
     - friction.yml
     - path.yml

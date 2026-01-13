@@ -1,0 +1,126 @@
+# ==============================================
+# PATH RESOLUTION SEMANTICS
+# ==============================================
+# All paths in this file are relative to the REPOSITORY ROOT.
+# (e.g., modules/AgenticGuidance/assets/...).
+#
+# EXCEPTION: docs/plans/ paths are relative to the TARGET PROJECT root.
+# When an agent references docs/plans/live/ or docs/plans/completed/,
+# these exist in the project being worked on, not in AgenticGuidance.
+# ==============================================
+
+# ==============================================
+# REQUIRED INPUTS
+# ==============================================
+# Orchestration-executor requires a pre-approved plan with MMD.
+# It does NOT perform planning - it only executes.
+# ==============================================
+required_inputs:
+  - name: "plan_folder_path"
+    type: "string"
+    description: |
+      Path to the PLAN FOLDER (not the live/ subdirectory).
+      The executor will internally search <plan_folder>/live/ for files.
+    required: true
+    example: "docs/plans/260110Repo_feature"
+    note: |
+      CORRECT:   "docs/plans/260110Repo_feature"
+      INCORRECT: "docs/plans/260110Repo_feature/live/"
+
+      The executor appends /live/ internally when searching for:
+      - orchestration_*.mmd (Mermaid flowchart)
+      - plan_*.yml (plan definition)
+    validation: |
+      Plan folder structure must be:
+        <plan_folder>/
+          live/
+            plan_*.yml (plan definition with phases)
+            orchestration_*.mmd (Mermaid flowchart with AGENT_ROUTING)
+
+  - name: "target_project_path"
+    type: "string"
+    description: "Absolute path to target project root (for resolving relative paths)"
+    required: true
+    example: "/home/code/MyProject"
+
+inputs:
+  # ==============================================
+  # CORE SPECIFICATION
+  # ==============================================
+  - type: file
+    path: "modules/AgenticGuidance/assets/definitions/orchestration-executor-specification.yml"
+    description: "Comprehensive executor behavior specification (959 lines)"
+    required: true
+    sections_used:
+      - "executor_scope"
+      - "agent_routing"
+      - "feedback_triggers"
+      - "state_model"
+      - "execution_protocol"
+
+  # ==============================================
+  # MMD SCHEMA AND VALIDATION
+  # ==============================================
+  - type: file
+    path: "modules/AgenticGuidance/assets/definitions/plan-mmd-schema.yml"
+    description: "Plan-MMD structural schema for validation"
+    required: true
+    sections_used:
+      - "agent_routing"
+      - "feedback_triggers"
+      - "status_management"
+      - "validation_checklist"
+
+  # ==============================================
+  # AGENT ROUTING RESOLUTION
+  # ==============================================
+  - type: file
+    path: "modules/AgenticGuidance/assets/definitions/agent-categories.yml"
+    description: "Agent category definitions for routing resolution"
+    required: true
+    usage: |
+      Used to resolve generic routing types (builder, tester, teacher) to
+      specific agents (build-python, test-runner, teacher-update-guidance).
+
+  - type: file
+    path: "modules/AgenticGuidance/agents/manifest.yml"
+    description: "Central agent registry for spawn validation"
+    required: true
+    usage: "Validate that routed agents exist and are available"
+
+  # ==============================================
+  # LOOP DEFINITIONS
+  # ==============================================
+  - type: file
+    path: "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+    description: "Loop definitions for feedback trigger handling"
+    required: true
+    sections_used:
+      - "loop_types.test-fix-loop"
+      - "loop_types.audit-test-fix-loop"
+      - "loop_types.guidance-test-loop"
+    usage: |
+      When FEEDBACK_TRIGGER fires, executor uses loop definitions to
+      determine retry behavior, max iterations, and escalation path.
+
+  # ==============================================
+  # TEST SCENARIOS (for validation)
+  # ==============================================
+  - type: file
+    path: "modules/AgenticGuidance/assets/definitions/orchestration-test-scenarios.yml"
+    description: "Test scenarios for executor validation"
+    required: false
+    usage: "Reference during development and testing"
+
+  # ==============================================
+  # CLI COMMAND REFERENCE
+  # ==============================================
+  - type: reference
+    path: "modules/AgenticGuidance/assets/definitions/cli-commands.yml"
+    description: "CLI commands reference for executor operations"
+    required: false
+    usage: |
+      Key commands used by orchestration-executor:
+      - agentic plan validate: Validate plan folder before execution
+      - agentic plan task start/complete: Track phase progress
+      - agentic plan move: Archive completed phases

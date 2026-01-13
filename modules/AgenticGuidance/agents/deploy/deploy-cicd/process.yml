@@ -4,15 +4,39 @@ process:
     Prevent CI failures caused by drift between test structure and CI configuration.
 
   loop_definitions:
-    reference: "assets/definitions/agent-loops.yml"
+    reference: "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
     description: "Loop types (test-fix-loop) defined in agent-loops.yml"
     # NOTE: Do not duplicate loop definitions here - see agent-loops.yml for full definitions
 
   inputs:
-    - location: "agents/deploy/deploy-cicd/inputs.yml"
+    - location: "modules/AgenticGuidance/agents/deploy/deploy-cicd/inputs.yml"
       description: "Core deploy-cicd agent inputs, guidelines, and CI/CD validation procedures"
 
-  outputs: []
+  outputs:
+    # FENCE: Output must match declared schema before marking complete
+    - name: "cicd_audit_report"
+      type: "object"
+      description: "Structured report of CI/CD synchronization status"
+      required_fields:
+        - "cloudbuild_audit"   # {missing: [], non_existent: [], uncovered: []}
+        - "dockerfile_issues"  # List of sed pattern or dependency issues
+        - "pytest_issues"      # Coverage or marker configuration issues
+        - "compose_drift"      # Differences between cloudbuild and compose
+        - "platform_issues"    # Root user, path dependency issues
+        - "recommended_fixes"  # List of {file, change, reason}
+
+    - name: "validation_status"
+      type: "string"
+      description: "Overall validation result"
+      enum: ["PASS", "WARN", "FAIL"]
+      required: true
+
+    - name: "blocking_issues"
+      type: "array"
+      description: "Issues that would cause CI failure if not fixed"
+      items:
+        type: "object"
+        fields: ["file", "issue", "severity"]
 
   loop_context:
     participates_in:
@@ -67,8 +91,8 @@ process:
       - recommended_fixes with specific file and change details
 
   guidelines:
-    # Core guidelines: See assets/guidelines/ (safety.yml, fix-the-source.yml, testing.yml)
-    # Core definitions: See assets/definitions/ (plans.yml, domains.yml, workflows.yml)
+    # Core guidelines: See modules/AgenticGuidance/assets/guidelines/ (safety.yml, fix-the-source.yml, testing.yml)
+    # Core definitions: See modules/AgenticGuidance/assets/definitions/ (plans.yml, domains.yml, workflows.yml)
     # CI/CD definitions: See inputs.yml definitions (cicd_maintenance, cloudbuild_validation, dockerfile_validation, pytest_configuration, compose_validation, platform_compatibility, parallel_test_execution, ci_coverage_strategy)
     - |
       All detailed CI/CD validation procedures are in inputs.yml definitions.

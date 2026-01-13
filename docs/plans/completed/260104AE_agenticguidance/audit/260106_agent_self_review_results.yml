@@ -1,0 +1,225 @@
+# Agent Self-Review Testing Results
+# Plan: 260104AE_agenticguidance
+# Date: 2026-01-06
+# Phase: Agent Self-Review Testing (Phase 5)
+
+summary:
+  agents_tested: 19
+  total_friction_points: 100+
+  critical_issues: 8
+  high_issues: 20
+  medium_issues: 25
+  low_issues: 15
+
+# Cross-cutting issues found across multiple agents
+common_patterns:
+
+  critical_patterns:
+    - id: CP-001
+      title: "Missing docs/plans/ directory structure"
+      affected_agents:
+        - orchestration-planning
+        - orchestration-build
+        - orchestration-guidance
+        - planner-build
+        - planner-guidance
+        - planner-test
+      description: |
+        Multiple agents reference docs/plans/live/ and docs/plans/completed/
+        directories for plan storage, but these directories do not exist in
+        the AgenticGuidance module. This is the most common CRITICAL issue.
+      impact: "Agents cannot execute plan creation/validation tasks"
+      fix: |
+        Either create the expected directory structure OR clarify in guidance
+        that paths are relative to TARGET PROJECT (not AgenticGuidance module)
+
+    - id: CP-002
+      title: "Missing test agent processes (NOT_MIGRATED)"
+      affected_agents:
+        - planner-test
+      missing_files:
+        - "agents/test/test-user-simulator/process.yml"
+        - "agents/test/test-service/process.yml"
+        - "agents/test/test-builder/process.yml"
+      description: |
+        Test strategies reference agent processes that are marked NOT_MIGRATED
+        from legacy location. No fallback path provided.
+      impact: "Cannot create user simulator UAT, service tests, or builder tests"
+      fix: "Migrate missing agents OR provide alternate strategies"
+
+    - id: CP-003
+      title: "Missing required_inputs section in inputs.yml"
+      affected_agents:
+        - orchestration-planning
+        - orchestration-build
+        - planner-build
+        - planner-guidance
+      description: |
+        inputs.yml files don't distinguish between required inputs (must be
+        provided by user) and reference inputs (background context). Agents
+        cannot determine what MUST be in the prompt to proceed.
+      impact: "Agents may start without necessary context, leading to failures"
+      fix: "Add required_inputs section to inputs.yml files"
+
+  high_patterns:
+    - id: HP-001
+      title: "Ambiguous path resolution"
+      affected_agents: "all"
+      description: |
+        All paths in inputs.yml are relative without explicit base directory.
+        Agent must infer these are relative to AgenticGuidance module root.
+      fix: "Add base_path field or document resolution rules"
+
+    - id: HP-002
+      title: "Missing loop_context for loop participants"
+      affected_agents:
+        - test-audit
+        - orchestration-guidance
+      description: |
+        Agents that participate in loops (audit-test-fix-loop, guidance-test-loop)
+        lack explicit loop_context sections specifying role, iteration strategy,
+        and exit conditions.
+      fix: "Add loop_context section to process.yml for loop participants"
+
+    - id: HP-003
+      title: "Empty/undefined outputs sections"
+      affected_agents:
+        - test-audit
+        - teacher-update-guidance
+        - orchestration-guidance
+      description: |
+        Process files have outputs: [] but steps describe generating reports/recommendations.
+        No specification of output format, location, or structure.
+      fix: "Populate outputs section with structured schema"
+
+    - id: HP-004
+      title: "Fragment reference syntax (#anchor) not resolvable"
+      affected_agents:
+        - planner-build
+        - planner-guidance
+        - orchestration-planning
+      description: |
+        References like 'agent-categories.yml#planner' use fragment syntax
+        that is not universally supported. No mechanism documented for resolution.
+      fix: "Document fragment resolution OR use explicit paths"
+
+  medium_patterns:
+    - id: MP-001
+      title: "Comment-only guidelines references"
+      affected_agents:
+        - planner-build
+        - planner-test
+        - planner-guidance
+      description: "Guidelines referenced via comments, not formal inputs"
+      fix: "Convert to formal inputs or clarify documentation purpose"
+
+    - id: MP-002
+      title: "Empty guidelines arrays"
+      affected_agents:
+        - planner-test
+        - teacher-update-guidance
+      description: "guidelines: [] despite guidelines being referenced elsewhere"
+      fix: "Populate array or document that guidelines come from layers"
+
+    - id: MP-003
+      title: "Version mismatches between files"
+      affected_agents:
+        - planner-test (inputs 2.0-p1 vs manifest 1.0)
+        - test-audit (2.0-pilot)
+      description: "Different versions in inputs.yml vs manifest.yml"
+      fix: "Align versions or document relationship"
+
+    - id: MP-004
+      title: "Excessive context loading"
+      affected_agents:
+        - teacher-update-guidance
+      description: |
+        Loads layers with irrelevant inputs (cleaner-shared, test-shared)
+        violating context-minimisation principle.
+      fix: "Create agent-specific layers or selectively include"
+
+  low_patterns:
+    - id: LP-001
+      title: "Missing outputs.yml files"
+      affected_agents: "multiple"
+      description: "Agents have process.yml and inputs.yml but no outputs.yml"
+      fix: "Create outputs.yml for structured output documentation"
+
+agent_results:
+  - agent: orchestration-planning
+    status: completed
+    critical: 0
+    high: 2
+    medium: 3
+    low: 3
+
+  - agent: orchestration-build
+    status: completed
+    critical: 1
+    high: 4
+    medium: 5
+    low: 3
+
+  - agent: orchestration-guidance
+    status: completed
+    critical: 1
+    high: 4
+    medium: 4
+    low: 3
+
+  - agent: planner-build
+    status: completed
+    critical: 1
+    high: 3
+    medium: 3
+    low: 3
+
+  - agent: planner-guidance
+    status: completed
+    critical: 1
+    high: 3
+    medium: 4
+    low: 2
+
+  - agent: planner-test
+    status: completed
+    critical: 3
+    high: 3
+    medium: 4
+    low: 3
+
+  - agent: test-audit
+    status: completed
+    critical: 2
+    high: 2
+    medium: 3
+    low: 2
+
+  - agent: teacher-update-guidance
+    status: completed
+    critical: 1
+    high: 2
+    medium: 2
+    low: 1
+
+recommendations:
+  immediate_actions:
+    - "Create docs/plans/ directory structure in AgenticGuidance"
+    - "Add required_inputs sections to all inputs.yml files"
+    - "Add loop_context sections for loop participants"
+
+  short_term:
+    - "Migrate missing test agents (test-user-simulator, test-service, test-builder)"
+    - "Define output schemas for all agents"
+    - "Document path resolution rules"
+
+  long_term:
+    - "Create agent-specific input layers"
+    - "Standardize version scheme"
+    - "Add outputs.yml to all agents"
+
+execution_status:
+  phase_5_testing: "completed"
+  agents_spawned: 19
+  reports_collected: 8+
+  remaining: "results being aggregated"

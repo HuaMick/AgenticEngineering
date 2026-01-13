@@ -1,0 +1,301 @@
+# Detailed Test Scenarios Reference
+# This file provides comprehensive test scenario examples for reference.
+# Use plan_live_test.yml as the skeleton template and consult this for details.
+
+# ========================================
+# COMPONENT TEST AGENTS (Detailed Examples)
+# ========================================
+# In practice, you may have multiple component test agents.
+# Each focuses on a specific subsystem or layer.
+
+component_test_agents:
+  # Agent 1: Domain layer tests
+  - type: test-component
+    name: Domain Layer Tests
+    inputs:
+      - src/domain/
+      - tests/unit/domain/
+    guidance: |
+      Context: Test pure business logic in domain layer.
+
+      Test Categories:
+      1. Entity Validation
+         - Test all entity constructors with valid/invalid inputs
+         - Verify immutability constraints
+         - Check serialization/deserialization
+
+      2. Business Rules
+         - Test each business rule in isolation
+         - Verify rule composition (multiple rules applied)
+         - Check rule precedence when rules conflict
+
+      3. Value Objects
+         - Test value equality semantics
+         - Verify value validation
+         - Check conversion between value types
+
+      Friction Points:
+      - Domain logic should not depend on external services
+      - Tests should not require database or network
+    success_criteria:
+      - 100% domain model coverage
+      - All business rules verified
+      - No external dependencies in domain tests
+
+  # Agent 2: Workflow layer tests
+  - type: test-component
+    name: Workflow Layer Tests
+    inputs:
+      - src/workflows/
+      - tests/unit/workflows/
+    guidance: |
+      Context: Test workflow orchestration with mocked domain services.
+
+      Test Categories:
+      1. Workflow Steps
+         - Test each workflow step in isolation
+         - Verify step ordering and dependencies
+         - Check rollback behavior on failures
+
+      2. State Management
+         - Test workflow state transitions
+         - Verify state persistence (if applicable)
+         - Check concurrent workflow handling
+
+      3. Error Handling
+         - Test failure propagation
+         - Verify retry logic
+         - Check error message clarity
+
+      Friction Points:
+      - Workflows may have complex setup requirements
+      - Mock domain services consistently
+    success_criteria:
+      - All workflow paths tested
+      - Error handling verified
+      - State transitions correct
+
+  # Agent 3: API layer tests
+  - type: test-component
+    name: API Layer Tests
+    inputs:
+      - src/api/
+      - tests/unit/api/
+    guidance: |
+      Context: Test API handlers with mocked workflows.
+
+      Test Categories:
+      1. Request Validation
+         - Test required field validation
+         - Verify type coercion
+         - Check constraint validation (length, range)
+
+      2. Response Formatting
+         - Test success response structure
+         - Verify error response format
+         - Check content negotiation
+
+      3. Authentication/Authorization
+         - Test auth middleware
+         - Verify permission checks
+         - Check token handling
+
+      Friction Points:
+      - API tests may require test server setup
+      - Authentication tokens need mocking
+    success_criteria:
+      - All endpoints tested
+      - Request validation complete
+      - Error responses follow API standards
+
+  # Agent 4: CLI layer tests
+  - type: test-component
+    name: CLI Layer Tests
+    inputs:
+      - src/cli/
+      - tests/unit/cli/
+    guidance: |
+      Context: Test CLI command parsing and output.
+
+      Test Categories:
+      1. Command Parsing
+         - Test argument parsing
+         - Verify flag handling
+         - Check subcommand routing
+
+      2. Output Formatting
+         - Test success output
+         - Verify error output
+         - Check help text
+
+      3. Interactive Features
+         - Test prompts (if applicable)
+         - Verify confirmation dialogs
+         - Check progress indicators
+
+      Friction Points:
+      - CLI tests may need stdout capture
+      - Interactive tests require input mocking
+    success_criteria:
+      - All commands tested
+      - Output formatting consistent
+      - Help text accurate
+
+  # Agent 5-7: Additional component agents as needed
+  # - Configuration management tests
+  # - Plugin/extension tests
+  # - Data access layer tests
+
+# ========================================
+# USER FLOW TEST AGENTS (Detailed Examples)
+# ========================================
+# User flow tests verify complete end-to-end scenarios.
+
+user_flow_agents:
+  # Flow 1: Primary user journey
+  - type: test-e2e
+    name: Primary User Journey
+    inputs:
+      - tests/e2e/
+      - docs/user-stories/
+    guidance: |
+      Context: Test the primary user journey from start to finish.
+
+      Test Scenarios:
+      1. New User Setup
+         - First-time configuration
+         - Initial data creation
+         - Onboarding flow
+
+      2. Core Feature Usage
+         - Primary feature execution
+         - Result verification
+         - State changes confirmed
+
+      3. Session Lifecycle
+         - Login/logout (if applicable)
+         - Session persistence
+         - Session recovery
+
+      Friction Points:
+      - E2E tests are slower
+      - May require test environment setup
+    success_criteria:
+      - Complete journey succeeds
+      - All user stories verified
+      - Performance acceptable
+
+  # Flow 2: Error recovery
+  - type: test-e2e
+    name: Error Recovery Flow
+    inputs:
+      - tests/e2e/errors/
+    guidance: |
+      Context: Test user experience when things go wrong.
+
+      Test Scenarios:
+      1. Invalid Input Recovery
+         - Submit invalid data
+         - Verify clear error message
+         - Retry with valid data
+
+      2. Network Failure Recovery
+         - Simulate network timeout
+         - Verify retry behavior
+         - Check offline handling
+
+      3. State Recovery
+         - Interrupt mid-operation
+         - Verify state consistency
+         - Resume operation
+
+      Friction Points:
+      - Need to simulate failure conditions
+      - May require special test fixtures
+    success_criteria:
+      - All error paths tested
+      - Recovery flows work
+      - No data corruption
+
+  # Flow 3: Integration scenarios
+  - type: test-e2e
+    name: Integration Scenarios
+    inputs:
+      - tests/e2e/integration/
+    guidance: |
+      Context: Test interaction with external systems.
+
+      Test Scenarios:
+      1. External API Integration
+         - API call success
+         - API error handling
+         - Rate limiting behavior
+
+      2. File System Operations
+         - File read/write
+         - Directory operations
+         - Permission handling
+
+      3. Database Operations (if applicable)
+         - Data persistence
+         - Query performance
+         - Concurrent access
+
+      Friction Points:
+      - External systems may need mocking
+      - May require test containers
+    success_criteria:
+      - All integrations verified
+      - Error handling tested
+      - Performance acceptable
+
+# ========================================
+# DYNAMIC BUILD AGENT (Detailed Example)
+# ========================================
+# The dynamic build agent runs the full test suite after each iteration.
+
+dynamic_build_agent:
+  - type: test-runner
+    name: Full Test Suite Runner
+    inputs:
+      - pyproject.toml
+      - tests/
+      - src/
+    guidance: |
+      Context: Build and run complete test suite.
+
+      Build Steps:
+      1. Dependency Check
+         - Verify all dependencies installed
+         - Check version compatibility
+         - Install missing packages
+
+      2. Compilation (if applicable)
+         - Run type checker
+         - Check for syntax errors
+         - Verify import structure
+
+      3. Test Execution
+         - Run unit tests first (fast feedback)
+         - Run integration tests
+         - Run E2E tests last
+
+      4. Coverage Analysis
+         - Generate coverage report
+         - Identify uncovered code
+         - Flag coverage regressions
+
+      Iteration Pattern:
+      - On test failure: Report specific failures
+      - Fix iteration: Address failures
+      - Re-run: Verify fixes, check for regressions
+
+      Friction Points:
+      - Full suite may be slow
+      - Consider test parallelization
+      - Use incremental testing when possible
+    success_criteria:
+      - Build succeeds
+      - All tests pass
+      - No coverage regression
+      - Performance within bounds

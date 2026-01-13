@@ -1,11 +1,64 @@
 name: orchestration-build
+status: deprecated
+deprecated_by: orchestration-executor
+deprecation_reason: |
+  Replaced by orchestration-executor which provides generic MMD-driven execution.
+  orchestration-executor dynamically routes to agents based on Plan-MMD AGENT_ROUTING metadata,
+  eliminating the need for specialized orchestration agents per workflow type.
 description: |
   Code implementation workflows including features, bug fixes, and refactoring.
   Coordinates build agents to execute implementation plans.
-version: "1.0"
+# Version scheme: X.Y where X = architecture version, Y = iteration
+# 2.0 = reference layer architecture
+version: "2.0"
 
 purpose: |
   Orchestration-build manages code implementation workflows by spawning and
   coordinating build subagents. Handles features, bug fixes, and refactoring
   tasks. Can delegate to orchestration-planning when no pre-approved plan exists,
-  or execute directly when given a pre-approved plan via _execute.yml entrypoint.
+  or execute directly when given a pre-approved plan via _orchestrate.yml entrypoint.
+
+# FENCE: Only agents listed in spawns may be invoked by this orchestrator
+spawns:
+  # Worktree and plan setup
+  - agent: "deploy-worktree"
+    purpose: "Create/verify worktree and plan folder structure"
+    when: "Start of workflow"
+
+  # Planning delegation (when no pre-approved plan)
+  - agent: "orchestration-planning"
+    purpose: "Create and approve implementation plan"
+    when: "No approved_plan_path provided"
+
+  # Implementation agents
+  - agent: "build-python"
+    purpose: "Python code implementation"
+    when: "Implementation phase"
+
+  - agent: "build-flutter"
+    purpose: "Flutter/Dart code implementation"
+    when: "Implementation phase (Flutter projects)"
+
+  # Test validation
+  - agent: "test-runner"
+    purpose: "Execute tests and report results"
+    when: "After implementation, in test-fix-loop"
+
+  # CI/CD validation
+  - agent: "deploy-cicd"
+    purpose: "Audit CI/CD configuration changes"
+    when: "When CI/CD files modified"
+
+  # Guidance validation
+  - agent: "planner-guidance-testing"
+    purpose: "Create guidance validation plan"
+    when: "When guidance files modified"
+
+  - agent: "test-guidance-simulator"
+    purpose: "Execute guidance blind tests"
+    when: "Guidance validation phase"
+
+  # Final audit
+  - agent: "test-final-output"
+    purpose: "Validate final outputs and completion"
+    when: "Before marking plan complete"

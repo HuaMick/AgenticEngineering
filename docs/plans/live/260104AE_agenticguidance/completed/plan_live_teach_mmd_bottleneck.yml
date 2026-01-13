@@ -1,0 +1,430 @@
+# Plan: Teach Phase - MMD Bottleneck Remediation (Revised)
+# Objective: Resolve the circular dependency preventing MMD generation during planning.
+#
+# Root Cause Analysis:
+# - diag_001: Reviewer expects MMD before approval, but Orchestrator generates MMD after approval (deadlock)
+# - diag_002: Both orchestration-planning and planner-guidance have MMD generation sections (ownership confusion)
+# - diag_003: planner-guidance steps array lacks trigger for mmd_generation section
+# - diag_004: Inconsistent {plan_id} vs {plan_name} placeholders
+# - diag_005: _plan_teach.yml entrypoint doesn't list .mmd as output
+#
+# REVISED SOLUTION (per user feedback):
+# - ONLY orchestration-planning generates MMD files
+# - Individual planners (planner-guidance, planner-build) do NOT generate MMD
+# - Handover process: Planner → Orchestrator generates MMD → Reviewer validates complete package
+# - Sequence fix: Move MMD generation BEFORE reviewer approval in orchestration-planning
+
+name: "mmd_bottleneck_remediation_teach"
+worktree_path: "/home/code/AgenticEngineering-agenticguidance"
+branch: "agenticguidance"
+status: "completed"
+priority: "high"
+
+plan_file: "docs/plans/live/260104AE_agenticguidance/live/plan_live_teach_mmd_bottleneck.yml"
+
+related_plans:
+  diagnostic: "plan_mmd_bottleneck_remediation.yml"
+  orchestration: "orchestration_mmd_bottleneck_remediation.mmd"
+
+context: |
+  This plan resolves a structural deadlock in the planning workflow that prevents
+  orchestration MMD files from being generated. The issue creates a catch-22:
+
+  - Reviewer (planner-reviewer) expects orchestration_*.mmd to exist before approval
+  - Orchestrator (orchestration-planning) generates MMD AFTER plan approval
+
+  REVISED SOLUTION (per user feedback):
+  1. ONLY orchestration-planning generates MMD (single point of ownership)
+  2. Individual planners (planner-guidance, planner-build) should NOT have MMD generation guidance
+  3. The handover: Planner creates YAML → orchestrator generates MMD → reviewer validates package
+  4. Fix: Reorder orchestration-planning to generate MMD BEFORE invoking reviewer
+
+  Key change: Move MMDGeneration_SG subgraph to AFTER PlanningLoops but BEFORE HumanApproval
+
+inputs:
+  - location: "docs/plans/live/260104AE_agenticguidance/live/plan_mmd_bottleneck_remediation.yml"
+    description: "Diagnostic analysis identifying the five root causes"
+
+  - location: "modules/AgenticGuidance/agents/planner/planner-guidance/process.yml"
+    description: "Current planner-guidance process with mmd_generation section to be removed"
+
+  - location: "modules/AgenticGuidance/agents/planner/planner-build/process.yml"
+    description: "Current planner-build process with generate_plan_mmd section to be removed"
+
+  - location: "modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml"
+    description: "Current reviewer expecting MMD presence - keep this requirement"
+
+  - location: "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+    description: "Current orchestrator with MMD Generation Subgraph - needs sequencing fix"
+
+  - location: "modules/AgenticGuidance/entrypoints/_plan_teach.yml"
+    description: "Teaching entrypoint - orchestrator owns MMD output declaration"
+
+  - location: "modules/AgenticGuidance/entrypoints/_plan_build.yml"
+    description: "Build entrypoint - orchestrator owns MMD output declaration"
+
+  - location: "modules/AgenticGuidance/assets/definitions/plan-mmd-schema.yml"
+    description: "MMD structural schema for validation reference"
+
+# =============================================================================
+# PHASES
+# =============================================================================
+phases:
+  # ---------------------------------------------------------------------------
+  # PHASE 1: Consolidate MMD Ownership to Orchestrator
+  # ---------------------------------------------------------------------------
+  - name: "Phase 1: Consolidate MMD Ownership"
+    description: "Remove MMD generation from planners, ensure only orchestration-planning generates MMD"
+    execution: sequential
+    success_criteria:
+      - "planner-guidance has NO mmd_generation section or MMD-related steps"
+      - "planner-build has NO generate_plan_mmd section or MMD-related steps"
+      - "orchestration-planning is the ONLY agent that generates MMD files"
+      - "Clear ownership: ONLY orchestration-planning generates MMD"
+
+    tasks:
+      - id: "teach_001"
+        name: "Remove MMD generation guidance from planner-guidance"
+        description: |
+          Remove the entire mmd_generation section from planner-guidance/process.yml.
+          This agent should NOT generate MMD - that's the orchestrator's job.
+        status: "completed"
+        inputs:
+          - "modules/AgenticGuidance/agents/planner/planner-guidance/process.yml"
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-guidance/process.yml"
+        guidance: |
+          CURRENT STATE:
+          - planner-guidance has a large mmd_generation section (lines 148-291)
+          - This creates ownership confusion with orchestration-planning
+          - Steps array does not reference it (disconnected), but it's still misleading
+
+          REQUIRED CHANGES:
+          1. DELETE the entire mmd_generation section (lines 148-291 approximately)
+             - Delete: "mmd_generation:" key and all its nested content
+             - Delete: when_to_create, generation_steps, agent_routing, feedback_triggers, schema_references
+
+          2. UPDATE outputs section - REMOVE the MMD output declaration:
+             - REMOVE: The output entry for "orchestration_{plan_name}.mmd"
+             - Keep other outputs (plan_live_teach.yml, plan_live_audit_clean.yml, friction-analysis.md)
+
+          3. KEEP everything else (steps, inputs, guidelines, loop_context)
+
+          RATIONALE:
+          - MMD generation is the orchestrator's responsibility
+          - Planners focus on plan YAML content, not orchestration structure
+          - Handover model: Planner → Orchestrator (generates MMD) → Reviewer
+        acceptance_criteria:
+          - "No mmd_generation section exists in process.yml"
+          - "No orchestration_*.mmd in outputs section"
+          - "Steps 1-5 unchanged (plan YAML creation)"
+          - "Agent can still produce valid plan_live_*.yml files"
+
+      - id: "teach_002"
+        name: "Remove MMD generation guidance from planner-build"
+        description: |
+          Remove the entire generate_plan_mmd section from planner-build/process.yml.
+          This agent should NOT generate MMD - that's the orchestrator's job.
+        status: "completed"
+        inputs:
+          - "modules/AgenticGuidance/agents/planner/planner-build/process.yml"
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-build/process.yml"
+        guidance: |
+          CURRENT STATE:
+          - planner-build has a generate_plan_mmd section
+          - This creates ownership confusion with orchestration-planning
+
+          REQUIRED CHANGES:
+          1. DELETE the entire generate_plan_mmd section
+             - Delete: "generate_plan_mmd:" key and all its nested content
+             - Delete: when_to_create, steps for MMD generation, agent routing examples
+
+          2. UPDATE outputs section (manifest.yml) - REMOVE the MMD output declaration:
+             - REMOVE: Any output entry for "orchestration_*.mmd"
+             - Keep other outputs (plan files)
+
+          3. KEEP everything else (steps for plan YAML creation, inputs, guidelines)
+
+          RATIONALE:
+          - MMD generation is the orchestrator's responsibility
+          - Planners focus on plan YAML content
+          - Handover model: Planner → Orchestrator (generates MMD) → Reviewer
+        acceptance_criteria:
+          - "No generate_plan_mmd section exists in process.yml"
+          - "No orchestration_*.mmd in outputs section"
+          - "Steps 1-3 unchanged (plan YAML creation)"
+          - "Agent can still produce valid plan_live_*.yml files"
+
+      - id: "teach_003"
+        name: "Verify orchestration-planning MMD generation is complete"
+        description: |
+          Ensure orchestration-planning has complete MMD generation capability.
+          This is the ONLY agent that should generate orchestration MMD files.
+        status: "completed"
+        inputs:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+          - "modules/AgenticGuidance/assets/definitions/plan-mmd-schema.yml"
+        target_files: []
+        guidance: |
+          VERIFICATION (read-only task):
+          Check that orchestration-planning/process.mmd has:
+          1. MMDGeneration_SG subgraph exists (lines 171-212)
+          2. Steps: ReadPlanFiles → ExtractPhases → DetermineRouting → GenerateMetadata → BuildFlowchart → WriteMMD → ValidateMMD
+          3. Validation against plan-mmd-schema.yml
+          4. Error handling (fix loop if MMD invalid)
+
+          If any of the above is missing, document what needs to be added.
+          Otherwise, confirm "MMD generation capability complete in orchestrator."
+        acceptance_criteria:
+          - "MMDGeneration_SG subgraph exists and is complete"
+          - "All required steps present (read, extract, route, generate, validate)"
+          - "Schema validation included"
+
+  # ---------------------------------------------------------------------------
+  # PHASE 2: Fix Orchestration Sequence (Critical Fix)
+  # ---------------------------------------------------------------------------
+  - name: "Phase 2: Fix Orchestration Sequence"
+    description: "Reorder orchestration-planning so MMD generation happens BEFORE reviewer approval"
+    execution: sequential
+    dependencies:
+      - "Phase 1: Consolidate MMD Ownership"
+    success_criteria:
+      - "MMDGeneration_SG is positioned AFTER PlanningLoops_SG but BEFORE HumanApproval_SG"
+      - "AllPhasesPlanned flows to GenerateMMD, then MMDReady flows to HumanApproval"
+      - "Reviewer receives plan package WITH MMD already generated"
+      - "Deadlock resolved - no chicken-and-egg dependency"
+
+    tasks:
+      - id: "teach_004"
+        name: "Reorder orchestration-planning process.mmd - MMD before Reviewer"
+        description: |
+          The critical fix: Move MMD generation to happen AFTER planner creates plan YAML
+          but BEFORE the reviewer validates the package.
+
+          Current sequence: Planner → Reviewer → MMD Generation (DEADLOCK)
+          Fixed sequence: Planner → MMD Generation → Reviewer (RESOLVED)
+        status: "completed"
+        inputs:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+          - "modules/AgenticGuidance/assets/definitions/plan-mmd-schema.yml"
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+        guidance: |
+          CURRENT STATE (lines 168-214, approximately):
+          - AllPhasesPlanned --> GenerateMMD[Enter MMD Generation Phase]
+          - MMDReady --> HumanApproval[Enter Human Approval Gate]
+          - This is CORRECT - MMD generation is already BEFORE human approval
+
+          VERIFICATION:
+          1. Confirm AllPhasesPlanned connects to GenerateMMD
+          2. Confirm MMDReady connects to HumanApproval
+          3. Confirm HumanApproval subgraph RECEIVES completed MMD
+
+          IF THE SEQUENCE IS ALREADY CORRECT:
+          - No changes needed to node order
+          - Verify reviewer is invoked INSIDE HumanApproval (after MMD exists)
+
+          IF THE SEQUENCE IS WRONG (reviewer before MMD):
+          - Move MMDGeneration_SG subgraph to occur BEFORE reviewer nodes
+          - Update edges: PlanningLoops → MMDGeneration → Review → HumanApproval
+
+          ALSO UPDATE:
+          - Add a comment explaining the handover model:
+            %% HANDOVER: Planner creates plan YAML, orchestrator generates MMD, reviewer validates complete package
+
+          - Update header comments if needed to clarify ownership:
+            %% NOTE: This orchestrator is the ONLY agent that generates orchestration MMD files.
+            %% Individual planners (planner-guidance, planner-build) create plan YAML only.
+        acceptance_criteria:
+          - "MMDGeneration_SG occurs AFTER planner loops complete"
+          - "MMDGeneration_SG occurs BEFORE HumanApproval_SG (reviewer)"
+          - "Comment documents handover model"
+          - "Clear that orchestrator generates MMD, not planners"
+
+  # ---------------------------------------------------------------------------
+  # PHASE 3: Update Reviewer Messaging
+  # ---------------------------------------------------------------------------
+  - name: "Phase 3: Update Reviewer Messaging"
+    description: "Update reviewer error messages to reflect that orchestrator generates MMD (not planners)"
+    execution: sequential
+    dependencies:
+      - "Phase 2: Fix Orchestration Sequence"
+    success_criteria:
+      - "Reviewer error messages reference orchestration-planning (not individual planners)"
+      - "Clear that missing MMD means orchestration step was skipped"
+      - "Single-task exception remains valid"
+
+    tasks:
+      - id: "teach_005"
+        name: "Update planner-reviewer error messaging"
+        description: |
+          Update the MMD PRESENCE CHECKLIST error message to correctly indicate
+          that orchestration-planning (not individual planners) generates MMD.
+        status: "completed"
+        inputs:
+          - "modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml"
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml"
+        guidance: |
+          CURRENT STATE:
+          - MMD PRESENCE CHECKLIST has a FENCE that rejects plans missing MMD
+          - Error message may reference wrong agent (check current text)
+
+          REQUIRED CHANGES:
+          1. Update FENCE error message to:
+             "Missing orchestration MMD. The orchestration-planning agent should have
+             generated orchestration_<plan_name>.mmd before this review stage.
+             Return to orchestration-planning to generate MMD for this plan."
+
+          2. Add a NOTE comment before the checklist:
+             "NOTE: Orchestration-planning is responsible for generating MMD files.
+             Individual planners (planner-guidance, planner-build) create plan YAML only.
+             If MMD is missing, the orchestration sequence was incomplete."
+
+          3. Keep the single-task exception:
+             "EXCEPTION: Single-task plans or quick fixes that don't require agent
+             coordination may be approved without MMD."
+        acceptance_criteria:
+          - "Error message references orchestration-planning (not individual planners)"
+          - "NOTE clarifies MMD ownership"
+          - "Single-task exception preserved"
+
+  # ---------------------------------------------------------------------------
+  # PHASE 4: Validation Testing
+  # ---------------------------------------------------------------------------
+  - name: "Phase 4: Validation Testing"
+    description: "Test the updated workflow to verify the bottleneck is resolved"
+    execution: sequential
+    dependencies:
+      - "Phase 1: Consolidate MMD Ownership"
+      - "Phase 2: Fix Orchestration Sequence"
+      - "Phase 3: Update Reviewer Messaging"
+    success_criteria:
+      - "orchestration-planning generates MMD before reviewer stage"
+      - "Reviewer receives plan + MMD together"
+      - "Planners no longer have MMD generation guidance"
+      - "Existing plan folders can be remediated via orchestrator"
+
+    tasks:
+      - id: "test_001"
+        name: "Test orchestration-planning generates MMD correctly"
+        description: |
+          Verify that orchestration-planning generates MMD after planner
+          creates plan YAML, before invoking reviewer.
+        status: "completed"
+        inputs:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+          - "modules/AgenticGuidance/assets/definitions/plan-mmd-schema.yml"
+        target_files: []
+        guidance: |
+          TEST SCENARIO:
+          1. Trace through orchestration-planning process.mmd
+          2. Confirm this sequence:
+             - PlanningLoops_SG: Planner creates plan YAML
+             - MMDGeneration_SG: Orchestrator generates MMD
+             - HumanApproval_SG: Reviewer validates complete package
+          3. Verify reviewer is invoked AFTER MMD generation
+
+          PASS CRITERIA:
+          - Sequence is correct (planner → MMD gen → reviewer)
+          - MMD exists BEFORE reviewer checklist runs
+          - No circular dependency
+        acceptance_criteria:
+          - "Orchestration sequence is: Planner → MMD → Reviewer"
+          - "MMD generation completes before reviewer checklist"
+          - "Deadlock is resolved"
+
+      - id: "test_002"
+        name: "Test planners have no MMD guidance"
+        description: |
+          Verify that planner-guidance and planner-build no longer have
+          any MMD generation guidance or outputs.
+        status: "completed"
+        inputs:
+          - "modules/AgenticGuidance/agents/planner/planner-guidance/process.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-build/process.yml"
+        target_files: []
+        guidance: |
+          VERIFICATION:
+          1. Read planner-guidance/process.yml
+             - Search for "mmd" (case insensitive)
+             - Confirm NO mmd_generation section
+             - Confirm NO orchestration_*.mmd in outputs
+
+          2. Read planner-build/process.yml
+             - Search for "mmd" (case insensitive)
+             - Confirm NO generate_plan_mmd section
+             - Confirm NO orchestration_*.mmd in outputs
+
+          PASS CRITERIA:
+          - No MMD-related guidance in either planner
+          - Planners focus on plan YAML only
+        acceptance_criteria:
+          - "planner-guidance has no MMD guidance"
+          - "planner-build has no MMD guidance"
+          - "Both planners produce YAML only (MMD is orchestrator's job)"
+
+      - id: "test_003"
+        name: "Test backlog remediation via orchestrator"
+        description: |
+          Verify that orchestration-planning can generate MMD for existing
+          plan folders that have YAML but no MMD.
+        status: "completed"
+        inputs:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+        target_files: []
+        guidance: |
+          CONTEXT:
+          Existing plan folders may have plan YAML files but no orchestration MMD.
+          The orchestrator should be able to generate MMD for these plans.
+
+          TEST SCENARIO:
+          1. Identify existing plan folder with:
+             - plan_live_*.yml present
+             - orchestration_*.mmd missing
+          2. Invoke orchestration-planning with existing plan
+          3. Verify orchestrator:
+             - Reads existing plan YAML (doesn't recreate it)
+             - Generates complementary MMD
+             - Validates MMD against schema
+
+          PASS CRITERIA:
+          - MMD generated for existing plan
+          - Existing plan YAML unchanged
+          - MMD content matches plan structure
+
+          NOTE: This confirms the handover model works for remediation too.
+        acceptance_criteria:
+          - "Orchestrator can generate MMD for existing YAML-only plans"
+          - "Existing plan content preserved"
+          - "MMD structure matches existing plan phases"
+
+# =============================================================================
+# SUCCESS CRITERIA
+# =============================================================================
+success_criteria:
+  user_validation:
+    - "Planning workflows complete without MMD generation deadlock"
+    - "Reviewers receive plan + MMD together (generated by orchestrator)"
+    - "No manual intervention needed to generate MMD files"
+    - "Clear ownership: orchestrator generates MMD, planners generate YAML"
+
+  technical_validation:
+    - "planner-guidance has NO mmd_generation section"
+    - "planner-build has NO generate_plan_mmd section"
+    - "orchestration-planning generates MMD BEFORE reviewer stage"
+    - "planner-reviewer error messages reference orchestration-planning"
+    - "Handover model documented in orchestration-planning process.mmd"
+    - "All test scenarios pass"
+
+# =============================================================================
+# NOTES
+# =============================================================================
+notes:
+  - "This plan implements the REVISED approach per user feedback"
+  - "Key change: ONLY orchestration-planning generates MMD (not individual planners)"
+  - "Handover model: Planner → Orchestrator (generates MMD) → Reviewer"
+  - "The fix is primarily a SEQUENCING fix in orchestration-planning"
+  - "Planners are SIMPLIFIED by removing MMD generation responsibility"
+  - "Single-task exception for MMD requirement remains valid"

@@ -5,8 +5,8 @@ flowchart LR
     %% GUIDELINE: BUILD FOCUS policy - code implementation and testing, not guidance-only changes.
     %% GUIDELINE: Every test failure, CI/CD failure, or audit failure MUST trigger re-planning via orchestration-planning.
     %% GUIDELINE: Planning is delegated to orchestration-planning agent OR uses pre-approved plan (approved_plan_path).
-    %% GUIDELINE: assets/guidelines/testing.yml - Testing strategies and validation
-    %% INPUT_PATH: agents/orchestration/orchestration-build/inputs.yml
+    %% GUIDELINE: modules/AgenticGuidance/assets/guidelines/testing.yml - Testing strategies and validation
+    %% INPUT_PATH: modules/AgenticGuidance/agents/orchestration/orchestration-build/inputs.yml
 
     Start((Start)) --> LoadInputs[Load Context Inputs]
 
@@ -28,10 +28,13 @@ flowchart LR
     %% Proceed only when context is fully loaded and verified
     CheckInputs -- "Yes: Verified" --> SpawnDeployWorktree[Spawn deploy-worktree Agent]
 
-    %% Isolate work and initialize the planning environment
-    %% deploy-worktree agent handles worktree setup and verification per its internal criteria
-    SpawnDeployWorktree --> VerifyWorktree[Verify Worktree & Planning Folder]
-    VerifyWorktree --> WorktreeValid{Worktree Valid?}
+    %% CLI OFFLOAD: Use agentic-cli commands for worktree and plan operations
+    %% - agentic worktree status: Verifies worktree configuration
+    %% - agentic plan validate: Validates plan folder structure
+    %% deploy-worktree agent orchestrates CLI commands
+    SpawnDeployWorktree --> VerifyWorktree[Verify Worktree via CLI: agentic worktree status]
+    VerifyWorktree --> ValidatePlanFolder[Validate Plan Folder via CLI: agentic plan validate]
+    ValidatePlanFolder --> WorktreeValid{Worktree & Plan Valid?}
     WorktreeValid -- "No: Failed verification" --> AskUser
 
     %% ========================================
@@ -52,7 +55,7 @@ flowchart LR
     %% 4. Audit Failures: Re-plan with AUDIT_FAILURE context
     %%
     %% HANDOFF CONTRACT:
-    %% - orchestration-planning produces: plan.yml, phase_build.yml, phase_test.yml (all status: approved)
+    %% - orchestration-planning produces: plan_live_build.yml, plan_live_test.yml (all status: approved)
     %% - orchestration-build consumes the approved plan folder for execution
 
     WorktreeValid -- "Yes: Verified" --> CheckPlanInput{Pre-approved Plan Provided?}
@@ -101,12 +104,12 @@ flowchart LR
     end
 
     %% NOTE: Approved plan drives test execution in Implementation Phase
-    %% phase_test.yml defines which tests will validate the build
+    %% plan_live_test.yml defines which tests will validate the build
 
     %% ========================================
     %% IMPLEMENTATION PHASE: Build Agents Execute Plan
     %% ========================================
-    %% LOOP_DEFINITION: assets/definitions/agent-loops.yml#test-fix-loop
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.test-fix-loop
     %% MAX_ITERATIONS: 5 (per test-fix-loop definition)
     %% ESCALATION: If max iterations reached without tests passing, stop and Ask User
     %%
@@ -167,8 +170,8 @@ flowchart LR
     %% ========================================
     %% Validate any new/updated guidance created during build
     %% Uses guidance-blind-test strategy to validate guidance completeness
-    %% GUIDELINE: assets/definitions/strategy-guidance-blind-test.yml
-    %% LOOP_DEFINITION: assets/definitions/agent-loops.yml#guidance-test-loop
+    %% COMPONENT: modules/AgenticGuidance/assets/examples/planner/components/guidance_blind_test.mmd
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.guidance-test-loop
     %% MAX_ITERATIONS: 3 (per guidance-test-loop definition)
     %% ESCALATION: If max iterations reached without passing validation, stop and Ask User with gap context
     CICDCheck -- "No" --> GuidanceChanges{Guidance Changes?}
@@ -177,7 +180,7 @@ flowchart LR
     GuidanceTest --> GuidanceSimulator[Spawn test-guidance-simulator]
 
     %% PLAN STATUS UPDATE: Consume test results and update plan task statuses
-    %% Reference: assets/guidelines/orchestration-policy.yml - Plan Status Management rule
+    %% Reference: modules/AgenticGuidance/assets/guidelines/orchestration-policy.yml - Plan Status Management rule
     %% This step ensures task statuses reflect test outcomes before evaluating overall guidance validity
     GuidanceSimulator --> UpdateGuidanceStatuses[Update Plan Task Statuses from Test Results]
     UpdateGuidanceStatuses --> GuidancePassed{Guidance Valid?}
@@ -220,8 +223,12 @@ flowchart LR
     %% FINALIZATION
     %% ========================================
     %% Success: All criteria met. Finalize the work.
-    FinalAudit -- "Yes: Verified" --> MoveCompleted[Copy Completed Work to docs/plans/completed/]
-    MoveCompleted --> End((End))
+    %% CLI OFFLOAD: Use agentic-cli for task and folder completion
+    %% - agentic plan move tasks: Move all completed tasks to plan_completed.yml
+    %% - agentic plan move folder: Archive entire plan folder to completed/
+    FinalAudit -- "Yes: Verified" --> MoveCompletedTasks[Move Completed Tasks via CLI: agentic plan move tasks]
+    MoveCompletedTasks --> ArchivePlanFolder[Archive Plan Folder via CLI: agentic plan move folder]
+    ArchivePlanFolder --> End((End))
 
     %% COPY planning folder to completed/ (not move) - live/ may continue with follow-on work
     %% Only user moves completed/ folders to archived/ subdirectory
