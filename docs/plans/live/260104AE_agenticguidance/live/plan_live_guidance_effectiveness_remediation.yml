@@ -1,0 +1,204 @@
+# Plan: Guidance Effectiveness Remediation
+# Status: COMPLETED
+# Created: 2026-01-13
+# Completed: 2026-01-13
+# Summary: Fix MMD node granularity guidance effectiveness discovered in blind test
+
+name: "guidance-effectiveness-remediation"
+worktree_path: "/home/code/AgenticEngineering-agenticguidance"
+branch: "agenticguidance"
+status: "completed"
+priority: "high"
+
+context: |
+  BLIND TEST RESULTS:
+  - Target: AgenticLangSmith plan at /home/code/AgenticEngineering-agenticlangsmith
+  - Agent: orchestration-planning subagent
+  - Result: PARTIAL FAILURE
+
+  The agent generated orchestration_agenticlangsmith_lean_build.mmd with TASK-LEVEL nodes
+  (e.g., "EnvValidation[Execute: Environment Validation]") instead of high-level nodes
+  (e.g., "SpawnDeployWorktree[Spawn deploy-worktree Agent]").
+
+  ROOT CAUSE:
+  1. mmd_node_granularity guidance is at line 240 of inputs.yml (too far down)
+  2. MMD-NODE-GRANULARITY fence is in process.mmd:183 (subgraph comment, not prominently visible)
+  3. Subagents spawned via Task tool may not read both inputs.yml AND process.mmd thoroughly
+
+  EVIDENCE:
+  Generated MMD lines 40-60 contain task-level operations:
+  - Line 40: EnvValidation[Execute: Environment Validation]
+  - Line 43: InstallHook[Execute: Install Hook Script]
+  - Line 49: ConfigGlobal[Execute: Configure Global Settings]
+  - Line 54: ConfigWorktrees[Execute: Batch Configure Worktrees]
+
+inputs:
+  - location: "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml"
+    description: "Target for guidance repositioning"
+  - location: "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+    description: "Target for fence strengthening"
+  - location: "/home/code/AgenticEngineering-agenticlangsmith/docs/plans/live/260113AgenticEngineering_agenticlangsmith/live/orchestration_agenticlangsmith_lean_build.mmd"
+    description: "Failed MMD - evidence of incorrect node granularity"
+
+phases:
+  # ========================================
+  # PHASE 1: Guidance Repositioning
+  # ========================================
+  - name: "Guidance Repositioning"
+    execution: sequential
+    description: "Move critical guidance to prominent positions"
+    agent_category: "teacher"
+    tasks:
+      - id: "reposition_001"
+        name: "Move mmd_node_granularity to inputs.yml header"
+        description: |
+          Relocate the mmd_node_granularity section from line ~240 to near the top
+          of inputs.yml (after required_inputs but before other definitions).
+          This ensures agents see the critical guidance early when loading context.
+        status: "completed"
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        inputs:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml"
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml"
+        guidance: |
+          1. Cut the entire mmd_node_granularity section (lines ~240-310)
+          2. Paste it after required_inputs section (around line 35)
+          3. Add a prominent header: "# CRITICAL: MMD NODE GRANULARITY (READ FIRST)"
+          4. Ensure the principle, correct_granularity, and incorrect_granularity subsections are preserved
+        acceptance_criteria:
+          - "mmd_node_granularity section appears within first 100 lines of inputs.yml"
+          - "Section has prominent header comment"
+          - "All subsections (principle, correct_granularity, incorrect_granularity) preserved"
+
+      - id: "reposition_002"
+        name: "Move loop_selection_guidance to inputs.yml header"
+        description: |
+          Relocate the loop_selection_guidance section from line ~158 to near the top
+          to ensure agents see loop ownership policy early.
+        status: "completed"
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        inputs:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml"
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml"
+        guidance: |
+          1. Cut the entire loop_selection_guidance section (lines ~158-235)
+          2. Paste it after mmd_node_granularity (now at top)
+          3. Add header: "# CRITICAL: LOOP SELECTION OWNERSHIP (READ FIRST)"
+        acceptance_criteria:
+          - "loop_selection_guidance section appears within first 150 lines of inputs.yml"
+          - "Ownership statement is clearly visible"
+
+  # ========================================
+  # PHASE 2: Fence Strengthening
+  # ========================================
+  - name: "Fence Strengthening"
+    execution: sequential
+    description: "Add validation step and strengthen fence visibility"
+    agent_category: "teacher"
+    tasks:
+      - id: "fence_001"
+        name: "Add ValidateNodeGranularity step to process.mmd"
+        description: |
+          Add a validation step in the MMD Generation subgraph that explicitly
+          checks the generated MMD for task-level nodes before WriteMMD.
+        status: "completed"
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        inputs:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+        guidance: |
+          In MMDGeneration_SG subgraph, add after BuildFlowchart:
+
+          BuildFlowchart --> ValidateNodeGranularity{Node Granularity Valid?}
+          ValidateNodeGranularity -- "No: Task-Level Nodes Detected" --> FixNodes[Remove Task-Level Nodes, Use High-Level]
+          FixNodes --> BuildFlowchart
+          ValidateNodeGranularity -- "Yes: High-Level Only" --> WriteMMD[Write orchestration_<name>.mmd]
+
+          Add FENCE comment before validation:
+          %% FENCE: ValidateNodeGranularity MUST check that NO task-level nodes exist.
+          %% Pattern check: Nodes matching "deploy_\d+", "build_\d+", "test_\d+" are FORBIDDEN.
+          %% Pattern check: Nodes with "[Execute: ...]" labels are FORBIDDEN.
+          %% Correct pattern: "[Spawn X Agent]", "[Enter X Phase]", "{X Loop}"
+        acceptance_criteria:
+          - "ValidateNodeGranularity decision node exists in MMD Generation subgraph"
+          - "Feedback loop exists for FixNodes -> BuildFlowchart"
+          - "FENCE comment specifies forbidden node patterns"
+
+      - id: "fence_002"
+        name: "Add FENCE to inputs.yml mmd_node_granularity section"
+        description: |
+          Add explicit FENCE declaration to the repositioned mmd_node_granularity
+          section to reinforce the constraint.
+        status: "completed"
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        inputs:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml"
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml"
+        guidance: |
+          Add to mmd_node_granularity section:
+
+          fence: |
+            STOP and regenerate if ANY of these patterns appear in generated MMD:
+            - Task ID nodes: deploy_\d+, build_\d+, test_\d+, teach_\d+, cleanup_\d+
+            - Execute labels: [Execute: ...]
+            - Individual file operations: [Edit ...], [Create ...], [Delete ...]
+
+            REQUIRED patterns for valid MMD:
+            - Phase nodes: [Enter X Phase], ((X Phase))
+            - Spawn nodes: [Spawn X Agent]
+            - Loop nodes: {X Loop}, subgraph X_Loop_SG
+            - Decision nodes: {X?}
+        acceptance_criteria:
+          - "FENCE with forbidden patterns exists in mmd_node_granularity section"
+          - "REQUIRED patterns for valid MMD documented"
+
+  # ========================================
+  # PHASE 3: Verification (Re-test)
+  # ========================================
+  - name: "Verification"
+    execution: sequential
+    description: "Re-run blind test to verify guidance effectiveness"
+    agent_category: "test"
+    tasks:
+      - id: "verify_001"
+        name: "Re-run blind test on AgenticLangSmith plan"
+        description: |
+          Spawn orchestration-planning agent to regenerate the AgenticLangSmith MMD.
+          Verify the new MMD uses high-level nodes only.
+        status: "completed"
+        agent_type: "test-final-output"
+        operation: "AUDIT"
+        inputs:
+          - "/home/code/AgenticEngineering-agenticlangsmith/docs/plans/live/260113AgenticEngineering_agenticlangsmith/"
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml"
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+        target_files: []
+        guidance: |
+          1. Delete existing orchestration_agenticlangsmith_lean_build.mmd
+          2. Spawn orchestration-planning agent with NO HINTS (blind test)
+          3. Check generated MMD for:
+             - NO deploy_\d+, build_\d+, test_\d+ nodes
+             - NO [Execute: ...] labels
+             - YES [Spawn X Agent] nodes
+             - YES {X Loop} nodes
+             - YES [Enter X Phase] nodes
+        acceptance_criteria:
+          - "Generated MMD contains ZERO task-level nodes"
+          - "Generated MMD contains Spawn nodes for agent routing"
+          - "Generated MMD contains Phase entry nodes"
+          - "Generated MMD contains Loop decision nodes"
+
+success_criteria:
+  - "mmd_node_granularity section in first 100 lines of inputs.yml"
+  - "loop_selection_guidance section in first 150 lines of inputs.yml"
+  - "ValidateNodeGranularity step exists in process.mmd MMD Generation subgraph"
+  - "FENCE with forbidden patterns exists in inputs.yml"
+  - "Re-test produces MMD with ZERO task-level nodes"
