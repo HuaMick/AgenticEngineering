@@ -1,0 +1,85 @@
+flowchart LR
+    %% ========================================
+    %% ORCHESTRATION: AgenticLangSmith Lean Build
+    %% ========================================
+    %% GOAL: Execute the AgenticLangSmith lean deployment plan - install tracing across worktrees.
+    %% PROFILE: Orchestration-Build
+    %% PLAN_FOLDER: /home/code/AgenticEngineering-agenticlangsmith/docs/plans/live/260113AgenticEngineering_agenticlangsmith/live
+    %% PLAN_FILE: plan_live_build.yml
+    %%
+    %% PHASES: Deployment
+    %% AGENT_ROUTING: Deployment -> deployer
+    %% STATUS: Deployment=completed
+    %%
+    %% FEEDBACK_TRIGGERS:
+    %% - DEPLOY_FAILURE -> RetryDeployment (max 3 retries)
+    %% - VALIDATION_FAILURE -> EscalateToUser
+    %%
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.test-fix-loop
+    %% MAX_ITERATIONS: 3 (deployment typically has fewer retries)
+    %% ESCALATION: If max iterations reached without success, stop and Ask User
+    %%
+    %% CONTEXT:
+    %% This is a lean, non-overengineered LangSmith integration deployment.
+    %% Installs hook script to ~/.claude/hooks/ and configures all worktrees.
+
+    Start((Start)) --> LoadInputs[Load Plan and Context]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    %% Verify plan file exists and required inputs are available.
+    LoadInputs --> ValidatePlan[Validate Plan File Exists]
+    ValidatePlan --> CheckPlanValid{Plan Valid?}
+    CheckPlanValid -- "No: Missing" --> AskUser((Ask User for Clarification))
+    CheckPlanValid -- "Yes: Valid" --> DeploymentPhase[Enter Deployment Phase]
+
+    %% ========================================
+    %% DEPLOYMENT PHASE
+    %% ========================================
+    %% Single deployment phase with sequential tasks executed by deployer agent.
+    %% Tasks: Environment validation, hook install, global settings, worktree config, verification.
+    subgraph Deployment_SG ["Deployment Phase Subgraph"]
+        DeploymentPhase --> SpawnDeployer[Spawn deploy-worktree Agent]
+
+        %% Deploy agent executes all deployment tasks from plan
+        SpawnDeployer --> DeploymentResult{Deployment Successful?}
+
+        %% Success path
+        DeploymentResult -- "Yes: All Tasks Complete" --> VerifyTracing[Verify Tracing Active]
+
+        %% Retry loop for deployment failures
+        DeploymentResult -- "No: Task Failed" --> CaptureFailure[Capture Failure Context]
+        CaptureFailure --> CheckRetries{Retries Available?}
+        CheckRetries -- "Yes: Retry" --> SpawnDeployer
+        CheckRetries -- "No: Max Reached" --> EscalateDeployment((Escalate: Deployment Failed))
+    end
+
+    %% ========================================
+    %% VERIFICATION PHASE
+    %% ========================================
+    %% Final verification that tracing is working across all worktrees.
+    subgraph Verification_SG ["Verification Subgraph"]
+        VerifyTracing --> CheckLangSmith{Traces in LangSmith?}
+        CheckLangSmith -- "No: Not Visible" --> VerificationFailed[Log Verification Failure]
+        VerificationFailed --> AskUserVerify((Ask User to Check Dashboard))
+        CheckLangSmith -- "Yes: Visible" --> VerificationPassed[Verification Passed]
+    end
+
+    %% ========================================
+    %% OUTPUT PHASE
+    %% ========================================
+    subgraph Output_SG ["Output Subgraph"]
+        VerificationPassed --> ReportSuccess[Report Deployment Success]
+        ReportSuccess --> ListWorktrees[List Configured Worktrees]
+        ListWorktrees --> ShowNextSteps[Show Post-Deployment Instructions]
+    end
+
+    ShowNextSteps --> End((End: Deployment Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    %% Dashed lines for feedback loops
+    classDef dashedstroke stroke-dasharray: 5 5;
+    linkStyle 8 stroke:#888,stroke-width:2px,stroke-dasharray: 5 5;
