@@ -11,8 +11,15 @@ This is a high-speed, 5-step deployment for LangSmith tracing across your Agenti
 5. **Verification**: Confirm traces appear in LangSmith.
 
 ## Status
-- **Current Iteration**: 11 (The "Cleanup" Iteration)
-- **Status**: APPROVED - Ready for Execution
+- **Current Iteration**: 12 (The "Hooks Format Fix" Iteration)
+- **Status**: COMPLETED - Hooks format corrected
+
+## Change Log
+### Iteration 12
+- **Issue**: Claude Code hooks format changed - now requires nested `hooks` array with optional `matcher`
+- **Fix**: Updated `~/.claude/settings.json` from old format to new matcher-based format
+- **Old**: `{"type": "command", "command": "..."}` directly in Stop array
+- **New**: `{"hooks": [{"type": "command", "command": "..."}]}` with nested hooks array
 
 ## Execution Summary
 Phases 1-3 establish the global capability. Phase 4 activates it for your specific worktrees. Phase 5 confirms success.
