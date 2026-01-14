@@ -39,14 +39,20 @@ phases:
 
       - id: "deploy_03"
         name: "Configure Global Settings"
-        description: "Add the Stop hook to ~/.claude/settings.json"
+        description: "Add the Stop hook to ~/.claude/settings.json using new matcher format"
         guidance: |
+          # IMPORTANT: Claude Code hooks now use matcher-based format
+          # Each hook event (Stop, PostToolUse, etc.) contains an array of objects
+          # Each object has optional "matcher" and required "hooks" array
+          # Format: {"Stop": [{"matcher": {...}, "hooks": [{"type": "command", "command": "..."}]}]}
+
           # Use jq to safely add the hook without breaking existing plugins
           cp ~/.claude/settings.json ~/.claude/settings.json.bak
           jq '. + {"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "bash ~/.claude/hooks/stop_hook.sh"}]}]}}' ~/.claude/settings.json > ~/.claude/settings.json.tmp && mv ~/.claude/settings.json.tmp ~/.claude/settings.json
         acceptance_criteria:
-          - "settings.json contains the Stop hook config"
+          - "settings.json contains the Stop hook config with nested hooks array"
           - "Existing plugins are preserved"
+          - "Format uses new matcher-based structure (hooks array inside Stop array item)"
 
       - id: "deploy_04"
         name: "Batch Configure Worktrees"

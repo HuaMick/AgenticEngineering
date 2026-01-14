@@ -1,0 +1,192 @@
+# Plan: LangSmith API Wrapper for AgenticCLI
+# Status: DRAFT
+# Created: 2026-01-13
+# Summary: Add LangSmith trace querying capabilities to agentic-cli for agent introspection.
+
+name: "langsmith-api-wrapper"
+worktree_path: "/home/code/AgenticEngineering-agenticlangsmith"
+status: "DRAFT"
+priority: "high"
+
+context: |
+  Integrate LangSmith API into AgenticCLI to allow agents to query their own traces.
+  This enables agent self-reflection, debugging, and usage analytics.
+
+  The implementation will:
+  - Add a new `agentic langsmith` command group
+  - Create a backend service module for LangSmith API interaction
+  - Use the official langsmith Python SDK
+  - Support querying runs, projects, and feedback
+
+dependencies:
+  - package: "langsmith"
+    version: ">=0.1.0"
+    purpose: "Official LangSmith Python SDK"
+
+research_summary: |
+  ## LangSmith API Capabilities
+
+  ### Authentication
+  - API Key via header: x-api-key
+  - Environment variable: LANGSMITH_API_KEY or CC_LANGSMITH_API_KEY
+
+  ### Core SDK Methods (langsmith.Client)
+  - list_runs() - Query runs with filters
+  - read_run() - Get individual run details
+  - list_projects() - List all projects
+  - read_project() - Get project details
+  - list_feedback() - Query feedback
+  - create_feedback() - Add feedback to runs
+  - get_run_url() - Generate shareable URLs
+
+  ### Filter Syntax
+  - eq(field, value), neq(), gt(), gte(), lt(), lte()
+  - has(field, value) - For tags/metadata
+  - search(substring) - Text search
+  - and(), or() - Logical operators
+
+  ### Queryable Fields
+  - id, name, run_type, start_time, end_time
+  - latency, total_tokens, error, tags
+  - feedback_key, feedback_score
+
+phases:
+  - name: "Phase 1: Backend Service"
+    execution: sequential
+    tasks:
+      - id: "backend_01"
+        name: "Create LangSmith Service Module"
+        description: "Create a new service module for LangSmith API interaction"
+        guidance: |
+          Create: modules/AgenticCLI/src/agenticcli/services/langsmith_service.py
+
+          Key components:
+          - LangSmithService class wrapping the SDK Client
+          - Configuration from environment or settings
+          - Error handling for API failures
+          - Methods: list_runs, get_run, list_projects, get_project_stats
+        acceptance_criteria:
+          - "LangSmithService class exists with SDK client wrapper"
+          - "Configuration reads from CC_LANGSMITH_API_KEY"
+          - "Proper error handling for missing API key"
+
+      - id: "backend_02"
+        name: "Add Query Builders"
+        description: "Helper functions for building LangSmith filter expressions"
+        guidance: |
+          Create filter builder utilities:
+          - build_time_filter(start, end)
+          - build_type_filter(run_type)
+          - build_error_filter(has_error)
+          - combine_filters(*filters)
+        acceptance_criteria:
+          - "Filter builders produce valid LangSmith query syntax"
+          - "Filters can be combined with and()"
+
+  - name: "Phase 2: CLI Commands"
+    execution: sequential
+    tasks:
+      - id: "cli_01"
+        name: "Create langsmith Command Group"
+        description: "Add 'agentic langsmith' command group"
+        guidance: |
+          Create: modules/AgenticCLI/src/agenticcli/commands/langsmith.py
+
+          Subcommands:
+          - agentic langsmith runs [--project] [--limit] [--type] [--error]
+          - agentic langsmith run <run-id>
+          - agentic langsmith projects
+          - agentic langsmith stats [--project]
+        acceptance_criteria:
+          - "langsmith command group registered in CLI"
+          - "Help text displays available subcommands"
+
+      - id: "cli_02"
+        name: "Implement runs Subcommand"
+        description: "Query and display recent runs"
+        guidance: |
+          Implement `agentic langsmith runs`:
+          - List recent runs with key info (id, name, type, latency, tokens)
+          - Support --project filter
+          - Support --limit (default 20)
+          - Support --type filter (llm, chain, tool)
+          - Support --error flag to show only errors
+          - JSON output support via --json flag
+        acceptance_criteria:
+          - "Runs displayed in table format"
+          - "JSON output works"
+          - "All filters function correctly"
+
+      - id: "cli_03"
+        name: "Implement run Detail Subcommand"
+        description: "Show detailed info for a single run"
+        guidance: |
+          Implement `agentic langsmith run <run-id>`:
+          - Display full run details
+          - Show inputs and outputs (truncated for readability)
+          - Show child runs if present
+          - Include feedback if any
+          - Generate shareable URL option
+        acceptance_criteria:
+          - "Full run details displayed"
+          - "Child runs listed with summary"
+          - "Shareable URL can be generated"
+
+      - id: "cli_04"
+        name: "Implement projects Subcommand"
+        description: "List and show project details"
+        guidance: |
+          Implement `agentic langsmith projects`:
+          - List all projects in workspace
+          - Show run counts per project
+          - Support --detail flag for more info
+        acceptance_criteria:
+          - "Projects listed with basic stats"
+          - "Detail view shows additional metrics"
+
+      - id: "cli_05"
+        name: "Implement stats Subcommand"
+        description: "Show usage statistics"
+        guidance: |
+          Implement `agentic langsmith stats`:
+          - Aggregate stats for project
+          - Total runs, tokens, latency distribution
+          - Error rate
+          - Optional time range filter
+        acceptance_criteria:
+          - "Stats displayed for specified project"
+          - "Token usage and latency shown"
+
+  - name: "Phase 3: Testing"
+    execution: sequential
+    tasks:
+      - id: "test_01"
+        name: "Unit Tests for Service"
+        description: "Test LangSmith service module"
+        guidance: |
+          Create: modules/AgenticCLI/tests/test_langsmith_service.py
+          - Mock SDK client
+          - Test configuration loading
+          - Test filter builders
+          - Test error handling
+        acceptance_criteria:
+          - "Service tests pass with mocked SDK"
+          - "Edge cases covered"
+
+      - id: "test_02"
+        name: "CLI Command Tests"
+        description: "Test CLI commands"
+        guidance: |
+          Create: modules/AgenticCLI/tests/test_langsmith_commands.py
+          - Test command registration
+          - Test argument parsing
+          - Test output formatting
+        acceptance_criteria:
+          - "CLI tests pass"
+          - "Help text verified"
+
+success_criteria:
+  - "agentic langsmith commands are functional"
+  - "Agents can query their own traces programmatically"
+  - "JSON output enables scripting and automation"
+  - "Tests provide confidence in implementation"

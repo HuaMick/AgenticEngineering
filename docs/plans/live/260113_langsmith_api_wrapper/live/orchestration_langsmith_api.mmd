@@ -1,0 +1,93 @@
+flowchart LR
+    %% ========================================
+    %% ORCHESTRATION: LangSmith API Wrapper
+    %% ========================================
+    %% GOAL: Add LangSmith trace querying to AgenticCLI
+    %% PROFILE: Orchestration-Build
+    %% PLAN_FOLDER: /home/code/AgenticEngineering-agenticlangsmith/docs/plans/live/260113_langsmith_api_wrapper/live
+    %% PLAN_FILE: plan_live_build.yml
+    %%
+    %% PHASES: Backend Service, CLI Commands, Testing
+    %% AGENT_ROUTING: Backend -> builder, CLI -> builder, Testing -> test-runner
+    %% STATUS: All phases pending
+    %%
+    %% FEEDBACK_TRIGGERS:
+    %% - BUILD_FAILURE -> RetryBuild (max 3 retries)
+    %% - TEST_FAILURE -> FixAndRetest
+    %%
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.test-fix-loop
+    %% MAX_ITERATIONS: 5
+    %% ESCALATION: If max iterations reached without success, stop and Ask User
+    %%
+    %% CONTEXT:
+    %% Wrap LangSmith Python SDK in agentic-cli commands for agent trace introspection.
+
+    Start((Start)) --> LoadInputs[Load Plan and Context]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    LoadInputs --> ValidateDeps[Check langsmith Package]
+    ValidateDeps --> DepsOK{Dependencies Available?}
+    DepsOK -- "No: Missing" --> InstallDeps[Install langsmith package]
+    InstallDeps --> DepsOK
+    DepsOK -- "Yes: Ready" --> Phase1[Enter Phase 1: Backend Service]
+
+    %% ========================================
+    %% PHASE 1: BACKEND SERVICE
+    %% ========================================
+    subgraph Phase1_SG ["Phase 1: Backend Service"]
+        Phase1 --> CreateService[Create LangSmithService Module]
+        CreateService --> AddQueryBuilders[Add Query Builder Helpers]
+        AddQueryBuilders --> BackendResult{Backend Complete?}
+        BackendResult -- "No: Issues" --> FixBackend[Fix Backend Issues]
+        FixBackend --> CreateService
+        BackendResult -- "Yes: Complete" --> Phase1Done[Phase 1 Complete]
+    end
+
+    %% ========================================
+    %% PHASE 2: CLI COMMANDS
+    %% ========================================
+    Phase1Done --> Phase2[Enter Phase 2: CLI Commands]
+
+    subgraph Phase2_SG ["Phase 2: CLI Commands"]
+        Phase2 --> CreateCmdGroup[Create langsmith Command Group]
+        CreateCmdGroup --> ImplRuns[Implement runs Subcommand]
+        ImplRuns --> ImplRunDetail[Implement run Detail]
+        ImplRunDetail --> ImplProjects[Implement projects Subcommand]
+        ImplProjects --> ImplStats[Implement stats Subcommand]
+        ImplStats --> CLIResult{CLI Commands Complete?}
+        CLIResult -- "No: Issues" --> FixCLI[Fix CLI Issues]
+        FixCLI --> ImplRuns
+        CLIResult -- "Yes: Complete" --> Phase2Done[Phase 2 Complete]
+    end
+
+    %% ========================================
+    %% PHASE 3: TESTING
+    %% ========================================
+    Phase2Done --> Phase3[Enter Phase 3: Testing]
+
+    subgraph Phase3_SG ["Phase 3: Testing"]
+        Phase3 --> SpawnTests[Run Test Suite]
+        SpawnTests --> TestResult{Tests Pass?}
+        TestResult -- "No: Failures" --> CaptureFails[Capture Test Failures]
+        CaptureFails --> FixTests[Fix Failing Tests]
+        FixTests --> SpawnTests
+        TestResult -- "Yes: Pass" --> Phase3Done[Phase 3 Complete]
+    end
+
+    %% ========================================
+    %% OUTPUT PHASE
+    %% ========================================
+    subgraph Output_SG ["Output Subgraph"]
+        Phase3Done --> VerifyIntegration[Verify Full Integration]
+        VerifyIntegration --> ReportSuccess[Report Success]
+        ReportSuccess --> ShowUsage[Display Usage Examples]
+    end
+
+    ShowUsage --> End((End: Implementation Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef dashedstroke stroke-dasharray: 5 5;
