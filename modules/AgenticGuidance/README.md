@@ -127,6 +127,10 @@ Three top-level entrypoints for initiating workflows:
 | `_plan_teach.yml` | Create guidance plans for teaching/documentation |
 | `_orchestrate.yml` | Execute a pre-approved plan |
 
+### Usage
+
+To initiate a workflow, **inject the content** of the appropriate entrypoint file into the agent's context window. This establishes the agent's role and orchestration process for the session.
+
 ### Workflow
 
 1. **Planning Phase**: Use `_plan_build.yml` or `_plan_teach.yml` to create a plan
