@@ -1,0 +1,196 @@
+# Plan: Plan Folder Compliance Guidance Improvement
+# Created: 2026-01-14
+# Status: guidance_updated
+# Purpose: Document investigation and guidance updates for plan folder lifecycle compliance
+
+name: "guidance_planfolder_compliance"
+status: "guidance_updated_pending_validation"
+created: "2026-01-14"
+session_type: "diagnostic_and_guidance_update"
+
+# =============================================================================
+# PROBLEM STATEMENT
+# =============================================================================
+problem:
+  summary: |
+    Files in the live/ folder were not being cleaned up despite work being completed.
+    Batch analysis files (batch1-6.md) remained in live/ even though 85% of their
+    recommendations were implemented. Completed plans remained in live/ instead of
+    being moved to completed/.
+
+  observed_symptoms:
+    - "batch1-6.md files in live/ - analysis outputs, not actionable plans"
+    - "plan_live_orchestration_loop_integration.yml marked completed but still in live/"
+    - "plan_live_guidance_effectiveness_remediation.yml marked completed but still in live/"
+    - "backlog_cli_task_lists.yml (backlog item) in live/ folder"
+    - "14 files in live/ when 0 should be there based on lifecycle rules"
+
+  user_question: |
+    Why have these files not been cleaned up? Can planner agents identify the issue?
+
+# =============================================================================
+# INVESTIGATION FINDINGS
+# =============================================================================
+investigation:
+  date: "2026-01-14"
+
+  diagnostic_agents_spawned:
+    - agent: "planner-cleaning"
+      task: "Diagnose live folder cleanup"
+      finding: "Identified 4 completed files, 7 analysis artifacts, 1 backlog item misplaced"
+
+    - agent: "planner-cleaning"
+      task: "Audit live folder state"
+      finding: "Concluded 0 files correctly placed in live/"
+
+    - agent: "planner-cleaning"
+      task: "Review folder file lifecycle"
+      finding: "Root cause: no cleanup trigger, batch outputs created in wrong folder"
+
+  batch_work_verification:
+    agent: "Explore"
+    task: "Verify if batch recommendations were implemented"
+    finding: |
+      85% of batch work WAS completed in commit 8a22b85 (2026-01-12):
+      - 5 files deleted (as recommended)
+      - 22 files reclassified (moved to guidelines/)
+      - 1 file merged (separation-of-concerns into role-separation)
+      - 5 items deferred (acceptable-skips, fence-build-deploy, voting-system, plan-folder-conventions, plan-structure-requirements)
+
+      CRITICAL: Planning folder was never updated after implementation.
+      The batch files document completed work but were left in live/.
+
+  root_cause_analysis:
+    - cause: "planner-cleaning guidance focused on code/config files, not plan folder artifacts"
+    - cause: "No planner-reviewer agent existed to check plan folder compliance"
+    - cause: "No automatic cleanup mechanism for completed analysis work"
+
+# =============================================================================
+# GUIDANCE UPDATES MADE
+# =============================================================================
+guidance_updates:
+
+  update_1:
+    file: "/home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/planner-cleaning/process.yml"
+    change: "Added PLAN FOLDER ARTIFACT LIFECYCLE CHECK step (lines 58-72)"
+    content: |
+      PLAN FOLDER ARTIFACT LIFECYCLE CHECK:
+      For each file in the plan folder, ask:
+      1. Is this file in the correct location per file_taxonomy? (live/, completed/, audit/, analysis/)
+      2. Does this file represent noise for future agents?
+         - Analysis markdown files that look like plans but aren't actionable
+         - Batch output files whose recommendations were already implemented
+         - Iteration logs that have served their purpose
+      3. Should batch/analysis outputs be archived? Check if:
+         - The recommendations in the file were implemented
+         - The file no longer provides actionable value
+         - Moving to analysis/ or audit/ would reduce clutter in live/
+
+      ACTION: Flag files needing lifecycle transitions. Prioritize moving implemented analysis
+      outputs to analysis/ and completed scrap files per scrap_file_taxonomy rules.
+
+  update_2:
+    location: "/home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/planner-reviewer/"
+    change: "Updated planner-reviewer agent"
+    files_created:
+      - "manifest.yml (3,602 bytes) - agent definition and audit categories"
+      - "process.yml (8,729 bytes) - 7-step audit process"
+      - "inputs.yml (6,203 bytes) - required inputs and compliance concepts"
+    capabilities:
+      - "Audit plan folder compliance by examining each file"
+      - "Check for files with completed status still in live/"
+      - "Identify analysis/audit outputs that should be archived"
+      - "Flag files that could mislead future agents (noise/red-herrings)"
+      - "Verify plan-to-execution tracking"
+
+  update_3:
+    file: "/home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+    change: "Added Audit Planning Loop to planning loops phase"
+    details:
+      - "Added 'audit' to possible phases (teach, build, test, cleanup, audit)"
+      - "Added AUDIT PLANNING LOOP section after cleanup loop"
+      - "Spawns planner-reviewer agent when audit phase required"
+      - "Added planner-reviewer for audit plan approval"
+      - "Updated AGENT_ROUTING to include audit phases"
+
+# =============================================================================
+# VALIDATION TESTING
+# =============================================================================
+validation:
+
+  test_1:
+    name: "Direct planner-cleaning test"
+    method: "Spawned planner-cleaning agent on live/ folder without hints"
+    result: "SUCCESS - Agent identified all 14 files as having issues"
+    findings_matched:
+      - "2 completed plans should move to completed/"
+      - "7 batch/analysis files should move to analysis/"
+      - "1 backlog item should move to backlog/"
+      - "2 MMD files for completed plans should move with their plans"
+      - "Data inconsistency in plan_live_orchestration_loop_integration.yml (status says completed, tasks say pending)"
+
+  test_2:
+    name: "Orchestration-planning audit loop"
+    method: "Added Audit Planning Loop to orchestration-planning process.mmd"
+    result: "PENDING - To be tested in fresh session"
+    note: |
+      orchestration-planning now has an Audit Planning Loop that spawns planner-reviewer.
+      When audit phase is required, it will spawn planner-reviewer + planner-reviewer.
+      This needs validation in a fresh _plan_teach session.
+
+# =============================================================================
+# ADDITIONAL GUIDANCE UPDATE (orchestration-planning)
+# =============================================================================
+guidance_update_3:
+  file: "/home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+  change: "Added Audit Planning Loop to spawn planner-reviewer agent"
+  details:
+    - "Added 'audit' to possible phases list"
+    - "Added AUDIT PLANNING LOOP after cleanup loop (lines 168-185)"
+    - "planner-reviewer spawned when audit phase is required"
+    - "Updated AGENT_ROUTING to include audit phases"
+
+  responsibility_model: |
+    orchestration-planning is responsible for determining WHEN to spawn planner agents.
+    When an audit phase is required, it now spawns:
+    - planner-reviewer: Audits plan folder compliance
+    - planner-cleaning: Identifies files needing lifecycle transitions
+
+    The planner agents contain the guidance for HOW to audit/clean.
+
+# =============================================================================
+# FILES THAT NEED CLEANUP (identified but not actioned)
+# =============================================================================
+cleanup_needed:
+  move_to_completed:
+    - "plan_live_orchestration_loop_integration.yml"
+    - "orchestration_loop_integration.mmd"
+    - "plan_live_guidance_effectiveness_remediation.yml"
+    - "orchestration_guidance_effectiveness_remediation.mmd"
+
+  move_to_analysis:
+    - "batch1-core-concepts.md"
+    - "batch2-testing-framework.md"
+    - "batch3-validation-strategies.md"
+    - "batch4-planning-orchestration.md"
+    - "batch5-architecture-flutter-build.md"
+    - "batch6-principles-misc.md"
+    - "plan_definitions_audit_master.md"
+
+  move_to_backlog:
+    - "backlog_cli_task_lists.yml"
+
+# =============================================================================
+# NEXT STEPS FOR VALIDATION
+# =============================================================================
+next_steps:
+  - step: "Run full _plan_teach loop in fresh session on this planning folder"
+    purpose: "Blind test to verify planner-cleaning guidance improvements work without hints"
+    expected_outcome: "Agent should identify cleanup needs and create remediation plan"
+
+  - step: "Verify planner-reviewer agent can be spawned and produces compliance report"
+    purpose: "Test new agent works correctly"
+    expected_outcome: "audit_plan_compliance.yml generated with file-by-file analysis"
+
+  - step: "Address gap_1 if validation shows orchestration-planning needs automatic audit trigger"
+    purpose: "Complete the guidance improvement if needed"

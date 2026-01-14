@@ -1,0 +1,57 @@
+flowchart LR
+    %% GOAL: Improve guidance for plan folder lifecycle compliance
+    %% PROFILE: Guidance Improvement
+    %% STATUS: Investigation=completed, GuidanceUpdate=completed, Validation=pending, Cleanup=pending
+    %% PHASES: Investigation, GuidanceUpdate, Validation, Cleanup
+    %% AGENT_ROUTING: Investigation->planner-cleaning, GuidanceUpdate->orchestration-guidance, Validation->planner-cleaning, Cleanup->planner-cleaning
+    %% CREATED: 2026-01-14
+
+    Start((Start)) --> Investigation
+
+    subgraph Investigation_SG ["Phase 1: Investigation"]
+        Investigation[Diagnose Plan Folder Issues]
+        Investigation --> SpawnDiagnostic1[Spawn planner-cleaning: Diagnose]
+        SpawnDiagnostic1 --> SpawnDiagnostic2[Spawn planner-cleaning: Audit]
+        SpawnDiagnostic2 --> SpawnDiagnostic3[Spawn planner-cleaning: Lifecycle]
+        SpawnDiagnostic3 --> SpawnExplore[Spawn Explore: Verify batch completion]
+        SpawnExplore --> AnalyzeFindings[Analyze Findings]
+        AnalyzeFindings --> InvestigationComplete[Investigation Complete]
+    end
+
+    InvestigationComplete --> GuidanceUpdate
+
+    subgraph GuidanceUpdate_SG ["Phase 2: Guidance Update"]
+        GuidanceUpdate[Update Agent Guidance]
+        GuidanceUpdate --> UpdatePlannerCleaning[Update planner-cleaning process.yml]
+        UpdatePlannerCleaning --> CreatePlannerAudit[Updated planner-reviewer agent]
+        CreatePlannerAudit --> UpdateOrchPlanning[Update orchestration-planning: Add Audit Loop]
+        UpdateOrchPlanning --> GuidanceComplete[Guidance Updates Complete]
+    end
+
+    GuidanceComplete --> Validation
+
+    subgraph Validation_SG ["Phase 3: Validation"]
+        Validation[Test Updated Guidance]
+        Validation --> TestPlannerCleaning[Spawn planner-cleaning: Blind test]
+        TestPlannerCleaning --> AnalyzeResults{Results Valid?}
+        AnalyzeResults -- "SUCCESS: All issues identified" --> ValidationComplete[Validation Complete]
+    end
+
+    ValidationComplete --> Cleanup
+
+    subgraph Cleanup_SG ["Phase 4: Cleanup (PENDING)"]
+        Cleanup[Execute Cleanup Plan]
+        Cleanup --> MoveCompleted[Move completed plans to completed/]
+        MoveCompleted --> MoveAnalysis[Move batch files to analysis/]
+        MoveAnalysis --> MoveBacklog[Move backlog item to backlog/]
+        MoveBacklog --> VerifyLive[Verify live/ contains only active items]
+        VerifyLive --> CleanupComplete[Cleanup Complete]
+    end
+
+    CleanupComplete --> End((End))
+
+    %% Current state markers
+    %% Investigation: COMPLETED
+    %% GuidanceUpdate: COMPLETED (3 updates: planner-cleaning, planner-reviewer updated, orchestration-planning audit loop)
+    %% Validation: PENDING (to be tested in fresh _plan_teach session)
+    %% Cleanup: PENDING (to be executed after validation)

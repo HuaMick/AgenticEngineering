@@ -1,0 +1,53 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#f0f0f0', 'primaryTextColor': '#000', 'primaryBorderColor': '#333', 'lineColor': '#333', 'secondaryColor': '#e0e0e0', 'tertiaryColor': '#fff'}}}%%
+flowchart TD
+    %% ========================================
+    %% Orchestration: Context Minimisation Consolidation
+    %% Plan: plan_live_context_minimisation.yml
+    %% Purpose: Consolidate definition and guideline into single source of truth
+    %% ========================================
+
+    Start((Start)) --> TeachPhase
+
+    %% ========================================
+    %% TEACH PHASE
+    %% ========================================
+    subgraph TeachPhase_SG[Teach Phase: Merge and Consolidate]
+        direction TB
+        TeachPhase[Enter Teach Phase] --> SpawnGuidancePlanner[Spawn planner-guidance Agent]
+        SpawnGuidancePlanner --> ReadSources[Read Source Files]
+        ReadSources --> MergeContent[Merge Definition into Guideline]
+        MergeContent --> DeleteDefinition[Delete Definition File]
+        DeleteDefinition --> UpdateReferences[Update inputs.yml References]
+        UpdateReferences --> TeachComplete{Teach Complete?}
+        TeachComplete -- "No: Issues Found" --> SpawnGuidancePlanner
+        TeachComplete -- "Yes" --> ExitTeach[Exit Teach Phase]
+    end
+
+    ExitTeach --> TestPhase
+
+    %% ========================================
+    %% TEST PHASE
+    %% ========================================
+    subgraph TestPhase_SG[Test Phase: Verify Consolidation]
+        direction TB
+        TestPhase[Enter Test Phase] --> SpawnTestPlanner[Spawn planner-test Agent]
+        SpawnTestPlanner --> VerifyGuideline[Verify Merged Guideline Content]
+        VerifyGuideline --> VerifyDeletion[Verify Definition File Deleted]
+        VerifyDeletion --> TestsPass{Tests Pass?}
+        TestsPass -- "No: Failures Found" --> FeedbackToTeach[Feedback to Teach Phase]
+        TestsPass -- "Yes" --> ExitTest[Exit Test Phase]
+    end
+
+    FeedbackToTeach --> TeachPhase
+
+    ExitTest --> Complete((Complete))
+
+    %% ========================================
+    %% AGENT ROUTING
+    %% ========================================
+    %% teach -> planner-guidance
+    %% test -> planner-test
+    %%
+    %% FEEDBACK TRIGGERS
+    %% test_failure -> teach
+    %% ========================================
