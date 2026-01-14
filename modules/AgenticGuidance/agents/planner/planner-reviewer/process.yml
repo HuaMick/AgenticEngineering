@@ -62,6 +62,50 @@ process:
 
       EXCEPTION: Single-task plans or quick fixes that don't require agent coordination
       may be approved without MMD. Check plan.phases - if only 1 phase with 1 task, MMD is optional.
+
+      FILE PLACEMENT CHECKLIST (BLOCKING - all must pass):
+      The live/ folder must contain ONLY active work artifacts. Misplaced files cause
+      agent confusion and are a BLOCKING issue requiring rejection.
+
+      ALLOWED in live/:
+      - [ ] plan_live_*.yml files with status: pending, approved, or in_progress
+      - [ ] orchestration_*.mmd files for active plans
+      - [ ] backlog_*.yml files explicitly marked with status: backlog
+      - [ ] README.md (folder documentation)
+
+      FORBIDDEN in live/ (REJECT if found):
+      - [ ] Completed plans (status: completed) - must be in completed/
+      - [ ] Analysis/documentation files (*.md except README.md) - must be in analysis/
+      - [ ] Audit reports (audit_*.yml) - must be in audit/
+      - [ ] Diagnostic/investigation documents - must be in analysis/
+      - [ ] Batch processing outputs or intermediate artifacts - must be in analysis/
+
+      FENCE: If ANY misplaced files are found in live/:
+      - REJECT the plan folder with feedback listing each misplaced file
+      - Specify the correct destination folder for each file
+      - Do NOT approve with "non-blocking" or "organizational concerns" exceptions
+      - File placement issues ARE blocking issues that mislead future agents
+
+      CODEBASE VERIFICATION CHECKLIST (BLOCKING - spawns explore agents):
+      Before approving, spawn explore agents to verify live/ files reflect codebase reality.
+      This prevents approving plans with stale content or already-implemented tasks.
+
+      FOR EACH plan_live_*.yml FILE:
+      - Spawn explore agent to check: Do target_files referenced in tasks still exist?
+      - Spawn explore agent to check: Have any "pending" tasks already been implemented?
+      - If >50% of pending tasks are already done, FLAG: "Plan contains stale tasks"
+
+      FOR EACH analysis/documentation file (*.md except README.md):
+      - Spawn explore agent to check: Has documented work been implemented?
+      - Classify as: IMPLEMENTED, PARTIALLY_IMPLEMENTED, or NOT_IMPLEMENTED
+      - If PARTIALLY_IMPLEMENTED: FLAG: "Contains incomplete work - convert to live plan or complete first"
+      - If NOT_IMPLEMENTED: FLAG: "Contains pending work - should be live plan, not analysis"
+      - If IMPLEMENTED: OK to archive in analysis/
+
+      FENCE: If ANY explore agent finds significant discrepancies:
+      - REJECT with explore findings attached
+      - Require planner-guidance to update/fix the flagged files
+      - Do NOT approve with "will fix later" exceptions
     - |
       Decision:
       - APPROVE: If all checklist items pass and the plan is ready for execution.
@@ -87,6 +131,6 @@ process:
       in live/ for the next iteration of the planner-loop.
 
   guidelines:
-    - "Only reject plans with genuine structural issues or missing critical information."
+    - "Reject plans with structural issues, missing critical information, OR misplaced files in live/."
     - "Ensure context routing is specific (file-level or directory-level references are both acceptable)."
     - "Validate that all mandatory loops (like audit-test-fix) are included where required."

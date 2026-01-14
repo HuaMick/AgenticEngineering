@@ -1,0 +1,162 @@
+# ==============================================
+# PATH RESOLUTION SEMANTICS
+# ==============================================
+# All paths in this file are relative to the REPOSITORY ROOT
+# (e.g., modules/AgenticGuidance/assets/), NOT the target project root.
+#
+# EXCEPTION: docs/plans/ paths are relative to the TARGET PROJECT root.
+# When an agent references docs/plans/live/ or docs/plans/completed/,
+# these exist in the project being worked on, not in AgenticGuidance.
+# ==============================================
+
+# ==============================================
+# REQUIRED INPUTS
+# ==============================================
+# These inputs MUST be provided by the parent orchestrator or user.
+# Without these, the agent cannot perform the plan folder audit.
+# ==============================================
+required_inputs:
+  - name: "plan_folder_path"
+    type: "string"
+    description: "Path to the plan folder to audit"
+    required: true
+    example: "docs/plans/live/260106MyProject_feature_auth/"
+
+  - name: "target_project_path"
+    type: "string"
+    description: "Absolute path to target project root (for docs/plans/ resolution)"
+    required: true
+    example: "/home/code/MyProject"
+
+# Planner-Audit Agent Inputs
+# Defines the files, directories, and context needed to audit plan folder compliance.
+#
+# PURPOSE:
+# Planner-audit agents examine plan folders to identify compliance issues:
+# - Files in wrong locations (completed items in live/, audit reports not archived)
+# - Stale artifacts that should be cleaned up
+# - Misleading content that could cause future agents to take wrong actions
+# - Plans that were executed but not marked complete (or vice versa)
+#
+# RESPONSIBILITIES:
+# - Inventory all files in the plan folder
+# - Evaluate each file against placement rules
+# - Identify completed files still in live/
+# - Flag potential noise/red-herrings
+# - Verify plan-to-execution tracking
+# - Produce actionable compliance report
+
+agent_context:
+  category: "modules/AgenticGuidance/assets/definitions/agent-categories.yml#agent_categories.planner"
+  role: "planner-audit"
+
+inputs:
+  agent_type: "planner-audit"
+  version: "2.0"  # MUST match manifest.yml version
+
+  # Reference layers (transitive loading)
+  # NOTE: Uses planner-core layers for shared definitions
+  layers:
+    - type: layer
+      path: "modules/AgenticGuidance/assets/inputs/planner-core-system.yml"
+      description: "Planner-specific system definitions (plans.yml - authoritative lifecycle rules)"
+      required: true
+
+    - type: layer
+      path: "modules/AgenticGuidance/assets/inputs/planner-core-guidelines.yml"
+      description: "Planner-specific guidelines (context-minimisation, etc.)"
+      required: true
+
+    - type: layer
+      path: "modules/AgenticGuidance/assets/inputs/planner-shared.yml"
+      description: "Planner shared inputs (folder-structure, iteration patterns)"
+      required: true
+
+  # Audit-specific inputs
+  core_inputs:
+    # Plan lifecycle and file taxonomy (CRITICAL for audit rules)
+    - type: file
+      path: "modules/AgenticGuidance/assets/definitions/plans.yml"
+      description: "Authoritative plan lifecycle, file taxonomy, and completion patterns"
+      required: true
+
+    - type: file
+      path: "modules/AgenticGuidance/assets/guidelines/plan-completion.yml"
+      description: "Copy-and-Sync pattern details for understanding file placement rules"
+      required: true
+
+    # Scrap file handling
+    - type: file
+      path: "modules/AgenticGuidance/assets/definitions/plans.yml#scrap_file_taxonomy"
+      description: "Lifecycle rules for audit, review, and remediation files"
+      required: true
+
+    # Folder structure reference
+    - type: file
+      path: "modules/AgenticGuidance/assets/definitions/folder-structure.yml"
+      description: "Expected folder structure for plan folders"
+      required: false
+
+    # The target plan folder to audit
+    - type: pattern
+      path: "docs/plans/live/YYMMDDRepo_Branch/"
+      description: "The plan folder to audit. Contains live/, completed/, audit/, analysis/ subfolders."
+      required: true
+
+    # Example plan for reference
+    - type: file
+      path: "modules/AgenticGuidance/assets/examples/planner/YYMMDDRepo_Branch/plan_example.yml"
+      description: "Reference plan showing expected structure and status fields"
+      required: true
+
+  # Audit-specific guidelines
+  guidelines:
+    - type: file
+      path: "modules/AgenticGuidance/assets/guidelines/decommissioning-over-deprecation.yml"
+      description: "Prefer complete removal over soft deprecation - applies to stale plan artifacts"
+      required: true
+
+  # Audit-specific definitions
+  definitions:
+    compliance_question: |
+      For each file in the plan folder, ask:
+      "Is this file compliant? Does it belong here?"
+
+      This question forces deliberate evaluation rather than passive acceptance.
+      Files that pass this test contribute to agent effectiveness.
+      Files that fail create friction and potential misdirection.
+
+    file_placement_rules: |
+      Files have expected locations based on their type and status:
+
+      live/: Active work in progress
+      - Phase plans with pending/in-progress items
+      - plan_next_actions.yml (tracking file)
+      - Remediation plans awaiting review
+
+      completed/: Finished work
+      - Phase plans where all items are done
+      - plan_completed.yml summary
+
+      audit/: Audit artifacts
+      - audit_*.yml reports after processing
+
+      analysis/: Analysis and iteration history
+      - plan_iteration_*.yml logs
+      - review_*.yml decisions
+      - *.md analysis documents
+
+    misleading_content_patterns: |
+      Content that could mislead future agents:
+      - References to deleted/moved files
+      - Outdated recommendations marked as current
+      - Unresolved TODOs for resolved issues
+      - Plans superseded without documentation
+      - Analysis based on old code state
+
+    execution_tracking: |
+      Plan-to-execution tracking verifies that:
+      - Plans marked complete have evidence of execution
+      - Active plans show recent activity
+      - Abandoned plans are documented as such
+      - Partial completion is clearly indicated

@@ -100,11 +100,34 @@ loop_types:
     core_pattern: "Explore → Analyze → Decide → Repeat"
 
   planner-loop:
-    purpose: "Iterative planning with reviewer feedback"
+    purpose: "Iterative planning with reviewer feedback and codebase verification"
     phase: "planning"
     when_to_use: "To create and refine implementation plans"
     maximum_iterations: 5
-    core_pattern: "Define Phases → Populate Phases → Review → Repeat"
+    core_pattern:
+      - "Define Phases → Populate Phases"
+      - "Explore Verification (parallel explore agents verify live/ files against codebase)"
+      - "Review (reviewer validates structure AND explore findings)"
+      - "Fix/Update based on feedback"
+      - "Repeat until approved"
+    participants:
+      - "planner agents (planning)"
+      - "explore agents (codebase verification)"
+      - "planner-reviewer (validation)"
+    explore_verification:
+      purpose: "Verify files in live/ folder reflect current codebase reality"
+      triggers:
+        - "Before review step"
+        - "When live/ contains analysis or batch files"
+      checks:
+        - "Do referenced files still exist?"
+        - "Have recommended changes been implemented?"
+        - "Are task statuses accurate (pending vs completed)?"
+        - "Is content still relevant or stale?"
+      output: "Verification report with flags for reviewer"
+    exit_conditions:
+      - "Reviewer approves AND explore verification passes"
+      - "Max iterations reached (escalate)"
 
   guidance-test-loop:
     purpose: "Validate guidance completeness through agent simulation"

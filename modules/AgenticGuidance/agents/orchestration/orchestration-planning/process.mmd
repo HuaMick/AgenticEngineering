@@ -65,7 +65,7 @@ flowchart LR
     %% PHASE DETERMINATION
     %% ========================================
     %% Orchestration-planning agent analyzes objective and determines required phases.
-    %% Possible phases: teach, build, test, cleanup
+    %% Possible phases: teach, build, test, cleanup, audit
     %% Each phase will get its own plan_live_<phase>.yml file
     WorktreeValid -- "Yes: Verified" --> PhaseDetermination[Enter Phase Determination]
 
@@ -74,14 +74,15 @@ flowchart LR
         %% - teach: guidance, process, or documentation improvements
         %% - build: code implementation or feature development
         %% - test: test strategy and validation tasks
-        %% - cleanup: code cleanup, audit, or removal tasks
+        %% - cleanup: code cleanup or removal tasks
+        %% - audit: plan folder compliance checks and file lifecycle validation
         %% Creates placeholder .yml files for each required phase
         PhaseDetermination --> AnalyzeObjective[Analyze Objective Type]
         AnalyzeObjective --> DeterminePhases[Determine Required Phases]
         DeterminePhases --> SelectLoopStrategies[Select Loop Strategies per Phase]
         SelectLoopStrategies --> PhasesDecided{Phases & Loops Decided?}
 
-        %% List possible phases: teach, build, test, cleanup
+        %% List possible phases: teach, build, test, cleanup, audit
         PhasesDecided -- "Yes" --> CreatePlaceholders[Create Phase Placeholder Files]
         PhasesDecided -- "No: Unclear" --> EscalatePhases((Ask User for Phase Guidance))
     end
@@ -97,7 +98,8 @@ flowchart LR
     %% - planner-guidance: Teaching/guidance plans
     %% - planner-build: Build/implementation plans
     %% - planner-test: Test strategy plans
-    %% - planner-cleaning: Cleanup/audit plans
+    %% - planner-cleaning: Cleanup plans
+    %% - planner-audit: Plan folder compliance audits
     CreatePlaceholders --> PlanningLoops[Enter Planning Loops Phase]
 
     subgraph PlanningLoops_SG ["Planning Loops Subgraph"]
@@ -163,8 +165,28 @@ flowchart LR
         CleanupPlanApproved -- "No: Refine" --> SpawnPlannerCleanupFix[Spawn planner-cleaning Agent]
         SpawnPlannerCleanupFix --> SpawnCleanupReviewer
 
-        CleanupPlanApproved -- "Yes: Ready" --> AllPhasesPlanned[All Required Phases Planned]
-        CheckCleanup -- "No" --> AllPhasesPlanned
+        CleanupPlanApproved -- "Yes: Ready" --> CheckAudit{Audit Phase Required?}
+        CheckCleanup -- "No" --> CheckAudit
+
+        %% ----------------------------------------
+        %% AUDIT PLANNING LOOP (if audit phase required)
+        %% ----------------------------------------
+        %% planner-audit checks plan folder compliance:
+        %% - Files in correct locations (live/, completed/, audit/, analysis/)
+        %% - Completed plans moved out of live/
+        %% - Stale/misleading artifacts identified
+        CheckAudit -- "Yes" --> AuditPlanLoop{Audit Planning Loop}
+
+        AuditPlanLoop --> SpawnPlannerAudit[Spawn planner-audit Agent]
+        SpawnPlannerAudit --> SpawnAuditReviewer[Spawn planner-reviewer Agent]
+        SpawnAuditReviewer --> AuditPlanApproved{Audit Plan Approved?}
+
+        %% Iterative refinement for audit plan
+        AuditPlanApproved -- "No: Refine" --> SpawnPlannerAuditFix[Spawn planner-audit Agent]
+        SpawnPlannerAuditFix --> SpawnAuditReviewer
+
+        AuditPlanApproved -- "Yes: Ready" --> AllPhasesPlanned[All Required Phases Planned]
+        CheckAudit -- "No" --> AllPhasesPlanned
     end
 
     %% ========================================
@@ -197,6 +219,7 @@ flowchart LR
         %% - build phases -> builder agents (build-python, build-flutter)
         %% - test phases -> tester agents (test-runner)
         %% - cleanup phases -> builder agents (cleanup tasks use builders)
+        %% - audit phases -> planner-audit (plan folder compliance)
         ExtractPhases --> DetermineRouting[Determine AGENT_ROUTING Based on Phase Types]
 
         %% Step 3: Generate MMD metadata block

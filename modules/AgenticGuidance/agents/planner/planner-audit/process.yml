@@ -1,0 +1,235 @@
+process:
+  goal: |
+    Audit plan folder compliance to identify files that are misplaced, stale, or misleading.
+    Ensure plan folders follow lifecycle conventions and don't accumulate noise that could
+    mislead future agents.
+
+    OUTPUT STRUCTURE:
+    - Produces audit_plan_compliance.yml in the audit/ subfolder
+    - Optionally produces compliance-analysis.md in analysis/ for detailed findings
+    - Recommends specific actions for each finding (move, archive, delete, update)
+
+  inputs:
+    - location: "modules/AgenticGuidance/agents/planner/planner-audit/inputs.yml"
+      description: "Core planner-audit agent inputs, definitions, and guidelines"
+    - location: "docs/plans/live/YYMMDDRepo_Branch/"
+      description: "The plan folder to audit"
+
+  steps:
+    - |
+      VALIDATE REQUIRED INPUTS:
+      The following inputs MUST be provided by the orchestrator or user:
+
+      1. plan_folder_path (string, required)
+         - Path to the plan folder to audit
+         - Example: "docs/plans/live/260106MyProject_feature_auth/"
+         - ERROR if missing: "STOP: No plan_folder_path provided. Cannot audit without a target folder."
+
+      2. target_project_path (string, required)
+         - Absolute path to target project root
+         - Example: "/home/code/MyProject"
+         - ERROR if missing: "STOP: No target_project_path provided. Cannot resolve plan folder location."
+
+      If ANY required input is missing, report the specific error and STOP.
+
+    - |
+      INVENTORY THE PLAN FOLDER:
+      List all files in the plan folder and its subfolders:
+      - Root level files
+      - live/ subfolder contents
+      - completed/ subfolder contents
+      - audit/ subfolder contents
+      - analysis/ subfolder contents
+      - Any other subfolders
+
+      For each file, record:
+      - File name and path
+      - File type (based on naming pattern)
+      - Last modified date (if available)
+
+    - |
+      AUDIT FILE PLACEMENT (for each file ask: "Does this file belong here?"):
+
+      For files in live/:
+      - Is this a phase plan (plan_live_*.yml)? Check if ANY items are still pending/in-progress.
+        If ALL items are completed, FLAG: "Should be removed from live/ (exists in completed/)"
+      - Is this an audit report (audit_*.yml)? FLAG: "Should be in audit/ subfolder"
+      - Is this a review decision (review_*.yml)? FLAG: "Should be in analysis/ subfolder"
+      - Is this a remediation plan (plan_*_remediation*.yml)? Check if it was merged.
+        If merged, FLAG: "Should be deleted (tasks merged into phase plan)"
+      - Is this analysis content? FLAG: "Should be in analysis/ subfolder"
+
+      For files in completed/:
+      - Does this file have a corresponding live/ version with pending items?
+        If yes, this is normal (Copy-and-Sync pattern).
+        If the live/ version has ALL items completed, FLAG the live/ version for removal.
+      - Is plan_completed.yml present? If not, FLAG: "Missing plan_completed.yml summary"
+
+      For files in audit/:
+      - These are generally correct placement (audit reports belong here after processing)
+
+      For files in analysis/:
+      - These are generally correct placement (iteration logs, reviews, analysis docs)
+
+    - |
+      AUDIT FOR COMPLETED FILES STILL IN LIVE:
+
+      For each phase plan in live/ (plan_live_*.yml):
+      1. Read the file and examine all tasks/items
+      2. Check the status field of each item
+      3. If ALL items have status: completed:
+         - FLAG: "All items completed - file should be removed from live/"
+         - Verify completed/ has the synced copy
+         - Recommend: "Delete live/{filename} - all items are in completed/{filename}"
+
+      IMPORTANT: This is the Copy-and-Sync pattern:
+      - Files stay in live/ while ANY items are pending/in-progress
+      - When ALL items are completed, the live/ copy should be deleted
+      - The completed/ copy becomes the authoritative version
+
+    - |
+      AUDIT FOR STALE ANALYSIS/AUDIT OUTPUTS:
+
+      Check for outputs that served their purpose but weren't archived:
+      - Iteration logs (plan_iteration_*.yml) for issues that have been resolved
+      - Friction analysis documents for completed refactors
+      - Audit reports that have been addressed and remediated
+
+      For each, determine:
+      - Is there evidence the issue was resolved? (subsequent plans, code changes)
+      - Is the file still providing value or is it noise?
+      - Recommend archival or retention with justification
+
+    - |
+      AUDIT FOR MISLEADING FILES (noise/red-herrings):
+
+      Identify files that could mislead future agents:
+      - Plans referencing files that no longer exist
+      - Tasks pointing to code locations that have moved
+      - Analysis documents with outdated recommendations
+      - TODOs or comments about issues that were fixed
+
+      For each, evaluate:
+      - Could an agent reading this file take a wrong action?
+      - Is the file clearly marked as historical/outdated?
+      - Recommend update, archive, or delete with specific reasoning
+
+    - |
+      AUDIT PLAN-TO-EXECUTION TRACKING:
+
+      For each plan file, verify execution status:
+
+      EXPECTED COMPLETIONS:
+      - Plans with status: completed should have evidence of execution
+      - Check for corresponding code changes, test results, or documentation
+
+      INCOMPLETE PLANS:
+      - Plans with status: active but no recent activity
+      - Plans with some items completed but others abandoned
+      - Plans that were superseded without explicit documentation
+
+      For incomplete plans, document:
+      - What was the intended goal?
+      - What evidence exists of partial execution?
+      - Was the plan superseded? If so, by what?
+      - Recommend: mark as abandoned, complete remaining items, or archive
+
+    - |
+      GENERATE COMPLIANCE REPORT:
+
+      Create audit_plan_compliance.yml with:
+      ```yaml
+      audit:
+        plan_folder: "{plan_folder_path}"
+        audit_date: "YYYYMMDD"
+        auditor: "planner-audit"
+
+      findings:
+        file_placement:
+          - file: "{path}"
+            issue: "{description}"
+            severity: "high|medium|low"
+            recommendation: "{action}"
+
+        completed_in_live:
+          - file: "{path}"
+            all_items_completed: true
+            recommendation: "Delete from live/ - synced copy exists in completed/"
+
+        stale_artifacts:
+          - file: "{path}"
+            reason: "{why it's stale}"
+            recommendation: "{action}"
+
+        misleading_content:
+          - file: "{path}"
+            risk: "{how it could mislead}"
+            recommendation: "{action}"
+
+        execution_tracking:
+          - plan: "{path}"
+            expected_status: "{status}"
+            actual_status: "{status}"
+            evidence: "{what was found}"
+            recommendation: "{action}"
+
+      summary:
+        total_files_audited: N
+        issues_found: N
+        high_severity: N
+        medium_severity: N
+        low_severity: N
+
+      actions:
+        immediate:
+          - "{high priority actions}"
+        recommended:
+          - "{medium priority actions}"
+        optional:
+          - "{low priority suggestions}"
+      ```
+
+    - |
+      REPORT FINDINGS:
+
+      Provide a summary to the orchestrating agent:
+      - Number of files audited
+      - Number and severity of issues found
+      - Recommended immediate actions
+      - Path to full audit report
+
+  guidelines:
+    # Core guidelines: See inputs.yml for transitive layer references
+    # Plan lifecycle: See modules/AgenticGuidance/assets/definitions/plans.yml
+    # Scrap file taxonomy: See plans.yml#scrap_file_taxonomy
+
+    - |
+      QUESTION EACH FILE:
+      For every file, ask: "Is this file compliant? Does it belong here?"
+      This deliberate questioning prevents noise accumulation.
+
+    - |
+      COPY-AND-SYNC AWARENESS:
+      Understand the two-level completion pattern:
+      - Files stay in live/ while work continues
+      - Completed items sync to completed/
+      - When ALL items are done, live/ copy is deleted
+      Audit for violations of this pattern.
+
+    - |
+      NOISE REDUCTION FOCUS:
+      The primary goal is reducing friction for future agents.
+      Files that could mislead or confuse are higher priority than
+      files that are merely misplaced.
+
+    - |
+      SEVERITY CLASSIFICATION:
+      - HIGH: File could cause agent to take wrong action
+      - MEDIUM: File is in wrong location or stale
+      - LOW: Minor organizational improvement
+
+    - |
+      NON-DESTRUCTIVE AUDIT:
+      This agent AUDITS and REPORTS only.
+      It does NOT move, delete, or modify files.
+      The cleanup is executed by cleaner agents following the audit recommendations.

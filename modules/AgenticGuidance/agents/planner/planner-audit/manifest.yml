@@ -1,0 +1,91 @@
+name: planner-audit
+description: "Audit plan folder compliance and identify files that should be archived, completed, or removed."
+# Version scheme: X.Y where X = architecture version, Y = iteration
+# 2.0 = reference layer architecture (inputs.yml uses transitive loading)
+version: "2.0"
+
+purpose: |
+  Audit plan folders to ensure compliance with planning conventions and lifecycle rules.
+  Identifies issues that create friction for future agents working with the plan folder:
+  - Completed files still in live/ (should be in completed/)
+  - Analysis/audit outputs that should be archived
+  - Files that could mislead future agents (noise, red-herrings, stale data)
+  - Plans that were executed but not marked complete
+  - Plans that were never executed
+
+  The audit produces a compliance report with actionable recommendations for cleanup.
+
+# Process and inputs files
+files:
+  process: "process.yml"
+  inputs: "inputs.yml"
+
+outputs:
+  - type: "audit_yaml"
+    name: "audit_plan_compliance.yml"
+    description: "Compliance audit report with findings and recommendations"
+    location: "docs/plans/live/{plan_folder_name}/audit/"
+    required: true
+  - type: "markdown"
+    name: "compliance-analysis.md"
+    description: "Detailed analysis document explaining findings"
+    location: "docs/plans/live/{plan_folder_name}/analysis/"
+    required: false
+
+audit_categories:
+  file_placement: |
+    Files in wrong location based on their status or type:
+    - Completed items still in live/ (should sync to completed/)
+    - Audit reports in live/ instead of audit/
+    - Analysis artifacts in live/ instead of analysis/
+    - Review decisions not moved to analysis/
+
+  stale_artifacts: |
+    Files that are outdated or no longer relevant:
+    - Plans with all items completed but folder not synced
+    - Iteration logs from resolved issues
+    - Temporary analysis files that served their purpose
+
+  misleading_content: |
+    Files that could cause future agents to take wrong actions:
+    - Outdated plans that reference deleted files
+    - Incomplete remediation plans that were superseded
+    - Analysis pointing to resolved issues as current
+    - Comments/todos that were addressed but not removed
+
+  plan_execution_tracking: |
+    Verifying that plans were actually executed:
+    - Plans with status: active but no evidence of work
+    - Tasks marked complete without corresponding code changes
+    - Plans abandoned mid-execution without documentation
+
+compliance_rules:
+  live_folder: |
+    The live/ subfolder should ONLY contain:
+    - Active phase plans (plan_live_*.yml) with pending/in-progress items
+    - plan_next_actions.yml (active tracking file)
+    - Remediation plans awaiting review (plan_*_remediation*.yml)
+
+    Files that should NOT be in live/:
+    - Phase plans where ALL items are completed (should be in completed/ only)
+    - Audit reports (should be in audit/)
+    - Review decisions (should be in analysis/)
+    - General analysis documents (should be in analysis/)
+
+  completed_folder: |
+    The completed/ subfolder should contain:
+    - Copies of phase plans with completed items synced
+    - plan_completed.yml summary index
+    - Files moved from live/ when all items are done
+
+  audit_folder: |
+    The audit/ subfolder should contain:
+    - Audit reports (audit_*.yml) after remediation is approved
+    - Historical audit findings for reference
+
+  analysis_folder: |
+    The analysis/ subfolder should contain:
+    - Iteration logs (plan_iteration_*.yml)
+    - Review decisions (review_*.yml)
+    - Friction analysis documents
+    - General analysis markdown files
