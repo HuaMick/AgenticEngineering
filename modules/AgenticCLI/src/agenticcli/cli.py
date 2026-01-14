@@ -35,8 +35,8 @@ Project Commands (require .git or .agenticcli.yml):
   inputs          Validate and resolve inputs.yml references
   template (tpl)  Generate plan files from templates
   stories (st)    Find user stories for testing
-  manifest (mf)   [BETA] Display agent manifests
-  cicd            [ALPHA] Audit CI/CD configuration
+  manifest (mf)   Manage agent manifests
+  cicd            CI/CD configuration management
 
 Flags:
   -j, --json      Output in JSON format
@@ -567,8 +567,8 @@ def _add_manifest_parser(subparsers):
     manifest_parser = subparsers.add_parser(
         "manifest",
         aliases=["mf"],
-        help="[BETA] Display agent manifests",
-        description="[BETA] Show formatted agent manifest information.",
+        help="Manage agent manifests",
+        description="Display, list, and validate agent manifests.",
     )
     manifest_subparsers = manifest_parser.add_subparsers(
         dest="manifest_command", help="Manifest commands"
@@ -582,13 +582,33 @@ def _add_manifest_parser(subparsers):
     )
     show_parser.add_argument("path", help="Path to agent directory or manifest file")
 
+    # manifest list
+    list_parser = manifest_subparsers.add_parser(
+        "list",
+        help="List all manifests in the project",
+        description="Find and list all agent manifests.",
+    )
+    list_parser.add_argument(
+        "path",
+        nargs="?",
+        help="Base path to search (defaults to current directory)",
+    )
+
+    # manifest validate
+    validate_parser = manifest_subparsers.add_parser(
+        "validate",
+        help="Validate a manifest file",
+        description="Check manifest for required fields and correct structure.",
+    )
+    validate_parser.add_argument("path", help="Path to agent directory or manifest file")
+
 
 def _add_cicd_parser(subparsers):
     """Add cicd subcommand parser."""
     cicd_parser = subparsers.add_parser(
         "cicd",
-        help="[ALPHA] Audit CI/CD configuration",
-        description="[ALPHA] Audit CI/CD configuration against codebase.",
+        help="CI/CD configuration management",
+        description="Manage and audit CI/CD configurations.",
     )
     cicd_subparsers = cicd_parser.add_subparsers(dest="cicd_command", help="CI/CD commands")
 
@@ -597,6 +617,25 @@ def _add_cicd_parser(subparsers):
         "audit",
         help="Audit CI/CD configuration",
         description="Compare CI/CD test configuration with actual test directories.",
+    )
+
+    # cicd list
+    cicd_subparsers.add_parser(
+        "list",
+        help="List all CI/CD configurations",
+        description="Find and list all CI/CD configuration files in the project.",
+    )
+
+    # cicd show
+    show_parser = cicd_subparsers.add_parser(
+        "show",
+        help="Show CI/CD configuration details",
+        description="Display details of a specific CI/CD configuration.",
+    )
+    show_parser.add_argument(
+        "path",
+        nargs="?",
+        help="Path to CI/CD configuration file (auto-detects if not specified)",
     )
 
 

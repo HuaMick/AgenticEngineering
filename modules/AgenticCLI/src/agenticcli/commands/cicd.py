@@ -13,8 +13,12 @@ def handle(args, ctx=None):
     """Route cicd subcommands."""
     if args.cicd_command == "audit":
         cmd_audit(args)
+    elif args.cicd_command == "list":
+        cmd_list(args)
+    elif args.cicd_command == "show":
+        cmd_show(args)
     else:
-        print("Usage: agentic cicd audit", file=sys.stderr)
+        print("Usage: agentic cicd <audit|list|show>", file=sys.stderr)
         sys.exit(1)
 
 
@@ -192,3 +196,217 @@ def cmd_audit(args):
 
     if discrepancies:
         sys.exit(1)
+
+
+def _find_all_cicd_configs() -> list[dict]:
+    """Find all CI/CD configuration files in the project."""
+    configs = []
+    cwd = Path.cwd()
+
+    # Cloud Build
+    for name in ["cloudbuild.yaml", "cloudbuild.yml"]:
+        path = cwd / name
+        if path.exists():
+            configs.append({"type": "cloudbuild", "path": path, "name": name})
+
+    # GitHub Actions
+    gh_workflows = cwd / ".github" / "workflows"
+    if gh_workflows.exists():
+        for workflow in gh_workflows.glob("*.yml"):
+            configs.append({"type": "github-actions", "path": workflow, "name": workflow.name})
+        for workflow in gh_workflows.glob("*.yaml"):
+            configs.append({"type": "github-actions", "path": workflow, "name": workflow.name})
+
+    # CircleCI
+    circleci = cwd / ".circleci" / "config.yml"
+    if circleci.exists():
+        configs.append({"type": "circleci", "path": circleci, "name": "config.yml"})
+
+    # GitLab CI
+    gitlab = cwd / ".gitlab-ci.yml"
+    if gitlab.exists():
+        configs.append({"type": "gitlab-ci", "path": gitlab, "name": ".gitlab-ci.yml"})
+
+    # Azure Pipelines
+    azure = cwd / "azure-pipelines.yml"
+    if azure.exists():
+        configs.append({"type": "azure-pipelines", "path": azure, "name": "azure-pipelines.yml"})
+
+    return configs
+
+
+def _parse_github_actions(config_path: Path) -> dict:
+    """Parse GitHub Actions workflow configuration."""
+    try:
+        content = yaml.safe_load(config_path.read_text())
+    except yaml.YAMLError as e:
+        return {"error": f"YAML error: {e}"}
+
+    if not content:
+        return {}
+
+    result = {
+        "name": content.get("name", config_path.stem),
+        "triggers": [],
+        "jobs": [],
+    }
+
+    # Extract triggers
+    if "on" in content:
+        triggers = content["on"]
+        if isinstance(triggers, str):
+            result["triggers"] = [triggers]
+        elif isinstance(triggers, list):
+            result["triggers"] = triggers
+        elif isinstance(triggers, dict):
+            result["triggers"] = list(triggers.keys())
+
+    # Extract jobs
+    if "jobs" in content:
+        for job_id, job_config in content["jobs"].items():
+            job_info = {
+                "id": job_id,
+                "name": job_config.get("name", job_id),
+                "runs_on": job_config.get("runs-on", "unknown"),
+                "steps": len(job_config.get("steps", [])),
+            }
+
+            # Check for test steps
+            for step in job_config.get("steps", []):
+                step_run = step.get("run", "")
+                if "pytest" in step_run or "test" in step.get("name", "").lower():
+                    job_info["has_tests"] = True
+                    break
+
+            result["jobs"].append(job_info)
+
+    return result
+
+
+def cmd_list(args):
+    """List all CI/CD configurations found in the project."""
+    from agenticcli.console import console, is_json_output, print_header, print_json
+
+    configs = _find_all_cicd_configs()
+
+    if is_json_output():
+        print_json({
+            "configs": [
+                {"type": c["type"], "path": str(c["path"]), "name": c["name"]}
+                for c in configs
+            ],
+            "count": len(configs),
+        })
+        return
+
+    print_header("CI/CD Configurations")
+
+    if not configs:
+        console.print("\n[dim]No CI/CD configurations found.[/dim]")
+        console.print("\n[dim]Searched for:[/dim]")
+        console.print("  [dim]- cloudbuild.yaml / cloudbuild.yml[/dim]")
+        console.print("  [dim]- .github/workflows/*.yml[/dim]")
+        console.print("  [dim]- .circleci/config.yml[/dim]")
+        console.print("  [dim]- .gitlab-ci.yml[/dim]")
+        console.print("  [dim]- azure-pipelines.yml[/dim]")
+        return
+
+    from rich.table import Table
+
+    table = Table(show_header=True, header_style="bold magenta")
+    table.add_column("Type", style="cyan")
+    table.add_column("File", style="green")
+    table.add_column("Path")
+
+    for config in configs:
+        table.add_row(
+            config["type"],
+            config["name"],
+            str(config["path"].relative_to(Path.cwd())),
+        )
+
+    console.print(table)
+    console.print(f"\n[dim]Found {len(configs)} configuration(s)[/dim]")
+
+
+def cmd_show(args):
+    """Show details of a specific CI/CD configuration."""
+    from agenticcli.console import (
+        console,
+        is_json_output,
+        print_error,
+        print_header,
+        print_json,
+    )
+
+    config_path = Path(args.path) if hasattr(args, "path") and args.path else None
+
+    if not config_path:
+        # Auto-detect first config
+        configs = _find_all_cicd_configs()
+        if not configs:
+            print_error("No CI/CD configuration found. Specify a path.")
+            sys.exit(1)
+        config_path = configs[0]["path"]
+
+    if not config_path.exists():
+        print_error(f"Configuration not found: {config_path}")
+        sys.exit(1)
+
+    # Determine type and parse
+    if "workflows" in str(config_path):
+        config_type = "github-actions"
+        parsed = _parse_github_actions(config_path)
+    elif config_path.name.startswith("cloudbuild"):
+        config_type = "cloudbuild"
+        steps = _parse_cloudbuild(config_path)
+        parsed = {"steps": steps, "step_count": len(steps)}
+    else:
+        config_type = "unknown"
+        try:
+            parsed = yaml.safe_load(config_path.read_text())
+        except yaml.YAMLError as e:
+            parsed = {"error": str(e)}
+
+    if is_json_output():
+        print_json({
+            "path": str(config_path),
+            "type": config_type,
+            "config": parsed,
+        })
+        return
+
+    print_header(f"CI/CD Configuration: {config_path.name}")
+    console.print(f"\n[bold]Type:[/bold] [cyan]{config_type}[/cyan]")
+    console.print(f"[bold]Path:[/bold] {config_path}")
+
+    if config_type == "github-actions":
+        if "name" in parsed:
+            console.print(f"[bold]Workflow:[/bold] [green]{parsed['name']}[/green]")
+
+        if "triggers" in parsed and parsed["triggers"]:
+            console.print("\n[bold magenta]Triggers:[/bold magenta]")
+            for trigger in parsed["triggers"]:
+                console.print(f"  [dim]-[/dim] [cyan]{trigger}[/cyan]")
+
+        if "jobs" in parsed and parsed["jobs"]:
+            console.print("\n[bold magenta]Jobs:[/bold magenta]")
+            for job in parsed["jobs"]:
+                has_tests = "[green]✓ tests[/green]" if job.get("has_tests") else ""
+                console.print(
+                    f"  [dim]-[/dim] [cyan]{job['id']}[/cyan] "
+                    f"({job['steps']} steps, {job['runs_on']}) {has_tests}"
+                )
+
+    elif config_type == "cloudbuild":
+        console.print(f"\n[bold]Steps:[/bold] {parsed.get('step_count', 0)}")
+        if "steps" in parsed:
+            console.print("\n[bold magenta]Build Steps:[/bold magenta]")
+            for step in parsed["steps"][:10]:
+                step_id = step.get("id") or step.get("name", "")[:30]
+                is_test = "[green]✓ test[/green]" if step.get("is_test") else ""
+                console.print(f"  [dim]-[/dim] [cyan]{step_id}[/cyan] {is_test}")
+            if len(parsed["steps"]) > 10:
+                console.print(f"  [dim]... and {len(parsed['steps']) - 10} more[/dim]")
+
+    console.print()

@@ -38,6 +38,37 @@ def agent_directory(temp_dir):
     return agent_dir
 
 
+@pytest.fixture
+def modules_with_manifests(temp_dir):
+    """Create a modules directory with multiple manifests."""
+    modules_dir = temp_dir / "modules"
+    modules_dir.mkdir()
+
+    # Agent 1
+    agent1_dir = modules_dir / "agent-one"
+    agent1_dir.mkdir()
+    with open(agent1_dir / "manifest.yml", "w") as f:
+        yaml.dump({
+            "name": "agent-one",
+            "version": "1.0.0",
+            "type": "builder",
+            "description": "First test agent",
+        }, f)
+
+    # Agent 2
+    agent2_dir = modules_dir / "agent-two"
+    agent2_dir.mkdir()
+    with open(agent2_dir / "manifest.yml", "w") as f:
+        yaml.dump({
+            "name": "agent-two",
+            "version": "2.0.0",
+            "type": "tester",
+            "description": "Second test agent",
+        }, f)
+
+    return temp_dir
+
+
 class TestManifestShow:
     """Tests for 'agentic manifest show' command."""
 
@@ -70,4 +101,113 @@ class TestManifestShow:
         empty_dir = temp_dir / "empty"
         empty_dir.mkdir()
         stdout, stderr, code = cli_runner(["manifest", "show", str(empty_dir)])
+        assert code == 1
+
+
+class TestManifestList:
+    """Tests for 'agentic manifest list' command."""
+
+    def test_list_help(self, cli_runner):
+        """Test manifest list --help output."""
+        stdout, stderr, code = cli_runner(["manifest", "list", "--help"])
+        assert "list" in stdout.lower()
+        assert code == 0
+
+    def test_list_no_manifests(self, cli_runner, temp_repo):
+        """Test list when no manifests exist."""
+        # temp_repo already has no manifests by default
+        stdout, stderr, code = cli_runner(["manifest", "list"])
+        assert code == 0
+        assert "No manifests found" in stdout or "Found 0" in stdout or "manifest" in stdout.lower()
+
+    def test_list_with_manifests(self, cli_runner, temp_repo):
+        """Test list with manifests present."""
+        # Create modules with manifests in temp_repo
+        modules_dir = temp_repo / "modules"
+        modules_dir.mkdir()
+
+        agent1_dir = modules_dir / "agent-one"
+        agent1_dir.mkdir()
+        with open(agent1_dir / "manifest.yml", "w") as f:
+            yaml.dump({
+                "name": "agent-one",
+                "version": "1.0.0",
+                "type": "builder",
+            }, f)
+
+        stdout, stderr, code = cli_runner(["manifest", "list"])
+        assert code == 0
+        assert "agent-one" in stdout
+
+    def test_list_json_output(self, cli_runner, temp_repo):
+        """Test list with JSON output."""
+        import json
+
+        # Create modules with manifests in temp_repo
+        modules_dir = temp_repo / "modules"
+        modules_dir.mkdir()
+
+        agent1_dir = modules_dir / "agent-one"
+        agent1_dir.mkdir()
+        with open(agent1_dir / "manifest.yml", "w") as f:
+            yaml.dump({
+                "name": "agent-one",
+                "version": "1.0.0",
+            }, f)
+
+        stdout, stderr, code = cli_runner(["--json", "manifest", "list"])
+        assert code == 0
+        data = json.loads(stdout)
+        assert "manifests" in data
+        assert "count" in data
+
+
+class TestManifestValidate:
+    """Tests for 'agentic manifest validate' command."""
+
+    def test_validate_help(self, cli_runner):
+        """Test manifest validate --help output."""
+        stdout, stderr, code = cli_runner(["manifest", "validate", "--help"])
+        assert "validate" in stdout.lower()
+        assert code == 0
+
+    def test_validate_valid_manifest(self, cli_runner, sample_manifest):
+        """Test validating a valid manifest."""
+        stdout, stderr, code = cli_runner(["manifest", "validate", str(sample_manifest)])
+        assert code == 0
+        assert "valid" in stdout.lower()
+
+    def test_validate_invalid_manifest(self, cli_runner, temp_dir):
+        """Test validating an invalid manifest (missing name)."""
+        invalid_manifest = temp_dir / "invalid.yml"
+        with open(invalid_manifest, "w") as f:
+            yaml.dump({"version": "1.0.0"}, f)
+
+        stdout, stderr, code = cli_runner(["manifest", "validate", str(invalid_manifest)])
+        assert code == 1
+        assert "Missing required field" in stdout or "issue" in stdout.lower()
+
+    def test_validate_json_output(self, cli_runner, sample_manifest):
+        """Test validate with JSON output."""
+        import json
+
+        stdout, stderr, code = cli_runner(["--json", "manifest", "validate", str(sample_manifest)])
+        assert code == 0
+        data = json.loads(stdout)
+        assert "valid" in data
+        assert data["valid"] is True
+
+    def test_validate_with_warnings(self, cli_runner, temp_dir):
+        """Test validating a manifest with warnings (missing recommended fields)."""
+        minimal_manifest = temp_dir / "minimal.yml"
+        with open(minimal_manifest, "w") as f:
+            yaml.dump({"name": "minimal-agent"}, f)
+
+        stdout, stderr, code = cli_runner(["manifest", "validate", str(minimal_manifest)])
+        assert code == 0  # Valid but with warnings
+        assert "warning" in stdout.lower() or "Missing recommended" in stdout
+
+    def test_validate_missing_file(self, cli_runner, temp_dir):
+        """Test validating a non-existent file."""
+        stdout, stderr, code = cli_runner(["manifest", "validate", str(temp_dir / "nonexistent.yml")])
         assert code == 1
