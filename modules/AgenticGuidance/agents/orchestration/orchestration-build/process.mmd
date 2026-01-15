@@ -238,7 +238,9 @@ flowchart LR
     subgraph UAT_SG ["UAT Validation Subgraph"]
         %% If no stories exist, spawn planner-test to create them
         CheckUATStories -- "No" --> CreateUATStories[Spawn planner-test for UAT Stories]
-        CreateUATStories --> CheckUATStories
+        CreateUATStories --> StoryCreationResult{Stories Created?}
+        StoryCreationResult -- "Yes" --> CheckUATStories
+        StoryCreationResult -- "No: Failed" --> EscalateNoStories((Escalate: Cannot Create UAT Stories))
 
         %% Execute UAT with stories
         CheckUATStories -- "Yes" --> EnterUATPhase[Enter UAT Validation Phase]
@@ -247,8 +249,11 @@ flowchart LR
         ExecuteStories --> UATResults{All Stories Pass?}
 
         %% UAT failure triggers re-planning with UAT_FAILURE context
-        UATResults -- "No: Failures" --> PackageUATFailure[Package UAT_FAILURE Context]
+        %% Iteration check prevents infinite retry loop
+        UATResults -- "No: Failures" --> CheckUATIterations{Max UAT Iterations (3)?}
+        CheckUATIterations -- "No: Retry" --> PackageUATFailure[Package UAT_FAILURE Context]
         PackageUATFailure -.->|Re-plan with UAT_FAILURE| DelegatePlanning
+        CheckUATIterations -- "Yes: Max Reached" --> EscalateUAT((Escalate: UAT Max Iterations))
 
         UATResults -- "Yes: All Pass" --> UATComplete[UAT Validation Complete]
     end
