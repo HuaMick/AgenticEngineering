@@ -1,0 +1,351 @@
+# Plan: Guidance Validation Process Documentation
+# Created: 2026-01-15
+# Status: analysis
+# Purpose: Document the process for validating that agent guidance changes have the desired impact
+# Intent: Formalize into planner-guidance process or agent-loops.yml in future session
+
+name: "guidance_validation_process_documentation"
+worktree_path: "/home/code/AgenticEngineering-agenticguidance"
+branch: "agenticguidance"
+status: "analysis"
+priority: "medium"
+
+# =============================================================================
+# PROBLEM STATEMENT
+# =============================================================================
+problem:
+  summary: |
+    When guidance files (process.yml, inputs.yml, manifest.yml) are updated to improve
+    agent behavior, how do we verify the changes actually produce the desired effect?
+
+    Without validation, guidance changes may:
+    - Have no effect (agent doesn't read/apply the new guidance)
+    - Have partial effect (some aspects work, others don't)
+    - Have unintended side effects (breaks other behavior)
+    - Appear to work in context but fail in fresh sessions (context contamination)
+
+  key_question: |
+    How can we systematically validate that guidance improvements actually change
+    agent behavior in the intended way?
+
+# =============================================================================
+# VALIDATION METHODOLOGY: BLIND TEST APPROACH
+# =============================================================================
+methodology:
+  name: "Blind Test Validation"
+
+  principle: |
+    The most reliable way to validate guidance changes is to spawn the target agent
+    in a FRESH context with NO HINTS about expected behavior, and observe whether
+    the agent naturally exhibits the improved behavior.
+
+    This eliminates:
+    - Context contamination from prior conversation
+    - Implicit hints that bias agent toward expected output
+    - False positives from agents "reading the room"
+
+  key_insight: |
+    If guidance is effective, the agent should demonstrate the desired behavior
+    WITHOUT being told what to look for. The guidance itself should be sufficient
+    to produce correct behavior.
+
+# =============================================================================
+# VALIDATION PROCESS (As Executed 2026-01-15)
+# =============================================================================
+process_executed:
+  session_date: "2026-01-15"
+  guidance_updated:
+    - file: "agents/planner/planner-cleaning/process.yml"
+      change: "Added PLAN FOLDER ARTIFACT LIFECYCLE CHECK step"
+
+    - file: "agents/planner/planner-reviewer/process.yml"
+      change: "Added FILE PLACEMENT CHECKLIST with BLOCKING violations"
+
+    - file: "agents/orchestration/orchestration-planning/process.mmd"
+      change: "Added Audit Planning Loop with planner-reviewer spawning"
+
+  validation_phases:
+    # =========================================================================
+    # PHASE 1: Blind Audit Test
+    # =========================================================================
+    - phase: "Blind Audit Test"
+      description: |
+        Spawn the agent whose guidance was updated WITHOUT telling it what to find.
+        Provide only the target (plan folder) and ask it to perform its standard function.
+
+      execution:
+        agent_spawned: "planner-reviewer"
+        prompt_given: |
+          "Audit the plan folder at [path]. Apply your FILE PLACEMENT CHECKLIST."
+        hints_provided: "NONE - agent must discover issues using only its guidance"
+
+      expected_outcome: |
+        If guidance is effective: Agent identifies the known issues
+        If guidance is ineffective: Agent misses issues or provides vague output
+
+      actual_result:
+        status: "SUCCESS"
+        evidence: |
+          planner-reviewer identified ALL 8 misplaced files without hints:
+          - 6 batch*.md files in live/ (should be in analysis/)
+          - 1 orphaned orchestration MMD (should be in completed/)
+          - 1 duplicate file flagged (verified as false positive)
+
+          Agent correctly applied FILE PLACEMENT CHECKLIST and produced
+          actionable remediation commands.
+
+    # =========================================================================
+    # PHASE 2: Downstream Agent Verification
+    # =========================================================================
+    - phase: "Downstream Agent Verification"
+      description: |
+        Spawn dependent agents to verify they can consume and act on the
+        upstream agent's output. This validates the guidance produces
+        outputs compatible with the broader system.
+
+      execution:
+        agent_spawned: "planner-cleaning"
+        input_provided: "Audit findings from planner-reviewer"
+        task: "Create cleanup plan based on audit findings"
+
+      expected_outcome: |
+        Downstream agent should be able to:
+        - Parse the upstream output
+        - Create actionable tasks
+        - Produce well-structured plan
+
+      actual_result:
+        status: "SUCCESS"
+        evidence: |
+          planner-cleaning produced plan_live_cleanup_planfolder.yml with:
+          - 7 cleanup tasks (file moves)
+          - 4 validation tasks
+          - Clear success criteria
+          - Proper plan structure per plan_example.yml
+
+    # =========================================================================
+    # PHASE 3: Explore Agent Verification (Deep Validation)
+    # =========================================================================
+    - phase: "Explore Agent Verification"
+      description: |
+        For files that document "completed" work, spawn explore agents to verify
+        the work was actually implemented before archiving. This catches:
+        - Stale documentation
+        - Partially implemented recommendations
+        - False "completed" claims
+
+      execution:
+        agents_spawned: "6 explore agents (parallel)"
+        task_per_agent: |
+          "Verify whether recommendations in [batch_file] have been implemented.
+           Classify as: IMPLEMENTED, PARTIALLY_IMPLEMENTED, NOT_IMPLEMENTED"
+
+      expected_outcome: |
+        Explore agents should provide evidence-based classification with:
+        - Specific file/code checks
+        - Implementation percentages
+        - List of pending items (if any)
+
+      actual_result:
+        status: "SUCCESS"
+        evidence: |
+          All 6 batch files classified as PARTIALLY_IMPLEMENTED:
+          - batch1: 14% (1/7 actions)
+          - batch2: 77% (7/11 actions)
+          - batch3: ~60% (different approach taken)
+          - batch4: 45% (5/11 actions)
+          - batch5: 30-40%
+          - batch6: 69% (18/26 actions)
+
+          Explore agents provided specific evidence for each classification.
+          Pending items extracted to plan_live_batch_remediation.yml.
+
+    # =========================================================================
+    # PHASE 4: Plan Review Validation
+    # =========================================================================
+    - phase: "Plan Review Validation"
+      description: |
+        Spawn planner-reviewer to review the created plan using standard checklists.
+        This validates the planning guidance produces review-passing output.
+
+      execution:
+        agent_spawned: "planner-reviewer"
+        task: "Review cleanup plan against approval checklists"
+
+      expected_outcome: |
+        Reviewer should either:
+        - APPROVE with checklist evidence
+        - REJECT with specific feedback (triggers planner-loop iteration)
+
+      actual_result:
+        status: "SUCCESS"
+        evidence: |
+          planner-reviewer APPROVED plan_live_cleanup_planfolder.yml:
+          - All 6 checklists passed
+          - MMD EXCEPTION correctly applied (simple sequential cleanup)
+          - File placement verified
+
+    # =========================================================================
+    # PHASE 5: Post-Execution Re-Audit
+    # =========================================================================
+    - phase: "Post-Execution Re-Audit"
+      description: |
+        After executing the plan, spawn the original audit agent again to verify
+        the issues are actually resolved. This closes the validation loop.
+
+      execution:
+        agent_spawned: "planner-reviewer"
+        task: "Re-audit live/ folder for compliance"
+
+      expected_outcome: |
+        All previously identified issues should be resolved.
+        Compliance should be 100% (or improved percentage).
+
+      actual_result:
+        status: "SUCCESS"
+        evidence: |
+          Re-audit showed 4/4 files PASS compliance (was 3/11 = 27%)
+          All misplaced files successfully moved.
+
+# =============================================================================
+# VALIDATION SUCCESS CRITERIA
+# =============================================================================
+success_criteria:
+  blind_test:
+    - "Agent identifies known issues WITHOUT hints"
+    - "Agent produces actionable output (not vague observations)"
+    - "Agent follows the specific guidance patterns (checklists, fences, etc.)"
+
+  downstream_compatibility:
+    - "Downstream agents can parse upstream output"
+    - "Created plans pass reviewer validation"
+    - "No manual intervention required to fix output format"
+
+  evidence_based:
+    - "Explore agents provide specific evidence for claims"
+    - "Implementation status backed by file/code checks"
+    - "No false positives from assumption-based classification"
+
+  loop_closure:
+    - "Re-audit confirms issues are resolved"
+    - "Compliance percentage improves measurably"
+    - "No new issues introduced by the fix"
+
+# =============================================================================
+# FORMALIZATION OPPORTUNITIES
+# =============================================================================
+formalization:
+  potential_locations:
+    - location: "agents/planner/planner-guidance/process.yml"
+      integration: |
+        Add "Guidance Validation" phase after guidance updates:
+        1. Identify which agents are affected by guidance change
+        2. Spawn affected agents in blind test mode
+        3. Compare behavior to expected outcomes
+        4. If validation fails, iterate on guidance
+
+    - location: "assets/definitions/agent-loops.yml"
+      integration: |
+        Define "guidance-validation-loop" as a formal loop type:
+        - trigger: guidance file updated
+        - steps: blind_test -> downstream_test -> explore_verify -> re_audit
+        - exit: all validation criteria pass
+        - escalation: manual review if >3 iterations
+
+    - location: "agents/test/test-guidance-simulator/"
+      integration: |
+        Enhance test-guidance-simulator to run blind validation tests:
+        - Input: guidance file path, expected behavior description
+        - Process: spawn target agent with minimal context
+        - Output: behavior match score, specific deviations
+
+  key_patterns_to_formalize:
+    - pattern: "Blind Test Spawning"
+      description: |
+        When validating guidance, spawn agents with ONLY:
+        - Target path/folder
+        - Standard task (from their process.yml goal)
+        DO NOT include:
+        - Expected findings
+        - Hints about what to look for
+        - Prior conversation context
+
+    - pattern: "Explore Verification Before Archive"
+      description: |
+        Before moving analysis/documentation files to archive:
+        1. Spawn explore agent to verify implementation status
+        2. Extract pending items to live plan if PARTIALLY_IMPLEMENTED
+        3. Only archive if IMPLEMENTED or pending items tracked
+
+    - pattern: "Loop Closure Re-Audit"
+      description: |
+        After executing remediation:
+        1. Spawn original audit agent again
+        2. Verify compliance improved
+        3. Continue loop if issues remain
+
+# =============================================================================
+# ANTI-PATTERNS DISCOVERED
+# =============================================================================
+anti_patterns:
+  context_contamination:
+    description: |
+      Validating guidance in the same session where guidance was discussed
+      contaminates the test. The agent may "remember" what to find.
+    mitigation: |
+      Use fresh agent spawns (Task tool) for validation.
+      Do not tell the agent what issues exist before spawning.
+
+  hint_leakage:
+    description: |
+      Prompts like "Check if the batch files should be moved" leak the answer.
+      Agent will find what you implied without actually using guidance.
+    mitigation: |
+      Use generic task descriptions: "Audit this folder" not "Check for X".
+      Let the guidance drive behavior, not the prompt.
+
+  false_positive_approval:
+    description: |
+      Accepting "looks good" without evidence-based verification.
+      Agent may claim success without actually checking.
+    mitigation: |
+      Require specific evidence (file paths, grep results, status fields).
+      Spawn explore agents for independent verification.
+
+# =============================================================================
+# NEXT STEPS FOR FORMALIZATION
+# =============================================================================
+next_steps:
+  - step: "Review this document in fresh session"
+    purpose: "Validate the documentation itself is clear and actionable"
+    agent: "planner-guidance or human"
+
+  - step: "Extract guidance-validation-loop definition"
+    purpose: "Add formal loop type to agent-loops.yml"
+    deliverable: "agent-loops.yml update with guidance-validation-loop"
+
+  - step: "Update planner-guidance process"
+    purpose: "Add validation phase to guidance improvement workflow"
+    deliverable: "process.yml update with validation steps"
+
+  - step: "Enhance test-guidance-simulator"
+    purpose: "Automate blind validation testing"
+    deliverable: "Updated test-guidance-simulator with blind test mode"
+
+# =============================================================================
+# RELATED ARTIFACTS
+# =============================================================================
+related_artifacts:
+  source_session:
+    - "audit/audit_plan_folder_compliance.yml"
+    - "completed/plan_live_cleanup_planfolder.yml"
+
+  guidance_files_tested:
+    - "agents/planner/planner-cleaning/process.yml"
+    - "agents/planner/planner-reviewer/process.yml"
+    - "agents/orchestration/orchestration-planning/process.mmd"
+
+  validation_evidence:
+    - "6 explore agent reports (batch implementation verification)"
+    - "planner-reviewer audit report"
+    - "planner-reviewer re-audit confirmation"
