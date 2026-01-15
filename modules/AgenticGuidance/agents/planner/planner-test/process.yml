@@ -55,6 +55,7 @@ process:
       - Environment setup prerequisites
       - User story validation patterns (user-story-validation-loop)
       - Validation strategy options (strategy-validation.yml) - PLANNER CHOICE based on context
+      - UAT phase planning (MANDATORY for build plans) - see UAT_PHASE_PLANNING section below
 
       PLAN STRUCTURE REQUIREMENTS:
       Reference the unified plan example (plan_example.yml) for:
@@ -80,6 +81,55 @@ process:
       and mandatory_user_stories requirements.
     - |
       Provide the test plan back to the main orchestration agent for execution.
+
+  # ==============================================
+  # UAT PHASE PLANNING (MANDATORY)
+  # ==============================================
+  # Reference: modules/AgenticGuidance/assets/definitions/agent-loops.yml#user-story-validation-loop
+  # Template: modules/AgenticGuidance/assets/examples/orchestration/phase_templates/uat_phase.mmd
+  # PRIMARY SUCCESS CRITERIA for implementation work - validates complete user journeys
+  uat_phase_planning:
+    mandatory: true
+    description: |
+      UAT phase validates that implementations meet actual user needs by executing
+      complete user journeys. This is the PRIMARY SUCCESS CRITERIA - unit/integration
+      tests may pass while user needs remain unmet.
+
+    when_to_include: |
+      ALWAYS include UAT phase in test plans for:
+      - New feature implementations
+      - User-facing changes
+      - API modifications
+      - CLI command changes
+      - Documentation updates
+
+    strategy_options:
+      - name: "simulator"
+        agent: "test-user-simulator"
+        description: "Agent executes user stories programmatically"
+        use_when: "Automatable user flows"
+
+      - name: "blind_test"
+        agent: "test-guidance-simulator"
+        description: "Agent follows docs without implementation access"
+        use_when: "Documentation validation needed"
+
+      - name: "doc_loop"
+        loop: "documentation-loop"
+        description: "Documentation validation through blind testing"
+        use_when: "New documentation or process guides"
+
+      - name: "manual"
+        description: "Human executes stories and reports results"
+        use_when: "Complex UI interactions or subjective quality"
+
+    output: |
+      UAT phase should be added to plan_test.yml or as a separate plan_uat.yml.
+      Include:
+      - User story references (from modules/AgenticGuidance/userstories/)
+      - Selected strategy (simulator, blind_test, doc_loop, manual)
+      - Success criteria for each story
+      - Environment setup requirements
 
   guidelines:
     # Core guidelines: See modules/AgenticGuidance/assets/guidelines/ (less-is-more.yml, iteration.yml, fix-the-source.yml, experiment-first.yml, context-minimisation.yml, worktree-and-branching.yml, response-audit.yml)

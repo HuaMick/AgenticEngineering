@@ -65,7 +65,8 @@ flowchart LR
     %% PHASE DETERMINATION
     %% ========================================
     %% Orchestration-planning agent analyzes objective and determines required phases.
-    %% Possible phases: teach, build, test, cleanup, audit
+    %% Possible phases: teach, build, test, cleanup, audit, uat
+    %% - uat: User acceptance testing and story validation (PRIMARY SUCCESS CRITERIA)
     %% Each phase will get its own plan_live_<phase>.yml file
     WorktreeValid -- "Yes: Verified" --> PhaseDetermination[Enter Phase Determination]
 
@@ -76,13 +77,14 @@ flowchart LR
         %% - test: test strategy and validation tasks
         %% - cleanup: code cleanup or removal tasks
         %% - audit: plan folder compliance checks and file lifecycle validation
+        %% - uat: user acceptance testing (PRIMARY SUCCESS CRITERIA - validates user journeys)
         %% Creates placeholder .yml files for each required phase
         PhaseDetermination --> AnalyzeObjective[Analyze Objective Type]
         AnalyzeObjective --> DeterminePhases[Determine Required Phases]
         DeterminePhases --> SelectLoopStrategies[Select Loop Strategies per Phase]
         SelectLoopStrategies --> PhasesDecided{Phases & Loops Decided?}
 
-        %% List possible phases: teach, build, test, cleanup, audit
+        %% List possible phases: teach, build, test, cleanup, audit, uat
         PhasesDecided -- "Yes" --> CreatePlaceholders[Create Phase Placeholder Files]
         PhasesDecided -- "No: Unclear" --> EscalatePhases((Ask User for Phase Guidance))
     end
@@ -97,9 +99,10 @@ flowchart LR
     %% For each required phase, spawn specialized planner + reviewer loop:
     %% - planner-guidance: Teaching/guidance plans
     %% - planner-build: Build/implementation plans
-    %% - planner-test: Test strategy plans
+    %% - planner-test: Test strategy plans (also handles UAT phase planning)
     %% - planner-cleaning: Cleanup plans
     %% - planner-audit: Plan folder compliance audits
+    %% - UAT: Uses planner-test (UAT is testing domain, not separate agent)
     CreatePlaceholders --> PlanningLoops[Enter Planning Loops Phase]
 
     subgraph PlanningLoops_SG ["Planning Loops Subgraph"]
@@ -185,8 +188,27 @@ flowchart LR
         AuditPlanApproved -- "No: Refine" --> SpawnPlannerAuditFix[Spawn planner-audit Agent]
         SpawnPlannerAuditFix --> SpawnAuditReviewer
 
-        AuditPlanApproved -- "Yes: Ready" --> AllPhasesPlanned[All Required Phases Planned]
-        CheckAudit -- "No" --> AllPhasesPlanned
+        AuditPlanApproved -- "Yes: Ready" --> CheckUAT{UAT Phase Required?}
+        CheckAudit -- "No" --> CheckUAT
+
+        %% ----------------------------------------
+        %% UAT PLANNING LOOP (MANDATORY for build plans)
+        %% ----------------------------------------
+        %% Reference: agent-loops.yml#user-story-validation-loop
+        %% PRIMARY SUCCESS CRITERIA - validates complete user journeys
+        %% NOTE: Uses planner-test (UAT is testing domain, not separate agent)
+        CheckUAT -- "Yes" --> UATPlanLoop{UAT Planning Loop}
+
+        UATPlanLoop --> SpawnPlannerTestUAT[Spawn planner-test Agent for UAT]
+        SpawnPlannerTestUAT --> SpawnUATReviewer[Spawn planner-reviewer Agent]
+        SpawnUATReviewer --> UATPlanApproved{UAT Plan Approved?}
+
+        %% Iterative refinement for UAT plan
+        UATPlanApproved -- "No: Refine" --> SpawnPlannerTestUATFix[Spawn planner-test Agent]
+        SpawnPlannerTestUATFix --> SpawnUATReviewer
+
+        UATPlanApproved -- "Yes: Ready" --> AllPhasesPlanned[All Required Phases Planned]
+        CheckUAT -- "No" --> AllPhasesPlanned
     end
 
     %% ========================================

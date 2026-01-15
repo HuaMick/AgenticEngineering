@@ -446,6 +446,63 @@ feedback_triggers:
              - Effort estimate for remediation
              - Option to accept partial completion
 
+    UAT_FAILURE:
+      description: "User acceptance testing reveals user journey failures"
+      detection:
+        output_patterns:
+          - "uat_status: failed"
+          - "user_stories_passed: false"
+          - "story_failures: [list]"
+        simulator_output:
+          - "test-user-simulator reports story failure"
+          - "User journey could not be completed"
+          - "Acceptance criteria not met"
+
+      failure_categories:
+        story_failure:
+          description: "User story test did not pass"
+          severity: "HIGH"
+          response: "Re-plan with story failure context"
+
+        missing_story:
+          description: "Required user stories not defined"
+          severity: "MEDIUM"
+          response: "Create stories via planner-test UAT planning"
+
+        environment_issue:
+          description: "UAT environment not properly configured"
+          severity: "LOW"
+          response: "Fix environment setup and retry"
+
+      response_actions:
+        retry: |
+          1. Re-spawn test-user-simulator with failure context
+          2. Simulator re-attempts failed stories
+          3. Increment iteration counter (max: 3)
+
+        re_plan: |
+          1. Package UAT_FAILURE context:
+             - failure_type: "UAT_FAILURE"
+             - failure_category: story_failure | missing_story | environment_issue
+             - failed_stories: list of stories that failed
+             - story_outputs: detailed failure information
+             - original_plan_path: current plan location
+          2. Invoke orchestration-planning with context
+          3. Planning determines if build changes needed
+          4. Resume with updated plan
+
+        escalate: |
+          1. Mark UAT phase as 'blocked'
+          2. Generate user journey failure report
+          3. Present to user with:
+             - Which stories passed vs. failed
+             - Root cause analysis
+             - Suggested remediation approach
+             - Option to accept partial UAT
+
+      reference: "modules/AgenticGuidance/assets/definitions/agent-loops.yml#user-story-validation-loop"
+      note: "UAT is PRIMARY SUCCESS CRITERIA - validates user needs are met"
+
   max_iterations_handling:
     definition: |
       Each feedback loop has a maximum iteration count defined in agent-loops.yml.
@@ -883,7 +940,7 @@ execution_protocol:
 
       - step: "5. Evaluate triggers"
         actions:
-          - "Check for TEST_FAILURE, CICD_FAILURE, GUIDANCE_GAP, AUDIT_FAILURE"
+          - "Check for TEST_FAILURE, CICD_FAILURE, GUIDANCE_GAP, AUDIT_FAILURE, UAT_FAILURE"
           - "If trigger detected: Execute trigger response"
           - "If no trigger: Proceed to completion"
 
