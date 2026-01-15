@@ -1,0 +1,717 @@
+# Plan: Batch File Remediation (Backlog)
+# Created: 2026-01-15
+# Status: pending
+# Priority: low (backlog work from completed batch audit)
+# Purpose: Complete remaining incomplete items from batch file recommendations
+
+name: "batch_file_remediation"
+worktree_path: "/home/code/AgenticEngineering-agenticguidance"
+branch: "main"
+status: "pending"
+priority: "low"
+
+context: |
+  This plan captures incomplete items from the batch file audit work.
+  Batches 1-6 were analyzed by the explore agent, and many recommendations
+  were implemented. This plan tracks the remaining incomplete items.
+
+  These are lower-priority cleanup tasks that improve codebase hygiene
+  but are not blocking active development.
+
+# ============================================================================
+# PHASE 1: HIGH PRIORITY - File Deletions and Quick Merges
+# ============================================================================
+# Items that are straightforward deletions or simple merges with minimal risk.
+# These reduce noise for future agents immediately.
+
+phases:
+  - name: "High_Priority_Cleanup"
+    execution: sequential
+    description: "File deletions and quick merges - minimal risk, immediate noise reduction"
+    agent_category: "cleaner"
+    tasks:
+      # --- BATCH 5: DELETE deprecated redirect stubs ---
+      - id: "high_001"
+        name: "Delete domains.yml Redirect Stub"
+        description: |
+          Delete modules/AgenticGuidance/assets/definitions/domains.yml.
+          This file contains only a redirect to architecture-pattern.yml#domains.
+          The redirect has served its purpose; keeping it adds noise.
+        status: "pending"
+        agent_type: "cleaner"
+        operation: "DELETE"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/domains.yml"
+        prerequisites:
+          - "Verify no active references to domains.yml in inputs.yml files"
+          - "Confirm architecture-pattern.yml#domains is the canonical location"
+        acceptance_criteria:
+          - "File domains.yml no longer exists"
+          - "No broken references in any inputs.yml or process files"
+          - "Grep finds zero references to definitions/domains.yml"
+
+      - id: "high_002"
+        name: "Delete entrypoints.yml Redirect Stub"
+        description: |
+          Delete modules/AgenticGuidance/assets/definitions/entrypoints.yml.
+          This file contains only a redirect to architecture-pattern.yml#entrypoints.
+        status: "pending"
+        agent_type: "cleaner"
+        operation: "DELETE"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/entrypoints.yml"
+        prerequisites:
+          - "Verify no active references to entrypoints.yml in inputs.yml files"
+        acceptance_criteria:
+          - "File entrypoints.yml no longer exists"
+          - "No broken references"
+
+      - id: "high_003"
+        name: "Delete workflows.yml Redirect Stub"
+        description: |
+          Delete modules/AgenticGuidance/assets/definitions/workflows.yml.
+          This file contains only a redirect to architecture-pattern.yml#workflows.
+        status: "pending"
+        agent_type: "cleaner"
+        operation: "DELETE"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/workflows.yml"
+        prerequisites:
+          - "Verify no active references to workflows.yml in inputs.yml files"
+        acceptance_criteria:
+          - "File workflows.yml no longer exists"
+          - "No broken references"
+
+      # --- BATCH 4: Deprecate voting-system.yml ---
+      - id: "high_004"
+        name: "Delete voting-system.yml (Specification-Only)"
+        description: |
+          Delete modules/AgenticGuidance/assets/definitions/voting-system.yml.
+          This file documents cleaner-voting-loop which was replaced by
+          cleaner-dependency-loop. The specification value is preserved in
+          agent-loops.yml which already has status: deprecated for this loop.
+        status: "pending"
+        agent_type: "cleaner"
+        operation: "DELETE"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/voting-system.yml"
+        prerequisites:
+          - "Verify agent-loops.yml has cleaner-voting-loop status: deprecated"
+          - "Verify no active code references voting-system.yml"
+        acceptance_criteria:
+          - "File voting-system.yml no longer exists"
+          - "cleaner-dependency-loop remains the active pattern in agent-loops.yml"
+          - "No broken references"
+
+      # --- BATCH 2: Merge skipped-test.yml with acceptable-skips.yml ---
+      - id: "high_005"
+        name: "Merge skipped-test.yml into acceptable-skips.yml"
+        description: |
+          Merge the content from skipped-test.yml into acceptable-skips.yml.
+          skipped-test.yml (6 lines) is a brief definition that duplicates content
+          already in the more comprehensive acceptable-skips.yml.
+          After merge, delete skipped-test.yml.
+        status: "pending"
+        agent_type: "teacher-update-guidance"
+        operation: "MERGE"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/acceptable-skips.yml"
+          - "modules/AgenticGuidance/assets/definitions/skipped-test.yml"
+        inputs:
+          - "modules/AgenticGuidance/assets/definitions/skipped-test.yml"
+          - "modules/AgenticGuidance/assets/definitions/acceptable-skips.yml"
+        acceptance_criteria:
+          - "acceptable-skips.yml contains skipped_test definition at top"
+          - "skipped-test.yml is deleted"
+          - "All references updated to point to acceptable-skips.yml"
+          - "No content lost from skipped-test.yml"
+
+      # --- BATCH 5: Merge build-artifacts.yml and packaging.yml ---
+      - id: "high_006"
+        name: "Merge build-artifacts.yml and packaging.yml"
+        description: |
+          Merge build-artifacts.yml (7 lines) and packaging.yml (9 lines) into
+          a single build-packaging.yml. Both files cover related concerns about
+          build outputs and distribution artifacts.
+        status: "pending"
+        agent_type: "teacher-update-guidance"
+        operation: "MERGE"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/build-artifacts.yml"
+          - "modules/AgenticGuidance/assets/definitions/packaging.yml"
+        inputs:
+          - "modules/AgenticGuidance/assets/definitions/build-artifacts.yml"
+          - "modules/AgenticGuidance/assets/definitions/packaging.yml"
+        guidance: |
+          1. Create new file: build-packaging.yml
+          2. Combine build_artifacts and packaging definitions
+          3. Structure with clear sections for artifacts and packaging
+          4. Delete both source files after merge
+          5. Update any references
+        acceptance_criteria:
+          - "New build-packaging.yml exists with combined content"
+          - "Both source files deleted"
+          - "All references updated"
+          - "No content lost"
+
+      # --- BATCH 1: Consolidate fence.yml + signpost.yml ---
+      - id: "high_007"
+        name: "Consolidate fence.yml and signpost.yml"
+        description: |
+          Both fence.yml (5 lines) and signpost.yml (5 lines) define related
+          concepts about guardrails and guidance artifacts. Consolidate into
+          a single teaching-concepts.yml or merge into guidance-artifacts.yml.
+        status: "pending"
+        agent_type: "teacher-update-guidance"
+        operation: "MERGE"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/fence.yml"
+          - "modules/AgenticGuidance/assets/definitions/signpost.yml"
+        inputs:
+          - "modules/AgenticGuidance/assets/definitions/fence.yml"
+          - "modules/AgenticGuidance/assets/definitions/signpost.yml"
+          - "modules/AgenticGuidance/assets/definitions/guidance-artifacts.yml"
+        guidance: |
+          OPTION A: Merge into guidance-artifacts.yml (preferred)
+          - Add fence and signpost as named concepts in guidance_artifacts
+          - Delete both source files
+
+          OPTION B: Create teaching-concepts.yml
+          - Combine fence and signpost definitions
+          - Delete both source files
+        acceptance_criteria:
+          - "fence and signpost concepts consolidated into single location"
+          - "Source files deleted"
+          - "No broken references"
+
+  # ============================================================================
+  # PHASE 2: MEDIUM PRIORITY - Reclassifications and Consolidations
+  # ============================================================================
+  # Items requiring file moves, reclassifications, or larger consolidations.
+  # More analysis needed before execution.
+
+  - name: "Medium_Priority_Consolidation"
+    execution: sequential
+    description: "Reclassifications, consolidations, and structural changes"
+    agent_category: "teacher"
+    tasks:
+      # --- BATCH 4: Merge plan-folder-conventions.yml into plans.yml ---
+      - id: "med_001"
+        name: "Merge plan-folder-conventions.yml into plans.yml"
+        description: |
+          plan-folder-conventions.yml (26 lines) is a minimal subset of plans.yml.
+          It was extracted for deploy agents but creates redundancy.
+          Merge back into plans.yml and add a fragment reference for deploy agents.
+        status: "pending"
+        agent_type: "teacher-update-guidance"
+        operation: "MERGE"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/plans.yml"
+          - "modules/AgenticGuidance/assets/definitions/plan-folder-conventions.yml"
+        inputs:
+          - "modules/AgenticGuidance/assets/definitions/plan-folder-conventions.yml"
+          - "modules/AgenticGuidance/assets/definitions/plans.yml"
+        guidance: |
+          1. Ensure plans.yml has all content from plan-folder-conventions.yml
+          2. Add YAML anchor for deploy agents to reference: plans.yml#naming_convention
+          3. Delete plan-folder-conventions.yml
+          4. Update deploy agent inputs to use fragment reference
+        acceptance_criteria:
+          - "plans.yml contains all folder convention content"
+          - "plan-folder-conventions.yml deleted"
+          - "Deploy agents use plans.yml#naming_convention fragment"
+
+      # --- BATCH 4: Merge/deprecate plan-structure-requirements.yml ---
+      - id: "med_002"
+        name: "Evaluate plan-structure-requirements.yml"
+        description: |
+          plan-structure-requirements.yml (60 lines) duplicates content from plans.yml.
+          Determine if it should be merged back or if there's unique value for reviewers.
+          If unique value exists, clearly differentiate; otherwise merge.
+        status: "pending"
+        agent_type: "teacher-update-guidance"
+        operation: "EVALUATE"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/plan-structure-requirements.yml"
+          - "modules/AgenticGuidance/assets/definitions/plans.yml"
+        inputs:
+          - "modules/AgenticGuidance/assets/definitions/plan-structure-requirements.yml"
+          - "modules/AgenticGuidance/assets/definitions/plans.yml"
+        guidance: |
+          ANALYSIS:
+          1. Identify unique content in plan-structure-requirements.yml
+          2. Identify duplicate content with plans.yml
+          3. Determine if validation_checklist adds unique value
+
+          ACTION:
+          - If unique value: Keep but add cross-reference to plans.yml
+          - If duplicate: Merge into plans.yml and delete
+        acceptance_criteria:
+          - "Decision documented: merge or keep with differentiation"
+          - "No redundant content between files"
+          - "Clear purpose for retained files"
+
+      # --- BATCH 4: Reclassify plan-inputs.yml to guidelines/ ---
+      - id: "med_003"
+        name: "Reclassify plan-inputs.yml"
+        description: |
+          plan-inputs.yml (37 lines) reads more like guidance than definition.
+          Evaluate if it should move to guidelines/ or remain in definitions/.
+          Content includes "Best practices" which suggests guideline.
+        status: "pending"
+        agent_type: "teacher-update-guidance"
+        operation: "EVALUATE"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/plan-inputs.yml"
+        inputs:
+          - "modules/AgenticGuidance/assets/definitions/plan-inputs.yml"
+          - "modules/AgenticGuidance/assets/definitions/definition.yml"
+          - "modules/AgenticGuidance/assets/definitions/guideline.yml"
+        guidance: |
+          Apply definition.yml vs guideline.yml criteria:
+          - definition: "what something is" (descriptive)
+          - guideline: "how to act" (prescriptive/actionable)
+
+          If prescriptive, move to guidelines/plan-inputs.yml
+          Update all references after move
+        acceptance_criteria:
+          - "File location matches content type (definition vs guideline)"
+          - "All references updated if moved"
+
+      # --- BATCH 5: Reclassify fence-build-deploy.yml to guidelines/ ---
+      - id: "med_004"
+        name: "Reclassify fence-build-deploy.yml"
+        description: |
+          fence-build-deploy.yml (56 lines) is prescriptive guidance about
+          boundaries between build and deploy. It belongs in guidelines/.
+        status: "pending"
+        agent_type: "teacher-update-guidance"
+        operation: "MOVE"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/fence-build-deploy.yml"
+        inputs:
+          - "modules/AgenticGuidance/assets/definitions/fence-build-deploy.yml"
+        guidance: |
+          1. Move to modules/AgenticGuidance/assets/guidelines/fence-build-deploy.yml
+          2. Update all references in inputs.yml files
+          3. Verify no broken references
+        acceptance_criteria:
+          - "File exists in guidelines/ folder"
+          - "File deleted from definitions/ folder"
+          - "All references updated"
+
+      # --- BATCH 6: Move generalized-vs-specific.yml to guidelines/ ---
+      - id: "med_005"
+        name: "Reclassify generalized-vs-specific.yml"
+        description: |
+          generalized-vs-specific.yml (7 lines) contains prescriptive guidance
+          about where project-specific vs general content belongs.
+          Move to guidelines/ folder.
+        status: "pending"
+        agent_type: "teacher-update-guidance"
+        operation: "MOVE"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/generalized-vs-specific.yml"
+        inputs:
+          - "modules/AgenticGuidance/assets/definitions/generalized-vs-specific.yml"
+        guidance: |
+          1. Move to modules/AgenticGuidance/assets/guidelines/generalized-vs-specific.yml
+          2. Update all references
+        acceptance_criteria:
+          - "File exists in guidelines/"
+          - "File deleted from definitions/"
+          - "All references updated"
+
+      # --- BATCH 5: Consolidate Flutter testing files ---
+      - id: "med_006"
+        name: "Consolidate Flutter Testing Files"
+        description: |
+          Five Flutter testing files should be consolidated into flutter-testing.yml:
+          - flutter-test-execution.yml
+          - flutter-test-structure.yml
+          - flutter-environments.yml
+          - flutter-test-roles.yml
+          - flutter-skipped-tests.yml
+        status: "pending"
+        agent_type: "teacher-update-guidance"
+        operation: "MERGE"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/flutter-test-execution.yml"
+          - "modules/AgenticGuidance/assets/definitions/flutter-test-structure.yml"
+          - "modules/AgenticGuidance/assets/definitions/flutter-environments.yml"
+          - "modules/AgenticGuidance/assets/definitions/flutter-test-roles.yml"
+          - "modules/AgenticGuidance/assets/definitions/flutter-skipped-tests.yml"
+        guidance: |
+          1. Create flutter-testing.yml with sections for each area
+          2. Use YAML anchors for individual sections if needed
+          3. Delete all 5 source files
+          4. Update references to use flutter-testing.yml or fragments
+        acceptance_criteria:
+          - "New flutter-testing.yml contains all content"
+          - "All 5 source files deleted"
+          - "References updated to new location"
+          - "No content lost"
+
+      # --- BATCH 4: Relocate orchestration-test-scenarios.yml to tests/ ---
+      - id: "med_007"
+        name: "Relocate orchestration-test-scenarios.yml"
+        description: |
+          orchestration-test-scenarios.yml (920 lines) is test data, not a definition.
+          It belongs in a tests/ folder, not definitions/.
+        status: "pending"
+        agent_type: "teacher-update-guidance"
+        operation: "MOVE"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/orchestration-test-scenarios.yml"
+        guidance: |
+          Determine appropriate location:
+          OPTION A: modules/AgenticGuidance/tests/orchestration-test-scenarios.yml
+          OPTION B: tests/agenticguidance/orchestration-test-scenarios.yml
+
+          Move file and update any references.
+        acceptance_criteria:
+          - "File moved to appropriate tests/ location"
+          - "File removed from definitions/"
+          - "All references updated"
+
+      # --- BATCH 5: Merge folder-structure.yml with plans.yml ---
+      - id: "med_008"
+        name: "Merge folder-structure.yml with plans.yml"
+        description: |
+          folder-structure.yml (36 lines) duplicates plan folder information
+          already in plans.yml. The non-plan content (agent_logs) should be
+          evaluated for merge or separate file.
+        status: "pending"
+        agent_type: "teacher-update-guidance"
+        operation: "MERGE"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/folder-structure.yml"
+          - "modules/AgenticGuidance/assets/definitions/plans.yml"
+        inputs:
+          - "modules/AgenticGuidance/assets/definitions/folder-structure.yml"
+          - "modules/AgenticGuidance/assets/definitions/plans.yml"
+        guidance: |
+          1. Identify unique content in folder-structure.yml
+          2. Plan folder content -> merge into plans.yml
+          3. Non-plan content (agent_logs) -> evaluate retention
+          4. Delete folder-structure.yml after merge
+        acceptance_criteria:
+          - "All unique content preserved"
+          - "folder-structure.yml deleted"
+          - "plans.yml contains folder convention content"
+
+      # --- BATCH 1: Consolidate guidance.yml + guidance-artifacts.yml ---
+      - id: "med_009"
+        name: "Consolidate guidance.yml and guidance-artifacts.yml"
+        description: |
+          guidance.yml (23 lines) and guidance-artifacts.yml (50 lines) cover
+          related concepts about guidance structure and artifacts.
+          Consolidate into single authoritative source.
+        status: "pending"
+        agent_type: "teacher-update-guidance"
+        operation: "MERGE"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/guidance.yml"
+          - "modules/AgenticGuidance/assets/definitions/guidance-artifacts.yml"
+        inputs:
+          - "modules/AgenticGuidance/assets/definitions/guidance.yml"
+          - "modules/AgenticGuidance/assets/definitions/guidance-artifacts.yml"
+        guidance: |
+          1. guidance-artifacts.yml is more comprehensive - use as base
+          2. Add guidance.yml content as overview section
+          3. Delete guidance.yml after merge
+          4. Update references
+        acceptance_criteria:
+          - "Single consolidated file exists"
+          - "No content lost from either source"
+          - "All references updated"
+
+      # --- BATCH 1: Split meta-definitions ---
+      - id: "med_010"
+        name: "Split Meta-Definitions from Authoring Guidelines"
+        description: |
+          definition.yml, guideline.yml, and example.yml each contain both:
+          1. Lean definition (what is X)
+          2. Authoring guidance (when/how to create X)
+
+          Evaluate splitting into definitions + authoring-guidelines.yml
+        status: "pending"
+        agent_type: "teacher-update-guidance"
+        operation: "EVALUATE"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/definition.yml"
+          - "modules/AgenticGuidance/assets/definitions/guideline.yml"
+          - "modules/AgenticGuidance/assets/definitions/example.yml"
+        guidance: |
+          ANALYSIS:
+          1. Identify pure definition content (what is X)
+          2. Identify authoring guidance (when/how to create X)
+          3. Determine if split reduces token overhead
+
+          OPTIONS:
+          A. Keep as-is (files are small, split may not help)
+          B. Create authoring-guidelines.yml with combined authoring guidance
+          C. Move authoring content to guidelines/ folder
+        acceptance_criteria:
+          - "Decision documented with rationale"
+          - "If split: clean separation of concerns"
+          - "If keep: rationale documented"
+
+      # --- BATCH 4: Remove cleaner-voting-loop from agent-loops.yml ---
+      - id: "med_011"
+        name: "Remove Deprecated cleaner-voting-loop"
+        description: |
+          agent-loops.yml has cleaner-voting-loop with status: deprecated.
+          The deprecated_reason and replacement fields preserve context.
+          Evaluate full removal vs retention for historical reference.
+        status: "pending"
+        agent_type: "teacher-update-guidance"
+        operation: "EVALUATE"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+        guidance: |
+          Per decommissioning-over-deprecation.yml:
+          - Deprecated entries should be fully removed
+          - Historical value can be preserved in examples/ or docs/
+
+          ACTION:
+          1. Archive cleaner-voting-loop to examples/ if historical value exists
+          2. Remove from agent-loops.yml
+        acceptance_criteria:
+          - "cleaner-voting-loop removed from agent-loops.yml"
+          - "Historical context preserved if valuable"
+          - "cleaner-dependency-loop remains as active pattern"
+
+      # --- BATCH 4: Split plans.yml (definitions vs guidelines) ---
+      - id: "med_012"
+        name: "Evaluate plans.yml Split"
+        description: |
+          plans.yml (181 lines) contains both definitions and guidelines.
+          Evaluate if splitting improves clarity or if current structure is appropriate.
+        status: "pending"
+        agent_type: "teacher-update-guidance"
+        operation: "EVALUATE"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/plans.yml"
+        guidance: |
+          ANALYSIS:
+          1. Identify pure definition content (plan types, lifecycle states)
+          2. Identify guideline content (DO/DON'T rules, patterns)
+          3. Determine if agents load all content or specific fragments
+
+          DECISION CRITERIA:
+          - If agents load fragments: keep consolidated
+          - If full file loaded often: consider split to reduce tokens
+        acceptance_criteria:
+          - "Decision documented with token impact analysis"
+          - "Clear rationale for keep or split"
+
+  # ============================================================================
+  # PHASE 3: LOW PRIORITY - Decisions Needed
+  # ============================================================================
+  # Items requiring human input or significant analysis before action.
+
+  - name: "Low_Priority_Decisions"
+    execution: sequential
+    description: "Items requiring human input or architectural decisions"
+    agent_category: "planner"
+    tasks:
+      # --- BATCH 1: Create specifications/ folder ---
+      - id: "low_001"
+        name: "Decide on specifications/ Folder"
+        description: |
+          Original recommendation: Create specifications/ folder for files like
+          process-file-format.yml. This would separate specifications from definitions.
+          Requires architectural decision on folder structure.
+        status: "pending"
+        agent_type: "planner-guidance"
+        operation: "DECISION"
+        target_files: []
+        guidance: |
+          QUESTION: Should we create a specifications/ folder?
+
+          PRO:
+          - Clear distinction: definitions = concepts, specifications = formats
+          - Aligns with software engineering norms
+
+          CON:
+          - Adds folder complexity
+          - definitions/ already contains format specs
+          - May not reduce token usage significantly
+
+          ALTERNATIVES:
+          A. Create specifications/ folder
+          B. Use naming convention: *-specification.yml in definitions/
+          C. No change (current approach works)
+        acceptance_criteria:
+          - "Decision made and documented"
+          - "If approved: implementation plan created"
+
+      # --- BATCH 2: Generalize test-execution-workflow.yml ---
+      - id: "low_002"
+        name: "Generalize test-execution-workflow.yml"
+        description: |
+          test-execution-workflow.yml contains project-specific "myagents studio"
+          commands. It should be generalized to use configurable service patterns.
+        status: "pending"
+        agent_type: "teacher-update-guidance"
+        operation: "REFACTOR"
+        target_files:
+          - "modules/AgenticGuidance/assets/guidelines/test-execution-workflow.yml"
+        guidance: |
+          File already has TODO noting this issue.
+
+          APPROACH:
+          1. Extract pattern: service_name, start_command, stop_command, health_check
+          2. Make workflow reference configurable variables
+          3. Move project-specific values to project config or inputs
+        acceptance_criteria:
+          - "Workflow uses generic service patterns"
+          - "Project-specific commands moved to inputs"
+          - "Workflow is reusable across projects"
+
+      # --- BATCH 2: Decide on acceptable-skips.yml location ---
+      - id: "low_003"
+        name: "Decide acceptable-skips.yml Location"
+        description: |
+          acceptable-skips.yml is currently in definitions/ but contains
+          significant prescriptive content (audit_checklist, remediation_guidance).
+          Should it be in guidelines/ instead?
+        status: "pending"
+        agent_type: "teacher-update-guidance"
+        operation: "DECISION"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/acceptable-skips.yml"
+        guidance: |
+          ANALYSIS needed:
+          1. How much is definitional (what is an acceptable skip)
+          2. How much is prescriptive (how to audit, how to remediate)
+
+          OPTIONS:
+          A. Keep in definitions/ (categories are definitional)
+          B. Move to guidelines/ (audit/remediation are prescriptive)
+          C. Split: acceptable-skips.yml (definition) + skip-audit.yml (guideline)
+        acceptance_criteria:
+          - "Location decision documented"
+          - "Rationale based on definition.yml vs guideline.yml criteria"
+
+      # --- BATCH 5: Move gcp-artifact-registry.yml to project-specific ---
+      - id: "low_004"
+        name: "Move gcp-artifact-registry.yml to Project Config"
+        description: |
+          gcp-artifact-registry.yml contains project-specific GCP configuration.
+          It should not be in assets/definitions/ which is meant for reusable concepts.
+        status: "pending"
+        agent_type: "teacher-update-guidance"
+        operation: "MOVE"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/gcp-artifact-registry.yml"
+        guidance: |
+          Determine appropriate location:
+          OPTION A: Project root config/ folder
+          OPTION B: .agentic/config/ folder
+          OPTION C: Delete if no longer needed
+
+          Check for active references before moving.
+        acceptance_criteria:
+          - "File moved to project-specific location or deleted"
+          - "Not in assets/definitions/ (reusable concepts only)"
+          - "References updated or removed"
+
+      # --- BATCH 6: Review studio-integration-tests.yml ---
+      - id: "low_005"
+        name: "Review studio-integration-tests.yml for Obsolescence"
+        description: |
+          studio-integration-tests.yml lists specific test names that require
+          LangGraph Studio. This may be stale or project-specific.
+          Evaluate for deletion or move to project config.
+        status: "pending"
+        agent_type: "explorer"
+        operation: "AUDIT"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/studio-integration-tests.yml"
+        guidance: |
+          1. Check if listed tests still exist in codebase
+          2. Check if tests are project-specific or reusable
+          3. If project-specific: move to project config or delete
+          4. If reusable: add context about when applicable
+        acceptance_criteria:
+          - "Test list verified against actual tests"
+          - "Decision made: keep, move, or delete"
+          - "If kept: content is current and useful"
+
+      # --- BATCH 6: Decide on workflow-test-readme.yml ---
+      - id: "low_006"
+        name: "Decide workflow-test-readme.yml Fate"
+        description: |
+          workflow-test-readme.yml (6 lines) is minimal guidance about
+          README.md files in test directories. Evaluate for expansion or deletion.
+        status: "pending"
+        agent_type: "teacher-update-guidance"
+        operation: "DECISION"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/workflow-test-readme.yml"
+        guidance: |
+          OPTIONS:
+          A. Delete (content too minimal to be useful)
+          B. Expand (add actual guidance on what READMEs should contain)
+          C. Merge into testing.yml or test-organization.yml
+        acceptance_criteria:
+          - "Decision made with rationale"
+          - "If kept: content is expanded or merged"
+
+      # --- BATCH 3: Strategy files location ---
+      - id: "low_007"
+        name: "Evaluate Strategy File Locations"
+        description: |
+          strategy-agent-review-loop.yml and similar strategy files were moved
+          to guidelines/ but question remains if they should be in definitions/.
+        status: "pending"
+        agent_type: "planner-guidance"
+        operation: "DECISION"
+        target_files:
+          - "modules/AgenticGuidance/assets/guidelines/strategy-agent-review-loop.yml"
+          - "modules/AgenticGuidance/assets/guidelines/strategy-agent-blind-test.yml"
+          - "modules/AgenticGuidance/assets/guidelines/strategy-validation.yml"
+          - "modules/AgenticGuidance/assets/guidelines/strategy-multi-layer.yml"
+          - "modules/AgenticGuidance/assets/guidelines/strategy-user-acceptance.yml"
+          - "modules/AgenticGuidance/assets/guidelines/strategy-user-simulation.yml"
+          - "modules/AgenticGuidance/assets/guidelines/strategy-documentation-validation.yml"
+          - "modules/AgenticGuidance/assets/guidelines/strategy-fresh-environment.yml"
+          - "modules/AgenticGuidance/assets/guidelines/strategy-test-suite.yml"
+        guidance: |
+          These are testing strategies. Evaluate:
+          1. Are they definitions (what is X strategy)?
+          2. Are they guidelines (how to apply X strategy)?
+          3. Current location: guidelines/
+
+          Decision should be consistent across all strategy-*.yml files.
+        acceptance_criteria:
+          - "Location decision documented"
+          - "All strategy files in consistent location"
+          - "Rationale based on content type"
+
+# ============================================================================
+# SUCCESS CRITERIA
+# ============================================================================
+success_criteria:
+  - "All deprecated redirect stubs deleted (domains.yml, entrypoints.yml, workflows.yml)"
+  - "All file merges completed without content loss"
+  - "All reclassifications completed with reference updates"
+  - "All decision items have documented decisions"
+  - "No broken references after changes"
+  - "Token overhead reduced by removing redundant files"
+
+# ============================================================================
+# ORCHESTRATION
+# ============================================================================
+orchestration:
+  agent_routing:
+    High_Priority_Cleanup: "cleaner"
+    Medium_Priority_Consolidation: "teacher-update-guidance"
+    Low_Priority_Decisions: "planner-guidance"
+  execution_notes: |
+    This is backlog work. Execute tasks as capacity allows.
+    High priority tasks can be executed independently.
+    Medium priority tasks may have dependencies - check prerequisites.
+    Low priority tasks require human decisions before execution.
