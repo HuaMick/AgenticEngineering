@@ -499,6 +499,8 @@ validation_checklist:
     - "FEEDBACK_TRIGGERs reference valid flowchart nodes"
     - "STATUS comment lists all major phases"
     - "Trigger loop references match agent-loops.yml definitions"
+    - "FENCE: All Validation_SG and Audit_SG subgraphs have AGENT_ROUTING entries"
+    - "FENCE: Missing validation routing = blocked workflow (hard fail)"
 
 # =============================================================================
 # COMPLETE EXAMPLE
@@ -615,6 +617,45 @@ agent_routing:
     - "Each phase name in routing must match a subgraph or node ID in the flowchart"
     - "Each agent type must exist in the orchestrator's manifest.yml spawns list"
     - "All spawn nodes in flowchart should have corresponding routing entry"
+
+  validation_routing_required:
+    rule: "Validation and Audit subgraphs MUST have AGENT_ROUTING entries"
+    enforcement: "HARD - executor refuses to start if validation phases lack routing"
+    description: |
+      Any subgraph with "Validation" or "Audit" in the name MUST have a
+      corresponding AGENT_ROUTING entry. This ensures validation phases
+      cannot be inadvertently skipped.
+
+      FENCE: VALIDATION SUBGRAPHS REQUIRE ROUTING
+      If MMD contains *_Validation_SG or *_Audit_SG subgraph:
+      - AGENT_ROUTING MUST include routing for that subgraph
+      - Missing routing = blocked workflow, not skipped validation
+      - Executor MUST refuse to start if routing is incomplete
+
+    detection_patterns:
+      - "subgraph.*Validation.*SG"
+      - "subgraph.*Audit.*SG"
+      - "EnterValidation"
+      - "SpawnAudit"
+
+    required_routing_agents:
+      validation: "test-final-output"
+      audit: "test-audit"
+      final_audit: "test-final-output"
+
+    example: |
+      # If MMD contains:
+      subgraph Validation_SG ["Validation Subgraph"]
+          EnterValidation --> SpawnAudit[Spawn test-final-output Audit]
+      end
+
+      # Then AGENT_ROUTING MUST include:
+      # AGENT_ROUTING: ..., Validation -> test-final-output
+
+    error_on_missing: |
+      "ERROR: Validation subgraph 'Validation_SG' found but no AGENT_ROUTING entry.
+       Add 'Validation -> test-final-output' to AGENT_ROUTING.
+       Executor will not proceed without validation routing."
 
 # =============================================================================
 # FEEDBACK_TRIGGERS PATTERN

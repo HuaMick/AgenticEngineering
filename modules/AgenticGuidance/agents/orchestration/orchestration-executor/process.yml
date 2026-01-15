@@ -222,6 +222,45 @@ process:
         5. If failed: Require re-planning before retry
 
     # =========================================================================
+    # PHASE 2.5: VALIDATION GATE (MANDATORY)
+    # =========================================================================
+    - id: "validation_gate"
+      name: "Validation Phase Gate"
+      description: |
+        FENCE: Before proceeding to shutdown, verify ALL validation phases have executed.
+
+        This gate ensures validation phases cannot be bypassed even if they
+        are missing from AGENT_ROUTING (which would be a schema violation).
+
+        VALIDATION GATE PROCESS:
+        1. Scan MMD for subgraphs containing "Validation" or "Audit" in name
+        2. For each validation subgraph, verify it was executed (status != pending)
+        3. For each executed validation, verify result = PASS
+        4. If ANY validation subgraph was skipped → BLOCK shutdown
+        5. If ANY validation result != PASS → Return to fix phase
+
+        FENCE: VALIDATION GATE
+        Cannot proceed to shutdown_aggregate_status until:
+        - All *_Validation_* subgraphs executed
+        - All *_Audit_* subgraphs executed
+        - All validation results = PASS
+
+        BLOCKING CONDITIONS:
+        - Validation_SG status = pending → BLOCK
+        - Audit_SG status = pending → BLOCK
+        - Any validation status = failed → Return to fix phase, do NOT proceed
+
+        ERROR MESSAGES:
+        - "BLOCKED: Validation phase 'Validation_SG' was not executed. Add AGENT_ROUTING entry."
+        - "BLOCKED: Audit phase 'Audit_SG' was skipped. Cannot commit without audit."
+        - "FAILED: Validation phase returned FAIL. Cannot proceed to commit."
+
+      fence: |
+        FENCE: NO SHUTDOWN WITHOUT VALIDATION
+        This gate MUST run before any shutdown sequence step.
+        Skipping this gate is a fence violation.
+
+    # =========================================================================
     # PHASE 3: SHUTDOWN SEQUENCE
     # =========================================================================
     - id: "shutdown_aggregate_status"
@@ -294,3 +333,6 @@ process:
     - "Honor MAX_ITERATIONS before escalation"
     - "Never skip failed phases without user approval"
     - "Document all feedback trigger firings"
+    - "FENCE: Execute ALL validation/audit subgraphs BEFORE any commit"
+    - "FENCE: Do NOT commit if any validation phase was skipped or failed"
+    - "FENCE: Validation subgraphs without AGENT_ROUTING = blocked workflow, ask user"

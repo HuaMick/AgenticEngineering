@@ -136,8 +136,41 @@ guideline:
             fix: "Add timeout handling"
           # Right: Spawn build agent to handle the fix
 
+    - rule: "Validation-Before-Commit Fence"
+      description: |
+        FENCE: All validation phases defined in the orchestration MMD MUST execute
+        and PASS before any git commit or plan status update to "completed".
+      justification: |
+        Commits are irreversible state changes. Validation after commit defeats the
+        purpose of validation - errors are already persisted. The audit/validation
+        phase exists to catch errors BEFORE they become permanent.
+      execution_pattern:
+        - "Identify all validation/audit subgraphs in the MMD"
+        - "Verify each validation subgraph has AGENT_ROUTING entry"
+        - "Execute all validation phases before marking plan complete"
+        - "Only proceed to git commit after ALL validation phases PASS"
+        - "If validation fails → Do NOT commit → Trigger feedback loop"
+      fence: |
+        FENCE: NO COMMIT BEFORE VALIDATION
+        Git commits are PROHIBITED until:
+        1. All MMD-defined validation subgraphs have executed
+        2. All validation phases report PASS
+        3. Validation agent (test-final-output) has approved the changes
+
+        Violation indicators:
+        - Commit created while Validation_SG status = pending
+        - Plan marked completed without validation phase execution
+        - "Skipping validation to save time" reasoning
+      characteristics:
+        - "Validation is MANDATORY, not optional"
+        - "Validation subgraphs MUST have AGENT_ROUTING entries to be executable"
+        - "Missing AGENT_ROUTING for validation = blocked workflow, not skipped validation"
+        - "Exception: Documentation-only changes may skip with explicit notation"
+
   related_guidelines:
     - location: "modules/AgenticGuidance/assets/guidelines/validation-strategy.yml"
       description: "Defines when to use bash vs agent delegation for validation"
     - location: "modules/AgenticGuidance/assets/definitions/plans.yml"
       description: "Plan status values and completion patterns referenced by this guideline"
+    - location: "modules/AgenticGuidance/assets/guidelines/response-audit.yml"
+      description: "Audit requirements that complement this validation fence"

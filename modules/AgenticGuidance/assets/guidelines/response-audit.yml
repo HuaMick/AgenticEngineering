@@ -28,11 +28,41 @@ guideline:
 
     - rule: "Terminal-only summaries"
       description: |
-        Output audit summaries directly to the terminal response. Do not 
+        Output audit summaries directly to the terminal response. Do not
         create .md summary files.
       justification: |
-        Summary files pollute the repository and are difficult to track. 
+        Summary files pollute the repository and are difficult to track.
         Use live plan files for state tracking and the terminal for communication.
+
+    - rule: "Audit before commit (state change gate)"
+      description: |
+        FENCE: For orchestration workflows, audit MUST occur BEFORE git commit,
+        not just before reply. Git commit is the irreversible state change.
+      justification: |
+        The commit is the point of no return. Auditing after commit can identify
+        problems but cannot prevent them from being persisted. The audit must gate
+        the commit operation, not the reply operation.
+      process:
+        - "Execute all work phases (build, teach, test, etc.)"
+        - "STOP at validation/audit phase - do NOT skip to commit"
+        - "Spawn Audit Agent using test/test-final-output/process.yml"
+        - "If PASS → Proceed to commit"
+        - "If FAIL → Do NOT commit → Return to fix phase or escalate"
+      fence: |
+        FENCE: AUDIT GATES STATE CHANGES
+        For orchestration: audit BEFORE commit, not just before reply.
+        The commit is the state change that matters - once committed, errors persist.
+
+        Correct sequence:
+        1. Execute work phases
+        2. Execute audit/validation
+        3. If pass → commit
+        4. If fail → fix → re-audit
+
+        Incorrect sequence (FENCE VIOLATION):
+        1. Execute work phases
+        2. Commit
+        3. Execute audit (too late!)
 
   anti_patterns:
     - "Skipping the audit because the task 'seemed simple'"
