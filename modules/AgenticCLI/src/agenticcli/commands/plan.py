@@ -17,7 +17,9 @@ def handle(args, ctx=None):
         args: Parsed command arguments.
         ctx: Optional CLIContext for dependency injection.
     """
-    if args.plan_command == "scaffold":
+    if args.plan_command == "init":
+        cmd_init(args, ctx)
+    elif args.plan_command == "scaffold":
         cmd_scaffold(args)
     elif args.plan_command == "status":
         cmd_status(args)
@@ -38,7 +40,7 @@ def handle(args, ctx=None):
     elif args.plan_command == "move":
         cmd_move(args, ctx)
     else:
-        print("Usage: agentic plan <scaffold|status|validate|task|archive|list|move>", file=sys.stderr)
+        print("Usage: agentic plan <init|scaffold|status|validate|task|archive|list|move>", file=sys.stderr)
         sys.exit(1)
 
 
@@ -71,6 +73,151 @@ def find_plan_folder(path: str | None = None) -> Path:
 
     print("Error: Could not find a plan folder. Specify path explicitly.", file=sys.stderr)
     sys.exit(1)
+
+
+def cmd_init(args, ctx=None):
+    """Initialize worktree and plan folder with proper naming convention.
+
+    Combines worktree creation (if needed) with plan folder scaffolding.
+    Enforces YYMMDDXX_description naming convention programmatically.
+
+    Exit codes:
+        0: Success, folder created
+        1: Worktree creation failed
+        2: Folder already exists
+        3: Invalid branch name or description
+    """
+    import subprocess
+
+    from agenticcli.commands.worktree import create_planning_folder
+    from agenticcli.console import (
+        console,
+        is_json_output,
+        print_error,
+        print_info,
+        print_json,
+        print_success,
+    )
+    from agenticcli.utils.naming import generate_plan_folder_name, validate_plan_folder_name
+
+    branch = args.branch
+    description = getattr(args, "description", None) or branch
+    base = getattr(args, "base", "main")
+
+    # Validate branch name
+    if not branch or not branch.strip():
+        print_error("Branch name is required")
+        sys.exit(3)
+
+    # Get current repo root
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        repo_root = Path(result.stdout.strip())
+    except subprocess.CalledProcessError:
+        print_error("Not in a git repository")
+        sys.exit(1)
+
+    repo_name = repo_root.name.split("-")[0] if "-" in repo_root.name else repo_root.name
+
+    # Calculate expected worktree path
+    worktree_path = repo_root.parent / f"{repo_name}-{branch}"
+
+    # Check if worktree exists for this branch
+    worktree_exists = False
+    existing_worktree_path = None
+
+    try:
+        result = subprocess.run(
+            ["git", "worktree", "list", "--porcelain"],
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=repo_root,
+        )
+        lines = result.stdout.strip().split("\n")
+        i = 0
+        while i < len(lines):
+            if lines[i].startswith("worktree "):
+                wt_path = lines[i].split(" ", 1)[1]
+                for j in range(i + 1, min(i + 5, len(lines))):
+                    if lines[j].startswith("branch "):
+                        wt_branch = lines[j].split(" ", 1)[1].replace("refs/heads/", "")
+                        if wt_branch == branch:
+                            worktree_exists = True
+                            existing_worktree_path = Path(wt_path)
+                            break
+                    elif lines[j].startswith("worktree "):
+                        break
+            i += 1
+    except subprocess.CalledProcessError:
+        pass
+
+    # Determine final worktree path
+    if worktree_exists:
+        worktree_path = existing_worktree_path
+        if not is_json_output():
+            print_info(f"Using existing worktree at {worktree_path}")
+    else:
+        # Create worktree
+        if not is_json_output():
+            print_info(f"Creating worktree for branch '{branch}' at {worktree_path}")
+
+        try:
+            subprocess.run(
+                ["git", "worktree", "add", "-b", branch, str(worktree_path), base],
+                check=True,
+                cwd=repo_root,
+                capture_output=is_json_output(),
+            )
+            if not is_json_output():
+                console.print(f"  [green]Created worktree[/green] at {worktree_path}")
+        except subprocess.CalledProcessError as e:
+            print_error(f"Failed to create worktree: {e}")
+            sys.exit(1)
+
+    # Generate plan folder name using new naming algorithm
+    plan_folder_name = generate_plan_folder_name(worktree_path, description)
+
+    # Validate the generated name
+    is_valid, error = validate_plan_folder_name(plan_folder_name)
+    if not is_valid:
+        print_error(f"Generated name '{plan_folder_name}' is invalid: {error}")
+        sys.exit(3)
+
+    # Create plan folder path
+    plan_path = worktree_path / "docs" / "plans" / "live" / plan_folder_name
+
+    # Check if folder already exists
+    if plan_path.exists():
+        print_error(f"Plan folder already exists: {plan_path}")
+        sys.exit(2)
+
+    # Create the folder structure
+    create_planning_folder(plan_path)
+
+    # Output results
+    if is_json_output():
+        print_json({
+            "worktree": str(worktree_path),
+            "worktree_created": not worktree_exists,
+            "branch": branch,
+            "base": base,
+            "plan_folder": str(plan_path),
+            "plan_folder_name": plan_folder_name,
+        })
+    else:
+        console.print(f"  [green]Created plan folder[/green] at {plan_path}")
+        console.print()
+        print_success(f"Plan initialized: {plan_folder_name}")
+        console.print(f"[dim]Worktree:[/dim] {worktree_path}")
+        console.print(f"[dim]Plan folder:[/dim] {plan_path}")
+
+    sys.exit(0)
 
 
 def cmd_scaffold(args):

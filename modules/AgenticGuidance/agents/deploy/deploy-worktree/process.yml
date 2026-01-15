@@ -23,8 +23,9 @@ process:
       type: "string"
       description: "Absolute path to the planning folder created for the worktree"
       required: true
-      path_template: "{project_root}/docs/plans/live/{YYMMDDRepo_Branch}/"
-      example: "/home/code/MyProject/docs/plans/live/260110MyProject_feature_auth/"
+      path_template: "{worktree_root}/docs/plans/live/{YYMMDDXX_description}/"
+      example: "/home/code/MyProject-feature_auth/docs/plans/live/260110FA_feature_auth/"
+      note: "YYMMDDXX format: YY=year, MM=month, DD=day, XX=worktree ID (2 uppercase letters from worktree suffix)"
 
     - name: "workspace_updated"
       type: "boolean"
@@ -54,13 +55,27 @@ process:
       This returns JSON with path, branch, is_worktree flag, and active plans.
       Reference inputs.yml definitions for context interpretation.
     - |
-      Create new worktree if requested:
-      Use CLI command: `agentic worktree create <branch> --base <base-branch>`
-      The CLI handles:
-      - Git worktree creation with proper path conventions
+      Create worktree and plan folder in one operation:
+      Use CLI command: `agentic plan init <branch> --description <desc> --base <base-branch>`
+
+      This single command handles ALL of the following:
+      - Git worktree creation (or reuses existing worktree for branch)
+      - Plan folder naming with YYMMDDXX_description convention (enforced by CLI)
       - Planning folder scaffolding (docs/plans/live/<folder_name>/)
-      - All placeholder file creation
-      Verify with: `agentic worktree status`
+      - Subdirectory creation (live/, completed/, analysis/, audit/)
+      - README.md template creation
+
+      Exit codes:
+      - 0: Success, worktree and folder created
+      - 1: Worktree creation failed
+      - 2: Folder already exists (choose different description)
+      - 3: Invalid branch name or description
+
+      For JSON output use: `agentic -j plan init <branch> --description <desc>`
+      JSON response includes: worktree, worktree_created, branch, plan_folder, plan_folder_name
+
+      NOTE: Do NOT create folders manually. The CLI enforces naming convention
+      programmatically, eliminating agent interpretation errors.
     - |
       Update VS Code workspace file:
       Reference inputs.yml definitions (workspace_file, worktree_naming_convention) for:
@@ -71,14 +86,6 @@ process:
     - |
       Verify workspace file validity and accessibility:
       Reference inputs.yml definitions (worktree_operations) for validation requirements
-    - |
-      Validate Planning Folder Structure:
-      Use CLI command: `agentic plan validate <plan_folder_path>`
-      The CLI validates:
-      - live/ and completed/ subdirectory existence
-      - YAML file syntax in all plan files
-      - Required placeholder files present
-      Reference modules/AgenticGuidance/assets/definitions/plans.yml for structure requirements.
     - |
       Final Verification:
       Use CLI commands in sequence:

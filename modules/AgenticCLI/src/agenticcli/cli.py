@@ -252,6 +252,26 @@ def _add_plan_parser(subparsers):
     )
     plan_subparsers = plan_parser.add_subparsers(dest="plan_command", help="Plan commands")
 
+    # plan init - combines worktree creation + plan folder scaffolding
+    init_parser = plan_subparsers.add_parser(
+        "init",
+        help="Initialize worktree and plan folder with proper naming",
+        description=(
+            "Create worktree if needed and scaffold plan folder with YYMMDDXX_description naming. "
+            "Enforces naming convention programmatically, eliminating agent interpretation errors."
+        ),
+    )
+    init_parser.add_argument("branch", help="Branch name for worktree")
+    init_parser.add_argument(
+        "--description", "-d",
+        help="Plan description (used in folder name, defaults to branch name)",
+    )
+    init_parser.add_argument(
+        "--base", "-b",
+        default="main",
+        help="Base branch to create worktree from (default: main)",
+    )
+
     # plan scaffold
     scaffold_parser = plan_subparsers.add_parser(
         "scaffold",

@@ -1,0 +1,119 @@
+flowchart LR
+    %% GOAL: Orchestrate AgenticCLI LangSmith commands (frontend)
+    %% PROFILE: orchestration-build
+    %% PLAN_FILE: plan_live_build.yml
+    %% WORKTREE: /home/code/AgenticEngineering-agentic-cli
+    %% BRANCH: agentic-cli
+    %%
+    %% PHASES: CLI Commands, Dependencies, Testing, Audit
+    %% AGENT_ROUTING:
+    %%   - CLICommands -> build-python
+    %%   - Dependencies -> build-python
+    %%   - Testing -> test-runner
+    %%   - Audit -> test-audit
+    %%
+    %% FEEDBACK_TRIGGERS:
+    %%   - TEST_FAILURE -> Return to CLICommands phase
+    %%   - AUDIT_FAILURE -> Return to Testing phase
+    %%   - BUILD_FAILURE -> Escalate to human
+    %%
+    %% STATUS: CLICommands=pending, Dependencies=pending, Testing=pending, Audit=pending
+    %%
+    %% PARALLEL_CONTEXT: Sibling plan at /home/code/AgenticEngineering-agenticlangsmith/docs/plans/live/260113_langsmith_backend
+    %% This frontend plan requires: agenticlangsmith package with LangSmithService class
+    %% Mock strategy: Mock LangSmithService during development until backend ready
+
+    Start((Start)) --> LoadPlan[Load Plan: plan_live_build.yml]
+
+    %% ========================================
+    %% INPUT VALIDATION
+    %% ========================================
+    LoadPlan --> ValidateInputs[Validate Plan Inputs]
+    ValidateInputs --> InputsValid{Inputs Valid?}
+    InputsValid -- "No: Missing" --> AskUser((Ask User for Clarification))
+    InputsValid -- "Yes" --> CheckBackend{Backend Available?}
+
+    %% Backend dependency check
+    CheckBackend -- "No: Mock Mode" --> MockNote[Note: Using Mocked LangSmithService]
+    MockNote --> CLIPhase
+    CheckBackend -- "Yes: Available" --> CLIPhase
+
+    %% ========================================
+    %% PHASE 1: CLI COMMANDS
+    %% ========================================
+    subgraph CLIPhase_SG ["Phase 1: CLI Commands"]
+        CLIPhase((CLI Commands Phase)) --> SpawnBuilderCLI[Spawn build-python Agent]
+        SpawnBuilderCLI --> BuilderCLIResult{Commands Implemented?}
+        BuilderCLIResult -- "No: Failed" --> RetryCLI[Spawn build-python Agent]
+        RetryCLI --> BuilderCLIResult
+        BuilderCLIResult -- "Yes: Success" --> CLIComplete((CLI Phase Complete))
+    end
+
+    CLIComplete --> DepsPhase
+
+    %% ========================================
+    %% PHASE 2: DEPENDENCIES
+    %% ========================================
+    subgraph DepsPhase_SG ["Phase 2: Dependencies"]
+        DepsPhase((Dependencies Phase)) --> SpawnBuilderDeps[Spawn build-python Agent]
+        SpawnBuilderDeps --> DepsResult{Dependencies Updated?}
+        DepsResult -- "No: Failed" --> RetryDeps[Spawn build-python Agent]
+        RetryDeps --> DepsResult
+        DepsResult -- "Yes: Success" --> DepsComplete((Deps Phase Complete))
+    end
+
+    DepsComplete --> TestPhase
+
+    %% ========================================
+    %% PHASE 3: TESTING (test-fix-loop)
+    %% ========================================
+    subgraph TestPhase_SG ["Phase 3: Testing (test-fix-loop)"]
+        TestPhase((Testing Phase)) --> SpawnTestRunner[Spawn test-runner Agent]
+        SpawnTestRunner --> TestResult{Tests Pass?}
+
+        %% Test-fix loop
+        TestResult -- "No: Failures" --> SpawnBuilderFix[Spawn build-python Agent: Fix]
+        SpawnBuilderFix --> SpawnTestRunnerRetry[Spawn test-runner Agent]
+        SpawnTestRunnerRetry --> TestResult
+
+        TestResult -- "Yes: All Pass" --> TestComplete((Test Phase Complete))
+    end
+
+    %% Feedback trigger for persistent test failures
+    TestResult -- "Max Iterations" --> EscalateTest((Escalate: Test Failures Persist))
+
+    TestComplete --> AuditPhase
+
+    %% ========================================
+    %% PHASE 4: AUDIT (audit-test-fix-loop)
+    %% ========================================
+    subgraph AuditPhase_SG ["Phase 4: Audit (audit-test-fix-loop)"]
+        AuditPhase((Audit Phase)) --> SpawnAuditor[Spawn test-audit Agent]
+        SpawnAuditor --> AuditResult{Audit Pass?}
+
+        %% Audit-test-fix loop
+        AuditResult -- "No: Issues Found" --> SpawnBuilderAuditFix[Spawn build-python Agent: Fix]
+        SpawnBuilderAuditFix --> SpawnTestAfterAudit[Spawn test-runner Agent]
+        SpawnTestAfterAudit --> SpawnAuditorRetry[Spawn test-audit Agent]
+        SpawnAuditorRetry --> AuditResult
+
+        AuditResult -- "Yes: Clean" --> AuditComplete((Audit Phase Complete))
+    end
+
+    %% Feedback trigger for persistent audit failures
+    AuditResult -- "Max Iterations" --> EscalateAudit((Escalate: Audit Issues Persist))
+
+    AuditComplete --> Success((Success: CLI Frontend Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef phase fill:#e1f5fe,stroke:#0288d1
+    classDef test fill:#fff3e0,stroke:#ff9800
+    classDef audit fill:#fce4ec,stroke:#e91e63
+    classDef success fill:#e8f5e9,stroke:#4caf50
+
+    class CLIPhase,DepsPhase phase
+    class TestPhase test
+    class AuditPhase audit
+    class Success success
