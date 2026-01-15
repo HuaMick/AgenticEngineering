@@ -137,7 +137,7 @@ To initiate a workflow, **inject the content** of the appropriate entrypoint fil
    - Invokes `orchestration-planning` agent
    - Spawns `deploy-worktree` for workspace setup
    - Runs planning loops with specialized planners and reviewers
-   - Outputs approved plan to `docs/plans/live/YYMMDDRepo_Branch/`
+   - Outputs approved plan to `docs/plans/live/YYMMDDXX_description/`
 
 2. **Execution Phase**: Use `_orchestrate.yml` to execute the approved plan
    - Invokes `orchestration-executor` agent

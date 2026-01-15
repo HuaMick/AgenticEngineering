@@ -7,7 +7,7 @@ This example demonstrates the **unified plan pattern**:
 ## Folder Structure
 
 ```
-YYMMDDRepo_Branch/
+YYMMDDXX_description/
 ├── README.md                   # This file
 ├── orchestration_example.mmd   # Visual execution flow with agents and loops
 ├── live/                       # Active plans
