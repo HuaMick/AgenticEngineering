@@ -1,0 +1,90 @@
+# Flutter Testing Definition
+# Consolidated from: flutter-test-execution.yml, flutter-test-structure.yml,
+#                    flutter-environments.yml, flutter-test-roles.yml, flutter-skipped-tests.yml
+# Created: 2026-01-16
+
+test_execution: |
+  Test agents should follow this workflow when running Flutter tests:
+
+  1. **Pre-Test Setup**:
+     - Run `flutter pub get` to ensure dependencies are current
+     - Check for any required mock servers or fixtures
+
+  2. **Test Execution**:
+     - Run `flutter test <path>` with verbose output
+     - Use `flutter test --reporter expanded` for detailed output
+
+  3. **Post-Test Cleanup**:
+     - Stop any mock servers started during tests
+     - Clean up any test artifacts
+
+test_structure: |
+  Tests are organized in test/ directory, mirroring the lib/ structure.
+
+  **Example Structure**:
+  ```
+  lib/
+    core/
+      crypto/
+        key_pair.dart
+      networking/
+        relay_client.dart
+  test/
+    core/
+      crypto/
+        key_pair_test.dart
+      networking/
+        relay_client_test.dart
+    mocks/
+      mock_relay_server.dart
+  ```
+
+  **Naming Conventions**:
+  - Test files: <source_file>_test.dart
+  - Test groups: Use group() to organize related tests
+  - Test names: Descriptive, explain what is being tested
+
+test_environments: |
+  Flutter tests have different behavior in different environments:
+
+  1. **Native Flutter** (preferred):
+     - Full dart:io access, WebSocket works normally
+     - Use for all test types
+
+  2. **Docker**:
+     - WebSocket localhost connections may fail
+     - Use only for pure Dart logic tests (crypto, state management)
+
+  3. **CI/CD (Cloud Build)**:
+     - Use ghcr.io/cirruslabs/flutter:stable image
+     - Runs natively, localhost works normally
+
+test_roles: |
+  - **Test Builder**: Responsible for creating and maintaining test files.
+    * Goal: High code coverage, valid test logic.
+    * Constraint: CANNOT execute tests for verification.
+  - **Test Runner**: Responsible for executing tests and reporting results.
+    * Goal: Accurate reporting of PASS/FAIL/SKIP.
+    * Constraint: CANNOT modify test files or application code.
+
+skipped_tests: |
+  A skipped test uses the `skip:` parameter in test() or group() to bypass execution.
+  Acceptable only for:
+  - Platform-specific tests (skip on unsupported platforms)
+  - External dependencies not available in test environment
+  - Known environment limitations (e.g., WebSocket in Docker)
+
+  All other skips should be fixed by setting up the required condition.
+
+acceptable_skips: |
+  Only the following test skips are acceptable for Flutter:
+
+  1. **Platform-specific tests**:
+     - Tests that only run on specific platforms (Android, iOS, Web)
+     - Skip with platform check
+
+  2. **WebSocket tests in Docker**:
+     - Skip reason: "WebSocket localhost fails in Docker"
+     - These run in CI/CD with native Flutter
+
+  Any other skips indicate a problem that needs to be fixed.
