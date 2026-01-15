@@ -1,0 +1,65 @@
+flowchart LR
+    %% GOAL: Execute CLI guidance cleanup plan - update assets and processes for tool-offloading
+    %% PROFILE: orchestrator
+    %% PHASES: Documentation_Updates, Orchestration_Simplification, Redundancy_Removal
+    %% AGENT_ROUTING: Documentation_Updates -> teacher-update-assets, Orchestration_Simplification -> teacher-update-guidance, Redundancy_Removal -> teacher-update-guidance
+    %% FEEDBACK_TRIGGERS: VALIDATION_FAILURE -> Re-review
+    %% STATUS: Documentation_Updates=completed, Orchestration_Simplification=completed, Redundancy_Removal=completed
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.guidance-test-loop
+    %% MAX_ITERATIONS: 3
+    %% INPUT_PATH: /home/code/AgenticEngineering-agenticguidance/docs/plans/live/260104AE_agenticguidance/live/plan_live_cli_guidance_cleanup.yml
+
+    Start((Start)) --> LoadPlan[Load Plan YAML]
+    LoadPlan --> ValidatePlan{Plan Valid?}
+    ValidatePlan -- "No" --> AskUser((Ask User))
+    ValidatePlan -- "Yes" --> Phase1
+
+    %% ========================================
+    %% PHASE 1: Documentation Updates
+    %% ========================================
+    subgraph Phase1_SG ["Documentation Updates Phase"]
+        Phase1((Documentation Updates)) --> SpawnTeacherAssets[Spawn teacher-update-assets Agent]
+        SpawnTeacherAssets --> TeacherAssetsResult{Assets Updated?}
+        TeacherAssetsResult -- "No: Failed" --> RetryAssets{Retry Count < 3?}
+        RetryAssets -- "Yes" --> SpawnTeacherAssets
+        RetryAssets -- "No" --> EscalateAssets((Escalate to User))
+        TeacherAssetsResult -- "Yes: Success" --> Phase1Complete((Phase 1 Complete))
+    end
+
+    Phase1Complete --> Phase2
+
+    %% ========================================
+    %% PHASE 2: Orchestration Simplification
+    %% ========================================
+    subgraph Phase2_SG ["Orchestration Simplification Phase"]
+        Phase2((Orchestration Simplification)) --> SpawnTeacherGuidance1[Spawn teacher-update-guidance Agent]
+        SpawnTeacherGuidance1 --> GuidanceResult1{Orchestration Updated?}
+        GuidanceResult1 -- "No: Failed" --> RetryGuidance1{Retry Count < 3?}
+        RetryGuidance1 -- "Yes" --> SpawnTeacherGuidance1
+        RetryGuidance1 -- "No" --> EscalateGuidance1((Escalate to User))
+        GuidanceResult1 -- "Yes: Success" --> Phase2Complete((Phase 2 Complete))
+    end
+
+    Phase2Complete --> Phase3
+
+    %% ========================================
+    %% PHASE 3: Redundancy Removal
+    %% ========================================
+    subgraph Phase3_SG ["Redundancy Removal Phase"]
+        Phase3((Redundancy Removal)) --> SpawnTeacherGuidance2[Spawn teacher-update-guidance Agent]
+        SpawnTeacherGuidance2 --> GuidanceResult2{Redundancy Removed?}
+        GuidanceResult2 -- "No: Failed" --> RetryGuidance2{Retry Count < 3?}
+        RetryGuidance2 -- "Yes" --> SpawnTeacherGuidance2
+        RetryGuidance2 -- "No" --> EscalateGuidance2((Escalate to User))
+        GuidanceResult2 -- "Yes: Success" --> Phase3Complete((Phase 3 Complete))
+    end
+
+    Phase3Complete --> FinalValidation
+
+    %% ========================================
+    %% FINAL VALIDATION
+    %% ========================================
+    FinalValidation[Validate All Changes] --> ValidationResult{All Criteria Met?}
+    ValidationResult -- "No" --> IdentifyGaps[Identify Gaps]
+    IdentifyGaps -.-> Phase1
+    ValidationResult -- "Yes" --> End((End: Plan Complete))
