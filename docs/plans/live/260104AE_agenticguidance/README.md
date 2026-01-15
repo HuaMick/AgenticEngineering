@@ -1,12 +1,39 @@
 # Plan: 260104AE_agenticguidance
 
-## Status: ACTIVE (Archival & Cleanup COMPLETE)
+## Status: BLOCKED (Phase 3 Decisions Required)
 
 **Updated**: 2026-01-16
 **Branch**: `agenticguidance`
 **Worktree**: `/home/code/AgenticEngineering-agenticguidance`
 
-## Current Work: Plan Folder Cleanup Complete
+## Current Work: ALL ACTIONABLE PLANS COMPLETE
+
+**Session 2026-01-16 (Ralph Loop - Iteration 9)**
+
+### Status: Waiting on User Decisions
+All actionable work is complete. The only remaining item is **Phase 3 of plan_live_batch_remediation.yml** which requires 7 user decisions.
+
+**Remaining in live/ (2 items):**
+1. **plan_live_batch_remediation.yml** - Phase 3 BLOCKED
+2. **backlog_cli_task_lists.yml** - BACKLOG (future experiment)
+
+### Phase 3 Decision Items Required
+
+To unblock Phase 3, provide decisions for the 7 items in plan_live_batch_remediation.yml:
+
+| Decision | Question | Options |
+|----------|----------|---------|
+| decision_001 | Create specifications/ folder for format specs? | A: Create folder, B: Naming convention, C: No change |
+| decision_002 | Generalize test-execution-workflow.yml? | A: Now, B: Defer, C: Delete |
+| decision_003 | acceptable-skips.yml location? | A: Keep definitions/, B: Move guidelines/, C: Split |
+| decision_004 | gcp-artifact-registry.yml location? | A: config/, B: .agentic/config/, C: Delete, D: docs/ |
+| decision_005 | studio-integration-tests.yml valid? | A: Keep/verify, B: Move project, C: Delete, D: Defer |
+| decision_006 | workflow-test-readme.yml action? | A: Delete, B: Expand, C: Merge test-org, D: Merge testing |
+| decision_007 | Strategy files location? | A: Keep guidelines/, B: Move definitions/, C: Create strategies/, D: Consolidate |
+
+**To provide decisions:** Edit plan_live_batch_remediation.yml lines 47-357, set `decision:` fields to chosen option (A/B/C/D).
+
+---
 
 **Session 2026-01-16 (Ralph Loop - Iteration 8)**
 
