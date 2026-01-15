@@ -2,86 +2,153 @@ flowchart LR
     %% ========================================
     %% ORCHESTRATION: LangSmith API Wrapper
     %% ========================================
-    %% GOAL: Add LangSmith trace querying to AgenticCLI
+    %% GOAL: Add LangSmith trace querying capabilities to AgenticCLI
     %% PROFILE: Orchestration-Build
     %% PLAN_FOLDER: /home/code/AgenticEngineering-agenticlangsmith/docs/plans/live/260113_langsmith_api_wrapper/live
     %% PLAN_FILE: plan_live_build.yml
     %%
-    %% PHASES: Backend Service, CLI Commands, Testing
-    %% AGENT_ROUTING: Backend -> builder, CLI -> builder, Testing -> test-runner
-    %% STATUS: All phases pending
+    %% PHASES: Backend Service, CLI Commands, Dependencies, Testing, Audit
+    %% AGENT_ROUTING:
+    %%   - Backend Service -> build-python agent
+    %%   - CLI Commands -> build-python agent
+    %%   - Dependencies -> build-python agent
+    %%   - Testing -> test-runner agent (test-fix-loop)
+    %%   - Audit -> test-audit agent (audit-test-fix-loop)
+    %%
+    %% STATUS:
+    %%   - Phase 1: pending
+    %%   - Phase 2: pending
+    %%   - Phase 3: pending
+    %%   - Phase 4: pending
+    %%   - Phase 5: pending
     %%
     %% FEEDBACK_TRIGGERS:
-    %% - BUILD_FAILURE -> RetryBuild (max 3 retries)
-    %% - TEST_FAILURE -> FixAndRetest
+    %%   - BUILD_FAILURE -> RetryBuild (max 3 retries)
+    %%   - TEST_FAILURE -> FixAndRetest (test-fix-loop)
+    %%   - AUDIT_FAILURE -> FixAndReaudit (audit-test-fix-loop)
     %%
-    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.test-fix-loop
+    %% LOOP_DEFINITIONS:
+    %%   - modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.test-fix-loop
+    %%   - modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.audit-test-fix-loop
     %% MAX_ITERATIONS: 5
     %% ESCALATION: If max iterations reached without success, stop and Ask User
     %%
     %% CONTEXT:
     %% Wrap LangSmith Python SDK in agentic-cli commands for agent trace introspection.
+    %% Implementation follows Domain -> Entrypoint architecture (service layer -> CLI commands).
 
     Start((Start)) --> LoadInputs[Load Plan and Context]
 
     %% ========================================
     %% INPUT VALIDATION PHASE
     %% ========================================
-    LoadInputs --> ValidateDeps[Check langsmith Package]
-    ValidateDeps --> DepsOK{Dependencies Available?}
-    DepsOK -- "No: Missing" --> InstallDeps[Install langsmith package]
-    InstallDeps --> DepsOK
-    DepsOK -- "Yes: Ready" --> Phase1[Enter Phase 1: Backend Service]
+    LoadInputs --> CheckOpenQuestions{Open Questions Answered?}
+    CheckOpenQuestions -- "No: BLOCKED" --> PresentQuestions[Present Open Questions to Human]
+    PresentQuestions --> AwaitAnswers((Human Gate: Answer Questions))
+    AwaitAnswers --> CaptureAnswers[Capture Human Answers]
+    CaptureAnswers --> CheckOpenQuestions
+    CheckOpenQuestions -- "Yes: PASSED" --> ValidateDeps{Dependencies Available?}
+    ValidateDeps -- "No: Missing" --> InstallDeps[Install langsmith Package]
+    InstallDeps --> ValidateDeps
+    ValidateDeps -- "Yes: Ready" --> Phase1Start((Phase 1: Backend Service))
 
     %% ========================================
     %% PHASE 1: BACKEND SERVICE
     %% ========================================
-    subgraph Phase1_SG ["Phase 1: Backend Service"]
-        Phase1 --> CreateService[Create LangSmithService Module]
-        CreateService --> AddQueryBuilders[Add Query Builder Helpers]
-        AddQueryBuilders --> BackendResult{Backend Complete?}
-        BackendResult -- "No: Issues" --> FixBackend[Fix Backend Issues]
-        FixBackend --> CreateService
-        BackendResult -- "Yes: Complete" --> Phase1Done[Phase 1 Complete]
+    %% Build service module: LangSmithService class and query builders
+    subgraph Phase1_SG ["Phase 1: Backend Service Subgraph"]
+        Phase1Start --> SpawnBuilderBackend[Spawn build-python Agent]
+        SpawnBuilderBackend --> BackendResult{Build Success?}
+        BackendResult -- "No: Failure" --> CaptureBackendError[Capture Build Errors]
+        CaptureBackendError --> RetryBackend{Max Retries?}
+        RetryBackend -- "No" --> SpawnBuilderBackend
+        RetryBackend -- "Yes" --> EscalateBackend((Escalate: Backend Build Failed))
+        BackendResult -- "Yes: Success" --> Phase1Complete((Phase 1 Complete))
     end
 
     %% ========================================
     %% PHASE 2: CLI COMMANDS
     %% ========================================
-    Phase1Done --> Phase2[Enter Phase 2: CLI Commands]
+    %% Build CLI command group and subcommands
+    Phase1Complete --> Phase2Start((Phase 2: CLI Commands))
 
-    subgraph Phase2_SG ["Phase 2: CLI Commands"]
-        Phase2 --> CreateCmdGroup[Create langsmith Command Group]
-        CreateCmdGroup --> ImplRuns[Implement runs Subcommand]
-        ImplRuns --> ImplRunDetail[Implement run Detail]
-        ImplRunDetail --> ImplProjects[Implement projects Subcommand]
-        ImplProjects --> ImplStats[Implement stats Subcommand]
-        ImplStats --> CLIResult{CLI Commands Complete?}
-        CLIResult -- "No: Issues" --> FixCLI[Fix CLI Issues]
-        FixCLI --> ImplRuns
-        CLIResult -- "Yes: Complete" --> Phase2Done[Phase 2 Complete]
+    subgraph Phase2_SG ["Phase 2: CLI Commands Subgraph"]
+        Phase2Start --> SpawnBuilderCLI[Spawn build-python Agent]
+        SpawnBuilderCLI --> CLIResult{Build Success?}
+        CLIResult -- "No: Failure" --> CaptureCLIError[Capture Build Errors]
+        CaptureCLIError --> RetryCLI{Max Retries?}
+        RetryCLI -- "No" --> SpawnBuilderCLI
+        RetryCLI -- "Yes" --> EscalateCLI((Escalate: CLI Build Failed))
+        CLIResult -- "Yes: Success" --> Phase2Complete((Phase 2 Complete))
     end
 
     %% ========================================
-    %% PHASE 3: TESTING
+    %% PHASE 3: DEPENDENCIES AND CONFIGURATION
     %% ========================================
-    Phase2Done --> Phase3[Enter Phase 3: Testing]
+    %% Add langsmith package to pyproject.toml
+    Phase2Complete --> Phase3Start((Phase 3: Dependencies))
 
-    subgraph Phase3_SG ["Phase 3: Testing"]
-        Phase3 --> SpawnTests[Run Test Suite]
-        SpawnTests --> TestResult{Tests Pass?}
-        TestResult -- "No: Failures" --> CaptureFails[Capture Test Failures]
-        CaptureFails --> FixTests[Fix Failing Tests]
-        FixTests --> SpawnTests
-        TestResult -- "Yes: Pass" --> Phase3Done[Phase 3 Complete]
+    subgraph Phase3_SG ["Phase 3: Dependencies Subgraph"]
+        Phase3Start --> SpawnBuilderDeps[Spawn build-python Agent]
+        SpawnBuilderDeps --> DepsResult{Build Success?}
+        DepsResult -- "No: Failure" --> CaptureDepsError[Capture Build Errors]
+        CaptureDepsError --> RetryDeps{Max Retries?}
+        RetryDeps -- "No" --> SpawnBuilderDeps
+        RetryDeps -- "Yes" --> EscalateDeps((Escalate: Deps Build Failed))
+        DepsResult -- "Yes: Success" --> Phase3Complete((Phase 3 Complete))
+    end
+
+    %% ========================================
+    %% PHASE 4: TESTING (test-fix-loop)
+    %% ========================================
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.test-fix-loop
+    Phase3Complete --> Phase4Start((Phase 4: Testing))
+
+    subgraph Phase4_SG ["Phase 4: Testing Subgraph"]
+        Phase4Start --> SpawnTestRunner[Spawn test-runner Agent]
+
+        subgraph TestFixLoop_SG ["Test-Fix-Loop Subgraph"]
+            SpawnTestRunner --> TestResult{Tests Pass?}
+            TestResult -- "No: Failures" --> CaptureTestFailures[Capture Test Failures]
+            CaptureTestFailures --> SpawnBuilderFix[Spawn build-python Agent for Fixes]
+            SpawnBuilderFix --> CheckTestIterations{Max Iterations?}
+            CheckTestIterations -- "No" --> SpawnTestRunner
+            CheckTestIterations -- "Yes" --> EscalateTest((Escalate: Tests Not Passing))
+        end
+
+        TestResult -- "Yes: Pass" --> Phase4Complete((Phase 4 Complete))
+    end
+
+    %% ========================================
+    %% PHASE 5: AUDIT (audit-test-fix-loop) - MANDATORY
+    %% ========================================
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.audit-test-fix-loop
+    Phase4Complete --> Phase5Start((Phase 5: Audit))
+
+    subgraph Phase5_SG ["Phase 5: Audit Subgraph"]
+        Phase5Start --> SpawnAuditAgent[Spawn test-audit Agent]
+
+        subgraph AuditTestFixLoop_SG ["Audit-Test-Fix-Loop Subgraph"]
+            SpawnAuditAgent --> AuditResult{Audit Pass?}
+            AuditResult -- "No: Issues Found" --> CaptureAuditFindings[Capture Audit Findings]
+            CaptureAuditFindings --> SpawnBuilderAuditFix[Spawn build-python Agent for Fixes]
+            SpawnBuilderAuditFix --> SpawnTestRunnerRecheck[Spawn test-runner Agent]
+            SpawnTestRunnerRecheck --> RecheckResult{Tests Still Pass?}
+            RecheckResult -- "No" --> CaptureAuditFindings
+            RecheckResult -- "Yes" --> CheckAuditIterations{Max Iterations?}
+            CheckAuditIterations -- "No" --> SpawnAuditAgent
+            CheckAuditIterations -- "Yes" --> EscalateAudit((Escalate: Audit Not Passing))
+        end
+
+        AuditResult -- "Yes: Pass" --> Phase5Complete((Phase 5 Complete))
     end
 
     %% ========================================
     %% OUTPUT PHASE
     %% ========================================
     subgraph Output_SG ["Output Subgraph"]
-        Phase3Done --> VerifyIntegration[Verify Full Integration]
-        VerifyIntegration --> ReportSuccess[Report Success]
+        Phase5Complete --> VerifyIntegration[Verify Full Integration]
+        VerifyIntegration --> ReportSuccess[Report Implementation Success]
         ReportSuccess --> ShowUsage[Display Usage Examples]
     end
 
@@ -90,4 +157,11 @@ flowchart LR
     %% ========================================
     %% STYLING
     %% ========================================
-    classDef dashedstroke stroke-dasharray: 5 5;
+    classDef entrypoint fill:#90EE90,stroke:#228B22
+    classDef exitpoint fill:#FFB6C1,stroke:#DC143C
+    classDef escalation fill:#FFB6C1,stroke:#DC143C
+    classDef dashedstroke stroke-dasharray: 5 5
+
+    class Start,Phase1Start,Phase2Start,Phase3Start,Phase4Start,Phase5Start entrypoint
+    class End,Phase1Complete,Phase2Complete,Phase3Complete,Phase4Complete,Phase5Complete entrypoint
+    class EscalateBackend,EscalateCLI,EscalateDeps,EscalateTest,EscalateAudit escalation
