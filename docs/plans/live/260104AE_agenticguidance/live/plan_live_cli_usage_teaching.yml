@@ -1,0 +1,146 @@
+name: plan_live_cli_usage_teaching
+status: pending
+priority: medium
+created: "2026-01-15"
+updated: "2026-01-15"
+phase_type: teach
+
+objective: |
+  Document and teach deployment agents how to use the agentic-cli commands,
+  especially the new 'plan init' command that implements tool-offloading pattern.
+  Update agent guidance (deploy-worktree, orchestration-planning) to use CLI.
+
+context: |
+  BACKGROUND:
+  - New 'agentic plan init' command implemented in AgenticCLI
+  - Enforces YYMMDDXX_description naming convention programmatically
+  - Eliminates agent interpretation errors in plan folder naming
+  - Applies tool-offloading pattern from guidelines/tool-offloading.yml
+
+  CLI COMMANDS AVAILABLE:
+  - agentic plan init <branch> --description <desc> --base <base>
+  - agentic worktree create/list/status/remove
+  - agentic plan scaffold/status/validate/list/move
+
+  NAMING ALGORITHM:
+  1. Parse worktree path: /home/code/AgenticEngineering-agenticguidance
+  2. Extract suffix after last hyphen: agenticguidance
+  3. Take first 2 chars, uppercase: AG
+  4. Generate: YYMMDD + AG + _ + sanitized_description
+  Result: 260115AG_naming_convention_audit
+
+  REFERENCE:
+  - Implementation: /home/code/AgenticEngineering-agentic-cli/modules/AgenticCLI/
+  - Source plan: /home/code/AgenticEngineering-agentic-cli/docs/plans/live/260113_langsmith_cli/live/plan_live_folder_creation_automation.yml
+  - CLI commands definition: modules/AgenticGuidance/assets/definitions/cli-commands.yml
+  - Tool-offloading guideline: modules/AgenticGuidance/assets/guidelines/tool-offloading.yml
+
+phases:
+  - name: "Documentation"
+    status: pending
+    description: "Update guidance documentation for CLI usage"
+    tasks:
+      - id: "doc_update_deploy_worktree"
+        name: "Update deploy-worktree agent process"
+        status: "pending"
+        description: |
+          Update deploy-worktree/process.yml to use 'agentic plan init' instead of
+          manual folder creation. Agent should call CLI and handle exit codes.
+        target_files:
+          - "modules/AgenticGuidance/agents/deploy/deploy-worktree/process.yml"
+        guidance_update:
+          before: |
+            - Interpret naming convention from guidance
+            - Create folder structure manually
+            - Call verify agent to check correctness
+          after: |
+            - Call: agentic plan init <branch> --description <desc>
+            - Handle exit codes: 0=success, 1=worktree fail, 2=exists, 3=invalid
+            - No verification needed (CLI guarantees correctness)
+        acceptance_criteria:
+          - "process.yml references CLI command"
+          - "Manual folder creation steps removed"
+          - "Verification loop simplified or removed"
+
+      - id: "doc_update_orchestration_planning"
+        name: "Update orchestration-planning process"
+        status: "pending"
+        description: |
+          Update orchestration-planning/process.mmd to use CLI for worktree/folder setup.
+          SpawnDeployWorktree step should call CLI.
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+        guidance_update:
+          before: |
+            SpawnDeployWorktree[Spawn deploy-worktree Agent]
+            --> VerifyWorktree[Verify Worktree via CLI: agentic worktree status]
+            --> ValidatePlanFolder[Validate Plan Folder via CLI: agentic plan validate]
+          after: |
+            CreatePlanFolder[Call: agentic plan init <branch> --description <desc>]
+            --> CheckResult{Exit Code 0?}
+            --> Proceed (CLI guarantees correctness)
+        acceptance_criteria:
+          - "MMD shows CLI call instead of agent spawn"
+          - "Verification steps simplified"
+          - "Comments reference tool-offloading guideline"
+
+      - id: "doc_update_inputs_yml"
+        name: "Update orchestration-planning inputs.yml"
+        status: "pending"
+        description: |
+          Ensure inputs.yml references updated cli-commands.yml with plan init command.
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml"
+        acceptance_criteria:
+          - "cli_commands_reference points to cli-commands.yml"
+          - "Key commands section mentions plan init"
+
+  - name: "Verification"
+    status: pending
+    description: "Verify guidance updates are complete and consistent"
+    tasks:
+      - id: "verify_cli_integration"
+        name: "Verify CLI integration in guidance"
+        status: "pending"
+        description: |
+          Run exploration to verify all agent guidance correctly references CLI commands.
+          Check for any remaining manual folder creation patterns.
+        acceptance_criteria:
+          - "No manual folder creation in deploy-worktree"
+          - "No manual naming convention interpretation"
+          - "CLI command references are correct"
+
+      - id: "verify_tool_offloading_compliance"
+        name: "Verify tool-offloading compliance"
+        status: "pending"
+        description: |
+          Check that guidance follows tool-offloading principle:
+          - Deterministic operations in CLI
+          - Judgment/interpretation in agents
+        acceptance_criteria:
+          - "Folder naming in CLI (deterministic)"
+          - "Plan content creation in agents (requires judgment)"
+          - "Validation in CLI where possible"
+
+success_criteria:
+  - "deploy-worktree agent uses 'agentic plan init' for plan folder creation"
+  - "orchestration-planning MMD shows CLI workflow"
+  - "No more agent-interpreted naming conventions for folders"
+  - "Tool-offloading pattern documented and applied"
+
+notes: |
+  This teaching plan captures the guidance updates needed after implementing
+  the 'agentic plan init' CLI command. The implementation is complete in
+  AgenticCLI - this plan tracks the corresponding guidance updates.
+
+  COMPLETED IN AGENTIC-CLI:
+  - src/agenticcli/utils/naming.py (naming algorithm)
+  - src/agenticcli/commands/plan.py (cmd_init function)
+  - src/agenticcli/cli.py (plan init parser)
+  - tests/test_naming.py (30 tests)
+  - tests/test_plan_init.py (11 tests)
+
+  TO BE DONE IN AGENTIC-GUIDANCE:
+  - Update deploy-worktree/process.yml
+  - Update orchestration-planning/process.mmd
+  - Update orchestration-planning/inputs.yml (verify references)

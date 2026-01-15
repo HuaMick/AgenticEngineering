@@ -1,0 +1,96 @@
+# Tool Offloading Guideline
+# Created: 2026-01-15
+# Purpose: Define when and how to offload work from agents to CLI tools
+
+tool-offloading:
+  definition: |
+    Offload deterministic, mechanical, or repetitive operations to CLI tools.
+    Agents focus on judgment, creativity, and reasoning tasks.
+    CLI tools provide guarantees: correct output or explicit failure.
+
+  principle: |
+    If an operation has a predictable, rule-based outcome, it belongs in a tool.
+    If an operation requires interpretation, context-sensitivity, or judgment, it belongs to an agent.
+    The boundary between tool and agent should be at the point where determinism ends.
+
+  why_offload:
+    reliability: |
+      CLI tools execute the same way every time. No drift, no interpretation variance.
+      Bugs are traceable to code, not prompt ambiguity.
+    efficiency: |
+      Tools are faster than agent reasoning for mechanical tasks.
+      Agents are freed to focus on high-value judgment work.
+    validation: |
+      Tools can enforce constraints programmatically (fail-fast on invalid input).
+      Reduces need for verification agents checking other agents' work.
+    auditability: |
+      Tool behavior is inspectable in source code.
+      Agent behavior requires log analysis and may vary across invocations.
+
+  when_to_offload:
+    good_candidates:
+      - "File/folder scaffolding with naming conventions"
+      - "YAML/JSON validation against schemas"
+      - "Git operations (worktree create, branch, commit)"
+      - "Status reporting and state queries"
+      - "Text transformations with fixed rules (sed, grep)"
+      - "Task status updates in plan files"
+      - "Moving files between plan folders (live/ -> completed/)"
+
+    keep_with_agents:
+      - "Deciding what to build or change"
+      - "Interpreting user intent"
+      - "Code generation and modification"
+      - "Review and approval decisions"
+      - "Error diagnosis and remediation strategy"
+      - "Adapting to unexpected situations"
+
+  implementation_pattern:
+    step_1: "Identify mechanical operations agents currently perform"
+    step_2: "Define CLI command interface (inputs, outputs, errors)"
+    step_3: "Implement CLI command with validation and fail-fast behavior"
+    step_4: "Update agent guidance to use CLI instead of direct implementation"
+    step_5: "Remove or simplify verification agents (CLI guarantees replace them)"
+
+  example:
+    before:
+      description: "Agent-based folder creation"
+      flow: |
+        SpawnDeployWorktree[Agent interprets naming convention]
+        --> CreateFolder[Agent creates folder]
+        --> SpawnVerifier[Another agent verifies structure]
+        --> VerifyValid{Valid?}
+        --> FixIssues[Agent fixes naming issues]
+      problems:
+        - "Naming convention interpreted from docs (can drift)"
+        - "Requires verification loop (extra agents)"
+        - "Errors discovered late (after folder exists)"
+
+    after:
+      description: "CLI-based folder creation"
+      flow: |
+        CLIPlanInit[agentic plan init branch --desc X]
+        --> Success{Exit 0?}
+        --> ProceedWithPlanning
+      benefits:
+        - "Naming convention enforced in code"
+        - "No verification needed (CLI validates or fails)"
+        - "Errors caught at creation time"
+
+  anti_patterns:
+    - name: "Agent wraps CLI without adding value"
+      description: "Agent just calls CLI and reports result. Remove the agent."
+    - name: "Tool requires judgment inputs"
+      description: "If tool needs context-sensitive input, agent should provide it, not guess."
+    - name: "Over-tooling"
+      description: "Not everything needs a CLI. One-off or rare operations can remain agent-based."
+
+  related:
+    - "cli-commands.yml - Catalog of available CLI commands"
+    - "role-separation.yml - Agent knowledge boundaries"
+    - "context-minimisation.yml - Reducing unnecessary context"
+
+  signpost: |
+    When designing new workflows, ask: "Is this operation deterministic?"
+    If yes, consider building a CLI command before writing agent guidance.
+    Reference this guideline when proposing new CLI commands.

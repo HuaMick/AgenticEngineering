@@ -32,11 +32,45 @@ cli_commands:
       description: "Show status of current worktree including plan folder"
 
   plan:
+    init:
+      command: "agentic plan init <branch> --description <desc> --base <base-branch>"
+      description: |
+        Initialize worktree and plan folder with YYMMDDXX_description naming.
+        Combines worktree creation (if not exists) with plan folder scaffolding.
+        Enforces naming convention programmatically - eliminates agent interpretation errors.
+        PREFERRED over manual worktree + scaffold for new plan creation.
+      parameters:
+        branch: "Branch name for worktree (required)"
+        desc: "Plan description for folder name (defaults to branch name)"
+        base-branch: "Base branch to create worktree from (default: main)"
+      examples:
+        - "agentic plan init agenticguidance --description naming_audit"
+        - "agentic plan init feature-auth --base develop"
+        - "agentic -j plan init test-branch --description my_feature"
+      exit_codes:
+        "0": "Success - folder created"
+        "1": "Worktree creation failed"
+        "2": "Plan folder already exists"
+        "3": "Invalid branch name or description"
+      output_json:
+        worktree: "Path to worktree directory"
+        worktree_created: "Boolean - whether worktree was newly created"
+        branch: "Branch name"
+        base: "Base branch used"
+        plan_folder: "Full path to created plan folder"
+        plan_folder_name: "Generated folder name (YYMMDDXX_description)"
+      naming_algorithm: |
+        1. Parse worktree path (e.g., /home/code/AgenticEngineering-agenticguidance)
+        2. Extract suffix after last hyphen (e.g., agenticguidance)
+        3. Take first 2 characters, uppercase (e.g., AG)
+        4. Generate: YYMMDD + XX + _ + sanitized_description
+        Example: 260115AG_naming_audit
+
     validate:
       command: "agentic plan validate <plan_folder_path>"
       description: "Validate plan folder structure and required files"
       parameters:
-        plan_folder_path: "Path to plan folder (e.g., docs/plans/live/260106Repo_Branch)"
+        plan_folder_path: "Path to plan folder (e.g., docs/plans/live/260115AG_naming_audit)"
 
     status:
       command: "agentic plan status --path <plan_folder>"
@@ -50,9 +84,12 @@ cli_commands:
 
     scaffold:
       command: "agentic plan scaffold <name> --worktree <path>"
-      description: "Create plan folder structure from template"
+      description: |
+        Create plan folder structure from template.
+        NOTE: Prefer 'plan init' for new plans - it handles worktree + naming automatically.
+        Use scaffold only when worktree already exists and you need additional plan folders.
       parameters:
-        name: "Plan name in YYMMDDRepo_Branch format"
+        name: "Plan name in YYMMDDXX_description format"
         path: "Worktree path for plan creation"
 
     task_start:
@@ -93,3 +130,19 @@ usage_notes:
   - "Prefer CLI over manual file operations for consistency"
   - "CLI validates inputs before execution"
   - "Errors are returned with actionable messages"
+  - "TOOL-OFFLOADING: Deterministic operations belong in CLI, not agent guidance"
+  - "Reference: modules/AgenticGuidance/assets/guidelines/tool-offloading.yml"
+
+recommended_workflow:
+  new_plan: |
+    For new plans, use 'agentic plan init' which:
+    1. Creates worktree if not exists
+    2. Generates correct YYMMDDXX_description folder name
+    3. Scaffolds plan structure (live/, completed/, placeholder files)
+    Example: agentic plan init my-feature --description auth_implementation
+
+  existing_worktree: |
+    If worktree already exists and you need additional plan folders:
+    1. Use 'agentic plan scaffold' with explicit name
+    2. Or use 'agentic plan init' - it will detect existing worktree
+    Example: agentic plan init my-feature --description second_plan

@@ -1,0 +1,311 @@
+name: plan_live_uat_phase_integration
+status: pending
+priority: high
+created: "2026-01-15"
+updated: "2026-01-15"
+phase_type: teach
+
+objective: |
+  Integrate UAT/user-story-validation into orchestration processes.
+  The guidance assets exist (uat_phase.mmd, user-story-validation-loop) but are not
+  implemented in orchestration-planning or orchestration-build process.mmd files.
+
+context: |
+  PROBLEM IDENTIFIED BY planner-guidance ASSESSMENT:
+
+  The following guidance EXISTS but is NOT INTEGRATED:
+  - uat_phase.mmd template (complete, marked MANDATORY)
+  - user-story-validation-loop (defined in agent-loops.yml)
+  - phase_ordering showing UAT as step 4 (PRIMARY SUCCESS CRITERIA)
+  - test-user-simulator agent (complete)
+
+  The following is MISSING from orchestration processes:
+  - orchestration-planning/process.mmd has no UAT phase in phase determination
+  - orchestration-planning/process.mmd has no UAT planning loop
+  - orchestration-build/process.mmd has no UAT execution phase
+  - planner-test doesn't explicitly mandate UAT phase planning
+  - UAT_FAILURE not in FEEDBACK_TRIGGERS
+
+  DESIGN DECISION (2026-01-15):
+  Three planner-guidance agents assessed whether to create a dedicated planner-uat agent.
+  VOTE: 3-0 AGAINST creating planner-uat.
+
+  RATIONALE:
+  - planner-test already covers UAT planning (loads strategy-user-acceptance.yml, uat_phase.mmd)
+  - UAT is a testing methodology, not a separate domain
+  - Creating planner-uat would violate context-minimisation principle
+  - Execution specialization exists at right layer (test-user-simulator)
+  - One planner per domain pattern: UAT belongs in test domain
+
+  DECISION: Extend planner-test with explicit UAT phase planning instead.
+
+  IMPACT:
+  - Orchestration completes without UAT validation
+  - User stories not created as part of build plans
+  - PRIMARY SUCCESS CRITERIA (user journey validation) skipped
+  - Implementation may not meet user needs despite passing unit/integration tests
+
+  REFERENCE:
+  - Assessment source: planner-guidance agent analysis
+  - Related plan: /home/code/AgenticEngineering-agentic-cli/docs/plans/live/260113_langsmith_cli/live/plan_live_folder_creation_automation.yml
+
+phases:
+  - name: "Analysis"
+    status: completed
+    description: "Identify gaps in UAT integration."
+    tasks:
+      - id: "analysis_assess_gaps"
+        name: "Assess Guidance Gaps"
+        status: "completed"
+        description: "planner-guidance agent identified structural gaps."
+        findings:
+          - gap: "orchestration-planning/process.mmd missing UAT phase"
+            severity: "critical"
+            location: "Phase Determination subgraph (lines 68-103)"
+          - gap: "orchestration-planning/process.mmd missing UAT planning loop"
+            severity: "critical"
+            location: "Planning Loops subgraph (lines 105-190)"
+          - gap: "orchestration-build/process.mmd missing UAT execution phase"
+            severity: "critical"
+            location: "Between Final Audit and Finalization"
+          - gap: "planner-test doesn't mandate UAT phase"
+            severity: "high"
+            location: "agents/planner/planner-test/process.yml"
+          - gap: "UAT_FAILURE not in FEEDBACK_TRIGGERS"
+            severity: "medium"
+            location: "definitions/orchestration-executor-specification.yml"
+
+      - id: "analysis_planner_uat_decision"
+        name: "Assess planner-uat Agent Need"
+        status: "completed"
+        description: "3 planner-guidance agents voted on whether to create planner-uat."
+        decision: "AGAINST (3-0)"
+        rationale:
+          - "planner-test already loads UAT inputs (strategy-user-acceptance.yml, uat_phase.mmd)"
+          - "UAT is testing methodology, not separate domain"
+          - "Violates context-minimisation to add unnecessary agent"
+          - "Specialization exists at execution layer (test-user-simulator)"
+        action: "Extend planner-test instead of creating new agent"
+
+  - name: "Remediation - Orchestration Planning"
+    status: pending
+    description: "Add UAT phase to orchestration-planning process."
+    tasks:
+      - id: "fix_phase_determination"
+        name: "Add UAT to Phase Determination"
+        status: "pending"
+        description: |
+          Update orchestration-planning/process.mmd Phase Determination to include UAT.
+          Add "uat" or "user-story-validation" to the list of possible phases.
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+        changes:
+          - location: "Line 69 comments"
+            change: "Add '- uat: user acceptance testing and story validation'"
+          - location: "Line 77-79"
+            change: "Add UAT to phase possibilities"
+        acceptance_criteria:
+          - "Phase Determination comments list UAT as possible phase"
+          - "AnalyzeObjective considers UAT requirement"
+
+      - id: "add_uat_planning_loop"
+        name: "Add UAT Planning Loop"
+        status: "pending"
+        description: |
+          Add UAT planning loop to PlanningLoops_SG subgraph.
+          Should follow Audit phase (as per phase_ordering in agent-loops.yml).
+          Uses planner-test (not a new planner-uat) for UAT phase planning.
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+        mmd_addition: |
+          %% ----------------------------------------
+          %% UAT PLANNING LOOP (MANDATORY for build plans)
+          %% ----------------------------------------
+          %% Reference: agent-loops.yml#user-story-validation-loop
+          %% PRIMARY SUCCESS CRITERIA - validates complete user journeys
+          %% NOTE: Uses planner-test (UAT is testing domain, not separate agent)
+          CheckAudit -- "No" --> CheckUAT{UAT Phase Required?}
+          AuditPlanApproved -- "Yes: Ready" --> CheckUAT
+
+          CheckUAT -- "Yes" --> UATPlanLoop{UAT Planning Loop}
+          UATPlanLoop --> SpawnPlannerTestUAT[Spawn planner-test Agent for UAT]
+          SpawnPlannerTestUAT --> SpawnUATReviewer[Spawn planner-reviewer Agent]
+          SpawnUATReviewer --> UATPlanApproved{UAT Plan Approved?}
+          UATPlanApproved -- "No: Refine" --> SpawnPlannerTestUATFix[Spawn planner-test Agent]
+          SpawnPlannerTestUATFix --> SpawnUATReviewer
+          UATPlanApproved -- "Yes: Ready" --> AllPhasesPlanned
+          CheckUAT -- "No" --> AllPhasesPlanned
+        acceptance_criteria:
+          - "UAT planning loop added after Audit loop"
+          - "Loop spawns planner-test agent (not planner-uat)"
+          - "Loop follows planner-loop pattern"
+
+  - name: "Remediation - Orchestration Build"
+    status: pending
+    description: "Add UAT execution phase to orchestration-build process."
+    tasks:
+      - id: "add_uat_execution_phase"
+        name: "Add UAT Execution Phase"
+        status: "pending"
+        description: |
+          Add UAT validation phase to orchestration-build/process.mmd.
+          Should occur after Final Audit, before Finalization.
+          Uses user-story-validation-loop.
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-build/process.mmd"
+        mmd_addition: |
+          %% ========================================
+          %% UAT VALIDATION PHASE (MANDATORY)
+          %% ========================================
+          %% LOOP_DEFINITION: agent-loops.yml#user-story-validation-loop
+          %% PRIMARY SUCCESS CRITERIA for implementation work
+          FinalAuditComplete -- "Yes: Verified" --> CheckUATStories{User Stories Exist?}
+
+          CheckUATStories -- "No" --> CreateUATStories[Spawn planner-test for UAT Stories]
+          CreateUATStories --> CheckUATStories
+
+          CheckUATStories -- "Yes" --> EnterUATPhase[Enter UAT Validation Phase]
+
+          subgraph UAT_SG ["UAT Validation Subgraph"]
+              EnterUATPhase --> SpawnUserSimulator[Spawn test-user-simulator Agent]
+              SpawnUserSimulator --> ExecuteStories[Execute User Story Tests]
+              ExecuteStories --> UATResults{All Stories Pass?}
+
+              UATResults -- "No: Failures" --> PackageUATFailure[Package UAT_FAILURE Context]
+              PackageUATFailure -.->|Re-plan with UAT_FAILURE| DelegatePlanning
+
+              UATResults -- "Yes: All Pass" --> UATComplete[UAT Validation Complete]
+          end
+
+          UATComplete --> MoveCompletedTasks
+        acceptance_criteria:
+          - "UAT phase added between Final Audit and Finalization"
+          - "Spawns test-user-simulator agent"
+          - "UAT_FAILURE triggers re-planning"
+          - "Follows uat_phase.mmd template pattern"
+
+  - name: "Remediation - Extend planner-test for UAT"
+    status: pending
+    description: "Enhance planner-test to explicitly handle UAT phase planning."
+    tasks:
+      - id: "update_planner_test_process"
+        name: "Update planner-test process.yml for UAT"
+        status: "pending"
+        description: |
+          Add explicit UAT phase planning section to planner-test/process.yml:
+          - Reference uat_phase.mmd as required template
+          - Include guidance for selecting UAT strategy (simulator, blind test, etc.)
+          - Document when to include user-story-validation-loop
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-test/process.yml"
+        changes:
+          - section: "Add UAT Phase Planning section"
+            content: |
+              UAT_PHASE_PLANNING:
+                mandatory: true
+                template: "uat_phase.mmd"
+                strategy_options:
+                  - simulator: "test-user-simulator executes stories"
+                  - blind_test: "Agent follows docs without implementation access"
+                  - doc_loop: "Documentation validation loop"
+                  - manual: "Human executes stories"
+                output: "plan_uat.yml or UAT section in plan_test.yml"
+        acceptance_criteria:
+          - "UAT phase planning explicitly documented in process.yml"
+          - "uat_phase.mmd referenced as required template"
+          - "Strategy selection guidance included"
+
+      - id: "update_planner_test_manifest"
+        name: "Update planner-test manifest.yml"
+        status: "pending"
+        description: |
+          Ensure manifest explicitly includes UAT as part of test planning scope.
+          Add UAT-specific triggers and patterns.
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-test/manifest.yml"
+        acceptance_criteria:
+          - "UAT planning listed in agent capabilities"
+          - "Triggers include UAT-related keywords"
+
+      - id: "verify_planner_test_inputs"
+        name: "Verify planner-test inputs.yml has UAT references"
+        status: "pending"
+        description: |
+          Confirm planner-test/inputs.yml already loads UAT-related inputs:
+          - strategy-user-acceptance.yml
+          - uat_phase.mmd
+          - user-stories.yml
+          Add any missing references.
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-test/inputs.yml"
+        acceptance_criteria:
+          - "All UAT-related inputs are loaded"
+          - "test-user-simulator agent referenced"
+
+  - name: "Remediation - Supporting Changes"
+    status: pending
+    description: "Update supporting definitions and guidance."
+    tasks:
+      - id: "add_uat_failure_trigger"
+        name: "Add UAT_FAILURE to FEEDBACK_TRIGGERS"
+        status: "pending"
+        description: "Define UAT_FAILURE as feedback trigger type."
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/orchestration-executor-specification.yml"
+        acceptance_criteria:
+          - "UAT_FAILURE defined with context requirements"
+          - "Re-planning path specified"
+
+      - id: "update_planner_build_stories"
+        name: "Update planner-build for User Stories"
+        status: "pending"
+        description: |
+          Add guidance for planner-build to consider user stories.
+          Note that UAT planning is handled by planner-test.
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-build/process.yml"
+        acceptance_criteria:
+          - "planner-build mentions user story consideration"
+          - "Links to planner-test for UAT planning"
+
+      - id: "update_inputs_yml_references"
+        name: "Update orchestration inputs.yml Files"
+        status: "pending"
+        description: "Ensure inputs.yml files reference UAT components."
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml"
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-build/inputs.yml"
+        acceptance_criteria:
+          - "planner-test UAT capability referenced in orchestration-planning inputs"
+          - "test-user-simulator referenced in orchestration-build inputs"
+          - "UAT_FAILURE documented in feedback triggers"
+
+success_criteria:
+  - "orchestration-planning/process.mmd includes UAT phase determination"
+  - "orchestration-planning/process.mmd includes UAT planning loop (using planner-test)"
+  - "orchestration-build/process.mmd includes UAT execution phase"
+  - "planner-test explicitly mandates UAT phase planning"
+  - "UAT_FAILURE defined in orchestration-executor-specification"
+  - "Future _plan_build -> _orchestrate executions include UAT"
+
+validation:
+  test_method: |
+    After remediation, run _plan_build.yml for a test objective.
+    Verify the generated plan includes:
+    1. User Stories phase (from planner-test UAT planning)
+    2. UAT Testing phase
+    Then run _orchestrate.yml and verify UAT execution occurs.
+
+notes: |
+  This plan addresses a STRUCTURAL GAP in orchestration processes.
+  The guidance assets exist but are disconnected from the execution flow.
+
+  ROOT CAUSE: UAT was defined in definitions but never integrated into
+  the orchestration process.mmd files that control execution flow.
+
+  DESIGN DECISION: Extend planner-test rather than create planner-uat.
+  Rationale: UAT is testing domain, one-planner-per-domain pattern,
+  context-minimisation, existing inputs already loaded.
+
+  PRIORITY: High - without this fix, all build plans skip user validation,
+  which is defined as the PRIMARY SUCCESS CRITERIA in agent-loops.yml.
