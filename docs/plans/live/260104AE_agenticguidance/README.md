@@ -1,12 +1,35 @@
 # Plan: 260104AE_agenticguidance
 
-## Status: ACTIVE (CLI Usage Teaching COMPLETE)
+## Status: ACTIVE (Archival & Cleanup COMPLETE)
 
 **Updated**: 2026-01-16
 **Branch**: `agenticguidance`
 **Worktree**: `/home/code/AgenticEngineering-agenticguidance`
 
-## Current Work: CLI Usage Teaching Complete
+## Current Work: Plan Folder Cleanup Complete
+
+**Session 2026-01-16 (Ralph Loop - Iteration 8)**
+
+### Plan Folder Archival - 9 Plans Moved to completed/
+Cleaned up live/ folder by moving all completed plans:
+
+**Moved to completed/:**
+1. plan_live_cli_guidance_cleanup.yml
+2. plan_live_teaching_file_operations.yml
+3. plan_live_uat_integration_remediation.yml
+4. plan_live_uat_phase_integration.yml
+5. plan_live_validation_phase_gap_investigation.yml
+6. plan_live_cli_usage_teaching.yml (iteration 7)
+7. plan_live_guidance_validation_process.yml (analysis doc - patterns in agent-loops.yml)
+8. plan_live_naming_convention_audit.yml (pivoted - CLI successor complete)
+9. orchestration_cli_guidance_cleanup.mmd
+10. orchestration_uat_phase_integration.mmd
+
+**Remaining in live/ (2 items):**
+1. plan_live_batch_remediation.yml - Phase 3 BLOCKED (7 user decisions pending)
+2. backlog_cli_task_lists.yml - BACKLOG (future experiment)
+
+---
 
 **Session 2026-01-16 (Ralph Loop - Iteration 7)**
 
