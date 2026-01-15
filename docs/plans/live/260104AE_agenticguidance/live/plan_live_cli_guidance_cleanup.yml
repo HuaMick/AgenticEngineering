@@ -1,0 +1,180 @@
+name: plan_live_cli_guidance_cleanup
+status: completed
+priority: high
+created: "2026-01-16"
+updated: "2026-01-16"
+completed_date: "2026-01-16"
+phase_type: teach
+
+objective: |
+  Update AgenticGuidance assets and agent processes to reflect CLI tool-offloading
+  for plan folder creation. Remove redundant guidance now that 'agentic plan init'
+  enforces naming conventions programmatically.
+
+context: |
+  PROBLEM:
+  - Multiple definition files reference outdated YYMMDDRepo_Branch naming pattern
+  - cli-commands.yml is missing documentation for 'agentic plan init' command
+  - deploy-worktree agent is now a thin wrapper around CLI commands
+  - Naming convention rules are duplicated across 5+ process files
+  - Orchestration processes spawn deploy-worktree when direct CLI call suffices
+
+  ROOT CAUSE:
+  - CLI was implemented (agentic plan init) but guidance assets weren't updated
+  - Tool-offloading pattern not fully propagated through agent definitions
+
+  SOLUTION:
+  - Update definition files with correct YYMMDDXX_description pattern
+  - Add comprehensive plan.init documentation to cli-commands.yml
+  - Simplify orchestration processes to call CLI directly
+  - Remove redundant naming convention guidance from planner processes
+
+phases:
+  - name: "Documentation_Updates"
+    status: completed
+    description: "Update definition files with correct naming patterns and CLI documentation."
+    agent_routing: "teacher-update-assets"
+    tasks:
+      - id: "doc_001"
+        name: "Add plan.init to cli-commands.yml"
+        status: "pending"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/cli-commands.yml"
+        guidance: |
+          Add comprehensive documentation for 'agentic plan init' command:
+          - Command: agentic plan init <branch> [--description <desc>] [--base <base-branch>]
+          - Exit codes: 0=success, 1=worktree failed, 2=folder exists, 3=invalid
+          - JSON fields: worktree, worktree_created, plan_folder, plan_folder_name
+          - Naming: YYMMDDXX_description (YYMMDD=date, XX=worktree ID, description=sanitized)
+        acceptance_criteria:
+          - "plan.init command fully documented with parameters"
+          - "Exit codes documented with meanings"
+          - "Examples show common usage patterns"
+
+      - id: "doc_002"
+        name: "Update plan-folder-conventions.yml"
+        status: "pending"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/plan-folder-conventions.yml"
+        guidance: |
+          Update naming pattern from YYMMDDRepo_Branch to YYMMDDXX_description.
+          Add cli_enforcement note and worktree_id_derivation explanation.
+        acceptance_criteria:
+          - "Pattern shows YYMMDDXX_description format"
+          - "XX explained as 2-char worktree identifier from path suffix"
+
+      - id: "doc_003"
+        name: "Update plan-structure-requirements.yml"
+        status: "pending"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/plan-structure-requirements.yml"
+        guidance: |
+          Update worktree field to YYMMDDXX_description format (CLI-enforced).
+          Update live_plans path and examples.
+        acceptance_criteria:
+          - "All examples use YYMMDDXX_description format"
+          - "CLI-enforced note added"
+
+      - id: "doc_004"
+        name: "Update plans.yml naming references"
+        status: "pending"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/plans.yml"
+        guidance: |
+          Update plans_live description to YYMMDDXX_description pattern.
+          Update plans_completed and folder copy command.
+        acceptance_criteria:
+          - "All path examples use YYMMDDXX_description"
+          - "CLI enforcement mentioned"
+
+      - id: "doc_005"
+        name: "Update entrypoint output references"
+        status: "pending"
+        target_files:
+          - "modules/AgenticGuidance/entrypoints/_plan_build.yml"
+          - "modules/AgenticGuidance/entrypoints/_plan_teach.yml"
+        guidance: |
+          Update steps to reference 'agentic plan init' instead of deploy-worktree.
+          Update output path pattern to YYMMDDXX_description.
+        acceptance_criteria:
+          - "Steps reference agentic plan init"
+          - "Output shows YYMMDDXX_description pattern"
+
+  - name: "Orchestration_Simplification"
+    status: completed
+    description: "Update orchestration processes to call CLI directly instead of spawning deploy-worktree."
+    agent_routing: "teacher-update-guidance"
+    tasks:
+      - id: "orch_001"
+        name: "Update orchestration-build.mmd"
+        status: "pending"
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-build/process.mmd"
+        guidance: |
+          Replace SpawnDeployWorktree node with:
+          - CheckExistingPlan decision node
+          - InitPlanFolder node calling CLI: agentic plan init
+          - CheckInitResult for exit code handling
+          Add conditional for pre-approved plans.
+        acceptance_criteria:
+          - "Direct CLI call instead of deploy-worktree spawn"
+          - "Conditional check for pre-approved plans"
+
+      - id: "orch_002"
+        name: "Update orchestration-guidance.mmd"
+        status: "pending"
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-guidance/process.mmd"
+        guidance: |
+          Same pattern as orchestration-build.mmd - replace SpawnDeployWorktree
+          with direct CLI call and conditional for pre-approved plans.
+        acceptance_criteria:
+          - "Direct CLI call instead of deploy-worktree spawn"
+          - "Conditional check for pre-approved plans"
+
+  - name: "Redundancy_Removal"
+    status: completed
+    description: "Remove duplicate naming convention guidance from planner processes."
+    agent_routing: "teacher-update-guidance"
+    tasks:
+      - id: "clean_001"
+        name: "Update planner process naming references"
+        status: "pending"
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-guidance/process.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-build/process.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-cleaning/process.yml"
+        guidance: |
+          Replace all YYMMDDRepo_Branch with YYMMDDXX_description.
+          Update deploy-worktree escalation to reference CLI command.
+        acceptance_criteria:
+          - "All references use YYMMDDXX_description"
+          - "CLI enforcement mentioned where appropriate"
+
+      - id: "clean_002"
+        name: "Update planner-reviewer validation"
+        status: "pending"
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml"
+        guidance: |
+          Update naming convention validation to defer to CLI.
+        acceptance_criteria:
+          - "Naming validation notes CLI enforcement"
+
+      - id: "clean_003"
+        name: "Simplify deploy-worktree verification"
+        status: "pending"
+        target_files:
+          - "modules/AgenticGuidance/agents/deploy/deploy-worktree/process.yml"
+        guidance: |
+          Simplify final verification to trust CLI exit codes.
+          Remove redundant agentic worktree list/plan list/status sequence.
+        acceptance_criteria:
+          - "CLI exit codes trusted for validation"
+          - "Simplified verification step"
+
+success_criteria:
+  - "cli-commands.yml documents plan.init with all parameters and exit codes"
+  - "All definition files use YYMMDDXX_description pattern consistently"
+  - "Orchestration processes call CLI directly (no deploy-worktree spawn)"
+  - "Planner processes reference CLI-enforced naming"

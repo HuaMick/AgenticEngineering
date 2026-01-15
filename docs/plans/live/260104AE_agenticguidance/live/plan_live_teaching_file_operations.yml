@@ -1,0 +1,340 @@
+# Plan: Teaching Phase - File Operation Guidelines
+# Created: 2026-01-15
+# Status: pending
+# Priority: high (prerequisite for batch remediation execution)
+# Purpose: Create foundational guidance for file operations before executing batch remediation
+
+name: "teaching_file_operations"
+worktree_path: "/home/code/AgenticEngineering-agenticguidance"
+branch: "main"
+status: "pending"
+priority: "high"
+
+context: |
+  This teaching phase plan creates foundational guidelines required before executing
+  the batch file remediation plan (plan_live_batch_remediation.yml).
+
+  Gap analysis revealed that agents lack concrete patterns for:
+  - Safely merging YAML files
+  - Finding and updating all references after file changes
+  - Moving files between folders (definitions/ vs guidelines/)
+  - Validating content preservation during consolidation
+
+  These 4 guidelines must be created BEFORE the batch remediation Phase 1-2 tasks
+  can be executed reliably by agents.
+
+dependencies:
+  blocks:
+    - plan: "plan_live_batch_remediation.yml"
+      phases: ["High_Priority_Cleanup", "Medium_Priority_Consolidation"]
+      reason: "Agents need file operation patterns before executing merge/move tasks"
+
+# ============================================================================
+# PHASE 1: TEACHING - Create File Operation Guidelines
+# ============================================================================
+
+phases:
+  - name: "Teaching_File_Operations"
+    execution: sequential
+    description: "Create 4 foundational guidelines for file merge, move, and reference operations"
+    agent_category: "teacher"
+    tasks:
+      # --- GUIDELINE 1: Reference Management ---
+      - id: "teach_001"
+        name: "Create reference-management.yml Guideline"
+        description: |
+          Create a comprehensive guideline for discovering, tracking, and updating
+          all references when files are moved, renamed, or deleted.
+
+          This is the most fundamental pattern - all other file operations depend on
+          being able to find and update references correctly.
+        status: "pending"
+        agent_type: "teacher-update-guidance"
+        operation: "CREATE"
+        target_files:
+          - "modules/AgenticGuidance/assets/guidelines/reference-management.yml"
+        guidance: |
+          STRUCTURE:
+          1. purpose: Why reference management matters
+          2. discovery_patterns:
+             - grep patterns for finding file references
+             - inputs.yml reference patterns
+             - fragment reference patterns (#anchor)
+             - nested references (file A references B which references C)
+          3. update_workflow:
+             - Step-by-step process for updating references
+             - Order of operations (update references before deleting source)
+             - Handling fragment references when anchors move
+          4. verification:
+             - grep validation commands
+             - "Zero results" acceptance pattern
+             - Testing fragment resolution
+          5. examples:
+             - Example: Moving a file from definitions/ to guidelines/
+             - Example: Renaming a file
+             - Example: Deleting a file after merge
+
+          ACCEPTANCE CRITERIA TEMPLATE:
+          Include reusable acceptance criteria that other plans can reference:
+          - "grep -r 'old/path/file.yml' returns 0 results"
+          - "All inputs.yml files verified"
+          - "Fragment references resolve correctly"
+        acceptance_criteria:
+          - "File created at modules/AgenticGuidance/assets/guidelines/reference-management.yml"
+          - "Contains discovery_patterns section with concrete grep examples"
+          - "Contains update_workflow with step-by-step process"
+          - "Contains verification section with testable patterns"
+          - "Contains at least 2 worked examples"
+          - "YAML syntax valid"
+
+      # --- GUIDELINE 2: File Consolidation ---
+      - id: "teach_002"
+        name: "Create file-consolidation.yml Guideline"
+        description: |
+          Create a guideline for safely merging multiple YAML files into a single file.
+          This covers the mechanics of combining content while preserving structure
+          and ensuring no content is lost.
+        status: "pending"
+        agent_type: "teacher-update-guidance"
+        operation: "CREATE"
+        target_files:
+          - "modules/AgenticGuidance/assets/guidelines/file-consolidation.yml"
+        depends_on:
+          - "teach_001"  # Needs reference-management patterns
+        guidance: |
+          STRUCTURE:
+          1. purpose: When and why to consolidate files
+          2. pre_merge_checklist:
+             - Identify all references to source files (use reference-management.yml)
+             - Check for key name conflicts
+             - Determine "base" file (larger/more comprehensive)
+             - Verify no external consumers depend on separate files
+          3. merge_patterns:
+             - YAML structure preservation
+             - When to use anchors vs nested structure
+             - Handling overlapping definitions
+             - Content ordering principles
+          4. post_merge_validation:
+             - Line count verification (merged >= sum of sources)
+             - Content completeness check
+             - YAML syntax validation
+             - Fragment reference testing
+          5. content_loss_prevention:
+             - Diff-based verification approach
+             - Unique content extraction before merge
+             - Rollback procedure if issues found
+          6. examples:
+             - Example: Merging two small definition files
+             - Example: Merging into existing comprehensive file
+             - Anti-example: What can go wrong without validation
+
+          ACCEPTANCE CRITERIA TEMPLATE:
+          Include reusable acceptance criteria:
+          - "Merged file line count >= sum of source file line counts"
+          - "All source file content appears in merged file"
+          - "No duplicate key names in merged YAML"
+        acceptance_criteria:
+          - "File created at modules/AgenticGuidance/assets/guidelines/file-consolidation.yml"
+          - "Contains pre_merge_checklist"
+          - "Contains merge_patterns with concrete YAML examples"
+          - "Contains post_merge_validation with verification commands"
+          - "Contains content_loss_prevention section"
+          - "Contains at least 2 worked examples"
+          - "References reference-management.yml for discovery patterns"
+          - "YAML syntax valid"
+
+      # --- GUIDELINE 3: File Reclassification ---
+      - id: "teach_003"
+        name: "Create file-reclassification.yml Guideline"
+        description: |
+          Create a guideline for moving files between asset folders based on content type.
+          This complements definition.yml and guideline.yml by providing the "how to move"
+          process, not just "what is" classification criteria.
+        status: "pending"
+        agent_type: "teacher-update-guidance"
+        operation: "CREATE"
+        target_files:
+          - "modules/AgenticGuidance/assets/guidelines/file-reclassification.yml"
+        depends_on:
+          - "teach_001"  # Needs reference-management patterns
+        guidance: |
+          STRUCTURE:
+          1. purpose: When to reclassify files between folders
+          2. classification_review:
+             - Link to definition.yml criteria
+             - Link to guideline.yml criteria
+             - Decision tree: Is this prescriptive (how to act) or descriptive (what is)?
+             - Edge cases: Mixed content files
+          3. folder_destinations:
+             - definitions/: Concepts, vocabulary, specifications
+             - guidelines/: Prescriptive rules, patterns, workflows
+             - examples/: Worked examples, templates
+             - tests/: Test data, scenarios
+          4. reclassification_workflow:
+             - Step 1: Confirm current classification is incorrect
+             - Step 2: Identify all references (use reference-management.yml)
+             - Step 3: Move file to correct folder
+             - Step 4: Update all references
+             - Step 5: Verify no broken references
+          5. special_cases:
+             - Strategy files: Consistent location for all strategy-*.yml
+             - Test data vs definitions: When file is test scenarios
+             - Project-specific vs reusable: When to move out of assets/
+          6. examples:
+             - Example: Moving prescriptive content from definitions/ to guidelines/
+             - Example: Moving test scenarios from definitions/ to tests/
+        acceptance_criteria:
+          - "File created at modules/AgenticGuidance/assets/guidelines/file-reclassification.yml"
+          - "Contains classification_review with links to definition.yml and guideline.yml"
+          - "Contains folder_destinations mapping"
+          - "Contains step-by-step reclassification_workflow"
+          - "Contains special_cases section"
+          - "References reference-management.yml for reference updates"
+          - "YAML syntax valid"
+
+      # --- GUIDELINE 4: Content Evaluation ---
+      - id: "teach_004"
+        name: "Create content-evaluation.yml Guideline"
+        description: |
+          Create a guideline for evaluating file content to determine consolidation
+          decisions. This helps agents make informed decisions about which files to
+          merge vs keep separate.
+        status: "pending"
+        agent_type: "teacher-update-guidance"
+        operation: "CREATE"
+        target_files:
+          - "modules/AgenticGuidance/assets/guidelines/content-evaluation.yml"
+        guidance: |
+          STRUCTURE:
+          1. purpose: Making informed consolidation decisions
+          2. duplicate_detection:
+             - How to identify overlapping content between files
+             - Semantic vs syntactic duplication
+             - When duplication is acceptable (e.g., cross-references)
+          3. uniqueness_assessment:
+             - Identifying unique value in each file
+             - Determining canonical source for shared concepts
+             - Token overhead analysis (when to consolidate for efficiency)
+          4. consolidation_decision_matrix:
+             - MERGE when: High overlap, similar purpose, same consumers
+             - KEEP SEPARATE when: Distinct audiences, different update cycles
+             - SPLIT when: Mixed concerns, one file serving multiple purposes
+          5. base_file_selection:
+             - Which file becomes the "base" for merge
+             - Larger file as base (usually)
+             - More comprehensive file as base
+             - File with more references as base
+          6. decision_documentation:
+             - How to document keep/merge/split decisions
+             - Template for decision rationale
+          7. examples:
+             - Example: Two files with 80% overlap -> MERGE
+             - Example: Definition vs guideline content -> SPLIT
+             - Example: Small stub vs comprehensive file -> MERGE into comprehensive
+        acceptance_criteria:
+          - "File created at modules/AgenticGuidance/assets/guidelines/content-evaluation.yml"
+          - "Contains duplicate_detection patterns"
+          - "Contains uniqueness_assessment criteria"
+          - "Contains consolidation_decision_matrix"
+          - "Contains base_file_selection guidance"
+          - "Contains at least 3 decision examples"
+          - "YAML syntax valid"
+
+# ============================================================================
+# PHASE 2: VALIDATION - Verify Guidelines Work
+# ============================================================================
+
+  - name: "Validation_File_Operations"
+    execution: sequential
+    description: "Validate guidelines work by applying to a test case from batch remediation"
+    agent_category: "test"
+    tasks:
+      - id: "validate_001"
+        name: "Dry-Run Test: Merge skipped-test.yml"
+        description: |
+          Use the new guidelines to plan (but not execute) the merge of
+          skipped-test.yml into acceptable-skips.yml (high_005 from batch plan).
+          This validates the guidelines are complete and actionable.
+        status: "pending"
+        agent_type: "test-guidance-simulator"
+        operation: "SIMULATE"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/skipped-test.yml"
+          - "modules/AgenticGuidance/assets/definitions/acceptable-skips.yml"
+        inputs:
+          - "modules/AgenticGuidance/assets/guidelines/reference-management.yml"
+          - "modules/AgenticGuidance/assets/guidelines/file-consolidation.yml"
+        guidance: |
+          SIMULATION STEPS:
+          1. Follow reference-management.yml to discover all references to skipped-test.yml
+          2. Follow file-consolidation.yml pre_merge_checklist
+          3. Document the merge plan (without executing)
+          4. Identify any gaps in the guidelines
+
+          OUTPUT:
+          - List of references found
+          - Proposed merge structure
+          - Any guideline gaps identified
+          - Recommendation: Ready to proceed OR needs guideline updates
+        acceptance_criteria:
+          - "All references to skipped-test.yml discovered"
+          - "Merge plan documented following file-consolidation.yml"
+          - "Any guideline gaps identified and documented"
+          - "Recommendation provided"
+
+      - id: "validate_002"
+        name: "Dry-Run Test: Move fence-build-deploy.yml"
+        description: |
+          Use the new guidelines to plan (but not execute) the move of
+          fence-build-deploy.yml from definitions/ to guidelines/ (med_004 from batch plan).
+        status: "pending"
+        agent_type: "test-guidance-simulator"
+        operation: "SIMULATE"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/fence-build-deploy.yml"
+        inputs:
+          - "modules/AgenticGuidance/assets/guidelines/reference-management.yml"
+          - "modules/AgenticGuidance/assets/guidelines/file-reclassification.yml"
+        guidance: |
+          SIMULATION STEPS:
+          1. Follow file-reclassification.yml to confirm classification
+          2. Follow reference-management.yml to discover all references
+          3. Document the move plan (without executing)
+          4. Identify any gaps in the guidelines
+        acceptance_criteria:
+          - "Classification confirmed following file-reclassification.yml"
+          - "All references discovered"
+          - "Move plan documented"
+          - "Any guideline gaps identified"
+
+# ============================================================================
+# SUCCESS CRITERIA
+# ============================================================================
+success_criteria:
+  - "All 4 guidelines created in modules/AgenticGuidance/assets/guidelines/"
+  - "All guidelines have valid YAML syntax"
+  - "All guidelines contain worked examples"
+  - "Guidelines cross-reference each other appropriately"
+  - "Validation dry-runs complete without identifying major gaps"
+  - "Batch remediation plan ready for execution with guidance support"
+
+# ============================================================================
+# ORCHESTRATION
+# ============================================================================
+orchestration:
+  agent_routing:
+    Teaching_File_Operations: "teacher-update-guidance"
+    Validation_File_Operations: "test-guidance-simulator"
+  execution_notes: |
+    This teaching phase MUST complete before batch remediation Phase 1-2.
+
+    Execution order:
+    1. teach_001 (reference-management) - foundational, no dependencies
+    2. teach_002 (file-consolidation) - depends on teach_001
+    3. teach_003 (file-reclassification) - depends on teach_001
+    4. teach_004 (content-evaluation) - no dependencies, can run parallel with 002/003
+    5. validate_001 and validate_002 - run after all teaching tasks complete
+
+    After validation passes, update plan_live_batch_remediation.yml:
+    - Add inputs references to new guidelines
+    - Update status to "ready"

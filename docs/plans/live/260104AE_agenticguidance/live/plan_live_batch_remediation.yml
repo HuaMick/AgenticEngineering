@@ -1,22 +1,359 @@
 # Plan: Batch File Remediation (Backlog)
 # Created: 2026-01-15
-# Status: pending
-# Priority: low (backlog work from completed batch audit)
+# Updated: 2026-01-15
+# Status: pending_decisions
+# Priority: medium (ready after teaching phase and user decisions)
 # Purpose: Complete remaining incomplete items from batch file recommendations
 
 name: "batch_file_remediation"
 worktree_path: "/home/code/AgenticEngineering-agenticguidance"
 branch: "main"
-status: "pending"
-priority: "low"
+status: "pending_decisions"
+priority: "medium"
 
 context: |
   This plan captures incomplete items from the batch file audit work.
   Batches 1-6 were analyzed by the explore agent, and many recommendations
   were implemented. This plan tracks the remaining incomplete items.
 
-  These are lower-priority cleanup tasks that improve codebase hygiene
-  but are not blocking active development.
+  PREREQUISITE: Teaching phase (plan_live_teaching_file_operations.yml) must
+  complete before executing Phase 1-2 tasks. The teaching phase creates 4
+  foundational guidelines for file operations:
+  - reference-management.yml
+  - file-consolidation.yml
+  - file-reclassification.yml
+  - content-evaluation.yml
+
+  BLOCKING: Phase 3 tasks require human decisions (see decision_items below).
+  User should update the decision_items section with answers before execution.
+
+# ============================================================================
+# DEPENDENCIES
+# ============================================================================
+dependencies:
+  requires:
+    - plan: "plan_live_teaching_file_operations.yml"
+      phases: ["Teaching_File_Operations", "Validation_File_Operations"]
+      reason: "Agents need file operation guidelines before executing merge/move tasks"
+      status: "pending"
+
+# ============================================================================
+# DECISION ITEMS - Require Human Input
+# ============================================================================
+# Update the 'decision' field with your choice before execution.
+# These decisions are referenced by Phase 3 tasks.
+
+decision_items:
+
+  # ---------------------------------------------------------------------------
+  # DECISION 1: specifications/ Folder (low_001)
+  # ---------------------------------------------------------------------------
+  - id: "decision_001"
+    task_ref: "low_001"
+    question: "Should we create a specifications/ folder for format specs?"
+    context: |
+      Currently, format specifications like process-file-format.yml live in
+      definitions/. This mixes two concepts:
+      - Definitions: Concepts and vocabulary (what is an "agent", what is a "plan")
+      - Specifications: Format/schema definitions (how a process.yml is structured)
+
+      Examples of current specs in definitions/:
+      - process-file-format.yml
+      - plan-mmd-schema.yml
+      - orchestration-executor-specification.yml
+    options:
+      A: |
+        CREATE specifications/ FOLDER
+        - New folder: modules/AgenticGuidance/assets/specifications/
+        - Move format specs (process-file-format.yml, plan-mmd-schema.yml, etc.)
+        - PRO: Clear conceptual separation
+        - CON: Adds folder complexity, requires reference updates
+      B: |
+        USE NAMING CONVENTION
+        - Keep all in definitions/
+        - Use *-specification.yml or *-format.yml naming convention
+        - PRO: No folder change, simple grep to find specs
+        - CON: Less explicit separation
+      C: |
+        NO CHANGE
+        - Keep current structure
+        - PRO: No work required
+        - CON: Mixed concepts in definitions/
+    decision: null  # <-- USER: Set to "A", "B", or "C"
+    rationale: null  # <-- USER: Brief explanation of choice
+
+  # ---------------------------------------------------------------------------
+  # DECISION 2: test-execution-workflow.yml Generalization (low_002)
+  # ---------------------------------------------------------------------------
+  - id: "decision_002"
+    task_ref: "low_002"
+    question: "Should we generalize test-execution-workflow.yml now or defer?"
+    context: |
+      The file modules/AgenticGuidance/assets/guidelines/test-execution-workflow.yml
+      contains project-specific "myagents studio" commands:
+      - start_command: "bun run studio:start"
+      - health_check: specific endpoints
+
+      The file already has a TODO noting this issue. Generalization would:
+      - Extract pattern variables (service_name, start_cmd, stop_cmd, health_check)
+      - Make workflow reusable across projects
+      - Move project-specific values to project config
+    options:
+      A: |
+        GENERALIZE NOW
+        - Refactor in this batch remediation
+        - Create configurable service pattern
+        - Update file to be project-agnostic
+        - PRO: Workflow becomes reusable
+        - CON: More work in this batch
+      B: |
+        DEFER TO SEPARATE TASK
+        - Create new plan for workflow generalization
+        - Keep this batch focused on file cleanup
+        - PRO: Keeps batch remediation focused
+        - CON: Tech debt remains
+      C: |
+        DELETE FILE
+        - If workflow is not actively used, delete it
+        - Check for references first
+        - PRO: Reduces clutter if unused
+        - CON: Loses potentially useful pattern
+    decision: null  # <-- USER: Set to "A", "B", or "C"
+    rationale: null
+
+  # ---------------------------------------------------------------------------
+  # DECISION 3: acceptable-skips.yml Location (low_003)
+  # ---------------------------------------------------------------------------
+  - id: "decision_003"
+    task_ref: "low_003"
+    question: "Where should acceptable-skips.yml live?"
+    context: |
+      Current location: modules/AgenticGuidance/assets/definitions/acceptable-skips.yml
+
+      Content analysis:
+      - DEFINITIONAL content (~40%):
+        - Categories of acceptable skips (environment_dependency, integration_only, etc.)
+        - What makes a skip "acceptable"
+      - PRESCRIPTIVE content (~60%):
+        - audit_checklist: Step-by-step verification process
+        - remediation_guidance: How to document, how to clean up
+        - DO/DON'T rules
+
+      The file is ~4.4KB and serves both purposes.
+    options:
+      A: |
+        KEEP IN definitions/
+        - Categories are the primary value
+        - Prescriptive content is supporting documentation
+        - PRO: No move required
+        - CON: Prescriptive content in definitions/
+      B: |
+        MOVE TO guidelines/
+        - Prescriptive content dominates (60%)
+        - Categories can be inline in guideline
+        - PRO: Matches content type
+        - CON: Requires reference updates
+      C: |
+        SPLIT INTO TWO FILES
+        - definitions/acceptable-skips.yml: Just the categories
+        - guidelines/skip-audit.yml: Audit checklist and remediation
+        - PRO: Clean separation of concerns
+        - CON: More files to maintain, adds complexity
+    decision: null  # <-- USER: Set to "A", "B", or "C"
+    rationale: null
+
+  # ---------------------------------------------------------------------------
+  # DECISION 4: gcp-artifact-registry.yml Location (low_004)
+  # ---------------------------------------------------------------------------
+  - id: "decision_004"
+    task_ref: "low_004"
+    question: "Where should project-specific gcp-artifact-registry.yml go?"
+    context: |
+      Current location: modules/AgenticGuidance/assets/definitions/gcp-artifact-registry.yml
+
+      File content (~1KB):
+      - GCP project ID
+      - Artifact registry location
+      - Repository names
+      - Push/pull commands
+
+      This is project-specific configuration, not a reusable concept.
+      It should not be in assets/definitions/ which is for reusable guidance.
+
+      Need to check: Is this file actively referenced by any agent inputs?
+    options:
+      A: |
+        MOVE TO PROJECT config/
+        - New location: config/gcp-artifact-registry.yml
+        - Update any references
+        - PRO: Clear project-specific location
+        - CON: May need to create config/ folder
+      B: |
+        MOVE TO .agentic/config/
+        - New location: .agentic/config/gcp-artifact-registry.yml
+        - Follows .agentic/ pattern for project config
+        - PRO: Uses existing pattern
+        - CON: May not exist yet
+      C: |
+        DELETE IF UNUSED
+        - Check for active references first
+        - If no agent loads this, delete it
+        - PRO: Removes clutter
+        - CON: Loses documentation value if used manually
+      D: |
+        MOVE TO docs/
+        - If it's reference documentation, not agent input
+        - New location: docs/infrastructure/gcp-artifact-registry.md
+        - PRO: Appropriate for documentation
+        - CON: Format change from yml to md
+    decision: null  # <-- USER: Set to "A", "B", "C", or "D"
+    rationale: null
+
+  # ---------------------------------------------------------------------------
+  # DECISION 5: studio-integration-tests.yml Validity (low_005)
+  # ---------------------------------------------------------------------------
+  - id: "decision_005"
+    task_ref: "low_005"
+    question: "Is studio-integration-tests.yml still valid and useful?"
+    context: |
+      Current location: modules/AgenticGuidance/assets/definitions/studio-integration-tests.yml
+      Size: ~500 bytes
+
+      File content:
+      - Lists specific test names that require LangGraph Studio running
+      - Used by test agents to know which tests to skip when studio unavailable
+
+      Questions to answer:
+      1. Do the listed test names still exist in the codebase?
+      2. Is this project-specific (myagents) or reusable pattern?
+      3. Is there a better way to mark studio-required tests (e.g., pytest markers)?
+
+      Need investigation: grep for test names in codebase.
+    options:
+      A: |
+        KEEP AND VERIFY
+        - Verify test names still exist
+        - Update list if needed
+        - Keep in definitions/ as reusable pattern
+        - PRO: Pattern is useful for other projects
+        - CON: May be stale
+      B: |
+        MOVE TO PROJECT CONFIG
+        - If tests are project-specific
+        - Move to project test config location
+        - PRO: Project-specific content in project location
+        - CON: Loses reusable pattern
+      C: |
+        DELETE
+        - If test names don't exist or pattern is unused
+        - Clean up stale file
+        - PRO: Removes clutter
+        - CON: Loses documentation if still relevant
+      D: |
+        DEFER - NEEDS INVESTIGATION
+        - Create investigation task first
+        - Verify test names exist
+        - Then make decision
+        - PRO: Informed decision
+        - CON: Delays batch completion
+    decision: null  # <-- USER: Set to "A", "B", "C", or "D"
+    rationale: null
+
+  # ---------------------------------------------------------------------------
+  # DECISION 6: workflow-test-readme.yml Fate (low_006)
+  # ---------------------------------------------------------------------------
+  - id: "decision_006"
+    task_ref: "low_006"
+    question: "What should happen to the minimal workflow-test-readme.yml?"
+    context: |
+      Current location: modules/AgenticGuidance/assets/definitions/workflow-test-readme.yml
+      Size: ~336 bytes (6 lines of actual content)
+
+      Current content:
+      - Brief statement that test directories should have README.md files
+      - No details on what READMEs should contain
+      - No examples
+
+      The file is so minimal it provides little actionable guidance.
+    options:
+      A: |
+        DELETE
+        - Content too minimal to be useful
+        - If important, recreate with proper content later
+        - PRO: Removes noise
+        - CON: Loses the reminder to have READMEs
+      B: |
+        EXPAND
+        - Add actual guidance on README content
+        - Include sections: purpose, setup, running tests, etc.
+        - PRO: Makes file useful
+        - CON: More work required
+      C: |
+        MERGE INTO test-organization.yml
+        - If test-organization.yml exists
+        - Add README requirement as a section
+        - PRO: Consolidates test guidance
+        - CON: Dependency on other file existing
+      D: |
+        MERGE INTO testing.yml
+        - Add as brief section in main testing guidance
+        - PRO: Single source for test practices
+        - CON: May not fit naturally
+    decision: null  # <-- USER: Set to "A", "B", "C", or "D"
+    rationale: null
+
+  # ---------------------------------------------------------------------------
+  # DECISION 7: Strategy Files Location (low_007)
+  # ---------------------------------------------------------------------------
+  - id: "decision_007"
+    task_ref: "low_007"
+    question: "Should strategy-*.yml files stay in guidelines/ or move to definitions/?"
+    context: |
+      Current location: modules/AgenticGuidance/assets/guidelines/
+      Files (9 total):
+      - strategy-agent-review-loop.yml
+      - strategy-agent-blind-test.yml
+      - strategy-validation.yml
+      - strategy-multi-layer.yml
+      - strategy-user-acceptance.yml
+      - strategy-user-simulation.yml
+      - strategy-documentation-validation.yml
+      - strategy-fresh-environment.yml
+      - strategy-test-suite.yml
+
+      Content type analysis:
+      - These define testing STRATEGIES (what they are, when to use)
+      - They are somewhat prescriptive (how to apply)
+      - Currently in guidelines/ folder
+
+      Key question: Are strategies "definitions" (what is X) or "guidelines" (how to do X)?
+    options:
+      A: |
+        KEEP IN guidelines/
+        - Strategies include "how to apply" guidance
+        - Current location is appropriate
+        - PRO: No change required
+        - CON: May not match other similar files
+      B: |
+        MOVE TO definitions/
+        - Strategies are "what is X" definitions
+        - Prescriptive content is secondary
+        - PRO: Matches conceptual classification
+        - CON: Requires 9 file moves + reference updates
+      C: |
+        CREATE strategies/ FOLDER
+        - New folder: modules/AgenticGuidance/assets/strategies/
+        - Dedicated location for strategy patterns
+        - PRO: Clear purpose, easy to find all strategies
+        - CON: Adds folder complexity
+      D: |
+        CONSOLIDATE INTO ONE FILE
+        - Create testing-strategies.yml with all strategies
+        - Delete individual files
+        - PRO: Single source, reduces file count
+        - CON: Large file, may be unwieldy
+    decision: null  # <-- USER: Set to "A", "B", "C", or "D"
+    rationale: null
 
 # ============================================================================
 # PHASE 1: HIGH PRIORITY - File Deletions and Quick Merges
@@ -118,8 +455,12 @@ phases:
           - "modules/AgenticGuidance/assets/definitions/acceptable-skips.yml"
           - "modules/AgenticGuidance/assets/definitions/skipped-test.yml"
         inputs:
+          # Source files
           - "modules/AgenticGuidance/assets/definitions/skipped-test.yml"
           - "modules/AgenticGuidance/assets/definitions/acceptable-skips.yml"
+          # Operation guidelines (from teaching phase)
+          - "modules/AgenticGuidance/assets/guidelines/file-consolidation.yml"
+          - "modules/AgenticGuidance/assets/guidelines/reference-management.yml"
         acceptance_criteria:
           - "acceptable-skips.yml contains skipped_test definition at top"
           - "skipped-test.yml is deleted"
@@ -140,8 +481,12 @@ phases:
           - "modules/AgenticGuidance/assets/definitions/build-artifacts.yml"
           - "modules/AgenticGuidance/assets/definitions/packaging.yml"
         inputs:
+          # Source files
           - "modules/AgenticGuidance/assets/definitions/build-artifacts.yml"
           - "modules/AgenticGuidance/assets/definitions/packaging.yml"
+          # Operation guidelines (from teaching phase)
+          - "modules/AgenticGuidance/assets/guidelines/file-consolidation.yml"
+          - "modules/AgenticGuidance/assets/guidelines/reference-management.yml"
         guidance: |
           1. Create new file: build-packaging.yml
           2. Combine build_artifacts and packaging definitions
@@ -168,9 +513,14 @@ phases:
           - "modules/AgenticGuidance/assets/definitions/fence.yml"
           - "modules/AgenticGuidance/assets/definitions/signpost.yml"
         inputs:
+          # Source files
           - "modules/AgenticGuidance/assets/definitions/fence.yml"
           - "modules/AgenticGuidance/assets/definitions/signpost.yml"
           - "modules/AgenticGuidance/assets/definitions/guidance-artifacts.yml"
+          # Operation guidelines (from teaching phase)
+          - "modules/AgenticGuidance/assets/guidelines/file-consolidation.yml"
+          - "modules/AgenticGuidance/assets/guidelines/reference-management.yml"
+          - "modules/AgenticGuidance/assets/guidelines/content-evaluation.yml"
         guidance: |
           OPTION A: Merge into guidance-artifacts.yml (preferred)
           - Add fence and signpost as named concepts in guidance_artifacts
@@ -209,8 +559,12 @@ phases:
           - "modules/AgenticGuidance/assets/definitions/plans.yml"
           - "modules/AgenticGuidance/assets/definitions/plan-folder-conventions.yml"
         inputs:
+          # Source files
           - "modules/AgenticGuidance/assets/definitions/plan-folder-conventions.yml"
           - "modules/AgenticGuidance/assets/definitions/plans.yml"
+          # Operation guidelines
+          - "modules/AgenticGuidance/assets/guidelines/file-consolidation.yml"
+          - "modules/AgenticGuidance/assets/guidelines/reference-management.yml"
         guidance: |
           1. Ensure plans.yml has all content from plan-folder-conventions.yml
           2. Add YAML anchor for deploy agents to reference: plans.yml#naming_convention
@@ -264,9 +618,13 @@ phases:
         target_files:
           - "modules/AgenticGuidance/assets/definitions/plan-inputs.yml"
         inputs:
+          # Source files
           - "modules/AgenticGuidance/assets/definitions/plan-inputs.yml"
           - "modules/AgenticGuidance/assets/definitions/definition.yml"
           - "modules/AgenticGuidance/assets/definitions/guideline.yml"
+          # Operation guidelines
+          - "modules/AgenticGuidance/assets/guidelines/file-reclassification.yml"
+          - "modules/AgenticGuidance/assets/guidelines/reference-management.yml"
         guidance: |
           Apply definition.yml vs guideline.yml criteria:
           - definition: "what something is" (descriptive)
@@ -341,6 +699,11 @@ phases:
           - "modules/AgenticGuidance/assets/definitions/flutter-environments.yml"
           - "modules/AgenticGuidance/assets/definitions/flutter-test-roles.yml"
           - "modules/AgenticGuidance/assets/definitions/flutter-skipped-tests.yml"
+        inputs:
+          # Operation guidelines
+          - "modules/AgenticGuidance/assets/guidelines/file-consolidation.yml"
+          - "modules/AgenticGuidance/assets/guidelines/reference-management.yml"
+          - "modules/AgenticGuidance/assets/guidelines/content-evaluation.yml"
         guidance: |
           1. Create flutter-testing.yml with sections for each area
           2. Use YAML anchors for individual sections if needed
@@ -414,8 +777,13 @@ phases:
           - "modules/AgenticGuidance/assets/definitions/guidance.yml"
           - "modules/AgenticGuidance/assets/definitions/guidance-artifacts.yml"
         inputs:
+          # Source files
           - "modules/AgenticGuidance/assets/definitions/guidance.yml"
           - "modules/AgenticGuidance/assets/definitions/guidance-artifacts.yml"
+          # Operation guidelines
+          - "modules/AgenticGuidance/assets/guidelines/file-consolidation.yml"
+          - "modules/AgenticGuidance/assets/guidelines/reference-management.yml"
+          - "modules/AgenticGuidance/assets/guidelines/content-evaluation.yml"
         guidance: |
           1. guidance-artifacts.yml is more comprehensive - use as base
           2. Add guidance.yml content as overview section
@@ -510,165 +878,253 @@ phases:
   # PHASE 3: LOW PRIORITY - Decisions Needed
   # ============================================================================
   # Items requiring human input or significant analysis before action.
+  # Each task references a decision_item above. Execution blocked until
+  # user provides decisions in the decision_items section.
 
   - name: "Low_Priority_Decisions"
     execution: sequential
     description: "Items requiring human input or architectural decisions"
     agent_category: "planner"
+    blocked_by: "decision_items"  # User must fill in decisions before execution
     tasks:
       # --- BATCH 1: Create specifications/ folder ---
       - id: "low_001"
-        name: "Decide on specifications/ Folder"
+        name: "Implement specifications/ Folder Decision"
         description: |
-          Original recommendation: Create specifications/ folder for files like
-          process-file-format.yml. This would separate specifications from definitions.
-          Requires architectural decision on folder structure.
-        status: "pending"
+          Implement the decision for specifications/ folder organization.
+          See decision_001 for options and user's choice.
+        status: "pending_decision"
         agent_type: "planner-guidance"
         operation: "DECISION"
+        decision_ref: "decision_001"
         target_files: []
         guidance: |
-          QUESTION: Should we create a specifications/ folder?
+          Execute based on user's decision in decision_001:
 
-          PRO:
-          - Clear distinction: definitions = concepts, specifications = formats
-          - Aligns with software engineering norms
+          IF decision_001 == "A" (Create folder):
+          1. Create modules/AgenticGuidance/assets/specifications/
+          2. Identify all *-specification.yml and *-format.yml files
+          3. Move files to new folder
+          4. Update all references
 
-          CON:
-          - Adds folder complexity
-          - definitions/ already contains format specs
-          - May not reduce token usage significantly
+          IF decision_001 == "B" (Naming convention):
+          1. Document the naming convention in a guideline
+          2. Verify existing specs follow convention
+          3. Rename any that don't
 
-          ALTERNATIVES:
-          A. Create specifications/ folder
-          B. Use naming convention: *-specification.yml in definitions/
-          C. No change (current approach works)
+          IF decision_001 == "C" (No change):
+          1. Document decision rationale
+          2. Close task
         acceptance_criteria:
-          - "Decision made and documented"
-          - "If approved: implementation plan created"
+          - "Decision from decision_001 implemented"
+          - "If folder created: all spec files moved"
+          - "If naming convention: convention documented"
+          - "All references updated if files moved"
 
       # --- BATCH 2: Generalize test-execution-workflow.yml ---
       - id: "low_002"
-        name: "Generalize test-execution-workflow.yml"
+        name: "Handle test-execution-workflow.yml per Decision"
         description: |
-          test-execution-workflow.yml contains project-specific "myagents studio"
-          commands. It should be generalized to use configurable service patterns.
-        status: "pending"
+          Handle test-execution-workflow.yml based on user decision.
+          See decision_002 for options and user's choice.
+        status: "pending_decision"
         agent_type: "teacher-update-guidance"
-        operation: "REFACTOR"
+        operation: "CONDITIONAL"
+        decision_ref: "decision_002"
         target_files:
           - "modules/AgenticGuidance/assets/guidelines/test-execution-workflow.yml"
         guidance: |
-          File already has TODO noting this issue.
+          Execute based on user's decision in decision_002:
 
-          APPROACH:
-          1. Extract pattern: service_name, start_command, stop_command, health_check
-          2. Make workflow reference configurable variables
-          3. Move project-specific values to project config or inputs
+          IF decision_002 == "A" (Generalize now):
+          1. Read current file
+          2. Extract pattern variables: service_name, start_cmd, stop_cmd, health_check
+          3. Create configurable template structure
+          4. Move project-specific values to inputs section
+          5. Verify workflow remains functional
+
+          IF decision_002 == "B" (Defer):
+          1. Create new plan file: plan_live_workflow_generalization.yml
+          2. Add TODO reference to this file
+          3. Close task
+
+          IF decision_002 == "C" (Delete):
+          1. Check for active references
+          2. If no references: delete file
+          3. If references exist: report and reconsider
         acceptance_criteria:
-          - "Workflow uses generic service patterns"
-          - "Project-specific commands moved to inputs"
-          - "Workflow is reusable across projects"
+          - "Decision from decision_002 implemented"
+          - "If generalized: workflow is project-agnostic"
+          - "If deferred: new plan created"
+          - "If deleted: no broken references"
 
       # --- BATCH 2: Decide on acceptable-skips.yml location ---
       - id: "low_003"
-        name: "Decide acceptable-skips.yml Location"
+        name: "Implement acceptable-skips.yml Location Decision"
         description: |
-          acceptable-skips.yml is currently in definitions/ but contains
-          significant prescriptive content (audit_checklist, remediation_guidance).
-          Should it be in guidelines/ instead?
-        status: "pending"
+          Move or restructure acceptable-skips.yml based on user decision.
+          See decision_003 for options and user's choice.
+        status: "pending_decision"
         agent_type: "teacher-update-guidance"
-        operation: "DECISION"
+        operation: "CONDITIONAL"
+        decision_ref: "decision_003"
         target_files:
           - "modules/AgenticGuidance/assets/definitions/acceptable-skips.yml"
+        inputs:
+          - "modules/AgenticGuidance/assets/guidelines/reference-management.yml"
+          - "modules/AgenticGuidance/assets/guidelines/file-reclassification.yml"
         guidance: |
-          ANALYSIS needed:
-          1. How much is definitional (what is an acceptable skip)
-          2. How much is prescriptive (how to audit, how to remediate)
+          Execute based on user's decision in decision_003:
 
-          OPTIONS:
-          A. Keep in definitions/ (categories are definitional)
-          B. Move to guidelines/ (audit/remediation are prescriptive)
-          C. Split: acceptable-skips.yml (definition) + skip-audit.yml (guideline)
+          IF decision_003 == "A" (Keep in definitions/):
+          1. Document decision rationale in file header
+          2. Close task
+
+          IF decision_003 == "B" (Move to guidelines/):
+          1. Follow file-reclassification.yml workflow
+          2. Move to modules/AgenticGuidance/assets/guidelines/
+          3. Update all references per reference-management.yml
+          4. Verify no broken references
+
+          IF decision_003 == "C" (Split):
+          1. Create definitions/acceptable-skips.yml with categories only
+          2. Create guidelines/skip-audit.yml with audit/remediation content
+          3. Update references to point to appropriate file
+          4. Verify no content lost
         acceptance_criteria:
-          - "Location decision documented"
-          - "Rationale based on definition.yml vs guideline.yml criteria"
+          - "Decision from decision_003 implemented"
+          - "If moved: all references updated"
+          - "If split: both files have clear purpose"
+          - "No broken references"
 
       # --- BATCH 5: Move gcp-artifact-registry.yml to project-specific ---
       - id: "low_004"
-        name: "Move gcp-artifact-registry.yml to Project Config"
+        name: "Relocate gcp-artifact-registry.yml per Decision"
         description: |
-          gcp-artifact-registry.yml contains project-specific GCP configuration.
-          It should not be in assets/definitions/ which is meant for reusable concepts.
-        status: "pending"
+          Relocate or delete gcp-artifact-registry.yml based on user decision.
+          See decision_004 for options and user's choice.
+        status: "pending_decision"
         agent_type: "teacher-update-guidance"
-        operation: "MOVE"
+        operation: "CONDITIONAL"
+        decision_ref: "decision_004"
         target_files:
           - "modules/AgenticGuidance/assets/definitions/gcp-artifact-registry.yml"
+        inputs:
+          - "modules/AgenticGuidance/assets/guidelines/reference-management.yml"
         guidance: |
-          Determine appropriate location:
-          OPTION A: Project root config/ folder
-          OPTION B: .agentic/config/ folder
-          OPTION C: Delete if no longer needed
+          Execute based on user's decision in decision_004:
 
-          Check for active references before moving.
+          IF decision_004 == "A" (Move to config/):
+          1. Create config/ folder if needed
+          2. Move file to config/gcp-artifact-registry.yml
+          3. Update references per reference-management.yml
+
+          IF decision_004 == "B" (Move to .agentic/config/):
+          1. Create .agentic/config/ if needed
+          2. Move file to .agentic/config/gcp-artifact-registry.yml
+          3. Update references
+
+          IF decision_004 == "C" (Delete if unused):
+          1. Search for all references to file
+          2. If zero references: delete file
+          3. If references exist: report to user for reconsideration
+
+          IF decision_004 == "D" (Move to docs/):
+          1. Convert to markdown: docs/infrastructure/gcp-artifact-registry.md
+          2. Update or remove references
         acceptance_criteria:
-          - "File moved to project-specific location or deleted"
-          - "Not in assets/definitions/ (reusable concepts only)"
-          - "References updated or removed"
+          - "Decision from decision_004 implemented"
+          - "File not in assets/definitions/"
+          - "All references updated or confirmed none exist"
 
       # --- BATCH 6: Review studio-integration-tests.yml ---
       - id: "low_005"
-        name: "Review studio-integration-tests.yml for Obsolescence"
+        name: "Handle studio-integration-tests.yml per Decision"
         description: |
-          studio-integration-tests.yml lists specific test names that require
-          LangGraph Studio. This may be stale or project-specific.
-          Evaluate for deletion or move to project config.
-        status: "pending"
+          Handle studio-integration-tests.yml based on user decision.
+          See decision_005 for options and user's choice.
+        status: "pending_decision"
         agent_type: "explorer"
-        operation: "AUDIT"
+        operation: "CONDITIONAL"
+        decision_ref: "decision_005"
         target_files:
           - "modules/AgenticGuidance/assets/definitions/studio-integration-tests.yml"
         guidance: |
-          1. Check if listed tests still exist in codebase
-          2. Check if tests are project-specific or reusable
-          3. If project-specific: move to project config or delete
-          4. If reusable: add context about when applicable
+          Execute based on user's decision in decision_005:
+
+          IF decision_005 == "A" (Keep and verify):
+          1. Grep codebase for each test name listed
+          2. Update list to match actual tests
+          3. Add "last_verified" date to file
+
+          IF decision_005 == "B" (Move to project config):
+          1. Determine project config location
+          2. Move file
+          3. Update references
+
+          IF decision_005 == "C" (Delete):
+          1. Verify no active references
+          2. Delete file
+
+          IF decision_005 == "D" (Defer - investigate first):
+          1. Create investigation task
+          2. Mark this task as blocked
         acceptance_criteria:
-          - "Test list verified against actual tests"
-          - "Decision made: keep, move, or delete"
-          - "If kept: content is current and useful"
+          - "Decision from decision_005 implemented"
+          - "If kept: test names verified against codebase"
+          - "If moved/deleted: no broken references"
 
       # --- BATCH 6: Decide on workflow-test-readme.yml ---
       - id: "low_006"
-        name: "Decide workflow-test-readme.yml Fate"
+        name: "Handle workflow-test-readme.yml per Decision"
         description: |
-          workflow-test-readme.yml (6 lines) is minimal guidance about
-          README.md files in test directories. Evaluate for expansion or deletion.
-        status: "pending"
+          Handle minimal workflow-test-readme.yml based on user decision.
+          See decision_006 for options and user's choice.
+        status: "pending_decision"
         agent_type: "teacher-update-guidance"
-        operation: "DECISION"
+        operation: "CONDITIONAL"
+        decision_ref: "decision_006"
         target_files:
           - "modules/AgenticGuidance/assets/definitions/workflow-test-readme.yml"
+        inputs:
+          - "modules/AgenticGuidance/assets/guidelines/file-consolidation.yml"
         guidance: |
-          OPTIONS:
-          A. Delete (content too minimal to be useful)
-          B. Expand (add actual guidance on what READMEs should contain)
-          C. Merge into testing.yml or test-organization.yml
+          Execute based on user's decision in decision_006:
+
+          IF decision_006 == "A" (Delete):
+          1. Verify no active references
+          2. Delete file
+
+          IF decision_006 == "B" (Expand):
+          1. Add sections: purpose, structure, required_sections, examples
+          2. Include template for test README content
+          3. Make file actionable
+
+          IF decision_006 == "C" (Merge into test-organization.yml):
+          1. Check if test-organization.yml exists
+          2. If exists: merge content per file-consolidation.yml
+          3. If not: create it with this content
+
+          IF decision_006 == "D" (Merge into testing.yml):
+          1. Add README requirement section to testing.yml
+          2. Delete this file
+          3. Update references
         acceptance_criteria:
-          - "Decision made with rationale"
-          - "If kept: content is expanded or merged"
+          - "Decision from decision_006 implemented"
+          - "If expanded: file has actionable content"
+          - "If merged: no content lost"
+          - "No broken references"
 
       # --- BATCH 3: Strategy files location ---
       - id: "low_007"
-        name: "Evaluate Strategy File Locations"
+        name: "Implement Strategy Files Location Decision"
         description: |
-          strategy-agent-review-loop.yml and similar strategy files were moved
-          to guidelines/ but question remains if they should be in definitions/.
-        status: "pending"
+          Handle strategy-*.yml file locations based on user decision.
+          See decision_007 for options and user's choice.
+        status: "pending_decision"
         agent_type: "planner-guidance"
-        operation: "DECISION"
+        operation: "CONDITIONAL"
+        decision_ref: "decision_007"
         target_files:
           - "modules/AgenticGuidance/assets/guidelines/strategy-agent-review-loop.yml"
           - "modules/AgenticGuidance/assets/guidelines/strategy-agent-blind-test.yml"
@@ -679,17 +1135,36 @@ phases:
           - "modules/AgenticGuidance/assets/guidelines/strategy-documentation-validation.yml"
           - "modules/AgenticGuidance/assets/guidelines/strategy-fresh-environment.yml"
           - "modules/AgenticGuidance/assets/guidelines/strategy-test-suite.yml"
+        inputs:
+          - "modules/AgenticGuidance/assets/guidelines/reference-management.yml"
+          - "modules/AgenticGuidance/assets/guidelines/file-reclassification.yml"
         guidance: |
-          These are testing strategies. Evaluate:
-          1. Are they definitions (what is X strategy)?
-          2. Are they guidelines (how to apply X strategy)?
-          3. Current location: guidelines/
+          Execute based on user's decision in decision_007:
 
-          Decision should be consistent across all strategy-*.yml files.
+          IF decision_007 == "A" (Keep in guidelines/):
+          1. Document decision rationale
+          2. Close task
+
+          IF decision_007 == "B" (Move to definitions/):
+          1. Move all 9 strategy-*.yml files to definitions/
+          2. Update all references per reference-management.yml
+          3. Verify consistency
+
+          IF decision_007 == "C" (Create strategies/ folder):
+          1. Create modules/AgenticGuidance/assets/strategies/
+          2. Move all 9 files to new folder
+          3. Update all references
+
+          IF decision_007 == "D" (Consolidate into one file):
+          1. Create testing-strategies.yml with all strategies
+          2. Use YAML anchors for each strategy
+          3. Delete individual files
+          4. Update references to use fragments
         acceptance_criteria:
-          - "Location decision documented"
-          - "All strategy files in consistent location"
-          - "Rationale based on content type"
+          - "Decision from decision_007 implemented"
+          - "All 9 strategy files in consistent location"
+          - "All references updated"
+          - "No broken references"
 
 # ============================================================================
 # SUCCESS CRITERIA
@@ -698,9 +1173,10 @@ success_criteria:
   - "All deprecated redirect stubs deleted (domains.yml, entrypoints.yml, workflows.yml)"
   - "All file merges completed without content loss"
   - "All reclassifications completed with reference updates"
-  - "All decision items have documented decisions"
+  - "All decision items have documented decisions with rationale"
   - "No broken references after changes"
   - "Token overhead reduced by removing redundant files"
+  - "All operations followed guidance from teaching phase guidelines"
 
 # ============================================================================
 # ORCHESTRATION
@@ -710,8 +1186,48 @@ orchestration:
     High_Priority_Cleanup: "cleaner"
     Medium_Priority_Consolidation: "teacher-update-guidance"
     Low_Priority_Decisions: "planner-guidance"
+
+  execution_order: |
+    STEP 1: Complete Teaching Phase (PREREQUISITE)
+    - Execute plan_live_teaching_file_operations.yml
+    - Creates: reference-management.yml, file-consolidation.yml,
+               file-reclassification.yml, content-evaluation.yml
+    - Validates guidelines with dry-run tests
+
+    STEP 2: User Decisions (BLOCKING)
+    - User fills in decision_items section above
+    - All 7 decisions must have 'decision' field populated
+    - Rationale is recommended but optional
+
+    STEP 3: Execute Phase 1 (High Priority Cleanup)
+    - Tasks high_001 through high_007
+    - Uses teaching phase guidelines for merge operations
+    - Can proceed after teaching phase completes
+
+    STEP 4: Execute Phase 2 (Medium Priority Consolidation)
+    - Tasks med_001 through med_012
+    - Uses teaching phase guidelines for all operations
+    - Some tasks may depend on Phase 1 completion
+
+    STEP 5: Execute Phase 3 (Low Priority Decisions)
+    - Tasks low_001 through low_007
+    - Blocked until user provides decisions
+    - Each task references its corresponding decision_item
+
   execution_notes: |
-    This is backlog work. Execute tasks as capacity allows.
-    High priority tasks can be executed independently.
-    Medium priority tasks may have dependencies - check prerequisites.
-    Low priority tasks require human decisions before execution.
+    PREREQUISITES:
+    1. Teaching phase (plan_live_teaching_file_operations.yml) must complete
+    2. User must provide decisions in decision_items section
+
+    GUIDELINES USAGE:
+    All merge/move operations should follow the guidelines created in teaching phase:
+    - reference-management.yml: For finding and updating references
+    - file-consolidation.yml: For merge operations
+    - file-reclassification.yml: For move operations between folders
+    - content-evaluation.yml: For consolidation decisions
+
+    NEXT SESSION:
+    1. Review decision_items and populate 'decision' fields
+    2. Confirm teaching phase plan is ready
+    3. Execute teaching phase
+    4. Execute batch remediation phases 1-3

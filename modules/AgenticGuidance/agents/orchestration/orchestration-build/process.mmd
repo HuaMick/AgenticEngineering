@@ -59,6 +59,7 @@ flowchart LR
     %% 2. CI/CD Failures: Re-plan with CICD_FAILURE context
     %% 3. Guidance Gaps: Re-plan with GUIDANCE_GAP context
     %% 4. Audit Failures: Re-plan with AUDIT_FAILURE context
+    %% 5. UAT Failures: Re-plan with UAT_FAILURE context (user story validation failures)
     %%
     %% HANDOFF CONTRACT:
     %% - orchestration-planning produces: plan_live_build.yml, plan_live_test.yml (all status: approved)
@@ -226,13 +227,40 @@ flowchart LR
     UpdatePlanAudit -.->|Re-plan with AUDIT_FAILURE| DelegatePlanning
 
     %% ========================================
+    %% UAT VALIDATION PHASE (MANDATORY)
+    %% ========================================
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.user-story-validation-loop
+    %% MAX_ITERATIONS: 3 (per user-story-validation-loop definition)
+    %% ESCALATION: If max iterations reached without stories passing, stop and Ask User
+    %% PRIMARY SUCCESS CRITERIA for implementation work - validates complete user journeys
+    FinalAudit -- "Yes: Verified" --> CheckUATStories{User Stories Exist?}
+
+    subgraph UAT_SG ["UAT Validation Subgraph"]
+        %% If no stories exist, spawn planner-test to create them
+        CheckUATStories -- "No" --> CreateUATStories[Spawn planner-test for UAT Stories]
+        CreateUATStories --> CheckUATStories
+
+        %% Execute UAT with stories
+        CheckUATStories -- "Yes" --> EnterUATPhase[Enter UAT Validation Phase]
+        EnterUATPhase --> SpawnUserSimulator[Spawn test-user-simulator Agent]
+        SpawnUserSimulator --> ExecuteStories[Execute User Story Tests]
+        ExecuteStories --> UATResults{All Stories Pass?}
+
+        %% UAT failure triggers re-planning with UAT_FAILURE context
+        UATResults -- "No: Failures" --> PackageUATFailure[Package UAT_FAILURE Context]
+        PackageUATFailure -.->|Re-plan with UAT_FAILURE| DelegatePlanning
+
+        UATResults -- "Yes: All Pass" --> UATComplete[UAT Validation Complete]
+    end
+
+    %% ========================================
     %% FINALIZATION
     %% ========================================
     %% Success: All criteria met. Finalize the work.
     %% CLI OFFLOAD: Use agentic-cli for task and folder completion
     %% - agentic plan move tasks: Move all completed tasks to plan_completed.yml
     %% - agentic plan move folder: Archive entire plan folder to completed/
-    FinalAudit -- "Yes: Verified" --> MoveCompletedTasks[Move Completed Tasks via CLI: agentic plan move tasks]
+    UATComplete --> MoveCompletedTasks[Move Completed Tasks via CLI: agentic plan move tasks]
     MoveCompletedTasks --> ArchivePlanFolder[Archive Plan Folder via CLI: agentic plan move folder]
     ArchivePlanFolder --> End((End))
 
@@ -245,5 +273,6 @@ flowchart LR
     %% - CI/CD failure returns (from CI/CD Validation Phase) - CICD_FAILURE context
     %% - Guidance gap returns (from Guidance Validation Phase) - GUIDANCE_GAP context
     %% - Audit failure returns (from Final Audit Phase) - AUDIT_FAILURE context
+    %% - UAT failure returns (from UAT Validation Phase) - UAT_FAILURE context
     classDef dashedstroke stroke-dasharray: 5 5;
     linkStyle 29,35,47,48,49,54 stroke:#888,stroke-width:2px,stroke-dasharray: 5 5;

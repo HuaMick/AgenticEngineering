@@ -1,0 +1,157 @@
+flowchart LR
+    %% GOAL: Orchestrate UAT phase integration into orchestration processes via guidance updates.
+    %% PROFILE: Orchestration-Teaching
+    %% GUIDELINE: Teach-focused execution - update guidance files, not implementation code.
+    %% GUIDELINE: modules/AgenticGuidance/assets/guidelines/fix-the-source.yml
+    %% INPUT_PATH: modules/AgenticGuidance/agents/orchestration/orchestration-guidance/inputs.yml
+    %%
+    %% AGENT_ROUTING: OrchestrPlanning -> teacher-update-guidance, OrchestrBuild -> teacher-update-guidance, PlannerTest -> teacher-update-guidance, Supporting -> teacher-update-guidance
+    %% FEEDBACK_TRIGGERS: GUIDANCE_GAP -> SpawnTeacher, VALIDATION_FAILURE -> SpawnReviewer
+    %% STATUS: Analysis=completed, OrchestrPlanning=pending, OrchestrBuild=pending, PlannerTest=pending, Supporting=pending
+    %%
+    %% PLAN_FILE: plan_live_uat_phase_integration.yml
+    %% PHASE_TYPE: teach
+    %%
+    %% OUTPUTS (FENCE: All target files updated before marking phase complete):
+    %% - orchestration-planning/process.mmd with UAT phase determination and planning loop
+    %% - orchestration-build/process.mmd with UAT execution phase
+    %% - planner-test/process.yml with UAT phase planning section
+    %% - orchestration-executor-specification.yml with UAT_FAILURE trigger
+
+    Start((Start)) --> LoadPlan[Load plan_live_uat_phase_integration.yml]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    LoadPlan --> ValidatePlan{Plan Found & Valid?}
+    ValidatePlan -- "No: Missing" --> AskUser((Ask User for Plan Path))
+    ValidatePlan -- "Yes: Valid" --> CheckAnalysis{Analysis Phase Complete?}
+
+    %% Analysis phase already completed by planner-guidance assessment
+    CheckAnalysis -- "No" --> AskUser
+    CheckAnalysis -- "Yes: Completed" --> EnterOrchestrPlanning[Enter Orchestration Planning Remediation]
+
+    %% ========================================
+    %% PHASE 1: REMEDIATION - ORCHESTRATION PLANNING
+    %% ========================================
+    %% Target: orchestration-planning/process.mmd
+    %% Tasks: fix_phase_determination, add_uat_planning_loop
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.planner-loop
+    %% MAX_ITERATIONS: 5
+
+    subgraph OrchestrPlanning_SG ["Orchestration Planning Remediation Subgraph"]
+        EnterOrchestrPlanning --> SpawnTeacherOP[Spawn teacher-update-guidance Agent]
+        SpawnTeacherOP --> OPTaskComplete{Tasks Complete?}
+
+        OPTaskComplete -- "No: Error" --> CaptureOPError[Capture Error Context]
+        CaptureOPError --> CheckOPIterations{Max Iterations?}
+        CheckOPIterations -- "No" --> SpawnTeacherOPFix[Spawn teacher-update-guidance Agent]
+        SpawnTeacherOPFix --> OPTaskComplete
+        CheckOPIterations -- "Yes" --> EscalateOP((Escalate: Cannot Complete OP Phase))
+
+        OPTaskComplete -- "Yes" --> SpawnOPReviewer[Spawn planner-reviewer Agent]
+        SpawnOPReviewer --> OPApproved{Changes Approved?}
+        OPApproved -- "No: Refine" --> SpawnTeacherOPFix
+        OPApproved -- "Yes" --> OPPhaseComplete[OP Phase Complete]
+    end
+
+    OPPhaseComplete --> EnterOrchestrBuild[Enter Orchestration Build Remediation]
+
+    %% ========================================
+    %% PHASE 2: REMEDIATION - ORCHESTRATION BUILD
+    %% ========================================
+    %% Target: orchestration-build/process.mmd
+    %% Tasks: add_uat_execution_phase
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.planner-loop
+
+    subgraph OrchestrBuild_SG ["Orchestration Build Remediation Subgraph"]
+        EnterOrchestrBuild --> SpawnTeacherOB[Spawn teacher-update-guidance Agent]
+        SpawnTeacherOB --> OBTaskComplete{Tasks Complete?}
+
+        OBTaskComplete -- "No: Error" --> CaptureOBError[Capture Error Context]
+        CaptureOBError --> CheckOBIterations{Max Iterations?}
+        CheckOBIterations -- "No" --> SpawnTeacherOBFix[Spawn teacher-update-guidance Agent]
+        SpawnTeacherOBFix --> OBTaskComplete
+        CheckOBIterations -- "Yes" --> EscalateOB((Escalate: Cannot Complete OB Phase))
+
+        OBTaskComplete -- "Yes" --> SpawnOBReviewer[Spawn planner-reviewer Agent]
+        SpawnOBReviewer --> OBApproved{Changes Approved?}
+        OBApproved -- "No: Refine" --> SpawnTeacherOBFix
+        OBApproved -- "Yes" --> OBPhaseComplete[OB Phase Complete]
+    end
+
+    OBPhaseComplete --> EnterPlannerTest[Enter Planner Test Remediation]
+
+    %% ========================================
+    %% PHASE 3: REMEDIATION - EXTEND PLANNER-TEST FOR UAT
+    %% ========================================
+    %% Target: planner-test/process.yml, manifest.yml, inputs.yml
+    %% Tasks: update_planner_test_process, update_planner_test_manifest, verify_planner_test_inputs
+
+    subgraph PlannerTest_SG ["Planner Test Remediation Subgraph"]
+        EnterPlannerTest --> SpawnTeacherPT[Spawn teacher-update-guidance Agent]
+        SpawnTeacherPT --> PTTaskComplete{Tasks Complete?}
+
+        PTTaskComplete -- "No: Error" --> CapturePTError[Capture Error Context]
+        CapturePTError --> CheckPTIterations{Max Iterations?}
+        CheckPTIterations -- "No" --> SpawnTeacherPTFix[Spawn teacher-update-guidance Agent]
+        SpawnTeacherPTFix --> PTTaskComplete
+        CheckPTIterations -- "Yes" --> EscalatePT((Escalate: Cannot Complete PT Phase))
+
+        PTTaskComplete -- "Yes" --> SpawnPTReviewer[Spawn planner-reviewer Agent]
+        SpawnPTReviewer --> PTApproved{Changes Approved?}
+        PTApproved -- "No: Refine" --> SpawnTeacherPTFix
+        PTApproved -- "Yes" --> PTPhaseComplete[PT Phase Complete]
+    end
+
+    PTPhaseComplete --> EnterSupporting[Enter Supporting Changes]
+
+    %% ========================================
+    %% PHASE 4: REMEDIATION - SUPPORTING CHANGES
+    %% ========================================
+    %% Target: orchestration-executor-specification.yml, planner-build/process.yml, inputs.yml files
+    %% Tasks: add_uat_failure_trigger, update_planner_build_stories, update_inputs_yml_references
+
+    subgraph Supporting_SG ["Supporting Changes Subgraph"]
+        EnterSupporting --> SpawnTeacherSC[Spawn teacher-update-guidance Agent]
+        SpawnTeacherSC --> SCTaskComplete{Tasks Complete?}
+
+        SCTaskComplete -- "No: Error" --> CaptureSCError[Capture Error Context]
+        CaptureSCError --> CheckSCIterations{Max Iterations?}
+        CheckSCIterations -- "No" --> SpawnTeacherSCFix[Spawn teacher-update-guidance Agent]
+        SpawnTeacherSCFix --> SCTaskComplete
+        CheckSCIterations -- "Yes" --> EscalateSC((Escalate: Cannot Complete SC Phase))
+
+        SCTaskComplete -- "Yes" --> SpawnSCReviewer[Spawn planner-reviewer Agent]
+        SpawnSCReviewer --> SCApproved{Changes Approved?}
+        SCApproved -- "No: Refine" --> SpawnTeacherSCFix
+        SCApproved -- "Yes" --> SCPhaseComplete[SC Phase Complete]
+    end
+
+    %% ========================================
+    %% VALIDATION PHASE
+    %% ========================================
+    %% Verify all changes are complete and consistent
+
+    SCPhaseComplete --> EnterValidation[Enter Validation Phase]
+
+    subgraph Validation_SG ["Validation Subgraph"]
+        EnterValidation --> SpawnAudit[Spawn test-final-output Audit]
+        SpawnAudit --> ValidationComplete{Validation Passed?}
+        ValidationComplete -- "No: Gaps Found" --> PackageGaps[Package GUIDANCE_GAP Context]
+        PackageGaps -.->|Re-teach with gaps| EnterOrchestrPlanning
+        ValidationComplete -- "Yes: All Pass" --> ValidationPass[Validation Complete]
+    end
+
+    %% ========================================
+    %% FINALIZATION
+    %% ========================================
+    ValidationPass --> UpdatePlanStatus[Update Plan Status to Completed]
+    UpdatePlanStatus --> MoveToCompleted[Move Plan to completed/ Folder]
+    MoveToCompleted --> End((End: UAT Integration Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef dashedstroke stroke-dasharray: 5 5;
+    linkStyle 37 stroke:#888,stroke-width:2px,stroke-dasharray: 5 5;
