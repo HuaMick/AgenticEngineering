@@ -1,0 +1,360 @@
+name: plan_live_folder_creation_automation
+status: approved
+priority: high
+created: "2026-01-15"
+updated: "2026-01-15"
+phase_type: build
+
+objective: |
+  Implement 'agentic plan init' command that handles worktree creation and plan folder scaffolding.
+  Enforces YYMMDDXX_Description naming convention in code, eliminating agent interpretation errors.
+  Applies tool-offloading pattern: deterministic operations belong in CLI, not agent guidance.
+
+context: |
+  PROBLEM:
+  - Planner agents create folders with incorrect names (YYMMDDRepo_Branch instead of YYMMDDWorktree_Description)
+  - Guidance patches don't permanently fix this (agents interpret, drift occurs)
+  - Verification loops (deploy-worktree -> verify -> fix) add complexity
+
+  SOLUTION:
+  - CLI command that enforces naming convention programmatically
+  - Correct output or explicit failure (no partial/incorrect states)
+  - Agents call CLI instead of implementing folder creation
+
+  GUIDELINE REFERENCE:
+  - modules/AgenticGuidance/assets/guidelines/tool-offloading.yml
+  - Principle: "If an operation has a predictable, rule-based outcome, it belongs in a tool."
+
+  PREDECESSOR PLAN (pivoted):
+  - /home/code/AgenticEngineering-agenticguidance/docs/plans/live/260104AE_agenticguidance/live/plan_live_naming_convention_audit.yml
+
+phases:
+  - name: "Design"
+    status: completed
+    description: "Define CLI interface and naming algorithm."
+    tasks:
+      - id: "design_cli_interface"
+        name: "Design CLI Interface"
+        status: "completed"
+        description: |
+          Command: agentic plan init <branch> [--description <desc>] [--base <base-branch>]
+
+          Behavior:
+          1. Check if worktree exists for <branch>
+             - If no: create worktree at ../<repo>-<branch> from <base-branch> (default: main)
+             - If yes: use existing worktree
+          2. Generate plan folder name: YYMMDDXX_<description>
+             - YYMMDD: Current date
+             - XX: Worktree identifier (2 chars from branch suffix or configured)
+             - description: Sanitized from --description or prompted
+          3. Create folder structure in worktree's docs/plans/live/:
+             - YYMMDDXX_description/
+               - live/
+               - analysis/
+               - audit/
+               - completed/
+               - README.md (templated)
+          4. Output: Full path to created folder
+
+          Exit codes:
+          - 0: Success, folder created
+          - 1: Worktree creation failed
+          - 2: Folder already exists
+          - 3: Invalid branch name or description
+
+      - id: "design_naming_algorithm"
+        name: "Design Naming Algorithm"
+        status: "completed"
+        description: |
+          Worktree Identifier Derivation:
+          1. Parse worktree path: /home/code/AgenticEngineering-agenticguidance
+          2. Extract suffix after last hyphen: agenticguidance
+          3. Take first 2 characters, uppercase: AG
+          4. Result: 260115AG_naming_convention_audit
+
+          Special cases:
+          - No hyphen in path: Use first 2 chars of directory name
+          - Configurable override: .agentic.yml can specify worktree_id
+
+          Description sanitization:
+          - Lowercase
+          - Replace spaces with underscores
+          - Remove special characters except underscore
+          - Max 50 characters
+
+  - name: "Implementation"
+    status: completed
+    description: "Build the CLI command."
+    tasks:
+      - id: "implement_worktree_check"
+        name: "Implement Worktree Detection"
+        status: "completed"
+        description: "Check if worktree exists for branch, return path or None."
+        target_files:
+          - "src/agentic_cli/commands/plan.py"
+        acceptance_criteria:
+          - "Function returns worktree path if exists"
+          - "Function returns None if no worktree"
+          - "Uses 'git worktree list' under the hood"
+
+      - id: "implement_worktree_create"
+        name: "Implement Worktree Creation"
+        status: "completed"
+        description: "Create worktree if not exists."
+        target_files:
+          - "src/agentic_cli/commands/plan.py"
+        acceptance_criteria:
+          - "Creates worktree at correct path"
+          - "Fails gracefully with clear error message"
+          - "Respects --base flag for base branch"
+
+      - id: "implement_name_generation"
+        name: "Implement Name Generation"
+        status: "completed"
+        description: "Generate YYMMDDXX_description from inputs."
+        target_files:
+          - "src/agentic_cli/utils/naming.py"
+        acceptance_criteria:
+          - "Date prefix is current date in YYMMDD format"
+          - "Worktree ID derived correctly from path"
+          - "Description sanitized per spec"
+          - "Result matches pattern: ^\\d{6}[A-Z]{2}_[a-z0-9_]+$"
+
+      - id: "implement_folder_scaffold"
+        name: "Implement Folder Scaffolding"
+        status: "completed"
+        description: "Create folder structure with README template."
+        target_files:
+          - "src/agentic_cli/commands/plan.py"
+          - "src/agentic_cli/templates/plan_readme.md"
+        acceptance_criteria:
+          - "Creates all subdirectories (live/, analysis/, audit/, completed/)"
+          - "Creates README.md with plan metadata"
+          - "Fails if folder already exists (no overwrite)"
+
+      - id: "implement_plan_init_command"
+        name: "Implement plan init Command"
+        status: "completed"
+        description: "Wire up the full command with Click."
+        target_files:
+          - "src/agentic_cli/commands/plan.py"
+          - "src/agentic_cli/cli.py"
+        acceptance_criteria:
+          - "Command registered as 'agentic plan init'"
+          - "Accepts branch, --description, --base arguments"
+          - "Outputs created folder path on success"
+          - "Returns correct exit codes per spec"
+
+  - name: "Testing"
+    status: completed
+    description: "Verify CLI behavior."
+    tasks:
+      - id: "test_name_generation"
+        name: "Test Name Generation"
+        status: "completed"
+        description: "Unit tests for naming algorithm."
+        target_files:
+          - "tests/test_naming.py"
+        acceptance_criteria:
+          - "Test date prefix generation"
+          - "Test worktree ID extraction from various path formats"
+          - "Test description sanitization edge cases"
+
+      - id: "test_plan_init"
+        name: "Test plan init Command"
+        status: "completed"
+        description: "Integration tests for full command."
+        target_files:
+          - "tests/test_plan_init.py"
+        acceptance_criteria:
+          - "Test worktree creation when not exists"
+          - "Test folder creation when worktree exists"
+          - "Test failure when folder already exists"
+          - "Test all exit codes"
+
+  - name: "Integration"
+    status: completed
+    description: "Update agent guidance to use CLI."
+    tasks:
+      - id: "update_cli_commands_yml"
+        name: "Update cli-commands.yml"
+        status: "completed"
+        description: "Add plan init to CLI commands definition."
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/cli-commands.yml"
+        acceptance_criteria:
+          - "plan.init command documented with all parameters"
+          - "Examples show common usage patterns"
+
+      - id: "update_deploy_worktree_agent"
+        name: "Update deploy-worktree Agent"
+        status: "completed"
+        description: "Agent uses CLI instead of manual folder creation."
+        target_files:
+          - "modules/AgenticGuidance/agents/deploy/deploy-worktree/process.yml"
+        acceptance_criteria:
+          - "Agent calls 'agentic plan init' instead of creating folders directly"
+          - "Agent handles CLI exit codes appropriately"
+          - "Removes manual folder creation logic"
+
+      - id: "update_orchestration_planning"
+        name: "Update orchestration-planning Process"
+        status: "completed"
+        description: "Orchestration uses CLI for worktree/folder setup."
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+        acceptance_criteria:
+          - "SpawnDeployWorktree step replaced with CLI call"
+          - "VerifyWorktree step simplified (CLI guarantees correctness)"
+
+  - name: "User Stories"
+    status: completed
+    description: "Define user stories for UAT validation."
+    user_stories:
+      - id: "US001"
+        title: "Developer creates first plan folder"
+        persona: "Developer new to the project"
+        story: |
+          As a developer starting work on a new feature,
+          I want to run 'agentic plan init my-feature --description auth_implementation'
+          So that I get a correctly named plan folder without learning the naming convention.
+        acceptance_criteria:
+          - "Worktree created at expected location"
+          - "Plan folder name matches YYMMDDXX_description pattern"
+          - "Folder contains live/, completed/ subdirectories"
+          - "Output shows clear success message with paths"
+        test_steps:
+          - "Run: agentic plan init test-feature --description my_test"
+          - "Verify worktree exists at ../Repo-test-feature"
+          - "Verify plan folder name format"
+          - "Verify subdirectory structure"
+
+      - id: "US002"
+        title: "Developer uses existing worktree"
+        persona: "Developer with existing worktree"
+        story: |
+          As a developer who already has a worktree for my branch,
+          I want to run 'agentic plan init my-branch --description second_plan'
+          So that I can create additional plan folders without recreating the worktree.
+        acceptance_criteria:
+          - "Existing worktree is detected and reused"
+          - "New plan folder created in existing worktree"
+          - "Output indicates 'Using existing worktree'"
+        test_steps:
+          - "Create worktree manually: git worktree add -b test ../Repo-test main"
+          - "Run: agentic plan init test --description another_plan"
+          - "Verify message shows existing worktree detected"
+          - "Verify new plan folder created"
+
+      - id: "US003"
+        title: "Developer handles naming conflict"
+        persona: "Developer creating duplicate plan"
+        story: |
+          As a developer who already has a plan folder with the same name,
+          I want to get a clear error with exit code 2
+          So that I know to use a different description or check existing folders.
+        acceptance_criteria:
+          - "Exit code is 2 (folder exists)"
+          - "Error message mentions 'already exists'"
+          - "No partial state created"
+        test_steps:
+          - "Run: agentic plan init conflict-test --description same_name"
+          - "Run same command again"
+          - "Verify exit code is 2"
+          - "Verify error message"
+
+      - id: "US004"
+        title: "Agent uses CLI for automation"
+        persona: "Orchestration agent (deploy-worktree)"
+        story: |
+          As an orchestration agent setting up a new plan,
+          I want to call 'agentic -j plan init branch --description desc'
+          So that I get structured JSON output I can parse and act on.
+        acceptance_criteria:
+          - "JSON output includes worktree path"
+          - "JSON output includes plan_folder_name"
+          - "JSON output includes worktree_created boolean"
+          - "Exit codes are machine-parseable"
+        test_steps:
+          - "Run: agentic -j plan init json-test --description automation"
+          - "Parse JSON output"
+          - "Verify all required fields present"
+          - "Verify field values are correct"
+
+      - id: "US005"
+        title: "Developer uses different base branch"
+        persona: "Developer working from develop branch"
+        story: |
+          As a developer whose team uses 'develop' as the main branch,
+          I want to run 'agentic plan init feature --base develop'
+          So that my worktree is created from the correct base.
+        acceptance_criteria:
+          - "Worktree created from specified base branch"
+          - "Git log shows parent is develop branch"
+        test_steps:
+          - "Create develop branch: git checkout -b develop"
+          - "Return to main: git checkout main"
+          - "Run: agentic plan init from-develop --base develop --description test"
+          - "Verify worktree parent is develop"
+
+  - name: "UAT Testing"
+    status: completed
+    description: "User Acceptance Testing with test-user-simulator agent."
+    loop_type: "user-story-validation-loop"
+    maximum_iterations: 3
+    completed_date: "2026-01-15"
+    tasks:
+      - id: "uat_execute_stories"
+        name: "Execute User Story Validation"
+        status: "completed"
+        description: |
+          Spawn test-user-simulator agent to execute each user story.
+          Agent follows test_steps without access to implementation details.
+          Validates acceptance_criteria are met.
+        agent: "test-user-simulator"
+        stories_to_validate:
+          - "US001"
+          - "US002"
+          - "US003"
+          - "US004"
+          - "US005"
+        acceptance_criteria:
+          - "All 5 user stories pass validation"
+          - "No acceptance criteria failures"
+          - "Test output documented"
+        results:
+          US001:
+            status: "PASSED"
+            notes: "Worktree created at expected location. Plan folder name 260115FE_auth_implementation matches YYMMDDXX_description pattern. Folder contains live/, completed/ subdirectories."
+          US002:
+            status: "PASSED"
+            notes: "Existing worktree detected and reused. New plan folder created. Output shows 'Using existing worktree'."
+          US003:
+            status: "PASSED"
+            notes: "Exit code 2 returned. Error message 'Plan folder already exists'. No partial state created."
+          US004:
+            status: "PASSED"
+            notes: "JSON output includes worktree, plan_folder, plan_folder_name, worktree_created fields. Exit code 0."
+          US005:
+            status: "PASSED"
+            notes: "Worktree created from develop base branch successfully."
+
+      - id: "uat_document_results"
+        name: "Document UAT Results"
+        status: "completed"
+        description: "Record UAT results and any gaps identified."
+        acceptance_criteria:
+          - "Results recorded in plan folder"
+          - "Any failures have remediation tasks created"
+        results:
+          summary: "All 5 user stories passed UAT validation"
+          failures: 0
+          gaps_identified: []
+
+success_criteria:
+  - "'agentic plan init agenticguidance --desc test' creates correct folder name"
+  - "Folder name matches YYMMDDXX_description pattern"
+  - "Worktree created if not exists"
+  - "All tests pass"
+  - "deploy-worktree agent updated to use CLI"
+  - "No more agent-created folder naming errors possible"

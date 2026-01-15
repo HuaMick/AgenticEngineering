@@ -46,20 +46,28 @@ flowchart LR
     CheckInputs -- "No: Missing" --> AskUser((Ask User for Clarification))
 
     %% Proceed when context is verified
-    CheckInputs -- "Yes: Verified" --> SpawnDeployWorktree[Spawn deploy-worktree Agent]
+    CheckInputs -- "Yes: Verified" --> InitPlanFolder[Run CLI: agentic plan init branch --description desc]
 
     %% ========================================
     %% WORKTREE & PLAN FOLDER SETUP
     %% ========================================
-    %% CLI OFFLOAD: Use agentic-cli commands for worktree and plan operations
-    %% - agentic worktree create: Creates worktree with plan folder
-    %% - agentic worktree status: Verifies worktree configuration
-    %% - agentic plan validate: Validates plan folder structure
-    %% deploy-worktree agent orchestrates CLI commands
-    SpawnDeployWorktree --> VerifyWorktree[Verify Worktree via CLI: agentic worktree status]
-    VerifyWorktree --> ValidatePlanFolder[Validate Plan Folder via CLI: agentic plan validate]
-    ValidatePlanFolder --> WorktreeValid{Worktree & Plan Valid?}
-    WorktreeValid -- "No: Failed verification" --> AskUser
+    %% CLI OFFLOAD: Use 'agentic plan init' for combined worktree + plan folder creation.
+    %% This single CLI command:
+    %% - Creates worktree if needed (or reuses existing)
+    %% - Enforces YYMMDDXX_description naming convention programmatically
+    %% - Creates all required subdirectories (live/, completed/, analysis/, audit/)
+    %% - Returns exit codes: 0=success, 1=worktree failed, 2=folder exists, 3=invalid input
+    %% For JSON output: agentic -j plan init <branch> --description <desc>
+    %%
+    %% NOTE: No agent spawning needed - CLI handles the operation deterministically.
+    %% This eliminates naming convention drift from agent interpretation.
+    InitPlanFolder --> CheckInitResult{CLI Exit Code 0?}
+    CheckInitResult -- "No: Exit 1" --> AskUser((Worktree Creation Failed - Ask User))
+    CheckInitResult -- "No: Exit 2" --> AskUser((Folder Already Exists - Ask User for New Description))
+    CheckInitResult -- "No: Exit 3" --> AskUser((Invalid Input - Ask User))
+    CheckInitResult -- "Yes: Success" --> ValidatePlanFolder[Validate Plan Folder via CLI: agentic plan validate]
+    ValidatePlanFolder --> WorktreeValid{Plan Folder Valid?}
+    WorktreeValid -- "No: Failed validation" --> AskUser
 
     %% ========================================
     %% PHASE DETERMINATION
