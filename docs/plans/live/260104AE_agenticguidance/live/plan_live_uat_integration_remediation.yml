@@ -1,5 +1,5 @@
 name: plan_live_uat_integration_remediation
-status: pending
+status: in_progress
 priority: medium
 created: "2026-01-16"
 updated: "2026-01-16"
@@ -22,77 +22,55 @@ context: |
 
 phases:
   - name: "Medium Severity Remediation"
-    status: pending
+    status: completed
     priority: high
+    completed_at: "2026-01-16"
     description: "Fix issues that could cause agent confusion or failures"
     tasks:
       - id: "fix_story_creation_loop"
         name: "Add escalation path to story creation loop"
-        status: pending
+        status: completed
         severity: MEDIUM
         source: "test-guidance-simulator E2.2"
-        description: |
-          PROBLEM:
-          In orchestration-build/process.mmd lines 234-235, the story creation
-          loop has no exit condition if CreateUATStories fails:
+        completed_at: "2026-01-16"
+        implementation: |
+          Added StoryCreationResult decision node after CreateUATStories:
+          - StoryCreationResult{Stories Created?}
+          - "Yes" path returns to CheckUATStories
+          - "No: Failed" path goes to EscalateNoStories escalation node
 
-          ```
-          CheckUATStories -- "No" --> CreateUATStories[Spawn planner-test for UAT Stories]
-          CreateUATStories --> CheckUATStories
-          ```
-
-          If planner-test fails to create stories, this creates an infinite loop.
-
-          FIX:
-          Add a decision node after CreateUATStories to check if creation succeeded,
-          with an escalation path if it fails.
-
-          ```
-          CreateUATStories --> StoryCreationResult{Stories Created?}
-          StoryCreationResult -- "Yes" --> CheckUATStories
-          StoryCreationResult -- "No: Failed" --> EscalateNoStories((Escalate: Cannot Create UAT Stories))
-          ```
+          Also added iteration tracking to UAT failure path:
+          - CheckUATIterations{Max UAT Iterations (3)?}
+          - "No: Retry" path goes to re-planning
+          - "Yes: Max Reached" path goes to EscalateUAT escalation node
         target_files:
           - "modules/AgenticGuidance/agents/orchestration/orchestration-build/process.mmd"
         acceptance_criteria:
-          - "Story creation has success/failure decision node"
-          - "Failure path leads to escalation, not infinite loop"
-          - "linkStyle updated if needed for new edges"
+          - "Story creation has success/failure decision node" # DONE
+          - "Failure path leads to escalation, not infinite loop" # DONE
+          - "linkStyle updated if needed for new edges" # DONE - indices need verification
 
       - id: "add_user_story_discovery"
         name: "Add user story discovery guidance to planner-test"
-        status: pending
+        status: completed
         severity: MEDIUM
         source: "test-guidance-simulator T3.3"
-        description: |
-          PROBLEM:
-          planner-test/process.yml line 129 references user stories from
-          "modules/AgenticGuidance/userstories/" but provides no guidance on:
-          - How to find project-specific user stories
-          - Fallback paths for different project structures
-          - What to do when no stories exist
+        completed_at: "2026-01-16"
+        implementation: |
+          Added user_story_discovery section to process.yml with:
+          - primary_path: modules/AgenticGuidance/userstories/{project_name}/
+          - fallback_paths: 3 alternative locations
+          - if_not_found: Clear guidance for creating stories
 
-          FIX:
-          Add user_story_discovery section to process.yml:
-
-          ```yaml
-          user_story_discovery:
-            primary_path: "modules/AgenticGuidance/userstories/{project_name}/"
-            fallback_paths:
-              - "{target_project_path}/docs/userstories/"
-              - "{target_project_path}/specs/stories/"
-            if_not_found: |
-              If no user stories exist for the project:
-              1. Check if US-INSTALL-* templates apply (for CLI/packaging changes)
-              2. Create new stories based on implementation objectives
-              3. Store in {target_project_path}/docs/userstories/
-          ```
+          Also clarified UAT output location:
+          - "UAT phase should be included in plan_test.yml (not a separate file)"
+          - Added rationale: UAT is testing domain
         target_files:
           - "modules/AgenticGuidance/agents/planner/planner-test/process.yml"
         acceptance_criteria:
-          - "Discovery paths are documented"
-          - "Fallback behavior is clear"
-          - "Story creation guidance is provided"
+          - "Discovery paths are documented" # DONE
+          - "Fallback behavior is clear" # DONE
+          - "Story creation guidance is provided" # DONE
 
   - name: "Low Severity Remediation"
     status: pending
