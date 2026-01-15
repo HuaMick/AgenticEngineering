@@ -1,0 +1,334 @@
+# Content Evaluation Guideline
+# Purpose: Criteria for evaluating file content to make consolidation decisions
+# Created: 2026-01-16
+# Plan: plan_live_teaching_file_operations.yml
+
+purpose: |
+  When deciding whether to merge, split, or keep files separate, agents
+  need criteria for evaluating the content. This guideline provides
+  patterns for assessing overlap, uniqueness, and making informed
+  consolidation decisions.
+
+  Use this guideline BEFORE using file-consolidation.yml to decide
+  WHETHER to consolidate files.
+
+duplicate_detection:
+  description: |
+    How to identify overlapping content between files.
+
+  syntactic_duplication:
+    description: "Exact or near-exact text matches"
+    detection:
+      - "Use diff to find identical sections"
+      - "Search for identical key names across files"
+      - "Look for copy-pasted content"
+    evaluation: |
+      Syntactic duplication is usually undesirable - consolidate.
+      Exception: Templates that intentionally repeat structure.
+
+  semantic_duplication:
+    description: "Same concepts expressed differently"
+    detection:
+      - "Read both files for conceptual overlap"
+      - "Look for definitions of same terms"
+      - "Identify rules that achieve the same outcome"
+    evaluation: |
+      Semantic duplication requires judgment:
+      - If one version is clearly better, use it
+      - If both have merit, consider combining
+      - If serving different audiences, may keep both
+
+  acceptable_duplication:
+    description: "When duplication is intentional and acceptable"
+    cases:
+      - case: "Cross-references"
+        example: "Definition in definition.yml, usage rules in guideline.yml"
+        reason: "Different purposes justify repetition"
+
+      - case: "Examples"
+        example: "Same concept shown in multiple contexts"
+        reason: "Repetition aids understanding"
+
+      - case: "Standalone completeness"
+        example: "Each file must be self-contained for an agent"
+        reason: "Reducing dependencies improves reliability"
+
+  overlap_quantification:
+    description: |
+      Methods to estimate how much content overlaps.
+    methods:
+      line_based:
+        description: "Count lines that appear in both files"
+        command: "comm -12 <(sort file1.yml) <(sort file2.yml) | wc -l"
+        interpretation: |
+          < 10% overlap: Probably keep separate
+          10-50% overlap: Consider consolidation
+          > 50% overlap: Strongly consider consolidation
+
+      section_based:
+        description: "Count major sections that cover same topics"
+        process:
+          - "List major sections in each file"
+          - "Count sections covering same topic"
+          - "Divide by total unique sections"
+
+uniqueness_assessment:
+  description: |
+    Identifying what unique value each file provides.
+
+  unique_content_identification:
+    process:
+      - step: 1
+        action: "Read file 1 completely"
+      - step: 2
+        action: "Read file 2 completely"
+      - step: 3
+        action: "List sections that appear ONLY in file 1"
+      - step: 4
+        action: "List sections that appear ONLY in file 2"
+      - step: 5
+        action: "Document what each file uniquely contributes"
+
+  canonical_source_determination:
+    description: |
+      When both files define the same concept, determine which is authoritative.
+    criteria:
+      - criteria: "More comprehensive definition"
+        indicator: "Covers more aspects, includes examples"
+      - criteria: "More references"
+        indicator: "More agents/files reference it"
+      - criteria: "More recently updated"
+        indicator: "Reflects current understanding"
+      - criteria: "Better location"
+        indicator: "In correct folder per classification"
+    decision: |
+      The canonical source becomes the consolidation target.
+      Non-canonical definitions should be consolidated or removed.
+
+  token_overhead_analysis:
+    description: |
+      When to consolidate for context window efficiency.
+    considerations:
+      - factor: "Total file size"
+        threshold: "Files < 50 lines may not need separate files"
+        action: "Small files are candidates for consolidation"
+
+      - factor: "Load frequency"
+        assessment: "Are both files always loaded together?"
+        action: "If always loaded together, consolidate"
+
+      - factor: "Unique consumers"
+        assessment: "Do different agents need different files?"
+        action: "If each file has unique consumers, keep separate"
+
+consolidation_decision_matrix:
+  description: |
+    Decision framework for merge vs keep separate vs split.
+
+  decision_merge:
+    when:
+      - "High overlap (> 50% similar content)"
+      - "Similar purpose and audience"
+      - "Same consumers (both loaded by same agents)"
+      - "One file is a subset of the other"
+      - "Small file (< 50 lines) with related large file"
+    benefits:
+      - "Reduced token overhead"
+      - "Single source of truth"
+      - "Easier maintenance"
+    risks:
+      - "Larger file may exceed context limits"
+      - "Changes affect more consumers"
+
+  decision_keep_separate:
+    when:
+      - "Distinct audiences (different agent types)"
+      - "Different update cycles"
+      - "Low overlap (< 10% similar content)"
+      - "Each has significant unique content"
+      - "Different classification (definition vs guideline)"
+    benefits:
+      - "Focused, single-purpose files"
+      - "Changes are localized"
+      - "Agents load only what they need"
+    risks:
+      - "Potential drift between related content"
+      - "Higher total token overhead"
+
+  decision_split:
+    when:
+      - "Mixed concerns (definitions + guidelines + examples)"
+      - "File serving multiple distinct purposes"
+      - "Different sections have different audiences"
+      - "File has grown too large for effective use"
+    benefits:
+      - "Cleaner organization"
+      - "More precise loading"
+      - "Better classification"
+    risks:
+      - "More files to manage"
+      - "Need to update references"
+
+  decision_flowchart: |
+    START
+      |
+      v
+    [Assess overlap] --> > 50%? --> YES --> Consider MERGE
+                          |
+                          NO
+                          |
+                          v
+                        > 10%? --> YES --> Evaluate audiences
+                          |                    |
+                          NO               Same audience?
+                          |                /        \
+                          v              YES        NO
+                    KEEP SEPARATE       MERGE   KEEP SEPARATE
+                          |
+                          v
+                    Is file serving
+                    multiple purposes?
+                        /    \
+                      YES    NO
+                       |      |
+                       v      v
+                     SPLIT  KEEP AS-IS
+
+base_file_selection:
+  description: |
+    When merging, which file becomes the "base" that others merge into.
+
+  selection_criteria:
+    size:
+      description: "Larger file is usually the base"
+      rationale: "Less content to move, more structure to preserve"
+      exception: "Unless larger file has poor structure"
+
+    comprehensiveness:
+      description: "More comprehensive file is the base"
+      rationale: "Already covers more ground, has better coverage"
+      assessment: "Which file better covers the topic?"
+
+    reference_count:
+      description: "File with more references is the base"
+      rationale: "Fewer reference updates needed"
+      command: |
+        grep -r 'file1.yml' modules/AgenticGuidance/ | wc -l
+        grep -r 'file2.yml' modules/AgenticGuidance/ | wc -l
+
+    organization:
+      description: "Better organized file is the base"
+      rationale: "Preserves good structure"
+      indicators:
+        - "Clear sections and hierarchy"
+        - "Consistent formatting"
+        - "Useful comments"
+
+  selection_decision_table: |
+    | File 1 | File 2 | Decision |
+    |--------|--------|----------|
+    | Larger, more refs | Smaller, fewer refs | File 1 is base |
+    | Smaller but well-structured | Larger but messy | File 1 may be base |
+    | Many refs | Few refs | File 1 is base (fewer updates) |
+    | Good organization | Poor organization | File 1 is base |
+
+decision_documentation:
+  description: |
+    How to document consolidation decisions for future reference.
+
+  decision_template:
+    format: |
+      ## Consolidation Decision: [file1.yml] and [file2.yml]
+
+      **Decision**: [MERGE / KEEP SEPARATE / SPLIT]
+
+      **Rationale**:
+      - Overlap assessment: [X% overlap / minimal overlap]
+      - Audience: [Same / Different]
+      - Purpose: [Similar / Different]
+      - Key factors: [List specific reasons]
+
+      **If MERGE**:
+      - Base file: [filename]
+      - Content to migrate: [List sections from other file]
+
+      **If SPLIT**:
+      - New files: [List new file names]
+      - Content distribution: [What goes where]
+
+      **Date**: [Date of decision]
+      **Decided by**: [Agent or human]
+
+  where_to_document:
+    - "In plan file if part of planned work"
+    - "In commit message if straightforward"
+    - "In analysis/ folder if complex decision"
+
+examples:
+  high_overlap_merge:
+    scenario: "Two files with 80% overlap"
+    files:
+      file1: "test-patterns.yml (100 lines)"
+      file2: "testing-rules.yml (80 lines)"
+    analysis: |
+      - 80% content overlap
+      - Both loaded by test agents
+      - Both cover testing behavior
+    decision: "MERGE"
+    base: "test-patterns.yml (larger, more refs)"
+    rationale: |
+      High overlap indicates redundancy.
+      Same consumers means no benefit from separation.
+      Consolidation reduces token overhead.
+
+  definition_vs_guideline_split:
+    scenario: "File with mixed content types"
+    file: "agent-behavior.yml"
+    analysis: |
+      Contains:
+      - Definitions: "What types of agents exist"
+      - Guidelines: "How agents should behave"
+      - Examples: "Sample agent configurations"
+    decision: "SPLIT"
+    new_files:
+      - "definitions/agent-types.yml - type definitions"
+      - "guidelines/agent-behavior-rules.yml - behavioral rules"
+      - "examples/agent-configs.yml - configuration examples"
+    rationale: |
+      Mixed concerns should be separated for clarity.
+      Different agents may need only definitions or only guidelines.
+      Improves classification compliance.
+
+  small_stub_merge:
+    scenario: "Small stub file alongside comprehensive file"
+    files:
+      file1: "skipped-test.yml (30 lines, 3 definitions)"
+      file2: "acceptable-skips.yml (150 lines, comprehensive)"
+    analysis: |
+      - skipped-test.yml is a stub
+      - acceptable-skips.yml covers same topic comprehensively
+      - skipped-test.yml adds only 3 unique definitions
+    decision: "MERGE into acceptable-skips.yml"
+    rationale: |
+      Small stub adds minimal unique value.
+      Comprehensive file can absorb additions.
+      Reduces file count and token overhead.
+
+acceptance_criteria_template:
+  description: |
+    Reusable acceptance criteria for content evaluation.
+
+  for_evaluation_decisions:
+    - "Overlap percentage quantified (line-based or section-based)"
+    - "Unique content identified for each file"
+    - "Canonical source determined if concepts overlap"
+    - "Decision documented with rationale"
+    - "Decision follows consolidation_decision_matrix"
+
+related_guidelines:
+  - location: "modules/AgenticGuidance/assets/guidelines/file-consolidation.yml"
+    description: "How to execute merge decisions made here"
+  - location: "modules/AgenticGuidance/assets/guidelines/reference-management.yml"
+    description: "Required for any file operation after decision"
+  - location: "modules/AgenticGuidance/assets/guidelines/file-reclassification.yml"
+    description: "For split decisions that create files in different folders"

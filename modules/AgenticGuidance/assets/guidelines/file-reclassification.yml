@@ -1,0 +1,317 @@
+# File Reclassification Guideline
+# Purpose: Patterns for moving files between asset folders based on content type
+# Created: 2026-01-16
+# Plan: plan_live_teaching_file_operations.yml
+# Depends: reference-management.yml
+
+purpose: |
+  Files in AgenticGuidance/assets are organized by content type:
+  - definitions/: What things ARE (concepts, vocabulary, specifications)
+  - guidelines/: How to ACT (prescriptive rules, patterns, workflows)
+  - examples/: Worked examples, templates
+  - tests/: Test data, scenarios
+
+  This guideline provides patterns for moving files between these folders
+  when content is incorrectly classified. It complements the classification
+  criteria in definition.yml and guideline.yml by providing the "how to move"
+  process.
+
+classification_review:
+  description: |
+    Before moving a file, confirm the current classification is incorrect.
+    Reference the authoritative definitions for each content type.
+
+  reference_links:
+    definitions: "modules/AgenticGuidance/assets/definitions/definition.yml"
+    guidelines: "modules/AgenticGuidance/assets/definitions/guideline.yml"
+
+  decision_tree:
+    description: |
+      Use this tree to determine correct classification.
+
+    questions:
+      - question: "Does the content tell agents HOW to act?"
+        yes: "Likely a GUIDELINE (prescriptive)"
+        no: "Continue to next question"
+
+      - question: "Does the content define WHAT something is?"
+        yes: "Likely a DEFINITION (descriptive)"
+        no: "Continue to next question"
+
+      - question: "Does the content show a worked example or template?"
+        yes: "Likely an EXAMPLE"
+        no: "Continue to next question"
+
+      - question: "Is the content test data or test scenarios?"
+        yes: "Likely belongs in TESTS"
+        no: "May be miscellaneous - ask for clarification"
+
+  classification_indicators:
+    definitions:
+      keywords: ["is", "are", "means", "refers to", "types of", "categories"]
+      structure: ["Vocabulary lists", "Type hierarchies", "Concept explanations"]
+      purpose: "Agents read to UNDERSTAND concepts"
+
+    guidelines:
+      keywords: ["must", "should", "always", "never", "when", "if", "then", "do"]
+      structure: ["Rules", "Steps", "Workflows", "Checklists", "Patterns"]
+      purpose: "Agents read to KNOW WHAT TO DO"
+
+    examples:
+      keywords: ["example", "template", "sample", "demonstrates"]
+      structure: ["Complete worked examples", "Templates with placeholders"]
+      purpose: "Agents read to SEE concrete instances"
+
+    tests:
+      keywords: ["test", "scenario", "case", "input", "expected"]
+      structure: ["Test inputs", "Expected outputs", "Validation data"]
+      purpose: "Used by test agents for validation"
+
+  edge_cases:
+    mixed_content:
+      description: "File contains both definitions and prescriptive rules"
+      resolution: |
+        Consider splitting the file:
+        - Extract definitions to definitions/
+        - Extract rules to guidelines/
+        OR if tightly coupled, classify by PRIMARY purpose
+
+    strategy_files:
+      description: "strategy-*.yml files may be in definitions/ or guidelines/"
+      resolution: |
+        Strategy files that DESCRIBE available strategies -> definitions/
+        Strategy files that PRESCRIBE how to use strategies -> guidelines/
+        When in doubt, keep in current location
+
+folder_destinations:
+  description: |
+    Where different types of content should live.
+
+  definitions:
+    path: "modules/AgenticGuidance/assets/definitions/"
+    content_types:
+      - "Concept definitions and vocabulary"
+      - "Type hierarchies and taxonomies"
+      - "Specifications and schemas"
+      - "Reference data"
+    examples:
+      - "agent-types.yml - What types of agents exist"
+      - "plans.yml - What plans are and their structure"
+      - "friction.yml - What friction means in this context"
+
+  guidelines:
+    path: "modules/AgenticGuidance/assets/guidelines/"
+    content_types:
+      - "Prescriptive rules and constraints"
+      - "Workflow patterns and processes"
+      - "Decision frameworks"
+      - "Best practices and anti-patterns"
+    examples:
+      - "less-is-more.yml - Rules for minimal changes"
+      - "iteration.yml - How to iterate on work"
+      - "orchestration-policy.yml - Rules for orchestration"
+
+  examples:
+    path: "modules/AgenticGuidance/assets/examples/"
+    content_types:
+      - "Complete worked examples"
+      - "Templates with placeholders"
+      - "Sample configurations"
+    examples:
+      - "plan_example.yml - Example plan structure"
+      - "Component MMD templates"
+
+  tests:
+    path: "modules/AgenticGuidance/assets/tests/ (if exists) or tests/"
+    content_types:
+      - "Test scenarios and cases"
+      - "Test input data"
+      - "Expected outputs for validation"
+    note: "Test data may also live with test agents"
+
+reclassification_workflow:
+  description: |
+    Step-by-step process for moving a file to the correct folder.
+
+  steps:
+    - step: 1
+      name: "Confirm Current Classification is Incorrect"
+      action: |
+        Review the file content against decision_tree.
+        Document why current location is wrong.
+        If uncertain, do NOT move - ask for clarification.
+      output: "Written justification for reclassification"
+
+    - step: 2
+      name: "Identify All References"
+      action: |
+        Use reference-management.yml#discovery_patterns to find ALL
+        references to the file.
+      command_template: |
+        grep -rn 'path/to/file.yml' modules/AgenticGuidance/
+        grep -rn 'file.yml' modules/AgenticGuidance/agents/*/inputs.yml
+      link: "modules/AgenticGuidance/assets/guidelines/reference-management.yml"
+
+    - step: 3
+      name: "Move File to Correct Folder"
+      action: |
+        Use git mv to preserve history.
+      command_template: |
+        git mv modules/AgenticGuidance/assets/definitions/file.yml \
+               modules/AgenticGuidance/assets/guidelines/file.yml
+
+    - step: 4
+      name: "Update All References"
+      action: |
+        Update every reference found in step 2.
+        Priority order: inputs.yml files first, then others.
+      link: "modules/AgenticGuidance/assets/guidelines/reference-management.yml#update_workflow"
+
+    - step: 5
+      name: "Verify No Broken References"
+      action: |
+        Run verification to ensure no references point to old location.
+      command_template: |
+        grep -r 'old/path/file.yml' modules/AgenticGuidance/
+      expected: "No output (zero matches)"
+      link: "modules/AgenticGuidance/assets/guidelines/reference-management.yml#verification"
+
+    - step: 6
+      name: "Commit Changes"
+      action: |
+        Commit the move and reference updates together.
+        Include justification in commit message.
+      commit_template: |
+        fix: Reclassify file.yml from definitions/ to guidelines/
+
+        File contains prescriptive rules (how to act), not definitions
+        (what things are). Moving to correct folder per definition.yml
+        and guideline.yml classification criteria.
+
+        Updated X references in inputs.yml files.
+
+special_cases:
+  strategy_files:
+    description: |
+      strategy-*.yml files should be in a consistent location.
+    current_convention: "definitions/ (describing available strategies)"
+    alternative_convention: "guidelines/ (prescribing how to use strategies)"
+    decision: |
+      For consistency, all strategy-*.yml files should be in the SAME folder.
+      If moving one, consider moving all to maintain consistency.
+      Current convention: definitions/ for strategy files.
+
+  test_data_vs_definitions:
+    description: |
+      Some files look like definitions but are actually test data.
+    indicators_of_test_data:
+      - "File is primarily used by test agents"
+      - "Content is scenarios/cases rather than concepts"
+      - "File name includes 'test', 'scenario', 'case'"
+    resolution: |
+      If file is test data, move to tests/ or keep with test agent.
+      If file defines concepts used in testing, keep in definitions/.
+
+  project_specific_vs_reusable:
+    description: |
+      Some files are project-specific, not general AgenticGuidance.
+    indicators:
+      - "References specific project paths or configurations"
+      - "Only used by one project's agents"
+      - "Not applicable to other use cases"
+    resolution: |
+      Project-specific files may belong in the project itself,
+      not in the shared AgenticGuidance assets.
+
+  hybrid_files:
+    description: |
+      Files that serve multiple purposes (definitions + guidelines).
+    examples:
+      - "Workflow definitions that also include how-to steps"
+      - "Type definitions that include usage guidelines"
+    resolution_options:
+      - option: "Split into two files"
+        when: "Content is clearly separable"
+        action: "Create definition.yml and guideline.yml files"
+
+      - option: "Keep unified"
+        when: "Content is tightly coupled"
+        action: "Classify by PRIMARY purpose"
+
+      - option: "Add cross-reference"
+        when: "One file references the other"
+        action: "Keep in primary location, add link to related content"
+
+examples:
+  move_prescriptive_content:
+    scenario: "fence-build-deploy.yml in definitions/ contains prescriptive rules"
+    analysis: |
+      File contains:
+      - "FENCE: Always deploy to staging before production"
+      - "MUST validate CI/CD before push"
+      - "Steps for safe deployment"
+      This is HOW to act (guideline), not WHAT something is (definition).
+
+    steps:
+      - step: "Confirm Misclassification"
+        finding: "File is prescriptive rules, should be in guidelines/"
+
+      - step: "Find References"
+        command: "grep -rn 'fence-build-deploy.yml' modules/AgenticGuidance/"
+        result: "2 inputs.yml files reference this"
+
+      - step: "Move File"
+        command: |
+          git mv modules/AgenticGuidance/assets/definitions/fence-build-deploy.yml \
+                 modules/AgenticGuidance/assets/guidelines/
+
+      - step: "Update References"
+        changes:
+          - "agents/deploy/deploy-cicd/inputs.yml"
+          - "agents/orchestration/orchestration-build/inputs.yml"
+
+      - step: "Verify"
+        command: "grep -r 'definitions/fence-build-deploy.yml' modules/AgenticGuidance/"
+        expected: "No output"
+
+  move_test_scenarios:
+    scenario: "validation-scenarios.yml in definitions/ is actually test data"
+    analysis: |
+      File contains:
+      - Test input scenarios
+      - Expected outputs
+      - Used only by test-guidance-simulator
+      This is test data, not concept definitions.
+
+    steps:
+      - step: "Confirm Misclassification"
+        finding: "File is test data, should be with test agent"
+
+      - step: "Determine Destination"
+        options:
+          - "modules/AgenticGuidance/agents/test/test-guidance-simulator/scenarios/"
+          - "modules/AgenticGuidance/assets/tests/"
+        decision: "Keep with test agent for locality"
+
+      - step: "Move and Update"
+        # Follow same move and update pattern
+
+acceptance_criteria_template:
+  description: |
+    Reusable acceptance criteria for reclassification operations.
+
+  for_reclassification:
+    - "Justification documented for why current classification is wrong"
+    - "New classification matches decision_tree criteria"
+    - "git mv used to preserve file history"
+    - "All references updated to new path"
+    - "grep for old path returns 0 results"
+    - "Commit message includes classification rationale"
+
+related_guidelines:
+  - location: "modules/AgenticGuidance/assets/guidelines/reference-management.yml"
+    description: "Required for discovering and updating references"
+  - location: "modules/AgenticGuidance/assets/definitions/definition.yml"
+    description: "Criteria for what belongs in definitions/"
+  - location: "modules/AgenticGuidance/assets/definitions/guideline.yml"
+    description: "Criteria for what belongs in guidelines/"

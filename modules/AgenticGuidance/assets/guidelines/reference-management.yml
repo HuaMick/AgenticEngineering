@@ -1,0 +1,298 @@
+# Reference Management Guideline
+# Purpose: Patterns for discovering, tracking, and updating file references
+# Created: 2026-01-16
+# Plan: plan_live_teaching_file_operations.yml
+
+purpose: |
+  When files are moved, renamed, or deleted, all references to those files must be
+  discovered and updated. This guideline provides concrete patterns for finding
+  references and ensuring no broken links remain after file operations.
+
+  This is the foundational pattern for all file operations - other guidelines
+  (file-consolidation.yml, file-reclassification.yml) depend on these patterns.
+
+discovery_patterns:
+  description: |
+    Patterns for finding all references to a file before modifying it.
+    ALWAYS run discovery BEFORE any file operation.
+
+  grep_patterns:
+    basic_path_search:
+      command: "grep -r 'path/to/file.yml' ."
+      purpose: "Find literal path references"
+      note: "Use relative paths from repository root"
+
+    filename_search:
+      command: "grep -r 'filename.yml' ."
+      purpose: "Find references by filename alone"
+      use_when: "File might be referenced without full path"
+
+    inputs_yml_search:
+      command: "grep -r 'filename.yml' */inputs.yml"
+      purpose: "Find references in agent input configurations"
+      critical: true
+      note: "inputs.yml files are the primary reference mechanism for agents"
+
+    fragment_search:
+      command: "grep -r 'filename.yml#' ."
+      purpose: "Find fragment references (file.yml#anchor)"
+      note: "Fragments point to specific sections within a file"
+
+  reference_locations:
+    description: "Common places where file references appear"
+    locations:
+      - pattern: "modules/AgenticGuidance/agents/*/inputs.yml"
+        description: "Agent input configurations"
+        priority: "critical"
+
+      - pattern: "modules/AgenticGuidance/agents/*/process.yml"
+        description: "Agent process definitions"
+        priority: "high"
+
+      - pattern: "modules/AgenticGuidance/agents/*/process.mmd"
+        description: "Orchestration flowcharts"
+        priority: "high"
+
+      - pattern: "modules/AgenticGuidance/assets/guidelines/*.yml"
+        description: "Cross-references between guidelines"
+        priority: "medium"
+
+      - pattern: "modules/AgenticGuidance/assets/definitions/*.yml"
+        description: "Cross-references between definitions"
+        priority: "medium"
+
+      - pattern: "docs/plans/**/*.yml"
+        description: "Plan files referencing guidance"
+        priority: "low"
+
+  nested_reference_detection:
+    description: |
+      Some files reference other files that in turn reference the target file.
+      This creates nested dependencies that must be traced.
+    process:
+      - "Step 1: Find direct references to target file"
+      - "Step 2: For each referencing file, check if IT is referenced elsewhere"
+      - "Step 3: Build dependency graph if complex"
+      - "Step 4: Update from leaves to root (most-nested first)"
+    example: |
+      # If moving definitions/agent-types.yml:
+      # 1. inputs.yml references agent-types.yml
+      # 2. process.yml references inputs.yml (nested dependency)
+      # Update order: process.yml mentions don't change, but inputs.yml does
+
+update_workflow:
+  description: |
+    Step-by-step process for updating references when moving/renaming files.
+    CRITICAL: Update references BEFORE deleting the source file.
+
+  steps:
+    - step: 1
+      name: "Discovery"
+      action: |
+        Run grep patterns to find ALL references.
+        Document each reference location.
+      command_template: |
+        grep -rn 'old/path/file.yml' modules/AgenticGuidance/
+        grep -rn 'file.yml' modules/AgenticGuidance/agents/*/inputs.yml
+      output: "List of files containing references"
+
+    - step: 2
+      name: "Categorization"
+      action: |
+        Categorize references by type:
+        - Path references: Full or relative path to file
+        - Name-only references: Just the filename
+        - Fragment references: file.yml#anchor
+        - Comment references: Documentation mentions
+      output: "Categorized reference list"
+
+    - step: 3
+      name: "Path Update Planning"
+      action: |
+        Determine new path for each reference type.
+        Handle special cases:
+        - Relative paths may need adjustment based on referencing file location
+        - Fragment anchors must still resolve in new file
+      output: "Old path -> New path mapping"
+
+    - step: 4
+      name: "Reference Updates"
+      action: |
+        Update each reference in order:
+        1. inputs.yml files (critical - agent loading)
+        2. process.yml files (agent definitions)
+        3. Other guidelines/definitions (cross-references)
+        4. Plan files (documentation)
+      fence: |
+        FENCE: UPDATE BEFORE DELETE
+        All references must be updated BEFORE the source file is moved/deleted.
+        If you delete first, you lose the ability to verify completeness.
+
+    - step: 5
+      name: "File Operation"
+      action: |
+        Perform the actual file move/rename/delete.
+        Use git mv for moves to preserve history.
+      commands:
+        move: "git mv old/path/file.yml new/path/file.yml"
+        rename: "git mv old/path/old-name.yml old/path/new-name.yml"
+        delete: "git rm old/path/file.yml (only after all refs updated)"
+
+    - step: 6
+      name: "Verification"
+      action: |
+        Verify all references are updated.
+        Run verification commands (see verification section).
+      output: "Zero broken references"
+
+  fragment_reference_handling:
+    description: |
+      When files contain anchors (#section_name), fragment references
+      must be handled specially.
+    process:
+      - "Step 1: Identify all fragment references (grep 'filename.yml#')"
+      - "Step 2: Verify anchors exist in target file"
+      - "Step 3: If anchor moved to different file, update to new_file.yml#anchor"
+      - "Step 4: If anchor renamed, update fragment name"
+      - "Step 5: Test fragment resolution"
+    example: |
+      # Old: agent-loops.yml#test-fix-loop
+      # If loop moved to loops/test-loops.yml:
+      # New: loops/test-loops.yml#test-fix-loop
+
+verification:
+  description: |
+    Commands and patterns to verify no broken references remain.
+
+  zero_results_acceptance:
+    description: |
+      After updating all references, grep for the old path should return zero results.
+    pattern: |
+      grep -r 'old/path/file.yml' . && echo "FAIL: References remain" || echo "PASS: No references"
+    acceptance_criteria: "Command returns no matches (exit code 1)"
+
+  verification_commands:
+    old_path_check:
+      command: "grep -rn 'old/path/file.yml' modules/AgenticGuidance/"
+      expected: "No output (zero matches)"
+      on_match: "Update remaining references, do not proceed"
+
+    old_filename_check:
+      command: "grep -rn 'old-filename.yml' modules/AgenticGuidance/"
+      expected: "No output unless filename unchanged"
+      note: "May return false positives if filename is common word"
+
+    inputs_yml_validation:
+      command: "grep -l 'old/path' modules/AgenticGuidance/agents/*/inputs.yml"
+      expected: "No output"
+      critical: true
+
+    fragment_resolution_test:
+      description: "Verify fragment references resolve"
+      process:
+        - "For each fragment reference, load target file"
+        - "Search for anchor name in target file"
+        - "If anchor not found, reference is broken"
+
+  validation_checklist:
+    - "[ ] grep 'old/path' returns 0 results"
+    - "[ ] All inputs.yml files verified"
+    - "[ ] Fragment references resolve correctly"
+    - "[ ] Git status shows only expected changes"
+    - "[ ] No uncommitted reference updates"
+
+examples:
+  move_file_between_folders:
+    scenario: "Moving prescriptive-rules.yml from definitions/ to guidelines/"
+    steps:
+      - step: "Discovery"
+        command: |
+          grep -rn 'definitions/prescriptive-rules.yml' modules/AgenticGuidance/
+          grep -rn 'prescriptive-rules.yml' modules/AgenticGuidance/agents/*/inputs.yml
+        result: |
+          agents/planner/planner-build/inputs.yml:23:  - definitions/prescriptive-rules.yml
+          assets/definitions/guidance.yml:45:  related: definitions/prescriptive-rules.yml
+
+      - step: "Update References"
+        changes:
+          - file: "agents/planner/planner-build/inputs.yml"
+            old: "  - definitions/prescriptive-rules.yml"
+            new: "  - guidelines/prescriptive-rules.yml"
+          - file: "assets/definitions/guidance.yml"
+            old: "  related: definitions/prescriptive-rules.yml"
+            new: "  related: guidelines/prescriptive-rules.yml"
+
+      - step: "Move File"
+        command: "git mv modules/AgenticGuidance/assets/definitions/prescriptive-rules.yml modules/AgenticGuidance/assets/guidelines/"
+
+      - step: "Verify"
+        command: "grep -r 'definitions/prescriptive-rules.yml' modules/AgenticGuidance/"
+        expected: "No output"
+
+  rename_file:
+    scenario: "Renaming old-name.yml to new-name.yml"
+    steps:
+      - step: "Discovery"
+        command: "grep -rn 'old-name.yml' modules/AgenticGuidance/"
+
+      - step: "Update References"
+        note: "Replace 'old-name.yml' with 'new-name.yml' in all found locations"
+
+      - step: "Rename"
+        command: "git mv path/to/old-name.yml path/to/new-name.yml"
+
+      - step: "Verify"
+        command: "grep -r 'old-name.yml' modules/AgenticGuidance/"
+        expected: "No output"
+
+  delete_after_merge:
+    scenario: "Deleting small-file.yml after merging into comprehensive-file.yml"
+    steps:
+      - step: "Discovery"
+        command: "grep -rn 'small-file.yml' modules/AgenticGuidance/"
+
+      - step: "Update References"
+        action: |
+          Change all references from small-file.yml to comprehensive-file.yml.
+          If small-file had unique anchors, add them to comprehensive-file.
+
+      - step: "Verify Content Preserved"
+        note: "See file-consolidation.yml for merge verification"
+
+      - step: "Delete"
+        command: "git rm modules/AgenticGuidance/assets/definitions/small-file.yml"
+        fence: |
+          FENCE: Only delete AFTER all references point to comprehensive-file.yml
+          AND content has been verified in target file.
+
+      - step: "Final Verify"
+        command: "grep -r 'small-file.yml' modules/AgenticGuidance/"
+        expected: "No output"
+
+acceptance_criteria_template:
+  description: |
+    Reusable acceptance criteria that other plans can reference for
+    file operations involving reference management.
+
+  for_move_operations:
+    - "grep -r 'old/path/file.yml' returns 0 results"
+    - "All inputs.yml files updated to new path"
+    - "Fragment references (#anchor) resolve in new location"
+    - "git mv used to preserve file history"
+
+  for_rename_operations:
+    - "grep -r 'old-filename.yml' returns 0 results (in relevant paths)"
+    - "All inputs.yml files updated to new filename"
+    - "No references to old filename remain"
+
+  for_delete_operations:
+    - "All references point to replacement file"
+    - "Content verified in replacement file before delete"
+    - "grep -r 'deleted-file.yml' returns 0 results"
+    - "No orphaned fragment references"
+
+related_guidelines:
+  - location: "modules/AgenticGuidance/assets/guidelines/file-consolidation.yml"
+    description: "Uses reference-management patterns for merge operations"
+  - location: "modules/AgenticGuidance/assets/guidelines/file-reclassification.yml"
+    description: "Uses reference-management patterns for move operations"

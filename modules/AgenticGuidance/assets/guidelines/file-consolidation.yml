@@ -1,0 +1,327 @@
+# File Consolidation Guideline
+# Purpose: Patterns for safely merging multiple YAML files into a single file
+# Created: 2026-01-16
+# Plan: plan_live_teaching_file_operations.yml
+# Depends: reference-management.yml
+
+purpose: |
+  When consolidating multiple YAML files into a single file, this guideline
+  provides patterns for safely merging content while preserving structure
+  and ensuring no content is lost.
+
+  Use this guideline when:
+  - Merging two small files with overlapping topics
+  - Combining stub files into a comprehensive file
+  - Reducing token overhead by consolidating related content
+
+pre_merge_checklist:
+  description: |
+    MANDATORY checks before merging files. Complete ALL items before proceeding.
+
+  steps:
+    - step: 1
+      name: "Identify All References"
+      action: |
+        Use reference-management.yml patterns to find all references
+        to EACH source file being merged.
+      command_template: |
+        grep -rn 'source-file-1.yml' modules/AgenticGuidance/
+        grep -rn 'source-file-2.yml' modules/AgenticGuidance/
+      link: "modules/AgenticGuidance/assets/guidelines/reference-management.yml#discovery_patterns"
+
+    - step: 2
+      name: "Check for Key Name Conflicts"
+      action: |
+        Extract top-level keys from each file and check for duplicates.
+        Duplicate keys in YAML will cause data loss during merge.
+      process:
+        - "List top-level keys in source file 1"
+        - "List top-level keys in source file 2"
+        - "Identify any overlapping key names"
+        - "Plan how to handle conflicts (rename, nest, merge values)"
+      conflict_handling:
+        rename: "Add prefix/suffix to disambiguate (e.g., build_rules vs test_rules)"
+        nest: "Place one file's content under a parent key"
+        merge_values: "Combine values if both are lists or compatible structures"
+
+    - step: 3
+      name: "Determine Base File"
+      action: |
+        Select which file becomes the "base" that others merge into.
+        See content-evaluation.yml#base_file_selection for detailed criteria.
+      criteria:
+        - "Larger/more comprehensive file is usually the base"
+        - "File with more references is usually the base (fewer updates needed)"
+        - "File with better structure/organization is usually the base"
+      link: "modules/AgenticGuidance/assets/guidelines/content-evaluation.yml#base_file_selection"
+
+    - step: 4
+      name: "Verify No External Consumers"
+      action: |
+        Check if any files outside AgenticGuidance reference the source files.
+        External consumers may break if files are consolidated.
+      scope_check:
+        - "docs/plans/ references (ok to update)"
+        - "Other modules/ references (may need coordination)"
+        - "External repositories (requires coordination, may block merge)"
+
+    - step: 5
+      name: "Document Unique Content"
+      action: |
+        Before merging, extract and document what is unique in each source file.
+        This creates a verification checklist for post-merge validation.
+      output: "List of unique sections/content from each source file"
+
+merge_patterns:
+  description: |
+    Patterns for structuring the merged content.
+
+  yaml_structure_preservation:
+    description: |
+      YAML files have structure that must be preserved during merge.
+    rules:
+      - "Maintain consistent indentation (2 spaces standard)"
+      - "Preserve comments that provide context"
+      - "Keep related sections together"
+      - "Use blank lines to separate major sections"
+
+  content_ordering_principles:
+    description: |
+      How to order content in the merged file.
+    order:
+      - position: 1
+        content: "Header comment (purpose, created date, etc.)"
+      - position: 2
+        content: "Purpose/description section"
+      - position: 3
+        content: "Core definitions/rules (most referenced)"
+      - position: 4
+        content: "Examples and templates"
+      - position: 5
+        content: "Related links and references"
+    note: |
+      Content from both source files should be interleaved by topic,
+      not simply appended (file1 content + file2 content).
+
+  handling_overlapping_definitions:
+    description: |
+      When both files define similar concepts.
+    strategies:
+      consolidate:
+        when: "Definitions are complementary"
+        action: "Merge into single, comprehensive definition"
+        example: |
+          # File 1: defines basic rules
+          # File 2: adds advanced rules
+          # Merged: combined rules section with subsections
+
+      keep_both:
+        when: "Definitions serve different purposes"
+        action: "Keep both with clear naming"
+        example: |
+          # File 1: build_validation_rules
+          # File 2: test_validation_rules
+          # Merged: separate sections for each
+
+      choose_one:
+        when: "One definition is clearly superior"
+        action: "Use better definition, document decision"
+        example: |
+          # File 1: outdated process
+          # File 2: updated process
+          # Merged: use File 2's process, note in comments
+
+  when_to_use_anchors:
+    description: |
+      YAML anchors (&anchor) can reduce duplication within a merged file.
+    use_anchors_when:
+      - "Same definition is referenced multiple times"
+      - "Want to ensure consistency between sections"
+      - "Reducing file size is important"
+    avoid_anchors_when:
+      - "Sections may need to diverge in future"
+      - "Anchor syntax reduces readability"
+      - "Cross-file references would break"
+
+post_merge_validation:
+  description: |
+    MANDATORY validation after merge. Do NOT commit until all checks pass.
+
+  line_count_verification:
+    description: |
+      The merged file should have at least as many non-blank lines
+      as the sum of the source files (minus duplicate headers/comments).
+    process:
+      - "Count non-blank lines in source file 1: wc -l < source1.yml"
+      - "Count non-blank lines in source file 2: wc -l < source2.yml"
+      - "Count non-blank lines in merged file: wc -l < merged.yml"
+      - "Verify: merged >= (source1 + source2 - estimated_duplicates)"
+    fence: |
+      FENCE: LINE COUNT CHECK
+      If merged line count is significantly LESS than sum of sources,
+      content was lost during merge. Do NOT proceed.
+
+  content_completeness_check:
+    description: |
+      Verify all unique content from source files appears in merged file.
+    process:
+      - "Review the 'unique content' list from pre_merge_checklist"
+      - "For each unique item, search for it in merged file"
+      - "Mark each item as [x] present or [ ] missing"
+      - "Any missing items must be added before proceeding"
+
+  yaml_syntax_validation:
+    description: "Verify the merged file is valid YAML"
+    commands:
+      python: "python -c \"import yaml; yaml.safe_load(open('merged.yml'))\""
+      yamllint: "yamllint merged.yml"
+    on_error: "Fix syntax errors before proceeding"
+
+  fragment_reference_testing:
+    description: |
+      If source files had anchor references (file.yml#section),
+      verify those sections exist in the merged file.
+    process:
+      - "Grep for '#' references to source files"
+      - "For each anchor, verify section exists in merged file"
+      - "If anchor was renamed, update all references"
+
+  diff_based_verification:
+    description: |
+      Use diff to verify no content was accidentally lost.
+    approach:
+      - "Create temp file with expected merged content"
+      - "Diff against actual merged file"
+      - "Review any unexpected differences"
+
+content_loss_prevention:
+  description: |
+    Strategies to prevent losing content during consolidation.
+
+  diff_based_approach:
+    description: |
+      Before finalizing merge, use diff to verify content.
+    steps:
+      - step: "Create content inventory"
+        action: "List all major sections from each source file"
+      - step: "Verify inventory"
+        action: "Check each section appears in merged file"
+      - step: "Document any intentional omissions"
+        action: "If content was deliberately excluded, note why"
+
+  unique_content_extraction:
+    description: |
+      Before merge, extract what makes each file unique.
+    process:
+      - "Read both files completely"
+      - "Identify sections that appear in only one file"
+      - "These MUST appear in merged file"
+
+  rollback_procedure:
+    description: |
+      If issues are found after merge, how to recover.
+    steps:
+      - step: 1
+        action: "Do NOT commit the merge yet"
+      - step: 2
+        action: "Restore source files from git: git checkout -- source1.yml source2.yml"
+      - step: 3
+        action: "Delete merged file if it was new"
+      - step: 4
+        action: "Re-do merge with corrections"
+    note: |
+      If merge was already committed:
+      git revert HEAD (if last commit)
+      git checkout <commit>~1 -- files (selective restore)
+
+examples:
+  merge_two_small_definition_files:
+    scenario: |
+      Merging skipped-test.yml (small, 30 lines) into acceptable-skips.yml
+      (comprehensive, 150 lines)
+    steps:
+      - step: "Pre-merge: Reference Discovery"
+        command: |
+          grep -rn 'skipped-test.yml' modules/AgenticGuidance/
+          grep -rn 'acceptable-skips.yml' modules/AgenticGuidance/
+        result: |
+          agents/test/test-runner/inputs.yml: skipped-test.yml
+          agents/test/test-audit/inputs.yml: acceptable-skips.yml
+
+      - step: "Pre-merge: Key Conflict Check"
+        source1_keys: ["skip_categories", "examples"]
+        source2_keys: ["acceptable_skips", "skip_patterns", "examples", "related"]
+        conflicts: ["examples"]
+        resolution: "Merge examples lists"
+
+      - step: "Pre-merge: Base Selection"
+        decision: "acceptable-skips.yml (larger, more comprehensive)"
+
+      - step: "Merge Execution"
+        actions:
+          - "Add skip_categories from skipped-test.yml to acceptable-skips.yml"
+          - "Merge examples lists"
+          - "Update header comment to note consolidation"
+
+      - step: "Post-merge: Validation"
+        line_count_check: "180 lines >= (30 + 150 - 10 duplicates) = 170 ✓"
+        content_check: "All skip_categories present ✓"
+        yaml_valid: "python -c 'import yaml...' passes ✓"
+
+      - step: "Reference Update"
+        action: "Change skipped-test.yml refs to acceptable-skips.yml"
+        link: "reference-management.yml#update_workflow"
+
+      - step: "Delete Source"
+        command: "git rm modules/AgenticGuidance/assets/definitions/skipped-test.yml"
+
+  merge_into_existing_comprehensive:
+    scenario: |
+      Merging new-patterns.yml (stub with 3 patterns) into
+      existing patterns.yml (comprehensive with 50 patterns)
+    steps:
+      - step: "Identify insertion point"
+        action: "Find appropriate section in patterns.yml for new content"
+
+      - step: "Insert content"
+        action: "Add new patterns to relevant section, not at end"
+
+      - step: "Verify ordering"
+        action: "Ensure new patterns follow existing organization"
+
+      - step: "Delete stub"
+        command: "git rm new-patterns.yml"
+
+  anti_example_content_loss:
+    scenario: "What can go wrong without validation"
+    mistakes:
+      - mistake: "Merging without checking key conflicts"
+        result: "Later key silently overwrites earlier key, data lost"
+        prevention: "Run key conflict check in pre_merge_checklist"
+
+      - mistake: "Deleting source before updating references"
+        result: "Broken references, agents fail to load inputs"
+        prevention: "Follow FENCE: UPDATE BEFORE DELETE"
+
+      - mistake: "Skipping line count verification"
+        result: "Missing sections discovered weeks later"
+        prevention: "Always verify line counts after merge"
+
+acceptance_criteria_template:
+  description: |
+    Reusable acceptance criteria for consolidation operations.
+
+  for_merge_operations:
+    - "Merged file line count >= sum of source file line counts"
+    - "All source file content appears in merged file"
+    - "No duplicate key names in merged YAML"
+    - "YAML syntax valid (yamllint or python check passes)"
+    - "Fragment references (#anchor) resolve correctly"
+    - "All references updated per reference-management.yml"
+    - "Source file(s) deleted only AFTER validation passes"
+
+related_guidelines:
+  - location: "modules/AgenticGuidance/assets/guidelines/reference-management.yml"
+    description: "Required for discovering and updating references"
+  - location: "modules/AgenticGuidance/assets/guidelines/content-evaluation.yml"
+    description: "Criteria for deciding whether to merge"
