@@ -1,12 +1,49 @@
 # Plan: 260104AE_agenticguidance
 
-## Status: ACTIVE (Remediation/Refinement)
+## Status: ACTIVE (Batch Remediation Phase 2 COMPLETE)
 
-**Updated**: 2026-01-12
+**Updated**: 2026-01-16
 **Branch**: `agenticguidance`
 **Worktree**: `/home/code/AgenticEngineering-agenticguidance`
 
-## Current Work: Orchestration Loop Integration
+## Current Work: Batch File Remediation
+
+**Session 2026-01-16 (Ralph Loop - Iterations 5-6)**
+
+### Phase 2: Medium_Priority_Consolidation - COMPLETE
+Executed `live/plan_live_batch_remediation.yml` Phase 2 tasks:
+
+**Completed Tasks:**
+- med_001: Merged plan-folder-conventions.yml into plans.yml (iteration 5)
+- med_002: Merged plan-structure-requirements.yml into plans.yml
+- med_003: Moved plan-inputs.yml to guidelines/
+- med_004: Moved fence-build-deploy.yml to guidelines/ (iteration 5)
+- med_005: Moved generalized-vs-specific.yml to guidelines/ (iteration 5)
+- med_006: Consolidated 5 Flutter testing files into flutter-testing.yml
+- med_007: Moved orchestration-test-scenarios.yml to tests/
+- med_008: Merged folder-structure.yml into plans.yml
+- med_009: Merged guidance.yml into guidance-artifacts.yml
+- med_010: Evaluated meta-definitions split - decision: keep as-is
+- med_011: Removed deprecated cleaner-voting-loop from agent-loops.yml
+- med_012: Evaluated plans.yml split - decision: keep as-is
+
+**Files Deleted (12 total):**
+- 3 redirect stubs: domains.yml, entrypoints.yml, workflows.yml
+- voting-system.yml
+- skipped-test.yml, build-artifacts.yml, packaging.yml
+- fence.yml, signpost.yml
+- plan-folder-conventions.yml, plan-structure-requirements.yml
+- folder-structure.yml, guidance.yml
+- 5 Flutter testing files
+
+**Files Created (3 total):**
+- build-packaging.yml (merged build-artifacts + packaging)
+- flutter-testing.yml (consolidated 5 files)
+- modules/AgenticGuidance/tests/ folder
+
+**Status:** Phase 1-2 COMPLETE. Phase 3 blocked pending user decisions.
+
+---
 
 **Session 2026-01-13 (Orchestration Loop Integration)**
 
