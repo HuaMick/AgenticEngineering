@@ -32,11 +32,46 @@ cli_commands:
       description: "Show status of current worktree including plan folder"
 
   plan:
+    init:
+      command: "agentic plan init <branch> [--description <desc>] [--base <base-branch>]"
+      description: |
+        Initialize worktree and plan folder with enforced naming convention.
+        Combines worktree creation (if needed) with plan folder scaffolding.
+        Naming convention (YYMMDDXX_description) is enforced programmatically.
+      parameters:
+        branch: "Branch name for worktree (required)"
+        --description/-d: "Plan description for folder name (optional, defaults to branch)"
+        --base/-b: "Base branch to create worktree from (default: main)"
+      exit_codes:
+        0: "Success - worktree and plan folder created"
+        1: "Worktree creation failed or not in git repository"
+        2: "Plan folder already exists (use different description)"
+        3: "Invalid branch name or description"
+      json_output:
+        worktree: "Absolute path to worktree"
+        worktree_created: "Boolean - true if new worktree created, false if reused"
+        branch: "Branch name"
+        base: "Base branch used"
+        plan_folder: "Absolute path to created plan folder"
+        plan_folder_name: "Generated folder name (YYMMDDXX_description format)"
+      naming_convention:
+        pattern: "YYMMDDXX_description"
+        components:
+          YYMMDD: "Current date (year/month/day)"
+          XX: "2 uppercase letters from worktree path suffix (e.g., AG from -agenticguidance)"
+          description: "Sanitized description (lowercase, underscores, max 50 chars)"
+        regex: "^\\d{6}[A-Z]{2}_[a-z0-9_]+$"
+      examples:
+        - "agentic plan init feature-auth --description user_authentication"
+        - "agentic plan init bugfix --base develop"
+        - "agentic -j plan init my-feature --description api_refactor"
+      note: "Prefer this over 'worktree create' + 'plan scaffold' for new plans"
+
     validate:
       command: "agentic plan validate <plan_folder_path>"
       description: "Validate plan folder structure and required files"
       parameters:
-        plan_folder_path: "Path to plan folder (e.g., docs/plans/live/260106Repo_Branch)"
+        plan_folder_path: "Path to plan folder (e.g., docs/plans/live/260115AG_feature)"
 
     status:
       command: "agentic plan status --path <plan_folder>"
@@ -50,10 +85,11 @@ cli_commands:
 
     scaffold:
       command: "agentic plan scaffold <name> --worktree <path>"
-      description: "Create plan folder structure from template"
+      description: "Create plan folder structure from template (low-level, prefer plan init)"
       parameters:
-        name: "Plan name in YYMMDDRepo_Branch format"
+        name: "Plan name in YYMMDDXX_description format (e.g., 260115AG_feature_auth)"
         path: "Worktree path for plan creation"
+      note: "Prefer 'agentic plan init' which generates correct naming automatically"
 
     task_start:
       command: "agentic plan task start <task_id> --plan <plan_folder>"
@@ -89,7 +125,9 @@ cli_commands:
         plan_folder: "Path to plan folder"
 
 usage_notes:
-  - "CLI commands are executed by deploy-worktree and orchestration agents"
+  - "CLI commands are executed by orchestration agents directly (tool-offloading pattern)"
   - "Prefer CLI over manual file operations for consistency"
-  - "CLI validates inputs before execution"
-  - "Errors are returned with actionable messages"
+  - "CLI validates inputs and enforces naming conventions programmatically"
+  - "Errors are returned with actionable messages and exit codes"
+  - "Use 'agentic plan init' as primary entry point for new plans (replaces deploy-worktree spawn)"
+  - "JSON output (-j flag) available for machine-parseable responses"
