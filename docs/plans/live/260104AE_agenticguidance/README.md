@@ -1,12 +1,32 @@
 # Plan: 260104AE_agenticguidance
 
-## Status: ACTIVE (Batch Remediation Phase 2 COMPLETE)
+## Status: ACTIVE (CLI Usage Teaching COMPLETE)
 
 **Updated**: 2026-01-16
 **Branch**: `agenticguidance`
 **Worktree**: `/home/code/AgenticEngineering-agenticguidance`
 
-## Current Work: Batch File Remediation
+## Current Work: CLI Usage Teaching Complete
+
+**Session 2026-01-16 (Ralph Loop - Iteration 7)**
+
+### plan_live_cli_usage_teaching.yml - COMPLETE
+Verified and completed CLI usage teaching for deployment agents:
+
+**Documentation Phase (3 tasks):**
+- doc_update_deploy_worktree: Already updated with `agentic plan init` CLI
+- doc_update_orchestration_planning: Already uses CLI for folder creation
+- doc_update_inputs_yml: Updated CLI command reference with `plan init`
+
+**Verification Phase (2 tasks):**
+- verify_cli_integration: All agents use CLI, no manual folder creation patterns
+- verify_tool_offloading_compliance: Compliant with tool-offloading guideline
+
+**Status:** All 5 tasks complete. Plan marked as completed.
+
+---
+
+## Previous Work: Batch File Remediation
 
 **Session 2026-01-16 (Ralph Loop - Iterations 5-6)**
 
