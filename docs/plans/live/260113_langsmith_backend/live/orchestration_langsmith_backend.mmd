@@ -1,0 +1,91 @@
+flowchart LR
+    %% GOAL: Orchestrate AgenticLangSmith backend module implementation
+    %% PROFILE: orchestration-build
+    %% PLAN_FILE: plan_live_build.yml
+    %% WORKTREE: /home/code/AgenticEngineering-agenticlangsmith
+    %% BRANCH: agenticlangsmith
+    %%
+    %% PHASES: Package Scaffolding, Service Implementation, Testing
+    %% AGENT_ROUTING:
+    %%   - PackageScaffolding -> build-python
+    %%   - ServiceImplementation -> build-python
+    %%   - Testing -> test-runner
+    %%
+    %% FEEDBACK_TRIGGERS:
+    %%   - TEST_FAILURE -> Return to ServiceImplementation phase
+    %%   - BUILD_FAILURE -> Escalate to human
+    %%
+    %% STATUS: PackageScaffolding=completed, ServiceImplementation=completed, Testing=completed
+    %%
+    %% PARALLEL_CONTEXT: Sibling plan at /home/code/AgenticEngineering-agentic-cli/docs/plans/live/260113_langsmith_cli
+    %% This backend plan provides: agenticlangsmith package with LangSmithService class
+
+    Start((Start)) --> LoadPlan[Load Plan: plan_live_build.yml]
+
+    %% ========================================
+    %% INPUT VALIDATION
+    %% ========================================
+    LoadPlan --> ValidateInputs[Validate Plan Inputs]
+    ValidateInputs --> InputsValid{Inputs Valid?}
+    InputsValid -- "No: Missing" --> AskUser((Ask User for Clarification))
+    InputsValid -- "Yes" --> PackagePhase
+
+    %% ========================================
+    %% PHASE 1: PACKAGE SCAFFOLDING
+    %% ========================================
+    subgraph PackagePhase_SG ["Phase 1: Package Scaffolding"]
+        PackagePhase((Package Scaffolding Phase)) --> SpawnBuilderPkg[Spawn build-python Agent]
+        SpawnBuilderPkg --> BuilderPkgResult{Package Scaffolded?}
+        BuilderPkgResult -- "No: Failed" --> RetryPkg[Spawn build-python Agent]
+        RetryPkg --> BuilderPkgResult
+        BuilderPkgResult -- "Yes: Success" --> PackageComplete((Package Phase Complete))
+    end
+
+    PackageComplete --> ServicePhase
+
+    %% ========================================
+    %% PHASE 2: SERVICE IMPLEMENTATION
+    %% ========================================
+    subgraph ServicePhase_SG ["Phase 2: Service Implementation"]
+        ServicePhase((Service Implementation Phase)) --> SpawnBuilderSvc[Spawn build-python Agent]
+        SpawnBuilderSvc --> BuilderSvcResult{Service Implemented?}
+        BuilderSvcResult -- "No: Failed" --> RetrySvc[Spawn build-python Agent]
+        RetrySvc --> BuilderSvcResult
+        BuilderSvcResult -- "Yes: Success" --> ServiceComplete((Service Phase Complete))
+    end
+
+    ServiceComplete --> TestPhase
+
+    %% ========================================
+    %% PHASE 3: TESTING (test-fix-loop)
+    %% ========================================
+    subgraph TestPhase_SG ["Phase 3: Testing (test-fix-loop)"]
+        TestPhase((Testing Phase)) --> SpawnTestRunner[Spawn test-runner Agent]
+        SpawnTestRunner --> TestResult{Tests Pass?}
+
+        %% Test-fix loop: iterate until tests pass
+        TestResult -- "No: Failures" --> SpawnBuilderFix[Spawn build-python Agent: Fix]
+        SpawnBuilderFix --> SpawnTestRunnerRetry[Spawn test-runner Agent]
+        SpawnTestRunnerRetry --> TestResult
+
+        TestResult -- "Yes: All Pass" --> TestComplete((Test Phase Complete))
+    end
+
+    %% ========================================
+    %% FEEDBACK TRIGGERS
+    %% ========================================
+    %% If test failures persist after max iterations, escalate
+    TestResult -- "Max Iterations" --> EscalateTest((Escalate: Test Failures Persist))
+
+    TestComplete --> Success((Success: Backend Module Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef phase fill:#e1f5fe,stroke:#0288d1
+    classDef test fill:#fff3e0,stroke:#ff9800
+    classDef success fill:#e8f5e9,stroke:#4caf50
+
+    class PackagePhase,ServicePhase phase
+    class TestPhase test
+    class Success success
