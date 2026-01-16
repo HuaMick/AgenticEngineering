@@ -1,9 +1,29 @@
 Plans are living documents that help agents track the current state of the project.
 Plans are organized by worktree to support parallel work across different branches.
 
+# Naming Convention (for deploy-worktree and CLI reference)
+naming_convention:
+  pattern: "YYMMDDXX_description"
+  regex: "^\\d{6}[A-Z]{2}_[a-z0-9_]+$"
+  examples:
+    - "260115AG_naming_convention_audit"
+    - "260104CL_agentic_cli_feature"
+  components:
+    YYMMDD: "Date of creation (year/month/day)"
+    XX: "2 uppercase letters derived from worktree path suffix"
+    description: "Sanitized description (lowercase, underscores only, max 50 chars)"
+  cli_enforcement: |
+    Use 'agentic plan init <branch> --description <desc>' to generate names automatically.
+    The CLI enforces this convention programmatically - agents should NOT attempt manual naming.
+  worktree_id_derivation: |
+    XX is derived from the worktree path suffix after the last hyphen:
+    - /home/code/AgenticEngineering-agenticguidance -> AG
+    - /home/code/MyProject-feature -> FE
+    - /home/code/Repo-cli -> CL
+
 There are 3 types of plans:
 - plans_live: Live plans organized by worktree in docs/plans/live/YYMMDDXX_description/ folders (e.g., 260115AG_naming_audit).
-  Naming convention (CLI-enforced): YYMMDD (date) + XX (worktree ID) + _ + description (lowercase, underscores).
+  See naming_convention above for pattern details.
   Use 'agentic plan init' command to create - CLI enforces naming programmatically.
   Common subfolders (planning agent determines appropriate structure based on plan complexity):
   - live/: Active phase files (recommended for multi-phase plans)
@@ -230,6 +250,68 @@ phase_types:
     Use Title Case in comments and documentation (e.g., "Teach Phase", "UAT Phase").
     Avoid uppercase abbreviations (e.g., "UAT" should be "uat" in code).
 
+# Plan Structure Requirements (for planner-reviewer validation)
+# Merged from plan-structure-requirements.yml
+required_fields:
+  plan_level:
+    - plan_name: "string - unique descriptive name"
+    - worktree: "string - YYMMDDXX_description format (CLI-enforced)"
+    - branch: "string - git branch name"
+    - status: "enum - planning|active|partially_completed|fully_completed"
+    - phases: "list - ordered phase definitions"
+
+  phase_level:
+    - phase_id: "string - unique identifier"
+    - name: "string - human-readable name"
+    - status: "enum - pending|in_progress|completed"
+    - tasks: "list - ordered task definitions"
+
+  task_level:
+    - task_id: "string - unique identifier"
+    - description: "string - actionable (starts with verb)"
+    - status: "enum - pending|in_progress|completed|blocked"
+    - success_criteria: "list - verifiable conditions"
+
+validation_checklist:
+  structure:
+    - "All required_fields present at each level"
+    - "Phase/task IDs unique within their scope"
+    - "Status values match valid enum options"
+  naming:
+    - "Folder matches YYMMDDXX_description pattern (see naming_convention.regex)"
+    - "Phase files in live/ or completed/ subfolder"
+    - "Naming validated by CLI during plan init (do not validate manually)"
+  quality:
+    - "Success criteria are specific and verifiable"
+    - "Task descriptions start with action verb"
+    - "Phase ordering reflects dependencies"
+
 concrete_example:
   # See: modules/AgenticGuidance/assets/guidelines/plan-completion.yml
   # Demonstrates the Copy-and-Sync pattern with folder structure and state transitions.
+
+# Path Conventions
+# Merged from folder-structure.yml
+path_conventions:
+  repo_content:
+    standard: "relative"
+    description: |
+      Use relative paths from repo root for all repo content.
+      Examples:
+        - 'modules/AgenticGuidance/assets/definitions/path.yml' (CORRECT)
+        - 'modules/AgenticGuidance/agents/orchestration/process.mmd' (CORRECT)
+        - '/home/code/somerepo/assets/definitions/path.yml' (INCORRECT - absolute)
+    rationale: "Relative paths are portable across environments and repositories"
+
+  plan_folder_references:
+    standard: "relative"
+    description: |
+      Plan folder paths are relative to project root.
+      Agents receive specific folder paths as input from orchestration.
+
+# Agent Logs (future - not yet systematically collected)
+agent_logs:
+  path: "docs/agent_logs/YYYYMMDD_<agent_name>"
+  description: |
+    Agent decision logs. Single line per decision or action taken.
+    When available, logs should follow the pattern YYYYMMDD_<agent_name>.log

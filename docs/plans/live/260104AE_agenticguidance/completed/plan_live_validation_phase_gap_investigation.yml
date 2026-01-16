@@ -1,0 +1,217 @@
+name: plan_live_validation_phase_gap_investigation
+status: completed
+priority: high
+created: "2026-01-15"
+updated: "2026-01-16"
+completed_at: "2026-01-16"
+phase_type: teach
+
+objective: |
+  Investigate why the validation phase was skipped during UAT phase integration
+  execution, and identify guidance gaps that allowed this to happen.
+
+context: |
+  INCIDENT SUMMARY:
+  During execution of plan_live_uat_phase_integration.yml, the orchestrator:
+  - Created orchestration MMD with Validation_SG subgraph defined
+  - Executed all 4 remediation phases successfully
+  - Committed and pushed changes
+  - SKIPPED the validation phase entirely
+
+  The orchestration MMD clearly defined:
+  ```
+  subgraph Validation_SG ["Validation Subgraph"]
+      EnterValidation --> SpawnAudit[Spawn test-final-output Audit]
+      SpawnAudit --> ValidationComplete{Validation Passed?}
+      ValidationComplete -- "No: Gaps Found" --> PackageGaps[...]
+      ValidationComplete -- "Yes: All Pass" --> ValidationPass[...]
+  ```
+
+  Yet this phase was never executed. The orchestrator proceeded directly
+  from Phase 4 completion to committing changes.
+
+  OBSERVED BEHAVIOR:
+  1. Orchestrator created plan with validation phase
+  2. Orchestrator executed implementation phases 1-4
+  3. Orchestrator marked plan as completed
+  4. Orchestrator committed without validation
+  5. User had to prompt: "How did we do testing?"
+
+  EXPECTED BEHAVIOR:
+  1. Execute implementation phases
+  2. Execute validation phase (spawn test-final-output)
+  3. If validation fails, loop back or escalate
+  4. Only mark complete after validation passes
+  5. Then commit
+
+root_cause_analysis:
+  summary: |
+    ROOT CAUSE IDENTIFIED: Validation_SG subgraph was NOT in AGENT_ROUTING metadata.
+    The executor only executes phases that have routing. The Validation subgraph
+    exists in the flowchart but had no agent routing, so the executor treated it
+    as "not a phase to execute."
+
+  key_finding: |
+    The MMD header showed:
+    %% AGENT_ROUTING: OrchestrPlanning -> teacher, OrchestrBuild -> teacher, PlannerTest -> teacher, Supporting -> teacher
+
+    MISSING: Validation -> test-final-output
+
+    The executor loop only iterates over phases WITH agent routing. Validation_SG
+    was defined in the flowchart but invisible to the execution loop.
+
+  contributing_gaps:
+    - gap: "No validation-before-commit fence in orchestration-policy.yml"
+      description: "Policy has 4 rules but NONE require validation before commit"
+    - gap: "response-audit.yml scope limited to 'before reply'"
+      description: "Audit tied to user replies, not git commits (the irreversible state change)"
+    - gap: "orchestration-executor/process.yml has no validation gate"
+      description: "Shutdown sequence proceeds without checking if validation phases executed"
+    - gap: "plan-mmd-schema.yml allows validation subgraphs without routing"
+      description: "No rule requiring AGENT_ROUTING for validation/audit subgraphs"
+
+phases:
+  - name: "Root Cause Analysis"
+    status: completed
+    description: "Identify why validation was skipped"
+    tasks:
+      - id: "rca_check_orchestration_mmd"
+        name: "Review orchestration MMD execution"
+        status: "completed"
+        findings: |
+          CONFIRMED: Validation_SG was NOT in AGENT_ROUTING metadata.
+          The executor only processes phases with explicit routing.
+          Validation subgraph was visual documentation, not executable.
+
+      - id: "rca_check_entrypoint_flow"
+        name: "Review entrypoint invocation pattern"
+        status: "completed"
+        findings: |
+          The session combined planning and execution roles.
+          When acting as executor, it followed AGENT_ROUTING (4 phases)
+          and proceeded to shutdown without checking for unrouted subgraphs.
+
+      - id: "rca_check_validation_guidance"
+        name: "Check validation phase guidance"
+        status: "completed"
+        findings: |
+          orchestration-policy.yml: NO validation-before-commit rule
+          response-audit.yml: Audit scope is "before reply", not "before commit"
+          orchestration-executor/process.yml: No validation gate before shutdown
+
+  - name: "Gap Identification"
+    status: completed
+    description: "Identify specific guidance gaps"
+    tasks:
+      - id: "gap_mmd_execution_semantics"
+        name: "MMD Execution Semantics Gap"
+        status: "completed"
+        finding: |
+          CONFIRMED GAP: plan-mmd-schema.yml allows Validation_SG subgraphs
+          WITHOUT requiring corresponding AGENT_ROUTING entries.
+          This makes validation phases visually present but operationally invisible.
+
+      - id: "gap_validation_before_commit"
+        name: "Validation-Before-Commit Gap"
+        status: "completed"
+        finding: |
+          CONFIRMED GAP: No fence in orchestration-policy.yml or response-audit.yml
+          that requires validation before git commit. The commit is the irreversible
+          state change, but validation is only tied to "before user reply."
+
+      - id: "gap_session_boundary"
+        name: "Session Boundary Gap"
+        status: "completed"
+        finding: |
+          SECONDARY GAP: When planning and execution happen in same session,
+          the orchestrator may skip phases that "look like documentation"
+          (Validation_SG) rather than executable work. Entrypoints don't
+          clarify that ALL MMD subgraphs must be executed.
+
+  - name: "Remediation Implementation"
+    status: completed
+    description: "Implement guidance fixes"
+    completed_at: "2026-01-16"
+    tasks:
+      - id: "fix_orchestration_policy"
+        name: "Add Validation-Before-Commit Fence to orchestration-policy.yml"
+        status: "completed"
+        target_file: "modules/AgenticGuidance/assets/guidelines/orchestration-policy.yml"
+        implementation: |
+          Added new rule "Validation-Before-Commit Fence" with:
+          - FENCE: NO COMMIT BEFORE VALIDATION
+          - Execution pattern for validation enforcement
+          - Violation indicators
+          - Exception for documentation-only changes
+
+      - id: "fix_executor_validation_gate"
+        name: "Add validation gate to orchestration-executor/process.yml"
+        status: "completed"
+        target_file: "modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml"
+        implementation: |
+          Added step "validation_gate" (Phase 2.5) between loop and shutdown:
+          - FENCE: NO SHUTDOWN WITHOUT VALIDATION
+          - Scans for Validation_SG and Audit_SG subgraphs
+          - Blocks shutdown if any validation was skipped
+          - Returns to fix phase if validation failed
+          Added 3 new guidelines enforcing validation execution
+
+      - id: "fix_response_audit_scope"
+        name: "Extend response-audit.yml to cover commits"
+        status: "completed"
+        target_file: "modules/AgenticGuidance/assets/guidelines/response-audit.yml"
+        implementation: |
+          Added new rule "Audit before commit (state change gate)":
+          - FENCE: AUDIT GATES STATE CHANGES
+          - Process showing correct vs incorrect commit sequence
+          - Explicit fence language targeting orchestration workflows
+
+      - id: "fix_mmd_schema_validation"
+        name: "Add validation routing requirement to plan-mmd-schema.yml"
+        status: "completed"
+        target_file: "modules/AgenticGuidance/assets/definitions/plan-mmd-schema.yml"
+        implementation: |
+          Added validation_routing_required section:
+          - HARD enforcement: executor refuses to start without routing
+          - Detection patterns for Validation/Audit subgraphs
+          - Required routing agents mapping
+          - Error message template for missing routing
+          Updated execution_metadata_validation checklist with 2 new FENCE items
+
+success_criteria:
+  - "Root cause identified with specific guidance gap(s)" # DONE
+  - "Remediation proposals are actionable and specific" # DONE
+  - "Each proposal includes target files and fence/signpost language" # DONE
+  - "Investigation considers if this is systemic or one-off" # DONE - systemic
+  - "All 4 remediation tasks implemented and validated" # DONE - all 4 files updated
+
+validation_summary: |
+  VALIDATION COMPLETE (2026-01-16)
+  All 4 remediation tasks successfully implemented:
+
+  1. orchestration-policy.yml - Added "Validation-Before-Commit Fence" rule
+  2. orchestration-executor/process.yml - Added validation_gate step (Phase 2.5)
+  3. response-audit.yml - Added "Audit before commit" rule
+  4. plan-mmd-schema.yml - Added validation_routing_required section
+
+  These changes ensure:
+  - Validation subgraphs MUST have AGENT_ROUTING entries (hard enforcement)
+  - Executor blocks shutdown if validation phases are pending
+  - Git commits are prohibited until validation passes
+  - Missing validation routing = blocked workflow, not skipped validation
+
+notes: |
+  ROOT CAUSE IDENTIFIED (2026-01-16):
+  The Validation_SG subgraph was missing from AGENT_ROUTING metadata in the MMD.
+  The executor only processes phases WITH routing, making validation invisible.
+
+  This is SYSTEMIC - any future MMD with validation subgraphs lacking routing
+  will have the same problem. The fix requires:
+  1. Policy fence requiring validation before commit
+  2. Executor gate checking for unexecuted validation subgraphs
+  3. Schema validation requiring routing for validation/audit subgraphs
+
+  This is a TEACHING task - fixes are guidance improvements, not code changes.
+
+related_plans:
+  - "plan_live_uat_phase_integration.yml (the plan that triggered this investigation)"

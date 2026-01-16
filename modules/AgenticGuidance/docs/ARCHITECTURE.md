@@ -170,8 +170,9 @@ Orchestrator (with plan)
     ├─→ audit-test-fix-loop (MANDATORY, max 3)
     │       └─→ Test Auditor + Test Runner
     │
-    ├─→ cleaner-voting-loop
-    │       ├─→ 3x Cleaner Identify (vote)
+    ├─→ cleaner-dependency-loop (max 3)
+    │       ├─→ Cleaner Identify
+    │       ├─→ Explorer (dependency check)
     │       └─→ Cleaner Execute
     │
     ├─→ Documentation Agent

@@ -61,7 +61,7 @@ The orchestration file (`orchestration_example.mmd`) defines:
 - **Loops**: Iteration patterns (test-fix-loop, etc.)
 - **Feedback paths**: Re-planning triggers
 
-See: `modules/AgenticGuidance/assets/definitions/plan-mmd-schema.yml`
+See: `modules/AgenticGuidance/assets/specifications/plan-mmd-schema.yml`
 
 ## Update Patterns
 

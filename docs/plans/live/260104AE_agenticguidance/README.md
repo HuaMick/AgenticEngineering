@@ -1,12 +1,119 @@
 # Plan: 260104AE_agenticguidance
 
-## Status: ACTIVE (Remediation/Refinement)
+## Status: COMPLETE (Phase 1-2 Done, Phase 3 Deferred)
 
-**Updated**: 2026-01-12
+**Updated**: 2026-01-16
 **Branch**: `agenticguidance`
 **Worktree**: `/home/code/AgenticEngineering-agenticguidance`
 
-## Current Work: Orchestration Loop Integration
+## Current Work: ALL ACTIONABLE PLANS COMPLETE
+
+**Session 2026-01-16 (Ralph Loop - Iterations 9-15)**
+
+### Status: Phase 1-2 Complete, Phase 3 Deferred
+All high-priority and medium-priority work is complete. Phase 3 (low-priority decisions) has been deferred pending user input on 7 decision items.
+
+**Remaining in live/ (2 items):**
+1. **plan_live_batch_remediation.yml** - Phase 3 BLOCKED
+2. **backlog_cli_task_lists.yml** - BACKLOG (future experiment)
+
+### Phase 3 Decision Items Required
+
+To unblock Phase 3, provide decisions for the 7 items in plan_live_batch_remediation.yml:
+
+| Decision | Question | Options |
+|----------|----------|---------|
+| decision_001 | Create specifications/ folder for format specs? | A: Create folder, B: Naming convention, C: No change |
+| decision_002 | Generalize test-execution-workflow.yml? | A: Now, B: Defer, C: Delete |
+| decision_003 | acceptable-skips.yml location? | A: Keep definitions/, B: Move guidelines/, C: Split |
+| decision_004 | gcp-artifact-registry.yml location? | A: config/, B: .agentic/config/, C: Delete, D: docs/ |
+| decision_005 | studio-integration-tests.yml valid? | A: Keep/verify, B: Move project, C: Delete, D: Defer |
+| decision_006 | workflow-test-readme.yml action? | A: Delete, B: Expand, C: Merge test-org, D: Merge testing |
+| decision_007 | Strategy files location? | A: Keep guidelines/, B: Move definitions/, C: Create strategies/, D: Consolidate |
+
+**To provide decisions:** Edit plan_live_batch_remediation.yml lines 47-357, set `decision:` fields to chosen option (A/B/C/D).
+
+---
+
+**Session 2026-01-16 (Ralph Loop - Iteration 8)**
+
+### Plan Folder Archival - 9 Plans Moved to completed/
+Cleaned up live/ folder by moving all completed plans:
+
+**Moved to completed/:**
+1. plan_live_cli_guidance_cleanup.yml
+2. plan_live_teaching_file_operations.yml
+3. plan_live_uat_integration_remediation.yml
+4. plan_live_uat_phase_integration.yml
+5. plan_live_validation_phase_gap_investigation.yml
+6. plan_live_cli_usage_teaching.yml (iteration 7)
+7. plan_live_guidance_validation_process.yml (analysis doc - patterns in agent-loops.yml)
+8. plan_live_naming_convention_audit.yml (pivoted - CLI successor complete)
+9. orchestration_cli_guidance_cleanup.mmd
+10. orchestration_uat_phase_integration.mmd
+
+**Remaining in live/ (2 items):**
+1. plan_live_batch_remediation.yml - Phase 3 BLOCKED (7 user decisions pending)
+2. backlog_cli_task_lists.yml - BACKLOG (future experiment)
+
+---
+
+**Session 2026-01-16 (Ralph Loop - Iteration 7)**
+
+### plan_live_cli_usage_teaching.yml - COMPLETE
+Verified and completed CLI usage teaching for deployment agents:
+
+**Documentation Phase (3 tasks):**
+- doc_update_deploy_worktree: Already updated with `agentic plan init` CLI
+- doc_update_orchestration_planning: Already uses CLI for folder creation
+- doc_update_inputs_yml: Updated CLI command reference with `plan init`
+
+**Verification Phase (2 tasks):**
+- verify_cli_integration: All agents use CLI, no manual folder creation patterns
+- verify_tool_offloading_compliance: Compliant with tool-offloading guideline
+
+**Status:** All 5 tasks complete. Plan marked as completed.
+
+---
+
+## Previous Work: Batch File Remediation
+
+**Session 2026-01-16 (Ralph Loop - Iterations 5-6)**
+
+### Phase 2: Medium_Priority_Consolidation - COMPLETE
+Executed `live/plan_live_batch_remediation.yml` Phase 2 tasks:
+
+**Completed Tasks:**
+- med_001: Merged plan-folder-conventions.yml into plans.yml (iteration 5)
+- med_002: Merged plan-structure-requirements.yml into plans.yml
+- med_003: Moved plan-inputs.yml to guidelines/
+- med_004: Moved fence-build-deploy.yml to guidelines/ (iteration 5)
+- med_005: Moved generalized-vs-specific.yml to guidelines/ (iteration 5)
+- med_006: Consolidated 5 Flutter testing files into flutter-testing.yml
+- med_007: Moved orchestration-test-scenarios.yml to tests/
+- med_008: Merged folder-structure.yml into plans.yml
+- med_009: Merged guidance.yml into guidance-artifacts.yml
+- med_010: Evaluated meta-definitions split - decision: keep as-is
+- med_011: Removed deprecated cleaner-voting-loop from agent-loops.yml
+- med_012: Evaluated plans.yml split - decision: keep as-is
+
+**Files Deleted (12 total):**
+- 3 redirect stubs: domains.yml, entrypoints.yml, workflows.yml
+- voting-system.yml
+- skipped-test.yml, build-artifacts.yml, packaging.yml
+- fence.yml, signpost.yml
+- plan-folder-conventions.yml, plan-structure-requirements.yml
+- folder-structure.yml, guidance.yml
+- 5 Flutter testing files
+
+**Files Created (3 total):**
+- build-packaging.yml (merged build-artifacts + packaging)
+- flutter-testing.yml (consolidated 5 files)
+- modules/AgenticGuidance/tests/ folder
+
+**Status:** Phase 1-2 COMPLETE. Phase 3 blocked pending user decisions.
+
+---
 
 **Session 2026-01-13 (Orchestration Loop Integration)**
 

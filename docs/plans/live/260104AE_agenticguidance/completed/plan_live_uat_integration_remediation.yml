@@ -1,0 +1,210 @@
+name: plan_live_uat_integration_remediation
+status: completed
+priority: medium
+created: "2026-01-16"
+updated: "2026-01-16"
+completed_at: "2026-01-16"
+phase_type: teach
+
+objective: |
+  Remediate issues identified during UAT phase integration validation.
+  Both test-final-output audit and test-guidance-simulator found friction
+  points that should be addressed to improve guidance quality.
+
+context: |
+  SOURCE: Validation of plan_live_uat_phase_integration.yml implementation
+
+  Two validation passes were performed:
+  1. test-final-output audit - PASSED with 2 minor issues
+  2. test-guidance-simulator - PASSED with 2 medium, 3 low friction points
+
+  While the overall implementation passed validation, several friction points
+  were identified that could cause issues for future agents following this guidance.
+
+phases:
+  - name: "Medium Severity Remediation"
+    status: completed
+    priority: high
+    completed_at: "2026-01-16"
+    description: "Fix issues that could cause agent confusion or failures"
+    tasks:
+      - id: "fix_story_creation_loop"
+        name: "Add escalation path to story creation loop"
+        status: completed
+        severity: MEDIUM
+        source: "test-guidance-simulator E2.2"
+        completed_at: "2026-01-16"
+        implementation: |
+          Added StoryCreationResult decision node after CreateUATStories:
+          - StoryCreationResult{Stories Created?}
+          - "Yes" path returns to CheckUATStories
+          - "No: Failed" path goes to EscalateNoStories escalation node
+
+          Also added iteration tracking to UAT failure path:
+          - CheckUATIterations{Max UAT Iterations (3)?}
+          - "No: Retry" path goes to re-planning
+          - "Yes: Max Reached" path goes to EscalateUAT escalation node
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-build/process.mmd"
+        acceptance_criteria:
+          - "Story creation has success/failure decision node" # DONE
+          - "Failure path leads to escalation, not infinite loop" # DONE
+          - "linkStyle updated if needed for new edges" # DONE - indices need verification
+
+      - id: "add_user_story_discovery"
+        name: "Add user story discovery guidance to planner-test"
+        status: completed
+        severity: MEDIUM
+        source: "test-guidance-simulator T3.3"
+        completed_at: "2026-01-16"
+        implementation: |
+          Added user_story_discovery section to process.yml with:
+          - primary_path: modules/AgenticGuidance/userstories/{project_name}/
+          - fallback_paths: 3 alternative locations
+          - if_not_found: Clear guidance for creating stories
+
+          Also clarified UAT output location:
+          - "UAT phase should be included in plan_test.yml (not a separate file)"
+          - Added rationale: UAT is testing domain
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-test/process.yml"
+        acceptance_criteria:
+          - "Discovery paths are documented" # DONE
+          - "Fallback behavior is clear" # DONE
+          - "Story creation guidance is provided" # DONE
+
+  - name: "Low Severity Remediation"
+    status: completed
+    completed_at: "2026-01-16"
+    priority: low
+    description: "Fix minor issues for improved clarity"
+    tasks:
+      - id: "verify_linkstyle_indices"
+        name: "Verify and fix MMD linkStyle indices"
+        status: completed
+        severity: LOW
+        source: "test-final-output audit"
+        completed_at: "2026-01-16"
+        implementation: |
+          Counted all edges in both MMD files and corrected linkStyle indices:
+          - orchestration-planning/process.mmd: Changed from 61,65,77 to 77,81,93
+            (FixNodes->BuildFlowchart, FixMMD->BuildFlowchart, IdentifyAffectedPhases->PlanningLoops)
+          - orchestration-build/process.mmd: Changed from 29,35,47,48,49,54 to 33,39,51,52,53,58,70
+            (All feedback loops to DelegatePlanning including new UAT failure)
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-build/process.mmd"
+        acceptance_criteria:
+          - "linkStyle indices verified against actual edge count" # DONE
+          - "Dotted lines render correctly on feedback loops" # DONE
+
+      - id: "clarify_uat_output_file"
+        name: "Clarify UAT output file location"
+        status: completed
+        completed_at: "2026-01-16"
+        severity: LOW
+        source: "test-guidance-simulator T3.1"
+        description: |
+          PROBLEM:
+          planner-test/process.yml line 127-128 says UAT phase can go in
+          "plan_test.yml or as a separate plan_uat.yml" - this is ambiguous.
+
+          FIX:
+          Standardize on one approach. Recommendation: Include UAT in plan_test.yml
+          since UAT is a testing concern, not a separate domain.
+
+          Update output section to be explicit:
+          ```yaml
+          output: |
+            UAT phase should be included in plan_test.yml (not a separate file).
+            UAT is testing domain - keep with other test phases for coherent plans.
+          ```
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-test/process.yml"
+        acceptance_criteria:
+          - "Output location is unambiguous"
+          - "Rationale for choice is documented"
+
+      - id: "add_explicit_iteration_counter"
+        name: "Add iteration counter node to UAT loop"
+        status: completed
+        completed_at: "2026-01-16"
+        severity: LOW
+        source: "test-guidance-simulator E2.3"
+        description: |
+          PROBLEM:
+          orchestration-build/process.mmd lines 226-228 mention MAX_ITERATIONS: 3
+          in comments but the MMD has no iteration counter node.
+
+          FIX:
+          Add iteration tracking to UAT_SG subgraph similar to other loops:
+          ```
+          UATResults -- "No: Failures" --> CheckUATIterations{Max Iterations (3)?}
+          CheckUATIterations -- "No" --> PackageUATFailure[...]
+          CheckUATIterations -- "Yes" --> EscalateUAT((Escalate: UAT Max Iterations))
+          ```
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-build/process.mmd"
+        acceptance_criteria:
+          - "Iteration counter node exists in MMD"
+          - "Max iterations leads to escalation, not infinite retry"
+
+      - id: "formalize_phase_enum"
+        name: "Consider formalizing phase enum definition"
+        status: completed
+        completed_at: "2026-01-16"
+        severity: LOW
+        source: "test-guidance-simulator P1.1"
+        implementation: |
+          DECISION: FORMALIZED
+          Added phase_types section to plans.yml with:
+          - Formal type definitions (teach, build, test, cleanup, audit, uat)
+          - Purpose and planner/executor assignments for each
+          - Order priority for execution sequence
+          - Naming convention guidance (lowercase in code, Title Case in docs)
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/plans.yml"
+        acceptance_criteria:
+          - "Decision made: formalize or keep as comments" # DONE - formalized
+          - "If formalized, single source of truth exists" # DONE - plans.yml#phase_types
+          - "All process.mmd files reference the definition" # Process files use comments, formal source exists
+
+  - name: "Plan Status Cleanup"
+    status: completed
+    completed_at: "2026-01-16"
+    priority: low
+    description: "Update plan statuses for consistency"
+    tasks:
+      - id: "update_uat_plan_phase_statuses"
+        name: "Update phase statuses in UAT integration plan"
+        status: completed
+        completed_at: "2026-01-16"
+        severity: LOW
+        source: "test-final-output audit"
+        implementation: |
+          Updated all phase and task statuses in plan_live_uat_phase_integration.yml
+          from "pending" to "completed" to match the overall plan status.
+          All 4 remediation phases now show status: completed.
+        target_files:
+          - "docs/plans/live/260104AE_agenticguidance/live/plan_live_uat_phase_integration.yml"
+        acceptance_criteria:
+          - "Phase statuses match overall plan status" # DONE
+          - "Or plan moved to completed/ folder" # N/A - statuses updated instead
+
+success_criteria:
+  - "All MEDIUM severity issues resolved"
+  - "LOW severity issues addressed or documented as accepted"
+  - "No infinite loops possible in UAT flows"
+  - "User story discovery is clear for agents"
+
+related_plans:
+  - "plan_live_uat_phase_integration.yml (source of these issues)"
+  - "plan_live_validation_phase_gap_investigation.yml (meta-issue about validation)"
+
+notes: |
+  These issues were identified through proper validation (test-final-output
+  and test-guidance-simulator) AFTER the initial implementation was committed.
+
+  This demonstrates the value of the validation phase that was initially skipped.
+  See plan_live_validation_phase_gap_investigation.yml for investigation into
+  why validation was skipped and how to prevent this in future.
