@@ -1,0 +1,154 @@
+# Plan: CLI Task List Integration
+# Status: active
+# Priority: experiment
+# Execute After: All orchestration decommissioning work complete
+
+name: cli-task-lists
+status: active
+priority: experiment
+created: "2026-01-10"
+updated: "2026-01-16"
+execute_after: "plan_orchestration_decommission.yml"
+
+objective: |
+  Experiment with CLI-based preset task lists to help agents remember ancillary
+  tasks (like MMD generation, README updates, documentation) that they often forget
+  due to task momentum.
+
+problem_statement: |
+  Agents often build momentum doing one type of task (creating plan YAML, writing code)
+  and forget parallel requirements (generating MMD, updating READMEs, writing tests).
+
+  Adding reminders to guidance doesn't work because if agents forget to add the task
+  to their internal list, they won't see the reminder.
+
+proposed_solution: |
+  CLI-based preset task lists that agents can prefill at the start of their workflow:
+
+  1. Agent invokes CLI: `agentic plan task prefill --preset planner-build`
+  2. CLI loads preset task list from template and creates tasks in plan folder
+  3. Agent sees the prefilled tasks in their internal planning
+  4. Agent invokes CLI as they work: `agentic plan task status`
+  5. Agent updates tasks: `agentic plan task complete <task-id>`
+
+  The CLI becomes the "external memory" that persists across the session.
+
+requirements:
+  cli_integration:
+    - "CLI integration with planning folders (docs/plans/live/*/)"
+    - "Task CRUD operations (create, read, update, delete)"
+    - "Preset task list templates for each agent category"
+    - "Task status tracking (pending, in_progress, completed)"
+
+  templates:
+    - name: "planner-build-preset.yml"
+      tasks:
+        - "Analyze objective and determine phases"
+        - "Create task breakdown for each phase"
+        - "Write plan_*.yml files"
+        - "Generate orchestration_*.mmd file"  # ← The one agents forget
+        - "Validate plan structure"
+
+    - name: "planner-teach-preset.yml"
+      tasks:
+        - "Identify friction points"
+        - "Determine teaching artifacts needed"
+        - "Create phase plans"
+        - "Generate orchestration_*.mmd file"  # ← The one agents forget
+        - "Update relevant README files"  # ← Often forgotten
+
+    - name: "builder-preset.yml"
+      tasks:
+        - "Implement core functionality"
+        - "Write unit tests"  # ← Often forgotten
+        - "Update documentation"  # ← Often forgotten
+        - "Run tests and validate"
+
+  validation_approach:
+    - "Blind planning loop test: Invoke planner agent without explicit MMD reminder"
+    - "Agent sees prefilled task list via CLI"
+    - "Observe if agent completes MMD generation task"
+    - "Compare success rate: with CLI task list vs without"
+
+experiment_phases:
+  - name: "Phase 1: CLI Task Commands"
+    description: "Implement basic CLI task list operations"
+    tasks:
+      - "agentic plan task prefill --preset <name>"
+      - "agentic plan task list"
+      - "agentic plan task status <task-id>"
+      - "agentic plan task start <task-id>"
+      - "agentic plan task complete <task-id>"
+      - "agentic plan task add <description>"
+
+  - name: "Phase 2: Preset Templates"
+    description: "Create preset task list templates for agent categories"
+    templates:
+      - "planner-build-preset.yml"
+      - "planner-teach-preset.yml"
+      - "planner-test-preset.yml"
+      - "builder-preset.yml"
+      - "teacher-preset.yml"
+
+  - name: "Phase 3: Blind Testing"
+    description: "Test if agents naturally complete prefilled tasks"
+    test_scenarios:
+      - scenario: "Baseline (no prefill)"
+        agent: "planner-build"
+        objective: "Create simple build plan"
+        observe: "Does agent generate MMD?"
+        expected: "Likely NO (current behavior)"
+
+      - scenario: "With CLI prefill"
+        agent: "planner-build"
+        objective: "Create simple build plan"
+        setup: "agentic plan task prefill --preset planner-build"
+        observe: "Does agent see and complete MMD task?"
+        expected: "Hypothesis: YES (task is visible in their context)"
+
+  - name: "Phase 4: Integration with Agents"
+    description: "Update agent process files to reference CLI task lists"
+    approach: |
+      If experiment shows improvement, update agent process files to suggest:
+      "At start: Consider prefilling task list with `agentic plan task prefill --preset <agent-name>`"
+      "During work: Check task status with `agentic plan task list`"
+
+      This is suggestive, not prescriptive - agents can choose to use it.
+
+success_criteria:
+  - "CLI task commands implemented and tested"
+  - "Preset templates created for all planner categories"
+  - "Blind test shows improvement in task completion (MMD, README, tests)"
+  - "Agent adoption feels natural (not forced)"
+  - "Documentation shows when/how to use CLI task lists"
+
+risks:
+  - "Agents might ignore prefilled tasks (same as guidance reminders)"
+  - "CLI overhead might slow down agent workflow"
+  - "Task list might become stale if agent diverges from preset"
+  - "Duplicate effort between internal task list and CLI task list"
+
+mitigation:
+  - "Test with multiple agents and objectives"
+  - "Make CLI commands fast and low-friction"
+  - "Allow agents to modify/delete prefilled tasks"
+  - "Treat CLI list as suggestion, not requirement"
+
+next_steps:
+  - "Complete orchestration decommissioning work first"
+  - "Implement basic CLI task commands"
+  - "Create preset templates"
+  - "Run blind planning loop tests"
+  - "Evaluate results and decide on broader adoption"
+
+notes: |
+  This is an EXPERIMENT, not a committed feature. The goal is to test if external
+  task lists (via CLI) help agents remember ancillary tasks better than internal
+  reminders.
+
+  If successful, this could be a general pattern for all agent categories.
+  If unsuccessful, we'll document why and move on.
+
+  DO NOT invest significant effort until blind tests show promising results.
+
+estimated_effort: "8-12 hours (CLI implementation + testing)"
