@@ -1,0 +1,773 @@
+# Backlog Item: Agent Self-Review Remediation
+# Status: backlog
+# Priority: low
+# Context: Self-review findings from Ralph Loop iterations 1-14
+# Updated: 2026-01-16 (iteration 11 - consolidated final assessment)
+# Verified: 2026-01-16 (orchestration validation - issues confirmed still valid)
+
+name: self-review-remediation
+status: backlog
+priority: low
+created: "2026-01-16"
+updated: "2026-01-16"
+last_verified: "2026-01-16"
+verification_note: "Issues PG-001, DW-001, TA-CRIT-001 confirmed still present. Recent changes (plan_live_batch_remediation.yml) were for DIFFERENT remediation effort."
+context: "Self-review findings from Ralph Loop iterations 1-14 (24 agents, 6 deep analyzed, 9 spot-checked)"
+
+# FINAL ASSESSMENT SUMMARY (Iteration 14)
+# =========================================
+# Total agents: 24
+# - PASS (confirmed via spot-check): 7 agents
+# - LOW severity: 11 agents (minor fixes)
+# - MEDIUM severity: 1 agent (test-service TS-003 brittleness)
+# - HIGH+ (deep analyzed): 6 agents with detailed remediation plans
+#
+# Spot-Check Campaign Results (iterations 12-14):
+# - 9 original PASS agents spot-checked
+# - 7 flagged for review (78% flag rate)
+# - 2 confirmed pass (test-runner, planner-cleaning)
+# - Original PASS assessments were significantly too lenient
+#
+# Ready for remediation when prioritized:
+# - Estimated effort: 14-20 hours for all issues
+# - Priority: Low (optimizations, not blockers)
+# =========================================
+
+objective: |
+  Address findings from agent self-reviews to improve context-minimisation and
+  reduce noise in agent guidance files.
+
+problem_statement: |
+  During Ralph Loop iterations 1, 2, 3, and 4, agents performed self-reviews of their own guidance
+  files. All 24 agents have now been reviewed. While most agents have well-structured guidance,
+  several have accumulated noise, redundancy, or over-specification that violates context-minimisation principles.
+
+agents_with_no_issues:
+  - agent: planner-cleaning
+    spot_check_status: "CONFIRMED PASS - Iteration 12"
+    assessment: "Appropriate adherence to context-minimisation"
+    action_required: none
+
+  - agent: test-runner
+    spot_check_status: "CONFIRMED PASS - Iteration 12"
+    assessment: "Clean, well-structured, proper external references"
+    action_required: none
+
+  - agent: orchestration-build
+    assessment: "No critical issues - well-structured guidance"
+    action_required: none
+
+  - agent: build-flutter
+    assessment: "VERIFIED Iteration 8 - navigation aid, not redundancy"
+    action_required: none
+
+  - agent: build-python
+    assessment: "VERIFIED Iteration 8 - semantic distinction is correct"
+    action_required: none
+
+  - agent: orchestration-executor
+    assessment: "VERIFIED Iteration 9 - all issues are architectural clarity, not violations"
+    action_required: none
+
+  - agent: planner-guidance-testing
+    assessment: "VERIFIED Iteration 9 - issues serve distinct purposes, not violations"
+    action_required: none
+
+agents_with_minor_issues:
+
+  - agent: build-flutter
+    verification_status: "VERIFIED - Iteration 8"
+    severity: none
+    assessment: "NOT A VIOLATION - navigation index, not redundancy"
+    original_issue: "BF-001: Minor redundant guideline references (lines 86-90)"
+    verdict: |
+      Lines 86-90 serve as navigation aid pointing to external guidelines.
+      This is discoverability support, not content duplication.
+      RESOLVED - No action required.
+
+  - agent: build-python
+    verification_status: "VERIFIED - Iteration 8"
+    severity: none
+    assessment: "NOT A VIOLATION - semantic distinction is appropriate"
+    original_issue: "BP-001: Minor terminology inconsistency (entrypoints/ vs cli/)"
+    verdict: |
+      'entrypoint' = architectural abstraction; 'cli' = concrete implementation.
+      Terms are complementary and semantically correct, not conflicting.
+      RESOLVED - No action required.
+
+  - agent: planner-build
+    spot_check_status: "FLAGGED FOR REVIEW - Iteration 12"
+    severity: low
+    effort: low
+    issues:
+      - id: PB-001
+        location: "inputs.yml lines 46-88"
+        status: "FLAGGED"
+        issue: "Transitive layer bloat - planner-core-system, planner-core-guidelines, planner-shared stack"
+        recommendation: "Review if all three layers are necessary; consider consolidation"
+      - id: PB-002
+        location: "inputs.yml lines 109-122"
+        status: "FLAGGED"
+        issue: "MMD component examples marked required:false but still loaded"
+        recommendation: "Remove or justify optional examples that aren't used in practice"
+      - id: PB-003
+        location: "process.yml lines 34-36 and 125-133"
+        status: "FLAGGED"
+        issue: "Duplicate orchestration MMD note - same message stated twice"
+        recommendation: "Remove duplicate note"
+    note: |
+      Originally assessed as PASS in iteration 1. Spot check in iteration 12 found
+      marginal compliance - files are more discoverable than minimal.
+
+  - agent: planner-test
+    spot_check_status: "FLAGGED FOR REVIEW - Iteration 13"
+    severity: low
+    effort: low
+    issues:
+      - id: PT-001
+        location: "inputs.yml lines 44-46"
+        status: "FLAGGED"
+        issue: "agent_context metadata that belongs in orchestration config, not agent inputs"
+      - id: PT-002
+        location: "inputs.yml lines 59-72"
+        status: "FLAGGED"
+        issue: "4 reference layers with cascading indirection (planner-core-system, etc)"
+        recommendation: "Verify all layers necessary; reduce transitive loading"
+      - id: PT-003
+        location: "inputs.yml lines 103-141"
+        status: "FLAGGED"
+        issue: "8 strategy files listed as required - agent only needs strategy-validation.yml list"
+      - id: PT-004
+        location: "process.yml lines 85-133, 139-161"
+        status: "FLAGGED"
+        issue: "UAT phase inline (could reference external definition); guidelines section repeats inputs.yml"
+    note: "Originally PASS iteration 1. Spot check iteration 13 found clear violations."
+
+  - agent: test-final-output
+    spot_check_status: "FLAGGED FOR REVIEW - Iteration 13"
+    severity: low
+    effort: low
+    issues:
+      - id: TFO-001
+        location: "process.yml lines 15-36"
+        status: "FLAGGED"
+        issue: "loop_context meta-explanation - 'agent is stateless' prose not actionable"
+        recommendation: "Remove explanatory prose; agent knows its role from function"
+      - id: TFO-002
+        location: "inputs.yml lines 14-28"
+        status: "FLAGGED"
+        issue: "Transitive loading descriptions - agent doesn't need to understand loading mechanism"
+      - id: TFO-003
+        location: "inputs.yml lines 45-61"
+        status: "FLAGGED"
+        issue: "Runtime resolution explanation with example_values is instructional bloat"
+      - id: TFO-004
+        location: "process.yml lines 98-104"
+        status: "FLAGGED"
+        issue: "Guidelines section has Justification tags on every line - coaching, not instruction"
+    note: "Originally PASS iteration 2. Spot check iteration 13 found structural indirection and bloat."
+
+  - agent: orchestration-build
+    spot_check_status: "FLAGGED FOR REVIEW - Iteration 13"
+    severity: low
+    effort: low
+    issues:
+      - id: OB-001
+        location: "inputs.yml lines 32-43"
+        status: "FLAGGED"
+        issue: "CLI COMMAND REFERENCE repeats commands already in shared definition"
+      - id: OB-002
+        location: "process.mmd lines 76-110"
+        status: "FLAGGED"
+        issue: "Planning delegation subgraph adds nesting without reducing decision complexity"
+      - id: OB-003
+        location: "process.mmd lines 52-67, 193-207"
+        status: "FLAGGED"
+        issue: "Extensive comment blocks duplicate information in the flow diagram"
+    note: "Originally PASS iteration 4. Spot check iteration 13 found context-minimisation violations."
+
+  - agent: test-guidance-simulator
+    spot_check_status: "FLAGGED FOR REVIEW - Iteration 14"
+    severity: low
+    effort: low
+    issues:
+      - id: TGS-001
+        location: "inputs.yml lines 5-14 vs process.yml lines 2-4"
+        status: "FLAGGED"
+        issue: "PURPOSE and RESPONSIBILITIES duplicate goal and context already in process.yml"
+      - id: TGS-002
+        location: "inputs.yml lines 81-87 vs process.yml lines 66-70"
+        status: "FLAGGED"
+        issue: "Walkthrough scenario categorization explained identically in both files"
+      - id: TGS-003
+        location: "inputs.yml lines 66-154"
+        status: "FLAGGED"
+        issue: "88-line definitions section contains explanatory prose that should be external references"
+      - id: TGS-004
+        location: "inputs.yml lines 30-39"
+        status: "FLAGGED"
+        issue: "Transitive layers load full system architecture when only test definitions needed"
+      - id: TGS-005
+        location: "inputs.yml lines 67-79, 88-105; process.yml lines 79-109"
+        status: "FLAGGED"
+        issue: "Instructional content mixes meta-explanations with task directives"
+    note: "Originally PASS iteration 3. Spot check iteration 14 found true violations."
+
+  - agent: test-user-simulator
+    spot_check_status: "FLAGGED FOR REVIEW - Iteration 14"
+    severity: low
+    effort: low
+    issues:
+      - id: TUS-001
+        location: "inputs.yml lines 89-180"
+        status: "FLAGGED"
+        issue: "Five inline definitions (agent_blind_test, user_story, etc.) are prose blocks that should be external references"
+      - id: TUS-002
+        location: "process.yml lines 93-145"
+        status: "FLAGGED"
+        issue: "16 references to inputs.yml create two-layer indirection loop"
+      - id: TUS-003
+        location: "Both files"
+        status: "FLAGGED"
+        issue: "Key concepts duplicated across files without clear boundary (blind validator, execute commands, etc.)"
+      - id: TUS-004
+        location: "inputs.yml lines 38-78"
+        status: "FLAGGED"
+        issue: "Redundant loading of strategy files (agent-blind-test, user-acceptance appear twice)"
+      - id: TUS-005
+        location: "process.yml lines 134-136"
+        status: "FLAGGED"
+        issue: "Directory-level reference with implicit hunting rather than precise file paths"
+    note: "Originally PASS iteration 3. Spot check iteration 14 found true violations."
+
+  - agent: planner-audit
+    spot_check_status: "FLAGGED FOR REVIEW - Iteration 14"
+    severity: low
+    effort: low
+    issues:
+      - id: PA-001
+        location: "inputs.yml lines 31-47"
+        status: "FLAGGED"
+        issue: "PURPOSE and RESPONSIBILITIES duplicate content already expressed in process.yml goal/steps"
+      - id: PA-002
+        location: "inputs.yml lines 121-163"
+        status: "FLAGGED"
+        issue: "Four inline definitions duplicate content in process.yml (file_placement_rules repeats audit rules)"
+      - id: PA-003
+        location: "inputs.yml lines 57-73"
+        status: "FLAGGED"
+        issue: "Three transitive layers loaded without justification for audit-specific necessity"
+      - id: PA-004
+        location: "process.yml lines 206-229"
+        status: "FLAGGED"
+        issue: "Guidelines section contains meta-explanatory prose (audit philosophy) rather than actionable directives"
+    note: "Originally PASS iteration 3. Spot check iteration 14 found true violations."
+
+  - agent: teacher-update-assets
+    verification_status: "VERIFIED - Iteration 8"
+    severity: low
+    effort: minimal
+    issues:
+      - id: TUA-001
+        location: "inputs.yml lines 49 and 97"
+        status: "CONFIRMED"
+        issue: "Duplicate guidance-artifacts.yml reference (same file listed twice)"
+        recommendation: "Merge into single entry with combined description"
+        impact: "8 lines"
+      - id: TUA-002
+        location: "various"
+        status: "UNCONFIRMED - no spelling errors found"
+        issue: "Spelling check needed"
+        recommendation: "Mark as resolved unless specific error documented elsewhere"
+
+agents_with_issues:
+
+  - agent: planner-guidance
+    verification_status: "VERIFIED - Iteration 8"
+    severity: low
+    effort: minimal
+    issues:
+      - id: PG-001
+        location: "process.yml lines 152-158"
+        status: "CONFIRMED TRUE VIOLATION"
+        issue: "Meta-catalog comments listing referenced files (noise without value)"
+        recommendation: "Delete lines 152-158 entirely"
+        impact: "7 lines"
+        rationale: |
+          This section catalogs files by loading layer - metadata about inputs.yml structure,
+          not actionable guidance. Agent doesn't need to know "via core-guidelines layer vs
+          test-shared layer." That's internal loading infrastructure. Removal is safe and
+          straightforward - the substantive guidelines starting at line 159 remain intact.
+
+  - agent: teacher-update-guidance
+    verification_status: "VERIFIED - Iteration 10"
+    severity: low
+    effort: minimal
+    issues:
+      - id: TUG-001
+        location: "process.yml lines 76-82"
+        status: "WITHDRAWN - not a violation"
+        issue: "Commented meta-references pointing elsewhere (structural indirection)"
+        verdict: |
+          These comments are a NAVIGATION MAP (true signpost), not indirection.
+          They tell agent where to find guidance definitions for lines 83-91.
+          This is context-enabling, not context-expanding. KEEP AS-IS.
+
+      - id: TUG-002
+        location: "inputs.yml lines 29-33"
+        status: "PARTIALLY TRUE - planner-shared only"
+        issue: "planner-shared.yml loaded but agent updates ALL agent guidance, not just planner"
+        impact: "5 lines"
+        recommendation: "Remove lines 29-33; load planner-shared just-in-time when analyzing planner"
+        note: "core-system and core-guidelines layers are legitimately required"
+
+      - id: TUG-003
+        location: "inputs.yml lines 110-113"
+        status: "CONFIRMED TRUE"
+        issue: "Directory-level reference loads entire agent structure"
+        impact: "4 lines"
+        recommendation: "Change to just-in-time discovery based on target agent"
+
+  - agent: deploy-worktree
+    verification_status: "VERIFIED - Iteration 10"
+    severity: low
+    effort: minimal
+    issues:
+      - id: DW-001
+        location: "process.yml lines 5-8"
+        status: "CONFIRMED TRUE"
+        issue: "References agent-loops.yml but agent doesn't use loops (participates_in: [])"
+        impact: "4 lines"
+        recommendation: "Remove unused loop_definitions section entirely"
+
+      - id: DW-002
+        location: "inputs.yml lines 54-68"
+        status: "PARTIALLY TRUE - DOWNGRADED to LOW"
+        issue: "Transitive layer loading"
+        verdict: |
+          deploy-minimal and deploy-shared are well-justified.
+          core-system is system-wide (used by 27 agents) - architecture policy, not agent bloat.
+          NOT a significant violation.
+
+      - id: DW-003
+        location: "inputs.yml lines 35-41"
+        status: "RETRACTED - not a violation"
+        issue: "SIGNPOST duplicates description fields"
+        verdict: |
+          SIGNPOST serves different purpose (usage examples) than description (definition).
+          Lines 17-20: "What REPO_ROOT is"
+          Lines 35-41: "Where and how REPO_ROOT is used in operations"
+          This is actionable guidance, NOT redundancy. KEEP AS-IS.
+
+      - id: DW-004
+        location: "inputs.yml lines 74-76, 87-89"
+        status: "CONFIRMED TRUE"
+        issue: "Glob pattern *.code-workspace vs fragment reference #naming_convention inconsistency"
+        recommendation: "Clarify if multi-workspace support is intentional; prefer exact filename if not"
+
+  - agent: test-audit
+    analysis_status: "DEEP ANALYSIS COMPLETED - Iteration 5"
+    severity: high (CRITICAL)
+    effort: moderate (2-3 hours)
+    current_state:
+      process_yml_lines: 137
+      inputs_yml_lines: 190
+      total_redundant_lines: ~102
+      bloat_factor: "21%"
+    projected_outcome:
+      process_yml_lines: ~45
+      total_reduction: "34%"
+    issues:
+      - id: TA-CRIT-001
+        location: "process.yml 20-22 + inputs.yml 64-71"
+        issue: "Audit role definition duplicated"
+        severity: CRITICAL
+      - id: TA-CRIT-002
+        location: "process.yml 129-137 + inputs.yml 180-188"
+        issue: "Constraints repeated verbatim"
+        severity: CRITICAL
+      - id: TA-CRIT-003
+        location: "process.yml 39-76 + inputs.yml 153-177"
+        issue: "Reporting format duplication - 38 lines"
+        severity: CRITICAL
+      - id: TA-HIGH-001
+        location: "process.yml 86-91"
+        issue: "Installation validation reference overhead"
+        severity: HIGH
+      - id: TA-HIGH-002
+        location: "process.yml 93-97"
+        issue: "Audit checks reference duplication"
+        severity: HIGH
+      - id: TA-HIGH-003
+        location: "process.yml 107-111"
+        issue: "Skip pattern criteria overhead"
+        severity: HIGH
+      - id: TA-HIGH-004
+        location: "process.yml lines 78-124"
+        issue: "Process steps over-detailed - consolidate 9 steps to 5"
+        severity: HIGH
+      - id: TA-LOW-001
+        location: "process.yml lines 11-15, 126-128"
+        issue: "Meta-comments - 9 lines"
+        severity: LOW
+    remediation_actions:
+      phase_1_consolidate_definitions:
+        - "Delete process.yml 20-22 (audit role summary)"
+        - "Delete process.yml 129-137 (constraints - keep only in inputs.yml)"
+        - "Replace process.yml 86-91 with single-line reference"
+        - "Replace process.yml 93-97 with single-line reference"
+        - "Replace process.yml 107-111 with single-line reference"
+      phase_2_eliminate_reporting_duplication:
+        - "Replace process.yml 39-76 with reference to inputs.yml"
+      phase_3_improve_step_clarity:
+        - "Consolidate 9 steps to 5 focused steps"
+      phase_4_remove_meta_comments:
+        - "Delete meta-comments (9 lines)"
+    shared_input_layers_status:
+      - layer: "core-system.yml"
+        status: "CLEAN"
+        lines: 20
+      - layer: "core-guidelines.yml"
+        status: "CLEAN"
+        lines: 41
+      - layer: "test-shared.yml"
+        status: "CLEAN"
+        lines: 29
+      - layer: "planner-core-guidelines.yml"
+        status: "Minor bloat"
+        lines: ~35
+        note: "Meta-documentation could be externalized"
+
+  - agent: test-builder
+    analysis_status: "DEEP ANALYSIS COMPLETED - Iteration 6"
+    severity: medium
+    effort: moderate (1.5-2 hours)
+    current_state:
+      process_yml_lines: 111
+      inputs_yml_lines: 151
+      total_lines: 262
+      redundant_lines: ~49
+    projected_outcome:
+      total_lines: ~213
+      total_reduction: "18.7%"
+    issues:
+      - id: TB-CRIT-001
+        location: "inputs.yml lines 24-42"
+        issue: "Redundant layer declarations (test-shared already loads core layers)"
+        severity: CRITICAL
+        recommendation: "Remove redundant layer declarations; rely on test-shared inheritance"
+      - id: TB-HIGH-001
+        location: "inputs.yml lines 112-151"
+        issue: "Inline test type definitions (40 lines) should be external"
+        severity: HIGH
+        recommendation: "Extract to definitions/test-types.yml and reference"
+      - id: TB-MED-001
+        location: "inputs.yml lines 88-105"
+        issue: "Over-specified guideline explanations"
+        severity: MEDIUM
+        recommendation: "Trim to essential single-line references"
+      - id: TB-LOW-001
+        location: "process.yml lines 45-52"
+        issue: "Contradictory comment about layer loading"
+        severity: LOW
+        recommendation: "Remove or clarify comment"
+    remediation_actions:
+      phase_1_remove_redundant_layers:
+        - "Delete redundant layer declarations (lines 24-42)"
+        - "Verify test-shared.yml provides required layers"
+      phase_2_externalize_test_types:
+        - "Create definitions/test-types.yml"
+        - "Move 40-line test type definitions"
+        - "Replace with single reference"
+      phase_3_trim_and_cleanup:
+        - "Condense guideline explanations"
+        - "Fix or remove contradictory comment"
+
+  - agent: test-service
+    verification_status: "VERIFIED - Iteration 9"
+    severity: medium
+    effort: low
+    issues:
+      - id: TS-001
+        location: "inputs.yml lines 22-36"
+        status: "DISMISSED - not a violation"
+        issue: "Redundant layer references (structural indirection)"
+        verdict: |
+          Layers are required for transitive loading pattern. Each serves distinct purpose.
+          Removing any layer would break completeness. NOT a true violation.
+      - id: TS-002
+        location: "inputs.yml lines 106-185"
+        status: "CONFIRMED LOW"
+        issue: "Over-specified inline definitions (~8-10 lines duplication)"
+        recommendation: "Minor duplication, serves clarity. Optional cleanup."
+      - id: TS-003
+        location: "inputs.yml lines 131-140"
+        status: "CONFIRMED - UPGRADED TO MEDIUM"
+        issue: "Hardcoded test lists (10 tests by name - brittle)"
+        recommendation: "Use external reference or dynamic test discovery"
+        rationale: |
+          Hardcoded test names create maintenance liability. If tests rename, this list becomes stale.
+          This is a structural problem beyond just context bloat.
+
+  - agent: orchestration-executor
+    verification_status: "VERIFIED - Iteration 9"
+    severity: none
+    assessment: "NO TRUE VIOLATIONS - all issues are architectural clarity"
+    issues:
+      - id: OE-001
+        status: "DISMISSED"
+        issue: "Unnecessary specification reference indirection"
+        verdict: "Three references serve distinct purposes (architecture→runtime→input). NOT redundancy."
+      - id: OE-002
+        status: "DISMISSED"
+        issue: "Redundant schema validation instructions"
+        verdict: "inputs.yml = dependencies, process.yml = usage. Different semantic contexts."
+      - id: OE-003
+        status: "DISMISSED/MINIMAL"
+        issue: "Over-detailed agent routing list"
+        verdict: "~6 lines of examples aid executor understanding. Acceptable as-is."
+
+  - agent: orchestration-planning
+    analysis_status: "DEEP ANALYSIS COMPLETED - Iteration 6"
+    severity: medium
+    effort: moderate (2-3 hours)
+    current_state:
+      process_mmd_lines: 351
+      inputs_yml_lines: 363
+      total_lines: 714
+      loop_selection_guidance_lines: 105
+    projected_outcome:
+      loop_selection_guidance_lines: ~44
+      lines_savable: 61
+      section_reduction: "58%"
+    issues:
+      - id: OP-CRIT-001
+        location: "process.mmd lines 154-259"
+        issue: "6 phase entries with identical explore_verification blocks (61 lines redundant)"
+        severity: CRITICAL
+        recommendation: "Use YAML anchors or shared template definition"
+      - id: OP-HIGH-001
+        location: "process.mmd lines 283-296"
+        issue: "Over-specified inline guidelines"
+        severity: HIGH
+        recommendation: "Reference shared guideline files instead"
+      - id: OP-MED-001
+        location: "inputs.yml lines 89-120"
+        issue: "Redundant loop pattern definitions (duplicate of process.mmd)"
+        severity: MEDIUM
+        recommendation: "Consolidate to single location"
+      - id: OP-LOW-001
+        location: "various"
+        issue: "Indirect planner process references"
+        severity: LOW
+        recommendation: "Use direct file references where possible"
+    remediation_actions:
+      phase_1_consolidate_loop_patterns:
+        - "Define shared explore_verification template"
+        - "Apply YAML anchor to 6 phase entries"
+        - "Reduce 105 lines to ~44 lines"
+      phase_2_externalize_guidelines:
+        - "Replace inline guidelines with file references"
+        - "Remove lines 283-296"
+      phase_3_eliminate_duplication:
+        - "Remove duplicate loop patterns from inputs.yml"
+        - "Reference process.mmd as authoritative source"
+
+  - agent: planner-reviewer
+    analysis_status: "DEEP ANALYSIS COMPLETED - Iteration 6"
+    severity: medium
+    effort: low (1-2 hours)
+    current_state:
+      process_yml_lines: 141
+      inputs_yml_lines: 102
+      total_lines: 243
+      checklist_lines: 97
+    projected_outcome:
+      process_yml_lines: ~65
+      total_reduction: "54% of process.yml"
+    issues:
+      - id: PR-CRIT-001
+        location: "process.yml lines 16-112"
+        issue: "97-line approval checklist inline - should be externalized"
+        severity: CRITICAL
+        recommendation: "Extract to definitions/planner-reviewer-checklists.yml"
+      - id: PR-HIGH-001
+        location: "process.yml lines 114-141"
+        issue: "Procedural detail duplicates inputs.yml structure"
+        severity: HIGH
+        recommendation: "Remove redundant procedure text, reference inputs.yml"
+      - id: PR-MED-001
+        location: "inputs.yml lines 45-78"
+        issue: "Over-specified guideline explanations"
+        severity: MEDIUM
+        recommendation: "Trim explanations to single-line summaries"
+    remediation_actions:
+      phase_1_externalize_checklist:
+        - "Create definitions/planner-reviewer-checklists.yml"
+        - "Move 97-line checklist content"
+        - "Replace process.yml lines 16-112 with reference"
+      phase_2_consolidate_procedures:
+        - "Delete redundant procedure text (lines 114-141)"
+        - "Add single reference to inputs.yml"
+      phase_3_trim_explanations:
+        - "Condense guideline explanations in inputs.yml"
+
+  - agent: deploy-cicd
+    analysis_status: "DEEP ANALYSIS COMPLETED - Iteration 7"
+    severity: medium
+    effort: low-moderate (2-3 hours)
+    current_state:
+      process_yml_lines: 104
+      inputs_yml_lines: 183
+      total_lines: 287
+      redundant_lines: ~54
+    projected_outcome:
+      total_lines: ~233
+      total_reduction: "18.8% overall (61.8% of process.yml steps)"
+    issues:
+      - id: DC-CRIT-001
+        location: "process.yml lines 50-91"
+        issue: "Step instructions duplicate inputs.yml definitions (70% overlap)"
+        severity: CRITICAL
+        recommendation: "Replace enumerated steps with single-line references to inputs.yml"
+      - id: DC-HIGH-001
+        location: "inputs.yml lines 99-142"
+        issue: "Procedural enumeration bloat in cloudbuild/dockerfile/pytest definitions (~22 lines)"
+        severity: HIGH
+        recommendation: "Convert numbered steps to bullet points"
+      - id: DC-NONE-001
+        location: "inputs.yml lines 1-7"
+        issue: "Path resolution semantics"
+        severity: NONE
+        recommendation: "Keep as-is - establishes critical semantic contract for path resolution"
+    remediation_actions:
+      phase_1_quick_wins:
+        - "Convert cloudbuild_validation enumeration to bullets (7 lines)"
+        - "Convert dockerfile_validation enumeration to bullets (7 lines)"
+        - "Convert pytest_configuration enumerations to bullets (8 lines)"
+        - "Subtotal: 22 lines saved in inputs.yml"
+      phase_2_structural_consolidation:
+        - "Replace process.yml steps 50-91 with references to inputs.yml"
+        - "Verify YAML parsing and agent execution"
+        - "Subtotal: 18-32 lines saved in process.yml"
+
+  - agent: planner-guidance-testing
+    verification_status: "VERIFIED - Iteration 9"
+    severity: none
+    assessment: "NO TRUE VIOLATIONS - issues serve distinct purposes"
+    issues:
+      - id: PGT-001
+        status: "DISMISSED"
+        issue: "Redundant input references - same guidance test plan example in both files"
+        verdict: |
+          process.yml: instructional (showing output structure)
+          inputs.yml: resource manifest (declaring access)
+          Different purposes - NOT redundant.
+      - id: PGT-002
+        status: "DISMISSED"
+        issue: "Unclear file-level inputs documentation with placeholder paths"
+        verdict: |
+          YYMMDDXX is a PATTERN (documented format), not placeholder.
+          Angle brackets are TEMPLATE VARIABLES for generalized instructions.
+          Both are intentional and necessary.
+      - id: PGT-003
+        status: "CONFIRMED LOW - intentional design"
+        issue: "Scattered conditional test scenario logic (~7 lines)"
+        verdict: |
+          Rules exist in two locations: execution section + verification section.
+          This is intentional - supports verification gates rather than hidden assumptions.
+          Keep as-is.
+
+  - agent: orchestration-guidance
+    analysis_status: "DEEP ANALYSIS COMPLETED - Iteration 7"
+    severity: medium
+    effort: low (~2 hours)
+    current_state:
+      process_mmd_lines: 176
+      inputs_yml_lines: 46
+      total_lines: 222
+      flowchart_nodes: 34
+    projected_outcome:
+      process_mmd_lines: ~149
+      total_reduction: "15.3% of process.mmd"
+    issues:
+      - id: OG-CRIT-001
+        location: "process.mmd lines 29-43"
+        issue: "CLI implementation details (exit codes, naming convention) - 12 lines of noise"
+        severity: CRITICAL
+        recommendation: "Replace with single reference to cli-reference/plan-init.md"
+      - id: OG-HIGH-001
+        location: "process.mmd lines 47-69"
+        issue: "23-line MODE explanation duplicates flowchart logic"
+        severity: HIGH
+        recommendation: "Replace with 2-line comment; flowchart already shows modes"
+      - id: OG-MED-001
+        location: "process.mmd lines 130-131, 159-160"
+        issue: "Repetitive status management references"
+        severity: MEDIUM
+        recommendation: "Keep ONE reference, deduplicate others"
+      - id: OG-MED-002
+        location: "process.mmd lines 136-147"
+        issue: "12-line feedback loop narrative duplicates flowchart"
+        severity: MEDIUM
+        recommendation: "Consolidate to single-line comment"
+      - id: OG-LOW-001
+        location: "process.mmd lines 97-104"
+        issue: "Teacher routing rules embedded (8 lines)"
+        severity: LOW
+        recommendation: "Externalize to orchestration-policy.yml#teacher-routing-rules"
+      - id: OG-LOW-002
+        location: "inputs.yml lines 18-45"
+        issue: "13 guidelines with no priority signal"
+        severity: LOW
+        recommendation: "Add CRITICAL/SUPPORTING/REFERENCE headers (+2 lines, better signal)"
+    remediation_actions:
+      priority_1_cli_details:
+        - "Delete process.mmd lines 32-35"
+        - "Add single reference: %% Plan validation delegated to CLI"
+      priority_2_mode_explanation:
+        - "Replace lines 47-69 with 2-line MODE comment"
+        - "Trust flowchart logic to communicate behavior"
+      priority_3_status_management:
+        - "Keep ONE reference at line 130"
+        - "Deduplicate lines 159-160"
+      priority_4_feedback_loop:
+        - "Replace lines 138-146 with single-line summary"
+      priority_5_teacher_routing:
+        - "Move lines 101-103 to orchestration-policy.yml"
+      priority_6_guidelines_hierarchy:
+        - "Add category headers to inputs.yml (CRITICAL/SUPPORTING/REFERENCE)"
+
+remediation_approach: |
+  Each issue should be addressed with the following principles:
+  1. Prefer deletion over modification (remove noise, don't reshape it)
+  2. Verify removals don't break agent functionality via quick validation
+  3. Document reasoning for any retained content that appears redundant
+  4. Apply context-minimisation principles consistently across all agents
+
+next_action: "Address in future session when context-minimisation improvements are prioritized"
+
+success_criteria:
+  - "All identified issues reviewed and either remediated or documented as intentional"
+  - "No regression in agent functionality after changes"
+  - "Consistent application of context-minimisation principles across all affected agents"
+  - "Token reduction measurable via before/after comparison"
+
+estimated_effort: "12-18 hours (review, remediation, validation for all findings with deep analysis)"
+deep_analysis_summary:
+  agents_analyzed: 6
+  agents_list:
+    - test-audit: "HIGH severity - 34% reduction possible (2-3 hours)"
+    - planner-reviewer: "MEDIUM severity - 54% reduction possible (1-2 hours)"
+    - orchestration-planning: "MEDIUM severity - 58% section reduction (2-3 hours)"
+    - test-builder: "MEDIUM severity - 18.7% reduction possible (1.5-2 hours)"
+    - deploy-cicd: "MEDIUM severity - 18.8% reduction possible (2-3 hours)"
+    - orchestration-guidance: "MEDIUM severity - 15.3% reduction possible (2 hours)"
+  total_deep_analysis_effort: "11-15 hours for analyzed agents"
+
+notes: |
+  These are optimizations, not blockers. The affected agents function correctly;
+  these changes improve efficiency and adherence to established standards.
+
+  The self-review process itself demonstrated value by surfacing these issues.
+  Consider making self-review a periodic practice for all agents.

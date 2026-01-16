@@ -17,8 +17,8 @@ The `orchestration-build` agent has been replaced by the generic `orchestration-
 
 ## Reference Documentation
 
-- **Specification**: `modules/AgenticGuidance/assets/definitions/orchestration-executor-specification.yml` (Section 1.2)
-- **MMD Schema**: `modules/AgenticGuidance/assets/definitions/plan-mmd-schema.yml`
+- **Specification**: `modules/AgenticGuidance/assets/specifications/orchestration-executor-specification.yml` (Section 1.2)
+- **MMD Schema**: `modules/AgenticGuidance/assets/specifications/plan-mmd-schema.yml`
 - **Executor Agent**: `modules/AgenticGuidance/agents/orchestration/orchestration-executor/`
 
 ## Historical Context
