@@ -7,33 +7,16 @@ process:
     description: "Loop types (audit-test-fix-loop) defined in agent-loops.yml"
     # NOTE: Do not duplicate loop definitions here - see agent-loops.yml for full definitions
 
-  # ==============================================
-  # LOOP CONTEXT
-  # ==============================================
-  # Specifies how this agent participates in iterative loops
-  # ==============================================
   loop_context:
     participates_in:
       - "audit-test-fix-loop"
     role: "final-validator"
-    description: |
-      test-final-output acts as the final validator in loops. It interrogates execution
-      data, validates completeness, and produces the final summary only when satisfied
-      with data quality.
-    iteration_strategy: |
-      Each iteration reviews execution data and either requests missing information
-      or produces the final summary. The agent does NOT investigate or fix issues -
-      it escalates questions to the orchestrator and waits for additional data.
-      Iteration continues until sufficient data exists for an accurate summary.
     max_iterations: 4
     escalation_on_max: "Produce best-effort summary with explicit data gaps noted"
     exit_conditions:
       - "All required data verified present"
       - "Final summary produced and approved"
       - "Orchestrator signals acceptance"
-    state_management: |
-      test-final-output is stateless between iterations. Each invocation receives
-      the execution data and any responses to previous questions as input context.
 
   inputs:
     - location: "modules/AgenticGuidance/agents/test/test-final-output/inputs.yml"
@@ -92,13 +75,13 @@ process:
       - Focus on what didn't work, concerns, gaps; minimize success celebration
 
   guidelines:
-    # Core guidelines: See modules/AgenticGuidance/assets/guidelines/ (fix-the-source.yml, context-minimisation.yml, response-audit.yml, testing.yml, reward-hacking-prevention.yml, safety.yml)
-    # Core definitions: See modules/AgenticGuidance/assets/definitions/ (plans.yml, acceptable-skips.yml, testing-types.yml, strategy-*.yml)
-    # Final output specifics: See inputs.yml for multi_layer_testing, acceptable_skips, failure_reporting, agent_blind_test, reward_hacking; See critical_questions.yml and final_outcome_report.yml examples
-    - "Be skeptical. Challenge everything. Ask questions if data lacks detail. Justification: Agents often hallucinate success; skepticism is the only defense."
-    - "Quality over speed. Request more data rather than produce an incomplete summary. Justification: An incorrect summary is worse than no summary at all."
-    - "Be SPECIFIC when requesting missing info per inputs.yml guidelines. Justification: Vague questions yield vague answers; specific questions force specific evidence."
-    - "FOCUS ON WHAT DIDN'T WORK - explain failures, gaps, risks. Minimize success celebration. Justification: Users need to know what needs fixing, not what's already working."
-    - "Your job: interrogate data, ask for missing info, produce final summary. Never investigate yourself. Justification: Investigation distracts from the audit role and risks context pollution."
-    - "Iterate until you have all data needed for an accurate summary. Justification: A single missing piece of data can hide a critical failure."
-    - "Follow final_outcome_report.yml examples for structure and tone. Justification: Consistent reporting structure allows for automated parsing and tracking."
+    # Core guidelines: See modules/AgenticGuidance/assets/guidelines/
+    # Core definitions: See modules/AgenticGuidance/assets/definitions/
+    # Final output specifics: See critical_questions.yml and final_outcome_report.yml
+    - "Be skeptical. Challenge everything. Ask questions if data lacks detail."
+    - "Quality over speed. Request more data rather than produce an incomplete summary."
+    - "Be SPECIFIC when requesting missing info - vague questions yield vague answers."
+    - "FOCUS ON WHAT DIDN'T WORK - explain failures, gaps, risks. Minimize success celebration."
+    - "Your job: interrogate data, ask for missing info, produce final summary. Never investigate yourself."
+    - "Iterate until you have all data needed for an accurate summary."
+    - "Follow final_outcome_report.yml examples for structure and tone."

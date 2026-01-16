@@ -26,47 +26,17 @@ flowchart LR
     %% Proceed only when context is fully loaded and verified
     CheckInputs -- "Yes: Verified" --> CheckExistingPlan{Pre-approved Plan Exists?}
 
-    %% ========================================
-    %% WORKTREE & PLAN FOLDER SETUP (CLI OFFLOAD)
-    %% ========================================
-    %% If pre-approved plan provided, skip init. If new plan needed, use CLI directly.
-    %% CLI command: agentic plan init <branch> --description <desc>
-    %% Enforces YYMMDDXX_description naming convention programmatically.
-    %% Exit codes: 0=success, 1=worktree failed, 2=folder exists, 3=invalid input
-    CheckExistingPlan -- "Yes: Has Plan Path" --> ValidatePlanFolder[Validate Plan Folder via CLI: agentic plan validate]
-    CheckExistingPlan -- "No: Needs Init" --> InitPlanFolder[Run CLI: agentic plan init branch --description desc]
-    InitPlanFolder --> CheckInitResult{CLI Exit Code 0?}
-    CheckInitResult -- "No: Exit 1/2/3" --> AskUser((Ask User for Clarification))
+    %% WORKTREE & PLAN FOLDER SETUP - See: modules/AgenticGuidance/assets/guidelines/cli-reference.yml
+    CheckExistingPlan -- "Yes: Has Plan Path" --> ValidatePlanFolder[Validate Plan Folder via CLI]
+    CheckExistingPlan -- "No: Needs Init" --> InitPlanFolder[Run CLI: agentic plan init]
+    InitPlanFolder --> CheckInitResult{CLI Success?}
+    CheckInitResult -- "No: Failed" --> AskUser((Ask User for Clarification))
     CheckInitResult -- "Yes: Success" --> ValidatePlanFolder
     ValidatePlanFolder --> WorktreeValid{Plan Folder Valid?}
     WorktreeValid -- "No: Failed verification" --> AskUser
 
-    %% ========================================
-    %% PLANNING DELEGATION
-    %% ========================================
-    %% orchestration-guidance accepts two modes:
-    %% MODE 1: Pre-approved plan provided via approved_plan_path input
-    %%   - Skip planning, proceed directly to execution
-    %%   - Used when orchestration-planning was invoked independently
-    %%
-    %% MODE 2: No pre-approved plan
-    %%   - Delegate to orchestration-planning agent
-    %%   - orchestration-planning handles:
-    %%     - Implementation Planning Loop (planner-guidance + reviewer)
-    %%     - Test-Guidance Planning Loop (planner-guidance-testing + reviewer)
-    %%     - Human approval gate
-    %%   - Receive approved plan folder path upon completion
-    %%
-    %% OUTPUT FROM orchestration-planning:
-    %%   - Approved plan folder with implementation and test phases
-    %%   - Plan status: approved
-    %%   - Ready for execution phase
-    %%
-    %% FEEDBACK LOOP ENTRY POINTS:
-    %% This phase receives feedback from three downstream validation points:
-    %% 1. Implementation Issues: Execution-time problems → Re-invoke orchestration-planning
-    %% 2. Walkthrough Failures: Guidance gaps from test-guidance-simulator → Re-invoke orchestration-planning
-    %% 3. Final Audit Failures: Output quality issues → Re-invoke orchestration-planning
+    %% PLANNING DELEGATION: Two modes shown in flowchart below (pre-approved vs delegate to orchestration-planning)
+    %% All downstream failures (implementation, walkthrough, audit) re-invoke orchestration-planning
 
     WorktreeValid -- "Yes: Verified" --> CheckApprovedPlan{Pre-Approved Plan Provided?}
 

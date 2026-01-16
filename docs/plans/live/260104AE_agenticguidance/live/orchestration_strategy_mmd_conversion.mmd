@@ -1,0 +1,113 @@
+flowchart LR
+    %% ========================================
+    %% ORCHESTRATION METADATA
+    %% ========================================
+    %% GOAL: Convert 3 strategy-*.yml files into .mmd planner components (1 convert, 1 merge, 1 archive).
+    %% PROFILE: orchestrator
+    %% PHASES: teach_phase_1, teach_phase_2, teach_phase_3, test_validation
+    %% AGENT_ROUTING: Phase1 -> teacher-update-assets, Phase2 -> teacher-update-assets, Phase3 -> teacher-update-assets, Validation -> test-final-output
+    %% FEEDBACK_TRIGGERS: TEST_FAILURE -> replan, VALIDATION_FAILURE -> fix
+    %% STATUS: Phase1=pending, Phase2=pending, Phase3=pending, Validation=pending
+    %% MAX_ITERATIONS: 3
+    %%
+    %% INPUT_PATH: docs/plans/live/260104AE_agenticguidance/live/plan_live_strategy_mmd_conversion.yml
+    %%
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.planner-loop
+    %% ESCALATION: If max iterations reached without validation passing, stop and Ask User
+
+    %% ========================================
+    %% START NODE
+    %% ========================================
+    Start((Start)) --> LoadInputs[Load Plan and Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION
+    %% ========================================
+    LoadInputs --> ValidateInputs{All Inputs Found?}
+    ValidateInputs -- "No: Missing" --> AskUser((Ask User for Clarification))
+    ValidateInputs -- "Yes: Verified" --> Phase1Entry
+
+    %% ========================================
+    %% PHASE 1: Convert strategy-documentation-validation.yml
+    %% ========================================
+    %% Create new MMD component (only genuine conversion candidate)
+    %% Source: strategy-documentation-validation.yml
+    %% Target: strategy_documentation_validation.mmd
+    subgraph Phase1_SG ["Phase 1: Convert to New MMD"]
+        Phase1Entry((Phase 1)) --> SpawnTeacher1[Spawn teacher-update-assets Agent]
+        SpawnTeacher1 --> Phase1Complete{Phase 1 Complete?}
+        Phase1Complete -- "No: Issues" --> Phase1Fix[Address Phase 1 Issues]
+        Phase1Fix --> SpawnTeacher1
+    end
+
+    Phase1Complete -- "Yes: Done" --> Phase1Gate{Phase 1 Approved?}
+    Phase1Gate -- "No: Rejected" --> AskUser
+    Phase1Gate -- "Yes: Approved" --> Phase2Entry
+
+    %% ========================================
+    %% PHASE 2: Merge into guidance_blind_test.mmd
+    %% ========================================
+    %% Add 3-layer testing details from strategy-agent-blind-test.yml
+    %% Source: strategy-agent-blind-test.yml
+    %% Target: guidance_blind_test.mmd (existing)
+    subgraph Phase2_SG ["Phase 2: Merge into Existing MMD"]
+        Phase2Entry((Phase 2)) --> SpawnTeacher2[Spawn teacher-update-assets Agent]
+        SpawnTeacher2 --> Phase2Complete{Phase 2 Complete?}
+        Phase2Complete -- "No: Issues" --> Phase2Fix[Address Phase 2 Issues]
+        Phase2Fix --> SpawnTeacher2
+    end
+
+    Phase2Complete -- "Yes: Done" --> Phase2Gate{Phase 2 Approved?}
+    Phase2Gate -- "No: Rejected" --> AskUser
+    Phase2Gate -- "Yes: Approved" --> Phase3Entry
+
+    %% ========================================
+    %% PHASE 3: Archive redundant file
+    %% ========================================
+    %% Remove strategy-agent-review-loop.yml (redundant with existing MMD)
+    %% Verify guidance_self_review_loop.mmd covers functionality
+    subgraph Phase3_SG ["Phase 3: Archive Redundant File"]
+        Phase3Entry((Phase 3)) --> SpawnTeacher3[Spawn teacher-update-assets Agent]
+        SpawnTeacher3 --> Phase3Complete{Phase 3 Complete?}
+        Phase3Complete -- "No: Issues" --> Phase3Fix[Address Phase 3 Issues]
+        Phase3Fix --> SpawnTeacher3
+    end
+
+    Phase3Complete -- "Yes: Done" --> Phase3Gate{Phase 3 Approved?}
+    Phase3Gate -- "No: Rejected" --> AskUser
+    Phase3Gate -- "Yes: Approved" --> ValidationEntry
+
+    %% ========================================
+    %% PHASE 4: Validation
+    %% ========================================
+    %% Verify no broken references to deleted .yml files
+    %% Update any inputs.yml files if needed
+    %% FEEDBACK_TRIGGER: VALIDATION_FAILURE -> fix
+    subgraph Validation_SG ["Phase 4: Test/Validation"]
+        ValidationEntry((Validation)) --> SpawnTester[Spawn test-final-output Agent]
+        SpawnTester --> ValidationResult{Validation Passed?}
+        ValidationResult -- "No: Broken Refs" --> IdentifyBrokenRefs[Identify Broken References]
+        IdentifyBrokenRefs -.->|VALIDATION_FAILURE: Fix refs| Phase3Entry
+    end
+
+    ValidationResult -- "Yes: Clean" --> FinalCheck{All Criteria Met?}
+
+    %% ========================================
+    %% FINAL DECISION GATE
+    %% ========================================
+    FinalCheck -- "No: Gaps Found" --> ReplanLoop{Replan Needed?}
+    ReplanLoop -- "Yes" -.->|TEST_FAILURE: Replan| Phase1Entry
+    ReplanLoop -- "No: Escalate" --> AskUser
+    FinalCheck -- "Yes: All Pass" --> End((End))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef entrypoint fill:#90EE90,stroke:#228B22
+    classDef exitpoint fill:#FFB6C1,stroke:#DC143C
+    classDef dashedstroke stroke-dasharray: 5 5
+    class Start,Phase1Entry,Phase2Entry,Phase3Entry,ValidationEntry entrypoint
+    class End exitpoint
+    class AskUser exitpoint
+    %% Dashed lines for feedback loops (indices: validation failure loop, replan loop)
+    linkStyle 22,25 stroke:#888,stroke-width:2px,stroke-dasharray: 5 5

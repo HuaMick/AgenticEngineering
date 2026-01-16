@@ -94,75 +94,32 @@ inputs:
       cause pipeline failures.
 
     cloudbuild_validation: |
-      Process of auditing cloudbuild.yaml against the actual test directory structure:
-
-      1. Extract all test directories referenced in cloudbuild.yaml
-         - Look for pytest commands with directory arguments
-         - Note the step ID and test directory mapping
-
-      2. List all actual test packages in tests/ directory
-         - tests/workflows/*/ - workflow-specific test packages
-         - tests/integration/*/ - integration test packages
-         - tests/unit/*/ - unit test packages (if any)
-
-      3. Flag discrepancies
-         - Missing packages: Test directories that exist but aren't in cloudbuild.yaml
-         - Non-existent references: cloudbuild.yaml references directories that don't exist
-         - Incomplete coverage: Test files not covered by any cloudbuild step
+      Audit cloudbuild.yaml against actual test directory structure:
+      - Extract test directories from pytest commands (note step ID mappings)
+      - List actual test packages: tests/workflows/*, tests/integration/*, tests/unit/*
+      - Flag: missing packages, non-existent references, incomplete coverage
 
     dockerfile_validation: |
-      Process of validating Dockerfile.test configuration:
-
-      1. Check sed patterns match actual pyproject.toml content
-         - Verify path replacements (e.g., workspace = true → path = "../Agent-GCPtoolkit")
-         - Test patterns against actual pyproject.toml to ensure they'll work
-
-      2. Verify dependency installation
-         - Check uv sync --dev covers all test requirements
-         - Verify test dependencies are included
-
-      3. Check environment setup
-         - Verify working directory settings
-         - Check Python version compatibility
+      Validate Dockerfile.test configuration:
+      - Check sed patterns match pyproject.toml (verify path replacements work)
+      - Verify dependency installation (uv sync --dev covers test requirements)
+      - Check environment setup (working directory, Python version)
 
     pytest_configuration: |
       Pytest configuration for CI/CD environments:
-
-      1. Coverage configuration
-         - Check --cov-fail-under threshold is appropriate for parallel execution
-         - Note: Parallel test steps may not individually meet full coverage thresholds
-         - Recommend removing coverage threshold from pytest.ini if using parallel steps
-
-      2. Marker configuration
-         - Verify markers (unit, integration, e2e, slow, costly) are defined
-         - Check markers match test categorization in codebase
-
-      3. Test discovery
-         - Verify testpaths settings match test structure
-         - Check python_files, python_classes, python_functions patterns
+      - Coverage: Check --cov-fail-under threshold (parallel steps may need threshold removal)
+      - Markers: Verify unit/integration/e2e/slow/costly markers match codebase
+      - Discovery: Verify testpaths, python_files, python_classes, python_functions patterns
 
     compose_validation: |
-      Validation that docker-compose.test.yml mirrors cloudbuild.yaml:
-
-      1. Compare services between files
-         - Each cloudbuild test step should have corresponding compose service
-         - Test directory mappings should match
-
-      2. Verify consistency
-         - Same test commands
-         - Same environment variables
-         - Same volume mounts
+      Validate docker-compose.test.yml mirrors cloudbuild.yaml:
+      - Compare services: each cloudbuild step should have corresponding compose service
+      - Verify consistency: same test commands, environment variables, volume mounts
 
     platform_compatibility: |
-      Platform-specific considerations for CI/CD testing:
-
-      1. Root user issues (Docker runs as root)
-         - Flag tests that check file permissions and may fail as root
-         - Recommend @pytest.mark.skipif(os.geteuid() == 0, ...) for such tests
-
-      2. Path dependencies
-         - Flag tests with hardcoded paths that won't work in CI container
-         - Recommend dynamic path resolution
+      Platform-specific CI/CD testing considerations:
+      - Root user: Flag permission tests, use @pytest.mark.skipif(os.geteuid() == 0, ...)
+      - Path dependencies: Flag hardcoded paths, recommend dynamic path resolution
 
     parallel_test_execution: |
       Strategy for running tests in parallel in CI/CD pipelines:

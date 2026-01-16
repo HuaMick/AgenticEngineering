@@ -1,0 +1,153 @@
+flowchart TB
+    %% ========================================
+    %% STRATEGY: DOCUMENTATION VALIDATION
+    %% ========================================
+    %% GOAL: Validate documentation completeness and accuracy through systematic testing.
+    %% PROFILE: Planner-Component-DocumentationValidation
+    %% COMPONENT_TYPE: Reusable validation component for documentation quality assurance
+    %% USAGE: Incorporate into release workflows to ensure docs enable user success.
+    %%
+    %% CORE PRINCIPLE:
+    %% Documentation length != Documentation quality.
+    %% If the docs fail, the product fails.
+    %%
+    %% ORIGIN: GCPTOOLKIT-CONFIG-GAP-001 - 525 lines of documentation with 9 critical gaps
+    %%
+    %% INPUTS (expected from orchestrator):
+    %% - documentation_path: Path to documentation being validated
+    %% - user_journey: The workflow users should complete using docs
+    %% - test_environment: Fresh environment for validation
+    %%
+    %% EXIT CONDITIONS:
+    %% - Success: Blind-test agent completes all scenarios using only docs
+    %% - Failure: Documentation gaps identified -> fix and retest
+    %%
+    %% CATCHES:
+    %% - Missing steps
+    %% - Incorrect steps
+    %% - Ambiguous instructions
+    %% - Undocumented prerequisites
+    %% - Missing error recovery documentation
+    %% - Inaccessible features
+
+    %% ========================================
+    %% PHASE 1: FOLLOW-DOCS-EXACTLY TEST
+    %% ========================================
+    %% Execute documentation step-by-step with zero prior knowledge
+    DocValidationStart((Documentation Validation)) --> PrepareEnvironment[Prepare Fresh Environment
+    - Clean slate, no prior setup
+    - No cached knowledge
+    - Standard user starting point]
+
+    PrepareEnvironment --> BeginFollowTest[Begin Follow-Docs-Exactly Test
+    - Start at line 1
+    - Execute each step exactly as written
+    - No interpretation or improvisation]
+
+    BeginFollowTest --> ExecuteStep[Execute Current Step]
+
+    ExecuteStep --> StepWorks{Step Works As Documented?}
+
+    StepWorks -- "Yes" --> MoreSteps{More Steps?}
+    MoreSteps -- "Yes" --> ExecuteStep
+    MoreSteps -- "No" --> Phase1Pass[Phase 1 Complete]
+
+    StepWorks -- "No" --> ClassifyGap{Gap Type?}
+
+    ClassifyGap -- "Missing Step" --> RecordMissing[Record: Missing Step
+    Document what step is needed]
+    ClassifyGap -- "Incorrect Step" --> RecordIncorrect[Record: Incorrect Step
+    Document expected vs actual]
+    ClassifyGap -- "Ambiguous" --> RecordAmbiguous[Record: Ambiguous Instruction
+    Document unclear language]
+    ClassifyGap -- "Missing Prerequisite" --> RecordPrereq[Record: Undocumented Prerequisite
+    Document required setup]
+    ClassifyGap -- "No Error Recovery" --> RecordError[Record: Missing Error Recovery
+    Document failure scenario]
+
+    RecordMissing --> ContinueOrFail
+    RecordIncorrect --> ContinueOrFail
+    RecordAmbiguous --> ContinueOrFail
+    RecordPrereq --> ContinueOrFail
+    RecordError --> ContinueOrFail
+
+    ContinueOrFail{Can Continue Testing?}
+    ContinueOrFail -- "Yes: Workaround possible" --> ExecuteStep
+    ContinueOrFail -- "No: Blocked" --> Phase1Blocked[Phase 1 Blocked
+    Critical gaps found]
+
+    %% ========================================
+    %% PHASE 2: BLIND-TEST VALIDATION
+    %% ========================================
+    %% Agent with NO prior knowledge attempts user journey
+    Phase1Pass --> StartBlindTest[Start Blind-Test Validation
+    Spawn agent with:
+    - NO prior system knowledge
+    - Access ONLY to documentation
+    - Target user journey to complete]
+
+    StartBlindTest --> BlindExecute[Blind Agent Executes Journey]
+
+    BlindExecute --> BlindSuccess{Agent Completes Journey?}
+
+    BlindSuccess -- "Yes: All scenarios passed" --> ValidateCompleteness{All Requirements Met?}
+    BlindSuccess -- "No: Agent failed/stuck" --> AnalyzeBlindFailure[Analyze Blind-Test Failure
+    - Where did agent get stuck?
+    - What information was missing?
+    - What was unclear?]
+
+    %% ========================================
+    %% VALIDATION GATES
+    %% ========================================
+    ValidateCompleteness --> CheckCriteria{Success Criteria Check}
+
+    CheckCriteria -- "Zero prior knowledge needed" --> CheckExact{Every step works exactly?}
+    CheckExact -- "Yes" --> CheckUndocumented{No undocumented steps required?}
+    CheckUndocumented -- "Yes" --> CheckManual{No manual file creation?}
+    CheckManual -- "Yes" --> CheckRecovery{Error recovery documented?}
+    CheckRecovery -- "Yes" --> ValidationPass((PASS: Documentation Valid))
+
+    CheckExact -- "No" --> DocumentGaps
+    CheckUndocumented -- "No" --> DocumentGaps
+    CheckManual -- "No" --> DocumentGaps
+    CheckRecovery -- "No" --> DocumentGaps
+
+    %% ========================================
+    %% FAILURE HANDLING
+    %% ========================================
+    AnalyzeBlindFailure --> DocumentGaps[Document All Gaps Found
+    - Gap location
+    - Gap description
+    - Suggested fix]
+
+    Phase1Blocked --> DocumentGaps
+
+    DocumentGaps --> FixDocumentation[Fix Documentation
+    Address all identified gaps]
+
+    FixDocumentation --> RevalidateCheck{Re-validate Required?}
+    RevalidateCheck -- "Yes" --> PrepareEnvironment
+    RevalidateCheck -- "No: Minor fixes" --> ValidationPass
+
+    %% ========================================
+    %% RELEASE INTEGRATION
+    %% ========================================
+    %% See: docs/testing/pre_release_checklist.md
+    %% - Phase 7: Follow-docs-exactly test
+    %% - Phase 7b: Blind-test validation
+    %% - Must pass before documentation sign-off
+    %% - Phase 12: Final documentation loop
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef entrypoint fill:#90EE90,stroke:#228B22
+    classDef exitpoint fill:#FFB6C1,stroke:#DC143C
+    classDef successpoint fill:#98FB98,stroke:#006400
+    classDef critical fill:#FFD700,stroke:#FF8C00
+    classDef recording fill:#DDA0DD,stroke:#8B008B
+
+    class DocValidationStart entrypoint
+    class ValidationPass successpoint
+    class BeginFollowTest,StartBlindTest critical
+    class RecordMissing,RecordIncorrect,RecordAmbiguous,RecordPrereq,RecordError recording
