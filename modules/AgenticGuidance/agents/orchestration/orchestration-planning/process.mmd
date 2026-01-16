@@ -104,117 +104,79 @@ flowchart LR
     %% MAX_ITERATIONS: 5 (per planner-loop definition)
     %% ESCALATION: If max iterations reached without approval, stop and Ask User
     %%
-    %% For each required phase, spawn specialized planner + reviewer loop:
-    %% - planner-guidance: Teaching/guidance plans
-    %% - planner-build: Build/implementation plans
-    %% - planner-test: Test strategy plans (also handles UAT phase planning)
-    %% - planner-cleaning: Cleanup plans
-    %% - planner-audit: Plan folder compliance audits
-    %% - UAT: Uses planner-test (UAT is testing domain, not separate agent)
+    %% PLANNER_LOOP_TEMPLATE: Each phase loop follows identical pattern:
+    %%   Check{Phase}Required? --Yes--> {Phase}PlanLoop --> SpawnPlanner{Phase} --> SpawnReviewer
+    %%   --> {Phase}Approved? --No:Refine--> SpawnPlanner{Phase}Fix --> SpawnReviewer
+    %%   --> {Phase}Approved? --Yes:Ready--> Check{NextPhase}Required?
+    %%   Check{Phase}Required? --No--> Check{NextPhase}Required?
+    %%
+    %% AGENT_MAPPING (phase -> planner agent):
+    %%   teach -> planner-guidance | build -> planner-build | test -> planner-test
+    %%   cleanup -> planner-cleaning | audit -> planner-audit | uat -> planner-test
     CreatePlaceholders --> PlanningLoops[Enter Planning Loops Phase]
 
     subgraph PlanningLoops_SG ["Planning Loops Subgraph"]
-        %% ----------------------------------------
-        %% TEACH PLANNING LOOP (if teach phase required)
-        %% ----------------------------------------
+        %% PHASE SEQUENCE: teach -> build -> test -> cleanup -> audit -> uat -> AllPhasesPlanned
+        %% Each phase uses PLANNER_LOOP_TEMPLATE with phase-specific agent from AGENT_MAPPING
+
+        %% TEACH LOOP (planner-guidance)
         PlanningLoops --> CheckTeach{Teach Phase Required?}
         CheckTeach -- "Yes" --> TeachPlanLoop{Teach Planning Loop}
-
         TeachPlanLoop --> SpawnPlannerTeach[Spawn planner-guidance Agent]
         SpawnPlannerTeach --> SpawnTeachReviewer[Spawn planner-reviewer Agent]
         SpawnTeachReviewer --> TeachPlanApproved{Teach Plan Approved?}
-
-        %% Iterative refinement for teach plan
         TeachPlanApproved -- "No: Refine" --> SpawnPlannerTeachFix[Spawn planner-guidance Agent]
         SpawnPlannerTeachFix --> SpawnTeachReviewer
-
         TeachPlanApproved -- "Yes: Ready" --> CheckBuild{Build Phase Required?}
         CheckTeach -- "No" --> CheckBuild
 
-        %% ----------------------------------------
-        %% BUILD PLANNING LOOP (if build phase required)
-        %% ----------------------------------------
+        %% BUILD LOOP (planner-build)
         CheckBuild -- "Yes" --> BuildPlanLoop{Build Planning Loop}
-
         BuildPlanLoop --> SpawnPlannerBuild[Spawn planner-build Agent]
         SpawnPlannerBuild --> SpawnBuildReviewer[Spawn planner-reviewer Agent]
         SpawnBuildReviewer --> BuildPlanApproved{Build Plan Approved?}
-
-        %% Iterative refinement for build plan
         BuildPlanApproved -- "No: Refine" --> SpawnPlannerBuildFix[Spawn planner-build Agent]
         SpawnPlannerBuildFix --> SpawnBuildReviewer
-
         BuildPlanApproved -- "Yes: Ready" --> CheckTest{Test Phase Required?}
         CheckBuild -- "No" --> CheckTest
 
-        %% ----------------------------------------
-        %% TEST PLANNING LOOP (if test phase required)
-        %% ----------------------------------------
+        %% TEST LOOP (planner-test)
         CheckTest -- "Yes" --> TestPlanLoop{Test Planning Loop}
-
         TestPlanLoop --> SpawnPlannerTest[Spawn planner-test Agent]
         SpawnPlannerTest --> SpawnTestReviewer[Spawn planner-reviewer Agent]
         SpawnTestReviewer --> TestPlanApproved{Test Plan Approved?}
-
-        %% Iterative refinement for test plan
         TestPlanApproved -- "No: Refine" --> SpawnPlannerTestFix[Spawn planner-test Agent]
         SpawnPlannerTestFix --> SpawnTestReviewer
-
         TestPlanApproved -- "Yes: Ready" --> CheckCleanup{Cleanup Phase Required?}
         CheckTest -- "No" --> CheckCleanup
 
-        %% ----------------------------------------
-        %% CLEANUP PLANNING LOOP (if cleanup phase required)
-        %% ----------------------------------------
+        %% CLEANUP LOOP (planner-cleaning)
         CheckCleanup -- "Yes" --> CleanupPlanLoop{Cleanup Planning Loop}
-
         CleanupPlanLoop --> SpawnPlannerCleanup[Spawn planner-cleaning Agent]
         SpawnPlannerCleanup --> SpawnCleanupReviewer[Spawn planner-reviewer Agent]
         SpawnCleanupReviewer --> CleanupPlanApproved{Cleanup Plan Approved?}
-
-        %% Iterative refinement for cleanup plan
         CleanupPlanApproved -- "No: Refine" --> SpawnPlannerCleanupFix[Spawn planner-cleaning Agent]
         SpawnPlannerCleanupFix --> SpawnCleanupReviewer
-
         CleanupPlanApproved -- "Yes: Ready" --> CheckAudit{Audit Phase Required?}
         CheckCleanup -- "No" --> CheckAudit
 
-        %% ----------------------------------------
-        %% AUDIT PLANNING LOOP (if audit phase required)
-        %% ----------------------------------------
-        %% planner-audit checks plan folder compliance:
-        %% - Files in correct locations (live/, completed/, audit/, analysis/)
-        %% - Completed plans moved out of live/
-        %% - Stale/misleading artifacts identified
+        %% AUDIT LOOP (planner-audit) - validates plan folder compliance
         CheckAudit -- "Yes" --> AuditPlanLoop{Audit Planning Loop}
-
         AuditPlanLoop --> SpawnPlannerAudit[Spawn planner-audit Agent]
         SpawnPlannerAudit --> SpawnAuditReviewer[Spawn planner-reviewer Agent]
         SpawnAuditReviewer --> AuditPlanApproved{Audit Plan Approved?}
-
-        %% Iterative refinement for audit plan
         AuditPlanApproved -- "No: Refine" --> SpawnPlannerAuditFix[Spawn planner-audit Agent]
         SpawnPlannerAuditFix --> SpawnAuditReviewer
-
         AuditPlanApproved -- "Yes: Ready" --> CheckUAT{UAT Phase Required?}
         CheckAudit -- "No" --> CheckUAT
 
-        %% ----------------------------------------
-        %% UAT PLANNING LOOP (MANDATORY for build plans)
-        %% ----------------------------------------
-        %% Reference: agent-loops.yml#user-story-validation-loop
-        %% PRIMARY SUCCESS CRITERIA - validates complete user journeys
-        %% NOTE: Uses planner-test (UAT is testing domain, not separate agent)
+        %% UAT LOOP (planner-test) - MANDATORY for build plans, validates user journeys
         CheckUAT -- "Yes" --> UATPlanLoop{UAT Planning Loop}
-
         UATPlanLoop --> SpawnPlannerTestUAT[Spawn planner-test Agent for UAT]
         SpawnPlannerTestUAT --> SpawnUATReviewer[Spawn planner-reviewer Agent]
         SpawnUATReviewer --> UATPlanApproved{UAT Plan Approved?}
-
-        %% Iterative refinement for UAT plan
         UATPlanApproved -- "No: Refine" --> SpawnPlannerTestUATFix[Spawn planner-test Agent]
         SpawnPlannerTestUATFix --> SpawnUATReviewer
-
         UATPlanApproved -- "Yes: Ready" --> AllPhasesPlanned[All Required Phases Planned]
         CheckUAT -- "No" --> AllPhasesPlanned
     end
@@ -347,4 +309,4 @@ flowchart LR
     %% - FixMMD --> BuildFlowchart (MMD schema fix loop)
     %% - IdentifyAffectedPhases -.-> PlanningLoops (human feedback loop)
     classDef dashedstroke stroke-dasharray: 5 5;
-    linkStyle 61,65,77 stroke:#888,stroke-width:2px,stroke-dasharray: 5 5;
+    linkStyle 77,81,93 stroke:#888,stroke-width:2px,stroke-dasharray: 5 5;

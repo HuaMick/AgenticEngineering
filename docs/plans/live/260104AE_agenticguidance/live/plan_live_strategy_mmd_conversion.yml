@@ -1,12 +1,13 @@
 # Backlog Item: Strategy Files to Planner Component Conversion
-# Status: backlog
+# Status: active
 # Priority: low
 # Created: 2026-01-16
 # Updated: 2026-01-16 (scope revised after validation)
 # Source: Task low_007 analysis from plan_live_batch_remediation.yml
 
-name: strategy-mmd-conversion
-status: backlog
+plan_name: strategy-mmd-conversion
+worktree: /home/code/AgenticEngineering-agenticguidance
+status: active
 priority: low
 created: "2026-01-16"
 last_verified: "2026-01-16"
@@ -18,6 +19,28 @@ objective: |
   These files define structured validation workflows with phases, decision gates,
   and escalation paths that are better expressed as Mermaid flowcharts for
   planner consumption.
+
+# ============================================================================
+# INPUTS (Pre-gathered Context)
+# ============================================================================
+inputs:
+  - location: "modules/AgenticGuidance/assets/guidelines/strategy-documentation-validation.yml"
+    description: "Source file for conversion - two-phase validation process"
+
+  - location: "modules/AgenticGuidance/assets/guidelines/strategy-agent-blind-test.yml"
+    description: "Source file for merge - 3-layer testing details to add to existing MMD"
+
+  - location: "modules/AgenticGuidance/assets/guidelines/strategy-agent-review-loop.yml"
+    description: "Source file to archive - redundant with existing MMD"
+
+  - location: "modules/AgenticGuidance/assets/examples/planner/components/guidance_blind_test.mmd"
+    description: "Existing MMD to merge strategy-agent-blind-test.yml content into"
+
+  - location: "modules/AgenticGuidance/assets/examples/planner/components/guidance_self_review_loop.mmd"
+    description: "Existing MMD that makes strategy-agent-review-loop.yml redundant"
+
+  - location: "modules/AgenticGuidance/assets/examples/planner/components/"
+    description: "Target folder for new .mmd components - reference for naming conventions"
 
 # ============================================================================
 # FILES TO CONVERT TO .mmd PLANNER COMPONENTS
@@ -143,37 +166,144 @@ conversion_notes: |
   - Document in component README which strategies are available
 
 # ============================================================================
-# EXECUTION PLAN
+# EXECUTION PLAN - PHASES AND TASKS
 # ============================================================================
 
-execution_phases:
-  # REVISED PHASES (2026-01-16 validation):
+phases:
+  # ----------------------------------------
+  # PHASE 1: Convert strategy-documentation-validation.yml
+  # ----------------------------------------
   - name: "Phase 1: Convert strategy-documentation-validation.yml"
     description: "Create new MMD component (only genuine conversion candidate)"
-    tasks:
-      - "Read strategy-documentation-validation.yml and map to flowchart structure"
-      - "Create strategy_documentation_validation.mmd in components folder"
-      - "Validate flowchart syntax"
-      - "Delete source .yml file"
+    agent_category: "teacher"
+    dependencies: []
+    success_criteria:
+      - "strategy_documentation_validation.mmd created in components folder"
+      - "Flowchart syntax validates correctly"
+      - "Source .yml file deleted after conversion"
 
+    tasks:
+      - id: "1.1"
+        description: "Read strategy-documentation-validation.yml and map to flowchart structure"
+        agent_type: "teacher-update-assets"
+        acceptance_criteria:
+          - "Two-phase structure identified (schema validation, content validation)"
+          - "Decision gates and parallel steps mapped"
+          - "Flowchart structure designed before implementation"
+
+      - id: "1.2"
+        description: "Create strategy_documentation_validation.mmd in components folder"
+        agent_type: "teacher-update-assets"
+        acceptance_criteria:
+          - "File exists at modules/AgenticGuidance/assets/examples/planner/components/strategy_documentation_validation.mmd"
+          - "Mermaid syntax is valid"
+          - "All phases and decision gates represented"
+
+      - id: "1.3"
+        description: "Validate flowchart syntax"
+        agent_type: "teacher-update-assets"
+        acceptance_criteria:
+          - "Mermaid diagram renders without errors"
+          - "Flow logic matches source YAML workflow"
+
+      - id: "1.4"
+        description: "Delete source .yml file"
+        agent_type: "teacher-update-assets"
+        acceptance_criteria:
+          - "strategy-documentation-validation.yml removed from guidelines/"
+          - "No broken references to deleted file"
+
+  # ----------------------------------------
+  # PHASE 2: Merge into guidance_blind_test.mmd
+  # ----------------------------------------
   - name: "Phase 2: Merge into guidance_blind_test.mmd"
     description: "Add 3-layer testing details from strategy-agent-blind-test.yml"
-    tasks:
-      - "Extract 3-layer testing content (local, Docker, Cloud Build) from YAML"
-      - "Add as new section in guidance_blind_test.mmd"
-      - "Delete source .yml file"
+    agent_category: "teacher"
+    dependencies:
+      - "Phase 1: Convert strategy-documentation-validation.yml"
+    success_criteria:
+      - "3-layer testing content merged into guidance_blind_test.mmd"
+      - "Source .yml file deleted"
+      - "No duplicate content"
 
+    tasks:
+      - id: "2.1"
+        description: "Extract 3-layer testing content (local, Docker, Cloud Build) from YAML"
+        agent_type: "teacher-update-assets"
+        acceptance_criteria:
+          - "Unique 3-layer testing content identified"
+          - "Content not already present in guidance_blind_test.mmd"
+
+      - id: "2.2"
+        description: "Add as new section in guidance_blind_test.mmd"
+        agent_type: "teacher-update-assets"
+        acceptance_criteria:
+          - "3-layer testing section added to MMD"
+          - "Mermaid syntax remains valid after edit"
+          - "Content flows logically with existing diagram"
+
+      - id: "2.3"
+        description: "Delete source .yml file"
+        agent_type: "teacher-update-assets"
+        acceptance_criteria:
+          - "strategy-agent-blind-test.yml removed from guidelines/"
+          - "No broken references to deleted file"
+
+  # ----------------------------------------
+  # PHASE 3: Archive redundant file
+  # ----------------------------------------
   - name: "Phase 3: Archive redundant file"
     description: "Remove strategy-agent-review-loop.yml (redundant with existing MMD)"
-    tasks:
-      - "Delete strategy-agent-review-loop.yml"
-      - "Verify guidance_self_review_loop.mmd covers all needed functionality"
+    agent_category: "teacher"
+    dependencies:
+      - "Phase 2: Merge into guidance_blind_test.mmd"
+    success_criteria:
+      - "Redundant file deleted"
+      - "guidance_self_review_loop.mmd confirmed to cover needed functionality"
 
+    tasks:
+      - id: "3.1"
+        description: "Delete strategy-agent-review-loop.yml"
+        agent_type: "teacher-update-assets"
+        acceptance_criteria:
+          - "File removed from guidelines/"
+          - "Git history preserved for reference if needed"
+
+      - id: "3.2"
+        description: "Verify guidance_self_review_loop.mmd covers all needed functionality"
+        agent_type: "teacher-update-assets"
+        acceptance_criteria:
+          - "All concepts from deleted YAML are present in MMD"
+          - "No functionality gap identified"
+
+  # ----------------------------------------
+  # PHASE 4: Validation
+  # ----------------------------------------
   - name: "Validation"
     description: "Verify no broken references"
+    agent_category: "test"
+    dependencies:
+      - "Phase 3: Archive redundant file"
+    success_criteria:
+      - "No broken references to deleted .yml files"
+      - "All inputs.yml files updated if needed"
+      - "All new/modified MMD files validate"
+
     tasks:
-      - "Grep for references to deleted .yml files"
-      - "Update any inputs.yml files that reference deleted files"
+      - id: "4.1"
+        description: "Grep for references to deleted .yml files"
+        agent_type: "test-final-output"
+        acceptance_criteria:
+          - "Zero references found to strategy-documentation-validation.yml"
+          - "Zero references found to strategy-agent-blind-test.yml"
+          - "Zero references found to strategy-agent-review-loop.yml"
+
+      - id: "4.2"
+        description: "Update any inputs.yml files that reference deleted files"
+        agent_type: "test-final-output"
+        acceptance_criteria:
+          - "All inputs.yml files point to valid locations"
+          - "References updated to new .mmd locations where appropriate"
 
 # ============================================================================
 # SUCCESS CRITERIA
@@ -181,7 +311,7 @@ execution_phases:
 
 success_criteria:
   - "1 strategy file converted to .mmd (strategy-documentation-validation.yml)"
-  - "1 strategy file merged into existing MMD (strategy-agent-blind-test.yml → guidance_blind_test.mmd)"
+  - "1 strategy file merged into existing MMD (strategy-agent-blind-test.yml -> guidance_blind_test.mmd)"
   - "1 strategy file archived/deleted (strategy-agent-review-loop.yml - redundant)"
   - "6 strategy files remain as guidelines (confirmed appropriate)"
   - "All references updated"
