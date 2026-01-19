@@ -259,12 +259,23 @@ flowchart LR
     %% ========================================
     %% HUMAN APPROVAL GATE
     %% ========================================
-    %% Present complete plan AND orchestration MMD to user for final approval.
-    %% User can: approve, request changes, or reject.
-    %% This is the critical gate before plan is marked ready for execution.
+    %% POLICY: Human Approval Gate is for CLARIFICATION, not routine sign-off.
+    %% If plan requirements are unambiguous, proceed without approval prompt.
+    %% Only engage user when open questions or decision points exist.
+    %%
+    %% CONDITION: Check for open questions BEFORE presenting plan.
+    %% - If all requirements clear AND no open questions: Auto-approve (proceed to output)
+    %% - If requirements unclear OR open questions exist: Present for user approval
 
     subgraph HumanApproval_SG ["Human Approval Gate Subgraph"]
-        HumanApproval --> PresentPlan[Present Complete Plan Summary]
+        %% First check: Are there open questions requiring user input?
+        HumanApproval --> CheckOpenQuestions{Open Questions?}
+
+        %% AUTO-APPROVE PATH: No questions, clear requirements
+        CheckOpenQuestions -- "No: Clear" --> MarkApproved[Mark Plan as Approved]
+
+        %% MANUAL APPROVAL PATH: Questions exist, need user input
+        CheckOpenQuestions -- "Yes: Questions" --> PresentPlan[Present Complete Plan Summary]
         PresentPlan --> ShowPhases[Display All Phase Plans]
         ShowPhases --> ShowMMD[Display Orchestration MMD]
         ShowMMD --> ShowTasks[Display Tasks per Phase]
@@ -272,7 +283,7 @@ flowchart LR
         ShowCriteria --> UserDecision{User Decision?}
 
         %% User approves - proceed to output
-        UserDecision -- "Approved" --> MarkApproved[Mark Plan as Approved]
+        UserDecision -- "Approved" --> MarkApproved
 
         %% User requests changes - return to planning loops with feedback
         UserDecision -- "Changes Requested" --> CaptureChanges[Capture User Feedback]

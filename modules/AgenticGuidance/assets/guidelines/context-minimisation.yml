@@ -26,10 +26,10 @@ guideline:
   rules:
     - rule: "Need-to-know basis"
       description: |
-        Provide only the information required for the current step. 
+        Provide only the information required for the current step.
         Exclude historical context or unrelated documentation.
       justification: |
-        Irrelevant context dilutes the model's attention and increases the 
+        Irrelevant context dilutes the model's attention and increases the
         risk of error and hallucination.
       characteristics:
         - "Provide function signatures instead of full files when appropriate"
@@ -40,7 +40,7 @@ guideline:
       description: |
         Reference specific files directly. Avoid directory-level references.
       justification: |
-        Directory-level references force the agent to explore and decide what 
+        Directory-level references force the agent to explore and decide what
         matters, which is slow, expensive, and error-prone.
       characteristics:
         - "Specify exact paths (e.g., src/foo/bar.py) in plan inputs"
@@ -48,11 +48,26 @@ guideline:
 
     - rule: "Avoid structural indirection"
       description: |
-        Avoid creating unnecessary layers or meta-files that only reference 
+        Avoid creating unnecessary layers or meta-files that only reference
         other files without adding value.
       justification: |
-        Indirection obscures what is actually being loaded and processed, 
+        Indirection obscures what is actually being loaded and processed,
         making it harder to audit the context boundary.
+
+    - rule: "Consider RLM for selective access"
+      description: |
+        When context exceeds 500 lines or spans 10+ files, consider using
+        RLM patterns for programmatic context access instead of loading
+        everything upfront.
+      justification: |
+        RLM enables selective loading of only the portions needed for each
+        step, maintaining minimisation principles at scale while avoiding
+        lossy summarization.
+      characteristics:
+        - "Store large contexts in environment variables"
+        - "Use code to filter and extract relevant portions"
+        - "Load only what is needed for current operation"
+        - "See rlm-integration.yml for implementation guidelines"
 
   anti_patterns:
     - "Dumping entire files for a small change"
@@ -60,8 +75,57 @@ guideline:
     - "Directory-level routing where file-level targeting is possible"
     - "Meta-files that merely list other files (noise without value)"
 
+  rlm_alternative:
+    description: |
+      RLM (Recursive Language Model) patterns provide a complementary approach
+      to context minimisation for cases where context genuinely exceeds model
+      limits. While minimisation reduces what is loaded, RLM enables programmatic
+      access to large contexts without loading everything at once.
+
+    when_rlm_complements_minimisation:
+      - situation: "Context inherently large but sparsely relevant"
+        description: |
+          When the source material is large (2000+ lines) but only small
+          portions are relevant to the task, RLM filtering achieves
+          minimisation dynamically rather than requiring upfront curation.
+        example: "Analyzing error patterns in 10000-line log files"
+
+      - situation: "Cross-referencing multiple large documents"
+        description: |
+          When task requires correlating information across multiple large
+          documents, RLM enables targeted extraction from each without
+          loading all documents simultaneously.
+        example: "Mapping spec requirements to implementation across 50 files"
+
+      - situation: "Hierarchical exploration with unknown depth"
+        description: |
+          When the relevant portions cannot be identified upfront because
+          they depend on what is discovered during exploration, RLM enables
+          progressive context loading as understanding develops.
+        example: "Tracing dependency chains through unfamiliar codebase"
+
+      - situation: "Audit trails requiring evidence"
+        description: |
+          When findings must be supported by specific file:line evidence,
+          RLM enables systematic extraction and citation without loading
+          entire files into context.
+        example: "Test audit requiring evidence of assertion patterns"
+
+    relationship_to_minimisation: |
+      Context minimisation and RLM are complementary, not competing:
+      - Minimisation: Reduce what is provided upfront
+      - RLM: Access large contexts programmatically without full loading
+
+      Use minimisation first. When minimisation alone cannot achieve
+      sufficient context reduction (contexts > 500 lines), add RLM
+      for programmatic selective access.
+
   related_guidelines:
     - location: "modules/AgenticGuidance/assets/guidelines/less-is-more.yml"
       description: "Minimal change principles"
     - location: "modules/AgenticGuidance/assets/guidelines/safety.yml"
       description: "Security and scope guardrails"
+    - location: "modules/AgenticGuidance/assets/guidelines/rlm-integration.yml"
+      description: "RLM integration guidelines for programmatic context access"
+    - location: "modules/AgenticGuidance/assets/definitions/rlm-patterns.yml"
+      description: "RLM pattern definitions for large context handling"

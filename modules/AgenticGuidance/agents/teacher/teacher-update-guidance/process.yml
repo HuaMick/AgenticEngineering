@@ -13,6 +13,179 @@ process:
       re-invoked within guidance-test-loop when blind tests identify gaps that need fixing.
       Pattern: test-guidance-simulator finds gap → teacher-update-guidance fixes → repeat
 
+  # ===========================================================================
+  # RLM PATTERNS FOR TRAJECTORY ANALYSIS
+  # Reference: modules/AgenticGuidance/assets/definitions/rlm-patterns.yml
+  # ===========================================================================
+  rlm_patterns:
+    description: |
+      RLM (Recursive Language Model) patterns enable analysis of large agent
+      trajectories that exceed context limits. Use these patterns when analyzing
+      trajectories with >500 actions or multi-agent friction discovery.
+
+    trajectory_analysis_pattern:
+      description: |
+        Programmatic analysis of agent execution trajectories to identify
+        friction patterns, backtracking, and guidance gaps.
+
+      operations:
+        extract_decision_points:
+          description: "Find where agent made significant decisions"
+          example: |
+            # Store trajectory
+            store_context("CONTEXT_TRAJECTORY", content=agent_trajectory)
+            # Find decision points
+            decisions = get_context("CONTEXT_TRAJECTORY",
+                                    filter="Decision:|Chose:|Selected:|Using approach:")
+            for decision in decisions:
+                accumulate("ACCUMULATOR_DECISIONS", {
+                    "action": decision.context,
+                    "timestamp": extract_timestamp(decision),
+                    "outcome": trace_outcome(decision)
+                })
+
+        detect_backtracking:
+          description: "Find where agent reversed direction or tried alternative approaches"
+          example: |
+            backtrack_indicators = get_context("CONTEXT_TRAJECTORY",
+                filter="reverting|going back|trying again|alternative approach|that didn't work")
+            for backtrack in backtrack_indicators:
+                accumulate("ACCUMULATOR_FRICTION", {
+                    "type": "backtracking",
+                    "location": backtrack.line,
+                    "context": backtrack.context,
+                    "severity": "MEDIUM"
+                })
+
+        measure_iteration_depth:
+          description: "Count iteration depth to detect loops and excessive retries"
+          example: |
+            iterations = get_context("CONTEXT_TRAJECTORY",
+                                     filter="iteration\\s+\\d+|attempt\\s+\\d+|retry")
+            max_depth = max(extract_iteration_numbers(iterations))
+            if max_depth > 3:
+                accumulate("ACCUMULATOR_FRICTION", {
+                    "type": "loop_inefficiency",
+                    "evidence": f"Max iteration depth: {max_depth}",
+                    "severity": "HIGH" if max_depth > 5 else "MEDIUM"
+                })
+
+        extract_error_recovery:
+          description: "Find error handling and recovery patterns"
+          example: |
+            errors = get_context("CONTEXT_TRAJECTORY",
+                                 filter="Error:|Exception:|Failed:|error occurred")
+            for error in errors:
+                recovery = find_next_action(error)
+                accumulate("ACCUMULATOR_ERROR_RECOVERY", {
+                    "error": error.context,
+                    "recovery_action": recovery,
+                    "was_successful": trace_success(recovery)
+                })
+
+        identify_guidance_gaps:
+          description: "Find where agent expressed confusion or lack of guidance"
+          example: |
+            confusion_indicators = get_context("CONTEXT_TRAJECTORY",
+                filter="unclear|not sure|couldn't find|missing information|where is|how do I")
+            for gap in confusion_indicators:
+                # Map to specific guidance file
+                target_file = infer_guidance_target(gap.context)
+                accumulate("ACCUMULATOR_GAPS", {
+                    "gap_description": gap.context,
+                    "target_file": target_file,
+                    "recommended_addition": generate_recommendation(gap)
+                })
+
+    cross_trajectory_pattern:
+      description: |
+        Analyze multiple agent trajectories to discover cross-agent friction
+        patterns and systemic guidance issues.
+
+      pattern: |
+        # Store multiple trajectories
+        store_context("CONTEXT_TRAJ_AGENT_A", content=agent_a_trajectory)
+        store_context("CONTEXT_TRAJ_AGENT_B", content=agent_b_trajectory)
+        store_context("CONTEXT_TRAJ_AGENT_C", content=agent_c_trajectory)
+
+        # Create friction matrix accumulator
+        create_accumulator("ACCUMULATOR_CROSS_FRICTION")
+
+        # Analyze each trajectory
+        for traj_name in ["AGENT_A", "AGENT_B", "AGENT_C"]:
+            context = f"CONTEXT_TRAJ_{traj_name}"
+            findings = analyze_trajectory(context)
+            for finding in findings:
+                accumulate("ACCUMULATOR_CROSS_FRICTION", {
+                    "agent": traj_name,
+                    "friction_type": finding.type,
+                    "evidence": finding.evidence,
+                    "affected_file": finding.target
+                })
+
+        # Find patterns across agents
+        all_friction = get_accumulated("ACCUMULATOR_CROSS_FRICTION")
+        patterns = detect_cross_agent_patterns(all_friction)
+
+        signal_final("FINAL_FRICTION_ANALYSIS", result={
+            "individual_findings": all_friction,
+            "cross_agent_patterns": patterns,
+            "prioritized_fixes": prioritize_by_impact(patterns)
+        })
+
+      max_recursion_depth: 3
+
+    friction_pattern_taxonomy:
+      description: |
+        Classification system for friction patterns discovered in trajectories.
+        Each pattern type maps to specific guidance improvement actions.
+
+      categories:
+        path_unclear:
+          description: "Agent couldn't determine next action from available guidance"
+          indicators:
+            - "what should I do next"
+            - "unclear how to proceed"
+            - "multiple options, no clear winner"
+          remedy: "Add explicit step in process.yml or improve step clarity"
+          target_artifact: "process.yml#steps"
+
+        missing_signpost:
+          description: "Agent needed an example that wasn't available"
+          indicators:
+            - "looking for example"
+            - "how do I format"
+            - "what does X look like"
+          remedy: "Add example to inputs.yml or create example file"
+          target_artifact: "inputs.yml#examples or assets/examples/"
+
+        fence_violation:
+          description: "Agent attempted action outside allowed scope"
+          indicators:
+            - "should I be doing this"
+            - "is this allowed"
+            - "stepping outside my role"
+          remedy: "Strengthen fence in process.yml#guidelines or add constraint"
+          target_artifact: "process.yml#guidelines or inputs.yml#constraints"
+
+        input_confusion:
+          description: "Agent couldn't locate or understand required input"
+          indicators:
+            - "where is this file"
+            - "input not found"
+            - "couldn't parse"
+          remedy: "Improve input path clarity or add input validation"
+          target_artifact: "inputs.yml#core_inputs"
+
+        loop_inefficiency:
+          description: "Agent spent excessive iterations on task"
+          indicators:
+            - "trying again"
+            - "iteration 4+"
+            - "still not working"
+          remedy: "Add escalation trigger or improve loop exit conditions"
+          target_artifact: "process.yml#loop_context or assets/guidelines/escalation.yml"
+
   inputs:
     - location: "modules/AgenticGuidance/agents/teacher/teacher-update-guidance/inputs.yml"
       description: "Core teacher-update-guidance agent inputs, definitions, and guidelines"
@@ -55,6 +228,20 @@ process:
       - What patterns repeat? (systemic path problems)
 
       Reference inputs for path/fence/signpost definitions and friction analysis patterns.
+
+      RLM FOR LARGE TRAJECTORIES (>500 actions):
+      If trajectory exceeds 500 actions, use RLM trajectory analysis:
+      - Store trajectory as context variable
+      - Use trajectory_analysis_pattern operations:
+        * extract_decision_points: Find significant decisions
+        * detect_backtracking: Find direction reversals
+        * measure_iteration_depth: Detect excessive loops
+        * extract_error_recovery: Analyze error handling
+        * identify_guidance_gaps: Find confusion indicators
+      - Use cross_trajectory_pattern for multi-agent friction discovery
+      - Map findings to friction_pattern_taxonomy categories
+      - Recommendations include specific target files (process.yml, inputs.yml)
+      Reference: rlm_patterns section above for operation examples
 
     - |
       Build improvements:

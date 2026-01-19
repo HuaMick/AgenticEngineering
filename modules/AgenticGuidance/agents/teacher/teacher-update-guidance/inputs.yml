@@ -100,6 +100,17 @@ inputs:
       description: "Knowledge encapsulation principle - identify unnecessary meta-knowledge in agent guidance"
       required: true
 
+    # RLM-related inputs (loaded when trajectory analysis exceeds thresholds)
+    - type: file
+      path: "modules/AgenticGuidance/assets/definitions/rlm-patterns.yml"
+      description: "RLM pattern definitions for context decomposition"
+      required: false
+
+    - type: file
+      path: "modules/AgenticGuidance/assets/specifications/rlm-context-accessor.yml"
+      description: "RLM context accessor API for programmatic context operations"
+      required: false
+
     # Agent folder structure - discover and load specific agent process files just-in-time
     # based on target agent being analyzed (do not preload entire agents/ directory)
 
@@ -119,3 +130,53 @@ inputs:
       - You have authority to update process.yml files across agent categories (cross-agent scope updates)
       - You do NOT create plans (that's planner-guidance)
       - You do NOT update shared assets in modules/AgenticGuidance/assets/ folder (that's teacher-update-assets)
+
+    rlm_trajectory_strategy: |
+      RLM (Recursive Language Model) enables analysis of large agent trajectories
+      that would otherwise exceed context limits. Use when trajectory exceeds
+      500 actions or when analyzing multiple agent trajectories for cross-agent patterns.
+
+      Trajectory analysis operations (see process.yml#rlm_patterns):
+      - extract_decision_points: Find where agent made significant decisions
+      - detect_backtracking: Find direction reversals indicating confusion
+      - measure_iteration_depth: Count iterations to detect loops
+      - extract_error_recovery: Analyze how agent handled errors
+      - identify_guidance_gaps: Find confusion/unclear guidance indicators
+
+      Cross-trajectory pattern discovery:
+      - Analyze multiple agent trajectories in parallel
+      - Build friction matrix across agents
+      - Identify systemic patterns vs one-off issues
+      - Prioritize fixes by impact (affects multiple agents = higher priority)
+
+      Output mapping:
+      - Each finding maps to friction_pattern_taxonomy category
+      - Each category specifies target artifact type
+      - Recommendations include specific file paths and sections
+
+    cross_trajectory_analysis: |
+      Pattern for discovering friction across multiple agent trajectories.
+      Enables identification of systemic guidance issues that affect multiple agents.
+
+      Friction matrix format:
+      - Rows: Friction pattern categories (path_unclear, missing_signpost, etc.)
+      - Columns: Agent types analyzed
+      - Cells: Count and severity of occurrences
+
+      Matrix analysis:
+      - High counts in a row = systemic pattern (affects many agents)
+      - High counts in a column = agent-specific friction (needs targeted fix)
+      - Diagonal patterns = cascading friction (one issue causes others)
+
+      Prioritization criteria:
+      1. CRITICAL: Pattern affects 3+ agents with HIGH severity
+      2. HIGH: Pattern affects 2+ agents OR single agent with CRITICAL severity
+      3. MEDIUM: Pattern affects single agent with HIGH severity
+      4. LOW: Pattern affects single agent with MEDIUM or lower severity
+
+      Output includes:
+      - Pattern name and description
+      - Affected agents and occurrence counts
+      - Specific evidence from trajectories
+      - Recommended fix with target file and section
+      - Expected impact (which agents will benefit)

@@ -27,6 +27,18 @@ inputs:
       description: "Test category shared inputs (reward-hacking, test-builder-role, test-creation-principles, test-structure, testing-types)"
       required: true
 
+  # RLM-related inputs (loaded when test package exceeds thresholds)
+  rlm_inputs:
+    - type: file
+      path: "modules/AgenticGuidance/assets/definitions/rlm-patterns.yml"
+      description: "RLM pattern definitions for context decomposition"
+      required: false
+
+    - type: file
+      path: "modules/AgenticGuidance/assets/specifications/rlm-context-accessor.yml"
+      description: "RLM context accessor API for programmatic context operations"
+      required: false
+
   # Agent-specific inputs (only what's unique to test-audit)
   core_inputs:
     # Audit-specific strategies
@@ -182,3 +194,41 @@ inputs:
       - Emphasize investigation need, don't talk in absolutes
       - Focus ONLY on assigned test package (other audits run in parallel)
       - If inputs cannot be found, STOP and report the issue
+
+    rlm_audit_strategy: |
+      RLM (Recursive Language Model) enables auditing large test packages
+      that would otherwise exceed context limits. The strategy decomposes
+      analysis into recursive sub-operations that each fit within context.
+
+      Key operations (see process.yml#rlm_patterns for examples):
+      - list_test_files: Enumerate test files without loading content
+      - extract_test_signatures: Get function signatures for overview
+      - find_assertion_patterns: Detect weak/strong assertion patterns
+      - detect_skip_patterns: Find and categorize skip conditions
+      - examine_specific_test: Load full test for detailed analysis
+
+      Accumulator pattern:
+      - Create typed accumulator for findings
+      - Each recursive branch adds findings with file:line evidence
+      - Signal FINAL only after all branches complete
+
+    rlm_context_thresholds: |
+      Context loading strategy based on test package size:
+
+      ALWAYS_USE_RLM (>20 files):
+      - Package too large for direct context loading
+      - Use recursive_decomposition_pattern from process.yml
+      - Store package, decompose by file, analyze incrementally
+      - Accumulate findings, signal_final with aggregated results
+
+      SELECTIVE_RLM (10-20 files):
+      - Package at threshold - evaluate complexity
+      - Use RLM if files are large (>100 lines each)
+      - Use direct loading if files are small and focused
+      - Consider RLM if cross-referencing needed
+
+      DIRECT_LOADING (<10 files):
+      - Package fits comfortably in context
+      - Load all files directly for holistic analysis
+      - RLM would add unnecessary overhead
+      - Reserve RLM for when standard approach fails

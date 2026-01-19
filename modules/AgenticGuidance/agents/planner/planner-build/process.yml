@@ -55,6 +55,28 @@ process:
       If ANY required input is missing, report the specific error and STOP.
       If an input is found in a different location, update the path and flag the discrepancy.
     - |
+      CONTEXT ASSESSMENT - Evaluate if RLM decomposition is needed:
+
+      RLM TRIGGER CONDITIONS (any one triggers RLM consideration):
+      - Objective references 10+ files across multiple directories
+      - Specification documents exceed 1000 lines total
+      - Dependency graph requires recursive exploration (transitive dependencies)
+      - Cross-referencing multiple large sources (spec + codebase + tests)
+
+      IF RLM triggers are met:
+      - Reference rlm-decomposition-loop from agent-loops.yml
+      - Use rlm-context-accessor.yml for programmatic context operations
+      - Structure plan phases to leverage filter_and_process or hierarchical_extraction patterns
+      - Bound recursion depth to max 3 levels (per rlm-decomposition-loop)
+
+      IF RLM triggers are NOT met:
+      - Proceed with standard context loading
+      - No RLM overhead required for smaller objectives
+
+      COST CONSIDERATION: RLM adds latency (more API calls) but enables handling
+      objectives that would otherwise require lossy summarization. Use only when
+      context genuinely exceeds practical limits.
+    - |
       A planning folder should have been provided (docs/plans/live/YYMMDDXX_description/).
       Create appropriate folder structure based on plan complexity:
       - Simple plans: files at root level
@@ -117,6 +139,27 @@ process:
 
       Architecture patterns for new code:
       Reference docs/ARCHITECTURE.md for Domain -> Workflow -> Entrypoint pattern and separation of concerns.
+
+      RLM-ENHANCED PHASE CREATION (when RLM triggers are met):
+      When creating phases for RLM-eligible objectives, include:
+
+      1. Context Storage Phase (optional, for very large contexts):
+         - Store large specifications/codebases as named context variables
+         - Use CONTEXT_SOURCE_SECTION naming convention
+         - Example: CONTEXT_CODEBASE_AUTH, CONTEXT_SPEC_API
+
+      2. Filtered Analysis Phase:
+         - Define filters to extract relevant subsets
+         - Reference rlm-context-accessor.yml patterns (filter_and_process, hierarchical_extraction)
+         - Specify accumulator naming: ACCUMULATOR_FINDINGS, ACCUMULATOR_TASKS
+
+      3. Standard Implementation Phase:
+         - Process filtered context with standard agent patterns
+         - Accumulate results in named buffers
+         - Signal FINAL(result) when phase completes
+
+      STANDARD PHASE CREATION (when RLM triggers are NOT met):
+      Proceed with normal phase definition without RLM overhead.
 
       DUMPING GROUND: Use additional subfolders (e.g., `analysis/`, `design-specs/`) to store agent artifacts
       like .md analysis files, diagrams, or intermediate specs to avoid polluting shared spaces.
