@@ -1,0 +1,202 @@
+# Teacher-Trace-Diagnostics Agent Inputs
+# Configuration for LangSmith trace analysis and friction pattern detection
+# This agent analyzes structured trace data to identify guidance friction patterns
+# It does NOT directly update guidance files (that's teacher-update-guidance)
+
+inputs:
+  agent_type: "teacher-trace-diagnostics"
+  version: "1.0"
+
+  agent_context:
+    category: "modules/AgenticGuidance/assets/definitions/agent-categories.yml#agent_categories.teacher"
+    role: "teacher-trace-diagnostics"
+
+  # Reference layers (transitive loading)
+  # Context-minimized: only layers relevant to trace analysis
+  layers:
+    - type: layer
+      path: "modules/AgenticGuidance/assets/inputs/core-system.yml"
+      description: "Core system definitions (agent architecture, workflows)"
+      required: true
+
+    - type: layer
+      path: "modules/AgenticGuidance/assets/inputs/core-guidelines.yml"
+      description: "Universal behavioral guidelines"
+      required: true
+
+  core_inputs:
+    # Path/fence/signpost concepts - for mapping friction to guidance types
+    - type: file
+      path: "modules/AgenticGuidance/assets/definitions/path.yml"
+      description: "Path concept: what agents read to determine next actions"
+      required: true
+
+    - type: file
+      path: "modules/AgenticGuidance/assets/definitions/guidance-artifacts.yml"
+      description: "Fence, signpost concepts and guidance placement"
+      required: true
+
+    # Agent context discovery - for locating guidance files to improve
+    - type: file
+      path: "modules/AgenticGuidance/assets/definitions/agent-context-files.yml"
+      description: "Where agents find process.yml, inputs.yml, manifest.yml"
+      required: true
+
+    # Root-cause analysis - for accurate friction diagnosis
+    - type: file
+      path: "modules/AgenticGuidance/assets/guidelines/root-cause-analysis.yml"
+      description: "Root-cause analysis patterns for diagnosing friction"
+      required: true
+
+    # Context minimisation - for token anomaly recommendations
+    - type: file
+      path: "modules/AgenticGuidance/assets/guidelines/context-minimisation.yml"
+      description: "Context minimisation patterns (for token anomaly recommendations)"
+      required: true
+
+    # Shared trace diagnostics definitions
+    - type: file
+      path: "modules/AgenticGuidance/assets/definitions/trace-diagnostics.yml"
+      description: "Shared trace diagnostics definitions (friction patterns, severity, strategies)"
+      required: true
+
+    # LangSmith API usage patterns and examples
+    - type: file
+      path: "modules/AgenticGuidance/assets/examples/teacher/langsmith-trace-analysis.yml"
+      description: "LangSmith API usage patterns and friction detection examples"
+      required: true
+
+  # LangSmith integration configuration
+  langsmith_config:
+    service_module: "modules/AgenticLangSmith/src/agenticlangsmith/service.py"
+    filters_module: "modules/AgenticLangSmith/src/agenticlangsmith/filters.py"
+    api_key_env: "LANGSMITH_API_KEY"
+    default_project: null  # Use LangSmith default if not specified
+    rate_limit:
+      requests_per_minute: 60
+      batch_size: 50
+
+  # Analysis scope defaults
+  analysis_defaults:
+    time_range_hours: 24
+    run_limit: 100
+    max_run_limit: 500
+    min_run_duration_seconds: 1.0
+    include_child_runs: true
+    run_types: null  # null = all types
+
+  # Friction pattern definitions
+  definitions:
+    trace_diagnostics_role: |
+      As a teacher-trace-diagnostics agent:
+      - You analyze LangSmith trace data to identify friction patterns
+      - You detect backtracking, error clusters, path ambiguity, and token anomalies
+      - You map friction patterns to affected guidance files
+      - You generate structured recommendations with evidence
+      - You do NOT directly modify guidance files
+      - You do NOT replace teacher-update-guidance (you provide it with insights)
+      - You respect API rate limits and context window constraints
+
+    # Friction patterns - detailed definitions in shared file
+    # Reference: modules/AgenticGuidance/assets/definitions/trace-diagnostics.yml#friction_pattern_taxonomy
+    friction_patterns:
+      backtracking:
+        definition: |
+          Agent revisits previous decisions or resources without making progress.
+          Indicates unclear path or missing signposts about next steps.
+        indicators:
+          - "Repeated reads of same file without intervening writes"
+          - "Undo patterns: delete followed by recreate"
+          - "Loop iterations that produce same output"
+          - "Tool calls that reverse previous tool calls"
+        threshold:
+          min_revisits: 2
+          window_size: 10  # Look at last N tool calls
+        severity_mapping:
+          "2-3 revisits": "MEDIUM"
+          "4-5 revisits": "HIGH"
+          ">5 revisits": "CRITICAL"
+        guidance_type: "path_clarity"
+
+      error_cluster:
+        definition: |
+          Same or similar errors occur across multiple runs.
+          Indicates missing fence (guardrail) or inadequate error guidance.
+        indicators:
+          - "Error messages with same root cause across runs"
+          - "Repeated failures at same step type"
+          - "Timeout errors suggesting stuck patterns"
+          - "Permission/access errors suggesting missing setup guidance"
+        threshold:
+          min_occurrences: 3
+          similarity_threshold: 0.8  # Cosine similarity of error messages
+        severity_mapping:
+          "3-5 occurrences": "MEDIUM"
+          "6-10 occurrences": "HIGH"
+          ">10 occurrences": "CRITICAL"
+        guidance_type: "fence_strengthening"
+
+      path_ambiguity:
+        definition: |
+          Agent hesitates or makes multiple attempts at the same logical step.
+          Indicates missing signpost (example) showing the expected approach.
+        indicators:
+          - "Long pauses between tool calls (>30 seconds)"
+          - "Multiple attempts at same tool with different parameters"
+          - "Abandoned tool calls (started but not completed)"
+          - "Sequential reads of many files suggesting search behavior"
+        threshold:
+          pause_seconds: 30
+          max_attempts: 2
+        severity_mapping:
+          "2 attempts": "LOW"
+          "3 attempts": "MEDIUM"
+          ">3 attempts": "HIGH"
+        guidance_type: "signpost_addition"
+
+      token_anomaly:
+        definition: |
+          Trace consumes significantly more tokens than typical runs.
+          Indicates bloated context, excessive verbosity, or inefficient prompting.
+        indicators:
+          - "Total tokens >2x median for run type"
+          - "Prompt tokens dominate (>80% of total)"
+          - "Completion truncated due to token limit"
+          - "Repeated inclusion of same context in child runs"
+        threshold:
+          std_deviations: 2.0
+          prompt_ratio_max: 0.8
+        severity_mapping:
+          "2-3 std dev": "MEDIUM"
+          ">3 std dev": "HIGH"
+          "truncated output": "CRITICAL"
+        guidance_type: "context_minimisation"
+
+    recommendation_templates:
+      path_clarity:
+        focus: "Make next steps clearer in process.yml"
+        typical_changes:
+          - "Add explicit step transitions"
+          - "Clarify when to proceed vs. when to iterate"
+          - "Add decision criteria for branching paths"
+
+      fence_strengthening:
+        focus: "Add guardrails to prevent common errors"
+        typical_changes:
+          - "Add validation steps before risky operations"
+          - "Add error handling guidance"
+          - "Add pre-conditions checklist"
+
+      signpost_addition:
+        focus: "Add examples showing expected approach"
+        typical_changes:
+          - "Add inline examples in process steps"
+          - "Add example files in assets/examples/"
+          - "Add 'good vs bad' comparisons"
+
+      context_minimisation:
+        focus: "Reduce unnecessary context in inputs"
+        typical_changes:
+          - "Remove unused input references"
+          - "Add filters to load only relevant sections"
+          - "Split large inputs into demand-loaded parts"

@@ -1,0 +1,99 @@
+flowchart LR
+    %% GOAL: Orchestrate RLM integration into AgenticGuidance through 4 teaching phases
+    %% PROFILE: Orchestration-Guidance
+    %% PHASES: teach_01, teach_02, teach_03, teach_04
+    %% AGENT_ROUTING: teach_01 -> teacher, teach_02 -> teacher, teach_03 -> teacher, teach_04 -> teacher
+    %% FEEDBACK_TRIGGERS: VALIDATION_FAILURE -> re-plan, YAML_SYNTAX_ERROR -> fix
+    %% STATUS: teach_01=pending, teach_02=pending, teach_03=pending, teach_04=pending
+    %% LOOP_DEFINITION: guidance-test-loop (max iterations: 3)
+
+    Start((Start)) --> LoadPlan[Load plan_live_teach.yml]
+
+    %% ========================================
+    %% PHASE 1: RLM Documentation & Guidelines
+    %% ========================================
+    LoadPlan --> Phase1[Enter Phase 1: Documentation]
+
+    subgraph Phase1_SG ["Phase 1: RLM Pattern Documentation"]
+        Phase1 --> SpawnTeacher1[Spawn teacher-update-guidance Agent]
+        SpawnTeacher1 --> Teacher1Tasks[Execute t01_01, t01_02, t01_03 in dependency order]
+        Teacher1Tasks --> ValidatePhase1{Phase 1 Files Valid?}
+        ValidatePhase1 -- "No: YAML Error" --> FixPhase1[Fix YAML Syntax]
+        FixPhase1 --> ValidatePhase1
+        ValidatePhase1 -- "Yes: Valid" --> Phase1Complete[Phase 1 Complete]
+    end
+
+    %% ========================================
+    %% PHASE 2: Agent Loop Enhancement
+    %% ========================================
+    Phase1Complete --> Phase2[Enter Phase 2: Loop Enhancement]
+
+    subgraph Phase2_SG ["Phase 2: Agent Loop Enhancement"]
+        Phase2 --> SpawnTeacher2[Spawn teacher-update-guidance Agent]
+        SpawnTeacher2 --> Teacher2Tasks[Execute t02_01, t02_02 in dependency order]
+        Teacher2Tasks --> ValidatePhase2{Phase 2 Files Valid?}
+        ValidatePhase2 -- "No: YAML Error" --> FixPhase2[Fix YAML Syntax]
+        FixPhase2 --> ValidatePhase2
+        ValidatePhase2 -- "Yes: Valid" --> Phase2Complete[Phase 2 Complete]
+    end
+
+    %% ========================================
+    %% PHASE 3: Planner Agent Updates (Parallel)
+    %% ========================================
+    Phase2Complete --> Phase3[Enter Phase 3: Planner Updates]
+
+    subgraph Phase3_SG ["Phase 3: Planner Agent Guidance"]
+        Phase3 --> SpawnTeacher3a[Spawn teacher for t03_01]
+        Phase3 --> SpawnTeacher3b[Spawn teacher for t03_02]
+        SpawnTeacher3a --> Complete3a[t03_01 Complete]
+        SpawnTeacher3b --> Complete3b[t03_02 Complete]
+        Complete3a --> SpawnTeacher3c[Spawn teacher for t03_03]
+        Complete3b --> SpawnTeacher3c
+        SpawnTeacher3c --> ValidatePhase3{Phase 3 Valid?}
+        ValidatePhase3 -- "No: Validation Failure" --> FixPhase3[Re-plan Affected Tasks]
+        FixPhase3 --> SpawnTeacher3c
+        ValidatePhase3 -- "Yes: Valid" --> Phase3Complete[Phase 3 Complete]
+    end
+
+    %% ========================================
+    %% PHASE 4: Test Agent Updates (Parallel)
+    %% ========================================
+    Phase3Complete --> Phase4[Enter Phase 4: Test Agent Updates]
+
+    subgraph Phase4_SG ["Phase 4: Test Agent Guidance"]
+        Phase4 --> SpawnTeacher4a[Spawn teacher for t04_01]
+        Phase4 --> SpawnTeacher4b[Spawn teacher for t04_02]
+        Phase4 --> SpawnTeacher4c[Spawn teacher for t04_03]
+        SpawnTeacher4a --> Complete4a[t04_01 Complete]
+        SpawnTeacher4b --> Complete4b[t04_02 Complete]
+        SpawnTeacher4c --> Complete4c[t04_03 Complete]
+        Complete4a --> ValidatePhase4{Phase 4 Valid?}
+        Complete4b --> ValidatePhase4
+        Complete4c --> ValidatePhase4
+        ValidatePhase4 -- "No: Validation Failure" --> FixPhase4[Re-plan Affected Tasks]
+        FixPhase4 --> Phase4
+        ValidatePhase4 -- "Yes: Valid" --> Phase4Complete[Phase 4 Complete]
+    end
+
+    %% ========================================
+    %% FINAL VALIDATION
+    %% ========================================
+    Phase4Complete --> FinalValidation[Enter Final Validation]
+
+    subgraph Validation_SG ["Final Validation Gate"]
+        FinalValidation --> SpawnAudit[Spawn test-guidance-simulator]
+        SpawnAudit --> GuidanceTest{Guidance Test Passed?}
+        GuidanceTest -- "No: Gaps Found" --> SpawnTeacherFix[Spawn teacher to fix gaps]
+        SpawnTeacherFix --> SpawnAudit
+        GuidanceTest -- "Yes: Passed" --> ValidationComplete[Validation Complete]
+    end
+
+    ValidationComplete --> End((End: RLM Integration Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef phase fill:#e1f5fe,stroke:#01579b;
+    classDef validation fill:#fff3e0,stroke:#e65100;
+    class Phase1_SG,Phase2_SG,Phase3_SG,Phase4_SG phase;
+    class Validation_SG validation;

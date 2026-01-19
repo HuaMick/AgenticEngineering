@@ -1,0 +1,574 @@
+name: RLM Integration for AgenticGuidance
+worktree: 260118AG_rlm_integration
+branch: agenticguidance
+status: completed
+completed_at: "2026-01-19T21:00:00Z"
+objective: |
+  Integrate Recursive Language Model (RLM) patterns into AgenticGuidance to enable
+  programmatic context decomposition, recursive self-invocation, and environment-based
+  variable storage for handling contexts beyond model limits without lossy summarization.
+
+research_summary:
+  rlm_core_concepts:
+    - context_as_environment: "Store long prompts as variables in a REPL environment rather than direct model input"
+    - programmatic_access: "LLM writes code to examine, decompose, and recursively call itself over context snippets"
+    - recursive_decomposition: "Tasks broken through filtering, chunking, and sub-calling patterns"
+    - variable_management: "Answers accumulate in buffers with FINAL(answer) signaling completion"
+
+  key_advantages:
+    - "Handles 10M+ token contexts without expanded windows"
+    - "No information loss (unlike summarization)"
+    - "Task-agnostic - model determines decomposition strategy"
+    - "Comparable or cheaper costs through selective loading"
+
+  source_paper:
+    title: "Recursive Language Models"
+    authors: "Alex L. Zhang, Tim Kraska, Omar Khattab"
+    institution: "MIT CSAIL"
+    arxiv: "https://arxiv.org/abs/2512.24601"
+
+phases:
+  # ===========================================================================
+  # PHASE 1: RLM Pattern Documentation and Guidelines
+  # ===========================================================================
+  - phase_id: teach_01
+    name: "Phase 1: RLM Pattern Documentation and Guidelines"
+    status: completed
+    completed_at: "2026-01-19T18:00:00Z"
+    description: |
+      Create foundational documentation and guidelines for RLM integration.
+      Establish patterns, definitions, and best practices before implementation.
+
+    tasks:
+      - id: t01_01
+        description: "Create RLM concepts definition file in assets/definitions/"
+        status: completed
+        inputs:
+          - modules/AgenticGuidance/assets/definitions/agent-loops.yml
+          - modules/AgenticGuidance/assets/definitions/architecture-pattern.yml
+        target_files:
+          - modules/AgenticGuidance/assets/definitions/rlm-patterns.yml
+        guidance: |
+          Create file with sections:
+      - rlm_definition: Core concept explanation
+      - core_concepts: 4 named sub-concepts (context_as_environment, programmatic_access,
+        recursive_decomposition, variable_management) each with definition, example, when_to_use
+      - search_execution_firewall: The two-agent pattern (Curator vs Specialist)
+      - integration_with_loops: How RLM relates to existing agent-loops.yml
+      - anti_patterns: At least 3 anti-patterns with thresholds (premature RLM, unbounded recursion, context soup)
+    success_criteria:
+      - "File exists at modules/AgenticGuidance/assets/definitions/rlm-patterns.yml"
+      - "Contains rlm_definition with >50 word explanation"
+      - "Contains core_concepts with 4 sub-concepts"
+      - "Contains search_execution_firewall definition (Two-Agent Pattern)"
+      - "Each core_concept has definition, example/patterns, when_to_use/purpose"
+      - "Contains integration_with_loops referencing at least 2 existing loop types"
+      - "Contains anti_patterns with at least 3 patterns including thresholds"
+
+      - id: t01_02
+        description: "Create RLM integration guideline in assets/guidelines/"
+        status: completed
+        dependencies: [t01_01]
+        inputs:
+          - modules/AgenticGuidance/assets/guidelines/context-minimisation.yml
+          - modules/AgenticGuidance/assets/definitions/rlm-patterns.yml
+        target_files:
+          - modules/AgenticGuidance/assets/guidelines/rlm-integration.yml
+        guidance: |
+          Create file with sections:
+      - guideline.name, guideline.definition, guideline.justification
+      - rules: At least 6 rules (size threshold 500 lines, prefer filtering over chunking,
+        bound recursion depth to 5, hierarchical variable naming, signal completion explicitly,
+        and the Search-Execution Firewall rule)
+      - search_execution_firewall: Rule for separating context curation from task execution
+      - decision_tree: 3+ decision points for when to use RLM vs standard context
+      - anti_patterns: At least 5 anti-patterns
+      - related_guidelines: Reference context-minimisation.yml
+        success_criteria:
+          - "File exists at modules/AgenticGuidance/assets/guidelines/rlm-integration.yml"
+          - "Contains guideline structure with name, definition, justification"
+          - "Contains rules section with at least 5 rules with description, justification, characteristics"
+          - "Contains decision_tree with at least 3 decision points"
+          - "Contains anti_patterns section with at least 5 anti-patterns"
+          - "References rlm-patterns.yml in inputs section"
+
+      - id: t01_03
+        description: "Update context-minimisation.yml with RLM alternatives"
+        status: completed
+        dependencies: [t01_01, t01_02]
+        target_files:
+          - modules/AgenticGuidance/assets/guidelines/context-minimisation.yml
+        guidance: |
+          ADDITIVE modifications (preserve all existing content):
+          - Add rlm_alternative section with when_rlm_complements_minimisation (3+ situations)
+          - Add new rule "Consider RLM for selective access" with reference to rlm-integration.yml
+          - Add to related_guidelines: rlm-integration.yml and rlm-patterns.yml
+        success_criteria:
+          - "context-minimisation.yml contains new rlm_alternative section"
+          - "rlm_alternative has when_rlm_complements_minimisation with at least 3 situations"
+          - "rules section contains new 'Consider RLM for selective access' rule"
+          - "related_guidelines includes rlm-integration.yml and rlm-patterns.yml"
+          - "Existing rules and anti_patterns preserved unchanged"
+
+  # ===========================================================================
+  # PHASE 2: Agent Loop Enhancement for RLM
+  # ===========================================================================
+  - phase_id: teach_02
+    name: "Phase 2: Agent Loop Enhancement for RLM"
+    status: completed
+    completed_at: "2026-01-19T19:30:00Z"
+    description: |
+      Extend existing agent loop definitions to support RLM patterns.
+      Add recursive decomposition and context refinement capabilities.
+
+    tasks:
+      - id: t02_01
+        description: "Add RLM-aware loop definitions to agent-loops.yml"
+        status: completed
+        dependencies: [t01_01, t01_02]
+        target_files:
+          - modules/AgenticGuidance/assets/definitions/agent-loops.yml
+        guidance: |
+          ADDITIVE modifications - add after exploration-loop, before planner-loop:
+
+          1. rlm-decomposition-loop:
+             - purpose: Recursive decomposition of large contexts
+             - maximum_iterations: 3, max_recursion_depth: 3
+             - core_pattern: Store context -> Write code to filter -> Extract subset ->
+               Process (may recurse) -> Accumulate -> FINAL(answer)
+             - variable_conventions: CONTEXT_{SOURCE}_{SECTION}, FILTER_{CRITERIA},
+               ACCUMULATOR_{TYPE}, FINAL_{OUTPUT}
+             - relationship_to_other_loops: enhancement_for test-fix, exploration, planner
+
+          2. rlm-context-refinement-loop:
+             - purpose: Progressive context loading based on iteration feedback
+             - maximum_iterations: 5
+             - context_progression: 4 levels (signatures only -> docstrings -> summaries -> full)
+
+          3. rlm_loop_selection section with decision_criteria
+        success_criteria:
+          - "agent-loops.yml contains rlm-decomposition-loop definition"
+          - "agent-loops.yml contains rlm-context-refinement-loop definition"
+          - "rlm-decomposition-loop has purpose, maximum_iterations, max_recursion_depth, core_pattern, variable_conventions"
+          - "rlm-context-refinement-loop has context_progression with at least 4 levels"
+          - "Both loops reference rlm-patterns.yml or rlm-integration.yml"
+          - "Existing loop definitions unchanged"
+
+      - id: t02_02
+        description: "Create RLM context accessor specification"
+        status: completed
+        dependencies: [t01_01, t02_01]
+        target_files:
+          - modules/AgenticGuidance/assets/specifications/rlm-context-accessor.yml
+        guidance: |
+          Create comprehensive specification with:
+          - accessor_scope: Definition and purpose
+          - core_functions: store_context, get_context, list_contexts, clear_context
+          - code_analysis_functions: find_usage, get_signature, check_file_exists, extract_imports
+          - structured_content_functions: parse_yaml, get_yaml_section, extract_markdown_section, filter_yaml_by_criteria
+          - accumulator_functions: create_accumulator, accumulate, get_accumulated, signal_final
+          - usage_patterns: filter_and_process, hierarchical_extraction, cross_document_analysis
+          - implementation_notes: runtime_flexibility, error_handling, performance_considerations
+
+          Each function must have signature, description, parameters, returns, and example/use_cases
+        success_criteria:
+          - "File exists at modules/AgenticGuidance/assets/specifications/rlm-context-accessor.yml"
+          - "Contains core_functions with 4 functions (store, get, list, clear)"
+          - "Contains code_analysis_functions with 4 functions"
+          - "Contains structured_content_functions with 4 functions"
+          - "Contains accumulator_functions with 4 functions"
+          - "Each function has signature, description, parameters, returns"
+          - "Contains usage_patterns with at least 3 patterns with steps and examples"
+
+  # ===========================================================================
+  # PHASE 3: Planner Agent Guidance Updates
+  # ===========================================================================
+  - phase_id: teach_03
+    name: "Phase 3: Planner Agent Guidance Updates"
+    status: completed
+    completed_at: "2026-01-19T20:30:00Z"
+    description: |
+      Update planner agent guidance to leverage RLM patterns for
+      programmatic task decomposition and context handling.
+
+    tasks:
+      - id: t03_01
+        description: "Update planner-build process with RLM decomposition option"
+        status: completed
+        dependencies: [t02_02]
+        target_files:
+          - modules/AgenticGuidance/agents/planner/planner-build/process.yml
+          - modules/AgenticGuidance/agents/planner/planner-build/inputs.yml
+        guidance: |
+          PROCESS.YML additions:
+          1. Add CONTEXT ASSESSMENT step after folder creation with RLM trigger conditions:
+             - Objective references 10+ files across multiple directories
+             - Specification documents exceed 1000 lines
+             - Dependency graph requires recursive exploration
+          2. Modify phase creation step with dual-path (standard/RLM)
+          3. Add guideline for RLM usage criteria and cost considerations
+
+          INPUTS.YML additions:
+          - Reference rlm-patterns.yml (required: false)
+          - Reference rlm-context-accessor.yml (required: false)
+        success_criteria:
+          - "process.yml contains RLM decision point step with trigger conditions"
+          - "process.yml contains dual-path (standard/RLM) phase creation"
+          - "inputs.yml references rlm-patterns.yml and rlm-context-accessor.yml"
+          - "All existing planner-build functionality preserved"
+
+      - id: t03_02
+        description: "Update planner-guidance process for RLM-based friction analysis"
+        status: completed
+        dependencies: [t02_02]
+        target_files:
+          - modules/AgenticGuidance/agents/planner/planner-guidance/process.yml
+          - modules/AgenticGuidance/agents/planner/planner-guidance/inputs.yml
+        guidance: |
+          PROCESS.YML additions:
+          1. Extend "Map the current path" step with RLM option for trajectories >500 lines
+          2. Add CROSS-AGENT PATTERN DISCOVERY step with friction matrix analysis
+          3. Modify plan building step to leverage RLM-generated evidence
+
+          INPUTS.YML additions:
+          - Reference rlm-patterns.yml (required: false)
+          - Reference rlm-context-accessor.yml (required: false)
+          - Add agent_logs pattern for cross-agent analysis
+        success_criteria:
+          - "process.yml contains RLM-enhanced analysis with >500 lines trigger"
+          - "process.yml contains cross-agent pattern discovery step"
+          - "inputs.yml includes agent_logs pattern for cross-agent analysis"
+          - "All existing planner-guidance functionality preserved"
+
+      - id: t03_03
+        description: "Update planner-reviewer to validate RLM integration choices"
+        status: completed
+        dependencies: [t03_01, t03_02]
+        target_files:
+          - modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml
+          - modules/AgenticGuidance/agents/planner/planner-reviewer/inputs.yml
+        guidance: |
+          PROCESS.YML additions:
+          1. Add RLM USAGE CHECKLIST after pattern alignment checklist:
+             - RLM trigger conditions were met (>1000 lines, >10 files)
+             - Recursion depth is bounded (max_depth <= 5)
+             - Context accessor calls reference valid patterns
+             - RLM-generated content conforms to standard plan structure
+          2. Add FENCES for unjustified usage (<500 lines) and excessive recursion (>5 depth)
+          3. Extend codebase verification for RLM artifacts
+
+          INPUTS.YML additions:
+          - Reference rlm-patterns.yml for validation
+          - Reference rlm-integration.yml for when appropriate
+          - Add rlm_review_criteria definition
+        success_criteria:
+          - "process.yml contains RLM USAGE CHECKLIST with 6 validation items"
+          - "process.yml contains fences for unjustified usage and excessive recursion"
+          - "inputs.yml references rlm-patterns.yml and rlm-integration.yml"
+          - "Plans without RLM patterns reviewed without additional overhead"
+
+  # ===========================================================================
+  # PHASE 4: Test Agent Guidance for RLM Validation
+  # ===========================================================================
+  - phase_id: teach_04
+    name: "Phase 4: Test Agent Guidance for RLM Validation"
+    status: completed
+    completed_at: "2026-01-19T21:00:00Z"
+    description: |
+      Update test agents to leverage RLM for large output analysis
+      and programmatic validation.
+
+    tasks:
+      - id: t04_01
+        description: "Update test-audit with RLM-based code examination"
+        status: completed
+        dependencies: [t02_02]
+        target_files:
+          - modules/AgenticGuidance/agents/test/test-audit/process.yml
+          - modules/AgenticGuidance/agents/test/test-audit/inputs.yml
+        guidance: |
+          PROCESS.YML additions:
+          1. Add rlm_patterns section with context accessor operations:
+             - list_test_files, extract_test_signatures, find_assertion_patterns
+             - detect_skip_patterns, examine_specific_test
+          2. Add recursive_decomposition_pattern for large test packages (>20 files)
+          3. Add reward_hacking_detection patterns with grep-based detection
+          4. Modify step 4 to reference RLM for large packages (>20 files or >2000 lines)
+
+          INPUTS.YML additions:
+          - Add rlm_audit_strategy definition
+          - Add rlm_context_thresholds (ALWAYS >20 files, SELECTIVE 10-20, DIRECT <10)
+        success_criteria:
+          - "process.yml contains rlm_patterns section with context accessor operations"
+          - "process.yml contains recursive_decomposition_pattern"
+          - "inputs.yml contains rlm_context_thresholds"
+          - "Findings include file:line evidence from programmatic extraction"
+          - "Agent can audit 100+ test file packages without context overflow"
+
+      - id: t04_02
+        description: "Update test-final-output with RLM critical question generation"
+        status: completed
+        dependencies: [t02_02]
+        target_files:
+          - modules/AgenticGuidance/agents/test/test-final-output/process.yml
+          - modules/AgenticGuidance/agents/test/test-final-output/inputs.yml
+        guidance: |
+          PROCESS.YML additions:
+          1. Add rlm_patterns section with anomaly_detection_pattern:
+             - scan_for_workarounds, detect_path_anomalies, scan_skip_patterns
+             - measure_pass_fail_ratio
+          2. Add critical_question_generation pattern with severity scoring
+          3. Add recursive_data_analysis for multi-phase test runs
+          4. Modify step 2 to reference RLM for large execution data (>5000 lines)
+
+          INPUTS.YML additions:
+          - Add rlm_interrogation_strategy definition
+          - Add anomaly_severity_matrix (CRITICAL/HIGH/MEDIUM/LOW)
+        success_criteria:
+          - "process.yml contains anomaly_detection_pattern with 4+ operations"
+          - "inputs.yml contains anomaly_severity_matrix"
+          - "Generated questions are specific to discovered anomalies"
+          - "Questions prioritized by severity in output"
+
+      - id: t04_03
+        description: "Update teacher-update-guidance with RLM trajectory analysis"
+        status: completed
+        dependencies: [t02_02]
+        target_files:
+          - modules/AgenticGuidance/agents/teacher/teacher-update-guidance/process.yml
+          - modules/AgenticGuidance/agents/teacher/teacher-update-guidance/inputs.yml
+        guidance: |
+          PROCESS.YML additions:
+          1. Add rlm_patterns section with trajectory_analysis_pattern:
+             - extract_decision_points, detect_backtracking, measure_iteration_depth
+             - extract_error_recovery, identify_guidance_gaps
+          2. Add cross_trajectory_pattern for multi-agent friction discovery
+          3. Add friction_pattern_taxonomy with 5 categories:
+             - path_unclear, missing_signpost, fence_violation, input_confusion, loop_inefficiency
+          4. Modify step 2 to reference RLM for trajectories >500 actions
+
+          INPUTS.YML additions:
+          - Add rlm_trajectory_strategy definition
+          - Add cross_trajectory_analysis friction matrix pattern
+        success_criteria:
+          - "process.yml contains trajectory_analysis_pattern with 5 operations"
+          - "process.yml contains friction_pattern_taxonomy with 5 categories"
+          - "inputs.yml contains cross_trajectory_analysis pattern"
+          - "Agent can analyze 1000+ action trajectories without overflow"
+          - "Recommendations mapped to specific guidance files"
+
+success_criteria:
+  - "RLM patterns documented as reusable definitions and guidelines"
+  - "Agent loops extended to support recursive decomposition"
+  - "Planner agents can leverage RLM for complex objectives"
+  - "Test agents can use RLM for large output analysis"
+  - "Teaching agents can use RLM for trajectory analysis"
+  - "All updates follow existing AgenticGuidance architecture patterns"
+  - "No breaking changes to existing agent workflows"
+  - "RLM is optional - agents function fully without it"
+  - "All recursion bounded with max_depth <= 5"
+
+implementation_order:
+  description: "Tasks must be executed in dependency order"
+  sequence:
+    - id: t01_01
+      reason: "Creates foundational definitions referenced by all other tasks"
+    - id: t01_02
+      reason: "Creates guidelines that reference definitions from t01_01"
+    - id: t01_03
+      reason: "Updates existing file to reference both t01_01 and t01_02"
+    - id: t02_01
+      reason: "Updates agent-loops to reference Phase 1 files"
+    - id: t02_02
+      reason: "Creates specification referencing both Phase 1 and t02_01"
+    - parallel: [t03_01, t03_02, t04_01, t04_02, t04_03]
+      reason: "All depend on t02_02 but not on each other"
+    - id: t03_03
+      reason: "Validates the patterns added in t03_01 and t03_02"
+
+# ===========================================================================
+# SESSION NOTES
+# ===========================================================================
+session_notes:
+  - date: "2026-01-19"
+    completed:
+      - "Phase 1: RLM Pattern Documentation and Guidelines - all 3 tasks completed"
+      - "Created rlm-patterns.yml definition file"
+      - "Created rlm-integration.yml guideline file"
+      - "Updated context-minimisation.yml with RLM references"
+      - "Completed teacher-trace-diagnostics agent implementation (separate plan)"
+    ready_for_next_session:
+      - "Phase 2: Agent Loop Enhancement for RLM (2 tasks)"
+      - "Phase 3: Planner Agent Guidance Updates (3 tasks)"
+      - "Phase 4: Test Agent Guidance for RLM Validation (3 tasks)"
+    notes: |
+      Phase 1 establishes the foundational RLM documentation. Phases 2-4 can now
+      proceed to integrate RLM patterns into existing agent guidance files.
+
+      Recommended execution order for next session:
+      1. t02_01 - Add RLM loop definitions to agent-loops.yml
+      2. t02_02 - Create RLM context accessor specification
+      3. Then t03_01, t03_02, t04_01, t04_02, t04_03 can run in parallel
+
+  - date: "2026-01-19"
+    session: "Phase 2 Execution"
+    completed:
+      - "Phase 2: Agent Loop Enhancement for RLM - all 2 tasks completed"
+      - "t02_01: Added rlm-decomposition-loop and rlm-context-refinement-loop to agent-loops.yml"
+      - "t02_01: Added rlm_loop_selection section with decision criteria"
+      - "t02_02: Created comprehensive rlm-context-accessor.yml specification"
+    deliverables:
+      - "modules/AgenticGuidance/assets/definitions/agent-loops.yml - updated with RLM loops"
+      - "modules/AgenticGuidance/assets/specifications/rlm-context-accessor.yml - new file"
+    ready_for_next_session:
+      - "Phase 3: Planner Agent Guidance Updates (3 tasks: t03_01, t03_02, t03_03)"
+      - "Phase 4: Test Agent Guidance for RLM Validation (3 tasks: t04_01, t04_02, t04_03)"
+    notes: |
+      Phase 2 extends the agent loop definitions with RLM-enhanced loops and creates
+      the context accessor specification. The following tasks can now proceed in parallel:
+      - t03_01, t03_02 (depend on t02_02)
+      - t04_01, t04_02, t04_03 (depend on t02_02)
+      After those complete, t03_03 can proceed (depends on t03_01, t03_02).
+
+  - date: "2026-01-19"
+    session: "Phase 3 Execution"
+    completed:
+      - "Phase 3: Planner Agent Guidance Updates - all 3 tasks completed"
+      - "t03_01: Updated planner-build process.yml with RLM CONTEXT ASSESSMENT step and dual-path phase creation"
+      - "t03_01: Updated planner-build inputs.yml with rlm-patterns.yml and rlm-context-accessor.yml references"
+      - "t03_02: Updated planner-guidance process.yml with RLM-enhanced mapping for trajectories >500 lines"
+      - "t03_02: Added CROSS-AGENT PATTERN DISCOVERY step with friction matrix analysis"
+      - "t03_02: Updated planner-guidance inputs.yml with agent_logs patterns and RLM references"
+      - "t03_03: Updated planner-reviewer process.yml with RLM USAGE CHECKLIST (6 validation items)"
+      - "t03_03: Added FENCES for unjustified usage (<500 lines), excessive recursion (>5 depth), missing completion signal"
+      - "t03_03: Updated planner-reviewer inputs.yml with rlm-patterns.yml, rlm-integration.yml, and rlm_review_criteria definition"
+    deliverables:
+      - "modules/AgenticGuidance/agents/planner/planner-build/process.yml - RLM context assessment and dual-path"
+      - "modules/AgenticGuidance/agents/planner/planner-build/inputs.yml - RLM references"
+      - "modules/AgenticGuidance/agents/planner/planner-guidance/process.yml - RLM-enhanced friction analysis"
+      - "modules/AgenticGuidance/agents/planner/planner-guidance/inputs.yml - agent_logs and RLM references"
+      - "modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml - RLM usage checklist and fences"
+      - "modules/AgenticGuidance/agents/planner/planner-reviewer/inputs.yml - RLM validation references"
+    ready_for_next_session:
+      - "Phase 4: Test Agent Guidance for RLM Validation (3 tasks: t04_01, t04_02, t04_03)"
+    notes: |
+      Phase 3 integrates RLM patterns into all three planner agents:
+      - planner-build: Can assess if objectives warrant RLM decomposition and create RLM-enhanced phases
+      - planner-guidance: Can analyze large agent trajectories (>500 lines) using RLM for friction discovery
+      - planner-reviewer: Can validate RLM usage in plans and reject inappropriate usage
+
+      All RLM additions are optional - agents function fully without RLM when thresholds are not met.
+      Plans without RLM patterns are reviewed without additional overhead.
+
+  - date: "2026-01-19"
+    session: "Phase 4 Execution"
+    completed:
+      - "Phase 4: Test Agent Guidance for RLM Validation - all 3 tasks completed"
+      - "t04_01: Updated test-audit process.yml with rlm_patterns section (context_accessor_operations, recursive_decomposition_pattern, reward_hacking_detection)"
+      - "t04_01: Added RLM reference in step 4 for large packages (>20 files or >2000 lines)"
+      - "t04_01: Updated test-audit inputs.yml with rlm_audit_strategy, rlm_context_thresholds (ALWAYS/SELECTIVE/DIRECT)"
+      - "t04_02: Updated test-final-output process.yml with anomaly_detection_pattern (scan_for_workarounds, detect_path_anomalies, scan_skip_patterns, measure_pass_fail_ratio)"
+      - "t04_02: Added critical_question_generation pattern with severity scoring and recursive_data_analysis for multi-phase runs"
+      - "t04_02: Updated test-final-output inputs.yml with rlm_interrogation_strategy, anomaly_severity_matrix (CRITICAL/HIGH/MEDIUM/LOW)"
+      - "t04_03: Updated teacher-update-guidance process.yml with trajectory_analysis_pattern (extract_decision_points, detect_backtracking, measure_iteration_depth, extract_error_recovery, identify_guidance_gaps)"
+      - "t04_03: Added cross_trajectory_pattern for multi-agent friction discovery and friction_pattern_taxonomy with 5 categories"
+      - "t04_03: Updated teacher-update-guidance inputs.yml with rlm_trajectory_strategy, cross_trajectory_analysis friction matrix pattern"
+    deliverables:
+      - "modules/AgenticGuidance/agents/test/test-audit/process.yml - RLM code examination patterns"
+      - "modules/AgenticGuidance/agents/test/test-audit/inputs.yml - RLM audit strategy and thresholds"
+      - "modules/AgenticGuidance/agents/test/test-final-output/process.yml - RLM anomaly detection and question generation"
+      - "modules/AgenticGuidance/agents/test/test-final-output/inputs.yml - RLM interrogation strategy and severity matrix"
+      - "modules/AgenticGuidance/agents/teacher/teacher-update-guidance/process.yml - RLM trajectory analysis and friction taxonomy"
+      - "modules/AgenticGuidance/agents/teacher/teacher-update-guidance/inputs.yml - RLM trajectory strategy and cross-trajectory analysis"
+    notes: |
+      Phase 4 integrates RLM patterns into test and teacher agents:
+      - test-audit: Can analyze 100+ test file packages using RLM decomposition, with programmatic
+        detection of skip patterns, reward hacking, and weak assertions
+      - test-final-output: Can interrogate large execution data (>5000 lines) using RLM, generating
+        severity-scored critical questions from anomaly detection
+      - teacher-update-guidance: Can analyze 1000+ action trajectories using RLM, with friction
+        pattern taxonomy mapping to specific guidance files
+
+      All three friction_pattern_taxonomy categories map findings to specific target artifacts:
+      - path_unclear -> process.yml#steps
+      - missing_signpost -> inputs.yml#examples or assets/examples/
+      - fence_violation -> process.yml#guidelines or inputs.yml#constraints
+      - input_confusion -> inputs.yml#core_inputs
+      - loop_inefficiency -> process.yml#loop_context or assets/guidelines/escalation.yml
+
+      RLM integration is now complete across all plan phases (1-4).
+
+# ===========================================================================
+# COMPLETION SUMMARY
+# ===========================================================================
+completion_summary:
+  status: completed
+  completed_at: "2026-01-19T21:00:00Z"
+
+  deliverables:
+    new_files:
+      - path: modules/AgenticGuidance/assets/definitions/rlm-patterns.yml
+        description: "Core RLM concepts definition including context_as_environment, programmatic_access, recursive_decomposition, variable_management, and search_execution_firewall"
+      - path: modules/AgenticGuidance/assets/guidelines/rlm-integration.yml
+        description: "RLM integration guideline with 6+ rules, decision tree, and anti-patterns"
+      - path: modules/AgenticGuidance/assets/specifications/rlm-context-accessor.yml
+        description: "Comprehensive RLM context accessor specification with 16 functions across 4 categories"
+
+    updated_files:
+      - path: modules/AgenticGuidance/assets/guidelines/context-minimisation.yml
+        changes: "Added rlm_alternative section and RLM rule reference"
+      - path: modules/AgenticGuidance/assets/definitions/agent-loops.yml
+        changes: "Added rlm-decomposition-loop, rlm-context-refinement-loop, and rlm_loop_selection"
+      - path: modules/AgenticGuidance/agents/planner/planner-build/process.yml
+        changes: "Added RLM CONTEXT ASSESSMENT step and dual-path phase creation"
+      - path: modules/AgenticGuidance/agents/planner/planner-build/inputs.yml
+        changes: "Added rlm-patterns.yml and rlm-context-accessor.yml references"
+      - path: modules/AgenticGuidance/agents/planner/planner-guidance/process.yml
+        changes: "Added RLM-enhanced mapping and CROSS-AGENT PATTERN DISCOVERY step"
+      - path: modules/AgenticGuidance/agents/planner/planner-guidance/inputs.yml
+        changes: "Added agent_logs patterns and RLM references"
+      - path: modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml
+        changes: "Added RLM USAGE CHECKLIST and fences for unjustified usage"
+      - path: modules/AgenticGuidance/agents/planner/planner-reviewer/inputs.yml
+        changes: "Added rlm_review_criteria definition and RLM references"
+      - path: modules/AgenticGuidance/agents/test/test-audit/process.yml
+        changes: "Added rlm_patterns section with context accessor operations and reward hacking detection"
+      - path: modules/AgenticGuidance/agents/test/test-audit/inputs.yml
+        changes: "Added rlm_audit_strategy and rlm_context_thresholds"
+      - path: modules/AgenticGuidance/agents/test/test-final-output/process.yml
+        changes: "Added anomaly_detection_pattern and critical_question_generation"
+      - path: modules/AgenticGuidance/agents/test/test-final-output/inputs.yml
+        changes: "Added rlm_interrogation_strategy and anomaly_severity_matrix"
+      - path: modules/AgenticGuidance/agents/teacher/teacher-update-guidance/process.yml
+        changes: "Added trajectory_analysis_pattern and friction_pattern_taxonomy"
+      - path: modules/AgenticGuidance/agents/teacher/teacher-update-guidance/inputs.yml
+        changes: "Added rlm_trajectory_strategy and cross_trajectory_analysis"
+
+  key_achievements:
+    - "RLM patterns documented as reusable definitions and guidelines"
+    - "Agent loops extended with rlm-decomposition-loop and rlm-context-refinement-loop"
+    - "All three planner agents (build, guidance, reviewer) enhanced with RLM support"
+    - "Test agents (audit, final-output) enhanced for large output analysis using RLM"
+    - "Teacher agent enhanced with RLM trajectory analysis and friction taxonomy"
+    - "All recursion bounded with max_depth <= 5"
+    - "RLM is optional - all agents function fully without it when thresholds not met"
+    - "No breaking changes to existing agent workflows"
+
+  thresholds_established:
+    - "RLM trigger for planner-build: >10 files across directories, >1000 lines, or complex dependencies"
+    - "RLM trigger for planner-guidance: trajectories >500 lines"
+    - "RLM trigger for test-audit: >20 files or >2000 lines"
+    - "RLM trigger for test-final-output: execution data >5000 lines"
+    - "RLM trigger for teacher-update-guidance: trajectories >500 actions"
+
+  friction_pattern_taxonomy:
+    - category: path_unclear
+      target: process.yml#steps
+    - category: missing_signpost
+      target: inputs.yml#examples or assets/examples/
+    - category: fence_violation
+      target: process.yml#guidelines or inputs.yml#constraints
+    - category: input_confusion
+      target: inputs.yml#core_inputs
+    - category: loop_inefficiency
+      target: process.yml#loop_context or assets/guidelines/escalation.yml

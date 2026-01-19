@@ -1,0 +1,1204 @@
+# Teacher-Trace-Diagnostics Agent Implementation Plan
+# Plan: Build agent that analyzes LangSmith traces to identify guidance friction patterns
+# Plan Folder: docs/plans/live/260118AG_rlm_integration
+# Agent Target: modules/AgenticGuidance/agents/teacher/teacher-trace-diagnostics/
+
+name: "teacher-trace-diagnostics-implementation"
+worktree_path: "/home/code/AgenticEngineering"
+branch: "agenticguidance"
+status: "completed"
+priority: "high"
+plan_file: "docs/plans/live/260118AG_rlm_integration/live/plan_live_teach_trace_diagnostics.yml"
+
+context: |
+  This plan creates a new teacher agent (teacher-trace-diagnostics) that consumes
+  LangSmith traces via API and analyzes them for guidance friction patterns.
+
+  The agent is complementary to teacher-update-guidance:
+  - teacher-update-guidance: Analyzes agent logs/text output
+  - teacher-trace-diagnostics: Analyzes structured LangSmith trace data
+
+  Key challenges addressed:
+  - Large trace volumes from subagent orchestration (100s of traces per run)
+  - Context window overflow when processing nested trace hierarchies
+  - Identifying systematic friction patterns across multiple runs
+
+  RLM TEST CASE: This agent serves as a practical test case for RLM (Recursive
+  Language Model) patterns. By using RLM decomposition for trace analysis, we
+  validate that RLM patterns work effectively for real-world context management
+  scenarios where trace data can flood the context window.
+
+  DEPENDENCY: Requires modules/AgenticLangSmith service wrapper for API access.
+  DEPENDENCY: References RLM patterns from plan_live_teach.yml (rlm-patterns.yml,
+  rlm-context-accessor.yml when implemented).
+
+related_plans:
+  orchestration: "orchestration_rlm_integration.mmd"
+  rlm_patterns: "plan_live_teach.yml"
+
+inputs:
+  - location: "modules/AgenticGuidance/agents/teacher/manifest.yml"
+    description: "Teacher category routing patterns for sub-agent discovery"
+
+  - location: "modules/AgenticGuidance/agents/teacher/teacher-update-guidance/process.yml"
+    description: "Reference structure for process.yml (goal, inputs, outputs, steps, guidelines)"
+
+  - location: "modules/AgenticGuidance/agents/teacher/teacher-update-guidance/inputs.yml"
+    description: "Reference structure for inputs.yml (layers, core_inputs, definitions)"
+
+  - location: "modules/AgenticLangSmith/src/agenticlangsmith/service.py"
+    description: "LangSmith API service wrapper with list_runs, get_run, get_project_stats"
+
+  - location: "modules/AgenticLangSmith/src/agenticlangsmith/filters.py"
+    description: "Filter builders for LangSmith queries (time, type, error, tag, latency, token)"
+
+open_questions:
+  - id: "TQ-001"
+    question: "Should trace analysis be time-bounded (e.g., last 24h) or run-bounded (e.g., last 50 runs)?"
+    severity: "medium"
+    status: "RESOLVED"
+    resolution: "Time-bounded with configurable default (24h)"
+    rationale: |
+      High-activity orchestration use case benefits from "what happened recently" analysis.
+      Configuration allows adjustment: time_range_hours, run_limit, max_run_limit.
+
+  - id: "TQ-002"
+    question: "How should the agent handle trace data that exceeds context limits?"
+    severity: "high"
+    status: "RESOLVED"
+    resolution: "RLM Search-Execution Firewall - separate curation from analysis"
+    rationale: |
+      This agent serves as a TEST CASE for RLM patterns. To prevent context bloating, 
+      we use a two-agent pattern:
+      1. TRACE CURATOR: A sub-agent that stores traces as environment variables, 
+         writes filter code, and extracts only the "bad" or relevant traces.
+      2. TRACE ANALYST: The primary agent that takes the curated subset and 
+         generates the final diagnostic report.
+      This ensures the "messy" search history does not affect the final reasoning.
+
+design_decisions:
+  - id: "DD-001"
+    decision: "Use RLM decomposition for trace analysis"
+    date: "2026-01-19"
+    context: "Agent is a test case for RLM patterns; validates RLM for real-world context management"
+
+  - id: "DD-002"
+    decision: "Time-bounded analysis with configurable defaults"
+    date: "2026-01-19"
+    context: "Aligns with 'recent activity' mental model for high-activity orchestration"
+
+# ===========================================================================
+# PHASES AND TASKS
+# ===========================================================================
+phases:
+  # ---------------------------------------------------------------------------
+  # PHASE 1: Agent Structure
+  # ---------------------------------------------------------------------------
+  - name: "Phase 1: Agent Structure"
+    execution: sequential
+    description: |
+      Create the foundational agent structure following existing teacher patterns.
+      Establish manifest, process.yml, and inputs.yml files.
+
+    tasks:
+      - id: "td_01_01"
+        name: "Create agent manifest.yml"
+        description: |
+          Create manifest.yml for teacher-trace-diagnostics agent.
+          Follow teacher-update-assets/manifest.yml structure.
+        status: "completed"
+        inputs:
+          - "modules/AgenticGuidance/agents/teacher/teacher-update-assets/manifest.yml"
+        target_files:
+          - "modules/AgenticGuidance/agents/teacher/teacher-trace-diagnostics/manifest.yml"
+        guidance: |
+          Create file with structure:
+          ```yaml
+          name: teacher-trace-diagnostics
+          description: "Analyze LangSmith traces to identify guidance friction patterns and recommend improvements"
+          version: "1.0"
+          parent: "teacher"
+
+          structure:
+            inputs: "inputs.yml - Trace analysis configuration and friction pattern definitions"
+            process: "process.yml - Trace analysis workflow"
+
+          responsibilities:
+            - "Fetch and filter LangSmith traces via AgenticLangSmith service"
+            - "Detect backtracking patterns (agent revisits previous decisions)"
+            - "Cluster repeated errors across runs"
+            - "Identify path ambiguity (hesitation, multiple attempts)"
+            - "Flag token consumption anomalies"
+            - "Generate structured recommendations for guidance improvement"
+
+          boundaries:
+            - "Read-only access to traces (does not modify LangSmith data)"
+            - "Does NOT directly update guidance files (outputs recommendations)"
+            - "Does NOT replace teacher-update-guidance (complementary analysis)"
+            - "Requires AgenticLangSmith service for API access"
+
+          integration:
+            langsmith_service: "modules/AgenticLangSmith/src/agenticlangsmith/service.py"
+            teacher_routing: "modules/AgenticGuidance/agents/teacher/manifest.yml"
+          ```
+        success_criteria:
+          - "File exists at modules/AgenticGuidance/agents/teacher/teacher-trace-diagnostics/manifest.yml"
+          - "Contains name, description, version, parent fields"
+          - "Contains structure section with inputs and process references"
+          - "Contains responsibilities with 6 items"
+          - "Contains boundaries with 4 items"
+          - "Contains integration section referencing langsmith_service"
+
+      - id: "td_01_02"
+        name: "Create agent process.yml"
+        description: |
+          Create process.yml with goal, inputs, outputs, steps, and guidelines.
+          Follow teacher-update-guidance/process.yml structure.
+        status: "completed"
+        dependencies: ["td_01_01"]
+        inputs:
+          - "modules/AgenticGuidance/agents/teacher/teacher-update-guidance/process.yml"
+          - "modules/AgenticLangSmith/src/agenticlangsmith/service.py"
+        target_files:
+          - "modules/AgenticGuidance/agents/teacher/teacher-trace-diagnostics/process.yml"
+        guidance: |
+          Create process.yml with:
+
+          ```yaml
+          process:
+            goal: |
+              Analyze LangSmith traces to identify guidance friction patterns and generate
+              structured recommendations for improving agent paths, fences, and signposts.
+              This agent examines trace structure, timing, and error patterns rather than
+              raw text logs.
+
+            loop_context:
+              participates_in:
+                - "guidance-test-loop"
+              loop_definition: "modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.guidance-test-loop"
+              note: |
+                Operates at meta-level analyzing trace data. Can be invoked after orchestration
+                runs to identify systematic friction patterns across multiple agent executions.
+
+            inputs:
+              - location: "modules/AgenticGuidance/agents/teacher/teacher-trace-diagnostics/inputs.yml"
+                description: "Trace diagnostics configuration and friction pattern definitions"
+
+            outputs:
+              - name: "trace_diagnostics_report"
+                format: "yaml"
+                location: "Returned to orchestrator or written to plan audit folder"
+                schema:
+                  analysis_summary:
+                    traces_analyzed: "integer"
+                    time_range: "string - ISO date range"
+                    project_name: "string"
+                    friction_patterns_detected: "integer"
+                  friction_findings:
+                    - id: "string - unique finding ID"
+                      pattern_type: "enum(backtracking, error_cluster, path_ambiguity, token_anomaly)"
+                      severity: "enum(CRITICAL, HIGH, MEDIUM, LOW)"
+                      trace_ids: "array - LangSmith trace IDs exhibiting pattern"
+                      description: "string - what was detected"
+                      evidence:
+                        - trace_id: "string"
+                          run_name: "string"
+                          indicator: "string - specific observation"
+                      affected_guidance:
+                        - file: "string - path to guidance file"
+                          section: "string - relevant section"
+                      recommendation:
+                        type: "enum(path_clarity, signpost_addition, fence_strengthening, example_improvement)"
+                        proposed_change: "string"
+                        rationale: "string"
+                  statistics:
+                    error_rate: "float - percentage of runs with errors"
+                    avg_latency: "float - seconds"
+                    total_tokens: "integer"
+                    backtracking_rate: "float - percentage of runs with backtracking"
+
+            steps:
+              - |
+                STEP 1: VALIDATE INPUTS AND CONFIGURATION
+
+                1. Load inputs.yml and verify all required inputs are accessible
+                2. Confirm LangSmith API is available (LANGSMITH_API_KEY environment variable)
+                3. Identify target project name from inputs or use default
+                4. Determine analysis scope:
+                   - Time range (default: last 24 hours)
+                   - Run limit (default: 100 runs, max: 500)
+                   - Run type filter (default: all types)
+
+                If LangSmith API is unavailable, STOP and report configuration error.
+
+              - |
+                STEP 2: FETCH AND FILTER TRACES
+
+                Using AgenticLangSmith service:
+                1. Call list_runs() with project_name and limit
+                2. For each top-level run, fetch child runs to build trace hierarchy
+                3. Apply pre-filters to reduce data volume:
+                   - Exclude runs shorter than 1 second (likely trivial)
+                   - Prioritize runs with errors for detailed analysis
+                   - Sample long-running traces for latency patterns
+
+                CONTEXT MANAGEMENT via RLM DECOMPOSITION:
+                This agent uses RLM (Recursive Language Model) patterns for context management.
+                Reference: modules/AgenticGuidance/assets/definitions/rlm-patterns.yml (when implemented)
+
+                RLM Pattern for Trace Analysis:
+                1. STORE CONTEXT: Store trace metadata as environment variables
+                   - CONTEXT_TRACES_SUMMARIES: Top-level run summaries (id, name, status, latency, tokens)
+                   - CONTEXT_TRACES_ERRORS: Runs with error status
+                   - CONTEXT_TRACES_ANOMALIES: Runs flagged for detailed analysis
+
+                2. PROGRAMMATIC ACCESS: Write code to examine and filter
+                   - filter_by_error(): Extract error runs from CONTEXT_TRACES_SUMMARIES
+                   - filter_by_latency(threshold): Extract high-latency runs
+                   - filter_by_tokens(std_dev): Extract token anomalies
+
+                3. RECURSIVE DECOMPOSITION: Process large sets in subsets
+                   - If >100 traces: Decompose by time window (1-hour chunks)
+                   - If >500 traces: Decompose by run type first, then time
+                   - Each subset processed independently, results accumulated
+
+                4. ACCUMULATOR PATTERN: Collect findings progressively
+                   - ACCUMULATOR_FRICTION_FINDINGS: List of detected patterns
+                   - ACCUMULATOR_STATISTICS: Aggregate metrics
+                   - FINAL(trace_diagnostics_report): Signal completion
+
+                Never load full inputs/outputs for all traces simultaneously.
+
+              - |
+                STEP 3: DETECT FRICTION PATTERNS
+
+                Apply pattern detection algorithms defined in inputs.yml:
+
+                A. BACKTRACKING DETECTION
+                   - Identify runs where agent revisits previous tool calls
+                   - Look for repeated file reads without intervening writes
+                   - Detect undo patterns (delete followed by recreate)
+                   - Threshold: >2 revisits to same resource = backtracking
+
+                B. ERROR CLUSTERING
+                   - Group errors by error message similarity
+                   - Identify recurring error types across runs
+                   - Track error recovery patterns (retry success rate)
+                   - Threshold: >3 similar errors across runs = cluster
+
+                C. PATH AMBIGUITY
+                   - Detect hesitation: long pauses between tool calls (>30s)
+                   - Identify multiple attempts at same step
+                   - Look for tool call sequences that suggest confusion
+                   - Threshold: >2 attempts at same logical step = ambiguity
+
+                D. TOKEN CONSUMPTION ANOMALY
+                   - Flag traces with token usage >2x median
+                   - Identify runs with excessive prompt tokens (bloated context)
+                   - Detect runs with minimal completion tokens (truncated outputs)
+                   - Threshold: >2 standard deviations from mean = anomaly
+
+              - |
+                STEP 4: MAP FRICTION TO GUIDANCE
+
+                For each detected friction pattern:
+                1. Identify the agent that exhibited the pattern (from trace name/tags)
+                2. Locate the agent's guidance files:
+                   - process.yml at modules/AgenticGuidance/agents/<category>/<agent>/
+                   - inputs.yml at same location
+                   - Referenced definitions and guidelines
+                3. Map the friction type to guidance improvement type:
+                   - backtracking -> path_clarity (unclear next steps)
+                   - error_cluster -> fence_strengthening (missing guardrails)
+                   - path_ambiguity -> signpost_addition (missing examples)
+                   - token_anomaly -> context_minimisation (bloated inputs)
+
+              - |
+                STEP 5: GENERATE RECOMMENDATIONS
+
+                For each friction finding:
+                1. Create structured recommendation with:
+                   - Unique ID (format: TD-YYYYMMDD-NNN)
+                   - Pattern type and severity
+                   - Evidence (trace IDs, specific observations)
+                   - Affected guidance file and section
+                   - Proposed change with rationale
+                2. Prioritize by severity:
+                   - CRITICAL: Errors preventing task completion
+                   - HIGH: Errors requiring manual recovery
+                   - MEDIUM: Inefficiencies (backtracking, high tokens)
+                   - LOW: Minor hesitations, style issues
+                3. De-duplicate similar recommendations
+
+              - |
+                STEP 6: OUTPUT DIAGNOSTICS REPORT
+
+                Generate trace_diagnostics_report with:
+                1. analysis_summary: scope, counts, time range
+                2. friction_findings: ordered by severity
+                3. statistics: aggregate metrics for the analyzed traces
+
+                If invoked by orchestrator, return structured output.
+                If invoked standalone, write to plan audit folder.
+
+            guidelines:
+              - |
+                TRACE SAMPLING: Never attempt to load all trace data at once.
+                Use hierarchical sampling: summaries first, details on demand.
+              - |
+                EVIDENCE-BASED: Every recommendation must cite specific trace IDs
+                and observations. Avoid generic suggestions without evidence.
+              - |
+                COMPLEMENTARY ROLE: This agent identifies friction patterns in traces.
+                It does NOT directly modify guidance files - teacher-update-guidance
+                consumes these recommendations to make changes.
+              - |
+                THRESHOLD DISCIPLINE: Use defined thresholds consistently.
+                Do not lower thresholds to find more patterns - maintain signal quality.
+              - |
+                RATE LIMITING: Respect LangSmith API rate limits.
+                Add delays between batch requests if needed.
+          ```
+        success_criteria:
+          - "File exists at modules/AgenticGuidance/agents/teacher/teacher-trace-diagnostics/process.yml"
+          - "Contains goal explaining trace analysis purpose"
+          - "Contains loop_context referencing guidance-test-loop"
+          - "Contains inputs referencing inputs.yml"
+          - "Contains outputs with trace_diagnostics_report schema"
+          - "Contains 6 steps covering validate, fetch, detect, map, recommend, output"
+          - "Contains guidelines with at least 5 items"
+          - "Step 2 includes context management for large trace volumes"
+          - "Step 3 defines 4 friction pattern detection algorithms with thresholds"
+
+      - id: "td_01_03"
+        name: "Create agent inputs.yml"
+        description: |
+          Create inputs.yml with layers, core_inputs, and trace-specific definitions.
+          Follow teacher-update-guidance/inputs.yml structure.
+        status: "completed"
+        dependencies: ["td_01_01"]
+        inputs:
+          - "modules/AgenticGuidance/agents/teacher/teacher-update-guidance/inputs.yml"
+        target_files:
+          - "modules/AgenticGuidance/agents/teacher/teacher-trace-diagnostics/inputs.yml"
+        guidance: |
+          Create inputs.yml with:
+
+          ```yaml
+          # Teacher-Trace-Diagnostics Agent Inputs
+          # Configuration for LangSmith trace analysis and friction pattern detection
+          # This agent analyzes structured trace data to identify guidance friction patterns
+          # It does NOT directly update guidance files (that's teacher-update-guidance)
+
+          inputs:
+            agent_type: "teacher-trace-diagnostics"
+            version: "1.0"
+
+            agent_context:
+              category: "modules/AgenticGuidance/assets/definitions/agent-categories.yml#agent_categories.teacher"
+              role: "teacher-trace-diagnostics"
+
+            # Reference layers (transitive loading)
+            # Context-minimized: only layers relevant to trace analysis
+            layers:
+              - type: layer
+                path: "modules/AgenticGuidance/assets/inputs/core-system.yml"
+                description: "Core system definitions (agent architecture, workflows)"
+                required: true
+
+              - type: layer
+                path: "modules/AgenticGuidance/assets/inputs/core-guidelines.yml"
+                description: "Universal behavioral guidelines"
+                required: true
+
+            core_inputs:
+              # Path/fence/signpost concepts - for mapping friction to guidance types
+              - type: file
+                path: "modules/AgenticGuidance/assets/definitions/path.yml"
+                description: "Path concept: what agents read to determine next actions"
+                required: true
+
+              - type: file
+                path: "modules/AgenticGuidance/assets/definitions/guidance-artifacts.yml"
+                description: "Fence, signpost concepts and guidance placement"
+                required: true
+
+              # Agent context discovery - for locating guidance files to improve
+              - type: file
+                path: "modules/AgenticGuidance/assets/definitions/agent-context-files.yml"
+                description: "Where agents find process.yml, inputs.yml, manifest.yml"
+                required: true
+
+              # Root-cause analysis - for accurate friction diagnosis
+              - type: file
+                path: "modules/AgenticGuidance/assets/guidelines/root-cause-analysis.yml"
+                description: "Root-cause analysis patterns for diagnosing friction"
+                required: true
+
+              # Context minimisation - for token anomaly recommendations
+              - type: file
+                path: "modules/AgenticGuidance/assets/guidelines/context-minimisation.yml"
+                description: "Context minimisation patterns (for token anomaly recommendations)"
+                required: true
+
+            # LangSmith integration configuration
+            langsmith_config:
+              service_module: "modules/AgenticLangSmith/src/agenticlangsmith/service.py"
+              filters_module: "modules/AgenticLangSmith/src/agenticlangsmith/filters.py"
+              api_key_env: "LANGSMITH_API_KEY"
+              default_project: null  # Use LangSmith default if not specified
+              rate_limit:
+                requests_per_minute: 60
+                batch_size: 50
+
+            # Analysis scope defaults
+            analysis_defaults:
+              time_range_hours: 24
+              run_limit: 100
+              max_run_limit: 500
+              min_run_duration_seconds: 1.0
+              include_child_runs: true
+              run_types: null  # null = all types
+
+            # Friction pattern definitions
+            definitions:
+              trace_diagnostics_role: |
+                As a teacher-trace-diagnostics agent:
+                - You analyze LangSmith trace data to identify friction patterns
+                - You detect backtracking, error clusters, path ambiguity, and token anomalies
+                - You map friction patterns to affected guidance files
+                - You generate structured recommendations with evidence
+                - You do NOT directly modify guidance files
+                - You do NOT replace teacher-update-guidance (you provide it with insights)
+                - You respect API rate limits and context window constraints
+
+              friction_patterns:
+                backtracking:
+                  definition: |
+                    Agent revisits previous decisions or resources without making progress.
+                    Indicates unclear path or missing signposts about next steps.
+                  indicators:
+                    - "Repeated reads of same file without intervening writes"
+                    - "Undo patterns: delete followed by recreate"
+                    - "Loop iterations that produce same output"
+                    - "Tool calls that reverse previous tool calls"
+                  threshold:
+                    min_revisits: 2
+                    window_size: 10  # Look at last N tool calls
+                  severity_mapping:
+                    "2-3 revisits": "MEDIUM"
+                    "4-5 revisits": "HIGH"
+                    ">5 revisits": "CRITICAL"
+                  guidance_type: "path_clarity"
+
+                error_cluster:
+                  definition: |
+                    Same or similar errors occur across multiple runs.
+                    Indicates missing fence (guardrail) or inadequate error guidance.
+                  indicators:
+                    - "Error messages with same root cause across runs"
+                    - "Repeated failures at same step type"
+                    - "Timeout errors suggesting stuck patterns"
+                    - "Permission/access errors suggesting missing setup guidance"
+                  threshold:
+                    min_occurrences: 3
+                    similarity_threshold: 0.8  # Cosine similarity of error messages
+                  severity_mapping:
+                    "3-5 occurrences": "MEDIUM"
+                    "6-10 occurrences": "HIGH"
+                    ">10 occurrences": "CRITICAL"
+                  guidance_type: "fence_strengthening"
+
+                path_ambiguity:
+                  definition: |
+                    Agent hesitates or makes multiple attempts at the same logical step.
+                    Indicates missing signpost (example) showing the expected approach.
+                  indicators:
+                    - "Long pauses between tool calls (>30 seconds)"
+                    - "Multiple attempts at same tool with different parameters"
+                    - "Abandoned tool calls (started but not completed)"
+                    - "Sequential reads of many files suggesting search behavior"
+                  threshold:
+                    pause_seconds: 30
+                    max_attempts: 2
+                  severity_mapping:
+                    "2 attempts": "LOW"
+                    "3 attempts": "MEDIUM"
+                    ">3 attempts": "HIGH"
+                  guidance_type: "signpost_addition"
+
+                token_anomaly:
+                  definition: |
+                    Trace consumes significantly more tokens than typical runs.
+                    Indicates bloated context, excessive verbosity, or inefficient prompting.
+                  indicators:
+                    - "Total tokens >2x median for run type"
+                    - "Prompt tokens dominate (>80% of total)"
+                    - "Completion truncated due to token limit"
+                    - "Repeated inclusion of same context in child runs"
+                  threshold:
+                    std_deviations: 2.0
+                    prompt_ratio_max: 0.8
+                  severity_mapping:
+                    "2-3 std dev": "MEDIUM"
+                    ">3 std dev": "HIGH"
+                    "truncated output": "CRITICAL"
+                  guidance_type: "context_minimisation"
+
+              recommendation_templates:
+                path_clarity:
+                  focus: "Make next steps clearer in process.yml"
+                  typical_changes:
+                    - "Add explicit step transitions"
+                    - "Clarify when to proceed vs. when to iterate"
+                    - "Add decision criteria for branching paths"
+
+                fence_strengthening:
+                  focus: "Add guardrails to prevent common errors"
+                  typical_changes:
+                    - "Add validation steps before risky operations"
+                    - "Add error handling guidance"
+                    - "Add pre-conditions checklist"
+
+                signpost_addition:
+                  focus: "Add examples showing expected approach"
+                  typical_changes:
+                    - "Add inline examples in process steps"
+                    - "Add example files in assets/examples/"
+                    - "Add 'good vs bad' comparisons"
+
+                context_minimisation:
+                  focus: "Reduce unnecessary context in inputs"
+                  typical_changes:
+                    - "Remove unused input references"
+                    - "Add filters to load only relevant sections"
+                    - "Split large inputs into demand-loaded parts"
+          ```
+        success_criteria:
+          - "File exists at modules/AgenticGuidance/agents/teacher/teacher-trace-diagnostics/inputs.yml"
+          - "Contains agent_type and version"
+          - "Contains agent_context with category and role"
+          - "Contains layers with core-system.yml and core-guidelines.yml"
+          - "Contains core_inputs with path.yml, guidance-artifacts.yml, agent-context-files.yml"
+          - "Contains langsmith_config with service_module, api_key_env, rate_limit"
+          - "Contains analysis_defaults with time_range_hours, run_limit, max_run_limit"
+          - "Contains definitions.friction_patterns with 4 patterns (backtracking, error_cluster, path_ambiguity, token_anomaly)"
+          - "Each friction pattern has definition, indicators, threshold, severity_mapping, guidance_type"
+          - "Contains recommendation_templates with 4 types"
+
+      - id: "td_01_04"
+        name: "Update teacher manifest.yml routing"
+        description: |
+          Add teacher-trace-diagnostics to the teacher category manifest.
+        status: "completed"
+        dependencies: ["td_01_01"]
+        target_files:
+          - "modules/AgenticGuidance/agents/teacher/manifest.yml"
+        guidance: |
+          Add to sub_agents list:
+          ```yaml
+          sub_agents:
+            - teacher-update-guidance
+            - teacher-update-assets
+            - teacher-trace-diagnostics  # ADD THIS
+          ```
+
+          Add to routing section:
+          ```yaml
+          routing:
+            # ... existing entries ...
+
+            teacher-trace-diagnostics:
+              purpose: "Analyze LangSmith traces to identify guidance friction patterns"
+              when: "User wants to analyze trace data for backtracking, errors, hesitation, or token issues"
+          ```
+        success_criteria:
+          - "manifest.yml sub_agents includes teacher-trace-diagnostics"
+          - "manifest.yml routing includes teacher-trace-diagnostics entry"
+          - "Routing entry has purpose and when fields"
+          - "Existing sub_agents and routing entries preserved"
+
+  # ---------------------------------------------------------------------------
+  # PHASE 2: Trace Analysis Definitions
+  # ---------------------------------------------------------------------------
+  - name: "Phase 2: Trace Analysis Definitions"
+    execution: sequential
+    description: |
+      Create shared definitions for trace diagnostics patterns.
+      These definitions can be reused by other agents analyzing trace data.
+
+    tasks:
+      - id: "td_02_01"
+        name: "Create trace-diagnostics.yml definition file"
+        description: |
+          Create shared definition file for trace diagnostics concepts.
+          Place in assets/definitions/ for cross-agent reuse.
+        status: "completed"
+        dependencies: ["td_01_03"]
+        inputs:
+          - "modules/AgenticGuidance/agents/teacher/teacher-trace-diagnostics/inputs.yml"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/trace-diagnostics.yml"
+        guidance: |
+          Create definition file extracting generalizable concepts from inputs.yml:
+
+          ```yaml
+          # Trace Diagnostics Definitions
+          # Shared concepts for analyzing agent execution traces
+          # Used by: teacher-trace-diagnostics, potentially test-audit, planner-guidance
+
+          trace_diagnostics:
+            definition: |
+              Analysis of structured execution traces (e.g., LangSmith runs) to identify
+              patterns indicating guidance friction. Unlike log analysis which examines
+              text output, trace diagnostics examines structured metadata: timing, hierarchy,
+              error status, and token consumption.
+
+            trace_sources:
+              langsmith:
+                description: "LangSmith tracing platform"
+                data_available:
+                  - "Run hierarchy (parent/child relationships)"
+                  - "Timing (start_time, end_time, latency)"
+                  - "Token counts (prompt, completion, total)"
+                  - "Error status and messages"
+                  - "Tags and metadata"
+                  - "Inputs and outputs (optional, can be large)"
+                access_pattern: "API via langsmith Python SDK"
+
+            friction_pattern_taxonomy:
+              description: |
+                Classification of friction patterns detectable in trace data.
+                Each pattern type maps to a guidance improvement type.
+
+              patterns:
+                - name: "backtracking"
+                  signal: "Agent revisits previous decisions"
+                  implies: "Path is unclear - agent doesn't know next step"
+                  remediation: "path_clarity"
+
+                - name: "error_cluster"
+                  signal: "Same errors repeat across runs"
+                  implies: "Fence is missing - no guardrail preventing error"
+                  remediation: "fence_strengthening"
+
+                - name: "path_ambiguity"
+                  signal: "Agent hesitates or tries multiple approaches"
+                  implies: "Signpost is missing - no example showing approach"
+                  remediation: "signpost_addition"
+
+                - name: "token_anomaly"
+                  signal: "Token consumption far exceeds norm"
+                  implies: "Context is bloated - too much unnecessary input"
+                  remediation: "context_minimisation"
+
+            analysis_strategies:
+              hierarchical_sampling:
+                description: |
+                  Process traces in layers: top-level summaries first, then drill
+                  into child runs only for traces showing anomalies.
+                when_to_use: ">100 traces"
+                steps:
+                  - "Fetch top-level run summaries (no inputs/outputs)"
+                  - "Calculate aggregate statistics"
+                  - "Identify anomalous runs (errors, high latency, high tokens)"
+                  - "Fetch child runs only for anomalous parents"
+                  - "Analyze child patterns for those specific runs"
+
+              time_windowing:
+                description: |
+                  Process traces in time-based batches to avoid loading
+                  all data at once.
+                when_to_use: ">500 traces"
+                steps:
+                  - "Divide time range into windows (e.g., 1-hour)"
+                  - "Process each window independently"
+                  - "Aggregate patterns across windows"
+                  - "Report cross-window trends"
+
+              pre_filtering:
+                description: |
+                  Apply LangSmith filters before fetching to reduce data volume.
+                when_to_use: "Known friction type or high-volume project"
+                filters:
+                  - "error_only: True (for error clustering)"
+                  - "run_type: 'chain' (for orchestration analysis)"
+                  - "latency > threshold (for performance issues)"
+
+            severity_classification:
+              CRITICAL:
+                definition: "Errors preventing task completion"
+                action: "Immediate guidance fix required"
+                examples:
+                  - "100% failure rate for specific operation"
+                  - "Infinite loop detected"
+                  - "Context overflow causing truncation"
+
+              HIGH:
+                definition: "Errors requiring manual recovery"
+                action: "Fix in next guidance update"
+                examples:
+                  - "Repeated errors with partial recovery"
+                  - ">5 backtracking instances per run"
+                  - "Token usage >3 std dev"
+
+              MEDIUM:
+                definition: "Inefficiencies not blocking completion"
+                action: "Include in regular guidance maintenance"
+                examples:
+                  - "2-5 backtracking instances"
+                  - "Token usage 2-3 std dev"
+                  - "Moderate hesitation patterns"
+
+              LOW:
+                definition: "Minor issues, style concerns"
+                action: "Log for future consideration"
+                examples:
+                  - "Occasional hesitation"
+                  - "Slightly elevated token usage"
+                  - "Inconsistent but non-blocking patterns"
+
+            relationship_to_other_concepts:
+              path: "modules/AgenticGuidance/assets/definitions/path.yml"
+              fence: "modules/AgenticGuidance/assets/definitions/guidance-artifacts.yml#fence"
+              signpost: "modules/AgenticGuidance/assets/definitions/guidance-artifacts.yml#signpost"
+              context_minimisation: "modules/AgenticGuidance/assets/guidelines/context-minimisation.yml"
+          ```
+        success_criteria:
+          - "File exists at modules/AgenticGuidance/assets/definitions/trace-diagnostics.yml"
+          - "Contains trace_diagnostics.definition"
+          - "Contains trace_sources.langsmith with data_available list"
+          - "Contains friction_pattern_taxonomy with 4 patterns"
+          - "Each pattern has name, signal, implies, remediation"
+          - "Contains analysis_strategies with 3 strategies"
+          - "Contains severity_classification with 4 levels (CRITICAL, HIGH, MEDIUM, LOW)"
+          - "Contains relationship_to_other_concepts referencing path, fence, signpost"
+
+      - id: "td_02_02"
+        name: "Update inputs.yml to reference shared definition"
+        description: |
+          Update teacher-trace-diagnostics inputs.yml to reference the shared
+          trace-diagnostics.yml definition instead of duplicating content.
+        status: "completed"
+        dependencies: ["td_02_01"]
+        target_files:
+          - "modules/AgenticGuidance/agents/teacher/teacher-trace-diagnostics/inputs.yml"
+        guidance: |
+          Add to core_inputs section:
+          ```yaml
+          core_inputs:
+            # ... existing entries ...
+
+            - type: file
+              path: "modules/AgenticGuidance/assets/definitions/trace-diagnostics.yml"
+              description: "Shared trace diagnostics definitions (friction patterns, severity, strategies)"
+              required: true
+          ```
+
+          In definitions section, replace inline friction_patterns with reference:
+          ```yaml
+          definitions:
+            trace_diagnostics_role: |
+              # ... keep existing ...
+
+            friction_patterns: "See modules/AgenticGuidance/assets/definitions/trace-diagnostics.yml#friction_pattern_taxonomy"
+
+            # ... keep recommendation_templates ...
+          ```
+
+          This follows the pattern from teacher-update-guidance where shared concepts
+          are referenced rather than duplicated.
+        success_criteria:
+          - "core_inputs includes reference to trace-diagnostics.yml"
+          - "definitions.friction_patterns references shared definition"
+          - "No duplication of friction pattern content"
+
+  # ---------------------------------------------------------------------------
+  # PHASE 3: LangSmith Integration Patterns
+  # ---------------------------------------------------------------------------
+  - name: "Phase 3: LangSmith Integration Patterns"
+    execution: sequential
+    description: |
+      Document API patterns for trace fetching, including rate limiting,
+      filtering, and efficient batch processing.
+
+    tasks:
+      - id: "td_03_01"
+        name: "Create LangSmith integration examples"
+        description: |
+          Create example file showing LangSmith API usage patterns for trace analysis.
+        status: "completed"
+        dependencies: ["td_01_02"]
+        inputs:
+          - "modules/AgenticLangSmith/src/agenticlangsmith/service.py"
+          - "modules/AgenticLangSmith/src/agenticlangsmith/filters.py"
+        target_files:
+          - "modules/AgenticGuidance/assets/examples/teacher/langsmith-trace-analysis.yml"
+        guidance: |
+          Create example file with practical patterns:
+
+          ```yaml
+          # LangSmith Trace Analysis Examples
+          # For use by teacher-trace-diagnostics agent
+          # Demonstrates efficient trace fetching and pattern detection
+
+          examples:
+            basic_trace_fetch:
+              description: "Fetch recent runs from a project"
+              code: |
+                from agenticlangsmith.service import LangSmithService
+
+                service = LangSmithService()  # Uses LANGSMITH_API_KEY env var
+                runs = service.list_runs(
+                    project_name="my-agent-project",
+                    limit=50
+                )
+
+                for run in runs:
+                    print(f"{run['name']}: {run['status']} ({run['latency']:.2f}s)")
+
+            filtered_error_fetch:
+              description: "Fetch only runs with errors for clustering analysis"
+              code: |
+                from agenticlangsmith.service import LangSmithService
+                from agenticlangsmith.filters import build_error_filter, build_time_filter, combine_filters
+                from datetime import datetime, timedelta
+
+                service = LangSmithService()
+
+                # Build combined filter: errors in last 24 hours
+                time_filter = build_time_filter(start=datetime.now() - timedelta(hours=24))
+                error_filter = build_error_filter(has_error=True)
+                combined = combine_filters(time_filter, error_filter)
+
+                error_runs = service.list_runs(
+                    project_name="my-agent-project",
+                    filter_expr=combined,
+                    limit=100
+                )
+
+            hierarchical_trace_analysis:
+              description: "Analyze parent runs then drill into children"
+              code: |
+                from agenticlangsmith.service import LangSmithService
+                from agenticlangsmith.filters import build_latency_filter
+
+                service = LangSmithService()
+
+                # Step 1: Get top-level runs (no parent)
+                top_runs = service.list_runs(
+                    project_name="my-agent-project",
+                    limit=50
+                )
+
+                # Step 2: Identify anomalous runs (high latency or errors)
+                anomalous = [r for r in top_runs if r['status'] == 'error' or (r['latency'] and r['latency'] > 60)]
+
+                # Step 3: Fetch children only for anomalous runs
+                for parent in anomalous:
+                    children = service.list_runs(
+                        project_name="my-agent-project",
+                        filter_expr=f"eq(parent_run_id, '{parent['id']}')",
+                        limit=100
+                    )
+                    # Analyze child patterns...
+
+            backtracking_detection:
+              description: "Detect backtracking pattern in trace sequence"
+              pattern: |
+                Backtracking is detected when:
+                1. Same resource (file, URL, etc.) appears multiple times in tool calls
+                2. No productive change between accesses
+                3. Pattern suggests confusion rather than legitimate re-check
+
+              code: |
+                def detect_backtracking(runs, window_size=10):
+                    """Analyze run sequence for backtracking patterns."""
+                    findings = []
+                    resource_access = {}  # resource -> [access_indices]
+
+                    for i, run in enumerate(runs):
+                        # Extract resource from run (file path, URL, etc.)
+                        resource = extract_resource(run)
+                        if not resource:
+                            continue
+
+                        if resource in resource_access:
+                            previous = resource_access[resource]
+                            # Check if this is a revisit within window
+                            if i - previous[-1] <= window_size:
+                                # Check if productive change between accesses
+                                if not has_productive_change(runs[previous[-1]:i]):
+                                    findings.append({
+                                        'pattern': 'backtracking',
+                                        'resource': resource,
+                                        'first_access': previous[-1],
+                                        'revisit': i,
+                                        'run_ids': [runs[previous[-1]]['id'], run['id']]
+                                    })
+                            previous.append(i)
+                        else:
+                            resource_access[resource] = [i]
+
+                    return findings
+
+            token_anomaly_detection:
+              description: "Identify runs with abnormal token consumption"
+              code: |
+                import statistics
+
+                def detect_token_anomalies(runs, std_threshold=2.0):
+                    """Flag runs with token usage > std_threshold standard deviations."""
+                    findings = []
+
+                    # Calculate statistics
+                    token_counts = [r['total_tokens'] for r in runs if r['total_tokens']]
+                    if len(token_counts) < 5:
+                        return findings  # Not enough data
+
+                    mean = statistics.mean(token_counts)
+                    std = statistics.stdev(token_counts)
+                    threshold = mean + (std_threshold * std)
+
+                    for run in runs:
+                        if run['total_tokens'] and run['total_tokens'] > threshold:
+                            deviation = (run['total_tokens'] - mean) / std
+                            severity = 'CRITICAL' if deviation > 3 else 'HIGH' if deviation > 2.5 else 'MEDIUM'
+                            findings.append({
+                                'pattern': 'token_anomaly',
+                                'run_id': run['id'],
+                                'run_name': run['name'],
+                                'tokens': run['total_tokens'],
+                                'mean': mean,
+                                'std_deviations': round(deviation, 2),
+                                'severity': severity
+                            })
+
+                    return findings
+
+            rate_limiting:
+              description: "Respect API rate limits when processing many runs"
+              code: |
+                import time
+
+                def fetch_with_rate_limit(service, project_name, total_limit=500, batch_size=50, delay_seconds=1):
+                    """Fetch runs in batches with rate limiting."""
+                    all_runs = []
+                    offset = 0
+
+                    while len(all_runs) < total_limit:
+                        batch = service.list_runs(
+                            project_name=project_name,
+                            limit=min(batch_size, total_limit - len(all_runs))
+                        )
+                        if not batch:
+                            break
+
+                        all_runs.extend(batch)
+                        offset += len(batch)
+
+                        # Rate limit delay
+                        if len(all_runs) < total_limit:
+                            time.sleep(delay_seconds)
+
+                    return all_runs
+
+          anti_patterns:
+            - name: "Loading full inputs/outputs for all traces"
+              problem: "Inputs and outputs can be very large, causing context overflow"
+              solution: "Load inputs/outputs only for specific traces being investigated"
+
+            - name: "Fetching all traces then filtering in memory"
+              problem: "Wastes API calls and memory"
+              solution: "Use LangSmith filter expressions to filter server-side"
+
+            - name: "Ignoring rate limits"
+              problem: "Can get rate-limited or banned"
+              solution: "Add delays between batch requests, use batch_size parameter"
+
+            - name: "Treating all errors equally"
+              problem: "Floods recommendations with low-priority items"
+              solution: "Use severity classification to prioritize findings"
+          ```
+        success_criteria:
+          - "File exists at modules/AgenticGuidance/assets/examples/teacher/langsmith-trace-analysis.yml"
+          - "Contains basic_trace_fetch example with code"
+          - "Contains filtered_error_fetch example using filter builders"
+          - "Contains hierarchical_trace_analysis example"
+          - "Contains backtracking_detection example with code"
+          - "Contains token_anomaly_detection example with code"
+          - "Contains rate_limiting example"
+          - "Contains anti_patterns section with 4 items"
+
+      - id: "td_03_02"
+        name: "Update inputs.yml with example reference"
+        description: |
+          Add reference to the LangSmith example file in agent inputs.
+        status: "completed"
+        dependencies: ["td_03_01"]
+        target_files:
+          - "modules/AgenticGuidance/agents/teacher/teacher-trace-diagnostics/inputs.yml"
+        guidance: |
+          Add to core_inputs section:
+          ```yaml
+          core_inputs:
+            # ... existing entries ...
+
+            - type: file
+              path: "modules/AgenticGuidance/assets/examples/teacher/langsmith-trace-analysis.yml"
+              description: "LangSmith API usage patterns and friction detection examples"
+              required: true
+          ```
+        success_criteria:
+          - "inputs.yml core_inputs includes langsmith-trace-analysis.yml reference"
+
+  # ---------------------------------------------------------------------------
+  # PHASE 4: Validation
+  # ---------------------------------------------------------------------------
+  - name: "Phase 4: Validation"
+    execution: sequential
+    description: |
+      Validate the agent structure and test with sample traces.
+
+    tasks:
+      - id: "td_04_01"
+        name: "Validate agent file structure"
+        description: |
+          Verify all agent files exist and have correct structure.
+        status: "completed"
+        dependencies: ["td_01_04", "td_02_02", "td_03_02"]
+        guidance: |
+          Verify the following files exist:
+          1. modules/AgenticGuidance/agents/teacher/teacher-trace-diagnostics/manifest.yml
+          2. modules/AgenticGuidance/agents/teacher/teacher-trace-diagnostics/process.yml
+          3. modules/AgenticGuidance/agents/teacher/teacher-trace-diagnostics/inputs.yml
+          4. modules/AgenticGuidance/assets/definitions/trace-diagnostics.yml
+          5. modules/AgenticGuidance/assets/examples/teacher/langsmith-trace-analysis.yml
+
+          Verify cross-references:
+          - manifest.yml parent matches teacher category
+          - process.yml inputs reference points to inputs.yml
+          - inputs.yml references trace-diagnostics.yml and langsmith-trace-analysis.yml
+          - teacher/manifest.yml includes teacher-trace-diagnostics in sub_agents
+
+          Verify YAML syntax:
+          - All files parse without errors
+          - Required fields present in each file
+        success_criteria:
+          - "All 5 files exist"
+          - "All files parse as valid YAML"
+          - "Cross-references resolve correctly"
+          - "Teacher manifest includes new agent"
+
+      - id: "td_04_02"
+        name: "Create sample trace analysis test"
+        description: |
+          Create a test scenario using mock or real LangSmith data.
+        status: "completed"
+        dependencies: ["td_04_01"]
+        inputs:
+          - "modules/AgenticLangSmith/tests/test_service.py"
+        target_files:
+          - "modules/AgenticGuidance/agents/teacher/teacher-trace-diagnostics/tests/test_trace_analysis.py"
+        guidance: |
+          Create test file with:
+          1. Mock LangSmith service for unit testing
+          2. Sample trace data representing each friction pattern:
+             - Backtracking: runs with repeated resource access
+             - Error cluster: runs with similar error messages
+             - Path ambiguity: runs with long pauses
+             - Token anomaly: runs with high token counts
+          3. Tests for pattern detection functions
+          4. Tests for severity classification
+          5. Tests for recommendation generation
+
+          Example test structure:
+          ```python
+          import pytest
+          from unittest.mock import Mock, patch
+
+          # Sample trace data for testing
+          SAMPLE_RUNS = [
+              {
+                  'id': 'run-001',
+                  'name': 'agent-execution',
+                  'status': 'success',
+                  'latency': 45.2,
+                  'total_tokens': 5000,
+                  'error': None,
+                  'tags': ['orchestration'],
+              },
+              # ... more samples ...
+          ]
+
+          class TestBacktrackingDetection:
+              def test_detects_repeated_resource_access(self):
+                  # Test with runs that access same resource multiple times
+                  pass
+
+              def test_ignores_legitimate_rereads(self):
+                  # Test that productive changes between reads are not flagged
+                  pass
+
+          class TestErrorClustering:
+              def test_clusters_similar_errors(self):
+                  # Test grouping of runs with similar error messages
+                  pass
+
+          class TestTokenAnomalyDetection:
+              def test_flags_high_token_runs(self):
+                  # Test detection of runs > 2 std dev
+                  pass
+
+          class TestSeverityClassification:
+              def test_critical_for_blocking_errors(self):
+                  pass
+
+              def test_medium_for_inefficiencies(self):
+                  pass
+          ```
+        success_criteria:
+          - "Test file exists at specified path"
+          - "Tests cover all 4 friction pattern types"
+          - "Tests use mock LangSmith service"
+          - "Tests include sample data representing each pattern"
+          - "Tests run without requiring live LangSmith API"
+
+      - id: "td_04_03"
+        name: "Document agent usage in README"
+        description: |
+          Create README documenting how to use the agent.
+        status: "completed"
+        dependencies: ["td_04_01"]
+        target_files:
+          - "modules/AgenticGuidance/agents/teacher/teacher-trace-diagnostics/README.md"
+        guidance: |
+          Create README with sections:
+          1. Purpose: What the agent does
+          2. Prerequisites: LangSmith API key, AgenticLangSmith module
+          3. Usage: How to invoke (via orchestration, standalone)
+          4. Configuration: Environment variables, defaults
+          5. Output: What the diagnostics report contains
+          6. Integration: How it works with teacher-update-guidance
+
+          Keep it concise - reference process.yml for detailed steps.
+        success_criteria:
+          - "README.md exists at agent folder"
+          - "Contains Purpose, Prerequisites, Usage sections"
+          - "References process.yml for detailed workflow"
+          - "Documents LANGSMITH_API_KEY requirement"
+
+# ===========================================================================
+# SUCCESS CRITERIA
+# ===========================================================================
+success_criteria:
+  - "Agent folder exists at modules/AgenticGuidance/agents/teacher/teacher-trace-diagnostics/"
+  - "Agent has manifest.yml, process.yml, inputs.yml following teacher patterns"
+  - "Friction patterns defined: backtracking, error_cluster, path_ambiguity, token_anomaly"
+  - "Each friction pattern has indicators, thresholds, severity mapping"
+  - "LangSmith integration uses existing AgenticLangSmith service"
+  - "Context management strategies documented for large trace volumes"
+  - "Teacher manifest.yml updated with new sub-agent routing"
+  - "Shared definition created at assets/definitions/trace-diagnostics.yml"
+  - "Example file created at assets/examples/teacher/langsmith-trace-analysis.yml"
+  - "Tests exist covering pattern detection logic"

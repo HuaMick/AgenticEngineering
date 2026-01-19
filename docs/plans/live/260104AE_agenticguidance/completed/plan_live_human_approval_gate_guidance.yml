@@ -1,0 +1,72 @@
+# Human Approval Gate Guidance Update Plan
+# Created: 2026-01-19
+# Objective: Clarify that Human Approval Gate is only for open questions
+
+name: "human-approval-gate-guidance-update"
+worktree_path: "/home/code/AgenticEngineering"
+branch: "agenticguidance"
+status: "completed"
+priority: "low"
+completed_at: "2026-01-19"
+
+# ========================================
+# CONTEXT
+# ========================================
+context: |
+  User feedback during plan approval indicated that the Human Approval Gate
+  in orchestration-planning should only trigger when there are open questions
+  that need user input, not for routine plan approvals.
+
+  Current behavior: Present plan and ask for approval/changes/rejection
+  Desired behavior: Only present if there are unresolved questions
+
+  This aligns with the principle that agents should be autonomous when
+  requirements are clear, and only escalate when clarification is needed.
+
+# ========================================
+# PHASES
+# ========================================
+phases:
+  - name: "Teach Phase - Update Human Approval Gate Guidance"
+    description: "Update orchestration-planning process to clarify approval gate behavior"
+    execution: sequential
+    tasks:
+      - id: "teach_001"
+        name: "Update process.mmd Human Approval Gate comments"
+        status: "completed"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+        guidance: |
+          Update the Human Approval Gate subgraph comments (lines 266-291) to clarify:
+
+          1. Add CONDITION check before presenting plan:
+             - If all requirements are clear AND no open questions: Proceed to output
+             - If requirements unclear OR open questions exist: Present for approval
+
+          2. Update the UserDecision logic to include "Auto-approved" path:
+             ```
+             HumanApproval --> CheckOpenQuestions{Open Questions?}
+             CheckOpenQuestions -- "No: Clear" --> MarkApproved
+             CheckOpenQuestions -- "Yes: Questions" --> PresentPlan
+             ```
+
+          3. Add comment explaining the policy:
+             %% POLICY: Human Approval Gate is for CLARIFICATION, not routine sign-off.
+             %% If plan requirements are unambiguous, proceed without approval prompt.
+             %% Only engage user when open questions or decision points exist.
+
+        acceptance_criteria:
+          - "Process.mmd includes conditional check for open questions"
+          - "Comments explain when to engage vs auto-approve"
+          - "Flowchart has path for auto-approval when requirements are clear"
+
+# ========================================
+# SUCCESS CRITERIA
+# ========================================
+success_criteria:
+  - "Human Approval Gate only triggers when clarification needed"
+  - "Process documentation explains the conditional behavior"
+  - "Agents understand when to auto-proceed vs escalate"

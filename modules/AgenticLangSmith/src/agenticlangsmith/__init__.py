@@ -22,6 +22,23 @@ from agenticlangsmith.filters import (
     combine_filters_or,
 )
 
+# Friction analysis
+from agenticlangsmith.friction import (
+    FrictionAnalyzer,
+    FrictionReport,
+    FrictionPattern,
+    FrictionPatternType,
+    Severity,
+)
+
+# Resolution recommendations
+from agenticlangsmith.resolution import (
+    ResolutionRecommender,
+    ResolutionPlan,
+    ResolutionRecommendation,
+    ResolutionType,
+)
+
 __all__ = [
     "__version__",
     # Service
@@ -38,4 +55,15 @@ __all__ = [
     "build_token_filter",
     "combine_filters",
     "combine_filters_or",
+    # Friction analysis
+    "FrictionAnalyzer",
+    "FrictionReport",
+    "FrictionPattern",
+    "FrictionPatternType",
+    "Severity",
+    # Resolution
+    "ResolutionRecommender",
+    "ResolutionPlan",
+    "ResolutionRecommendation",
+    "ResolutionType",
 ]

@@ -1,0 +1,312 @@
+# RLM Pattern Definitions
+# Recursive Language Model patterns for programmatic context decomposition
+# Source: "Recursive Language Models" - Zhang, Kraska, Khattab (MIT CSAIL)
+#
+# SCOPE: Conceptual definitions of RLM patterns, when to use, anti-patterns
+# For implementation guidelines, see: assets/guidelines/rlm-integration.yml
+# For agent loop integration, see: assets/definitions/agent-loops.yml
+
+rlm_definition:
+  concept: |
+    Recursive Language Models (RLM) represent a paradigm shift in handling contexts that exceed
+    model input limits. Rather than relying on lossy summarization or expanded context windows,
+    RLM enables the model to programmatically decompose, filter, and recursively process large
+    contexts through a REPL-like environment. The model writes code to examine context snippets,
+    accumulates findings in variables, and signals completion when the task is fully resolved.
+
+    This approach transforms the model from a passive consumer of context to an active curator
+    that selectively loads only the information needed for each sub-task. The key insight is
+    that most tasks do not require simultaneous access to all context - they can be decomposed
+    into smaller operations that each need only a fraction of the total information.
+
+  key_insight: |
+    Context is stored in an environment (like variables in a REPL) rather than being loaded
+    directly into the model's input. The model writes code to access, filter, and process
+    context programmatically, enabling it to handle contexts orders of magnitude larger
+    than its input window.
+
+  when_appropriate:
+    - "Context exceeds 500 lines or spans 10+ files"
+    - "Task requires cross-referencing multiple large documents"
+    - "Information needed is sparse within a large corpus"
+    - "Summarization would lose critical details"
+    - "Task decomposition is naturally hierarchical"
+
+core_concepts:
+  context_as_environment:
+    definition: |
+      Long prompts and documents are stored as named variables in a REPL environment
+      rather than being passed directly as model input. The model accesses these
+      variables through code execution, loading only what is needed for each step.
+
+    example: |
+      # Instead of loading entire codebase into prompt:
+      store_context("CODEBASE", path="/src/**/*.py")
+
+      # Model writes code to selectively access:
+      signatures = get_context("CODEBASE", filter="def\\s+\\w+\\(")
+      relevant_functions = find_usage("CODEBASE", pattern="database_connect")
+
+    when_to_use:
+      - "Input document exceeds model context window"
+      - "Only portions of a large context are relevant to current step"
+      - "Context needs to be accessed multiple times with different filters"
+      - "Multiple large documents must be cross-referenced"
+
+  programmatic_access:
+    definition: |
+      The model writes code to examine, search, and extract information from stored
+      contexts. This replaces the need to load entire contexts into the model's
+      attention, allowing precise targeting of relevant information.
+
+    patterns:
+      - name: "Filtered extraction"
+        description: "Extract lines matching specific patterns"
+        example: "errors = get_context('LOGS', filter='ERROR|EXCEPTION')"
+
+      - name: "Structural navigation"
+        description: "Navigate document structure (sections, functions, classes)"
+        example: "api_docs = get_yaml_section('SPEC', path='endpoints.user')"
+
+      - name: "Cross-reference search"
+        description: "Find related content across multiple contexts"
+        example: "usages = find_usage('CODEBASE', symbol='UserService')"
+
+    when_to_use:
+      - "Searching for specific patterns in large documents"
+      - "Extracting structured data from unstructured text"
+      - "Following references between documents"
+      - "Building dependency graphs or call hierarchies"
+
+  recursive_decomposition:
+    definition: |
+      Complex tasks are broken into smaller sub-tasks through recursive self-invocation.
+      Each recursion level processes a portion of the context, with results accumulated
+      and combined at higher levels. Recursion depth must be bounded to prevent runaway.
+
+    patterns:
+      - name: "Filter-then-process"
+        description: "Narrow context with filter, then process filtered subset"
+        example: |
+          # Level 0: Filter to relevant files
+          test_files = list_contexts(filter="test_*.py")
+          # Level 1: For each file, extract test functions
+          for file in test_files:
+              tests = get_context(file, filter="def test_")
+              # Level 2: Analyze each test
+              for test in tests:
+                  accumulate("FINDINGS", analyze_test(test))
+
+      - name: "Hierarchical extraction"
+        description: "Process tree structures level by level"
+        example: |
+          # Level 0: Get top-level modules
+          modules = get_yaml_section("SPEC", path="modules")
+          # Level 1: For each module, get components
+          # Level 2: For each component, analyze implementation
+
+      - name: "Map-reduce aggregation"
+        description: "Process chunks independently, then aggregate results"
+        example: |
+          # Map: Process each chunk
+          for chunk in chunk_context("DOCUMENT", size=500):
+              findings = analyze_chunk(chunk)
+              accumulate("RESULTS", findings)
+          # Reduce: Aggregate findings
+          final = synthesize(get_accumulated("RESULTS"))
+
+    when_to_use:
+      - "Task naturally decomposes into independent sub-tasks"
+      - "Context has hierarchical or tree-like structure"
+      - "Results from sub-tasks can be meaningfully aggregated"
+      - "Single-pass processing would exceed context limits"
+
+  variable_management:
+    definition: |
+      Answers and intermediate results accumulate in named buffers. Variables follow
+      hierarchical naming conventions for clarity. Processing completes when the model
+      explicitly signals FINAL(answer) with the accumulated result.
+
+    naming_conventions:
+      - pattern: "CONTEXT_{SOURCE}_{SECTION}"
+        purpose: "Stored input contexts"
+        examples: ["CONTEXT_CODEBASE_TESTS", "CONTEXT_SPEC_API"]
+
+      - pattern: "FILTER_{CRITERIA}"
+        purpose: "Filtered subsets"
+        examples: ["FILTER_ERRORS_ONLY", "FILTER_PUBLIC_METHODS"]
+
+      - pattern: "ACCUMULATOR_{TYPE}"
+        purpose: "Accumulated results"
+        examples: ["ACCUMULATOR_FINDINGS", "ACCUMULATOR_DEPENDENCIES"]
+
+      - pattern: "FINAL_{OUTPUT}"
+        purpose: "Final results ready for output"
+        examples: ["FINAL_ANALYSIS", "FINAL_RECOMMENDATIONS"]
+
+    completion_signaling: |
+      Processing must explicitly signal completion with FINAL(answer).
+      This prevents premature termination and ensures all recursive
+      branches have completed before outputting results.
+
+    when_to_use:
+      - "Multiple processing steps need to share intermediate results"
+      - "Results accumulate across recursive calls"
+      - "Clear separation needed between in-progress and final outputs"
+      - "Audit trail of processing steps is valuable"
+
+search_execution_firewall:
+  definition: |
+    The Search-Execution Firewall (also called the Two-Agent Pattern) separates context
+    curation from task execution. A Curator agent searches, filters, and prepares the
+    minimal relevant context, then hands off to a Specialist agent that executes the
+    actual task. This prevents the specialist from being overwhelmed by irrelevant
+    context and ensures clean separation of concerns.
+
+  pattern:
+    curator_agent:
+      responsibility: "Search, filter, and curate context"
+      outputs: "Minimal relevant context for the task"
+      characteristics:
+        - "Has access to full context environment"
+        - "Writes code to search and filter"
+        - "Does NOT execute the primary task"
+        - "Produces context summary and selected excerpts"
+
+    specialist_agent:
+      responsibility: "Execute task with curated context"
+      inputs: "Only the curated context from curator"
+      characteristics:
+        - "Receives only relevant, filtered context"
+        - "Focuses entirely on task execution"
+        - "Does NOT search or filter"
+        - "Produces task deliverables"
+
+  example: |
+    # Curator phase: Search for relevant code
+    curator_context = store_context("CODEBASE", path="/src/**/*.py")
+    auth_code = find_usage(curator_context, pattern="authenticate")
+    session_code = find_usage(curator_context, pattern="SessionManager")
+    curated = combine(auth_code, session_code)
+
+    # Firewall: Hand off only curated context
+    # Specialist phase: Implement feature using only curated context
+    specialist_input = curated  # NOT the full CODEBASE
+
+  when_to_use:
+    - "Task requires searching large codebase for relevant code"
+    - "Specialist needs focused context without search overhead"
+    - "Clear audit trail needed between search and execution"
+    - "Different expertise needed for curation vs execution"
+
+integration_with_loops:
+  description: |
+    RLM patterns integrate with existing agent loops as enhancement strategies.
+    They do not replace loops but provide additional capabilities for handling
+    large contexts within loop iterations.
+
+  enhancements:
+    test-fix-loop:
+      enhancement: "RLM for analyzing large test outputs"
+      trigger: "Test output exceeds 500 lines"
+      pattern: |
+        Store test output as context, filter for failures and errors,
+        recursively analyze each failure, accumulate fix recommendations.
+
+    exploration-loop:
+      enhancement: "RLM for codebase exploration"
+      trigger: "Exploration spans 10+ files or 1000+ lines"
+      pattern: |
+        Store codebase as context, programmatically extract relevant
+        sections, build understanding through hierarchical exploration.
+
+    planner-loop:
+      enhancement: "RLM for analyzing specifications and requirements"
+      trigger: "Specification documents exceed 500 lines"
+      pattern: |
+        Store specs as context, extract requirements hierarchically,
+        decompose into phases with targeted context loading.
+
+    guidance-self-review-loop:
+      enhancement: "RLM for analyzing agent trajectories"
+      trigger: "Trajectory exceeds 500 actions"
+      pattern: |
+        Store trajectory as context, extract decision points and
+        backtracking patterns, accumulate friction indicators.
+
+  selection_criteria: |
+    Use RLM enhancement when:
+    - Context for a loop iteration exceeds 500 lines
+    - Information needed is sparse within larger context
+    - Task naturally decomposes into sub-operations
+
+    Use standard loop processing when:
+    - Context fits comfortably in model window
+    - Task requires holistic understanding of all context
+    - Decomposition would lose important relationships
+
+anti_patterns:
+  premature_rlm:
+    description: |
+      Using RLM patterns when context easily fits in the model window.
+      RLM adds complexity and latency that is not justified for small contexts.
+    threshold: "Do not use RLM for contexts under 500 lines"
+    signals:
+      - "Context comfortably fits in single prompt"
+      - "No natural decomposition points exist"
+      - "Task requires seeing relationships across entire context"
+    remedy: "Use standard context loading for small, cohesive contexts"
+
+  unbounded_recursion:
+    description: |
+      Recursive decomposition without depth limits, risking infinite loops
+      or exponential cost growth.
+    threshold: "Maximum recursion depth of 5 levels"
+    signals:
+      - "No max_depth parameter in recursive calls"
+      - "Recursion depth determined by data rather than bounded"
+      - "Each level spawns multiple recursive branches"
+    remedy: "Always specify max_depth <= 5, fail gracefully at limit"
+
+  context_soup:
+    description: |
+      Accumulating too many variables without clear naming or cleanup,
+      making it impossible to track what context is active.
+    threshold: "Maximum 10 active context variables"
+    signals:
+      - "Generic variable names (temp1, data, context)"
+      - "Variables created but never used or cleaned up"
+      - "No hierarchical naming convention"
+    remedy: "Use hierarchical naming, clean up after use, limit active variables"
+
+  firewall_breach:
+    description: |
+      Specialist agent accessing context beyond what curator provided,
+      breaking the search-execution separation.
+    signals:
+      - "Specialist makes search/filter calls"
+      - "Specialist accesses original context store"
+      - "Roles blur between curation and execution"
+    remedy: "Strict interface between curator output and specialist input"
+
+  premature_completion:
+    description: |
+      Signaling FINAL(answer) before all recursive branches complete,
+      resulting in incomplete analysis.
+    signals:
+      - "FINAL called inside recursive loop"
+      - "Missing aggregation of recursive results"
+      - "Some branches return without contributing to accumulator"
+    remedy: "FINAL only at top level after all branches complete"
+
+related_definitions:
+  - location: "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+    description: "Agent loop types that RLM can enhance"
+  - location: "modules/AgenticGuidance/assets/definitions/architecture-pattern.yml"
+    description: "Architecture patterns for domains and workflows"
+
+related_guidelines:
+  - location: "modules/AgenticGuidance/assets/guidelines/rlm-integration.yml"
+    description: "Implementation guidelines for RLM patterns"
+  - location: "modules/AgenticGuidance/assets/guidelines/context-minimisation.yml"
+    description: "Context minimisation principles that RLM complements"

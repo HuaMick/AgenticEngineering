@@ -1,0 +1,909 @@
+# RLM Context Accessor Specification
+# Defines the API for programmatic context access in Recursive Language Model patterns.
+#
+# SCOPE: Function signatures, parameters, returns, and usage patterns for RLM context operations.
+# For conceptual definitions, see: assets/definitions/rlm-patterns.yml
+# For integration guidelines, see: assets/guidelines/rlm-integration.yml
+
+accessor_scope:
+  definition: |
+    The RLM Context Accessor provides a programmatic interface for storing, retrieving,
+    filtering, and manipulating context in an environment-like structure. Instead of
+    loading entire documents into the model's input, contexts are stored as named
+    variables that can be accessed through code execution.
+
+  purpose: |
+    Enable models to handle contexts that exceed input window limits by:
+    - Storing large documents as addressable variables
+    - Providing programmatic access for selective loading
+    - Supporting recursive decomposition through filtered extraction
+    - Managing accumulation of intermediate results
+
+  design_principles:
+    - "Lazy loading: Context loaded only when accessed"
+    - "Selective extraction: Filters applied at access time"
+    - "Hierarchical naming: Variables follow CONTEXT_SOURCE_SECTION convention"
+    - "Bounded operations: All recursive calls have depth limits"
+    - "Explicit completion: FINAL() signals processing complete"
+
+# =============================================================================
+# CORE CONTEXT FUNCTIONS
+# =============================================================================
+# Basic operations for storing and retrieving context
+
+core_functions:
+  store_context:
+    signature: "store_context(name: str, content: str | path: str, **options) -> ContextHandle"
+    description: |
+      Store content or file(s) as a named context variable in the environment.
+      Content can be provided directly as a string or loaded from file path(s).
+
+    parameters:
+      name:
+        type: "str"
+        required: true
+        description: "Variable name following CONTEXT_SOURCE_SECTION convention"
+        examples: ["CONTEXT_CODEBASE_TESTS", "CONTEXT_SPEC_API"]
+      content:
+        type: "str"
+        required: false
+        description: "Direct content to store (mutually exclusive with path)"
+      path:
+        type: "str | list[str] | glob"
+        required: false
+        description: "File path(s) or glob pattern to load content from"
+        examples: ["/src/auth.py", "/src/**/*.py", ["file1.py", "file2.py"]]
+      encoding:
+        type: "str"
+        required: false
+        default: "utf-8"
+        description: "Character encoding for file loading"
+      metadata:
+        type: "dict"
+        required: false
+        description: "Additional metadata to attach to context"
+        examples: [{"source": "codebase", "timestamp": "2026-01-19"}]
+
+    returns:
+      type: "ContextHandle"
+      description: "Handle for accessing the stored context"
+      properties:
+        name: "Variable name"
+        line_count: "Total lines in context"
+        char_count: "Total characters"
+        files: "List of source files (if loaded from path)"
+
+    example: |
+      # Store from file glob
+      handle = store_context("CONTEXT_CODEBASE_AUTH", path="/src/auth/**/*.py")
+      print(f"Stored {handle.line_count} lines from {len(handle.files)} files")
+
+      # Store direct content
+      handle = store_context("CONTEXT_SPEC_API", content=spec_document)
+
+    use_cases:
+      - "Loading codebase for analysis"
+      - "Storing specification documents"
+      - "Preparing test outputs for processing"
+      - "Caching intermediate results for later access"
+
+  get_context:
+    signature: "get_context(name: str, filter: str = None, lines: range = None, max_chars: int = None) -> str"
+    description: |
+      Retrieve content from a stored context variable, optionally applying filters.
+      This is the primary mechanism for selective context loading.
+
+    parameters:
+      name:
+        type: "str"
+        required: true
+        description: "Variable name of stored context"
+      filter:
+        type: "str (regex)"
+        required: false
+        description: "Regex pattern to filter lines (returns matching lines only)"
+        examples: ["ERROR|EXCEPTION", "def\\s+test_", "class\\s+\\w+:"]
+      lines:
+        type: "range | tuple"
+        required: false
+        description: "Line range to extract (1-indexed)"
+        examples: ["range(1, 100)", "(50, 150)"]
+      max_chars:
+        type: "int"
+        required: false
+        description: "Maximum characters to return (truncates if exceeded)"
+
+    returns:
+      type: "str"
+      description: "Retrieved content, filtered and/or truncated as specified"
+
+    example: |
+      # Get all error lines from logs
+      errors = get_context("CONTEXT_LOGS", filter="ERROR|EXCEPTION")
+
+      # Get first 100 lines
+      header = get_context("CONTEXT_SPEC", lines=range(1, 101))
+
+      # Get test functions only
+      tests = get_context("CONTEXT_CODEBASE_TESTS", filter="def test_\\w+")
+
+    use_cases:
+      - "Extracting error messages from large logs"
+      - "Finding function definitions in codebase"
+      - "Getting specific sections of documentation"
+      - "Sampling context for initial analysis"
+
+  list_contexts:
+    signature: "list_contexts(filter: str = None) -> list[ContextInfo]"
+    description: |
+      List all stored context variables, optionally filtered by name pattern.
+      Useful for introspection and cleanup.
+
+    parameters:
+      filter:
+        type: "str (regex)"
+        required: false
+        description: "Pattern to match context names"
+        examples: ["CONTEXT_.*", "ACCUMULATOR_.*", "FILTER_.*"]
+
+    returns:
+      type: "list[ContextInfo]"
+      description: "List of context information objects"
+      item_properties:
+        name: "Variable name"
+        line_count: "Total lines"
+        created_at: "Timestamp when stored"
+        last_accessed: "Timestamp of last access"
+
+    example: |
+      # List all contexts
+      all_contexts = list_contexts()
+      print(f"Active contexts: {len(all_contexts)}")
+
+      # List only accumulators
+      accumulators = list_contexts(filter="ACCUMULATOR_.*")
+
+    use_cases:
+      - "Auditing active context usage"
+      - "Finding contexts to clean up"
+      - "Debugging context management issues"
+
+  clear_context:
+    signature: "clear_context(name: str | pattern: str = None) -> int"
+    description: |
+      Remove stored context variable(s) from the environment.
+      Essential for managing the 10-variable limit.
+
+    parameters:
+      name:
+        type: "str"
+        required: false
+        description: "Exact name of context to clear (mutually exclusive with pattern)"
+      pattern:
+        type: "str (regex)"
+        required: false
+        description: "Pattern to match multiple contexts to clear"
+        examples: ["FILTER_.*", "CONTEXT_TEMP_.*"]
+
+    returns:
+      type: "int"
+      description: "Number of contexts cleared"
+
+    example: |
+      # Clear specific context
+      clear_context(name="CONTEXT_TEMP_ANALYSIS")
+
+      # Clear all temporary contexts
+      count = clear_context(pattern=".*_TEMP_.*")
+      print(f"Cleared {count} temporary contexts")
+
+    use_cases:
+      - "Cleaning up after recursive processing"
+      - "Making room for new contexts"
+      - "Resetting environment state"
+
+# =============================================================================
+# CODE ANALYSIS FUNCTIONS
+# =============================================================================
+# Specialized functions for analyzing code contexts
+
+code_analysis_functions:
+  find_usage:
+    signature: "find_usage(context: str, symbol: str, include_context: int = 3) -> list[UsageMatch]"
+    description: |
+      Find all usages of a symbol (function, class, variable) within a code context.
+      Returns matches with surrounding context for understanding.
+
+    parameters:
+      context:
+        type: "str"
+        required: true
+        description: "Name of stored code context to search"
+      symbol:
+        type: "str"
+        required: true
+        description: "Symbol name to find usages of"
+        examples: ["UserService", "authenticate", "DATABASE_URL"]
+      include_context:
+        type: "int"
+        required: false
+        default: 3
+        description: "Lines of context to include before/after each match"
+
+    returns:
+      type: "list[UsageMatch]"
+      description: "List of usage matches with context"
+      item_properties:
+        file: "Source file path"
+        line: "Line number of match"
+        usage_type: "Type of usage (call, definition, import, reference)"
+        context: "Surrounding code lines"
+
+    example: |
+      # Find all usages of UserService
+      usages = find_usage("CONTEXT_CODEBASE", symbol="UserService")
+      for usage in usages:
+          print(f"{usage.file}:{usage.line} - {usage.usage_type}")
+          print(usage.context)
+
+    use_cases:
+      - "Dependency analysis before refactoring"
+      - "Understanding how a function is used"
+      - "Finding all imports of a module"
+      - "Impact analysis for changes"
+
+  get_signature:
+    signature: "get_signature(context: str, name: str, include_docstring: bool = True) -> Signature | None"
+    description: |
+      Extract the signature of a function, class, or method from code context.
+      Optionally includes docstring for context.
+
+    parameters:
+      context:
+        type: "str"
+        required: true
+        description: "Name of stored code context"
+      name:
+        type: "str"
+        required: true
+        description: "Name of function/class/method to extract"
+      include_docstring:
+        type: "bool"
+        required: false
+        default: true
+        description: "Whether to include docstring in result"
+
+    returns:
+      type: "Signature | None"
+      description: "Signature information or None if not found"
+      properties:
+        name: "Function/class name"
+        parameters: "List of parameter definitions"
+        return_type: "Return type annotation if present"
+        docstring: "Docstring if include_docstring=True"
+        file: "Source file path"
+        line: "Line number of definition"
+
+    example: |
+      # Get function signature
+      sig = get_signature("CONTEXT_CODEBASE", name="process_user")
+      if sig:
+          print(f"def {sig.name}({', '.join(sig.parameters)}) -> {sig.return_type}")
+          print(f"  '''{sig.docstring}'''")
+
+    use_cases:
+      - "Level 1 context loading (signatures only)"
+      - "Understanding API without full implementation"
+      - "Documentation generation"
+      - "Interface verification"
+
+  check_file_exists:
+    signature: "check_file_exists(context: str, path: str) -> bool"
+    description: |
+      Check if a specific file path exists within a stored context.
+      Useful for verifying references and dependencies.
+
+    parameters:
+      context:
+        type: "str"
+        required: true
+        description: "Name of stored context (must be file-based)"
+      path:
+        type: "str"
+        required: true
+        description: "File path to check for"
+
+    returns:
+      type: "bool"
+      description: "True if file exists in context"
+
+    example: |
+      # Verify referenced file exists
+      if check_file_exists("CONTEXT_CODEBASE", "src/auth/jwt.py"):
+          jwt_code = get_context("CONTEXT_CODEBASE", filter="file:src/auth/jwt.py")
+
+    use_cases:
+      - "Validating file references in documentation"
+      - "Checking dependencies before analysis"
+      - "Verifying import targets exist"
+
+  extract_imports:
+    signature: "extract_imports(context: str, file: str = None) -> list[Import]"
+    description: |
+      Extract all import statements from code context.
+      Optionally filter to specific file.
+
+    parameters:
+      context:
+        type: "str"
+        required: true
+        description: "Name of stored code context"
+      file:
+        type: "str"
+        required: false
+        description: "Specific file to extract imports from (all files if None)"
+
+    returns:
+      type: "list[Import]"
+      description: "List of import information"
+      item_properties:
+        module: "Module being imported"
+        names: "Specific names imported (for 'from' imports)"
+        alias: "Import alias if present"
+        file: "Source file containing import"
+        line: "Line number"
+
+    example: |
+      # Get all imports
+      imports = extract_imports("CONTEXT_CODEBASE")
+      external = [i for i in imports if not i.module.startswith(".")]
+      print(f"External dependencies: {set(i.module for i in external)}")
+
+    use_cases:
+      - "Dependency graph construction"
+      - "Identifying external dependencies"
+      - "Import optimization analysis"
+      - "Circular dependency detection"
+
+# =============================================================================
+# STRUCTURED CONTENT FUNCTIONS
+# =============================================================================
+# Functions for working with YAML, Markdown, and other structured content
+
+structured_content_functions:
+  parse_yaml:
+    signature: "parse_yaml(context: str, path: str = None) -> dict | list"
+    description: |
+      Parse YAML content from a stored context and return as structured data.
+      Optionally extract a specific path within the YAML structure.
+
+    parameters:
+      context:
+        type: "str"
+        required: true
+        description: "Name of stored context containing YAML"
+      path:
+        type: "str (dot-notation)"
+        required: false
+        description: "Path to specific section (e.g., 'phases.0.tasks')"
+        examples: ["phases", "config.database", "rules.0.conditions"]
+
+    returns:
+      type: "dict | list"
+      description: "Parsed YAML structure (full or at specified path)"
+
+    example: |
+      # Parse full YAML
+      spec = parse_yaml("CONTEXT_SPEC")
+      print(f"Phases: {len(spec['phases'])}")
+
+      # Get specific section
+      tasks = parse_yaml("CONTEXT_PLAN", path="phases.0.tasks")
+      pending = [t for t in tasks if t['status'] == 'pending']
+
+    use_cases:
+      - "Extracting plan structure"
+      - "Parsing configuration files"
+      - "Navigating specification documents"
+
+  get_yaml_section:
+    signature: "get_yaml_section(context: str, path: str, as_yaml: bool = False) -> any"
+    description: |
+      Extract a specific section from YAML content by path.
+      Can return as parsed object or as YAML string.
+
+    parameters:
+      context:
+        type: "str"
+        required: true
+        description: "Name of stored YAML context"
+      path:
+        type: "str (dot-notation)"
+        required: true
+        description: "Path to section using dot notation"
+        examples: ["phases.0", "config.database.host", "rules[0].conditions"]
+      as_yaml:
+        type: "bool"
+        required: false
+        default: false
+        description: "Return as YAML string instead of parsed object"
+
+    returns:
+      type: "any | str"
+      description: "Section content as object or YAML string"
+
+    example: |
+      # Get as object
+      phase = get_yaml_section("CONTEXT_PLAN", path="phases.0")
+      print(f"Phase: {phase['name']}, Tasks: {len(phase['tasks'])}")
+
+      # Get as YAML string for display
+      yaml_str = get_yaml_section("CONTEXT_PLAN", path="phases.0", as_yaml=True)
+      print(yaml_str)
+
+    use_cases:
+      - "Extracting specific phases from plans"
+      - "Getting configuration subsections"
+      - "Preparing context for recursive processing"
+
+  extract_markdown_section:
+    signature: "extract_markdown_section(context: str, heading: str, level: int = None) -> str"
+    description: |
+      Extract a section from Markdown content by heading.
+      Returns content from heading to next heading of same or higher level.
+
+    parameters:
+      context:
+        type: "str"
+        required: true
+        description: "Name of stored Markdown context"
+      heading:
+        type: "str"
+        required: true
+        description: "Heading text to find (without # prefix)"
+        examples: ["Installation", "API Reference", "Error Handling"]
+      level:
+        type: "int"
+        required: false
+        description: "Specific heading level to match (1-6)"
+
+    returns:
+      type: "str"
+      description: "Content from heading to next same-level heading"
+
+    example: |
+      # Extract installation section
+      install = extract_markdown_section("CONTEXT_DOCS", heading="Installation")
+
+      # Extract specific level heading
+      api = extract_markdown_section("CONTEXT_DOCS", heading="API Reference", level=2)
+
+    use_cases:
+      - "Extracting documentation sections"
+      - "Processing README files"
+      - "Navigating large documentation"
+
+  filter_yaml_by_criteria:
+    signature: "filter_yaml_by_criteria(context: str, criteria: dict) -> list"
+    description: |
+      Filter YAML array elements by matching criteria.
+      Useful for finding items matching specific conditions.
+
+    parameters:
+      context:
+        type: "str"
+        required: true
+        description: "Name of stored YAML context"
+      criteria:
+        type: "dict"
+        required: true
+        description: "Key-value pairs that elements must match"
+        examples:
+          - {"status": "pending"}
+          - {"type": "error", "severity": "high"}
+          - {"phase": "build", "status": "completed"}
+
+    returns:
+      type: "list"
+      description: "List of matching elements"
+
+    example: |
+      # Find pending tasks
+      pending = filter_yaml_by_criteria("CONTEXT_PLAN", criteria={"status": "pending"})
+      print(f"Pending tasks: {len(pending)}")
+
+      # Find high-severity errors
+      critical = filter_yaml_by_criteria("CONTEXT_ERRORS",
+                                         criteria={"severity": "high", "resolved": False})
+
+    use_cases:
+      - "Finding tasks by status"
+      - "Filtering log entries"
+      - "Selecting items for processing"
+
+# =============================================================================
+# ACCUMULATOR FUNCTIONS
+# =============================================================================
+# Functions for accumulating results across recursive processing
+
+accumulator_functions:
+  create_accumulator:
+    signature: "create_accumulator(name: str, schema: dict = None) -> Accumulator"
+    description: |
+      Create a named accumulator for collecting results across recursive calls.
+      Optionally specify a schema for validation.
+
+    parameters:
+      name:
+        type: "str"
+        required: true
+        description: "Accumulator name following ACCUMULATOR_TYPE convention"
+        examples: ["ACCUMULATOR_FINDINGS", "ACCUMULATOR_ERRORS", "ACCUMULATOR_DEPENDENCIES"]
+      schema:
+        type: "dict"
+        required: false
+        description: "JSON Schema for validating accumulated items"
+
+    returns:
+      type: "Accumulator"
+      description: "Accumulator handle"
+      properties:
+        name: "Accumulator name"
+        count: "Number of items accumulated"
+        schema: "Validation schema if provided"
+
+    example: |
+      # Create typed accumulator
+      findings = create_accumulator("ACCUMULATOR_FINDINGS", schema={
+          "type": "object",
+          "required": ["file", "line", "issue"],
+          "properties": {
+              "file": {"type": "string"},
+              "line": {"type": "integer"},
+              "issue": {"type": "string"},
+              "severity": {"enum": ["low", "medium", "high", "critical"]}
+          }
+      })
+
+    use_cases:
+      - "Collecting findings from recursive analysis"
+      - "Aggregating errors across files"
+      - "Building dependency lists"
+
+  accumulate:
+    signature: "accumulate(name: str, item: any, dedupe: bool = False) -> int"
+    description: |
+      Add an item to a named accumulator. Optionally deduplicate.
+      Returns current count after addition.
+
+    parameters:
+      name:
+        type: "str"
+        required: true
+        description: "Accumulator name"
+      item:
+        type: "any"
+        required: true
+        description: "Item to accumulate"
+      dedupe:
+        type: "bool"
+        required: false
+        default: false
+        description: "Skip if duplicate already exists"
+
+    returns:
+      type: "int"
+      description: "Current item count after accumulation"
+
+    example: |
+      # Accumulate finding
+      accumulate("ACCUMULATOR_FINDINGS", {
+          "file": "src/auth.py",
+          "line": 42,
+          "issue": "Missing null check",
+          "severity": "medium"
+      })
+
+      # Accumulate with deduplication
+      accumulate("ACCUMULATOR_DEPENDENCIES", "numpy", dedupe=True)
+
+    use_cases:
+      - "Adding findings from each recursive branch"
+      - "Collecting unique dependencies"
+      - "Building result sets"
+
+  get_accumulated:
+    signature: "get_accumulated(name: str, sort_by: str = None, limit: int = None) -> list"
+    description: |
+      Retrieve all accumulated items from a named accumulator.
+      Optionally sort and limit results.
+
+    parameters:
+      name:
+        type: "str"
+        required: true
+        description: "Accumulator name"
+      sort_by:
+        type: "str"
+        required: false
+        description: "Key to sort by (for object items)"
+        examples: ["severity", "line", "timestamp"]
+      limit:
+        type: "int"
+        required: false
+        description: "Maximum items to return"
+
+    returns:
+      type: "list"
+      description: "List of accumulated items"
+
+    example: |
+      # Get all findings sorted by severity
+      findings = get_accumulated("ACCUMULATOR_FINDINGS", sort_by="severity")
+
+      # Get top 10 errors
+      top_errors = get_accumulated("ACCUMULATOR_ERRORS", sort_by="count", limit=10)
+
+    use_cases:
+      - "Retrieving results after recursive processing"
+      - "Getting prioritized findings"
+      - "Preparing final output"
+
+  signal_final:
+    signature: "signal_final(name: str, result: any = None) -> FinalResult"
+    description: |
+      Signal that processing is complete and return final result.
+      This MUST be called at top level after all recursive branches complete.
+
+    parameters:
+      name:
+        type: "str"
+        required: true
+        description: "Name for final result following FINAL_OUTPUT convention"
+        examples: ["FINAL_ANALYSIS", "FINAL_RECOMMENDATIONS", "FINAL_REPORT"]
+      result:
+        type: "any"
+        required: false
+        description: "Final result to return (defaults to all accumulated items)"
+
+    returns:
+      type: "FinalResult"
+      description: "Final result wrapper"
+      properties:
+        name: "Result name"
+        result: "Final result value"
+        processing_summary:
+          contexts_used: "Number of contexts accessed"
+          items_accumulated: "Total items accumulated"
+          recursion_depth: "Maximum recursion depth reached"
+
+    example: |
+      # Signal completion with accumulated findings
+      signal_final("FINAL_ANALYSIS", result={
+          "findings": get_accumulated("ACCUMULATOR_FINDINGS"),
+          "summary": f"Found {len(findings)} issues across {files_analyzed} files",
+          "recommendations": generate_recommendations(findings)
+      })
+
+    use_cases:
+      - "Completing recursive analysis"
+      - "Outputting final report"
+      - "Terminating RLM processing"
+
+    critical_constraint: |
+      ONLY call signal_final at the TOP LEVEL after all recursive branches complete.
+      Calling inside recursive loops causes premature termination.
+
+# =============================================================================
+# USAGE PATTERNS
+# =============================================================================
+# Common patterns for using context accessor functions together
+
+usage_patterns:
+  filter_and_process:
+    description: |
+      Filter large context to relevant subset, then process filtered content.
+      Most common pattern for selective context loading.
+
+    steps:
+      - "Store large context"
+      - "Apply filter to extract relevant lines"
+      - "Process filtered content"
+      - "Accumulate results"
+      - "Clean up temporary contexts"
+
+    example: |
+      # 1. Store test output
+      store_context("CONTEXT_TEST_OUTPUT", path="test_results.log")
+
+      # 2. Filter to failures
+      failures = get_context("CONTEXT_TEST_OUTPUT", filter="FAILED|ERROR")
+
+      # 3. Process each failure
+      for failure in failures.split("\\n\\n"):
+          analysis = analyze_failure(failure)
+          accumulate("ACCUMULATOR_ISSUES", analysis)
+
+      # 4. Generate final report
+      signal_final("FINAL_TEST_REPORT", result={
+          "failures": get_accumulated("ACCUMULATOR_ISSUES"),
+          "total_failures": len(get_accumulated("ACCUMULATOR_ISSUES"))
+      })
+
+    when_to_use:
+      - "Large logs with sparse relevant content"
+      - "Codebases with specific patterns to find"
+      - "Documents with sections matching criteria"
+
+  hierarchical_extraction:
+    description: |
+      Navigate hierarchical structure (YAML, code modules) level by level.
+      Each level filters to relevant items before descending.
+
+    steps:
+      - "Store hierarchical content"
+      - "Extract top-level structure"
+      - "For each relevant top-level item, extract children"
+      - "Recursively process until leaf nodes"
+      - "Aggregate results up the hierarchy"
+
+    example: |
+      # 1. Store plan
+      store_context("CONTEXT_PLAN", path="docs/plans/live/plan.yml")
+
+      # 2. Get phases
+      plan = parse_yaml("CONTEXT_PLAN")
+      for phase in plan['phases']:
+          if phase['status'] == 'pending':
+              # 3. Get tasks in phase
+              for task in phase['tasks']:
+                  if task['status'] == 'pending':
+                      # 4. Analyze task
+                      analysis = analyze_task(task)
+                      accumulate("ACCUMULATOR_TASK_ANALYSIS", analysis)
+
+      # 5. Aggregate
+      signal_final("FINAL_PHASE_ANALYSIS", result={
+          "pending_tasks": get_accumulated("ACCUMULATOR_TASK_ANALYSIS"),
+          "total_pending": len(get_accumulated("ACCUMULATOR_TASK_ANALYSIS"))
+      })
+
+    when_to_use:
+      - "YAML/JSON documents with nested structure"
+      - "Codebases organized by module/class/method"
+      - "Documentation with section hierarchy"
+
+  cross_document_analysis:
+    description: |
+      Analyze relationships across multiple documents by storing each
+      and using cross-reference searches.
+
+    steps:
+      - "Store multiple related contexts"
+      - "Find references from one context to another"
+      - "Follow references to gather related content"
+      - "Analyze relationships"
+      - "Accumulate findings about relationships"
+
+    example: |
+      # 1. Store related contexts
+      store_context("CONTEXT_SPEC", path="spec/api.yml")
+      store_context("CONTEXT_CODE", path="src/**/*.py")
+      store_context("CONTEXT_TESTS", path="tests/**/*.py")
+
+      # 2. For each API endpoint in spec
+      spec = parse_yaml("CONTEXT_SPEC")
+      for endpoint in spec['endpoints']:
+          # 3. Find implementation
+          impl = find_usage("CONTEXT_CODE", symbol=endpoint['handler'])
+
+          # 4. Find tests
+          tests = find_usage("CONTEXT_TESTS", symbol=endpoint['handler'])
+
+          # 5. Analyze coverage
+          accumulate("ACCUMULATOR_COVERAGE", {
+              "endpoint": endpoint['path'],
+              "has_implementation": len(impl) > 0,
+              "has_tests": len(tests) > 0,
+              "test_count": len(tests)
+          })
+
+      # 6. Report
+      signal_final("FINAL_COVERAGE_REPORT", result=get_accumulated("ACCUMULATOR_COVERAGE"))
+
+    when_to_use:
+      - "Spec-to-code verification"
+      - "Test coverage analysis"
+      - "Documentation completeness checking"
+      - "Dependency relationship mapping"
+
+# =============================================================================
+# IMPLEMENTATION NOTES
+# =============================================================================
+# Guidance for implementing context accessor in different environments
+
+implementation_notes:
+  runtime_flexibility:
+    description: |
+      Context accessor functions are conceptual - actual implementation depends
+      on the runtime environment. The specification defines the interface;
+      implementations may vary.
+
+    implementation_approaches:
+      code_generation:
+        description: "Model generates actual code using available tools (grep, file read, etc.)"
+        example: "Use Grep tool with regex pattern to implement get_context with filter"
+
+      mcp_tools:
+        description: "Context accessor as MCP tool server providing these functions"
+        example: "MCP server wraps file operations and provides accessor API"
+
+      repl_environment:
+        description: "Full REPL with context accessor built into language"
+        example: "Python REPL with context accessor module imported"
+
+  error_handling:
+    description: "How to handle errors in context operations"
+
+    patterns:
+      context_not_found:
+        error: "ContextNotFoundError"
+        handling: "Return None or empty, log warning, continue processing"
+        example: "context = get_context('MISSING') or ''"
+
+      filter_no_match:
+        error: "No content matches filter"
+        handling: "Return empty string, do not raise error"
+        example: "matches = get_context('CTX', filter='impossible') # returns ''"
+
+      parse_error:
+        error: "YAMLParseError, MarkdownParseError"
+        handling: "Return None, log error with context, allow caller to handle"
+        example: "data = parse_yaml('MALFORMED') # returns None"
+
+      recursion_limit:
+        error: "RecursionDepthExceeded"
+        handling: "Stop recursion, aggregate partial results, signal with warning"
+        example: "Depth 5 reached - returning partial results"
+
+  performance_considerations:
+    description: "Guidance for efficient context accessor usage"
+
+    recommendations:
+      - name: "Filter early"
+        description: "Apply filters at get_context time, not after retrieval"
+        good: "get_context('CTX', filter='ERROR')"
+        bad: "[line for line in get_context('CTX').split('\\n') if 'ERROR' in line]"
+
+      - name: "Reuse contexts"
+        description: "Store once, access multiple times with different filters"
+        good: "Store context once, then multiple get_context calls with filters"
+        bad: "Store context multiple times for different filters"
+
+      - name: "Clean up promptly"
+        description: "Clear contexts when no longer needed to stay under limit"
+        good: "clear_context('CONTEXT_TEMP') after processing"
+        bad: "Leave all contexts until end"
+
+      - name: "Prefer targeted paths"
+        description: "Store only needed files, not entire codebase"
+        good: "store_context('CTX', path='/src/auth/**/*.py')"
+        bad: "store_context('CTX', path='/**/*')"
+
+# =============================================================================
+# RELATED REFERENCES
+# =============================================================================
+
+related_definitions:
+  - location: "modules/AgenticGuidance/assets/definitions/rlm-patterns.yml"
+    description: "Conceptual definitions of RLM patterns"
+
+  - location: "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+    description: "Loop definitions including rlm-decomposition-loop and rlm-context-refinement-loop"
+
+related_guidelines:
+  - location: "modules/AgenticGuidance/assets/guidelines/rlm-integration.yml"
+    description: "Guidelines for when and how to use RLM patterns"
+
+  - location: "modules/AgenticGuidance/assets/guidelines/context-minimisation.yml"
+    description: "Context minimisation principles that RLM complements"

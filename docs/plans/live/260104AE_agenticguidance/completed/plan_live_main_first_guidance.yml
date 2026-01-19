@@ -1,0 +1,212 @@
+# Main-First Planning Guidance Update Plan
+# Created: 2026-01-19
+# Objective: Update AgenticGuidance documentation to reflect CLI Main-First Planning behavior
+
+name: "main-first-planning-guidance-update"
+worktree_path: "/home/code/AgenticEngineering"
+branch: "agenticguidance"
+status: "completed"
+priority: "high"
+completed_at: "2026-01-19"
+
+# ========================================
+# CONTEXT
+# ========================================
+context: |
+  The `agentic plan init` CLI command has been modified to implement Main-First Planning:
+
+  1. A new `find_main_worktree()` function was added to `modules/AgenticCLI/src/agenticcli/commands/plan.py`
+  2. `cmd_init()` now ALWAYS creates plan folders in the main worktree (at `main_worktree_path / "docs" / "plans" / "live" / plan_folder_name`)
+  3. Feature worktrees are still created for execution
+  4. JSON output now includes `main_worktree` field
+  5. Console output clarifies "(Main-First Planning: plan in main worktree)"
+
+  This plan updates AgenticGuidance documentation so agents understand this new behavior.
+
+# ========================================
+# FRICTION ANALYSIS
+# ========================================
+friction_analysis:
+  summary: |
+    Agents using existing guidance will expect plan folders to be created in the feature
+    worktree (old behavior). The CLI now creates them in the main worktree. Without updated
+    guidance, agents may:
+    - Look for plan folders in the wrong location after running `agentic plan init`
+    - Not understand why `plan_folder` path points to main worktree
+    - Miss the new `main_worktree` field in JSON output
+
+  affected_files:
+    - file: "modules/AgenticGuidance/assets/definitions/cli-commands.yml"
+      issue: "Does not document Main-First Planning behavior or main_worktree JSON field"
+      impact: "Agents will not expect plan folders in main worktree"
+
+    - file: "modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml"
+      issue: "Has Main-First Planning rule but no CLI command reference linking behavior"
+      impact: "Disconnect between policy and implementation"
+
+    - file: "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml"
+      issue: "CLI comment mentions Main-First but does not document new output format"
+      impact: "Agents may miss main_worktree field when parsing JSON output"
+
+    - file: "modules/AgenticGuidance/agents/deploy/deploy-worktree/process.yml"
+      issue: "Still references old behavior where plan folders are created in feature worktree"
+      impact: "Agents using deploy-worktree will have outdated expectations"
+
+# ========================================
+# PHASES
+# ========================================
+phases:
+  - name: "Teach Phase - Guidance Updates"
+    description: "Update guidance files to document Main-First Planning CLI behavior"
+    execution: sequential
+    tasks:
+      # ----------------------------------------
+      # Task 1: Update CLI command documentation
+      # ----------------------------------------
+      - id: "teach_001"
+        name: "Update cli-commands.yml with Main-First Planning behavior"
+        status: "completed"
+        agent: "teacher-update-assets"
+        inputs:
+          - "modules/AgenticGuidance/assets/definitions/cli-commands.yml"
+          - "modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml#Main-First Planning"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/cli-commands.yml"
+        guidance: |
+          Update the `plan.init` command documentation to:
+
+          1. Add `main_first_planning: true` flag to the command spec
+          2. Add note: "MAIN-FIRST: Plan folders are ALWAYS created in the main worktree,
+             even when run from a feature worktree. Feature worktrees are created for execution only."
+          3. Add `main_worktree` to json_output fields:
+             main_worktree: "Absolute path to main worktree where plan folder was created"
+          4. Update description to clarify the two-location model:
+             - Plan folder: always in main worktree's docs/plans/live/
+             - Feature worktree: created (or reused) for execution
+          5. Add example showing the new output format with main_worktree field
+
+        acceptance_criteria:
+          - "main_worktree JSON output field is documented"
+          - "Main-First Planning behavior is explicitly stated"
+          - "Example shows plan_folder path pointing to main worktree"
+          - "Reference to worktree-and-branching.yml#Main-First Planning added"
+
+      # ----------------------------------------
+      # Task 2: Link guideline to CLI implementation
+      # ----------------------------------------
+      - id: "teach_002"
+        name: "Add CLI reference to worktree-and-branching.yml Main-First Planning rule"
+        status: "completed"
+        agent: "teacher-update-assets"
+        inputs:
+          - "modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml"
+          - "modules/AgenticGuidance/assets/definitions/cli-commands.yml#plan.init"
+        target_files:
+          - "modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml"
+        guidance: |
+          Update the Main-First Planning rule to add CLI implementation reference:
+
+          1. Add `implementation` field under the rule:
+             implementation:
+               command: "agentic plan init <branch> --description <desc>"
+               behavior: "Creates plan folder in main worktree, feature worktree for execution"
+               reference: "modules/AgenticGuidance/assets/definitions/cli-commands.yml#plan.init"
+
+          2. Update characteristics to include:
+             - "Use 'agentic plan init' which enforces Main-First behavior programmatically"
+             - "JSON output includes 'main_worktree' field for verification"
+
+        acceptance_criteria:
+          - "CLI command reference added to Main-First Planning rule"
+          - "Implementation section describes the enforced behavior"
+          - "Cross-reference to cli-commands.yml established"
+
+      # ----------------------------------------
+      # Task 3: Update orchestration-planning inputs
+      # ----------------------------------------
+      - id: "teach_003"
+        name: "Update orchestration-planning inputs with Main-First output format"
+        status: "completed"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml"
+          - "modules/AgenticGuidance/assets/definitions/cli-commands.yml#plan.init"
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml"
+        guidance: |
+          Update the CLI commands reference section (lines 276-286) to:
+
+          1. Expand the comment to show the full JSON output format including main_worktree:
+             #   JSON output fields:
+             #   - worktree: Feature worktree path for execution
+             #   - worktree_created: Boolean - true if new worktree created
+             #   - branch: Branch name
+             #   - base: Base branch used
+             #   - plan_folder: Absolute path to plan folder (IN MAIN WORKTREE)
+             #   - plan_folder_name: Generated folder name (YYMMDDXX_description format)
+             #   - main_worktree: Absolute path to main worktree (NEW)
+
+          2. Update the MAIN-FIRST note to clarify:
+             #   IMPORTANT: plan_folder path will be in the MAIN worktree, NOT the feature worktree.
+             #   This is by design - plans are centralized for visibility.
+
+        acceptance_criteria:
+          - "main_worktree JSON field documented in comments"
+          - "plan_folder explicitly noted as being in main worktree"
+          - "Comments clarify this is intentional Main-First behavior"
+
+      # ----------------------------------------
+      # Task 4: Update deploy-worktree process
+      # ----------------------------------------
+      - id: "teach_004"
+        name: "Update deploy-worktree process.yml with Main-First behavior"
+        status: "completed"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/deploy/deploy-worktree/process.yml"
+          - "modules/AgenticGuidance/assets/definitions/cli-commands.yml#plan.init"
+          - "modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml#Main-First Planning"
+        target_files:
+          - "modules/AgenticGuidance/agents/deploy/deploy-worktree/process.yml"
+        guidance: |
+          Update the process to reflect Main-First Planning:
+
+          1. Update the outputs.plan_folder_path description (lines 17-24):
+             - Change path_template from "{worktree_root}/docs/plans/live/..."
+               to "{main_worktree_root}/docs/plans/live/..."
+             - Add note: "MAIN-FIRST: Plan folders are in main worktree, not feature worktree"
+             - Update example to show main worktree path
+
+          2. Update step 3 (lines 53-73) to clarify the two paths:
+             - plan_folder: Returned in main worktree (for centralized visibility)
+             - worktree: Created for feature branch execution
+
+          3. Update step 6 (lines 85-89) to reference the correct location:
+             - "Report plan_folder_path (in main worktree) and worktree_path (feature worktree)
+                to orchestration for downstream use."
+
+        acceptance_criteria:
+          - "path_template updated to reference main_worktree_root"
+          - "Steps clarify the two-location model (plan in main, execution in feature)"
+          - "Example paths show main worktree for plan folder"
+
+# ========================================
+# SUCCESS CRITERIA
+# ========================================
+success_criteria:
+  - "All four target files updated with Main-First Planning documentation"
+  - "Agents reading guidance will expect plan folders in main worktree"
+  - "JSON output field 'main_worktree' is documented"
+  - "Cross-references established between cli-commands.yml and worktree-and-branching.yml"
+  - "No broken references or YAML syntax errors"
+
+# ========================================
+# VALIDATION APPROACH
+# ========================================
+validation:
+  approach: "agent-self-review"
+  description: |
+    After updates, orchestration-planning agent should be able to:
+    1. Read cli-commands.yml and understand plan folders are created in main worktree
+    2. Parse JSON output and find main_worktree field
+    3. Correctly set expectations when switching from main to feature worktree for execution

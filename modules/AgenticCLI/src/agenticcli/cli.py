@@ -495,6 +495,35 @@ def _add_langsmith_parser(subparsers):
         help="End date for statistics (YYYY-MM-DD)",
     )
 
+    # langsmith friction
+    friction_parser = langsmith_subparsers.add_parser(
+        "friction",
+        help="Analyze traces for friction patterns",
+        description="Detect friction patterns like excessive retries, exploration drift, "
+        "missing context, schema violations, and automatable patterns.",
+    )
+    friction_parser.add_argument(
+        "--project", "-p",
+        help="Project name (defaults to CC_LANGSMITH_PROJECT env var)",
+    )
+    friction_parser.add_argument(
+        "--limit", "-l",
+        type=int,
+        default=100,
+        help="Maximum number of runs to analyze (default: 100)",
+    )
+    friction_parser.add_argument(
+        "--lookback-days",
+        type=int,
+        default=7,
+        help="Number of days to look back (default: 7)",
+    )
+    friction_parser.add_argument(
+        "--recommend", "-r",
+        action="store_true",
+        help="Include resolution recommendations in output",
+    )
+
 
 def _add_config_parser(subparsers):
     """Add config subcommand parser."""

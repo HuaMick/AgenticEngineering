@@ -1,0 +1,111 @@
+# YAML Syntax Fix Plan
+# Created: 2026-01-19
+# Objective: Fix pre-existing YAML syntax error in orchestration-planning/inputs.yml
+
+name: "yaml-syntax-fix-orchestration-planning-inputs"
+worktree_path: "/home/code/AgenticEngineering"
+branch: "agenticguidance"
+status: "completed"
+priority: "medium"
+completed_at: "2026-01-19"
+
+# ========================================
+# CONTEXT
+# ========================================
+context: |
+  The file modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml
+  has a pre-existing YAML syntax error where scalar keys and list items are mixed
+  at the same indentation level under the `inputs:` section.
+
+  Error location: Lines 276-306
+  Error type: Block mapping expects <block end>, but found '-'
+
+  The file structure has:
+  - cli_commands_reference: "..." (scalar)
+  - phase_file_strategy: | (scalar)
+  - location: "..." (list item) - INVALID at same level as scalar
+
+  This error prevents the file from being parsed by YAML processors, though
+  agents can still read the comments for guidance.
+
+# ========================================
+# FRICTION ANALYSIS
+# ========================================
+friction_analysis:
+  summary: |
+    The YAML syntax error prevents programmatic parsing of the inputs.yml file.
+    While agents can read the file as text and extract information from comments,
+    any tooling that attempts to parse the file as valid YAML will fail.
+
+  impact:
+    - "YAML validators will reject the file"
+    - "Automated tooling cannot parse the file structure"
+    - "Future maintenance may introduce additional structural issues"
+
+# ========================================
+# PHASES
+# ========================================
+phases:
+  - name: "Teach Phase - YAML Structure Fix"
+    description: "Restructure inputs.yml to have valid YAML syntax"
+    execution: sequential
+    tasks:
+      - id: "fix_001"
+        name: "Restructure inputs.yml with proper YAML structure"
+        status: "completed"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml"
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml"
+        guidance: |
+          Restructure the `inputs:` section to have valid YAML:
+
+          Option A (Recommended): Create separate keys for different input types
+          ```yaml
+          inputs:
+            cli:
+              commands_reference: "..."
+
+            guidelines:
+              - location: "..."
+                description: "..."
+
+            definitions:
+              - location: "..."
+                description: "..."
+
+            examples:
+              - location: "..."
+                description: "..."
+
+            phase_file_strategy: |
+              ...
+          ```
+
+          Option B: Keep flat list but move scalars out
+          ```yaml
+          cli_commands_reference: "..."  # Move outside inputs:
+          phase_file_strategy: |
+            ...
+
+          inputs:  # Now contains only list items
+            - location: "..."
+              description: "..."
+          ```
+
+          Choose the option that best maintains backward compatibility with
+          how agents currently read this file.
+
+        acceptance_criteria:
+          - "File passes python3 yaml.safe_load() validation"
+          - "All existing content is preserved"
+          - "Structure is consistent and maintainable"
+
+# ========================================
+# SUCCESS CRITERIA
+# ========================================
+success_criteria:
+  - "orchestration-planning/inputs.yml passes YAML validation"
+  - "No content is lost during restructuring"
+  - "Agents can still find all referenced guidelines and definitions"

@@ -1,0 +1,193 @@
+process:
+  goal: |
+    Analyze LangSmith traces to identify guidance friction patterns and generate
+    structured recommendations for improving agent paths, fences, and signposts.
+    This agent examines trace structure, timing, and error patterns rather than
+    raw text logs.
+
+  loop_context:
+    participates_in:
+      - "guidance-test-loop"
+    loop_definition: "modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.guidance-test-loop"
+    note: |
+      Operates at meta-level analyzing trace data. Can be invoked after orchestration
+      runs to identify systematic friction patterns across multiple agent executions.
+
+  inputs:
+    - location: "modules/AgenticGuidance/agents/teacher/teacher-trace-diagnostics/inputs.yml"
+      description: "Trace diagnostics configuration and friction pattern definitions"
+
+  outputs:
+    - name: "trace_diagnostics_report"
+      format: "yaml"
+      location: "Returned to orchestrator or written to plan audit folder"
+      schema:
+        analysis_summary:
+          traces_analyzed: "integer"
+          time_range: "string - ISO date range"
+          project_name: "string"
+          friction_patterns_detected: "integer"
+        friction_findings:
+          - id: "string - unique finding ID"
+            pattern_type: "enum(backtracking, error_cluster, path_ambiguity, token_anomaly)"
+            severity: "enum(CRITICAL, HIGH, MEDIUM, LOW)"
+            trace_ids: "array - LangSmith trace IDs exhibiting pattern"
+            description: "string - what was detected"
+            evidence:
+              - trace_id: "string"
+                run_name: "string"
+                indicator: "string - specific observation"
+            affected_guidance:
+              - file: "string - path to guidance file"
+                section: "string - relevant section"
+            recommendation:
+              type: "enum(path_clarity, signpost_addition, fence_strengthening, example_improvement)"
+              proposed_change: "string"
+              rationale: "string"
+        statistics:
+          error_rate: "float - percentage of runs with errors"
+          avg_latency: "float - seconds"
+          total_tokens: "integer"
+          backtracking_rate: "float - percentage of runs with backtracking"
+
+  steps:
+    - |
+      STEP 1: VALIDATE INPUTS AND CONFIGURATION
+
+      1. Load inputs.yml and verify all required inputs are accessible
+      2. Confirm LangSmith API is available (LANGSMITH_API_KEY environment variable)
+      3. Identify target project name from inputs or use default
+      4. Determine analysis scope:
+         - Time range (default: last 24 hours)
+         - Run limit (default: 100 runs, max: 500)
+         - Run type filter (default: all types)
+
+      If LangSmith API is unavailable, STOP and report configuration error.
+
+    - |
+      STEP 2: FETCH AND FILTER TRACES
+
+      Using AgenticLangSmith service:
+      1. Call list_runs() with project_name and limit
+      2. For each top-level run, fetch child runs to build trace hierarchy
+      3. Apply pre-filters to reduce data volume:
+         - Exclude runs shorter than 1 second (likely trivial)
+         - Prioritize runs with errors for detailed analysis
+         - Sample long-running traces for latency patterns
+
+      CONTEXT MANAGEMENT via RLM DECOMPOSITION:
+      This agent uses RLM (Recursive Language Model) patterns for context management.
+      Reference: modules/AgenticGuidance/assets/definitions/rlm-patterns.yml (when implemented)
+
+      RLM Pattern for Trace Analysis:
+      1. STORE CONTEXT: Store trace metadata as environment variables
+         - CONTEXT_TRACES_SUMMARIES: Top-level run summaries (id, name, status, latency, tokens)
+         - CONTEXT_TRACES_ERRORS: Runs with error status
+         - CONTEXT_TRACES_ANOMALIES: Runs flagged for detailed analysis
+
+      2. PROGRAMMATIC ACCESS: Write code to examine and filter
+         - filter_by_error(): Extract error runs from CONTEXT_TRACES_SUMMARIES
+         - filter_by_latency(threshold): Extract high-latency runs
+         - filter_by_tokens(std_dev): Extract token anomalies
+
+      3. RECURSIVE DECOMPOSITION: Process large sets in subsets
+         - If >100 traces: Decompose by time window (1-hour chunks)
+         - If >500 traces: Decompose by run type first, then time
+         - Each subset processed independently, results accumulated
+
+      4. ACCUMULATOR PATTERN: Collect findings progressively
+         - ACCUMULATOR_FRICTION_FINDINGS: List of detected patterns
+         - ACCUMULATOR_STATISTICS: Aggregate metrics
+         - FINAL(trace_diagnostics_report): Signal completion
+
+      Never load full inputs/outputs for all traces simultaneously.
+
+    - |
+      STEP 3: DETECT FRICTION PATTERNS
+
+      Apply pattern detection algorithms defined in inputs.yml:
+
+      A. BACKTRACKING DETECTION
+         - Identify runs where agent revisits previous tool calls
+         - Look for repeated file reads without intervening writes
+         - Detect undo patterns (delete followed by recreate)
+         - Threshold: >2 revisits to same resource = backtracking
+
+      B. ERROR CLUSTERING
+         - Group errors by error message similarity
+         - Identify recurring error types across runs
+         - Track error recovery patterns (retry success rate)
+         - Threshold: >3 similar errors across runs = cluster
+
+      C. PATH AMBIGUITY
+         - Detect hesitation: long pauses between tool calls (>30s)
+         - Identify multiple attempts at same step
+         - Look for tool call sequences that suggest confusion
+         - Threshold: >2 attempts at same logical step = ambiguity
+
+      D. TOKEN CONSUMPTION ANOMALY
+         - Flag traces with token usage >2x median
+         - Identify runs with excessive prompt tokens (bloated context)
+         - Detect runs with minimal completion tokens (truncated outputs)
+         - Threshold: >2 standard deviations from mean = anomaly
+
+    - |
+      STEP 4: MAP FRICTION TO GUIDANCE
+
+      For each detected friction pattern:
+      1. Identify the agent that exhibited the pattern (from trace name/tags)
+      2. Locate the agent's guidance files:
+         - process.yml at modules/AgenticGuidance/agents/<category>/<agent>/
+         - inputs.yml at same location
+         - Referenced definitions and guidelines
+      3. Map the friction type to guidance improvement type:
+         - backtracking -> path_clarity (unclear next steps)
+         - error_cluster -> fence_strengthening (missing guardrails)
+         - path_ambiguity -> signpost_addition (missing examples)
+         - token_anomaly -> context_minimisation (bloated inputs)
+
+    - |
+      STEP 5: GENERATE RECOMMENDATIONS
+
+      For each friction finding:
+      1. Create structured recommendation with:
+         - Unique ID (format: TD-YYYYMMDD-NNN)
+         - Pattern type and severity
+         - Evidence (trace IDs, specific observations)
+         - Affected guidance file and section
+         - Proposed change with rationale
+      2. Prioritize by severity:
+         - CRITICAL: Errors preventing task completion
+         - HIGH: Errors requiring manual recovery
+         - MEDIUM: Inefficiencies (backtracking, high tokens)
+         - LOW: Minor hesitations, style issues
+      3. De-duplicate similar recommendations
+
+    - |
+      STEP 6: OUTPUT DIAGNOSTICS REPORT
+
+      Generate trace_diagnostics_report with:
+      1. analysis_summary: scope, counts, time range
+      2. friction_findings: ordered by severity
+      3. statistics: aggregate metrics for the analyzed traces
+
+      If invoked by orchestrator, return structured output.
+      If invoked standalone, write to plan audit folder.
+
+  guidelines:
+    - |
+      TRACE SAMPLING: Never attempt to load all trace data at once.
+      Use hierarchical sampling: summaries first, details on demand.
+    - |
+      EVIDENCE-BASED: Every recommendation must cite specific trace IDs
+      and observations. Avoid generic suggestions without evidence.
+    - |
+      COMPLEMENTARY ROLE: This agent identifies friction patterns in traces.
+      It does NOT directly modify guidance files - teacher-update-guidance
+      consumes these recommendations to make changes.
+    - |
+      THRESHOLD DISCIPLINE: Use defined thresholds consistently.
+      Do not lower thresholds to find more patterns - maintain signal quality.
+    - |
+      RATE LIMITING: Respect LangSmith API rate limits.
+      Add delays between batch requests if needed.

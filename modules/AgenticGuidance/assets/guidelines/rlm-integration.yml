@@ -1,0 +1,237 @@
+guideline:
+  name: "RLM Integration"
+
+  definition: |
+    Guidelines for integrating Recursive Language Model (RLM) patterns into agent
+    workflows. RLM enables programmatic context decomposition, recursive self-invocation,
+    and environment-based variable storage for handling contexts beyond model limits
+    without lossy summarization.
+
+  justification:
+    - "Handles contexts 10x-100x larger than model input windows"
+    - "No information loss compared to summarization approaches"
+    - "Task-agnostic - model determines optimal decomposition strategy"
+    - "Comparable or lower costs through selective context loading"
+    - "Enables parallel processing of independent context chunks"
+
+  inputs:
+    - location: "modules/AgenticGuidance/assets/definitions/rlm-patterns.yml"
+      description: "Core RLM pattern definitions and concepts"
+    - location: "modules/AgenticGuidance/assets/guidelines/context-minimisation.yml"
+      description: "Context minimisation principles that RLM complements"
+    - location: "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+      description: "Agent loop definitions for RLM enhancement"
+
+  rules:
+    - rule: "Size threshold for RLM activation"
+      description: |
+        Only use RLM patterns when context exceeds 500 lines or spans 10+ files.
+        For smaller contexts, standard loading is simpler and faster.
+      justification: |
+        RLM adds complexity through environment setup, code generation, and
+        recursive coordination. This overhead is only justified when context
+        genuinely exceeds practical limits.
+      characteristics:
+        - "500 lines minimum for single-document contexts"
+        - "10+ files minimum for multi-file contexts"
+        - "1000+ lines strongly favors RLM approach"
+        - "Measure before activating - do not assume size"
+
+    - rule: "Prefer filtering over chunking"
+      description: |
+        When decomposing context, prefer intelligent filtering (extracting relevant
+        portions) over blind chunking (splitting by size). Filtering preserves
+        semantic coherence while chunking may split related content.
+      justification: |
+        Filtering leverages task knowledge to select relevant content, while
+        chunking treats context as undifferentiated text. Filtering typically
+        achieves 10x-100x reduction vs chunking's 2x-5x.
+      characteristics:
+        - "Use pattern matching to extract relevant lines"
+        - "Use structural navigation for hierarchical documents"
+        - "Use dependency analysis for code contexts"
+        - "Reserve chunking for truly unstructured content"
+
+    - rule: "Bound recursion depth to 5"
+      description: |
+        All recursive decomposition must specify a maximum depth of 5 levels.
+        If a task cannot complete within 5 levels, restructure the approach
+        or escalate to human decision.
+      justification: |
+        Unbounded recursion risks exponential cost growth and infinite loops.
+        Five levels provides sufficient depth for most hierarchical tasks
+        while maintaining predictable resource usage.
+      characteristics:
+        - "Always pass max_depth parameter to recursive calls"
+        - "Decrement depth at each level: recurse(task, max_depth-1)"
+        - "Fail gracefully at depth 0 with partial results"
+        - "Log depth at each level for debugging"
+
+    - rule: "Hierarchical variable naming"
+      description: |
+        Use consistent hierarchical naming for context variables:
+        CONTEXT_{SOURCE}_{SECTION}, FILTER_{CRITERIA}, ACCUMULATOR_{TYPE}, FINAL_{OUTPUT}.
+      justification: |
+        Clear naming prevents context confusion, enables cleanup, and provides
+        audit trail. Generic names (temp, data) make it impossible to track
+        what context is active.
+      characteristics:
+        - "Source prefix indicates origin (CODEBASE, SPEC, LOGS)"
+        - "Section suffix indicates subset (TESTS, API, ERRORS)"
+        - "Accumulator names indicate content type (FINDINGS, DEPS)"
+        - "FINAL prefix reserved for completed results"
+
+    - rule: "Signal completion explicitly"
+      description: |
+        Processing must explicitly signal completion with FINAL(answer) only after
+        all recursive branches have completed and results are aggregated.
+      justification: |
+        Premature completion signals result in incomplete analysis. Explicit
+        signaling ensures all branches contribute before output.
+      characteristics:
+        - "FINAL only at top recursion level"
+        - "Verify all accumulators are fully populated"
+        - "Include aggregation/synthesis step before FINAL"
+        - "Never FINAL inside a loop or recursive branch"
+
+    - rule: "Search-Execution Firewall"
+      description: |
+        Separate context curation (search, filter, prepare) from task execution.
+        A Curator phase finds and prepares minimal context, then hands off to
+        a Specialist phase that executes with only the curated context.
+      justification: |
+        Mixing search and execution overloads the specialist with irrelevant
+        context and blurs responsibilities. Clean separation enables focused
+        execution and clear audit trails.
+      characteristics:
+        - "Curator has access to full context environment"
+        - "Specialist receives only curated subset"
+        - "Specialist never searches or filters"
+        - "Clear handoff interface between phases"
+
+  decision_tree:
+    description: |
+      Use this decision tree to determine when RLM is appropriate.
+
+    decision_points:
+      - question: "Does context exceed 500 lines or 10 files?"
+        if_yes: "Continue to next decision point"
+        if_no: "Use standard context loading - RLM overhead not justified"
+
+      - question: "Is the information needed sparse within the context?"
+        if_yes: "RLM with filtering is strongly recommended"
+        if_no: "Continue to next decision point"
+
+      - question: "Does the task naturally decompose into independent sub-tasks?"
+        if_yes: "RLM with recursive decomposition recommended"
+        if_no: "Continue to next decision point"
+
+      - question: "Would summarization lose critical details?"
+        if_yes: "RLM required - summarization not viable"
+        if_no: "Consider summarization as simpler alternative"
+
+      - question: "Is the context hierarchically structured?"
+        if_yes: "RLM with hierarchical extraction recommended"
+        if_no: "RLM with map-reduce chunking if other criteria met"
+
+    quick_reference:
+      always_rlm:
+        - "Context exceeds 2000 lines"
+        - "Spans 20+ files"
+        - "Critical details would be lost to summarization"
+        - "Multiple large documents must be cross-referenced"
+
+      never_rlm:
+        - "Context under 500 lines"
+        - "Task requires holistic view of entire context"
+        - "No natural decomposition exists"
+        - "Real-time response required (RLM adds latency)"
+
+      consider_rlm:
+        - "Context 500-2000 lines"
+        - "Spans 10-20 files"
+        - "Some information is sparse but not extremely so"
+        - "Task partially decomposes"
+
+  anti_patterns:
+    - pattern: "Premature RLM activation"
+      description: "Using RLM for contexts that fit easily in standard prompts"
+      signals:
+        - "Context under 500 lines"
+        - "RLM setup overhead exceeds actual processing time"
+        - "Simple task made complex by unnecessary decomposition"
+      remedy: "Measure context size before deciding; default to standard loading"
+
+    - pattern: "Unbounded recursion"
+      description: "Recursive calls without depth limits"
+      signals:
+        - "No max_depth parameter"
+        - "Depth determined by data structure rather than bounded"
+        - "Exponentially growing call tree"
+      remedy: "Always pass max_depth <= 5; fail gracefully at limit"
+
+    - pattern: "Context soup"
+      description: "Too many poorly-named variables without cleanup"
+      signals:
+        - "Generic names: temp, data, context, result"
+        - "More than 10 active context variables"
+        - "Variables created but never used"
+      remedy: "Hierarchical naming; cleanup after use; limit active variables"
+
+    - pattern: "Firewall breach"
+      description: "Specialist accessing context beyond curator's output"
+      signals:
+        - "Specialist makes search calls"
+        - "Specialist accesses original context store"
+        - "Unclear boundary between curation and execution"
+      remedy: "Strict interface; specialist receives only curated subset"
+
+    - pattern: "Premature completion"
+      description: "Signaling FINAL before all branches complete"
+      signals:
+        - "FINAL inside loop or recursive call"
+        - "Missing aggregation step"
+        - "Incomplete accumulator contents"
+      remedy: "FINAL only at top level after full aggregation"
+
+  integration_examples:
+    test_output_analysis:
+      scenario: "Analyzing 5000 lines of test output for failures"
+      approach: |
+        1. Store test output: store_context("TEST_OUTPUT", output)
+        2. Filter to failures: failures = get_context("TEST_OUTPUT", filter="FAIL|ERROR")
+        3. For each failure type, extract details recursively
+        4. Accumulate findings with severity classification
+        5. FINAL(prioritized_failure_report)
+
+    codebase_exploration:
+      scenario: "Understanding authentication flow across 50 files"
+      approach: |
+        1. Store codebase: store_context("CODEBASE", path="/src/**/*.py")
+        2. Find auth entry points: auth_files = find_usage("CODEBASE", "authenticate")
+        3. For each entry point, trace call graph (max_depth=3)
+        4. Accumulate flow documentation
+        5. FINAL(authentication_flow_map)
+
+    specification_analysis:
+      scenario: "Extracting requirements from 2000-line spec document"
+      approach: |
+        1. Store spec: store_context("SPEC", document)
+        2. Extract section hierarchy: sections = get_yaml_section("SPEC", "requirements")
+        3. For each section, extract individual requirements
+        4. Cross-reference with existing implementation
+        5. FINAL(gap_analysis)
+
+  related_guidelines:
+    - location: "modules/AgenticGuidance/assets/guidelines/context-minimisation.yml"
+      description: "Context minimisation principles - RLM is complementary approach"
+    - location: "modules/AgenticGuidance/assets/guidelines/iteration.yml"
+      description: "Iteration guidelines for bounded recursion"
+    - location: "modules/AgenticGuidance/assets/guidelines/safety.yml"
+      description: "Safety guardrails applicable to RLM operations"
+
+  related_definitions:
+    - location: "modules/AgenticGuidance/assets/definitions/rlm-patterns.yml"
+      description: "Core RLM pattern definitions"
+    - location: "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+      description: "Agent loops that RLM can enhance"

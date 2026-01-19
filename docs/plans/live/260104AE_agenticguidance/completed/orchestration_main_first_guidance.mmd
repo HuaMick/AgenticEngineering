@@ -1,0 +1,85 @@
+flowchart LR
+    %% ========================================
+    %% ORCHESTRATION: MAIN-FIRST PLANNING GUIDANCE UPDATE
+    %% ========================================
+    %% GOAL: Execute guidance updates to document Main-First Planning CLI behavior.
+    %% PROFILE: Orchestration-Teach
+    %% INPUT_PATH: modules/AgenticGuidance/agents/orchestration/orchestration-executor/inputs.yml
+    %%
+    %% PLAN_FILE: docs/plans/live/260104AE_agenticguidance/live/plan_live_main_first_guidance.yml
+    %% GUIDELINE: modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml#Main-First Planning
+    %%
+    %% AGENT_ROUTING: TeachPhase -> teacher-update-assets, TeachPhase -> teacher-update-guidance, Validation -> agent-self-review
+    %% STATUS: TeachPhase=completed, Validation=completed
+    %%
+    %% TASKS:
+    %% - teach_001: Update cli-commands.yml with Main-First Planning behavior (teacher-update-assets)
+    %% - teach_002: Add CLI reference to worktree-and-branching.yml (teacher-update-assets)
+    %% - teach_003: Update orchestration-planning inputs with Main-First output format (teacher-update-guidance)
+    %% - teach_004: Update deploy-worktree process.yml with Main-First behavior (teacher-update-guidance)
+
+    Start((Start)) --> LoadPlan[Load Plan from plan_live_main_first_guidance.yml]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    LoadPlan --> ValidatePlan{Plan Valid?}
+    ValidatePlan -- "No: Invalid" --> AskUser((Ask User for Clarification))
+    ValidatePlan -- "Yes: Valid" --> EnterTeachPhase[Enter Teach Phase]
+
+    %% ========================================
+    %% TEACH PHASE
+    %% ========================================
+    %% Sequential execution of 4 guidance update tasks.
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.teacher-loop
+    %% MAX_ITERATIONS: 3 (per task)
+    %% ESCALATION: If task cannot be completed, Ask User for guidance
+
+    subgraph TeachPhase_SG ["Teach Phase Subgraph"]
+        EnterTeachPhase --> SpawnTeacherTask1[Spawn teacher-update-assets: teach_001]
+        SpawnTeacherTask1 --> Task1Complete{Task 001 Complete?}
+        Task1Complete -- "No: Error" --> AskUser
+        Task1Complete -- "Yes" --> SpawnTeacherTask2[Spawn teacher-update-assets: teach_002]
+
+        SpawnTeacherTask2 --> Task2Complete{Task 002 Complete?}
+        Task2Complete -- "No: Error" --> AskUser
+        Task2Complete -- "Yes" --> SpawnTeacherTask3[Spawn teacher-update-guidance: teach_003]
+
+        SpawnTeacherTask3 --> Task3Complete{Task 003 Complete?}
+        Task3Complete -- "No: Error" --> AskUser
+        Task3Complete -- "Yes" --> SpawnTeacherTask4[Spawn teacher-update-guidance: teach_004]
+
+        SpawnTeacherTask4 --> Task4Complete{Task 004 Complete?}
+        Task4Complete -- "No: Error" --> AskUser
+        Task4Complete -- "Yes" --> TeachPhaseComplete[Teach Phase Complete]
+    end
+
+    %% ========================================
+    %% VALIDATION PHASE
+    %% ========================================
+    %% Agent self-review validates that guidance reads correctly.
+    %% VALIDATION_TYPE: agent-self-review (lightweight)
+
+    subgraph Validation_SG ["Validation Subgraph"]
+        TeachPhaseComplete --> SpawnSelfReview[Spawn agent-self-review Validation]
+        SpawnSelfReview --> ValidationResult{Validation Passed?}
+        ValidationResult -- "No: Issues Found" --> CaptureIssues[Capture Issues]
+        CaptureIssues -.->|Return to Fix| EnterTeachPhase
+        ValidationResult -- "Yes: Passed" --> ValidationComplete[Validation Complete]
+    end
+
+    %% ========================================
+    %% OUTPUT PHASE
+    %% ========================================
+    subgraph Output_SG ["Output Subgraph"]
+        ValidationComplete --> ReportResults[Report Updated Files]
+        ReportResults --> MarkPlanComplete[Mark Plan as Completed]
+    end
+
+    MarkPlanComplete --> End((End: Guidance Updated))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef dashedstroke stroke-dasharray: 5 5;
+    linkStyle 16 stroke:#888,stroke-width:2px,stroke-dasharray: 5 5;

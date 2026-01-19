@@ -1,0 +1,42 @@
+entrypoint:
+  name: "_analyze_friction"
+  goal: "Analyze LangSmith traces for friction patterns and recommend resolutions."
+  description: |
+    On-demand friction analysis triggered by user reference in context.
+    Queries LangSmith traces, detects friction patterns, and presents
+    resolution recommendations for user decision.
+
+  # Orchestration agent that controls the analysis workflow
+  # Note: The current session takes on the role of the orchestration agent.
+  # Analysis is read-only - no automatic changes made.
+  orchestration: "modules/AgenticGuidance/agents/orchestration/orchestration-friction/process.mmd"
+
+  # Inputs are loaded by the orchestration agent from:
+  # modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml
+
+  steps:
+    - "Load orchestration process from modules/AgenticGuidance/agents/orchestration/orchestration-friction/process.mmd"
+    - "Query LangSmith traces for specified project/timeframe"
+    - "Run friction pattern detection (FP-001 through FP-006)"
+    - "Classify patterns by severity (high/medium/low based on frequency/impact)"
+    - "Generate resolution recommendations (GUIDANCE_UPDATE, CLI_OFFLOAD, ASSET_UPDATE)"
+    - "Present findings to user with actionable next steps"
+    - "Output: Friction report for user decision"
+
+  input:
+    - "project_name: LangSmith project (default: from CC_LANGSMITH_PROJECT env var)"
+    - "lookback_days: Days to analyze (default: 7)"
+    - "limit: Max runs to analyze (default: 100)"
+
+  output:
+    - "Friction report with detected patterns and severity"
+    - "Resolution recommendations with evidence from traces"
+    - "Suggested next steps for user approval"
+
+  # Friction patterns detected (reference: plan_live_trace_friction_detection.yml)
+  # FP-001: Excessive Retries - Agent retries same operation multiple times
+  # FP-002: Exploration Drift - Agent explores extensively before finding target
+  # FP-003: Missing Context - Agent asks for info that should be in guidance
+  # FP-004: Schema Violations - Output doesn't match expected schema
+  # FP-005: Convention Violations - Doesn't follow naming/structure conventions
+  # FP-006: Automatable Patterns - Same multi-step sequence repeated

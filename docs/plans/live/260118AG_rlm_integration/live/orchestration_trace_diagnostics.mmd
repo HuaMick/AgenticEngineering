@@ -1,0 +1,125 @@
+flowchart LR
+    %% GOAL: Orchestrate teacher-trace-diagnostics agent creation through 4 phases
+    %% PROFILE: Orchestration-Guidance
+    %% PLAN_FILE: plan_live_teach_trace_diagnostics.yml
+    %% PHASES: phase_01_structure, phase_02_definitions, phase_03_integration, phase_04_validation
+    %% AGENT_ROUTING: phase_01 -> teacher, phase_02 -> teacher, phase_03 -> teacher, phase_04 -> test
+    %% FEEDBACK_TRIGGERS: YAML_ERROR -> fix, VALIDATION_FAILURE -> re-plan, MISSING_INPUT -> escalate
+    %% STATUS: phase_01=pending, phase_02=pending, phase_03=pending, phase_04=pending
+    %% LOOP_DEFINITION: planner-loop for planning, guidance-test-loop for validation
+
+    Start((Start)) --> LoadPlan[Load plan_live_teach_trace_diagnostics.yml]
+
+    %% ========================================
+    %% PHASE 1: Agent Structure
+    %% ========================================
+    %% Create foundational agent files: manifest.yml, process.yml, inputs.yml
+    %% Then update teacher/manifest.yml with routing
+    LoadPlan --> Phase1[Enter Phase 1: Agent Structure]
+
+    subgraph Phase1_SG ["Phase 1: Agent Structure (4 tasks)"]
+        Phase1 --> SpawnTeacher1a[Spawn teacher-update-guidance: td_01_01 manifest]
+        SpawnTeacher1a --> ValidateManifest{Manifest Valid?}
+        ValidateManifest -- "No: YAML Error" --> FixManifest[Fix YAML Syntax]
+        FixManifest --> ValidateManifest
+        ValidateManifest -- "Yes" --> SpawnTeacher1b[Spawn teacher: td_01_02 process.yml]
+        ValidateManifest -- "Yes" --> SpawnTeacher1c[Spawn teacher: td_01_03 inputs.yml]
+        ValidateManifest -- "Yes" --> SpawnTeacher1d[Spawn teacher: td_01_04 update routing]
+        SpawnTeacher1b --> Complete1b[td_01_02 Complete]
+        SpawnTeacher1c --> Complete1c[td_01_03 Complete]
+        SpawnTeacher1d --> Complete1d[td_01_04 Complete]
+        Complete1b --> ValidatePhase1{Phase 1 Valid?}
+        Complete1c --> ValidatePhase1
+        Complete1d --> ValidatePhase1
+        ValidatePhase1 -- "No: Validation Failure" --> EscalatePhase1((Escalate: Structure Error))
+        ValidatePhase1 -- "Yes" --> Phase1Complete[Phase 1 Complete]
+    end
+
+    %% ========================================
+    %% PHASE 2: Trace Analysis Definitions
+    %% ========================================
+    %% Create shared trace-diagnostics.yml definition
+    %% Update inputs.yml to reference shared definition
+    Phase1Complete --> Phase2[Enter Phase 2: Trace Definitions]
+
+    subgraph Phase2_SG ["Phase 2: Trace Analysis Definitions (2 tasks)"]
+        Phase2 --> SpawnTeacher2a[Spawn teacher-update-assets: td_02_01 trace-diagnostics.yml]
+        SpawnTeacher2a --> ValidateDef{Definition Valid?}
+        ValidateDef -- "No: YAML Error" --> FixDef[Fix YAML Syntax]
+        FixDef --> ValidateDef
+        ValidateDef -- "Yes" --> SpawnTeacher2b[Spawn teacher: td_02_02 update inputs reference]
+        SpawnTeacher2b --> ValidatePhase2{Phase 2 Valid?}
+        ValidatePhase2 -- "No" --> FixPhase2[Fix References]
+        FixPhase2 --> SpawnTeacher2b
+        ValidatePhase2 -- "Yes" --> Phase2Complete[Phase 2 Complete]
+    end
+
+    %% ========================================
+    %% PHASE 3: LangSmith Integration Patterns
+    %% ========================================
+    %% Create example file with API patterns
+    %% Update inputs.yml to reference example
+    Phase2Complete --> Phase3[Enter Phase 3: LangSmith Integration]
+
+    subgraph Phase3_SG ["Phase 3: LangSmith Integration (2 tasks)"]
+        Phase3 --> SpawnTeacher3a[Spawn teacher: td_03_01 langsmith-trace-analysis.yml]
+        SpawnTeacher3a --> ValidateExample{Example Valid?}
+        ValidateExample -- "No: YAML Error" --> FixExample[Fix YAML Syntax]
+        FixExample --> ValidateExample
+        ValidateExample -- "Yes" --> SpawnTeacher3b[Spawn teacher: td_03_02 update inputs reference]
+        SpawnTeacher3b --> ValidatePhase3{Phase 3 Valid?}
+        ValidatePhase3 -- "No" --> FixPhase3[Fix References]
+        FixPhase3 --> SpawnTeacher3b
+        ValidatePhase3 -- "Yes" --> Phase3Complete[Phase 3 Complete]
+    end
+
+    %% ========================================
+    %% PHASE 4: Validation
+    %% ========================================
+    %% Validate structure, create tests, document usage
+    Phase3Complete --> Phase4[Enter Phase 4: Validation]
+
+    subgraph Phase4_SG ["Phase 4: Validation (3 tasks)"]
+        Phase4 --> SpawnTest4a[Spawn test-guidance-simulator: td_04_01 validate structure]
+        SpawnTest4a --> StructureValid{Structure Valid?}
+        StructureValid -- "No: Cross-Reference Error" --> ReturnPhase1((Return to Phase 1))
+        StructureValid -- "Yes" --> SpawnTest4b[Spawn teacher: td_04_02 create tests]
+        StructureValid -- "Yes" --> SpawnTeacher4c[Spawn teacher: td_04_03 create README]
+        SpawnTest4b --> Complete4b[td_04_02 Complete]
+        SpawnTeacher4c --> Complete4c[td_04_03 Complete]
+        Complete4b --> FinalValidation{All Validation Passed?}
+        Complete4c --> FinalValidation
+        FinalValidation -- "No" --> FixValidation[Fix Identified Issues]
+        FixValidation --> SpawnTest4a
+        FinalValidation -- "Yes" --> Phase4Complete[Phase 4 Complete]
+    end
+
+    %% ========================================
+    %% COMPLETION
+    %% ========================================
+    Phase4Complete --> EndValidation[Final Verification]
+
+    subgraph Completion_SG ["Completion Gate"]
+        EndValidation --> VerifyFiles[Verify All 7 Target Files Exist]
+        VerifyFiles --> VerifyCrossRefs[Verify Cross-References Resolve]
+        VerifyCrossRefs --> VerifyTests[Verify Tests Pass]
+        VerifyTests --> CompletionDecision{All Checks Pass?}
+        CompletionDecision -- "No" --> EscalateCompletion((Escalate: Completion Failed))
+        CompletionDecision -- "Yes" --> MarkComplete[Mark Plan Completed]
+    end
+
+    MarkComplete --> End((End: Agent Created))
+
+    %% ========================================
+    %% RETURN PATHS (dotted)
+    %% ========================================
+    ReturnPhase1 -.-> Phase1
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef phase fill:#e1f5fe,stroke:#01579b;
+    classDef validation fill:#fff3e0,stroke:#e65100;
+    classDef completion fill:#e8f5e9,stroke:#2e7d32;
+    class Phase1_SG,Phase2_SG,Phase3_SG,Phase4_SG phase;
+    class Completion_SG completion;

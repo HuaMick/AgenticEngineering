@@ -12,8 +12,9 @@ This plan implements a policy where:
 ## Plan Status
 - [x] Phase 1: Audit and Analysis (Completed 2026-01-19)
 - [x] Phase 2: Policy and Guidance Update (Completed 2026-01-19)
-- [ ] Phase 3: CLI Locality Decoupling (Requires separate build plan)
+- [ ] Phase 3: CLI Locality Decoupling (Requires separate build plan - see 260119CL_cli_main_first_planning)
 - [x] Phase 4: Verification (Completed 2026-01-19)
+- [x] Phase 5: Audit and Cleanup (Completed 2026-01-19)
 
 ## Execution Summary
 
@@ -46,9 +47,16 @@ Updated the following files with Main-First Planning policy:
 3. **Main-First Pattern**: Plans created in main, executed in worktrees
 
 ## Next Steps
-1. Create build plan for CLI locality decoupling (`plan_live_build.yml`)
+1. Execute CLI build plan (260119CL_cli_main_first_planning)
 2. Update `agentic plan init` to support main-worktree creation
 3. Consider `--main` flag or auto-detection
+
+## Final Audit Summary (2026-01-19)
+- All 4 target files pass Main-First Planning consistency check
+- No contradictory guidance found across files
+- Cross-references between files are valid
+- planner-guidance agent files contain no orphaned worktree-local planning references
+- All teach and test phases marked complete with verification evidence
 
 ## Key Files
 - `live/plan_live_teach.yml`: Detailed remediation steps
