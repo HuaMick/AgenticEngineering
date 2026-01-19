@@ -75,6 +75,47 @@ def find_plan_folder(path: str | None = None) -> Path:
     sys.exit(1)
 
 
+def find_main_worktree(repo_root: Path) -> Path | None:
+    """Find the main worktree path (branch main or master).
+
+    Main-First Planning: Plans should always be created in the main worktree
+    for visibility and traceability.
+
+    Args:
+        repo_root: Path to any worktree in the repository.
+
+    Returns:
+        Path to main worktree, or None if not found.
+    """
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ["git", "worktree", "list", "--porcelain"],
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=repo_root,
+        )
+        lines = result.stdout.strip().split("\n")
+        i = 0
+        while i < len(lines):
+            if lines[i].startswith("worktree "):
+                wt_path = lines[i].split(" ", 1)[1]
+                for j in range(i + 1, min(i + 5, len(lines))):
+                    if lines[j].startswith("branch "):
+                        wt_branch = lines[j].split(" ", 1)[1].replace("refs/heads/", "")
+                        if wt_branch in ("main", "master"):
+                            return Path(wt_path)
+                        break
+                    elif lines[j].startswith("worktree "):
+                        break
+            i += 1
+    except subprocess.CalledProcessError:
+        pass
+    return None
+
+
 def cmd_init(args, ctx=None):
     """Initialize worktree and plan folder with proper naming convention.
 
@@ -123,6 +164,12 @@ def cmd_init(args, ctx=None):
         sys.exit(1)
 
     repo_name = repo_root.name.split("-")[0] if "-" in repo_root.name else repo_root.name
+
+    # Main-First Planning: Always create plans in main worktree
+    main_worktree_path = find_main_worktree(repo_root)
+    if main_worktree_path is None:
+        # Fallback: use repo_root if main worktree detection fails
+        main_worktree_path = repo_root
 
     # Calculate expected worktree path
     worktree_path = repo_root.parent / f"{repo_name}-{branch}"
@@ -189,8 +236,8 @@ def cmd_init(args, ctx=None):
         print_error(f"Generated name '{plan_folder_name}' is invalid: {error}")
         sys.exit(3)
 
-    # Create plan folder path
-    plan_path = worktree_path / "docs" / "plans" / "live" / plan_folder_name
+    # Main-First Planning: Plan goes in main worktree, execution in feature worktree
+    plan_path = main_worktree_path / "docs" / "plans" / "live" / plan_folder_name
 
     # Check if folder already exists
     if plan_path.exists():
@@ -209,12 +256,14 @@ def cmd_init(args, ctx=None):
             "base": base,
             "plan_folder": str(plan_path),
             "plan_folder_name": plan_folder_name,
+            "main_worktree": str(main_worktree_path),
         })
     else:
         console.print(f"  [green]Created plan folder[/green] at {plan_path}")
+        console.print("  [dim](Main-First Planning: plan in main worktree)[/dim]")
         console.print()
         print_success(f"Plan initialized: {plan_folder_name}")
-        console.print(f"[dim]Worktree:[/dim] {worktree_path}")
+        console.print(f"[dim]Execution worktree:[/dim] {worktree_path}")
         console.print(f"[dim]Plan folder:[/dim] {plan_path}")
 
     sys.exit(0)
