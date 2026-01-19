@@ -28,6 +28,7 @@ Global Commands (work from any directory):
   config (cfg)    Configuration and preferences management
   update          Reinstall AgenticCLI from source
   rebuild         Full rebuild and reinstall
+  langsmith (ls)  Query LangSmith traces and projects
 
 Project Commands (require .git or .agenticcli.yml):
   worktree (wt)   Manage git worktrees with planning folder integration
@@ -111,6 +112,9 @@ Examples:
 
     # Environment management
     _add_env_parser(subparsers)
+
+    # LangSmith integration
+    _add_langsmith_parser(subparsers)
 
     return parser
 
@@ -852,6 +856,86 @@ def _add_env_parser(subparsers):
     )
 
 
+def _add_langsmith_parser(subparsers):
+    """Add langsmith subcommand parser."""
+    langsmith_parser = subparsers.add_parser(
+        "langsmith",
+        aliases=["ls"],
+        help="Query LangSmith traces and projects",
+        description="Query and analyze LangSmith traces for agent introspection and debugging.",
+    )
+    langsmith_subparsers = langsmith_parser.add_subparsers(
+        dest="langsmith_command", help="LangSmith commands"
+    )
+
+    # langsmith runs
+    runs_parser = langsmith_subparsers.add_parser(
+        "runs",
+        help="List recent runs",
+        description="Query and display recent runs with optional filtering.",
+    )
+    runs_parser.add_argument(
+        "--project", "-p",
+        help="Filter by project name",
+    )
+    runs_parser.add_argument(
+        "--limit", "-l",
+        type=int,
+        default=20,
+        help="Maximum number of runs to return (default: 20)",
+    )
+    runs_parser.add_argument(
+        "--type", "-t",
+        choices=["llm", "chain", "tool", "retriever"],
+        help="Filter by run type",
+    )
+    runs_parser.add_argument(
+        "--error", "-e",
+        action="store_true",
+        help="Show only runs with errors",
+    )
+
+    # langsmith run
+    run_parser = langsmith_subparsers.add_parser(
+        "run",
+        help="Show details for a specific run",
+        description="Display detailed information for a single run by ID.",
+    )
+    run_parser.add_argument(
+        "run_id",
+        help="Run ID (UUID) to display",
+    )
+    run_parser.add_argument(
+        "--url", "-u",
+        action="store_true",
+        help="Generate shareable URL for the run",
+    )
+
+    # langsmith projects
+    projects_parser = langsmith_subparsers.add_parser(
+        "projects",
+        help="List all projects",
+        description="Display all projects in the LangSmith workspace.",
+    )
+    projects_parser.add_argument(
+        "--detail", "-d",
+        action="store_true",
+        help="Show additional details (created date, description)",
+    )
+
+    # langsmith stats
+    stats_parser = langsmith_subparsers.add_parser(
+        "stats",
+        help="Show project statistics",
+        description="Display aggregated usage statistics for a project.",
+    )
+    stats_parser.add_argument(
+        "--project", "-p",
+        required=True,
+        help="Project name to get stats for",
+    )
+
+
 # Command categories for project requirement checking
 # Includes aliases for each command
 GLOBAL_COMMANDS = {
@@ -866,6 +950,8 @@ GLOBAL_COMMANDS = {
     "health",
     "state",
     "env",
+    "langsmith",
+    "ls",  # alias for langsmith
 }
 PROJECT_COMMANDS = {
     "worktree",
@@ -998,6 +1084,10 @@ def run_cli():
         from agenticcli.commands import env
 
         env.handle(args, ctx=ctx)
+    elif args.command in ("langsmith", "ls"):
+        from agenticcli.commands import langsmith
+
+        langsmith.handle(args, ctx=ctx)
     else:
         parser.print_help()
         sys.exit(1)
