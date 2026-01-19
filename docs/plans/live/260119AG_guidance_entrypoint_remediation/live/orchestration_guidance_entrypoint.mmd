@@ -1,0 +1,157 @@
+flowchart LR
+    %% GOAL: Execute Main-First Planning guidance remediation through teach, test, and cleanup phases.
+    %% PROFILE: Orchestration-Guidance-Entrypoint-Remediation
+    %% GUIDELINE: Main-First Planning - plans created in main worktree for visibility
+    %% GUIDELINE: modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml
+    %% INPUT_PATH: docs/plans/live/260119AG_guidance_entrypoint_remediation/
+    %%
+    %% PHASES: Audit -> Remediation -> Test -> AuditClean
+    %% AGENT_ROUTING: Audit -> explore, Remediation -> teacher-update-guidance, BlindTest -> test-guidance-simulator, IntegrationTest -> test-runner, FinalAudit -> test-audit, Cleanup -> build-python
+    %% STATUS: Audit=completed, Remediation=completed, BlindTest=completed, IntegrationTest=completed, FinalAudit=completed, Cleanup=completed
+    %%
+    %% FEEDBACK_TRIGGER: TEST_FAILURE -> RemedPhase (blind test reveals guidance gaps)
+    %% FEEDBACK_TRIGGER: AUDIT_FAILURE -> RemedPhase (consistency audit fails)
+
+    Start((Start)) --> LoadPlans[Load Plan Files from live/]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    LoadPlans --> ValidatePlans{Plans Valid?}
+    ValidatePlans -- "No: Missing Fields" --> AskUser((Ask User for Clarification))
+    ValidatePlans -- "Yes: Valid" --> AuditPhase[Enter Audit Phase]
+
+    %% ========================================
+    %% PHASE 1: AUDIT AND ANALYSIS
+    %% ========================================
+    %% Analyze current guidance to identify worktree-locality instructions.
+    %% Uses explore agent to examine files without modification.
+
+    subgraph Audit_SG ["Audit and Analysis Subgraph"]
+        AuditPhase --> SpawnExploreAudit[Spawn explore Agent for Analysis]
+        SpawnExploreAudit --> AuditComplete{Audit Analysis Complete?}
+        AuditComplete -- "No: Need More Context" --> SpawnExploreAudit
+        AuditComplete -- "Yes: Documented" --> ExitAudit[Audit Phase Complete]
+    end
+
+    %% ========================================
+    %% PHASE 2: REMEDIATION (TEACH)
+    %% ========================================
+    %% Apply Main-First Planning guidance updates.
+    %% Teacher agents update worktree-and-branching.yml, plans.yml, and orchestration files.
+    %%
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.test-fix-loop
+    %% MAX_ITERATIONS: 5 (per teaching loop definition)
+    %% ESCALATION: If max iterations reached without success, stop and Ask User
+
+    ExitAudit --> RemedPhase[Enter Remediation Phase]
+
+    subgraph Remediation_SG ["Remediation Subgraph"]
+        RemedPhase --> SpawnTeacher[Spawn teacher-update-guidance Agent]
+        SpawnTeacher --> RemedApplied{Guidance Updated?}
+        RemedApplied -- "No: Errors" --> SpawnTeacherFix[Spawn teacher-update-guidance Agent]
+        SpawnTeacherFix --> RemedApplied
+        RemedApplied -- "Yes: Complete" --> ExitRemed[Remediation Phase Complete]
+    end
+
+    %% ========================================
+    %% PHASE 3: BLIND TEST VALIDATION
+    %% ========================================
+    %% Spawn test-guidance-simulator to validate guidance changes.
+    %% Simulator creates a test planning folder following only updated guidance.
+    %%
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.guidance-test-loop
+    %% MAX_ITERATIONS: 3 (per guidance-test-loop definition)
+    %% ESCALATION: If blind test fails repeatedly, return to remediation
+
+    ExitRemed --> BlindTestPhase[Enter Blind Test Phase]
+
+    subgraph BlindTest_SG ["Blind Test Validation Subgraph"]
+        BlindTestPhase --> SpawnSimulator[Spawn test-guidance-simulator Agent]
+        SpawnSimulator --> SimulateScenario[Create Test Planning Folder]
+        SimulateScenario --> VerifyStructure{Folder Created Correctly?}
+        VerifyStructure -- "No: Wrong Location" --> CaptureGap[Capture Guidance Gap]
+        CaptureGap -.->|FEEDBACK: GUIDANCE_GAP| RemedPhase
+        VerifyStructure -- "Yes: Correct" --> CleanupTestFolder[Cleanup Test Folder]
+        CleanupTestFolder --> ExitBlindTest[Blind Test Complete]
+    end
+
+    %% ========================================
+    %% PHASE 4: INTEGRATION TEST
+    %% ========================================
+    %% Validate end-to-end workflow visibility from main worktree.
+
+    ExitBlindTest --> IntegrationTestPhase[Enter Integration Test Phase]
+
+    subgraph IntegrationTest_SG ["Integration Test Subgraph"]
+        IntegrationTestPhase --> SpawnTestRunner[Spawn test-runner Agent]
+        SpawnTestRunner --> IntegrationResult{Integration Tests Passed?}
+        IntegrationResult -- "No: Visibility Issue" --> CaptureIntegrationGap[Capture Integration Gap]
+        CaptureIntegrationGap -.->|FEEDBACK: TEST_FAILURE| RemedPhase
+        IntegrationResult -- "Yes: Verified" --> ExitIntegrationTest[Integration Test Complete]
+    end
+
+    %% ========================================
+    %% PHASE 5: FINAL AUDIT
+    %% ========================================
+    %% Validate consistency across all modified guidance files.
+
+    ExitIntegrationTest --> FinalAuditPhase[Enter Final Audit Phase]
+
+    subgraph FinalAudit_SG ["Final Audit Subgraph"]
+        FinalAuditPhase --> SpawnAudit[Spawn test-audit Agent]
+        SpawnAudit --> AuditResult{Audit Passed?}
+        AuditResult -- "No: Inconsistencies" --> CaptureAuditGap[Capture Audit Findings]
+        CaptureAuditGap -.->|FEEDBACK: AUDIT_FAILURE| RemedPhase
+        AuditResult -- "Yes: Consistent" --> ExitFinalAudit[Final Audit Complete]
+    end
+
+    %% ========================================
+    %% PHASE 6: CLEANUP
+    %% ========================================
+    %% Archive analysis files and update README with completion status.
+
+    ExitFinalAudit --> CleanupPhase[Enter Cleanup Phase]
+
+    subgraph Cleanup_SG ["Cleanup Subgraph"]
+        CleanupPhase --> ArchiveFiles[Move Analysis Files to analysis/]
+        ArchiveFiles --> UpdateReadme[Update README with Completion Status]
+        UpdateReadme --> ExitCleanup[Cleanup Complete]
+    end
+
+    %% ========================================
+    %% HUMAN APPROVAL GATE
+    %% ========================================
+    %% Present completion summary for user verification.
+
+    ExitCleanup --> HumanApproval[Present Completion Summary]
+
+    subgraph HumanApproval_SG ["Human Approval Gate Subgraph"]
+        HumanApproval --> ShowSummary[Display Phase Completion Report]
+        ShowSummary --> ShowChanges[List Modified Guidance Files]
+        ShowChanges --> UserDecision{User Approves?}
+        UserDecision -- "No: Issues Found" --> CaptureIssues[Capture User Feedback]
+        CaptureIssues -.->|Return to Remediation| RemedPhase
+        UserDecision -- "Yes: Approved" --> MarkComplete[Mark Plan Completed]
+    end
+
+    %% ========================================
+    %% OUTPUT PHASE
+    %% ========================================
+
+    MarkComplete --> OutputPhase[Generate Output Report]
+
+    subgraph Output_SG ["Output Subgraph"]
+        OutputPhase --> ReportChanges[Report Guidance File Changes]
+        ReportChanges --> ReportTestResults[Report Test Results]
+        ReportTestResults --> ReportNextSteps[Report Next Steps]
+    end
+
+    ReportNextSteps --> End((End: Plan Completed))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    %% Dashed lines for feedback loops (return paths to Remediation)
+    classDef dashedstroke stroke-dasharray: 5 5;
+    linkStyle 17,21,26,31 stroke:#888,stroke-width:2px,stroke-dasharray: 5 5;

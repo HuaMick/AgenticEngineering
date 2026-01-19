@@ -1,0 +1,86 @@
+# Test Plan - Guidance Entrypoint Remediation
+# Created: 2026-01-19
+# Purpose: Blind test to validate Main-First Planning guidance changes
+
+plan:
+  name: "Test: Guidance Entrypoint Validation"
+  worktree: "260119AG_guidance_entrypoint_remediation"
+  branch: "agenticguidance"
+  status: pending
+
+  description: |
+    Blind test phase that validates the Main-First Planning guidance changes.
+    An agent will attempt to create a test planning folder following only the
+    updated guidance, without prior knowledge of the expected behavior.
+    This validates that the guidance is complete and unambiguous.
+
+  phases:
+    - id: "phase_test_blind"
+      name: "Blind Test - Planning Folder Creation"
+      status: "pending"
+      validation_loop: "guidance-test-loop"
+      note: "Uses guidance-test-loop for blind simulation validation"
+      tasks:
+        - id: "test_blind_001"
+          description: "Spawn test-guidance-simulator to create a test planning folder following updated guidance"
+          status: "pending"
+          inputs:
+            # The simulator should only see the updated guidance, not the expected outcome
+            - modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml
+            - modules/AgenticGuidance/assets/definitions/plans.yml
+            - modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd
+          test_scenario:
+            objective: "Create a new planning folder for a hypothetical 'add-dark-mode' feature"
+            starting_context: "Agent is in the main worktree, user requests planning for a new feature"
+            expected_behavior:
+              - "Agent creates plan folder in main worktree's docs/plans/live/"
+              - "Agent does NOT switch to a feature worktree before creating the plan"
+              - "Agent uses CLI command 'agentic plan init' with correct arguments"
+            success_criteria:
+              - "Plan folder created at correct location in main"
+              - "Agent demonstrates understanding that planning happens in main"
+              - "No worktree switching occurs during plan initialization"
+
+        - id: "test_blind_002"
+          description: "Verify the created test planning folder has correct structure"
+          status: "pending"
+          inputs:
+            - modules/AgenticGuidance/assets/definitions/plans.yml#validation_checklist
+          success_criteria:
+            - "Folder matches YYMMDDXX_description naming pattern"
+            - "Required subfolders present (live/, completed/)"
+            - "README.md exists with plan overview"
+
+        - id: "test_blind_003"
+          description: "Cleanup test planning folder after validation"
+          status: "pending"
+          inputs:
+            - docs/plans/live/  # Location to verify cleanup
+          success_criteria:
+            - "Test folder removed from docs/plans/live/"
+            - "No artifacts left behind"
+
+    - id: "phase_test_integration"
+      name: "Integration Test - Full Workflow"
+      status: "pending"
+      tasks:
+        - id: "test_int_001"
+          description: "Validate that plan visibility works correctly from main branch"
+          status: "pending"
+          inputs:
+            - modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml
+          success_criteria:
+            - "User can see all active plans from main worktree"
+            - "Plan status is visible without switching worktrees"
+
+  test_strategy:
+    - type: "blind"
+      scope: "Guidance completeness validation"
+      agent: "test-guidance-simulator"
+      description: |
+        Agent follows guidance without knowing expected outcome.
+        Success = agent naturally arrives at correct behavior.
+
+    - type: "integration"
+      scope: "End-to-end workflow validation"
+      location: "Manual verification"
