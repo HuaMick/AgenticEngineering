@@ -1,0 +1,198 @@
+# Plan Review: Guidance Entrypoint Remediation
+# Reviewer: planner-reviewer
+# Review Date: 2026-01-19
+# Files Reviewed:
+#   - live/plan_live_teach.yml
+#   - live/plan_live_test.yml
+
+decision: REVISE
+
+summary: |
+  Plans demonstrate good structure and clear objectives but require revisions
+  before approval. Key issues include missing orchestration MMD, incorrect
+  target file paths for CLI components, and an empty audit plan file.
+
+# =============================================================================
+# CHECKLIST RESULTS
+# =============================================================================
+
+checklist_results:
+  plan_structure:
+    status: PASS
+    findings:
+      - "Both plans have unique names at root level"
+      - "Worktree path correctly specified as '260119AG_guidance_entrypoint_remediation'"
+      - "Plan folder follows YYMMDDXX_description naming convention"
+      - "Plan objectives clearly stated in description fields"
+
+  inputs_section:
+    status: PARTIAL_PASS
+    findings:
+      - "Most tasks have inputs sections with file-level references"
+      - "Inputs have location and description fields"
+    issues:
+      - file: "plan_live_test.yml"
+        task: "test_blind_003"
+        issue: "Missing inputs section (cleanup task has no input context)"
+
+  success_criteria:
+    status: PASS
+    findings:
+      - "Each phase has measurable success criteria"
+      - "Success criteria include user-focused validation"
+      - "Criteria define observable outcomes, not implementation details"
+      - "Example: 'An agent reading any of these files would understand plans go in main'"
+
+  task_structure:
+    status: FAIL
+    findings:
+      - "Tasks specify target files"
+      - "Agent types correctly allocated (teach tasks in teach plan)"
+      - "Operations properly ordered (audit -> teach -> build -> test)"
+    issues:
+      - task: "audit_002, build_001"
+        issue: |
+          Target files reference non-existent paths:
+          - Referenced: modules/AgenticCLI/agentic/commands/plan_commands.py
+          - Actual: modules/AgenticCLI/src/agenticcli/commands/plan.py
+          - Referenced: modules/AgenticCLI/agentic/services/plan_service.py
+          - Actual: modules/AgenticCLI/src/agenticcli/workflows/plan_workflow.py
+        severity: "BLOCKING - agents will fail to find files"
+
+  file_placement:
+    status: PARTIAL_PASS
+    findings:
+      - "Plan files correctly in live/ subfolder"
+      - "No completed plans in live/"
+    issues:
+      - file: "live/plan_live_audit_clean.yml"
+        issue: "Empty plan file with no phases or tasks - should be removed or populated"
+        severity: "NON-BLOCKING - organizational concern"
+
+  mmd_presence:
+    status: FAIL
+    findings:
+      - "No orchestration_*.mmd file found in live/ folder"
+    issues:
+      - issue: |
+          Missing orchestration MMD. This plan has 4 phases with multiple tasks
+          requiring coordinated execution. Per process.yml:
+          "Missing orchestration MMD. The orchestration-planning agent should
+          have generated orchestration_<plan_name>.mmd before this review stage."
+        severity: "BLOCKING - required for multi-phase orchestrated execution"
+        exception_check: |
+          NOT applicable - plan has multiple phases (audit, remediation,
+          cli_update, verification) with multiple tasks each.
+
+  codebase_verification:
+    status: FAIL
+    verified_files:
+      - path: "modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml"
+        exists: true
+      - path: "modules/AgenticGuidance/assets/definitions/plans.yml"
+        exists: true
+      - path: "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+        exists: true
+      - path: "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml"
+        exists: true
+      - path: "modules/AgenticCLI/agentic/commands/plan_commands.py"
+        exists: false
+        note: "Actual path: modules/AgenticCLI/src/agenticcli/commands/plan.py"
+      - path: "modules/AgenticCLI/agentic/services/plan_service.py"
+        exists: false
+        note: "Actual path: modules/AgenticCLI/src/agenticcli/workflows/plan_workflow.py"
+
+# =============================================================================
+# REQUIRED CHANGES
+# =============================================================================
+
+required_changes:
+  blocking:
+    - id: "REV_001"
+      priority: 1
+      description: "Generate orchestration MMD for plan execution"
+      action: |
+        Return to orchestration-planning agent to generate:
+        orchestration_guidance_entrypoint_remediation.mmd
+
+        The MMD must include:
+        - GOAL header comment
+        - AGENT_ROUTING header comment
+        - PHASES list derived from the four plan phases
+      files_affected:
+        - "live/orchestration_guidance_entrypoint_remediation.mmd (to create)"
+
+    - id: "REV_002"
+      priority: 2
+      description: "Correct CLI file paths in plan_live_teach.yml"
+      action: |
+        Update task audit_002 and phase_3_cli_update/build_001:
+
+        Replace:
+          - modules/AgenticCLI/agentic/commands/plan_commands.py
+          - modules/AgenticCLI/agentic/services/plan_service.py
+
+        With:
+          - modules/AgenticCLI/src/agenticcli/commands/plan.py
+          - modules/AgenticCLI/src/agenticcli/workflows/plan_workflow.py
+      files_affected:
+        - "live/plan_live_teach.yml"
+
+  non_blocking:
+    - id: "REV_003"
+      priority: 3
+      description: "Remove or populate empty audit_clean plan"
+      action: |
+        Either:
+        a) Remove live/plan_live_audit_clean.yml (if not needed)
+        b) Populate with actual audit/cleanup tasks
+
+        Empty plan files cause confusion for agents scanning the folder.
+      files_affected:
+        - "live/plan_live_audit_clean.yml"
+
+    - id: "REV_004"
+      priority: 4
+      description: "Add inputs section to test_blind_003"
+      action: |
+        Add inputs section to test_blind_003 cleanup task, even if minimal:
+
+        inputs:
+          - docs/plans/live/  # Location to verify cleanup
+      files_affected:
+        - "live/plan_live_test.yml"
+
+# =============================================================================
+# POSITIVE OBSERVATIONS
+# =============================================================================
+
+positive_findings:
+  - "Clear plan objective addressing real agent confusion issue"
+  - "Logical phase ordering: audit -> remediation -> CLI update -> verification"
+  - "Good separation of concerns: teach plan vs test plan"
+  - "Success criteria are outcome-focused and verifiable"
+  - "Test plan includes blind test strategy for unbiased validation"
+  - "Phase 3 correctly marked as out-of-scope for teach plan (requires build)"
+  - "Comprehensive inputs at plan level and task level"
+
+# =============================================================================
+# NEXT STEPS
+# =============================================================================
+
+next_steps:
+  - "Address REV_001 (blocking): Generate orchestration MMD"
+  - "Address REV_002 (blocking): Fix CLI file paths"
+  - "Optionally address REV_003, REV_004 (non-blocking)"
+  - "Resubmit for review"
+
+reviewer_notes: |
+  The plans are well-structured and address a legitimate issue (agent confusion
+  about plan folder locations). The Main-First Planning approach is sound and
+  the test strategy with blind validation is excellent for ensuring guidance
+  completeness.
+
+  The CLI path issue suggests the plan was created with outdated knowledge of
+  the AgenticCLI structure. The current CLI uses src/agenticcli/ structure,
+  not agentic/ structure.
+
+  Once blocking issues are resolved, these plans should be ready for execution.

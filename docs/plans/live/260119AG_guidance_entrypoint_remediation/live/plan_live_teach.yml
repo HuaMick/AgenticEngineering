@@ -1,0 +1,208 @@
+plan:
+  name: "Guidance Entrypoint Remediation (Option 2: Main-First Planning)"
+  worktree: "260119AG_guidance_entrypoint_remediation"
+  status: "planning"
+
+  description: |
+    Remediate guidance entry points to address agent confusion regarding planning
+    locations. Implements 'Option 2: Main-First Planning', where plans are
+    initialized and maintained in the main worktree to ensure visibility and
+    traceability for the user, before executing in feature worktrees.
+
+  # Plan-level inputs (shared context across phases)
+  inputs:
+    - location: "modules/AgenticGuidance/assets/definitions/plans.yml"
+      description: "Current plan definitions including naming conventions and lifecycle"
+    - location: "modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml"
+      description: "Current worktree policies and branching strategy"
+
+  phases:
+    - id: "phase_1_audit"
+      name: "Audit and Analysis"
+      status: "pending"
+      tasks:
+        - id: "audit_001"
+          name: "Audit orchestration-planning worktree instructions"
+          description: "Identify all locations in orchestration-planning where agents are instructed to switch worktrees during planning"
+          status: "pending"
+          inputs:
+            - modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd
+            - modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml
+            - modules/AgenticGuidance/assets/definitions/plans.yml
+          target_files:
+            - modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd
+            - modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml
+          success_criteria:
+            - "Document lists all MMD nodes that reference worktree switching"
+            - "Document lists all inputs.yml sections that imply worktree-local planning"
+            - "Analysis recorded in docs/plans/live/260119AG_guidance_entrypoint_remediation/analysis/"
+
+        - id: "audit_002"
+          name: "Review CLI plan init locality logic"
+          description: "Examine AgenticCLI agentic plan init command to understand current worktree locality enforcement"
+          status: "pending"
+          inputs:
+            - modules/AgenticCLI/src/agenticcli/commands/plan.py
+            - modules/AgenticCLI/src/agenticcli/workflows/plan_workflow.py
+            - modules/AgenticGuidance/assets/definitions/cli-commands.yml
+          target_files:
+            - modules/AgenticCLI/src/agenticcli/commands/plan.py
+            - modules/AgenticCLI/src/agenticcli/workflows/plan_workflow.py
+          success_criteria:
+            - "Document identifies the code path that determines plan folder location"
+            - "Document describes any worktree detection logic in the CLI"
+            - "Document specifies what changes would allow main-worktree planning"
+
+    - id: "phase_2_remediation"
+      name: "Policy and Guidance Update"
+      status: "pending"
+      tasks:
+        - id: "teach_001"
+          name: "Add Main-First planning rule to worktree guideline"
+          description: "Update worktree-and-branching.yml to add explicit rule mandating plan creation in main worktree"
+          status: "pending"
+          inputs:
+            - modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml
+            - modules/AgenticGuidance/assets/definitions/plans.yml
+            - modules/AgenticGuidance/assets/definitions/guideline.yml
+          target_files:
+            - modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml
+          guidance: |
+            Add a new rule in the rules section that specifies:
+            - Plans (docs/plans/live/) must be created and maintained in the main worktree
+            - Plan creation happens BEFORE worktree switching for execution
+            - This ensures plan visibility and traceability from a single location
+          success_criteria:
+            - "New rule 'Main-First Planning' exists in worktree-and-branching.yml"
+            - "Rule includes justification explaining visibility/traceability benefits"
+            - "Rule includes characteristics listing: 'Create plans in main', 'Switch to feature worktree for execution'"
+
+        - id: "teach_002"
+          name: "Update orchestration-planning MMD for Main-First flow"
+          description: "Modify orchestration-planning/process.mmd to show plan initialization happening in main before worktree switch"
+          status: "pending"
+          inputs:
+            - modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd
+            - modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml
+            - modules/AgenticGuidance/assets/specifications/plan-mmd-schema.yml
+          target_files:
+            - modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd
+          guidance: |
+            Modify the flowchart to reflect:
+            1. Plan folder creation happens FIRST (in main worktree)
+            2. Worktree switch happens AFTER plan is initialized
+            3. Update GUIDELINE comments at top to reference Main-First planning
+            4. Ensure InitPlanFolder node clearly states it runs in main
+          success_criteria:
+            - "InitPlanFolder node precedes any worktree switching logic"
+            - "Header comments include reference to Main-First planning policy"
+            - "Flow clearly shows: Initialize Plan (main) -> Switch Worktree (if needed) -> Execute"
+
+        - id: "teach_003"
+          name: "Update plans.yml definition for centralized planning"
+          description: "Add explicit statement to plans.yml that plans are created in the main worktree for visibility"
+          status: "pending"
+          inputs:
+            - modules/AgenticGuidance/assets/definitions/plans.yml
+            - modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml
+            - modules/AgenticGuidance/assets/definitions/definition.yml
+          target_files:
+            - modules/AgenticGuidance/assets/definitions/plans.yml
+          guidance: |
+            Add a section or update existing text to clarify:
+            - plans_live folders are created in the main worktree (not feature worktrees)
+            - This enables single-location visibility for all active plans
+            - Execution happens in feature worktrees, but plan tracking stays in main
+          success_criteria:
+            - "plans.yml contains explicit statement about main-worktree plan creation"
+            - "plans_live section references Main-First planning policy"
+            - "Definition is consistent with worktree-and-branching.yml rule"
+
+        - id: "teach_004"
+          name: "Update orchestration-planning inputs.yml for Main-First context"
+          description: "Add Main-First planning guidance to orchestration-planning inputs to ensure agents understand the policy"
+          status: "pending"
+          inputs:
+            - modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml
+            - modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml
+          target_files:
+            - modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml
+          guidance: |
+            Add a planning_policy section or update existing content to include:
+            - Reference to worktree-and-branching.yml Main-First rule
+            - Clear statement that plan folders are created in main worktree
+            - Guidance on when/how worktree switching occurs (after plan init)
+          success_criteria:
+            - "inputs.yml references Main-First planning policy"
+            - "CLI command documentation clarifies main-worktree context"
+            - "Agents reading inputs.yml will understand plans go in main"
+
+    - id: "phase_3_cli_update"
+      name: "CLI Locality Decoupling"
+      status: "pending"
+      description: "This phase is out of scope for the teach plan - CLI changes require build planning"
+      tasks:
+        - id: "build_001"
+          name: "Modify CLI plan init for main-worktree support"
+          description: "Update agentic plan init to create plans in main worktree regardless of current directory"
+          status: "pending"
+          inputs:
+            - modules/AgenticCLI/src/agenticcli/commands/plan.py
+            - modules/AgenticCLI/src/agenticcli/workflows/plan_workflow.py
+            - modules/AgenticGuidance/assets/definitions/cli-commands.yml
+          target_files:
+            - modules/AgenticCLI/src/agenticcli/commands/plan.py
+            - modules/AgenticCLI/src/agenticcli/workflows/plan_workflow.py
+          guidance: |
+            NOTE: This task requires a separate build plan (plan_live_build.yml).
+            The guidance updates in phase_2 should be completed first.
+            CLI changes include:
+            - Option to specify target worktree for plan folder
+            - Default behavior creates plan in main worktree
+            - Clear error messages if main worktree not found
+          success_criteria:
+            - "CLI accepts --main flag or auto-detects main worktree"
+            - "Plan folder created in docs/plans/live/ of main worktree"
+            - "CLI documentation updated in cli-commands.yml"
+
+    - id: "phase_4_verification"
+      name: "Verification"
+      status: "pending"
+      tasks:
+        - id: "test_001"
+          name: "Verify guidance consistency across files"
+          description: "Validate that all guidance files consistently describe Main-First planning policy"
+          status: "pending"
+          inputs:
+            - modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml
+            - modules/AgenticGuidance/assets/definitions/plans.yml
+            - modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd
+            - modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml
+          target_files:
+            - modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml
+            - modules/AgenticGuidance/assets/definitions/plans.yml
+            - modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd
+            - modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml
+          success_criteria:
+            - "All four files reference Main-First planning consistently"
+            - "No contradictory statements about plan folder location"
+            - "Cross-references between files are accurate"
+            - "An agent reading any of these files would understand plans go in main"
+
+        - id: "test_002"
+          name: "Verify plan tracking from main worktree"
+          description: "Confirm that users can track all active plans from the main worktree"
+          status: "pending"
+          inputs:
+            - modules/AgenticGuidance/assets/definitions/plans.yml
+            - docs/plans/live/
+          target_files: []
+          guidance: |
+            Manual verification steps:
+            1. From main worktree, list docs/plans/live/
+            2. Confirm all active plan folders are visible
+            3. Verify plan status files are accessible without switching worktrees
+          success_criteria:
+            - "All active plan folders visible from main worktree"
+            - "Plan status readable without worktree switching"
+            - "User can get complete planning overview from single location"
