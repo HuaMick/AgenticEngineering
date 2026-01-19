@@ -1,0 +1,67 @@
+flowchart LR
+    %% GOAL: Implement Main-First Planning - agentic plan init ALWAYS creates plans in main worktree.
+    %% PROFILE: Orchestration-CLI-Build
+    %% GUIDELINE: Main-First Planning - single happy path, no flags
+    %% INPUT_PATH: docs/plans/live/260119CL_cli_main_first_planning/live/plan_live_build.yml
+    %%
+    %% PHASES: Detection -> Logic -> Verification
+    %% AGENT_ROUTING: Detection -> build-python, Logic -> build-python, Verification -> test-runner
+    %% STATUS: Detection=pending, Logic=pending, Verification=pending
+
+    Start((Start)) --> LoadPlan[Load plan_live_build.yml]
+
+    %% ========================================
+    %% INPUT VALIDATION
+    %% ========================================
+    LoadPlan --> ValidatePlan{Plan Valid?}
+    ValidatePlan -- "No: Invalid" --> AskUser((Ask User))
+    ValidatePlan -- "Yes: Valid" --> Phase1[Enter Detection Phase]
+
+    %% ========================================
+    %% PHASE 1: MAIN WORKTREE DETECTION
+    %% ========================================
+
+    subgraph Detection_SG ["Phase 1: Detection"]
+        Phase1 --> SpawnBuild1[Spawn build-python Agent]
+        SpawnBuild1 --> DetectionResult{Build OK?}
+        DetectionResult -- "No" --> FixDetection[Fix and Retry]
+        FixDetection --> DetectionResult
+        DetectionResult -- "Yes" --> ExitPhase1[Phase 1 Complete]
+    end
+
+    %% ========================================
+    %% PHASE 2: MODIFY CMD_INIT() LOGIC
+    %% ========================================
+
+    ExitPhase1 --> Phase2[Enter Logic Phase]
+
+    subgraph Logic_SG ["Phase 2: Logic"]
+        Phase2 --> SpawnBuild2[Spawn build-python Agent]
+        SpawnBuild2 --> LogicResult{Build OK?}
+        LogicResult -- "No" --> FixLogic[Fix and Retry]
+        FixLogic --> LogicResult
+        LogicResult -- "Yes" --> ExitPhase2[Phase 2 Complete]
+    end
+
+    %% ========================================
+    %% PHASE 3: VERIFICATION
+    %% ========================================
+
+    ExitPhase2 --> Phase3[Enter Verification Phase]
+
+    subgraph Verification_SG ["Phase 3: Verification"]
+        Phase3 --> SpawnTest[Spawn test-runner Agent]
+        SpawnTest --> TestResult{Tests Pass?}
+        TestResult -- "No: Syntax" --> FixSyntax[Return to Logic]
+        FixSyntax -.-> Phase2
+        TestResult -- "Yes" --> ExitPhase3[Phase 3 Complete]
+    end
+
+    %% ========================================
+    %% OUTPUT
+    %% ========================================
+
+    ExitPhase3 --> End((End: Build Complete))
+
+    %% Styling
+    classDef dashedstroke stroke-dasharray: 5 5;

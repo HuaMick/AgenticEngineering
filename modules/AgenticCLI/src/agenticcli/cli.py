@@ -32,6 +32,7 @@ Global Commands (work from any directory):
 Project Commands (require .git or .agenticcli.yml):
   worktree (wt)   Manage git worktrees with planning folder integration
   plan            Manage planning folders and track task status
+  langsmith (ls)  Query LangSmith traces and runs
   inputs          Validate and resolve inputs.yml references
   template (tpl)  Generate plan files from templates
   stories (st)    Find user stories for testing
@@ -94,6 +95,9 @@ Examples:
     # Package management commands
     _add_update_parser(subparsers)
     _add_rebuild_parser(subparsers)
+
+    # LangSmith commands
+    _add_langsmith_parser(subparsers)
 
     # Feature 06: CLI Extensions
     _add_inputs_parser(subparsers)
@@ -397,6 +401,94 @@ def _add_plan_parser(subparsers):
         "-f",
         action="store_true",
         help="Archive even if there are uncommitted changes",
+    )
+
+
+def _add_langsmith_parser(subparsers):
+    """Add langsmith subcommand parser."""
+    langsmith_parser = subparsers.add_parser(
+        "langsmith",
+        aliases=["ls"],
+        help="Query LangSmith traces and runs",
+        description="Query LangSmith traces, runs, and project statistics.",
+    )
+    langsmith_subparsers = langsmith_parser.add_subparsers(
+        dest="langsmith_command", help="LangSmith commands"
+    )
+
+    # langsmith runs
+    runs_parser = langsmith_subparsers.add_parser(
+        "runs",
+        help="List recent runs with filtering",
+        description="Query and display recent LangSmith runs with optional filters.",
+    )
+    runs_parser.add_argument(
+        "--project", "-p",
+        help="Filter by project name",
+    )
+    runs_parser.add_argument(
+        "--limit", "-l",
+        type=int,
+        default=20,
+        help="Maximum number of runs to return (default: 20)",
+    )
+    runs_parser.add_argument(
+        "--type", "-t",
+        choices=["llm", "chain", "tool", "retriever"],
+        help="Filter by run type",
+    )
+    runs_parser.add_argument(
+        "--error", "-e",
+        action="store_true",
+        help="Show only runs with errors",
+    )
+
+    # langsmith run <run-id>
+    run_parser = langsmith_subparsers.add_parser(
+        "run",
+        help="Show detailed info for a single run",
+        description="Display full details for a specific run by ID.",
+    )
+    run_parser.add_argument(
+        "run_id",
+        help="The run ID to fetch details for",
+    )
+    run_parser.add_argument(
+        "--url", "-u",
+        action="store_true",
+        help="Generate a shareable URL for the run",
+    )
+
+    # langsmith projects
+    projects_parser = langsmith_subparsers.add_parser(
+        "projects",
+        help="List all projects",
+        description="List all LangSmith projects in the workspace.",
+    )
+    projects_parser.add_argument(
+        "--detail", "-d",
+        action="store_true",
+        help="Show additional project details",
+    )
+
+    # langsmith stats
+    stats_parser = langsmith_subparsers.add_parser(
+        "stats",
+        help="Show usage statistics for a project",
+        description="Display aggregated statistics for a LangSmith project.",
+    )
+    stats_parser.add_argument(
+        "--project", "-p",
+        required=True,
+        help="Project name (required)",
+    )
+    stats_parser.add_argument(
+        "--since",
+        help="Start date for statistics (YYYY-MM-DD)",
+    )
+    stats_parser.add_argument(
+        "--until",
+        help="End date for statistics (YYYY-MM-DD)",
     )
 
 
@@ -779,6 +871,8 @@ PROJECT_COMMANDS = {
     "worktree",
     "wt",  # alias for worktree
     "plan",
+    "langsmith",
+    "ls",  # alias for langsmith
     "inputs",
     "template",
     "tpl",  # alias for template
@@ -860,6 +954,10 @@ def run_cli():
         from agenticcli.commands import plan
 
         plan.handle(args, ctx=ctx)
+    elif args.command in ("langsmith", "ls"):
+        from agenticcli.commands import langsmith
+
+        langsmith.handle(args, ctx=ctx)
     elif args.command in ("config", "cfg"):
         from agenticcli.commands import config
 
