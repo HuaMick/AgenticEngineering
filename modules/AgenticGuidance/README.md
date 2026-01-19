@@ -15,9 +15,20 @@ AgenticGuidance/
 
 ## Agent Categories
 
-The module contains 6 implemented agent categories with 19 active sub-agents (plus 2 deprecated):
+The module contains 6 implemented agent categories with 23 active sub-agents (plus 2 deprecated):
 
-### Planner (6 agents)
+### Orchestration (3 active, 2 deprecated)
+High-level coordination of planning and execution workflows.
+
+| Agent | Purpose |
+|-------|---------|
+| `orchestration-planning` | Human-in-the-loop plan creation + MMD generation |
+| `orchestration-executor` | Dynamic agent routing from Plan-MMD |
+| `orchestration-friction` | LangSmith trace friction analysis workflow |
+| ~~`orchestration-build`~~ | **DEPRECATED** - replaced by `orchestration-executor` |
+| ~~`orchestration-guidance`~~ | **DEPRECATED** - replaced by `orchestration-executor` |
+
+### Planner (7 agents)
 Create executable implementation plans from objectives.
 
 | Agent | Purpose |
@@ -28,16 +39,7 @@ Create executable implementation plans from objectives.
 | `planner-guidance` | Guidance improvement planning |
 | `planner-guidance-testing` | Guidance completeness testing |
 | `planner-reviewer` | Plan review and approval |
-
-### Orchestration (2 active, 2 deprecated)
-High-level coordination of planning and execution workflows.
-
-| Agent | Purpose |
-|-------|---------|
-| `orchestration-planning` | Human-in-the-loop plan creation + MMD generation |
-| `orchestration-executor` | Dynamic agent routing from Plan-MMD |
-| ~~`orchestration-build`~~ | **DEPRECATED** - replaced by `orchestration-executor` |
-| ~~`orchestration-guidance`~~ | **DEPRECATED** - replaced by `orchestration-executor` |
+| `planner-audit` | Plan folder compliance auditing |
 
 ### Test (7 agents)
 Validation through testing and quality assurance.
@@ -52,13 +54,14 @@ Validation through testing and quality assurance.
 | `test-service` | Service-level testing |
 | `test-user-simulator` | User interaction simulation |
 
-### Teacher (2 agents)
+### Teacher (3 agents)
 Improve agent guidance by building paths, fences, and signposts.
 
 | Agent | Purpose |
 |-------|---------|
 | `teacher-update-guidance` | Improve process.yml and inputs.yml files |
 | `teacher-update-assets` | Create/update shared assets (definitions, guidelines) |
+| `teacher-trace-diagnostics` | Analyze LangSmith traces for friction patterns |
 
 ### Build (2 agents)
 Building and compiling code for production deployment.
@@ -78,20 +81,23 @@ Infrastructure and deployment tooling.
 
 ## Assets
 
-### Definitions (86 files)
+### Definitions (35 files)
 Stable concepts and terminology that define "what is X". Key definitions include:
-- `context-minimisation.yml` - Core principle for reducing context
 - `agent-categories.yml` - Agent taxonomy
 - `plans.yml` - Plan structure and lifecycle
 - `agent-loops.yml` - Loop patterns for iterative work
-- `fence-build-deploy.yml` - Boundary definitions (moved to guidelines/)
-- `escalation.yml` - When and how to escalate (moved to guidelines/)
+- `rlm-patterns.yml` - RLM pattern definitions for context decomposition
+- `friction.yml` - Friction pattern definitions
+- `trace-diagnostics.yml` - Trace analysis definitions
+- `path.yml` - Path concept for agent guidance
+- `guidance-artifacts.yml` - Fence/signpost concepts
 
-### Guidelines (15 files)
+### Guidelines (44 files)
 Behavioral rules and constraints that define "how to act":
 - `less-is-more.yml` - Minimal sufficient changes
 - `fix-the-source.yml` - Address root causes
 - `context-minimisation.yml` - Just-in-time context loading
+- `rlm-integration.yml` - RLM integration patterns
 - `iteration.yml` - Iterative development approach
 - `testing.yml` - Testing standards
 - `safety.yml` - Safety constraints
@@ -119,13 +125,14 @@ Test data and fixtures for guidance validation.
 
 ## Entrypoints
 
-Three top-level entrypoints for initiating workflows:
+Four top-level entrypoints for initiating workflows:
 
 | Entrypoint | Purpose |
 |------------|---------|
 | `_plan_build.yml` | Create implementation plans for code changes |
 | `_plan_teach.yml` | Create guidance plans for teaching/documentation |
 | `_orchestrate.yml` | Execute a pre-approved plan |
+| `_analyze_friction.yml` | Analyze LangSmith traces for friction patterns |
 
 ### Usage
 
@@ -157,12 +164,18 @@ AgenticGuidance uses two path resolution strategies:
 ## Implementation Status
 
 **Implemented**:
-- 6 agent categories with 19 active sub-agents (plus 2 deprecated)
-- 86 definition files
-- 15 guideline files
+- 6 agent categories with 23 active sub-agents (plus 2 deprecated)
+- 35 definition files
+- 44 guideline files
 - 11 shared input configurations
-- 3 entrypoints
+- 4 entrypoints
 - Example templates for all major workflows
+
+**Recent Additions**:
+- RLM integration for trajectory analysis (rlm-patterns.yml, rlm-integration.yml)
+- Friction detection via LangSmith traces (orchestration-friction, teacher-trace-diagnostics)
+- Plan folder compliance auditing (planner-audit)
+- Trace diagnostics definitions and examples
 
 **Not Migrated** (may be deprecated):
 - `cleaner` category (cleanup logic exists in planner-cleaning)

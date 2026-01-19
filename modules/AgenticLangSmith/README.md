@@ -4,7 +4,230 @@ Integration module for LangSmith observability with Claude Code.
 
 ## Overview
 
-This module provides LangSmith tracing integration for Claude Code sessions, enabling visibility into conversations, tool invocations, and assistant responses.
+This module provides:
+- **LangSmith tracing** - Automatic trace capture from Claude Code sessions
+- **Python API** - `LangSmithService` for querying traces, runs, and projects
+- **Filter builders** - Composable functions for building query filters
+- **Friction analysis** - Pattern detection to identify agent inefficiencies
+- **Resolution recommendations** - Actionable suggestions for detected friction
+
+## Installation
+
+```bash
+pip install -e modules/AgenticLangSmith
+```
+
+Requires: `langsmith` package and `LANGSMITH_API_KEY` environment variable.
+
+---
+
+## Python API
+
+### LangSmithService
+
+Core service class for interacting with LangSmith API.
+
+```python
+from agenticlangsmith import LangSmithService
+
+# Initialize (reads LANGSMITH_API_KEY from environment)
+service = LangSmithService()
+
+# Or pass API key directly
+service = LangSmithService(api_key="lsv2_pt_xxx")
+```
+
+**Methods:**
+
+| Method | Description |
+|--------|-------------|
+| `list_runs(project_name, limit, run_type, error_only, filter_expr)` | List runs with filtering |
+| `get_run(run_id)` | Get detailed info for a single run |
+| `list_projects()` | List all projects in workspace |
+| `get_project_stats(project_name, limit)` | Get aggregated statistics |
+| `get_run_url(run_id)` | Generate shareable URL for a run |
+| `get_run_feedback(run_id)` | Get feedback for a run |
+
+**Example - List runs with errors:**
+
+```python
+service = LangSmithService()
+error_runs = service.list_runs(
+    project_name="agenticengineering-main",
+    limit=50,
+    error_only=True
+)
+for run in error_runs:
+    print(f"{run['name']}: {run['error']}")
+```
+
+### Filter Builders
+
+Composable functions for building LangSmith filter expressions.
+
+```python
+from agenticlangsmith import (
+    build_time_filter,
+    build_type_filter,
+    build_error_filter,
+    build_latency_filter,
+    build_token_filter,
+    build_tag_filter,
+    build_name_filter,
+    combine_filters,
+    combine_filters_or,
+)
+```
+
+**Filter functions:**
+
+| Function | Description |
+|----------|-------------|
+| `build_time_filter(start, end)` | Filter by time range |
+| `build_type_filter(run_type)` | Filter by run type (llm, chain, tool, retriever) |
+| `build_error_filter(has_error)` | Filter by error status |
+| `build_latency_filter(min_seconds, max_seconds)` | Filter by latency |
+| `build_token_filter(min_tokens, max_tokens)` | Filter by token count |
+| `build_tag_filter(tag)` | Filter by tag |
+| `build_name_filter(name, exact)` | Filter by name pattern |
+| `combine_filters(*filters)` | Combine with AND logic |
+| `combine_filters_or(*filters)` | Combine with OR logic |
+
+**Example - Complex filter:**
+
+```python
+from datetime import datetime, timedelta
+
+# Find slow LLM calls from last 24 hours
+filter_expr = combine_filters(
+    build_time_filter(start=datetime.now() - timedelta(days=1)),
+    build_type_filter("llm"),
+    build_latency_filter(min_seconds=5.0),
+)
+
+runs = service.list_runs(
+    project_name="my-project",
+    filter_expr=filter_expr
+)
+```
+
+### Friction Analysis
+
+Detect inefficiency patterns in agent traces.
+
+```python
+from agenticlangsmith import FrictionAnalyzer, FrictionPatternType, Severity
+
+analyzer = FrictionAnalyzer()  # Uses default LangSmithService
+report = analyzer.analyze(
+    project_name="agenticengineering-main",
+    limit=100,
+    lookback_days=7
+)
+
+print(f"Friction detected: {report.has_friction}")
+print(f"Severity breakdown: {report.severity_breakdown}")
+
+for pattern in report.patterns:
+    print(f"{pattern.pattern_type.value}: {pattern.description}")
+```
+
+**Friction pattern types:**
+
+| Pattern | Code | Description |
+|---------|------|-------------|
+| Excessive Retries | FP-001 | 3+ consecutive errors in same session |
+| Exploration Drift | FP-002 | >60% exploration tools with 10+ tool calls |
+| Missing Context | FP-003 | Frequent AskUserQuestion calls |
+| Schema Violations | FP-004 | Validation/format errors |
+| Convention Violations | FP-005 | Post-creation renames or corrections |
+| Automatable Patterns | FP-006 | Repeated tool sequences across sessions |
+
+### Resolution Recommendations
+
+Generate actionable recommendations from friction patterns.
+
+```python
+from agenticlangsmith import ResolutionRecommender, ResolutionType
+
+recommender = ResolutionRecommender()
+plan = recommender.recommend(report)
+
+for rec in plan.recommendations:
+    print(f"{rec.resolution_type.value}: {rec.description}")
+    print(f"  Target: {rec.target_locations}")
+    print(f"  Changes: {rec.suggested_changes}")
+
+print(f"Next steps: {plan.next_steps}")
+```
+
+**Resolution types:**
+
+| Type | Description |
+|------|-------------|
+| GUIDANCE_UPDATE | Update process.yml or inputs.yml files |
+| CLI_OFFLOAD | Create AgenticCLI command |
+| ASSET_UPDATE | Add examples or schema documentation |
+
+---
+
+## AgenticCLI Integration
+
+The `agentic langsmith` (or `agentic ls`) command provides CLI access to all functionality.
+
+```bash
+# List recent runs
+agentic ls runs --project agenticengineering-main --limit 20
+
+# Show run details
+agentic ls run <run-id>
+
+# Get shareable URL
+agentic ls run <run-id> --url
+
+# List projects
+agentic ls projects
+
+# Get project statistics
+agentic ls stats --project agenticengineering-main
+
+# Friction analysis
+agentic ls friction --project agenticengineering-main
+
+# Friction with recommendations
+agentic ls friction --project agenticengineering-main --recommend
+
+# JSON output (for scripting)
+agentic ls runs --project agenticengineering-main --json
+```
+
+**Friction command options:**
+
+| Option | Description |
+|--------|-------------|
+| `--project` | LangSmith project name (or CC_LANGSMITH_PROJECT env) |
+| `--limit` | Max runs to analyze (default: 100) |
+| `--lookback-days` | Days to look back (default: 7) |
+| `--recommend` | Include resolution recommendations |
+| `--json` | Output as JSON |
+
+---
+
+## Exceptions
+
+```python
+from agenticlangsmith import LangSmithConfigError, LangSmithAPIError
+
+try:
+    service = LangSmithService()
+except LangSmithConfigError as e:
+    print(f"Configuration error: {e}")  # Missing API key
+
+try:
+    runs = service.list_runs(project_name="nonexistent")
+except LangSmithAPIError as e:
+    print(f"API error: {e}")  # API call failed
+```
 
 ---
 

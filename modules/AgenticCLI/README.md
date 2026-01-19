@@ -1,289 +1,272 @@
 # AgenticCLI
 
-> **Note**: This project is in early development. This document describes the module's purpose and direction, not its current implementation state.
+Command-line interface for AgenticEngineering. Provides the **tool layer** that Claude Code invokes for deterministic, well-understood operations.
 
-Standalone CLI commands for deterministic operations that Claude Code calls during sessions. AgenticCLI provides the **crystallized pattern layer** that handles predictable, repetitive processes.
-
-## Purpose
-
-Claude Code is the agent. AgenticCLI provides the **tool layer** that Claude Code invokes when:
-
-- A task follows a predictable, well-understood pattern
-- Deterministic execution is more reliable than reasoning through steps
-- The operation has been codified from observed friction patterns
-
-This is the "CLI as Maturity Layer" principle from the AgenticEngineering vision: processes that have stabilized through repeated use get crystallized into CLI commands.
-
-## Current State
-
-**Status**: Empty scaffold awaiting implementation.
-
-The `/home/code/AgenticEngineering/modules/AgenticCLI/` directory currently contains only this README. No CLI commands have been implemented yet.
-
-## Design: Thin CLI Calling API
-
-AgenticCLI follows a "thin CLI calling API" pattern:
-
-```
-Claude Code
-    |
-    v
-agentic <command>
-    |
-    +-- Local-only commands (git worktree, file operations)
-    |       Direct execution, no network
-    |
-    +-- API-calling commands (session, deploy)
-            Thin wrapper -> AgenticBackend API
-```
-
-**Local-only commands**: Execute entirely on the local machine. These handle git operations, file system scaffolding, and test execution.
-
-**API-calling commands**: Act as thin wrappers that delegate to AgenticBackend. These handle operations requiring remote state or coordination.
-
-## Planned Command Categories
-
-Based on patterns from the legacy `MyAgents` codebase and the AgenticEngineering main README:
-
-| Category | Type | Purpose | Legacy Reference |
-|----------|------|---------|------------------|
-| **worktree** | Local | Git worktree + planning folder scaffolding | `deploy-worktree/process.yml` |
-| **plan** | Local | Planning folder state management | `planner-*/process.yml` |
-| **test** | Local | Execute tests, parse results | `test-runner/process.yml` |
-| **clean** | Local | Remove targets with safety checks | `cleaner-execute/process.yml` |
-| **session** | API | Remote session management | `RemoteAgents/` |
-| **deploy** | API | Deployment workflows | `deploy-*/process.yml` |
-
-### worktree
-
-Git worktree creation with integrated planning folder scaffolding.
+## Installation
 
 ```bash
-# Aspirational usage
-agentic worktree create <branch> [--base <base-branch>]
+cd /home/code/AgenticEngineering/modules/AgenticCLI
+uv sync
+uv pip install -e .
+```
+
+## Quick Reference
+
+```bash
+agentic --help              # Show all commands
+agentic -v                  # Show version
+agentic -j <command>        # JSON output mode
+agentic -d <command>        # Debug mode
+```
+
+## Commands
+
+### plan - Planning Folder Management
+
+Initialize, scaffold, and manage planning folders for tracking implementation tasks.
+
+```bash
+# Initialize worktree + plan folder (Main-First Planning)
+agentic plan init <branch> [--description <desc>] [--base <base-branch>]
+
+# Example: Create worktree and plan folder for feature branch
+agentic plan init feature-auth --description "user_authentication"
+# Creates: /path/to/repo-feature-auth (worktree)
+# Creates: docs/plans/live/260119AE_user_authentication/ (plan folder)
+
+# Scaffold plan folder only (without worktree)
+agentic plan scaffold <name> [--worktree <path>]
+
+# Show plan status
+agentic plan status [<path>]
+
+# List all plans
+agentic plan list
+
+# Validate plan folder structure
+agentic plan validate <path>
+
+# Task management
+agentic plan task start <task-id> [--plan <path>]
+agentic plan task complete <task-id> [--plan <path>]
+
+# Move completed tasks
+agentic plan move task <task-id> [--plan <path>] [--dry-run] [--force]
+agentic plan move tasks [--plan <path>] [--dry-run] [--force]
+agentic plan move folder [--plan <path>] [--dry-run] [--force]
+
+# Archive plan folder
+agentic plan archive <path>
+```
+
+#### Main-First Planning with `plan init`
+
+The `plan init` command enforces the Main-First Planning workflow:
+
+1. **Creates worktree** (if not exists) at `../repo-<branch>`
+2. **Generates plan folder name** using `YYMMDDXX_description` convention
+3. **Scaffolds plan folder** with `live/` and `completed/` subdirectories
+
+This eliminates naming convention errors by generating the folder name programmatically rather than relying on agent interpretation.
+
+### langsmith (ls) - LangSmith Integration
+
+Query LangSmith traces, runs, and project statistics.
+
+```bash
+# List recent runs
+agentic langsmith runs [--project <name>] [--limit <n>] [--type llm|chain|tool|retriever] [--error]
+agentic ls runs -p my-project -l 50
+
+# Get details for a specific run
+agentic langsmith run <run-id> [--url]
+agentic ls run abc123 --url
+
+# List all projects
+agentic langsmith projects [--detail]
+agentic ls projects -d
+
+# Show project statistics
+agentic langsmith stats --project <name> [--since YYYY-MM-DD] [--until YYYY-MM-DD]
+agentic ls stats -p my-project --since 2026-01-01
+
+# Analyze friction patterns
+agentic langsmith friction [--project <name>] [--limit <n>] [--lookback-days <n>] [--recommend]
+agentic ls friction -p my-project -r
+```
+
+**Environment Variables:**
+- `LANGSMITH_API_KEY` - Required for all LangSmith commands
+- `CC_LANGSMITH_PROJECT` - Default project for friction analysis
+
+### worktree (wt) - Git Worktree Management
+
+Manage git worktrees with integrated planning folder support.
+
+```bash
+# Create worktree with planning folder
+agentic worktree create <branch> [--base <base-branch>] [--no-plan]
+agentic wt create feature-auth --base main
+
+# List all worktrees
 agentic worktree list
-agentic worktree remove <branch>
+agentic wt list
+
+# Remove worktree
+agentic worktree remove <branch> [--force]
+
+# Show current worktree status
+agentic worktree status
 ```
 
-**Operations**:
-1. Create git worktree at standard path
-2. Create planning folder at `docs/plans/live/YYMMDDRepo_Branch/`
-3. Initialize live/ and completed/ subdirectories
-4. Create placeholder plan files (plan_live_teach.yml, plan_live_test.yml, etc.)
-5. Optionally update VS Code workspace file
+### config (cfg) - Configuration Management
 
-### plan
-
-Planning folder state management.
+Manage CLI configuration stored in `~/.config/agenticcli/`.
 
 ```bash
-# Aspirational usage
-agentic plan status [<plan-path>]
-agentic plan task start <task-id>
-agentic plan task complete <task-id>
-agentic plan archive
+# Show current configuration
+agentic config show
+
+# Initialize configuration
+agentic config init
+
+# Preferences
+agentic config get <key>
+agentic config set <key> <value>
+agentic config list
+agentic config delete <key>
+
+# Config file paths
+agentic config show-path
+agentic config set-path <path>
+
+# Clear all configuration
+agentic config clear --force
 ```
 
-**Operations**:
-1. Parse YAML plan files
-2. Update task states (pending -> in_progress -> complete)
-3. Move completed items to plan_completed.yml
-4. Archive entire planning folder when done
+### preferences (prefs) - User Preferences
 
-### test
-
-Test execution with structured result parsing.
+Manage user preferences (alternative interface to config).
 
 ```bash
-# Aspirational usage
-agentic test run [<path>] [--type pytest|jest|etc]
-agentic test parse <results-file>
-agentic test summary
+agentic prefs get <key>
+agentic prefs set <key> <value>
+agentic prefs list
+agentic prefs delete <key>
+agentic prefs clear [--force]
 ```
 
-**Operations**:
-1. Detect test framework from project configuration
-2. Execute tests with appropriate runner
-3. Parse results into structured format
-4. Return exit code and summary for Claude Code consumption
-
-### clean
-
-Safe removal of targets with approval workflow.
+### Global Commands
 
 ```bash
-# Aspirational usage
-agentic clean identify <scope>
-agentic clean execute <targets-file>
-agentic clean dry-run <targets-file>
+# Interactive setup wizard
+agentic setup [--force]
+
+# Health check
+agentic health
+
+# Package management
+agentic update    # Reinstall from source (uv sync)
+agentic rebuild   # Full rebuild and reinstall
 ```
 
-**Operations**:
-1. Identify cleanup targets (orphaned files, stale branches, etc.)
-2. Write targets to approval file
-3. Execute approved removals with safety checks
-4. Report what was removed
-
-### session (API)
-
-Remote session management via AgenticBackend.
+### Additional Project Commands
 
 ```bash
-# Aspirational usage
-agentic session create [--command <cmd>]
-agentic session connect <session-id>
-agentic session list
-agentic session terminate <session-id>
+# Validate inputs.yml references
+agentic inputs validate <file>
+agentic inputs resolve <file>
+
+# Generate plan files from templates
+agentic template generate <type> [--output <file>]
+agentic template list
+agentic tpl generate build -o plan.yml
+
+# Find user stories
+agentic stories find [--project <name>] [--changes <files>]
+agentic st find -p my-project
+
+# Manage agent manifests
+agentic manifest show <path>
+agentic manifest list [<path>]
+agentic manifest validate <path>
+agentic mf show ./agents/my-agent
+
+# CI/CD configuration
+agentic cicd audit
+agentic cicd list
+agentic cicd show [<path>]
+
+# State management
+agentic state list [--active]
+agentic state show <pid>
+agentic state clear [--all] [--force]
+agentic state cleanup
+
+# Environment management
+agentic env show
+agentic env export [--format shell|json]
+agentic env run <command> [args...]
 ```
 
-**Operations**:
-1. Call AgenticBackend session API
-2. Display connection info (pairing codes, URLs)
-3. Manage session lifecycle
+## Command Categories
 
-### deploy (API)
+| Category | Scope | Commands |
+|----------|-------|----------|
+| **Global** | Any directory | setup, health, config, prefs, update, rebuild, state, env |
+| **Project** | Requires .git | worktree, plan, langsmith, inputs, template, stories, manifest, cicd |
 
-Deployment workflows via AgenticBackend.
+Project commands require being in a git repository or having a `.agenticcli.yml` file in the directory tree.
+
+## Output Modes
 
 ```bash
-# Aspirational usage
-agentic deploy build [--target <env>]
-agentic deploy status
-agentic deploy rollback <version>
+# Human-readable output (default)
+agentic plan status
+
+# JSON output for scripting
+agentic -j plan status
+
+# Debug logging to console
+agentic -d plan init my-branch
 ```
 
-**Operations**:
-1. Trigger deployment workflows via API
-2. Stream status updates
-3. Handle rollback requests
-
-## Proposed Directory Structure
+## Directory Structure
 
 ```
 AgenticCLI/
-├── src/
-│   └── agentic/
-│       ├── __init__.py
-│       ├── main.py              # CLI entrypoint
-│       ├── commands/            # Command implementations
-│       │   ├── __init__.py
-│       │   ├── worktree.py      # Local: git worktree ops
-│       │   ├── plan.py          # Local: planning folder ops
-│       │   ├── test.py          # Local: test execution
-│       │   ├── clean.py         # Local: cleanup ops
-│       │   ├── session.py       # API: session management
-│       │   └── deploy.py        # API: deployment
-│       │
-│       ├── core/                # Shared utilities
-│       │   ├── __init__.py
-│       │   ├── git.py           # Git operations
-│       │   ├── yaml_ops.py      # YAML file handling
-│       │   ├── api_client.py    # AgenticBackend client
-│       │   └── output.py        # Structured output formatting
-│       │
-│       └── config/              # Configuration
-│           ├── __init__.py
-│           └── settings.py
-│
+├── src/agenticcli/
+│   ├── __init__.py
+│   ├── cli.py              # Main CLI parser and routing
+│   ├── context.py          # CLIContext for dependency injection
+│   ├── console.py          # Output formatting (Rich-based)
+│   ├── logging.py          # Logging configuration
+│   ├── commands/           # Command implementations
+│   │   ├── plan.py         # Plan management
+│   │   ├── worktree.py     # Worktree management
+│   │   ├── langsmith.py    # LangSmith integration
+│   │   ├── config.py       # Configuration
+│   │   ├── preferences.py  # Preferences
+│   │   ├── setup.py        # Setup wizard
+│   │   ├── health.py       # Health checks
+│   │   └── ...
+│   ├── core/               # Shared utilities
+│   ├── utils/              # Helper functions
+│   └── workflows/          # Business logic
 ├── tests/
-│   ├── unit/
-│   ├── integration/
-│   └── e2e/
-│
 ├── pyproject.toml
 └── README.md
 ```
 
-## Legacy Patterns Informing Design
-
-The `modules/legacy/MyAgents/` codebase provides several patterns:
-
-### CLI Architecture (from MyAgentsBackend)
-
-| Pattern | Description | Reference |
-|---------|-------------|-----------|
-| **Click-based commands** | Decorator-driven CLI with groups and subcommands | `RemoteAgents/services/terminal/entrypoints/cli.py` |
-| **Argparse routing** | Global vs project-scoped command routing | `MyAgentsBackend/src/myagents/frontend/cli/` |
-| **Workflow delegation** | CLI handlers call workflow classes, not direct logic | `myagents_cli.py` patterns |
-| **Lazy imports** | Speed up CLI startup by deferring heavy imports | `myagents_cli.py` |
-
-### Worktree Operations (from MyAgentsGuidance)
-
-| Pattern | Description | Reference |
-|---------|-------------|-----------|
-| **Naming convention** | `YYMMDDRepo_Branch` for planning folders | `assets/definitions/folder-structure.yml` |
-| **Planning scaffolding** | Four placeholder files in live/completed structure | `deploy-worktree/process.yml` |
-| **Workspace integration** | VS Code workspace file updates | `deploy-worktree/inputs.yml` |
-| **Branch strategy** | Dev -> staging -> main merge flow | `worktree-and-branching.yml` |
-
-### Output Patterns
-
-| Pattern | Description |
-|---------|-------------|
-| **Exit codes** | 0 for success, 1 for failure, consistent with Unix conventions |
-| **Structured output** | JSON output option for machine consumption |
-| **Progress indicators** | Clear status messages to stderr, results to stdout |
-| **Error messages** | Actionable error messages with remediation hints |
-
-## Technology Stack (Planned)
-
-Based on legacy patterns and ecosystem requirements:
-
-- **Python 3.11+**: Runtime environment
-- **Click**: CLI framework (proven in RemoteAgents)
-- **PyYAML**: YAML file parsing
-- **httpx**: Async HTTP client for API calls
-- **uv**: Package management
-- **pytest**: Testing framework
-
-## Integration with AgenticEngineering
-
-AgenticCLI fits into the broader ecosystem:
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                     Claude Code                          │
-│              (reasoning, tool use, code)                 │
-└─────────────────────────┬───────────────────────────────┘
-                          │
-                          │ invokes
-                          ▼
-                 ┌─────────────────┐
-                 │   AgenticCLI    │  <-- This module
-                 │  (agentic cmd)  │
-                 └────────┬────────┘
-                          │
-         ┌────────────────┼────────────────┐
-         ▼                │                ▼
-    ┌─────────┐           │         ┌───────────┐
-    │  Local  │           │         │  Backend  │
-    │   Ops   │           │         │    API    │
-    └─────────┘           │         └─────┬─────┘
-    (worktree,            │               │
-     plan, test,          │               ▼
-     clean)               │       ┌───────────────┐
-                          │       │AgenticBackend │
-                          │       └───────────────┘
-                          │
-                          ▼
-                 ┌───────────────┐
-                 │   Planning    │
-                 │   Folders     │
-                 └───────────────┘
-                 (docs/plans/live/)
-```
-
 ## Principles
-
-AgenticCLI follows the core principles from AgenticEngineering:
 
 ### Deterministic Over Reasoning
 
-CLI commands should produce the same output given the same input. If a command requires judgment, it should be handled by Claude Code, not the CLI.
+CLI commands produce the same output given the same input. Complex judgment is left to Claude Code.
 
 ### Minimal Surface Area
 
-Each command does one thing well. Complex workflows are composed by Claude Code calling multiple simple commands.
+Each command does one thing well. Complex workflows are composed by Claude Code calling multiple commands.
 
 ### Fail Fast, Fail Clearly
 
@@ -291,54 +274,7 @@ Commands validate inputs before executing. Error messages explain what went wron
 
 ### Evidence-Based Inclusion
 
-Commands are added only when LangSmith traces (or manual analysis) show repeated friction patterns. Hypothetical needs don't justify new commands.
-
-## Development
-
-### Prerequisites
-
-```bash
-# Python 3.11+ required
-python --version
-
-# uv for package management
-pip install uv
-```
-
-### Setup (Future)
-
-```bash
-cd /home/code/AgenticEngineering/modules/AgenticCLI
-
-# Create virtual environment and install dependencies
-uv sync
-
-# Run tests
-uv run pytest
-
-# Install CLI in development mode
-uv pip install -e .
-
-# Test CLI
-agentic --help
-```
-
-## Contributing
-
-This module is built by Claude Code, for Claude Code. The workflow:
-
-1. Claude Code works on tasks using AgenticEngineering scaffolding
-2. Friction points are identified (via LangSmith traces or manual analysis)
-3. Patterns that stabilize get proposed as CLI commands
-4. Commands are implemented following the patterns documented here
-5. Claude Code uses the new commands, freeing reasoning for novel work
-
-## Next Steps
-
-1. **Define `agentic` entrypoint**: Set up pyproject.toml with Click-based CLI
-2. **Implement `worktree create`**: First command based on mature legacy pattern
-3. **Implement `plan status`**: Planning folder introspection
-4. **Add test infrastructure**: Unit and integration tests
+Commands are added when LangSmith traces show repeated friction patterns. Hypothetical needs don't justify new commands.
 
 ---
 
