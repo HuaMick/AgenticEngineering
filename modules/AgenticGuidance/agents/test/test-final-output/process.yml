@@ -7,6 +7,144 @@ process:
     description: "Loop types (audit-test-fix-loop) defined in agent-loops.yml"
     # NOTE: Do not duplicate loop definitions here - see agent-loops.yml for full definitions
 
+  # ===========================================================================
+  # RLM PATTERNS FOR LARGE EXECUTION DATA ANALYSIS
+  # Reference: modules/AgenticGuidance/assets/definitions/rlm-patterns.yml
+  # ===========================================================================
+  rlm_patterns:
+    description: |
+      RLM (Recursive Language Model) patterns enable interrogation of large execution
+      data sets that exceed context limits. Use these patterns when execution data
+      exceeds 5000 lines (multi-phase test runs, large log outputs).
+
+    anomaly_detection_pattern:
+      description: "Programmatic detection of anomalies in execution data"
+      operations:
+        scan_for_workarounds:
+          description: "Find workarounds vs proper fixes in execution data"
+          grep_patterns:
+            - "TODO|FIXME|HACK|WORKAROUND"
+            - "temporary|temp fix|quick fix"
+            - "skip.*for now|disable.*temporarily"
+          example: |
+            workarounds = get_context("CONTEXT_EXECUTION", filter="HACK|WORKAROUND|TODO")
+            for match in workarounds:
+                accumulate("ACCUMULATOR_ANOMALIES", {
+                    "type": "workaround",
+                    "severity": "HIGH",
+                    "evidence": match.context,
+                    "location": f"{match.file}:{match.line}"
+                })
+
+        detect_path_anomalies:
+          description: "Find hardcoded or suspicious path references"
+          grep_patterns:
+            - "/home/code/|/Users/|C:\\\\Users\\\\"
+            - "hardcoded|absolute path"
+          example: |
+            paths = get_context("CONTEXT_EXECUTION", filter="/home/code/|/Users/")
+            # Flag any hardcoded paths as potential portability issues
+
+        scan_skip_patterns:
+          description: "Find evidence of skipped functionality"
+          grep_patterns:
+            - "skipped|SKIPPED|pytest\\.skip"
+            - "not implemented|NotImplemented"
+          example: |
+            skips = get_context("CONTEXT_EXECUTION", filter="skipped|SKIPPED")
+
+        measure_pass_fail_ratio:
+          description: "Calculate pass/fail/skip ratios from test results"
+          example: |
+            passed = len(get_context("CONTEXT_EXECUTION", filter="PASSED|passed").split("\\n"))
+            failed = len(get_context("CONTEXT_EXECUTION", filter="FAILED|failed").split("\\n"))
+            skipped = len(get_context("CONTEXT_EXECUTION", filter="SKIPPED|skipped").split("\\n"))
+            ratio = {"passed": passed, "failed": failed, "skipped": skipped}
+
+    critical_question_generation:
+      description: |
+        Generate critical questions based on discovered anomalies.
+        Questions are prioritized by severity and specificity.
+
+      pattern: |
+        # 1. Store execution data
+        store_context("CONTEXT_EXECUTION", content=execution_data)
+
+        # 2. Detect anomalies
+        create_accumulator("ACCUMULATOR_ANOMALIES")
+        scan_for_workarounds()
+        detect_path_anomalies()
+        scan_skip_patterns()
+
+        # 3. Generate questions per anomaly
+        create_accumulator("ACCUMULATOR_QUESTIONS")
+        for anomaly in get_accumulated("ACCUMULATOR_ANOMALIES"):
+            question = generate_question(anomaly)
+            accumulate("ACCUMULATOR_QUESTIONS", {
+                "question": question,
+                "severity": anomaly.severity,
+                "evidence": anomaly.evidence,
+                "location": anomaly.location
+            })
+
+        # 4. Signal final with prioritized questions
+        questions = get_accumulated("ACCUMULATOR_QUESTIONS", sort_by="severity")
+        signal_final("FINAL_QUESTIONS", result=questions)
+
+      severity_scoring:
+        CRITICAL:
+          - "Production path references in test code"
+          - "Test results show 0% pass rate"
+          - "Core functionality marked as skipped"
+        HIGH:
+          - "Workarounds without issue references"
+          - "Hardcoded paths that will break in other environments"
+          - ">20% tests skipped without justification"
+        MEDIUM:
+          - "TODO/FIXME comments without timeline"
+          - "Test/production configuration divergence"
+          - "Version mismatches in dependencies"
+        LOW:
+          - "Minor code style issues in logs"
+          - "Documentation gaps not affecting functionality"
+
+    recursive_data_analysis:
+      description: |
+        For multi-phase test runs, analyze each phase recursively
+        and aggregate findings across phases.
+
+      pattern: |
+        # Store all execution data
+        store_context("CONTEXT_FULL_EXECUTION", content=all_execution_data)
+
+        # Extract phases
+        phases = extract_phases("CONTEXT_FULL_EXECUTION")
+
+        # Analyze each phase
+        create_accumulator("ACCUMULATOR_PHASE_FINDINGS")
+        for phase in phases:
+            phase_context = get_context("CONTEXT_FULL_EXECUTION",
+                                        filter=f"Phase: {phase.name}")
+            findings = analyze_phase(phase_context)
+            accumulate("ACCUMULATOR_PHASE_FINDINGS", {
+                "phase": phase.name,
+                "findings": findings,
+                "pass_rate": calculate_pass_rate(phase_context)
+            })
+
+        # Cross-phase analysis
+        all_findings = get_accumulated("ACCUMULATOR_PHASE_FINDINGS")
+        trends = detect_cross_phase_trends(all_findings)
+
+        signal_final("FINAL_ANALYSIS", result={
+            "phase_findings": all_findings,
+            "trends": trends,
+            "critical_questions": generate_questions(all_findings)
+        })
+
+      max_recursion_depth: 3
+      trigger_condition: "Execution data exceeds 5000 lines"
+
   loop_context:
     participates_in:
       - "audit-test-fix-loop"
@@ -39,6 +177,14 @@ process:
       - Apply critical questions and watch for red flags per critical_questions.yml:
         * Workarounds vs proper fixes, hardcoded paths, test/production divergence
         * Version mismatches, hidden skipped tests, fragile solutions
+
+      RLM FOR LARGE EXECUTION DATA (>5000 lines):
+      If execution data exceeds 5000 lines (multi-phase runs, large logs), use RLM patterns:
+      - Store execution data as context variable
+      - Use anomaly_detection_pattern to scan for workarounds, path anomalies, skip patterns
+      - Use critical_question_generation to produce severity-scored questions
+      - Use recursive_data_analysis for multi-phase test run aggregation
+      Reference: rlm_patterns section above for operation examples
     - |
       VALIDATE USER STORY FUNCTIONAL TESTING per critical_questions.yml:
       If execution data includes user story test results:

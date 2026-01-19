@@ -86,6 +86,162 @@ loop_types:
     maximum_iterations: 3
     core_pattern: "Explore → Analyze → Decide → Repeat"
 
+  # ===========================================================================
+  # RLM-Enhanced Loops
+  # These loops leverage Recursive Language Model patterns for handling large contexts
+  # Reference: modules/AgenticGuidance/assets/definitions/rlm-patterns.yml
+  # ===========================================================================
+
+  rlm-decomposition-loop:
+    purpose: "Recursive decomposition of large contexts for analysis or processing"
+    phase: "context-processing"
+    when_to_use: |
+      When context exceeds model limits and requires programmatic decomposition:
+      - Documents exceed 500 lines
+      - Codebase spans 10+ files
+      - Cross-referencing multiple large sources
+      - Information needed is sparse within large corpus
+    maximum_iterations: 3
+    max_recursion_depth: 3
+    core_pattern:
+      - "Store context in environment variables"
+      - "Write code to filter/extract relevant subset"
+      - "Process subset (may recurse for further decomposition)"
+      - "Accumulate results in named buffers"
+      - "Signal FINAL(answer) when complete"
+    variable_conventions:
+      CONTEXT_SOURCE_SECTION:
+        purpose: "Stored input contexts"
+        examples: ["CONTEXT_CODEBASE_TESTS", "CONTEXT_SPEC_API"]
+      FILTER_CRITERIA:
+        purpose: "Filtered subsets of context"
+        examples: ["FILTER_ERRORS_ONLY", "FILTER_PUBLIC_METHODS"]
+      ACCUMULATOR_TYPE:
+        purpose: "Accumulated intermediate results"
+        examples: ["ACCUMULATOR_FINDINGS", "ACCUMULATOR_DEPENDENCIES"]
+      FINAL_OUTPUT:
+        purpose: "Final results ready for output"
+        examples: ["FINAL_ANALYSIS", "FINAL_RECOMMENDATIONS"]
+    participants:
+      - "curator agent (context filtering and preparation)"
+      - "specialist agent (task execution on curated context)"
+    relationship_to_other_loops:
+      enhancement_for:
+        - "test-fix-loop: Analyze large test outputs"
+        - "exploration-loop: Navigate large codebases"
+        - "planner-loop: Process large specifications"
+      pattern: |
+        RLM-decomposition can be invoked within other loops when a single
+        iteration encounters context that exceeds model limits. The outer
+        loop continues after RLM processing completes.
+    exit_conditions:
+      - "FINAL(answer) signaled with accumulated results"
+      - "Max recursion depth reached (aggregate partial results)"
+      - "Max iterations reached (escalate with partial findings)"
+    safety_checks:
+      - "Recursion depth bounded to max_recursion_depth"
+      - "Variable count limited to 10 active contexts"
+      - "FINAL only called at top level after all branches complete"
+    reference: "modules/AgenticGuidance/assets/definitions/rlm-patterns.yml"
+
+  rlm-context-refinement-loop:
+    purpose: "Progressive context loading based on iteration feedback"
+    phase: "context-refinement"
+    when_to_use: |
+      When optimal context level is unknown upfront:
+      - Task may be solvable with minimal context
+      - Full context loading would be wasteful
+      - Feedback determines if more context needed
+    maximum_iterations: 5
+    core_pattern:
+      - "Load minimal context (signatures only)"
+      - "Attempt task with current context level"
+      - "If insufficient: Escalate to next context level"
+      - "Repeat until task complete or max context reached"
+    context_progression:
+      level_1:
+        name: "signatures_only"
+        description: "Function/class signatures without bodies"
+        context_size: "~5% of full"
+        example: "def process_user(user_id: str) -> User"
+      level_2:
+        name: "with_docstrings"
+        description: "Signatures plus docstrings and comments"
+        context_size: "~15% of full"
+        example: "Signature + '''Process user by ID, returns User object'''"
+      level_3:
+        name: "with_summaries"
+        description: "Docstrings plus AI-generated implementation summaries"
+        context_size: "~30% of full"
+        example: "Docstring + 'Validates ID, queries DB, maps to User model'"
+      level_4:
+        name: "full_implementation"
+        description: "Complete source code"
+        context_size: "100%"
+        example: "Full function body with all implementation details"
+    escalation_triggers:
+      - "Task cannot proceed with current information"
+      - "Ambiguity requires more implementation details"
+      - "Error analysis needs full context"
+      - "Cross-reference requires related code"
+    participants:
+      - "context-loader agent (manages progression levels)"
+      - "task-executor agent (attempts task at each level)"
+    exit_conditions:
+      - "Task completed successfully at any level"
+      - "Level 4 reached (full context, proceed regardless)"
+      - "Max iterations reached (escalate)"
+    optimization_benefit: |
+      By starting with minimal context and escalating only when needed,
+      this loop minimizes token usage and latency. Many tasks resolve
+      at level 1-2 without ever loading full implementations.
+    reference: "modules/AgenticGuidance/assets/guidelines/rlm-integration.yml"
+
+  rlm_loop_selection:
+    description: |
+      Decision criteria for when to use RLM-enhanced loops vs standard loops.
+      RLM adds complexity - use only when context exceeds practical limits.
+
+    decision_criteria:
+      use_rlm_decomposition:
+        when:
+          - "Context exceeds 500 lines"
+          - "Spans 10+ files across multiple directories"
+          - "Requires cross-referencing multiple documents"
+          - "Information needed is sparse (searching large corpus)"
+        indicators:
+          - "Standard context loading causes truncation"
+          - "Task naturally decomposes into sub-tasks"
+          - "Results can be aggregated from independent sub-operations"
+
+      use_rlm_refinement:
+        when:
+          - "Optimal context level unknown upfront"
+          - "Task might succeed with partial information"
+          - "Full context loading would be wasteful"
+        indicators:
+          - "Previous similar tasks succeeded with minimal context"
+          - "Task is read-heavy (analysis, understanding)"
+          - "Cost/latency optimization is important"
+
+      use_standard_loop:
+        when:
+          - "Context fits comfortably in model window (<500 lines)"
+          - "Task requires holistic understanding of all context"
+          - "Decomposition would lose important relationships"
+          - "Context is already minimal and targeted"
+        indicators:
+          - "All context needed simultaneously for reasoning"
+          - "No natural decomposition points exist"
+          - "Task is write-heavy (generating new content)"
+
+    cost_considerations: |
+      RLM patterns trade latency for capacity:
+      - More API calls (recursive invocations)
+      - Overhead for context management
+      - But: Can handle 10M+ token contexts
+      - And: Selective loading often cheaper than max-context calls
+
   planner-loop:
     purpose: "Iterative planning with reviewer feedback and codebase verification"
     phase: "planning"

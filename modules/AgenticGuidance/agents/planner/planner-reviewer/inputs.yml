@@ -83,6 +83,22 @@ inputs:
       description: "SHARED structural patterns for plan validation (used by planner-guidance too)"
       required: true
 
+    # ==========================================================================
+    # RLM VALIDATION SUPPORT (Optional - loaded when reviewing RLM-enabled plans)
+    # ==========================================================================
+    # Reference these when validating plans that include RLM patterns.
+    # See process.yml RLM USAGE CHECKLIST for validation criteria.
+    # ==========================================================================
+    - type: file
+      path: "modules/AgenticGuidance/assets/definitions/rlm-patterns.yml"
+      description: "RLM patterns for validating appropriate usage and thresholds"
+      required: false
+
+    - type: file
+      path: "modules/AgenticGuidance/assets/guidelines/rlm-integration.yml"
+      description: "RLM integration guidelines for validating decision criteria"
+      required: false
+
   # Reviewer-specific guidelines
   # NOTE: Empty array is intentional - all guidelines come from reviewer-core-guidelines layer.
   # Do not add guidelines here unless they are reviewer-specific and NOT in shared layers.
@@ -99,3 +115,26 @@ inputs:
     review_output_format: |
       Output review decisions to review_*.yml files in the plan folder.
       Per scrap_file_taxonomy, review files move to analysis/ after processing.
+
+    rlm_review_criteria: |
+      When reviewing plans with RLM patterns, apply these additional criteria:
+
+      JUSTIFIED USAGE THRESHOLDS:
+      - RLM ALWAYS appropriate: context >1000 lines OR >10 files across directories
+      - RLM SELECTIVE: context 500-1000 lines (use judgment based on task complexity)
+      - RLM NOT APPROPRIATE: context <500 lines (reject RLM usage)
+
+      RECURSION BOUNDS:
+      - Maximum allowed: max_recursion_depth = 5
+      - Recommended: max_recursion_depth = 3
+      - Excessive: max_recursion_depth > 5 (REJECT)
+
+      VARIABLE NAMING VALIDATION:
+      - CONTEXT_: Must follow CONTEXT_SOURCE_SECTION pattern
+      - ACCUMULATOR_: Must follow ACCUMULATOR_TYPE pattern
+      - FILTER_: Must follow FILTER_CRITERIA pattern
+      - FINAL_: Must follow FINAL_OUTPUT pattern
+
+      COMPLETION SIGNAL:
+      - Plans using accumulators MUST include FINAL() signal
+      - FINAL() must be at top level, not inside recursive branches

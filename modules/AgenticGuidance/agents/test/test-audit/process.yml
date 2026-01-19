@@ -8,6 +8,118 @@ process:
     description: "Loop types (audit-test-fix-loop) defined in agent-loops.yml"
     # NOTE: Do not duplicate loop definitions here - see agent-loops.yml for full definitions
 
+  # ===========================================================================
+  # RLM PATTERNS FOR LARGE TEST PACKAGE ANALYSIS
+  # Reference: modules/AgenticGuidance/assets/definitions/rlm-patterns.yml
+  # ===========================================================================
+  rlm_patterns:
+    description: |
+      RLM (Recursive Language Model) patterns enable programmatic analysis of large test
+      packages that exceed context limits. Use these patterns when test packages contain
+      20+ files or 2000+ lines of test code.
+
+    context_accessor_operations:
+      list_test_files:
+        description: "List all test files in package by pattern"
+        example: |
+          # Store test package
+          store_context("CONTEXT_TESTS", path="tests/workflows/packaging/**/*.py")
+          # List all test files
+          files = list_contexts(filter="test_*.py")
+
+      extract_test_signatures:
+        description: "Extract test function signatures without full bodies"
+        example: |
+          # Get test signatures only (level 1 context)
+          signatures = get_context("CONTEXT_TESTS", filter="def test_\\w+")
+
+      find_assertion_patterns:
+        description: "Find and categorize assertion patterns in tests"
+        example: |
+          # Find all assertions
+          assertions = get_context("CONTEXT_TESTS", filter="assert\\s+")
+          # Find weak assertions
+          weak = get_context("CONTEXT_TESTS", filter="assert len\\(.*\\) > 0")
+
+      detect_skip_patterns:
+        description: "Find all skip patterns and their conditions"
+        example: |
+          # Find pytest.skip calls
+          skips = get_context("CONTEXT_TESTS", filter="pytest\\.skip|@pytest\\.mark\\.skip")
+
+      examine_specific_test:
+        description: "Load full implementation of specific test for detailed analysis"
+        example: |
+          # Get specific test with context lines
+          test = find_usage("CONTEXT_TESTS", symbol="test_installation_flow", include_context=10)
+
+    recursive_decomposition_pattern:
+      description: |
+        For large test packages (>20 files), decompose analysis recursively:
+        1. List all test files
+        2. For each file, extract test signatures
+        3. Categorize tests (skip patterns, assertion quality, etc.)
+        4. Accumulate findings
+        5. Signal final report
+
+      example: |
+        # 1. Store test package
+        store_context("CONTEXT_TESTS", path="{test_package}/**/*.py")
+
+        # 2. Create accumulator for findings
+        create_accumulator("ACCUMULATOR_FINDINGS", schema={
+            "type": "object",
+            "required": ["file", "test", "issue_type", "severity"],
+            "properties": {
+                "file": {"type": "string"},
+                "test": {"type": "string"},
+                "issue_type": {"enum": ["skip_pattern", "weak_assertion", "reward_hacking", "silent_failure"]},
+                "severity": {"enum": ["low", "medium", "high", "critical"]},
+                "evidence": {"type": "string"}
+            }
+        })
+
+        # 3. For each test file (depth 1)
+        for file in list_contexts(filter="test_*.py"):
+            # Extract tests from file (depth 2)
+            tests = get_context(file, filter="def test_\\w+")
+            for test in tests:
+                # Analyze test (depth 3 - max)
+                if has_skip_pattern(test):
+                    accumulate("ACCUMULATOR_FINDINGS", {
+                        "file": file, "test": test.name,
+                        "issue_type": "skip_pattern",
+                        "severity": classify_skip(test),
+                        "evidence": extract_skip_reason(test)
+                    })
+                if has_weak_assertion(test):
+                    accumulate("ACCUMULATOR_FINDINGS", {...})
+
+        # 4. Signal completion
+        signal_final("FINAL_AUDIT_REPORT", result=get_accumulated("ACCUMULATOR_FINDINGS"))
+
+      max_recursion_depth: 3
+      trigger_condition: "Test package contains >20 files or >2000 lines"
+
+    reward_hacking_detection:
+      description: "Programmatic detection of reward hacking patterns in tests"
+      patterns:
+        - name: "success_flag_only"
+          grep_pattern: "assert.*success.*True|assert.*result.*==.*True"
+          description: "Tests checking success=True without verifying actual outcomes"
+
+        - name: "weak_length_check"
+          grep_pattern: "assert len\\(.*\\) > 0|assert.*is not None"
+          description: "Overly permissive assertions"
+
+        - name: "help_only_validation"
+          grep_pattern: "--help|help_text|usage:|Usage:"
+          description: "Tests that only validate help text without functional testing"
+
+        - name: "mock_everything"
+          grep_pattern: "@mock\\.|@patch\\.|Mock\\(\\)|MagicMock"
+          description: "Excessive mocking that may hide real behavior"
+
   # ==============================================
   # LOOP CONTEXT
   # ==============================================
@@ -60,6 +172,14 @@ process:
       - Does the test verify actual outcomes, or only success booleans?
       - How is failure reported - can it reach logs or monitoring?
       - Do referenced paths in config files exist in the installed package?
+
+      RLM FOR LARGE PACKAGES (>20 files or >2000 lines):
+      If your assigned test package exceeds these thresholds, use RLM decomposition:
+      - Store test package as context variable
+      - Use recursive_decomposition_pattern from rlm_patterns section
+      - Accumulate findings programmatically
+      - This enables auditing 100+ test file packages without context overflow
+      Reference: rlm_patterns.context_accessor_operations for available operations
     - |
       Review actual test execution results for skipped tests:
       - Locate test result XML files in test-results/ directory (if available)

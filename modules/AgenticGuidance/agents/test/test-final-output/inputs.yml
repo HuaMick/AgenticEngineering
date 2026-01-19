@@ -23,6 +23,18 @@ inputs:
       path: "modules/AgenticGuidance/assets/inputs/test-shared.yml"
       required: true
 
+  # RLM-related inputs (loaded when execution data exceeds thresholds)
+  rlm_inputs:
+    - type: file
+      path: "modules/AgenticGuidance/assets/definitions/rlm-patterns.yml"
+      description: "RLM pattern definitions for context decomposition"
+      required: false
+
+    - type: file
+      path: "modules/AgenticGuidance/assets/specifications/rlm-context-accessor.yml"
+      description: "RLM context accessor API for programmatic context operations"
+      required: false
+
   # Agent-specific inputs (only what's unique to test-final-output)
   core_inputs:
     # Final outcome report template and structure
@@ -132,3 +144,48 @@ inputs:
       - Use audit-test-fix-loop to review test quality
       - Define outcome-based success criteria
       - Evidence-based validation (file X exists and contains Y)
+
+    rlm_interrogation_strategy: |
+      RLM (Recursive Language Model) enables interrogating large execution data
+      that would otherwise exceed context limits. Use when execution data
+      exceeds 5000 lines (multi-phase test runs, large log outputs).
+
+      Anomaly detection operations (see process.yml#rlm_patterns):
+      - scan_for_workarounds: Find HACK/WORKAROUND/TODO patterns
+      - detect_path_anomalies: Find hardcoded paths
+      - scan_skip_patterns: Find skipped functionality
+      - measure_pass_fail_ratio: Calculate test result ratios
+
+      Question generation:
+      - Questions generated from accumulated anomalies
+      - Each question linked to specific evidence and location
+      - Questions prioritized by severity (CRITICAL > HIGH > MEDIUM > LOW)
+
+    anomaly_severity_matrix: |
+      Severity classification for anomalies found in execution data:
+
+      CRITICAL (immediate attention required):
+      - Production path references in test code
+      - Test results show 0% pass rate
+      - Core functionality marked as skipped
+      - Security-related tests disabled
+      - Data corruption indicators
+
+      HIGH (blocks release):
+      - Workarounds without issue references
+      - Hardcoded paths that break portability
+      - >20% tests skipped without justification
+      - Test/production configuration divergence
+      - Regression from previous test run
+
+      MEDIUM (should address):
+      - TODO/FIXME without timeline or issue reference
+      - Version mismatches in dependencies
+      - Flaky test indicators (pass sometimes, fail sometimes)
+      - Documentation gaps in changed areas
+
+      LOW (nice to address):
+      - Minor code style issues in logs
+      - Non-blocking warnings
+      - Performance suggestions
+      - Documentation improvements

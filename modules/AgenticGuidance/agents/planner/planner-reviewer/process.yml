@@ -48,6 +48,38 @@ process:
       - [ ] Phase dependencies are explicitly declared
       - [ ] All mandatory loops included (audit-test-fix after cleanup, etc.)
 
+      RLM USAGE CHECKLIST (when plan includes RLM patterns):
+      Only validate if plan references rlm-patterns.yml, rlm-context-accessor.yml, or
+      includes RLM-specific elements (CONTEXT_, ACCUMULATOR_, FILTER_, FINAL_ variables).
+
+      - [ ] RLM trigger conditions were met (context >1000 lines OR >10 files across directories)
+      - [ ] Recursion depth is bounded (max_recursion_depth <= 5, prefer <= 3)
+      - [ ] Variable naming follows conventions (CONTEXT_SOURCE_SECTION, ACCUMULATOR_TYPE, FINAL_OUTPUT)
+      - [ ] Context accessor calls reference valid patterns from rlm-context-accessor.yml
+      - [ ] FINAL() signal is called only at top level, not inside recursive branches
+      - [ ] RLM-generated content conforms to standard plan structure (phases, tasks, success_criteria)
+
+      FENCES - RLM MISUSE DETECTION:
+
+      FENCE: Unjustified RLM Usage
+      - If plan uses RLM patterns but context is <500 lines total: REJECT
+      - Feedback: "RLM overhead unjustified. Context size ({X} lines) is below 500-line threshold.
+        Remove RLM elements and use standard context loading."
+
+      FENCE: Excessive Recursion Depth
+      - If plan specifies max_recursion_depth > 5: REJECT
+      - Feedback: "Recursion depth {X} exceeds maximum of 5. Reduce depth and consider
+        restructuring decomposition strategy."
+
+      FENCE: Missing Completion Signal
+      - If plan uses accumulators but lacks FINAL() signal: REJECT
+      - Feedback: "Plan uses RLM accumulators but missing FINAL() signal. Add explicit
+        completion signal at top level to ensure results are aggregated."
+
+      NO RLM IN PLAN:
+      If plan does not reference RLM patterns, skip this checklist entirely.
+      Plans without RLM patterns should be reviewed without additional overhead.
+
       MMD PRESENCE CHECKLIST (required for orchestrated plans):
       NOTE: Orchestration-planning is responsible for generating MMD files.
       Individual planners (planner-guidance, planner-build) create plan YAML only.
@@ -110,6 +142,13 @@ process:
       - REJECT with explore findings attached
       - Require planner-guidance to update/fix the flagged files
       - Do NOT approve with "will fix later" exceptions
+
+      CODEBASE VERIFICATION FOR RLM ARTIFACTS:
+      When plan includes RLM patterns, extend verification to include:
+      - [ ] Referenced context accessor patterns exist in rlm-context-accessor.yml
+      - [ ] Variable naming follows documented conventions
+      - [ ] Accumulator schemas (if specified) are valid JSON Schema
+      - [ ] RLM-specific phases have bounded iteration counts
     - |
       Decision:
       - APPROVE: If all checklist items pass and the plan is ready for execution.

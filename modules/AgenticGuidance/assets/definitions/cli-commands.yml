@@ -38,22 +38,30 @@ cli_commands:
         Initialize worktree and plan folder with enforced naming convention.
         Combines worktree creation (if needed) with plan folder scaffolding.
         Naming convention (YYMMDDXX_description) is enforced programmatically.
+
+        MAIN-FIRST PLANNING: Plan folders are ALWAYS created in the main worktree,
+        even when run from a feature worktree. This ensures all plans are visible
+        from a single location (main worktree's docs/plans/live/) before execution.
+        - Plan folder: Created in main worktree's docs/plans/live/
+        - Feature worktree: Created (or reused) for execution
       parameters:
         branch: "Branch name for worktree (required)"
         --description/-d: "Plan description for folder name (optional, defaults to branch)"
         --base/-b: "Base branch to create worktree from (default: main)"
+      main_first_planning: true
       exit_codes:
         0: "Success - worktree and plan folder created"
         1: "Worktree creation failed or not in git repository"
         2: "Plan folder already exists (use different description)"
         3: "Invalid branch name or description"
       json_output:
-        worktree: "Absolute path to worktree"
+        worktree: "Absolute path to feature worktree (for execution)"
         worktree_created: "Boolean - true if new worktree created, false if reused"
         branch: "Branch name"
         base: "Base branch used"
-        plan_folder: "Absolute path to created plan folder"
+        plan_folder: "Absolute path to plan folder (IN MAIN WORKTREE, not feature worktree)"
         plan_folder_name: "Generated folder name (YYMMDDXX_description format)"
+        main_worktree: "Absolute path to main worktree where plan folder was created"
       naming_convention:
         pattern: "YYMMDDXX_description"
         components:
@@ -65,7 +73,19 @@ cli_commands:
         - "agentic plan init feature-auth --description user_authentication"
         - "agentic plan init bugfix --base develop"
         - "agentic -j plan init my-feature --description api_refactor"
+      example_json_output: |
+        {
+          "worktree": "/home/code/MyProject-my-feature",
+          "worktree_created": true,
+          "branch": "my-feature",
+          "base": "main",
+          "plan_folder": "/home/code/MyProject/docs/plans/live/260119MF_api_refactor",
+          "plan_folder_name": "260119MF_api_refactor",
+          "main_worktree": "/home/code/MyProject"
+        }
+        Note: plan_folder points to MAIN worktree, not the feature worktree.
       note: "Prefer this over 'worktree create' + 'plan scaffold' for new plans"
+      reference: "modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml#Main-First Planning"
 
     validate:
       command: "agentic plan validate <plan_folder_path>"

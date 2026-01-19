@@ -16,11 +16,19 @@ process:
 
     - name: "plan_folder_path"
       type: "string"
-      description: "Absolute path to the planning folder created for the worktree"
+      description: "Absolute path to the planning folder (created in MAIN worktree, not feature worktree)"
       required: true
-      path_template: "{worktree_root}/docs/plans/live/{YYMMDDXX_description}/"
-      example: "/home/code/MyProject-feature_auth/docs/plans/live/260110FA_feature_auth/"
-      note: "YYMMDDXX format: YY=year, MM=month, DD=day, XX=worktree ID (2 uppercase letters from worktree suffix)"
+      path_template: "{main_worktree_root}/docs/plans/live/{YYMMDDXX_description}/"
+      example: "/home/code/MyProject/docs/plans/live/260110FA_feature_auth/"
+      note: |
+        MAIN-FIRST PLANNING: Plan folders are in main worktree, not feature worktree.
+        YYMMDDXX format: YY=year, MM=month, DD=day, XX=worktree ID (2 uppercase letters from worktree suffix)
+
+    - name: "main_worktree_path"
+      type: "string"
+      description: "Absolute path to the main worktree (where plan folder is located)"
+      required: true
+      example: "/home/code/MyProject"
 
     - name: "workspace_updated"
       type: "boolean"
@@ -53,10 +61,14 @@ process:
       Create worktree and plan folder in one operation:
       Use CLI command: `agentic plan init <branch> --description <desc> --base <base-branch>`
 
+      MAIN-FIRST PLANNING: The CLI creates TWO things in different locations:
+      - plan_folder: Created in MAIN worktree's docs/plans/live/ (for centralized visibility)
+      - worktree: Created/reused as feature worktree (for execution)
+
       This single command handles ALL of the following:
       - Git worktree creation (or reuses existing worktree for branch)
       - Plan folder naming with YYMMDDXX_description convention (enforced by CLI)
-      - Planning folder scaffolding (docs/plans/live/<folder_name>/)
+      - Planning folder scaffolding in MAIN worktree (docs/plans/live/<folder_name>/)
       - Subdirectory creation (live/, completed/, analysis/, audit/)
       - README.md template creation
 
@@ -67,10 +79,10 @@ process:
       - 3: Invalid branch name or description
 
       For JSON output use: `agentic -j plan init <branch> --description <desc>`
-      JSON response includes: worktree, worktree_created, branch, plan_folder, plan_folder_name
+      JSON response includes: worktree, worktree_created, branch, plan_folder, plan_folder_name, main_worktree
 
       NOTE: Do NOT create folders manually. The CLI enforces naming convention
-      programmatically, eliminating agent interpretation errors.
+      and Main-First Planning behavior programmatically, eliminating agent errors.
     - |
       Update VS Code workspace file:
       Reference inputs.yml definitions (workspace_file, worktree_naming_convention) for:
@@ -86,7 +98,10 @@ process:
       Trust CLI exit codes - exit code 0 from 'agentic plan init' confirms success.
       No additional verification commands needed (worktree list, plan list, status).
 
-      Report plan_folder_path from CLI JSON output to orchestration for downstream use.
+      Report to orchestration for downstream use:
+      - plan_folder_path: In main worktree (for centralized visibility)
+      - worktree_path: Feature worktree (for execution)
+      - main_worktree_path: Main worktree root (for reference)
 
   guidelines:
     # Core guidelines: See modules/AgenticGuidance/assets/guidelines/ (safety.yml, fix-the-source.yml, worktree-and-branching.yml)
