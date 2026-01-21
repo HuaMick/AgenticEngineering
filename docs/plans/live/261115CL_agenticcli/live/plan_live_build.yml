@@ -1,0 +1,1358 @@
+# CLI Task Lists - Build Plan
+# Generated: 2026-01-20
+# Agent: planner-build
+
+name: "cli-task-lists-build"
+worktree_path: "/home/code/AgenticEngineering"
+worktree: "261115CL_agenticcli"
+status: "completed"
+created: "2026-01-20"
+updated: "2026-01-20"
+
+summary: |
+  Implement CLI-based preset task lists to help agents remember ancillary tasks
+  (MMD generation, README updates). Includes CLI commands for task management
+  and YAML preset templates for different agent roles.
+
+phases:
+  # ===========================================================================
+  # Phase 1: CLI Task Command Extensions
+  # ===========================================================================
+  - phase_id: "build_01"
+    name: "CLI Task Command Extensions"
+    description: "Extend existing task subparser with new commands: prefill, list, status, add"
+    status: "completed"
+    estimated_effort: "medium"
+
+    tasks:
+      # -----------------------------------------------------------------------
+      # Task 1.1: Add task prefill subcommand parser
+      # -----------------------------------------------------------------------
+      - task_id: "build_01_001"
+        description: "Add task prefill subcommand parser to cli.py"
+        status: "completed"
+
+        inputs:
+          - path: "modules/AgenticCLI/src/agenticcli/cli.py"
+            reason: "Contains _add_plan_parser function with existing task subparsers"
+            lines: "310-324"
+
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/cli.py"
+
+        guidance: |
+          Location: _add_plan_parser function, within the task_subparsers section
+
+          Add new parser after the existing 'complete' parser (line 324):
+
+          ```python
+          # task prefill
+          prefill_parser = task_subparsers.add_parser(
+              "prefill",
+              help="Load preset task list from template",
+              description="Prefill tasks from a named preset template (e.g., planner-build, builder).",
+          )
+          prefill_parser.add_argument(
+              "--preset", "-t",
+              required=True,
+              help="Preset name (e.g., planner-build, planner-teach, builder)",
+          )
+          prefill_parser.add_argument(
+              "--plan", "-p",
+              help="Plan path (default: auto-detect)",
+          )
+          prefill_parser.add_argument(
+              "--dry-run", "-n",
+              action="store_true",
+              help="Show tasks that would be added without making changes",
+          )
+          ```
+
+          Pattern: Follow existing argparse patterns in cli.py for consistency.
+
+        success_criteria:
+          - "Parser accepts --preset/-t argument"
+          - "Parser accepts --plan/-p argument"
+          - "Parser accepts --dry-run/-n flag"
+          - "Help text displays correctly: agentic plan task prefill --help"
+          - "No argparse errors on startup"
+
+      # -----------------------------------------------------------------------
+      # Task 1.2: Add task list subcommand parser
+      # -----------------------------------------------------------------------
+      - task_id: "build_01_002"
+        description: "Add task list subcommand parser to cli.py"
+        status: "completed"
+
+        inputs:
+          - path: "modules/AgenticCLI/src/agenticcli/cli.py"
+            reason: "Contains _add_plan_parser function with task subparsers"
+            lines: "310-324"
+
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/cli.py"
+
+        guidance: |
+          Location: _add_plan_parser function, after prefill parser
+
+          Add parser for 'task list':
+
+          ```python
+          # task list
+          list_parser = task_subparsers.add_parser(
+              "list",
+              help="Show all tasks in current plan folder",
+              description="Display all tasks with their current status from plan files.",
+          )
+          list_parser.add_argument(
+              "--plan", "-p",
+              help="Plan path (default: auto-detect)",
+          )
+          list_parser.add_argument(
+              "--status", "-s",
+              choices=["all", "pending", "in_progress", "completed"],
+              default="all",
+              help="Filter by task status (default: all)",
+          )
+          list_parser.add_argument(
+              "--verbose", "-v",
+              action="store_true",
+              help="Show full task details including guidance",
+          )
+          ```
+
+        success_criteria:
+          - "Parser accepts --plan/-p argument"
+          - "Parser accepts --status/-s filter argument"
+          - "Parser accepts --verbose/-v flag"
+          - "Help text displays correctly: agentic plan task list --help"
+
+      # -----------------------------------------------------------------------
+      # Task 1.3: Add task status subcommand parser
+      # -----------------------------------------------------------------------
+      - task_id: "build_01_003"
+        description: "Add task status subcommand parser to cli.py"
+        status: "completed"
+
+        inputs:
+          - path: "modules/AgenticCLI/src/agenticcli/cli.py"
+            reason: "Contains _add_plan_parser function with task subparsers"
+            lines: "310-324"
+
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/cli.py"
+
+        guidance: |
+          Location: _add_plan_parser function, after list parser
+
+          Add parser for 'task status':
+
+          ```python
+          # task status
+          status_parser = task_subparsers.add_parser(
+              "status",
+              help="Show detailed status for a specific task",
+              description="Display detailed information about a task by ID.",
+          )
+          status_parser.add_argument(
+              "task_id",
+              help="Task ID (e.g., build_01_001, 01.1)",
+          )
+          status_parser.add_argument(
+              "--plan", "-p",
+              help="Plan path (default: auto-detect)",
+          )
+          ```
+
+        success_criteria:
+          - "Parser accepts task_id positional argument"
+          - "Parser accepts --plan/-p argument"
+          - "Help text displays correctly: agentic plan task status --help"
+
+      # -----------------------------------------------------------------------
+      # Task 1.4: Add task add subcommand parser
+      # -----------------------------------------------------------------------
+      - task_id: "build_01_004"
+        description: "Add task add subcommand parser to cli.py"
+        status: "completed"
+
+        inputs:
+          - path: "modules/AgenticCLI/src/agenticcli/cli.py"
+            reason: "Contains _add_plan_parser function with task subparsers"
+            lines: "310-324"
+
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/cli.py"
+
+        guidance: |
+          Location: _add_plan_parser function, after status parser
+
+          Add parser for 'task add':
+
+          ```python
+          # task add
+          add_parser = task_subparsers.add_parser(
+              "add",
+              help="Add new task to plan",
+              description="Add a new task to the active plan file.",
+          )
+          add_parser.add_argument(
+              "description",
+              help="Task description",
+          )
+          add_parser.add_argument(
+              "--plan", "-p",
+              help="Plan path (default: auto-detect)",
+          )
+          add_parser.add_argument(
+              "--phase", "-ph",
+              help="Phase ID to add task to (e.g., build_01)",
+          )
+          add_parser.add_argument(
+              "--id",
+              help="Custom task ID (auto-generated if not specified)",
+          )
+          add_parser.add_argument(
+              "--priority",
+              choices=["low", "medium", "high"],
+              default="medium",
+              help="Task priority (default: medium)",
+          )
+          ```
+
+        success_criteria:
+          - "Parser accepts description positional argument"
+          - "Parser accepts --plan/-p, --phase/-ph, --id, --priority arguments"
+          - "Help text displays correctly: agentic plan task add --help"
+
+  # ===========================================================================
+  # Phase 2: Command Handler Implementation
+  # ===========================================================================
+  - phase_id: "build_02"
+    name: "Command Handler Implementation"
+    description: "Implement handler functions in plan.py for the new task commands"
+    status: "completed"
+    estimated_effort: "high"
+    depends_on: ["build_01"]
+
+    tasks:
+      # -----------------------------------------------------------------------
+      # Task 2.1: Extend task command router
+      # -----------------------------------------------------------------------
+      - task_id: "build_02_001"
+        description: "Extend task command router in plan.py handle function"
+        status: "completed"
+
+        inputs:
+          - path: "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+            reason: "Contains handle() function with task action routing"
+            lines: "28-35"
+
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+
+        guidance: |
+          Location: handle() function, within the args.plan_command == "task" block
+
+          Current code routes: start, complete
+          Add routing for: prefill, list, status, add
+
+          ```python
+          elif args.plan_command == "task":
+              if args.task_action == "start":
+                  cmd_task_start(args)
+              elif args.task_action == "complete":
+                  cmd_task_complete(args)
+              elif args.task_action == "prefill":
+                  cmd_task_prefill(args, ctx)
+              elif args.task_action == "list":
+                  cmd_task_list(args, ctx)
+              elif args.task_action == "status":
+                  cmd_task_status(args, ctx)
+              elif args.task_action == "add":
+                  cmd_task_add(args, ctx)
+              else:
+                  print("Usage: agentic plan task <start|complete|prefill|list|status|add> ...", file=sys.stderr)
+                  sys.exit(1)
+          ```
+
+        success_criteria:
+          - "All four new actions route to their handler functions"
+          - "Error message updated to show all available actions"
+
+      # -----------------------------------------------------------------------
+      # Task 2.2: Implement cmd_task_prefill handler
+      # -----------------------------------------------------------------------
+      - task_id: "build_02_002"
+        description: "Implement cmd_task_prefill handler function"
+        status: "completed"
+
+        inputs:
+          - path: "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+            reason: "Contains existing cmd_task_* handler functions as patterns"
+            lines: "462-517"
+          - path: "modules/AgenticCLI/src/agenticcli/console.py"
+            reason: "Console output utilities for formatted output"
+
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+
+        guidance: |
+          Create new function cmd_task_prefill(args, ctx):
+
+          ```python
+          def cmd_task_prefill(args, ctx=None):
+              """Load preset task list from template.
+
+              Loads tasks from a preset YAML template and adds them to the
+              current plan's task list for tracking.
+
+              Args:
+                  args: Parsed arguments with preset, plan, dry_run.
+                  ctx: Optional CLIContext.
+              """
+              from agenticcli.console import (
+                  console,
+                  is_json_output,
+                  print_error,
+                  print_info,
+                  print_json,
+                  print_success,
+                  print_table,
+              )
+              from agenticcli.workflows.task_workflow import TaskPresetWorkflow
+
+              preset_name = args.preset
+              plan_path = find_plan_folder(getattr(args, "plan", None))
+              dry_run = getattr(args, "dry_run", False)
+
+              workflow = TaskPresetWorkflow(plan_path)
+
+              try:
+                  result = workflow.load_preset(preset_name, dry_run=dry_run)
+              except FileNotFoundError:
+                  print_error(f"Preset '{preset_name}' not found")
+                  print_info("Available presets: " + ", ".join(workflow.list_presets()))
+                  sys.exit(1)
+
+              if is_json_output():
+                  print_json({
+                      "preset": preset_name,
+                      "tasks_added": result.tasks_added,
+                      "tasks": result.tasks,
+                      "dry_run": dry_run,
+                  })
+              else:
+                  if dry_run:
+                      console.print(f"[dim][dry-run] Would add {len(result.tasks)} tasks from preset '{preset_name}'[/dim]")
+                  else:
+                      print_success(f"Added {result.tasks_added} tasks from preset '{preset_name}'")
+
+                  # Show tasks
+                  rows = [[t["id"], t["description"], t.get("priority", "medium")] for t in result.tasks]
+                  print_table("Tasks", ["ID", "Description", "Priority"], rows)
+          ```
+
+          Key behaviors:
+          - Load preset template from templates/presets/
+          - Add tasks to plan_live_*.yml in live/ directory
+          - Support dry-run mode
+          - Show summary table of added tasks
+
+        success_criteria:
+          - "Loads preset from templates/presets/<name>.yml"
+          - "Adds tasks to plan file in live/ directory"
+          - "Handles missing preset with helpful error"
+          - "Supports --dry-run flag"
+          - "JSON output includes tasks_added and tasks list"
+          - "Human-readable output shows task table"
+
+      # -----------------------------------------------------------------------
+      # Task 2.3: Implement cmd_task_list handler
+      # -----------------------------------------------------------------------
+      - task_id: "build_02_003"
+        description: "Implement cmd_task_list handler function"
+        status: "completed"
+
+        inputs:
+          - path: "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+            reason: "Contains cmd_status function with similar iteration pattern"
+            lines: "291-399"
+          - path: "modules/AgenticCLI/src/agenticcli/console.py"
+            reason: "Console output utilities"
+
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+
+        guidance: |
+          Create new function cmd_task_list(args, ctx):
+
+          ```python
+          def cmd_task_list(args, ctx=None):
+              """List all tasks in plan folder.
+
+              Iterates through all YAML files in live/ and extracts tasks,
+              supporting status filtering and verbose output.
+
+              Args:
+                  args: Parsed arguments with plan, status filter, verbose.
+                  ctx: Optional CLIContext.
+              """
+              from agenticcli.console import (
+                  console,
+                  format_status,
+                  is_json_output,
+                  print_error,
+                  print_header,
+                  print_json,
+                  print_table,
+              )
+
+              plan_path = find_plan_folder(getattr(args, "plan", None))
+              status_filter = getattr(args, "status", "all")
+              verbose = getattr(args, "verbose", False)
+              live_dir = plan_path / "live"
+
+              if not live_dir.exists():
+                  print_error(f"No live/ directory in {plan_path}")
+                  sys.exit(1)
+
+              all_tasks = []
+
+              for yaml_file in sorted(live_dir.glob("*.yml")):
+                  try:
+                      content = yaml.safe_load(yaml_file.read_text())
+                  except yaml.YAMLError:
+                      continue
+
+                  if not content:
+                      continue
+
+                  # Extract tasks from phases structure
+                  phases = content.get("phases", [])
+                  for phase in phases:
+                      phase_id = phase.get("phase_id", "")
+                      phase_name = phase.get("name", "")
+                      tasks = phase.get("tasks", [])
+
+                      for task in tasks:
+                          task_status = task.get("status", "pending")
+                          if status_filter != "all" and task_status != status_filter:
+                              continue
+
+                          task_info = {
+                              "id": task.get("task_id", ""),
+                              "description": task.get("description", ""),
+                              "status": task_status,
+                              "phase_id": phase_id,
+                              "phase_name": phase_name,
+                              "source_file": yaml_file.name,
+                          }
+
+                          if verbose:
+                              task_info["guidance"] = task.get("guidance", "")
+                              task_info["success_criteria"] = task.get("success_criteria", [])
+
+                          all_tasks.append(task_info)
+
+              if is_json_output():
+                  print_json({"tasks": all_tasks, "count": len(all_tasks)})
+              else:
+                  print_header(f"Tasks in {plan_path.name}")
+
+                  if not all_tasks:
+                      console.print("[dim]No tasks found.[/dim]")
+                      return
+
+                  if verbose:
+                      for task in all_tasks:
+                          console.print(f"\n[bold]{task['id']}[/bold]: {task['description']}")
+                          console.print(f"  Status: {format_status(task['status'])}")
+                          console.print(f"  Phase: {task['phase_name']}")
+                          if task.get("guidance"):
+                              console.print(f"  [dim]Guidance: {task['guidance'][:100]}...[/dim]")
+                  else:
+                      rows = [
+                          [task["id"], task["description"][:50], format_status(task["status"]), task["phase_id"]]
+                          for task in all_tasks
+                      ]
+                      print_table("", ["ID", "Description", "Status", "Phase"], rows)
+
+                  console.print(f"\n[dim]Total: {len(all_tasks)} tasks[/dim]")
+          ```
+
+        success_criteria:
+          - "Lists all tasks from all YAML files in live/"
+          - "Supports --status filter (all, pending, in_progress, completed)"
+          - "Supports --verbose flag for detailed output"
+          - "JSON output includes full task list with count"
+          - "Table format for non-verbose human output"
+
+      # -----------------------------------------------------------------------
+      # Task 2.4: Implement cmd_task_status handler
+      # -----------------------------------------------------------------------
+      - task_id: "build_02_004"
+        description: "Implement cmd_task_status handler function"
+        status: "completed"
+
+        inputs:
+          - path: "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+            reason: "Contains _update_task_status with task lookup pattern"
+            lines: "480-517"
+
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+
+        guidance: |
+          Create new function cmd_task_status(args, ctx):
+
+          ```python
+          def cmd_task_status(args, ctx=None):
+              """Show detailed status for a specific task.
+
+              Finds task by ID and displays all available information
+              including guidance, success criteria, inputs, and target files.
+
+              Args:
+                  args: Parsed arguments with task_id and plan.
+                  ctx: Optional CLIContext.
+              """
+              from agenticcli.console import (
+                  console,
+                  format_status,
+                  is_json_output,
+                  print_error,
+                  print_header,
+                  print_json,
+                  print_key_value,
+              )
+
+              task_id = args.task_id
+              plan_path = find_plan_folder(getattr(args, "plan", None))
+              live_dir = plan_path / "live"
+
+              task_data = None
+              source_file = None
+              phase_info = None
+
+              for yaml_file in live_dir.glob("*.yml"):
+                  try:
+                      content = yaml.safe_load(yaml_file.read_text())
+                  except yaml.YAMLError:
+                      continue
+
+                  if not content:
+                      continue
+
+                  phases = content.get("phases", [])
+                  for phase in phases:
+                      tasks = phase.get("tasks", [])
+                      for task in tasks:
+                          if task.get("task_id") == task_id:
+                              task_data = task
+                              source_file = yaml_file.name
+                              phase_info = {
+                                  "phase_id": phase.get("phase_id"),
+                                  "name": phase.get("name"),
+                                  "status": phase.get("status"),
+                              }
+                              break
+                      if task_data:
+                          break
+                  if task_data:
+                      break
+
+              if not task_data:
+                  print_error(f"Task '{task_id}' not found")
+                  sys.exit(1)
+
+              if is_json_output():
+                  print_json({
+                      "task": task_data,
+                      "phase": phase_info,
+                      "source_file": source_file,
+                  })
+              else:
+                  print_header(f"Task: {task_id}")
+
+                  print_key_value("Description", task_data.get("description", "N/A"))
+                  print_key_value("Status", format_status(task_data.get("status", "pending")))
+                  print_key_value("Phase", f"{phase_info['phase_id']} - {phase_info['name']}")
+                  print_key_value("Source File", source_file)
+
+                  if task_data.get("inputs"):
+                      console.print("\n[bold]Inputs:[/bold]")
+                      for inp in task_data["inputs"]:
+                          console.print(f"  - {inp.get('path', inp)}")
+
+                  if task_data.get("target_files"):
+                      console.print("\n[bold]Target Files:[/bold]")
+                      for tf in task_data["target_files"]:
+                          console.print(f"  - {tf}")
+
+                  if task_data.get("guidance"):
+                      console.print("\n[bold]Guidance:[/bold]")
+                      console.print(f"[dim]{task_data['guidance']}[/dim]")
+
+                  if task_data.get("success_criteria"):
+                      console.print("\n[bold]Success Criteria:[/bold]")
+                      for criterion in task_data["success_criteria"]:
+                          console.print(f"  - {criterion}")
+          ```
+
+        success_criteria:
+          - "Finds task by ID across all plan files"
+          - "Displays full task details including inputs, targets, guidance"
+          - "Shows phase context information"
+          - "Handles missing task with error message"
+          - "JSON output includes task, phase, and source_file"
+
+      # -----------------------------------------------------------------------
+      # Task 2.5: Implement cmd_task_add handler
+      # -----------------------------------------------------------------------
+      - task_id: "build_02_005"
+        description: "Implement cmd_task_add handler function"
+        status: "completed"
+
+        inputs:
+          - path: "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+            reason: "Contains YAML read/write patterns"
+            lines: "480-517"
+
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+
+        guidance: |
+          Create new function cmd_task_add(args, ctx):
+
+          ```python
+          def cmd_task_add(args, ctx=None):
+              """Add a new task to the plan.
+
+              Creates a new task entry in the specified phase or appends
+              to the default/first phase if not specified.
+
+              Args:
+                  args: Parsed arguments with description, plan, phase, id, priority.
+                  ctx: Optional CLIContext.
+              """
+              from agenticcli.console import (
+                  is_json_output,
+                  print_error,
+                  print_json,
+                  print_success,
+              )
+
+              description = args.description
+              plan_path = find_plan_folder(getattr(args, "plan", None))
+              phase_id = getattr(args, "phase", None)
+              custom_id = getattr(args, "id", None)
+              priority = getattr(args, "priority", "medium")
+              live_dir = plan_path / "live"
+
+              # Find the first plan_live_*.yml file or plan_build.yml
+              target_file = None
+              for pattern in ["plan_live_*.yml", "plan_build*.yml", "*.yml"]:
+                  files = list(live_dir.glob(pattern))
+                  if files:
+                      target_file = files[0]
+                      break
+
+              if not target_file:
+                  print_error("No plan file found in live/ directory")
+                  sys.exit(1)
+
+              try:
+                  content = yaml.safe_load(target_file.read_text())
+              except yaml.YAMLError as e:
+                  print_error(f"Failed to parse {target_file.name}: {e}")
+                  sys.exit(1)
+
+              if not content:
+                  content = {"phases": []}
+
+              phases = content.get("phases", [])
+
+              # Find target phase
+              target_phase = None
+              if phase_id:
+                  for phase in phases:
+                      if phase.get("phase_id") == phase_id:
+                          target_phase = phase
+                          break
+                  if not target_phase:
+                      print_error(f"Phase '{phase_id}' not found")
+                      sys.exit(1)
+              else:
+                  if phases:
+                      target_phase = phases[-1]  # Add to last phase
+                  else:
+                      # Create default phase
+                      target_phase = {
+                          "phase_id": "adhoc_01",
+                          "name": "Ad-hoc Tasks",
+                          "status": "pending",
+                          "tasks": [],
+                      }
+                      phases.append(target_phase)
+                      content["phases"] = phases
+
+              # Generate task ID
+              if custom_id:
+                  new_task_id = custom_id
+              else:
+                  existing_ids = [t.get("task_id", "") for t in target_phase.get("tasks", [])]
+                  phase_prefix = target_phase.get("phase_id", "task")
+                  task_num = len(existing_ids) + 1
+                  new_task_id = f"{phase_prefix}_{task_num:03d}"
+
+              # Create task entry
+              new_task = {
+                  "task_id": new_task_id,
+                  "description": description,
+                  "status": "pending",
+                  "priority": priority,
+              }
+
+              if "tasks" not in target_phase:
+                  target_phase["tasks"] = []
+              target_phase["tasks"].append(new_task)
+
+              # Write back
+              with open(target_file, "w") as f:
+                  yaml.dump(content, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+
+              if is_json_output():
+                  print_json({
+                      "task_id": new_task_id,
+                      "description": description,
+                      "phase_id": target_phase.get("phase_id"),
+                      "file": target_file.name,
+                  })
+              else:
+                  print_success(f"Added task '{new_task_id}' to {target_file.name}")
+          ```
+
+        success_criteria:
+          - "Creates new task in target plan file"
+          - "Auto-generates task ID if not provided"
+          - "Supports adding to specific phase via --phase"
+          - "Creates default phase if none exists"
+          - "Preserves existing YAML structure"
+          - "JSON output includes task_id, description, phase_id, file"
+
+  # ===========================================================================
+  # Phase 3: Task Workflow Module
+  # ===========================================================================
+  - phase_id: "build_03"
+    name: "Task Workflow Module"
+    description: "Create TaskPresetWorkflow class for preset loading and management"
+    status: "completed"
+    estimated_effort: "medium"
+    depends_on: ["build_01"]
+
+    tasks:
+      # -----------------------------------------------------------------------
+      # Task 3.1: Create task_workflow.py module
+      # -----------------------------------------------------------------------
+      - task_id: "build_03_001"
+        description: "Create task_workflow.py module with TaskPresetWorkflow class"
+        status: "completed"
+
+        inputs:
+          - path: "modules/AgenticCLI/src/agenticcli/workflows/plan_workflow.py"
+            reason: "Reference for workflow class patterns and structure"
+          - path: "modules/AgenticCLI/src/agenticcli/workflows/__init__.py"
+            reason: "Module exports"
+
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/workflows/task_workflow.py"
+          - "modules/AgenticCLI/src/agenticcli/workflows/__init__.py"
+
+        guidance: |
+          Create new file: modules/AgenticCLI/src/agenticcli/workflows/task_workflow.py
+
+          ```python
+          """Task Preset Workflow - load and manage task presets.
+
+          Handles loading task presets from templates and adding them to plans.
+          """
+
+          from dataclasses import dataclass, field
+          from pathlib import Path
+          from typing import Optional
+
+          import yaml
+
+
+          @dataclass
+          class PresetLoadResult:
+              """Result of loading a preset."""
+
+              preset_name: str
+              tasks_added: int
+              tasks: list[dict] = field(default_factory=list)
+              target_file: Optional[str] = None
+              dry_run: bool = False
+
+
+          class TaskPresetWorkflow:
+              """Workflow for loading task presets into plan files.
+
+              Provides:
+              - Loading preset templates from templates/presets/
+              - Adding preset tasks to plan_live_*.yml files
+              - Listing available presets
+              """
+
+              PRESETS_DIR = Path(__file__).parent.parent / "templates" / "presets"
+
+              def __init__(self, plan_path: Path):
+                  """Initialize task preset workflow.
+
+                  Args:
+                      plan_path: Path to the plan folder.
+                  """
+                  self.plan_path = plan_path
+                  self.live_dir = plan_path / "live"
+
+              def list_presets(self) -> list[str]:
+                  """List available preset names.
+
+                  Returns:
+                      List of preset names (without .yml extension).
+                  """
+                  if not self.PRESETS_DIR.exists():
+                      return []
+                  return [f.stem for f in self.PRESETS_DIR.glob("*.yml")]
+
+              def get_preset_path(self, preset_name: str) -> Path:
+                  """Get path to a preset file.
+
+                  Args:
+                      preset_name: Name of the preset (with or without .yml).
+
+                  Returns:
+                      Path to preset file.
+
+                  Raises:
+                      FileNotFoundError: If preset doesn't exist.
+                  """
+                  # Support both "planner-build" and "planner-build-preset"
+                  candidates = [
+                      self.PRESETS_DIR / f"{preset_name}.yml",
+                      self.PRESETS_DIR / f"{preset_name}-preset.yml",
+                  ]
+
+                  for path in candidates:
+                      if path.exists():
+                          return path
+
+                  raise FileNotFoundError(f"Preset '{preset_name}' not found")
+
+              def load_preset(
+                  self,
+                  preset_name: str,
+                  dry_run: bool = False,
+              ) -> PresetLoadResult:
+                  """Load a preset and add tasks to plan.
+
+                  Args:
+                      preset_name: Name of the preset to load.
+                      dry_run: If True, don't make changes.
+
+                  Returns:
+                      PresetLoadResult with operation details.
+
+                  Raises:
+                      FileNotFoundError: If preset doesn't exist.
+                  """
+                  preset_path = self.get_preset_path(preset_name)
+                  preset_data = yaml.safe_load(preset_path.read_text())
+
+                  tasks = preset_data.get("tasks", [])
+
+                  if dry_run:
+                      return PresetLoadResult(
+                          preset_name=preset_name,
+                          tasks_added=len(tasks),
+                          tasks=tasks,
+                          dry_run=True,
+                      )
+
+                  # Find or create target file
+                  target_file = self._find_or_create_task_file()
+
+                  # Load existing content
+                  if target_file.exists():
+                      content = yaml.safe_load(target_file.read_text()) or {}
+                  else:
+                      content = {
+                          "name": f"tasks-{self.plan_path.name}",
+                          "preset_source": preset_name,
+                          "tasks": [],
+                      }
+
+                  # Add tasks
+                  existing_tasks = content.get("tasks", [])
+                  existing_ids = {t.get("id") for t in existing_tasks}
+
+                  added_count = 0
+                  for task in tasks:
+                      if task.get("id") not in existing_ids:
+                          existing_tasks.append(task)
+                          added_count += 1
+
+                  content["tasks"] = existing_tasks
+
+                  # Write back
+                  with open(target_file, "w") as f:
+                      yaml.dump(content, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+
+                  return PresetLoadResult(
+                      preset_name=preset_name,
+                      tasks_added=added_count,
+                      tasks=tasks,
+                      target_file=target_file.name,
+                  )
+
+              def _find_or_create_task_file(self) -> Path:
+                  """Find existing task file or create path for new one.
+
+                  Returns:
+                      Path to task file.
+                  """
+                  # Look for existing plan_live_tasks.yml
+                  task_file = self.live_dir / "plan_live_tasks.yml"
+                  if task_file.exists():
+                      return task_file
+
+                  # Look for any plan_live_*.yml
+                  for f in self.live_dir.glob("plan_live_*.yml"):
+                      return f
+
+                  # Create new task file
+                  self.live_dir.mkdir(parents=True, exist_ok=True)
+                  return task_file
+          ```
+
+          Also update __init__.py to export the new class.
+
+        success_criteria:
+          - "TaskPresetWorkflow class created with documented methods"
+          - "list_presets() returns available preset names"
+          - "load_preset() loads YAML and adds tasks"
+          - "Supports dry_run mode"
+          - "PresetLoadResult dataclass captures operation results"
+          - "Module exported from workflows/__init__.py"
+
+  # ===========================================================================
+  # Phase 4: Preset Templates
+  # ===========================================================================
+  - phase_id: "build_04"
+    name: "Preset Templates"
+    description: "Create YAML preset template files for different agent roles"
+    status: "completed"
+    estimated_effort: "medium"
+
+    tasks:
+      # -----------------------------------------------------------------------
+      # Task 4.1: Create presets directory
+      # -----------------------------------------------------------------------
+      - task_id: "build_04_001"
+        description: "Create templates/presets directory structure"
+        status: "completed"
+
+        inputs:
+          - path: "modules/AgenticCLI/src/agenticcli/templates/"
+            reason: "Existing templates directory location"
+
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/templates/presets/.gitkeep"
+
+        guidance: |
+          Create directory: modules/AgenticCLI/src/agenticcli/templates/presets/
+
+          Add a .gitkeep file to ensure the directory is tracked.
+
+        success_criteria:
+          - "presets/ directory exists under templates/"
+          - "Directory is tracked in git"
+
+      # -----------------------------------------------------------------------
+      # Task 4.2: Create planner-build preset
+      # -----------------------------------------------------------------------
+      - task_id: "build_04_002"
+        description: "Create planner-build-preset.yml template"
+        status: "completed"
+
+        inputs:
+          - path: "modules/AgenticGuidance/agents/planner/planner-build/inputs.yml"
+            reason: "Reference for planner-build workflow and expected tasks"
+
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/templates/presets/planner-build-preset.yml"
+
+        guidance: |
+          Create preset file with tasks for planner-build agent:
+
+          ```yaml
+          # Planner-Build Preset
+          # Ancillary tasks to remember during build planning
+
+          name: planner-build
+          description: "Tasks for planner-build agent during plan creation"
+          version: "1.0"
+
+          tasks:
+            - id: "pb_001"
+              description: "Generate process.mmd diagram if plan has multiple phases"
+              priority: "medium"
+              trigger: "phases.count > 2"
+
+            - id: "pb_002"
+              description: "Update README.md with plan summary"
+              priority: "low"
+              trigger: "plan_created"
+
+            - id: "pb_003"
+              description: "Validate all inputs.yml file references exist"
+              priority: "high"
+              trigger: "inputs_defined"
+
+            - id: "pb_004"
+              description: "Add success_criteria to each task"
+              priority: "high"
+              trigger: "always"
+
+            - id: "pb_005"
+              description: "Specify target_files for each task"
+              priority: "high"
+              trigger: "always"
+
+            - id: "pb_006"
+              description: "Include guidance snippets for complex tasks"
+              priority: "medium"
+              trigger: "task.complexity > medium"
+
+            - id: "pb_007"
+              description: "Review for dependency ordering between tasks"
+              priority: "medium"
+              trigger: "tasks.count > 5"
+          ```
+
+        success_criteria:
+          - "YAML file valid and parseable"
+          - "Contains tasks relevant to planner-build workflow"
+          - "Each task has id, description, priority"
+          - "Includes trigger hints for conditional tasks"
+
+      # -----------------------------------------------------------------------
+      # Task 4.3: Create planner-teach preset
+      # -----------------------------------------------------------------------
+      - task_id: "build_04_003"
+        description: "Create planner-teach-preset.yml template"
+        status: "completed"
+
+        inputs:
+          - path: "modules/AgenticGuidance/agents/planner/"
+            reason: "Reference for planner agent patterns"
+
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/templates/presets/planner-teach-preset.yml"
+
+        guidance: |
+          Create preset file with tasks for planner-teach agent:
+
+          ```yaml
+          # Planner-Teach Preset
+          # Ancillary tasks for teaching/guidance creation
+
+          name: planner-teach
+          description: "Tasks for creating teaching materials and guidance"
+          version: "1.0"
+
+          tasks:
+            - id: "pt_001"
+              description: "Create inputs.yml with all source references"
+              priority: "high"
+              trigger: "always"
+
+            - id: "pt_002"
+              description: "Generate process.mmd workflow diagram"
+              priority: "medium"
+              trigger: "workflow_defined"
+
+            - id: "pt_003"
+              description: "Add worked examples to guidance"
+              priority: "medium"
+              trigger: "guidance_created"
+
+            - id: "pt_004"
+              description: "Include anti-patterns section"
+              priority: "low"
+              trigger: "complexity > medium"
+
+            - id: "pt_005"
+              description: "Cross-reference related guidance documents"
+              priority: "low"
+              trigger: "related_docs_exist"
+
+            - id: "pt_006"
+              description: "Add validation checklist for guidance quality"
+              priority: "high"
+              trigger: "always"
+          ```
+
+        success_criteria:
+          - "YAML file valid and parseable"
+          - "Contains tasks relevant to guidance creation"
+          - "Each task has id, description, priority"
+
+      # -----------------------------------------------------------------------
+      # Task 4.4: Create planner-test preset
+      # -----------------------------------------------------------------------
+      - task_id: "build_04_004"
+        description: "Create planner-test-preset.yml template"
+        status: "completed"
+
+        inputs:
+          - path: "modules/AgenticGuidance/agents/planner/planner-test/inputs.yml"
+            reason: "Reference for planner-test workflow"
+
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/templates/presets/planner-test-preset.yml"
+
+        guidance: |
+          Create preset file with tasks for planner-test agent:
+
+          ```yaml
+          # Planner-Test Preset
+          # Ancillary tasks for test planning
+
+          name: planner-test
+          description: "Tasks for test plan creation"
+          version: "1.0"
+
+          tasks:
+            - id: "ptest_001"
+              description: "Define test categories (unit, integration, e2e)"
+              priority: "high"
+              trigger: "always"
+
+            - id: "ptest_002"
+              description: "Map tests to user stories"
+              priority: "medium"
+              trigger: "stories_exist"
+
+            - id: "ptest_003"
+              description: "Include edge case scenarios"
+              priority: "medium"
+              trigger: "always"
+
+            - id: "ptest_004"
+              description: "Define test data requirements"
+              priority: "medium"
+              trigger: "always"
+
+            - id: "ptest_005"
+              description: "Specify expected coverage targets"
+              priority: "high"
+              trigger: "always"
+
+            - id: "ptest_006"
+              description: "Add performance test criteria if applicable"
+              priority: "low"
+              trigger: "performance_sensitive"
+          ```
+
+        success_criteria:
+          - "YAML file valid and parseable"
+          - "Contains tasks relevant to test planning"
+          - "Each task has id, description, priority"
+
+      # -----------------------------------------------------------------------
+      # Task 4.5: Create builder preset
+      # -----------------------------------------------------------------------
+      - task_id: "build_04_005"
+        description: "Create builder-preset.yml template"
+        status: "completed"
+
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/templates/presets/builder-preset.yml"
+
+        guidance: |
+          Create preset file with tasks for builder/implementation agents:
+
+          ```yaml
+          # Builder Preset
+          # Ancillary tasks during implementation
+
+          name: builder
+          description: "Tasks for implementation agents during build phase"
+          version: "1.0"
+
+          tasks:
+            - id: "build_001"
+              description: "Run linter before committing"
+              priority: "high"
+              trigger: "pre_commit"
+
+            - id: "build_002"
+              description: "Run existing tests to verify no regressions"
+              priority: "high"
+              trigger: "implementation_complete"
+
+            - id: "build_003"
+              description: "Update docstrings for new functions"
+              priority: "medium"
+              trigger: "functions_added"
+
+            - id: "build_004"
+              description: "Add type hints to function signatures"
+              priority: "medium"
+              trigger: "python_code"
+
+            - id: "build_005"
+              description: "Check for hardcoded values that should be config"
+              priority: "low"
+              trigger: "always"
+
+            - id: "build_006"
+              description: "Verify imports are organized and minimal"
+              priority: "low"
+              trigger: "always"
+
+            - id: "build_007"
+              description: "Update CHANGELOG if significant change"
+              priority: "low"
+              trigger: "feature_complete"
+
+            - id: "build_008"
+              description: "Mark task complete in plan file"
+              priority: "high"
+              trigger: "task_done"
+          ```
+
+        success_criteria:
+          - "YAML file valid and parseable"
+          - "Contains tasks relevant to implementation workflow"
+          - "Each task has id, description, priority"
+          - "Includes common developer reminders (lint, test, docs)"
+
+  # ===========================================================================
+  # Phase 5: Integration and Polish
+  # ===========================================================================
+  - phase_id: "build_05"
+    name: "Integration and Polish"
+    description: "Integrate components, add error handling, update documentation"
+    status: "completed"
+    estimated_effort: "low"
+    depends_on: ["build_02", "build_03", "build_04"]
+
+    tasks:
+      # -----------------------------------------------------------------------
+      # Task 5.1: Update usage message
+      # -----------------------------------------------------------------------
+      - task_id: "build_05_001"
+        description: "Update task subcommand usage message in error handler"
+        status: "completed"
+
+        inputs:
+          - path: "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+            reason: "Contains usage message in handle function"
+            lines: "34"
+
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+
+        guidance: |
+          Update the usage message to include all task actions:
+
+          ```python
+          print("Usage: agentic plan task <start|complete|prefill|list|status|add> ...", file=sys.stderr)
+          ```
+
+        success_criteria:
+          - "Usage message lists all available task actions"
+
+      # -----------------------------------------------------------------------
+      # Task 5.2: Add stability decorators
+      # -----------------------------------------------------------------------
+      - task_id: "build_05_002"
+        description: "Register new commands in stability decorator system"
+        status: "completed"
+
+        inputs:
+          - path: "modules/AgenticCLI/src/agenticcli/decorators.py"
+            reason: "Contains command stability registration"
+
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/decorators.py"
+
+        guidance: |
+          Add new task subcommands to stability registry if applicable.
+
+          Most commands start as EXPERIMENTAL until validated:
+
+          ```python
+          # In COMMAND_STABILITY dict
+          "plan.task.prefill": StabilityLevel.EXPERIMENTAL,
+          "plan.task.list": StabilityLevel.EXPERIMENTAL,
+          "plan.task.status": StabilityLevel.EXPERIMENTAL,
+          "plan.task.add": StabilityLevel.EXPERIMENTAL,
+          ```
+
+        success_criteria:
+          - "New commands registered with appropriate stability level"
+          - "Stability banner shows for experimental commands"
+
+      # -----------------------------------------------------------------------
+      # Task 5.3: Verify argparse integration
+      # -----------------------------------------------------------------------
+      - task_id: "build_05_003"
+        description: "Verify argparse integration and help text"
+        status: "completed"
+
+        target_files: []  # Verification task
+
+        guidance: |
+          Manual verification steps:
+
+          1. Run: `agentic plan task --help`
+             Expected: Shows all subcommands (start, complete, prefill, list, status, add)
+
+          2. Run: `agentic plan task prefill --help`
+             Expected: Shows --preset, --plan, --dry-run options
+
+          3. Run: `agentic plan task list --help`
+             Expected: Shows --plan, --status, --verbose options
+
+          4. Run: `agentic plan task status --help`
+             Expected: Shows task_id argument and --plan option
+
+          5. Run: `agentic plan task add --help`
+             Expected: Shows description argument and options
+
+          6. Run: `agentic --help`
+             Expected: No errors, plan command visible
+
+        success_criteria:
+          - "All help commands execute without error"
+          - "Help text is clear and accurate"
+          - "No argparse conflicts or errors"
+
+success_criteria:
+  - "All four new CLI commands functional: prefill, list, status, add"
+  - "Preset templates created for planner-build, planner-teach, planner-test, builder"
+  - "TaskPresetWorkflow class implemented with dry-run support"
+  - "JSON output mode supported for all new commands"
+  - "Human-readable output with tables and colors"
+  - "Error messages helpful and actionable"
+  - "Help text accurate for all subcommands"
+
+notes:
+  - "Tests will be handled by planner-test in separate plan"
+  - "Follow existing patterns in plan.py and plan_workflow.py"
+  - "Use rich console utilities from console.py for formatted output"
+  - "Preset structure designed to be extensible for future agent types"

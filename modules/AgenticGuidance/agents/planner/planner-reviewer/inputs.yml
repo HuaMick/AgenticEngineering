@@ -1,35 +1,16 @@
 # Planner-Reviewer Agent Inputs
 # Reviews plans created by other planner agents for quality and completeness.
-#
-# PURPOSE:
-# Validate that plans meet quality standards before execution begins.
-# Provides approval/rejection decisions with actionable feedback.
-#
-# RESPONSIBILITIES:
-# - Review plan structure and completeness
-# - Validate success criteria are verifiable
-# - Check phase ordering and dependencies
-# - Ensure plans follow established patterns
-# - Provide approval/rejection with specific feedback
 
-# ==============================================
-# REQUIRED INPUTS
-# ==============================================
-# These inputs MUST be provided by the parent orchestrator or user.
-# Without these, the agent cannot perform plan review.
-# ==============================================
 required_inputs:
   - name: "plan_folder_path"
     type: "string"
     description: "Path to the plan folder to review"
     required: true
-    example: "docs/plans/live/260106MyProject_feature_auth/"
 
   - name: "target_project_path"
     type: "string"
-    description: "Absolute path to target project root (for path resolution)"
+    description: "Absolute path to target project root"
     required: true
-    example: "/home/code/MyProject"
 
 agent_context:
   category: "modules/AgenticGuidance/assets/definitions/agent-categories.yml#agent_categories.planner"
@@ -37,104 +18,62 @@ agent_context:
 
 inputs:
   agent_type: "planner-reviewer"
-  version: "2.0"  # MUST match manifest.yml version
+  version: "2.0"
 
-  # Reference layers (transitive loading)
-  # NOTE: Uses reviewer-specific guidelines layer (Q2=C: excludes philosophical guidance)
   layers:
     - type: layer
       path: "modules/AgenticGuidance/assets/inputs/planner-core-system.yml"
-      description: "Planner-specific system definitions (plans.yml only - excludes architecture-pattern)"
+      description: "Planner-specific system definitions"
       required: true
 
     - type: layer
       path: "modules/AgenticGuidance/assets/inputs/reviewer-core-guidelines.yml"
-      description: "Reviewer-specific guidelines (excludes philosophical guidance like fix-the-source)"
+      description: "Reviewer-specific guidelines"
       required: true
 
     - type: layer
       path: "modules/AgenticGuidance/assets/inputs/planner-shared.yml"
-      description: "Planner shared inputs (agent-role-scope-matrix, plan-inputs, folder-structure, iteration)"
+      description: "Planner shared inputs"
       required: true
 
-  # Reviewer-specific inputs
   core_inputs:
-    # Plan structure requirements (merged into plans.yml - required_fields and validation_checklist sections)
     - type: file
       path: "modules/AgenticGuidance/assets/definitions/plans.yml#required_fields"
-      description: "Required fields and validation checklist for plan validation"
+      description: "Plan validation requirements"
       required: true
 
-    # Loop definitions for understanding phase ordering (reviewer-focused slice)
+    - type: file
+      path: "modules/AgenticGuidance/assets/definitions/planner-reviewer-checklists.yml"
+      description: "Approval checklists and fences"
+      required: true
+
     - type: file
       path: "modules/AgenticGuidance/assets/inputs/reviewer-agent-loops.yml"
-      description: "Reviewer-focused loop definitions (planner-loop, mandatory_loops)"
+      description: "Loop definitions for phase ordering"
       required: true
 
-    # Success criteria for validation
     - type: file
       path: "modules/AgenticGuidance/assets/definitions/success-criteria.yml"
-      description: "Verifiable success criteria guidance"
+      description: "Success criteria guidance"
       required: true
 
-    # SHARED structural patterns (also used by planner-guidance)
     - type: file
       path: "modules/AgenticGuidance/assets/examples/planner/structural-patterns.yml"
-      description: "SHARED structural patterns for plan validation (used by planner-guidance too)"
+      description: "Structural patterns for validation"
       required: true
 
-    # ==========================================================================
-    # RLM VALIDATION SUPPORT (Optional - loaded when reviewing RLM-enabled plans)
-    # ==========================================================================
-    # Reference these when validating plans that include RLM patterns.
-    # See process.yml RLM USAGE CHECKLIST for validation criteria.
-    # ==========================================================================
     - type: file
       path: "modules/AgenticGuidance/assets/definitions/rlm-patterns.yml"
-      description: "RLM patterns for validating appropriate usage and thresholds"
+      description: "RLM patterns for validation"
       required: false
 
     - type: file
       path: "modules/AgenticGuidance/assets/guidelines/rlm-integration.yml"
-      description: "RLM integration guidelines for validating decision criteria"
+      description: "RLM integration guidelines"
       required: false
 
-  # Reviewer-specific guidelines
-  # NOTE: Empty array is intentional - all guidelines come from reviewer-core-guidelines layer.
-  # Do not add guidelines here unless they are reviewer-specific and NOT in shared layers.
   guidelines: []
 
-  # Reviewer-specific definitions
   definitions:
-    review_decision: |
-      Review decisions must be one of:
-      - APPROVED: Plan meets all quality criteria and is ready for execution
-      - REJECTED: Plan has issues that must be addressed before execution
-      - NEEDS_REVISION: Plan has minor issues; specific feedback provided
-
-    review_output_format: |
-      Output review decisions to review_*.yml files in the plan folder.
-      Per scrap_file_taxonomy, review files move to analysis/ after processing.
-
-    rlm_review_criteria: |
-      When reviewing plans with RLM patterns, apply these additional criteria:
-
-      JUSTIFIED USAGE THRESHOLDS:
-      - RLM ALWAYS appropriate: context >1000 lines OR >10 files across directories
-      - RLM SELECTIVE: context 500-1000 lines (use judgment based on task complexity)
-      - RLM NOT APPROPRIATE: context <500 lines (reject RLM usage)
-
-      RECURSION BOUNDS:
-      - Maximum allowed: max_recursion_depth = 5
-      - Recommended: max_recursion_depth = 3
-      - Excessive: max_recursion_depth > 5 (REJECT)
-
-      VARIABLE NAMING VALIDATION:
-      - CONTEXT_: Must follow CONTEXT_SOURCE_SECTION pattern
-      - ACCUMULATOR_: Must follow ACCUMULATOR_TYPE pattern
-      - FILTER_: Must follow FILTER_CRITERIA pattern
-      - FINAL_: Must follow FINAL_OUTPUT pattern
-
-      COMPLETION SIGNAL:
-      - Plans using accumulators MUST include FINAL() signal
-      - FINAL() must be at top level, not inside recursive branches
+    review_decision: "APPROVED | REJECTED | NEEDS_REVISION"
+    review_output_format: "Output to review_*.yml, moves to analysis/ after processing"

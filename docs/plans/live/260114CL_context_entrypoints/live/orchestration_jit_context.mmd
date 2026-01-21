@@ -1,0 +1,146 @@
+flowchart LR
+    %% ========================================
+    %% JIT CONTEXT RETRIEVAL ORCHESTRATION
+    %% ========================================
+    %% GOAL: Orchestrate agents to implement JIT Context Retrieval CLI commands and migrate agents to Pull model.
+    %% PROFILE: Orchestration-JIT-Context
+    %% INPUT_PATH: docs/plans/live/260114CL_context_entrypoints/live/plan_live_build.yml
+    %% GUIDELINE: CLI provides tools for READ/UPDATE - planner agents own plan management
+    %% GUIDELINE: Main-First Planning - plans visible in main worktree
+    %%
+    %% AGENT_ROUTING: BuildPhase -> build-python, TestPhase -> test-runner, UATPhase -> test-user-simulator, AuditPhase -> test-audit
+    %% STATUS: InputValidation=pending, BuildPhase=pending, TestPhase=pending, UATPhase=pending, AuditPhase=pending
+    %%
+    %% OUTPUTS (FENCE: Output must match declared schema before marking complete):
+    %% - CLI context commands: bootstrap, role, task, inputs
+    %% - CLI plan task commands: status, update, current
+    %% - Thin-client agent files in .claude/agents/
+    %% - Updated CLI documentation
+
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    LoadInputs --> ReviewInputs[Review Build and Test Plans]
+    ReviewInputs --> CheckInputs{Plans Valid?}
+    CheckInputs -- "No: Missing" --> AskUser((Ask User for Clarification))
+    CheckInputs -- "Yes: Verified" --> EnterBuildPhase[Enter Build Phase]
+
+    %% ========================================
+    %% BUILD PHASE
+    %% ========================================
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.test-fix-loop
+    %% MAX_ITERATIONS: 5 (per test-fix-loop definition)
+    %% ESCALATION: If max iterations reached without build success, stop and Ask User
+
+    subgraph BuildPhase_SG ["Build Phase Subgraph"]
+        EnterBuildPhase --> SpawnBuilderCLI[Spawn build-python Agent for CLI Commands]
+
+        %% Phase 1: CLI Context Command Infrastructure
+        SpawnBuilderCLI --> ContextCommandsComplete{Context Commands Built?}
+        ContextCommandsComplete -- "No: Build Error" --> CaptureBuildError[Capture Build Failure]
+        CaptureBuildError --> CheckBuildIterations{Max Iterations?}
+        CheckBuildIterations -- "No: Continue" --> SpawnBuilderCLI
+        CheckBuildIterations -- "Yes: Escalate" --> EscalateBuild((Escalate: Build Failed))
+
+        %% Phase 2: CLI Plan Status Tools
+        ContextCommandsComplete -- "Yes" --> SpawnBuilderPlanTools[Spawn build-python Agent for Plan Tools]
+        SpawnBuilderPlanTools --> PlanToolsComplete{Plan Tools Built?}
+        PlanToolsComplete -- "No: Build Error" --> CaptureBuildError
+
+        %% Phase 3: Agent Migration
+        PlanToolsComplete -- "Yes" --> SpawnBuilderMigration[Spawn build-python Agent for Agent Migration]
+        SpawnBuilderMigration --> MigrationComplete{Agents Migrated?}
+        MigrationComplete -- "No: Error" --> CaptureBuildError
+        MigrationComplete -- "Yes" --> BuildPhaseComplete[Build Phase Complete]
+    end
+
+    %% ========================================
+    %% TEST PHASE
+    %% ========================================
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.test-fix-loop
+    %% MAX_ITERATIONS: 5 (per test-fix-loop definition)
+    %% FEEDBACK_TRIGGER: TEST_FAILURE -> SpawnBuilderCLI (after categorization)
+
+    BuildPhaseComplete --> EnterTestPhase[Enter Test Phase]
+
+    subgraph TestPhase_SG ["Test Phase Subgraph"]
+        EnterTestPhase --> SpawnTestRunner[Spawn test-runner Agent]
+
+        %% Unit and Integration Tests
+        SpawnTestRunner --> UnitTestsPass{Unit Tests Pass?}
+        UnitTestsPass -- "No: Fix Required" --> CaptureTestFailure[Capture Test Failure]
+        CaptureTestFailure --> CategorizeFailure{Failure Severity?}
+        CategorizeFailure -- "Low: Fixable" --> SpawnBuilderFix[Spawn build-python Agent for Fix]
+        SpawnBuilderFix --> SpawnTestRunner
+        CategorizeFailure -- "High: Re-plan" --> EscalateTest((Escalate: Test Failure))
+
+        UnitTestsPass -- "Yes" --> IntegrationTestsPass{Integration Tests Pass?}
+        IntegrationTestsPass -- "No: Fix Required" --> CaptureTestFailure
+        IntegrationTestsPass -- "Yes" --> TestPhaseComplete[Test Phase Complete]
+    end
+
+    %% ========================================
+    %% UAT PHASE (MANDATORY)
+    %% ========================================
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.user-story-validation-loop
+    %% Primary success criteria - validates user journeys
+
+    TestPhaseComplete --> EnterUATPhase[Enter UAT Phase]
+
+    subgraph UATPhase_SG ["UAT Phase Subgraph"]
+        EnterUATPhase --> SpawnUserSimulator[Spawn test-user-simulator Agent]
+
+        %% UAT: Agent Bootstrap Journey
+        SpawnUserSimulator --> BootstrapJourneyPass{Bootstrap Journey Pass?}
+        BootstrapJourneyPass -- "No: UX Issue" --> CaptureUATFailure[Capture UAT Failure]
+        CaptureUATFailure --> SpawnBuilderUATFix[Spawn build-python Agent for UX Fix]
+        SpawnBuilderUATFix --> SpawnUserSimulator
+
+        %% UAT: Main-First Resolution
+        BootstrapJourneyPass -- "Yes" --> MainFirstResolutionPass{Main-First Resolution Pass?}
+        MainFirstResolutionPass -- "No: UX Issue" --> CaptureUATFailure
+        MainFirstResolutionPass -- "Yes" --> UATPhaseComplete[UAT Phase Complete]
+    end
+
+    %% ========================================
+    %% AUDIT PHASE (MANDATORY)
+    %% ========================================
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.audit-test-fix-loop
+
+    UATPhaseComplete --> EnterAuditPhase[Enter Audit Phase]
+
+    subgraph AuditPhase_SG ["Audit Phase Subgraph"]
+        EnterAuditPhase --> SpawnAudit[Spawn test-audit Agent]
+
+        SpawnAudit --> AuditPass{Audit Pass?}
+        AuditPass -- "No: Quality Issue" --> CaptureAuditFailure[Capture Audit Findings]
+        CaptureAuditFailure -.->|Re-plan with AUDIT_FAILURE| EnterBuildPhase
+        AuditPass -- "Yes" --> AuditPhaseComplete[Audit Phase Complete]
+    end
+
+    %% ========================================
+    %% OUTPUT PHASE
+    %% ========================================
+    AuditPhaseComplete --> EnterOutputPhase[Enter Output Phase]
+
+    subgraph Output_SG ["Output Subgraph"]
+        EnterOutputPhase --> ReportImplementation[Report CLI Commands Implemented]
+        ReportImplementation --> ReportMigration[Report Agents Migrated]
+        ReportMigration --> ReportTestResults[Report Test Results]
+        ReportTestResults --> ArchiveCompletedPlan[Archive to completed/]
+    end
+
+    ArchiveCompletedPlan --> End((End: JIT Context Implementation Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef entrypoint fill:#90EE90,stroke:#228B22
+    classDef exitpoint fill:#FFB6C1,stroke:#DC143C
+    classDef dashedstroke stroke-dasharray: 5 5
+    class Start,End entrypoint
+    class EscalateBuild,EscalateTest,AskUser exitpoint
+    %% Dashed line for feedback loop (audit failure -> re-plan)
+    linkStyle 32 stroke:#888,stroke-width:2px,stroke-dasharray: 5 5

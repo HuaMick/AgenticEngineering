@@ -113,8 +113,8 @@ Examples:
     # Environment management
     _add_env_parser(subparsers)
 
-    # LangSmith integration
-    _add_langsmith_parser(subparsers)
+    # Note: LangSmith parser already added at line 101
+    # Duplicate call removed during Phase 5 integration
 
     return parser
 
@@ -323,6 +323,93 @@ def _add_plan_parser(subparsers):
     complete_parser.add_argument("task_id", help="Task ID (e.g., 01.1)")
     complete_parser.add_argument("--plan", "-p", help="Plan path (default: auto-detect)")
 
+    # task prefill
+    prefill_parser = task_subparsers.add_parser(
+        "prefill",
+        help="Load preset task list from template",
+        description="Prefill tasks from a named preset template (e.g., planner-build, builder).",
+    )
+    prefill_parser.add_argument(
+        "--preset", "-t",
+        required=True,
+        help="Preset name (e.g., planner-build, planner-teach, builder)",
+    )
+    prefill_parser.add_argument(
+        "--plan", "-p",
+        help="Plan path (default: auto-detect)",
+    )
+    prefill_parser.add_argument(
+        "--dry-run", "-n",
+        action="store_true",
+        help="Show tasks that would be added without making changes",
+    )
+
+    # task list
+    list_parser = task_subparsers.add_parser(
+        "list",
+        help="Show all tasks in current plan folder",
+        description="Display all tasks with their current status from plan files.",
+    )
+    list_parser.add_argument(
+        "--plan", "-p",
+        help="Plan path (default: auto-detect)",
+    )
+    list_parser.add_argument(
+        "--status", "-s",
+        choices=["all", "pending", "in_progress", "completed"],
+        default="all",
+        help="Filter by task status (default: all)",
+    )
+    list_parser.add_argument(
+        "--verbose", "-v",
+        action="store_true",
+        help="Show full task details including guidance",
+    )
+
+    # task status
+    status_parser = task_subparsers.add_parser(
+        "status",
+        help="Show detailed status for a specific task",
+        description="Display detailed information about a task by ID.",
+    )
+    status_parser.add_argument(
+        "task_id",
+        help="Task ID (e.g., build_01_001, 01.1)",
+    )
+    status_parser.add_argument(
+        "--plan", "-p",
+        help="Plan path (default: auto-detect)",
+    )
+
+    # task add
+    add_parser = task_subparsers.add_parser(
+        "add",
+        help="Add new task to plan",
+        description="Add a new task to the active plan file.",
+    )
+    add_parser.add_argument(
+        "description",
+        help="Task description",
+    )
+    add_parser.add_argument(
+        "--plan", "-p",
+        help="Plan path (default: auto-detect)",
+    )
+    add_parser.add_argument(
+        "--phase", "-ph",
+        help="Phase ID to add task to (e.g., build_01)",
+    )
+    add_parser.add_argument(
+        "--id",
+        help="Custom task ID (auto-generated if not specified)",
+    )
+    add_parser.add_argument(
+        "--priority",
+        choices=["low", "medium", "high"],
+        default="medium",
+        help="Task priority (default: medium)",
+    )
+
     # plan archive
     archive_parser = plan_subparsers.add_parser(
         "archive",
@@ -504,7 +591,17 @@ def _add_langsmith_parser(subparsers):
     )
     friction_parser.add_argument(
         "--project", "-p",
-        help="Project name (defaults to CC_LANGSMITH_PROJECT env var)",
+        required=True,
+        help="Project name (required)",
+    )
+    friction_parser.add_argument(
+        "--sessions",
+        type=int,
+        help="Number of recent sessions to analyze (overrides --lookback-days)",
+    )
+    friction_parser.add_argument(
+        "--since",
+        help="Start date for analysis (ISO format, e.g., 2026-01-01)",
     )
     friction_parser.add_argument(
         "--limit", "-l",
@@ -519,9 +616,60 @@ def _add_langsmith_parser(subparsers):
         help="Number of days to look back (default: 7)",
     )
     friction_parser.add_argument(
+        "--min-affected",
+        type=int,
+        default=2,
+        help="Only show patterns affecting N+ sessions (default: 2)",
+    )
+    friction_parser.add_argument(
         "--recommend", "-r",
         action="store_true",
         help="Include resolution recommendations in output",
+    )
+    friction_parser.add_argument(
+        "--validate",
+        dest="validate",
+        action="store_true",
+        default=True,
+        help="Validate recommendations against existing guidance (default: True)",
+    )
+    friction_parser.add_argument(
+        "--no-validate",
+        dest="validate",
+        action="store_false",
+        help="Skip validation of recommendations against existing guidance",
+    )
+    friction_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results as JSON",
+    )
+
+    # langsmith sessions
+    sessions_parser = langsmith_subparsers.add_parser(
+        "sessions",
+        help="List recent sessions with run counts",
+        description="List recent LangSmith sessions grouped by session ID with run counts.",
+    )
+    sessions_parser.add_argument(
+        "--project", "-p",
+        required=True,
+        help="Project name (required)",
+    )
+    sessions_parser.add_argument(
+        "--limit", "-l",
+        type=int,
+        default=10,
+        help="Number of sessions to show (default: 10)",
+    )
+    sessions_parser.add_argument(
+        "--since",
+        help="Start date for session listing (ISO format, e.g., 2026-01-01)",
+    )
+    sessions_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results as JSON",
     )
 
 
@@ -885,84 +1033,8 @@ def _add_env_parser(subparsers):
     )
 
 
-def _add_langsmith_parser(subparsers):
-    """Add langsmith subcommand parser."""
-    langsmith_parser = subparsers.add_parser(
-        "langsmith",
-        aliases=["ls"],
-        help="Query LangSmith traces and projects",
-        description="Query and analyze LangSmith traces for agent introspection and debugging.",
-    )
-    langsmith_subparsers = langsmith_parser.add_subparsers(
-        dest="langsmith_command", help="LangSmith commands"
-    )
-
-    # langsmith runs
-    runs_parser = langsmith_subparsers.add_parser(
-        "runs",
-        help="List recent runs",
-        description="Query and display recent runs with optional filtering.",
-    )
-    runs_parser.add_argument(
-        "--project", "-p",
-        help="Filter by project name",
-    )
-    runs_parser.add_argument(
-        "--limit", "-l",
-        type=int,
-        default=20,
-        help="Maximum number of runs to return (default: 20)",
-    )
-    runs_parser.add_argument(
-        "--type", "-t",
-        choices=["llm", "chain", "tool", "retriever"],
-        help="Filter by run type",
-    )
-    runs_parser.add_argument(
-        "--error", "-e",
-        action="store_true",
-        help="Show only runs with errors",
-    )
-
-    # langsmith run
-    run_parser = langsmith_subparsers.add_parser(
-        "run",
-        help="Show details for a specific run",
-        description="Display detailed information for a single run by ID.",
-    )
-    run_parser.add_argument(
-        "run_id",
-        help="Run ID (UUID) to display",
-    )
-    run_parser.add_argument(
-        "--url", "-u",
-        action="store_true",
-        help="Generate shareable URL for the run",
-    )
-
-    # langsmith projects
-    projects_parser = langsmith_subparsers.add_parser(
-        "projects",
-        help="List all projects",
-        description="Display all projects in the LangSmith workspace.",
-    )
-    projects_parser.add_argument(
-        "--detail", "-d",
-        action="store_true",
-        help="Show additional details (created date, description)",
-    )
-
-    # langsmith stats
-    stats_parser = langsmith_subparsers.add_parser(
-        "stats",
-        help="Show project statistics",
-        description="Display aggregated usage statistics for a project.",
-    )
-    stats_parser.add_argument(
-        "--project", "-p",
-        required=True,
-        help="Project name to get stats for",
-    )
+# Note: Duplicate _add_langsmith_parser removed during Phase 5 integration.
+# The complete implementation is at line 498 with friction subcommand.
 
 
 # Command categories for project requirement checking

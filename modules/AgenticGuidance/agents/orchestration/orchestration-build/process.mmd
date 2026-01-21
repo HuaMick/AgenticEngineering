@@ -28,13 +28,7 @@ flowchart LR
     %% Proceed only when context is fully loaded and verified
     CheckInputs -- "Yes: Verified" --> CheckExistingPlan{Pre-approved Plan Exists?}
 
-    %% ========================================
-    %% WORKTREE & PLAN FOLDER SETUP (CLI OFFLOAD)
-    %% ========================================
-    %% If pre-approved plan provided, skip init. If new plan needed, use CLI directly.
-    %% CLI command: agentic plan init <branch> --description <desc>
-    %% Enforces YYMMDDXX_description naming convention programmatically.
-    %% Exit codes: 0=success, 1=worktree failed, 2=folder exists, 3=invalid input
+    %% WORKTREE & PLAN FOLDER SETUP - CLI: agentic plan init/validate
     CheckExistingPlan -- "Yes: Has Plan Path" --> ValidatePlanFolder[Validate Plan Folder via CLI: agentic plan validate]
     CheckExistingPlan -- "No: Needs Init" --> InitPlanFolder[Run CLI: agentic plan init branch --description desc]
     InitPlanFolder --> CheckInitResult{CLI Exit Code 0?}
@@ -43,27 +37,8 @@ flowchart LR
     ValidatePlanFolder --> WorktreeValid{Plan Folder Valid?}
     WorktreeValid -- "No: Failed verification" --> AskUser
 
-    %% ========================================
-    %% PLANNING DELEGATION SUBGRAPH
-    %% ========================================
-    %% Planning is delegated to orchestration-planning agent OR uses pre-approved plan.
-    %% This ensures single responsibility: orchestration-build focuses on EXECUTION.
-    %%
-    %% INPUT MODES:
-    %% 1. approved_plan_path provided: Load and validate pre-approved plan, skip delegation
-    %% 2. planning_objective provided: Spawn orchestration-planning to create & approve plan
-    %%
-    %% FEEDBACK LOOP ENTRY POINTS:
-    %% When downstream validation fails, re-invoke orchestration-planning with failure context:
-    %% 1. Test Failures: Re-plan with TEST_FAILURE context
-    %% 2. CI/CD Failures: Re-plan with CICD_FAILURE context
-    %% 3. Guidance Gaps: Re-plan with GUIDANCE_GAP context
-    %% 4. Audit Failures: Re-plan with AUDIT_FAILURE context
-    %% 5. UAT Failures: Re-plan with UAT_FAILURE context (user story validation failures)
-    %%
-    %% HANDOFF CONTRACT:
-    %% - orchestration-planning produces: plan_live_build.yml, plan_live_test.yml (all status: approved)
-    %% - orchestration-build consumes the approved plan folder for execution
+    %% PLANNING DELEGATION: Uses approved_plan_path OR spawns orchestration-planning
+    %% Failure contexts (TEST_FAILURE, CICD_FAILURE, GUIDANCE_GAP, AUDIT_FAILURE, UAT_FAILURE) trigger re-planning
 
     WorktreeValid -- "Yes: Verified" --> CheckPlanInput{Pre-approved Plan Provided?}
 
@@ -113,28 +88,11 @@ flowchart LR
     %% NOTE: Approved plan drives test execution in Implementation Phase
     %% plan_live_test.yml defines which tests will validate the build
 
-    %% ========================================
-    %% IMPLEMENTATION PHASE: Build Agents Execute Plan
-    %% ========================================
-    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.test-fix-loop
-    %% MAX_ITERATIONS: 5 (per test-fix-loop definition)
-    %% ESCALATION: If max iterations reached without tests passing, stop and Ask User
-    %%
-    %% Execution begins ONLY after plan is ready (from PlanningDelegation subgraph):
-    %% - Pre-approved plan validated and loaded, OR
-    %% - orchestration-planning completed with approved plan
+    %% IMPLEMENTATION PHASE - test-fix-loop, max 5 iterations
     PlanReady --> ExecutePhases[Execute Implementation Phases]
 
     subgraph Implementation ["Implementation Loop Subgraph"]
-        %% BEHAVIOR: Build agents implement the approved plan
-        %% - build-python: Python implementation tasks
-        %% - build-flutter: Flutter/Dart implementation tasks
-        %% - test-runner: Execute tests after implementation
-        %%
-        %% FAIL-FAST: On test failure, categorize and handle:
-        %% - Unit test failure: Fix in current iteration
-        %% - Integration test failure: May require plan update
-        %% - E2E test failure: Escalate to planning phase
+        %% Build agents (build-python, build-flutter) + test-runner
         ExecutePhases --> SpawnBuilders[Spawn build-python/flutter agents]
         SpawnBuilders --> RunTests[Spawn test-runner]
         RunTests --> TestsPassed{Tests Passed?}
@@ -147,21 +105,7 @@ flowchart LR
     CategorizeTestFailure --> UpdatePlanTests[Package TEST_FAILURE Context]
     UpdatePlanTests -.->|Re-plan with TEST_FAILURE| DelegatePlanning
 
-    %% ========================================
-    %% CI/CD VALIDATION PHASE
-    %% ========================================
-    %% Validate pipeline configuration if build changes affect CI/CD
-    %% deploy-cicd agent audits pipeline changes for correctness
-    %%
-    %% BEHAVIOR: Validate CI/CD pipeline changes
-    %% - deploy-cicd agent audits pipeline configuration
-    %% - Validates GitHub Actions, Docker, deployment scripts
-    %% - On failure: Categorize issue and route appropriately
-    %%
-    %% FAILURE HANDLING:
-    %% - Configuration errors: Return to planning for fix
-    %% - Syntax errors: Fix in place, re-validate
-    %% - Integration issues: May require build plan update
+    %% CI/CD VALIDATION PHASE - deploy-cicd audits pipeline changes
     TestsPassed -- "Yes: Passed" --> CICDCheck{CI/CD Changes?}
     CICDCheck -- "Yes" --> SpawnDeploy[Spawn deploy-cicd Audit]
     SpawnDeploy --> CICDValid{CI/CD Valid?}
@@ -172,39 +116,17 @@ flowchart LR
     CategorizeCICDFailure --> UpdatePlanCICD[Package CICD_FAILURE Context]
     UpdatePlanCICD -.->|Re-plan with CICD_FAILURE| DelegatePlanning
 
-    %% ========================================
-    %% GUIDANCE VALIDATION PHASE
-    %% ========================================
-    %% Validate any new/updated guidance created during build
-    %% Uses guidance-blind-test strategy to validate guidance completeness
-    %% COMPONENT: modules/AgenticGuidance/assets/examples/planner/components/guidance_blind_test.mmd
-    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.guidance-test-loop
-    %% MAX_ITERATIONS: 3 (per guidance-test-loop definition)
-    %% ESCALATION: If max iterations reached without passing validation, stop and Ask User with gap context
+    %% GUIDANCE VALIDATION PHASE - guidance-test-loop, max 3 iterations
     CICDCheck -- "No" --> GuidanceChanges{Guidance Changes?}
     CICDValid -- "Yes: Valid" --> GuidanceChanges
     GuidanceChanges -- "Yes" --> GuidanceTest[Spawn planner-guidance-testing]
     GuidanceTest --> GuidanceSimulator[Spawn test-guidance-simulator]
 
-    %% PLAN STATUS UPDATE: Consume test results and update plan task statuses
-    %% Reference: modules/AgenticGuidance/assets/guidelines/orchestration-policy.yml - Plan Status Management rule
-    %% This step ensures task statuses reflect test outcomes before evaluating overall guidance validity
+    %% Update plan task statuses from test results
     GuidanceSimulator --> UpdateGuidanceStatuses[Update Plan Task Statuses from Test Results]
     UpdateGuidanceStatuses --> GuidancePassed{Guidance Valid?}
 
-    %% ========================================
-    %% GUIDANCE REPAIR LOOP: Failing walkthrough tests trigger re-planning
-    %% ========================================
-    %% BEHAVIOR: When test-guidance-simulator reports friction points:
-    %% 1. Categorize gaps by severity (CRITICAL/HIGH/MEDIUM/LOW from test-guidance-simulator)
-    %% 2. Route to appropriate handler based on gap type:
-    %%    - Build process issues: Package as GUIDANCE_GAP (build)
-    %%    - Test design issues: Package as GUIDANCE_GAP (test)
-    %%    - Guidance issues: Package as GUIDANCE_GAP (guidance)
-    %% 3. Package structured friction report as failure_context
-    %% 4. Re-invoke orchestration-planning with GUIDANCE_GAP context
-    %% 5. Track iteration count against guidance-test-loop max_iterations (3)
-    %% ========================================
+    %% GUIDANCE REPAIR LOOP: Route friction points by gap type, re-plan with GUIDANCE_GAP context
     GuidancePassed -- "No: Gaps Found" --> CategorizeGuidanceGaps[Categorize Friction Points]
     CategorizeGuidanceGaps --> RouteToHandler{Route by Gap Type}
     RouteToHandler -- "Build Process" --> UpdatePlanBuild[Package GUIDANCE_GAP Context - Build]
@@ -214,9 +136,7 @@ flowchart LR
     UpdatePlanTest -.->|Re-plan with GUIDANCE_GAP| DelegatePlanning
     UpdatePlanGuidance -.->|Re-plan with GUIDANCE_GAP| DelegatePlanning
 
-    %% ========================================
     %% FINAL AUDIT PHASE
-    %% ========================================
     GuidanceChanges -- "No" --> SpawnFinalAudit[Spawn test-final-output Audit]
     GuidancePassed -- "Yes: Verified" --> SpawnFinalAudit
 
@@ -226,13 +146,7 @@ flowchart LR
     FinalAudit -- "No: Failed" --> UpdatePlanAudit[Package AUDIT_FAILURE Context]
     UpdatePlanAudit -.->|Re-plan with AUDIT_FAILURE| DelegatePlanning
 
-    %% ========================================
-    %% UAT VALIDATION PHASE (MANDATORY)
-    %% ========================================
-    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.user-story-validation-loop
-    %% MAX_ITERATIONS: 3 (per user-story-validation-loop definition)
-    %% ESCALATION: If max iterations reached without stories passing, stop and Ask User
-    %% PRIMARY SUCCESS CRITERIA for implementation work - validates complete user journeys
+    %% UAT VALIDATION PHASE (MANDATORY) - max 3 iterations, then escalate
     FinalAudit -- "Yes: Verified" --> CheckUATStories{User Stories Exist?}
 
     subgraph UAT_SG ["UAT Validation Subgraph"]
@@ -258,26 +172,11 @@ flowchart LR
         UATResults -- "Yes: All Pass" --> UATComplete[UAT Validation Complete]
     end
 
-    %% ========================================
-    %% FINALIZATION
-    %% ========================================
-    %% Success: All criteria met. Finalize the work.
-    %% CLI OFFLOAD: Use agentic-cli for task and folder completion
-    %% - agentic plan move tasks: Move all completed tasks to plan_completed.yml
-    %% - agentic plan move folder: Archive entire plan folder to completed/
+    %% FINALIZATION - CLI: agentic plan move tasks/folder
     UATComplete --> MoveCompletedTasks[Move Completed Tasks via CLI: agentic plan move tasks]
     MoveCompletedTasks --> ArchivePlanFolder[Archive Plan Folder via CLI: agentic plan move folder]
     ArchivePlanFolder --> End((End))
 
-    %% COPY planning folder to completed/ (not move) - live/ may continue with follow-on work
-    %% Only user moves completed/ folders to archived/ subdirectory
-
-    %% Styling for feedback loops (return paths to DelegatePlanning)
-    %% These dotted lines represent quality improvement cycles that re-invoke orchestration-planning:
-    %% - Edge 33: Test failure returns (from Implementation Phase) - TEST_FAILURE context
-    %% - Edge 39: CI/CD failure returns (from CI/CD Validation Phase) - CICD_FAILURE context
-    %% - Edge 51,52,53: Guidance gap returns (from Guidance Validation Phase) - GUIDANCE_GAP context
-    %% - Edge 58: Audit failure returns (from Final Audit Phase) - AUDIT_FAILURE context
-    %% - Edge 70: UAT failure returns (from UAT Validation Phase) - UAT_FAILURE context
+    %% Styling for feedback loops (dotted lines for re-planning paths)
     classDef dashedstroke stroke-dasharray: 5 5;
     linkStyle 33,39,51,52,53,58,70 stroke:#888,stroke-width:2px,stroke-dasharray: 5 5;

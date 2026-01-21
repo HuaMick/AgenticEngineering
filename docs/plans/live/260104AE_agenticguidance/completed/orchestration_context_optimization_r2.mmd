@@ -1,0 +1,74 @@
+flowchart LR
+    %% GOAL: Execute context optimization for orchestration-planning and orchestration-guidance agents
+    %% PROFILE: orchestrator
+    %% PHASES: TeachOrchestrationPlanning, TeachOrchestrationGuidance, Validation
+    %% AGENT_ROUTING: TeachOrchestrationPlanning -> teacher, TeachOrchestrationGuidance -> teacher, Validation -> auditor
+    %% FEEDBACK_TRIGGER: YAML_SYNTAX_ERROR -> TeachPhase, MMD_SYNTAX_ERROR -> TeachPhase
+    %% STATUS: TeachOrchestrationPlanning=pending, TeachOrchestrationGuidance=pending, Validation=pending
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.planner-loop
+    %% MAX_ITERATIONS: 3
+    %% INPUT_PATH: docs/plans/live/260104AE_agenticguidance/live/plan_live_teach_orchestration_optimization.yml
+
+    Start((Start)) --> LoadPlan[Load Teaching Plan]
+
+    %% ========================================
+    %% STARTUP: Load plan and validate inputs
+    %% ========================================
+    LoadPlan --> ValidateInputs{Plan Valid?}
+    ValidateInputs -- "No: Invalid" --> AskUser((Ask User))
+    ValidateInputs -- "Yes: Valid" --> TeachPhase1
+
+    %% ========================================
+    %% PHASE 1: Teach orchestration-planning
+    %% ========================================
+    subgraph TeachOrchestrationPlanning_SG ["Teach orchestration-planning Subgraph"]
+        TeachPhase1((Teach Phase 1)) --> SpawnTeacher1[Spawn teacher-update-guidance Agent]
+        SpawnTeacher1 --> ExecuteOP001[Execute teach_op_001: Consolidate explore_verification]
+        ExecuteOP001 --> ExecuteOP002[Execute teach_op_002: Trim inline guidelines]
+        ExecuteOP002 --> ExecuteOP003[Execute teach_op_003: Remove duplicate loop patterns]
+        ExecuteOP003 --> Phase1Complete{Phase 1 Complete?}
+        Phase1Complete -- "No: Issues" --> FixPhase1[Fix Issues]
+        FixPhase1 --> SpawnTeacher1
+    end
+
+    Phase1Complete -- "Yes: Done" --> TeachPhase2
+
+    %% ========================================
+    %% PHASE 2: Teach orchestration-guidance
+    %% ========================================
+    subgraph TeachOrchestrationGuidance_SG ["Teach orchestration-guidance Subgraph"]
+        TeachPhase2((Teach Phase 2)) --> SpawnTeacher2[Spawn teacher-update-guidance Agent]
+        SpawnTeacher2 --> ExecuteOG001[Execute teach_og_001: Replace CLI details]
+        ExecuteOG001 --> ExecuteOG002[Execute teach_og_002: Consolidate MODE explanation]
+        ExecuteOG002 --> ExecuteOG003[Execute teach_og_003: Deduplicate status/feedback]
+        ExecuteOG003 --> Phase2Complete{Phase 2 Complete?}
+        Phase2Complete -- "No: Issues" --> FixPhase2[Fix Issues]
+        FixPhase2 --> SpawnTeacher2
+    end
+
+    Phase2Complete -- "Yes: Done" --> ValidationPhase
+
+    %% ========================================
+    %% PHASE 3: Validation
+    %% ========================================
+    subgraph Validation_SG ["Validation Subgraph"]
+        ValidationPhase((Validation Phase)) --> SpawnAuditor[Spawn test-audit Agent]
+        SpawnAuditor --> ValidateYAML[Validate YAML Syntax]
+        ValidateYAML --> ValidateMMD[Validate MMD Syntax]
+        ValidateMMD --> ValidationResult{All Valid?}
+        ValidationResult -- "No: Errors" --> ReportErrors[Report Syntax Errors]
+        ReportErrors -.-> TeachPhase1
+    end
+
+    ValidationResult -- "Yes: Pass" --> Complete
+
+    %% ========================================
+    %% COMPLETION
+    %% ========================================
+    Complete((Complete)) --> UpdatePlanStatus[Update Plan Status to Completed]
+    UpdatePlanStatus --> ArchiveToCompleted[Archive to completed/]
+    ArchiveToCompleted --> End((End))
+
+    %% Styling for feedback loops
+    classDef dashedstroke stroke-dasharray: 5 5;
+    linkStyle 14 stroke:#888,stroke-width:2px,stroke-dasharray: 5 5;

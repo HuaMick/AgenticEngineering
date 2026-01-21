@@ -1,0 +1,110 @@
+# Planner-Reviewer Checklists
+# Externalized from process.yml for single-source-of-truth
+# Referenced by: modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml
+
+checklists:
+  plan_structure:
+    description: "Plan has valid root structure"
+    items:
+      - "Plan has unique name at root level (plan_name field)"
+      - "Worktree path is absolute and correct (worktree field)"
+      - "Plan folder follows YYMMDDXX_description naming (CLI-enforced)"
+      - "Plan objective clearly states what will be improved"
+    notes:
+      - "Plan folder naming is enforced by 'agentic plan init' - trust CLI enforcement"
+
+  inputs:
+    description: "Plan inputs are properly defined"
+    items:
+      - "Context references are at file-level or directory-level"
+      - "Each input has location and description fields"
+      - "Referenced files exist in the repository or worktree"
+
+  success_criteria:
+    description: "Success criteria are verifiable"
+    items:
+      - "Each phase has measurable success criteria"
+      - "Success criteria include user-focused validation"
+      - "Technical validation criteria are verifiable"
+      - "Criteria define observable outcomes, not implementation details"
+
+  task_structure:
+    description: "Tasks are well-defined"
+    items:
+      - "Each task specifies exact target file(s) to edit"
+      - "Agent types are correctly allocated by category"
+      - "Operations are properly ordered (CREATE before UPDATE)"
+      - "Each task has concrete acceptance criteria"
+
+  pattern_alignment:
+    description: "Plan follows established patterns"
+    items:
+      - "Tasks follow Domain -> Workflow -> Entrypoint patterns where applicable"
+      - "Phase dependencies are explicitly declared"
+      - "All mandatory loops included (audit-test-fix after cleanup, etc.)"
+
+fences:
+  rlm_usage:
+    description: "RLM usage validation (only when plan references RLM patterns)"
+    trigger_conditions:
+      - "Plan references rlm-patterns.yml or rlm-context-accessor.yml"
+      - "Plan includes RLM variables (CONTEXT_, ACCUMULATOR_, FILTER_, FINAL_)"
+    checklist:
+      - "RLM trigger conditions were met (context >1000 lines OR >10 files)"
+      - "Recursion depth is bounded (max_recursion_depth <= 5, prefer <= 3)"
+      - "Variable naming follows conventions"
+      - "Context accessor calls reference valid patterns"
+      - "FINAL() signal is called only at top level"
+    rejection_conditions:
+      unjustified_usage:
+        condition: "Context <500 lines total"
+        message: "RLM overhead unjustified. Context size below 500-line threshold."
+      excessive_depth:
+        condition: "max_recursion_depth > 5"
+        message: "Recursion depth exceeds maximum of 5."
+      missing_final:
+        condition: "Uses accumulators but lacks FINAL() signal"
+        message: "Plan uses RLM accumulators but missing FINAL() signal."
+    skip_condition: "If plan does not reference RLM patterns, skip entirely"
+
+  mmd_presence:
+    description: "MMD file validation for orchestrated plans"
+    checklist:
+      - "orchestration_*.mmd file exists in live/ folder"
+      - "MMD contains GOAL header comment"
+      - "MMD contains AGENT_ROUTING header comment or metadata"
+      - "MMD contains PHASES list"
+    rejection_condition:
+      condition: "orchestration_*.mmd missing from plan folder"
+      message: "Missing orchestration MMD. Return to orchestration-planning."
+    exception: "Single-task plans (1 phase with 1 task) may be approved without MMD"
+
+  file_placement:
+    description: "Live folder contains only active work artifacts (BLOCKING)"
+    allowed:
+      - "plan_live_*.yml files with status: pending, approved, or in_progress"
+      - "orchestration_*.mmd files for active plans"
+      - "backlog_*.yml files with status: backlog"
+      - "README.md"
+    forbidden:
+      - "Completed plans (status: completed) -> completed/"
+      - "Analysis/documentation files (*.md except README.md) -> analysis/"
+      - "Audit reports (audit_*.yml) -> audit/"
+      - "Diagnostic/investigation documents -> analysis/"
+    rejection_note: "File placement issues ARE blocking issues"
+
+  codebase_verification:
+    description: "Verify live/ files reflect codebase reality (BLOCKING)"
+    plan_file_checks:
+      - "Do target_files referenced in tasks still exist?"
+      - "Have any pending tasks already been implemented?"
+      - "If >50% pending tasks done, FLAG: stale tasks"
+    analysis_file_checks:
+      - "Classify as: IMPLEMENTED, PARTIALLY_IMPLEMENTED, NOT_IMPLEMENTED"
+      - "PARTIALLY_IMPLEMENTED: FLAG incomplete work"
+      - "NOT_IMPLEMENTED: FLAG should be live plan"
+    rlm_extension:
+      - "Referenced context accessor patterns exist"
+      - "Variable naming follows documented conventions"
+      - "Accumulator schemas are valid JSON Schema"
+      - "RLM phases have bounded iteration counts"

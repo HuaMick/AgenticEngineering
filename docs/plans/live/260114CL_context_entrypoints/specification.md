@@ -1,42 +1,33 @@
-# Context Compiler Specification
+# JIT Context Retrieval Specification
 
 ## Goal
-To optimize context usage and latency by pre-compiling (AOT) the distributed `inputs.yml` dependency graph into flattened Markdown files for use by Claude Code subagents.
+To evolve the project's guidance system from a "Push" model (pre-loading large flattened files) to a "Pull" model (agents fetching exactly what they need via the CLI). This makes the Agentic CLI a first-class citizen for context engineering.
 
 ## Core Concept
-We treat `inputs.yml` as "Source Code" and `.claude/agents/*.md` as "Build Artifacts".
+Instead of Claude loading thousands of tokens of static Markdown files in the `.claude/agents/` directory, agents are given a "Bootstrap Context" that instructs them to run specific `agentic context` commands to retrieve their operational parameters.
 
 ## Architecture
 
-### 1. The Compiler (`agentic agents compile --lazy`)
-A CLI command that ensures `.claude/agents/*.md` files are in sync with their `inputs.yml` sources.
-- **Lazy Mode:** Checks file modification timestamps. If `inputs.yml` (and its dependencies) are older than the `.md` artifact, compilation is skipped.
-- **Output:** Flattened Markdown files in `.claude/agents/`.
+### 1. The Bootstrap Agent (Thin Client)
+The agent definition in `.claude/agents/` becomes minimal:
+- **Role Identifier:** "You are the [Project Manager/Planner/Builder] agent."
+- **Bootstrap Command:** "Before taking action, you MUST run `agentic context bootstrap` to receive your task objective and role-specific constraints."
 
-### 2. The Hook (`UserPromptSubmit`)
-We utilize Claude Code's shell execution hooks to trigger compilation **Just-In-Time**.
+### 2. The Context Command Group (`agentic context ...`)
+A new CLI module that serves as the JIT context provider:
+- **`agentic context bootstrap`**: An aggregator that returns the core "Seed Context" (Active Task + Primary Role Guidance).
+- **`agentic context role <role-id>`**: Returns the standardized process and "Ways of Working" for a specific role.
+- **`agentic context task`**: Specifically crawls the **Main Worktree's** `docs/plans/live/` directory to identify and extract the active task for the current worktree/branch.
+- **`agentic context inputs`**: Provides a JIT manifest of relevant project files, replacing static `inputs.yml` references with dynamic discovery.
 
-**Configuration (`.claude/settings.json`):**
-```json
-{
-  "hooks": {
-    "UserPromptSubmit": {
-      "commands": [
-        "agentic agents compile --lazy"
-      ]
-    }
-  }
-}
-```
-
-**Workflow:**
-1.  User submits a prompt.
-2.  Hook triggers `agentic agents compile --lazy`.
-3.  Compiler quickly verifies/updates all agent definition files (~50ms).
-4.  Claude receives the prompt and begins execution.
-5.  If Claude spawns a subagent, it reads the fresh `.md` file from disk.
+### 3. Main-First Resolution
+Since planning now happens exclusively in the `main` branch/worktree, the CLI (running in a feature worktree) must:
+1. Detect the main worktree location.
+2. Resolve paths to `docs/plans/live/` within that main worktree.
+3. Extract the `objective` and `status` from the YML plan files that match the current branch/feature index.
 
 ## Benefits
--   **Guaranteed Consistency:** The agent context is always in sync with `AgenticGuidance` source files.
--   **Zero Maintenance:** No manual "build" step required by the user.
--   **Performance:** Checksums/Timestamps ensure the hook adds negligible latency to the interactions.
+-   **Minimal Initial Token Usage:** Reduces the "context tax" paid on every single turn.
+-   **Zero Stale Guidance:** Agents always pull the latest rules from the CLI logic, ensuring policy updates are immediate across all active sessions.
+-   **Main-First Harmony:** Solves the challenge of agents losing track of plans in feature worktrees by delegating plan-hunting to the CLI.
+-   **Traceability:** Context retrieval is logged in the terminal, making it visible to the user.

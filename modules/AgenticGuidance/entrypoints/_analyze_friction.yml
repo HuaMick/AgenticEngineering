@@ -16,17 +16,21 @@ entrypoint:
 
   steps:
     - "Load orchestration process from modules/AgenticGuidance/agents/orchestration/orchestration-friction/process.mmd"
-    - "Query LangSmith traces for specified project/timeframe"
-    - "Run friction pattern detection (FP-001 through FP-006)"
+    - "Query LangSmith traces (by session_count or lookback_days)"
+    - "Group runs by session_id"
+    - "Run friction pattern detection per session (FP-001 through FP-006)"
+    - "Filter patterns by min_affected_sessions threshold"
     - "Classify patterns by severity (high/medium/low based on frequency/impact)"
     - "Generate resolution recommendations (GUIDANCE_UPDATE, CLI_OFFLOAD, ASSET_UPDATE)"
-    - "Present findings to user with actionable next steps"
+    - "Present findings with session-level evidence"
     - "Output: Friction report for user decision"
 
   input:
     - "project_name: LangSmith project (default: from CC_LANGSMITH_PROJECT env var)"
     - "lookback_days: Days to analyze (default: 7)"
     - "limit: Max runs to analyze (default: 100)"
+    - "session_count: Number of recent sessions to analyze (optional, overrides lookback_days)"
+    - "min_affected_sessions: Only report patterns affecting N+ sessions (default: 2)"
 
   output:
     - "Friction report with detected patterns and severity"

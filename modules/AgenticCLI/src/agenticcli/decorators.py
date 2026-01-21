@@ -22,6 +22,11 @@ class StabilityLevel(str, Enum):
 COMMAND_STABILITY: dict[str, StabilityLevel] = {
     # "cicd": StabilityLevel.STABLE,  # Matured in iteration-28
     # "manifest": StabilityLevel.STABLE,  # Matured in iteration-28
+    # Task subcommands - new in Phase 5
+    "plan.task.prefill": StabilityLevel.EXPERIMENTAL,
+    "plan.task.list": StabilityLevel.EXPERIMENTAL,
+    "plan.task.status": StabilityLevel.EXPERIMENTAL,
+    "plan.task.add": StabilityLevel.EXPERIMENTAL,
 }
 
 

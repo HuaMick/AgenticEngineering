@@ -22,8 +22,12 @@ def handle(args, ctx=None):
         cmd_projects(args)
     elif args.langsmith_command == "stats":
         cmd_stats(args)
+    elif args.langsmith_command == "friction":
+        cmd_friction(args)
+    elif args.langsmith_command == "sessions":
+        cmd_sessions(args)
     else:
-        print("Usage: agentic langsmith <runs|run|projects|stats>", file=sys.stderr)
+        print("Usage: agentic langsmith <runs|run|projects|stats|friction|sessions>", file=sys.stderr)
         sys.exit(1)
 
 
@@ -410,3 +414,364 @@ def cmd_stats(args):
             console.print(f"  [blue]{rt}[/blue]: {count} ({pct:.1f}%)")
 
     console.print()
+
+
+def cmd_friction(args):
+    """Analyze traces for friction patterns with session-based filtering.
+
+    Implements: agentic langsmith friction --project <name> [options]
+    """
+    from datetime import datetime
+
+    from agenticcli.console import (
+        console,
+        is_json_output,
+        print_error,
+        print_header,
+        print_json,
+    )
+    from rich.panel import Panel
+    from rich.table import Table
+
+    # Get parameters
+    project_name = getattr(args, "project", None)
+    if not project_name:
+        print_error("--project is required for friction command")
+        sys.exit(1)
+
+    sessions_count = getattr(args, "sessions", None)
+    since_date = getattr(args, "since", None)
+    limit = getattr(args, "limit", 100)
+    lookback_days = getattr(args, "lookback_days", 7)
+    min_affected = getattr(args, "min_affected", 2)
+    recommend = getattr(args, "recommend", False)
+    validate = getattr(args, "validate", True)
+
+    try:
+        from agenticlangsmith import FrictionAnalyzer, ResolutionRecommender
+
+        service = _get_service()
+        analyzer = FrictionAnalyzer(service)
+
+        # If --sessions provided, we need to first get sessions then filter
+        if sessions_count is not None:
+            # Get runs and group by session to determine which sessions to include
+            runs = service.list_runs(project_name=project_name, limit=limit * 2)
+
+            # Group by session_id
+            sessions: dict[str, list[dict]] = {}
+            for run in runs:
+                session_id = run.get("session_id") or "unknown"
+                if session_id not in sessions:
+                    sessions[session_id] = []
+                sessions[session_id].append(run)
+
+            # Sort sessions by most recent run start_time
+            sorted_sessions = sorted(
+                sessions.items(),
+                key=lambda x: max(
+                    (r.get("start_time") or "" for r in x[1]),
+                    default=""
+                ),
+                reverse=True,
+            )
+
+            # Take the N most recent sessions
+            selected_sessions = [s[0] for s in sorted_sessions[:sessions_count]]
+
+            # Re-run analysis with filtered runs
+            report = analyzer.analyze(
+                project_name=project_name,
+                limit=limit,
+                lookback_days=lookback_days,
+            )
+
+            # Filter patterns to only those affecting selected sessions
+            filtered_patterns = []
+            for pattern in report.patterns:
+                # Check if pattern evidence involves selected sessions
+                affected_sessions = set()
+                for evidence in pattern.evidence:
+                    if isinstance(evidence, dict):
+                        session_id = evidence.get("session_id")
+                        if session_id and session_id in selected_sessions:
+                            affected_sessions.add(session_id)
+
+                if len(affected_sessions) >= min_affected:
+                    filtered_patterns.append(pattern)
+
+            report.patterns = filtered_patterns
+
+        else:
+            # Standard analysis
+            report = analyzer.analyze(
+                project_name=project_name,
+                limit=limit,
+                lookback_days=lookback_days,
+            )
+
+            # Apply min_affected filter
+            if min_affected > 1:
+                filtered_patterns = []
+                for pattern in report.patterns:
+                    # Count unique sessions in evidence
+                    affected_sessions = set()
+                    for evidence in pattern.evidence:
+                        if isinstance(evidence, dict):
+                            session_id = evidence.get("session_id")
+                            if session_id:
+                                affected_sessions.add(session_id)
+
+                    if len(affected_sessions) >= min_affected or pattern.frequency >= min_affected:
+                        filtered_patterns.append(pattern)
+
+                report.patterns = filtered_patterns
+
+        # Generate recommendations if requested
+        resolution_plan = None
+        if recommend:
+            recommender = ResolutionRecommender()
+            resolution_plan = recommender.recommend(report)
+
+            # Add validation note if enabled
+            if validate and resolution_plan:
+                for rec in resolution_plan.recommendations:
+                    rec.suggested_changes.append(
+                        "(Validate against existing guidance before implementing)"
+                    )
+
+        # Output
+        if is_json_output():
+            result = report.to_dict()
+            if resolution_plan:
+                result["resolution_plan"] = resolution_plan.to_dict()
+            print_json(result)
+            return
+
+        print_header(f"Friction Analysis: {project_name}")
+
+        # Summary panel
+        summary = f"""[bold]Analyzed Runs:[/bold] {report.analyzed_runs}
+[bold]Timeframe:[/bold] {report.timeframe_days} days
+[bold]Patterns Found:[/bold] {len(report.patterns)}
+[bold]Min Sessions Filter:[/bold] {min_affected}"""
+
+        console.print(Panel(summary, title="Analysis Summary", border_style="cyan"))
+
+        if not report.patterns:
+            console.print("\n[green]No friction patterns detected![/green]")
+            return
+
+        # Severity breakdown
+        breakdown = report.severity_breakdown
+        console.print("\n[bold magenta]Severity Breakdown[/bold magenta]")
+        console.print(f"  [red]High:[/red] {breakdown.get('high', 0)}")
+        console.print(f"  [yellow]Medium:[/yellow] {breakdown.get('medium', 0)}")
+        console.print(f"  [dim]Low:[/dim] {breakdown.get('low', 0)}")
+
+        # Patterns table
+        console.print("\n[bold magenta]Detected Patterns[/bold magenta]")
+        table = Table(show_header=True, header_style="bold magenta")
+        table.add_column("Pattern", style="cyan")
+        table.add_column("Severity")
+        table.add_column("Freq", justify="right")
+        table.add_column("Description", max_width=50)
+
+        for pattern in report.patterns:
+            severity = pattern.severity.value
+            if severity == "high":
+                severity_str = "[red]HIGH[/red]"
+            elif severity == "medium":
+                severity_str = "[yellow]MEDIUM[/yellow]"
+            else:
+                severity_str = "[dim]LOW[/dim]"
+
+            table.add_row(
+                pattern.pattern_type.value,
+                severity_str,
+                str(pattern.frequency),
+                _truncate(pattern.description, 48),
+            )
+
+        console.print(table)
+
+        # Recommendations
+        if resolution_plan and resolution_plan.recommendations:
+            console.print("\n[bold magenta]Resolution Recommendations[/bold magenta]")
+            for i, rec in enumerate(resolution_plan.recommendations, 1):
+                console.print(f"\n[bold]{i}. {rec.pattern_type.value}[/bold] ({rec.resolution_type.value})")
+                console.print(f"   [dim]{rec.description}[/dim]")
+                if rec.target_locations:
+                    console.print(f"   [blue]Targets:[/blue] {', '.join(rec.target_locations[:2])}")
+
+            if resolution_plan.next_steps:
+                console.print("\n[bold cyan]Next Steps:[/bold cyan]")
+                for step in resolution_plan.next_steps:
+                    console.print(f"  - {step}")
+
+        console.print()
+
+    except ImportError:
+        print_error(
+            "agenticlangsmith package not installed. "
+            "Install it with: pip install -e modules/AgenticLangSmith"
+        )
+        sys.exit(1)
+    except Exception as e:
+        print_error(f"Failed to analyze friction: {e}")
+        sys.exit(1)
+
+
+def cmd_sessions(args):
+    """List recent sessions with run counts.
+
+    Implements: agentic langsmith sessions --project <name> [options]
+    """
+    from datetime import datetime
+
+    from agenticcli.console import (
+        console,
+        is_json_output,
+        print_error,
+        print_header,
+        print_json,
+    )
+    from rich.table import Table
+
+    # Get parameters
+    project_name = getattr(args, "project", None)
+    if not project_name:
+        print_error("--project is required for sessions command")
+        sys.exit(1)
+
+    limit = getattr(args, "limit", 10)
+    since_date = getattr(args, "since", None)
+
+    try:
+        service = _get_service()
+
+        # Fetch runs (get more than limit to ensure we have enough sessions)
+        runs = service.list_runs(project_name=project_name, limit=500)
+
+        # Filter by since date if provided
+        if since_date:
+            try:
+                cutoff = datetime.fromisoformat(since_date)
+                runs = [
+                    r for r in runs
+                    if r.get("start_time") and datetime.fromisoformat(r["start_time"]) >= cutoff
+                ]
+            except ValueError:
+                print_error(f"Invalid date format: {since_date}. Use ISO format (e.g., 2026-01-01)")
+                sys.exit(1)
+
+        # Group by session_id
+        sessions: dict[str, dict] = {}
+        for run in runs:
+            session_id = run.get("session_id") or "unknown"
+            if session_id not in sessions:
+                sessions[session_id] = {
+                    "session_id": session_id,
+                    "run_count": 0,
+                    "error_count": 0,
+                    "first_run": None,
+                    "last_run": None,
+                    "run_types": {},
+                }
+
+            session = sessions[session_id]
+            session["run_count"] += 1
+
+            if run.get("status") == "error":
+                session["error_count"] += 1
+
+            # Track run types
+            run_type = run.get("run_type", "unknown")
+            session["run_types"][run_type] = session["run_types"].get(run_type, 0) + 1
+
+            # Track timing
+            start_time = run.get("start_time")
+            if start_time:
+                if session["first_run"] is None or start_time < session["first_run"]:
+                    session["first_run"] = start_time
+                if session["last_run"] is None or start_time > session["last_run"]:
+                    session["last_run"] = start_time
+
+        # Sort by most recent and limit
+        sorted_sessions = sorted(
+            sessions.values(),
+            key=lambda s: s["last_run"] or "",
+            reverse=True,
+        )[:limit]
+
+        # Output
+        if is_json_output():
+            print_json({
+                "project": project_name,
+                "sessions": sorted_sessions,
+                "count": len(sorted_sessions),
+            })
+            return
+
+        print_header(f"Sessions: {project_name}")
+
+        if not sorted_sessions:
+            console.print("[dim]No sessions found[/dim]")
+            return
+
+        # Create table
+        table = Table(show_header=True, header_style="bold magenta")
+        table.add_column("Session ID", style="cyan", max_width=12)
+        table.add_column("Runs", justify="right")
+        table.add_column("Errors", justify="right")
+        table.add_column("Start Time")
+        table.add_column("Types", max_width=30)
+
+        for session in sorted_sessions:
+            # Format session ID (truncate)
+            session_id = session["session_id"]
+            if len(session_id) > 12:
+                session_id = session_id[:8] + "..."
+
+            # Format error count with color
+            error_count = session["error_count"]
+            if error_count > 0:
+                error_str = f"[red]{error_count}[/red]"
+            else:
+                error_str = "[dim]0[/dim]"
+
+            # Format start time
+            first_run = session["first_run"]
+            if first_run:
+                # Show date and time
+                try:
+                    dt = datetime.fromisoformat(first_run)
+                    start_str = dt.strftime("%Y-%m-%d %H:%M")
+                except ValueError:
+                    start_str = first_run[:16]
+            else:
+                start_str = "-"
+
+            # Format run types
+            types = session["run_types"]
+            type_parts = []
+            for rt, count in sorted(types.items(), key=lambda x: -x[1]):
+                type_parts.append(f"{rt}:{count}")
+            types_str = ", ".join(type_parts[:3])
+            if len(type_parts) > 3:
+                types_str += "..."
+
+            table.add_row(
+                session_id,
+                str(session["run_count"]),
+                error_str,
+                start_str,
+                types_str,
+            )
+
+        console.print(table)
+        console.print(f"\n[dim]Showing {len(sorted_sessions)} sessions[/dim]")
+
+    except Exception as e:
+        print_error(f"Failed to list sessions: {e}")
+        sys.exit(1)

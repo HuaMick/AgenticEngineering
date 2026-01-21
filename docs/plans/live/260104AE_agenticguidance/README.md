@@ -1,37 +1,146 @@
 # Plan: 260104AE_agenticguidance
 
-## Status: COMPLETE (Phase 1-2 Done, Phase 3 Deferred)
+## Status: COMPLETED (Friction Analysis Improvements Done)
 
-**Updated**: 2026-01-16
+**Updated**: 2026-01-20
 **Branch**: `agenticguidance`
 **Worktree**: `/home/code/AgenticEngineering-agenticguidance`
 
-## Current Work: ALL ACTIONABLE PLANS COMPLETE
+## Session 2026-01-20: Friction Analysis Improvements - ALL COMPLETE
 
-**Session 2026-01-16 (Ralph Loop - Iterations 9-15)**
+### Completed Initiative
+Executed `plan_live_friction_analysis_improvements.yml` - all 5 phases complete:
 
-### Status: Phase 1-2 Complete, Phase 3 Deferred
-All high-priority and medium-priority work is complete. Phase 3 (low-priority decisions) has been deferred pending user input on 7 decision items.
+| Phase | Description | Status |
+|-------|-------------|--------|
+| Phase 1 | Guidance Quality Definition | COMPLETE |
+| Phase 2 | Session-Based Input | COMPLETE |
+| Phase 3 | Validation Subagent | COMPLETE |
+| Phase 4 | CLI Enhancements | COMPLETE |
+| Phase 5 | Integration Completion | COMPLETE |
 
-**Remaining in live/ (2 items):**
-1. **plan_live_batch_remediation.yml** - Phase 3 BLOCKED
-2. **backlog_cli_task_lists.yml** - BACKLOG (future experiment)
+### Phase 1: Guidance Quality Definition
+- Created `modules/AgenticGuidance/assets/definitions/guidance-quality.yml`
+- Documents effective patterns: path_addition, signpost_addition, fence_strengthening, cli_offload
+- Documents anti-patterns: caps_emphasis, repetition, strong_language, emphasis_escalation, negative_framing
 
-### Phase 3 Decision Items Required
+### Phase 2: Session-Based Input
+- Updated `_analyze_friction.yml` entrypoint with session_count, min_affected_sessions parameters
+- Updated `orchestration-friction/inputs.yml` with session_analysis configuration
 
-To unblock Phase 3, provide decisions for the 7 items in plan_live_batch_remediation.yml:
+### Phase 3: Validation Subagent
+- Added Step 5.5 validation step to `teacher-trace-diagnostics/process.yml`
+- Added validation example to `langsmith-trace-analysis.yml`
 
-| Decision | Question | Options |
-|----------|----------|---------|
-| decision_001 | Create specifications/ folder for format specs? | A: Create folder, B: Naming convention, C: No change |
-| decision_002 | Generalize test-execution-workflow.yml? | A: Now, B: Defer, C: Delete |
-| decision_003 | acceptable-skips.yml location? | A: Keep definitions/, B: Move guidelines/, C: Split |
-| decision_004 | gcp-artifact-registry.yml location? | A: config/, B: .agentic/config/, C: Delete, D: docs/ |
-| decision_005 | studio-integration-tests.yml valid? | A: Keep/verify, B: Move project, C: Delete, D: Defer |
-| decision_006 | workflow-test-readme.yml action? | A: Delete, B: Expand, C: Merge test-org, D: Merge testing |
-| decision_007 | Strategy files location? | A: Keep guidelines/, B: Move definitions/, C: Create strategies/, D: Consolidate |
+### Phase 4: CLI Enhancements
+- Added `agentic langsmith friction` command with --sessions, --min-affected, --validate flags
+- Added `agentic langsmith sessions` command for listing sessions with run counts
 
-**To provide decisions:** Edit plan_live_batch_remediation.yml lines 47-357, set `decision:` fields to chosen option (A/B/C/D).
+### Phase 5: Integration Completion
+- Created `orchestration-friction/manifest.yml`
+- Updated teacher inputs to reference guidance-quality.yml
+
+### Files in live/ (Ready to Archive)
+- `plan_live_friction_analysis_improvements.yml` - COMPLETED
+- `orchestration_friction_analysis_improvements.mmd` - COMPLETED
+
+---
+
+## Session 2026-01-20: Orchestration Agent Context Optimization
+
+### Orchestration Optimization - COMPLETE
+Executed `plan_live_teach_orchestration_optimization.yml` via subagents:
+
+**Phase 1: orchestration-planning Optimization** - COMPLETE
+- Consolidated alternative_loop_selection section with reference to agent-loops.yml
+- explore_verification already using YAML anchors correctly (no changes needed)
+- **Reduction: 6%** (383 → 359 lines, 24 lines saved)
+
+**Phase 2: orchestration-guidance Optimization** - COMPLETE
+- Replaced verbose CLI implementation details with single-line reference
+- Consolidated 23-line MODE explanation to single line
+- Deduplicated status management and feedback loop narratives
+- **Reduction: 43%** (146 → 83 lines, 63 lines saved) - EXCEEDS 15.3% target
+
+### Files Modified
+- `modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml`
+- `modules/AgenticGuidance/agents/orchestration/orchestration-guidance/process.mmd`
+
+### Session 2026-01-20: LOW Priority Optimizations - COMPLETE
+
+Executed all remaining LOW priority agent optimizations via parallel subagents:
+
+**Batch 1 Results (4 agents)**:
+- planner-build/inputs.yml: 164→149 lines (9.1% reduction)
+- planner-test/inputs.yml: 117→116 lines (many issues were false positives)
+- test-final-output/process.yml: 233→230 lines (1.3% reduction)
+- orchestration-build/process.mmd: 283→182 lines (**35.7% reduction**)
+
+**Batch 2 Results (4 agents)**:
+- test-guidance-simulator/inputs.yml: 155→82 lines (**47% reduction**)
+- test-user-simulator/inputs.yml: 172→97 lines (**44% reduction**)
+- planner-audit/inputs.yml: 163→122 lines (25% reduction)
+- planner-audit/process.yml: 236→211 lines (11% reduction)
+
+**Batch 3 Results (remaining agents)**:
+- test-service: TS-003 already resolved (uses dynamic discovery)
+- deploy-worktree: Issues dismissed/downgraded
+- build-flutter, build-python: Verified clean
+
+**Policy Update**: Added "Exhaustive Task Completion Policy" to orchestration-policy.yml
+- FENCE: Complete ALL tasks (including LOW priority) before shutdown
+- Referenced in orchestration-executor process.yml guidelines
+
+### Total Impact (All Context Optimization Sessions)
+- **Agent files reduced**: ~720 lines across 12 agents
+- **All CRITICAL/MEDIUM/LOW priority agents**: COMPLETE
+- **New policy**: Exhaustive Task Completion ensures all work is finished
+
+---
+
+## Session 2026-01-19: Context Optimization Execution
+
+### Context Optimization - COMPLETE
+Executed `plan_live_teach_context_optimization.yml` with 4 phases:
+
+**Phase 1: test-audit Remediation** - COMPLETE
+- Consolidated 8 verbose steps to 5 focused steps
+- Removed 90+ lines of duplicated RLM patterns (now reference shared asset)
+- **Reduction: 64%** (211 → 76 lines)
+
+**Phase 2: planner-reviewer Remediation** - COMPLETE
+- Externalized 97-line checklist to `definitions/planner-reviewer-checklists.yml`
+- Removed redundant procedure text
+- Trimmed guideline explanations
+- **Reduction: 61%** (321 → 126 lines in agent files)
+
+**Phase 3: deploy-cicd Remediation** - Already Clean
+- Files were already optimized in prior iteration
+- No changes needed
+
+**Phase 4: test-builder Remediation** - COMPLETE
+- Removed redundant planner-shared layer (test agent doesn't need planner layers)
+- Externalized test type definitions to `testing-types.yml`
+- Trimmed guideline explanations
+- **Reduction: 43 lines** from agent files
+
+### Files Created
+- `modules/AgenticGuidance/assets/definitions/planner-reviewer-checklists.yml` (110 lines)
+- Updated `modules/AgenticGuidance/assets/definitions/testing-types.yml` (+31 lines)
+
+### Total Impact
+- **Agent files reduced**: ~280 lines across 4 agents
+- **Shared definitions created**: Reusable, single-source-of-truth files
+- **All YAML validated**: 8 files pass syntax check
+
+**Remaining in live/ (1 item):**
+1. **plan_live_self_review_remediation.yml** - MEDIUM/LOW priority work remaining:
+   - orchestration-planning (2-3 hours)
+   - orchestration-guidance (2 hours)
+   - 11 agents with LOW severity issues
+
+### Phase 3 Decisions
+All Phase 3 decisions for the batch remediation plan have been answered and the plan has been completed.
 
 ---
 

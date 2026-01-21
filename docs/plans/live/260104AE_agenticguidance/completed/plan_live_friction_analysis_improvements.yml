@@ -1,0 +1,491 @@
+# Plan: Friction Analysis Improvements
+# Status: completed
+# Priority: high
+# Created: 2026-01-20
+# Summary: Improve friction analysis with session-based inputs, deduplication safeguards, and quality enforcement.
+
+name: friction-analysis-improvements
+status: completed
+priority: high
+created: "2026-01-20"
+last_updated: "2026-01-20"
+
+context: |
+  The friction analysis system (_analyze_friction.yml) is functional but has gaps:
+  - No session-count input: Can only filter by days/run-limit, not by number of sessions
+  - No deduplication: Recommendations may repeat guidance that already exists
+  - No quality safeguards: No prevention of poor enforcement techniques (CAPS, repetition, strong language)
+  - No validation step: Recommendations generated without checking existing guidance
+
+  Good enforcement techniques are:
+  - Adding definitions or guidelines (reusable knowledge)
+  - Adding steps to process files (workflow clarity)
+  - Adding subagents (specialized validation)
+  - Offloading to CLI (deterministic operations)
+
+  Poor enforcement techniques to avoid:
+  - CAPS emphasis (noise without value)
+  - Repetition of existing guidance
+  - Strong/emotional language (if everything is critical, nothing is)
+  - Emphasis escalation (shouting louder instead of fixing structure)
+
+objective: |
+  Improve friction analysis to:
+  1. Accept session-count input for historical analysis
+  2. Validate recommendations against existing guidance before presenting
+  3. Document anti-patterns for guidance quality
+  4. Complete integration gaps (manifest.yml, CLI enhancements)
+
+# ========================================
+# ENFORCEMENT APPROACH
+# ========================================
+# This plan uses only good enforcement techniques:
+# - DEFINITION: guidance-quality.yml for anti-patterns
+# - PROCESS STEP: Add validation step to teacher-trace-diagnostics
+# - SUBAGENT: Explore validation before recommendations
+# - CLI: Session-based analysis parameters
+
+# ========================================
+# PHASES
+# ========================================
+phases:
+  # ----------------------------------------
+  # PHASE 1: Add Guidance Quality Definition
+  # ----------------------------------------
+  - name: "Phase 1: Guidance Quality Definition"
+    execution: sequential
+    description: "Create definition for guidance quality anti-patterns"
+    enforcement_type: "DEFINITION"
+    tasks:
+      - id: def_01
+        name: "Create guidance-quality.yml definition"
+        status: completed
+        description: "Define anti-patterns that reduce guidance effectiveness"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/guidance-quality.yml"
+        guidance: |
+          Create definition file with structure:
+
+          ```yaml
+          definition:
+            name: guidance-quality
+            description: "Patterns that help or harm guidance effectiveness"
+
+          effective_patterns:
+            - name: "path_addition"
+              description: "Add clear step to process file"
+              example: "Step 4: Validate output schema before proceeding"
+
+            - name: "signpost_addition"
+              description: "Add concrete example showing correct usage"
+              example: "See examples/teacher/schema-validation.yml"
+
+            - name: "fence_strengthening"
+              description: "Add constraint that prevents incorrect behavior"
+              example: "boundary: only modify files within plan folder"
+
+            - name: "cli_offload"
+              description: "Move deterministic operation to CLI command"
+              example: "Use 'agentic plan init' instead of manual folder creation"
+
+          anti_patterns:
+            - name: "caps_emphasis"
+              description: "Using CAPS to emphasize importance"
+              why_ineffective: "Creates noise, agents don't respond to visual emphasis"
+              example_bad: "You MUST ALWAYS validate output"
+              example_good: "validation: required: true"
+
+            - name: "repetition"
+              description: "Restating the same guidance in different words"
+              why_ineffective: "Increases context without adding information"
+              example_bad: "Validate output. Make sure to validate. Output validation is required."
+              example_good: "Step: Validate output (see validation-rules.yml)"
+
+            - name: "strong_language"
+              description: "Using emotional or urgent language"
+              why_ineffective: "If everything is critical/important, nothing is prioritized"
+              example_bad: "This is CRITICAL and MUST be done IMMEDIATELY"
+              example_good: "priority: high"
+
+            - name: "emphasis_escalation"
+              description: "Adding emphasis to existing guidance instead of fixing structure"
+              why_ineffective: "Doesn't address why guidance wasn't followed"
+              example_bad: "As stated above (IMPORTANT)..."
+              example_good: "Move guidance to step where it's needed"
+
+            - name: "negative_framing"
+              description: "Telling agents what NOT to do without positive alternative"
+              why_ineffective: "Agents need to know what TO do"
+              example_bad: "Do NOT create files outside the plan folder"
+              example_good: "boundary: output_path: docs/plans/live/{{plan_id}}/"
+          ```
+        acceptance_criteria:
+          - "Definition follows existing definition schema"
+          - "Both effective and anti-patterns documented"
+          - "Examples are concrete and actionable"
+
+  # ----------------------------------------
+  # PHASE 2: Add Session-Based Input to Entrypoint
+  # ----------------------------------------
+  - name: "Phase 2: Session-Based Input"
+    execution: sequential
+    description: "Add session_count parameter to friction analysis"
+    enforcement_type: "PROCESS_STEP"
+    tasks:
+      - id: input_01
+        name: "Update _analyze_friction.yml entrypoint"
+        status: completed
+        description: "Add session_count and min_affected_sessions inputs"
+        target_files:
+          - "modules/AgenticGuidance/entrypoints/_analyze_friction.yml"
+        guidance: |
+          Add new input parameters to entrypoint:
+
+          ```yaml
+          input:
+            - "project_name: LangSmith project (default: from CC_LANGSMITH_PROJECT env var)"
+            - "lookback_days: Days to analyze (default: 7)"
+            - "limit: Max runs to analyze (default: 100)"
+            # New parameters:
+            - "session_count: Number of recent sessions to analyze (optional, overrides lookback_days)"
+            - "min_affected_sessions: Only report patterns affecting N+ sessions (default: 2)"
+          ```
+
+          Update steps to include session-based grouping:
+          ```yaml
+          steps:
+            - "Load orchestration process"
+            - "Query LangSmith traces (by session_count or lookback_days)"
+            - "Group runs by session_id"  # New
+            - "Run friction pattern detection per session"
+            - "Filter patterns by min_affected_sessions threshold"  # New
+            - "Generate resolution recommendations"
+            - "Present findings with session-level evidence"
+          ```
+        acceptance_criteria:
+          - "session_count input parameter added"
+          - "min_affected_sessions threshold parameter added"
+          - "Steps updated to reflect session-based analysis"
+
+      - id: input_02
+        name: "Update orchestration-friction inputs.yml"
+        status: completed
+        description: "Add session configuration to orchestration inputs"
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml"
+        guidance: |
+          Add session configuration section:
+
+          ```yaml
+          session_analysis:
+            description: "Session-based analysis configuration"
+
+            grouping:
+              method: "session_id"
+              fallback: "time_window_30min"
+
+            thresholds:
+              min_affected_sessions: 2
+              min_pattern_frequency_per_session: 1
+
+            filtering:
+              exclude_single_session_patterns: true
+              rationale: "Single-session patterns may be user error, not guidance gaps"
+          ```
+        acceptance_criteria:
+          - "Session grouping method documented"
+          - "Threshold configuration added"
+          - "Filtering rationale explained"
+
+  # ----------------------------------------
+  # PHASE 3: Add Validation Subagent Step
+  # ----------------------------------------
+  - name: "Phase 3: Validation Subagent"
+    execution: sequential
+    description: "Add explore validation step before recommendations"
+    enforcement_type: "SUBAGENT"
+    tasks:
+      - id: validate_01
+        name: "Update teacher-trace-diagnostics process"
+        status: completed
+        description: "Add validation step between detection and recommendations"
+        target_files:
+          - "modules/AgenticGuidance/agents/teacher/teacher-trace-diagnostics/process.yml"
+        guidance: |
+          Insert new step between current Step 5 (recommendations) and Step 6 (output):
+
+          ```yaml
+          - step: 5.5
+            name: "Validate recommendations against existing guidance"
+            action: "spawn_explore_subagent"
+            purpose: |
+              Before presenting recommendations, verify they don't duplicate
+              existing guidance in target files.
+
+            subagent_task: |
+              For each recommendation:
+              1. Read the target_file specified
+              2. Search for similar guidance (keywords, patterns)
+              3. If similar guidance exists:
+                 - Flag as potential duplicate
+                 - Note existing location
+                 - Suggest merge/enhancement instead of addition
+              4. Return validation results
+
+            outputs:
+              - validated_recommendations: "Recommendations with duplication check"
+              - potential_duplicates: "List of recommendations that may duplicate existing guidance"
+              - merge_suggestions: "Recommendations for consolidating with existing guidance"
+
+            filtering:
+              - "Remove recommendations where guidance already exists"
+              - "Downgrade severity if partial guidance exists"
+              - "Note existing guidance location in recommendation"
+          ```
+        acceptance_criteria:
+          - "Validation step added to process"
+          - "Subagent task clearly specified"
+          - "Duplicate handling logic documented"
+
+      - id: validate_02
+        name: "Add validation example to langsmith-trace-analysis.yml"
+        status: completed
+        description: "Add example showing recommendation validation pattern"
+        target_files:
+          - "modules/AgenticGuidance/assets/examples/teacher/langsmith-trace-analysis.yml"
+        guidance: |
+          Add new example section:
+
+          ```yaml
+          - name: "Validate recommendations against existing guidance"
+            description: "Check if recommended guidance already exists before presenting"
+            pattern: |
+              # For each recommendation, check target file for existing similar content
+              def validate_recommendation(recommendation, target_file_content):
+                  keywords = extract_keywords(recommendation.suggested_change)
+                  existing_matches = []
+
+                  for keyword in keywords:
+                      if keyword.lower() in target_file_content.lower():
+                          existing_matches.append({
+                              "keyword": keyword,
+                              "context": extract_surrounding_context(target_file_content, keyword)
+                          })
+
+                  if existing_matches:
+                      return {
+                          "status": "potential_duplicate",
+                          "existing_guidance": existing_matches,
+                          "suggestion": "Consider enhancing existing guidance instead of adding new"
+                      }
+                  return {"status": "validated", "existing_guidance": None}
+
+            anti_pattern: |
+              # Generating recommendations without checking existing guidance
+              recommendations = generate_recommendations(friction_patterns)
+              return recommendations  # No validation - may duplicate existing
+          ```
+        acceptance_criteria:
+          - "Validation pattern example added"
+          - "Anti-pattern shown for contrast"
+          - "Follows existing example format"
+
+  # ----------------------------------------
+  # PHASE 4: CLI Enhancements
+  # ----------------------------------------
+  - name: "Phase 4: CLI Enhancements"
+    execution: sequential
+    description: "Add session-based analysis to CLI"
+    enforcement_type: "CLI_OFFLOAD"
+    tasks:
+      - id: cli_01
+        name: "Add session-based parameters to langsmith friction command"
+        status: completed
+        description: "Support --sessions and --min-affected flags"
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/commands/langsmith.py"
+        guidance: |
+          Enhance friction subcommand with session options:
+
+          ```python
+          @langsmith.command()
+          @click.option("--project", required=True, help="LangSmith project name")
+          @click.option("--sessions", type=int, help="Number of recent sessions to analyze")
+          @click.option("--since", help="Start date (ISO format)")
+          @click.option("--limit", default=100, help="Max runs to fetch")
+          @click.option("--min-affected", default=2, type=int,
+                        help="Only show patterns affecting N+ sessions")
+          @click.option("--recommend/--no-recommend", default=False,
+                        help="Include resolution recommendations")
+          @click.option("--validate/--no-validate", default=True,
+                        help="Validate recommendations against existing guidance")
+          @click.option("--json", "output_json", is_flag=True, help="JSON output")
+          def friction(project, sessions, since, limit, min_affected, recommend, validate, output_json):
+              """Analyze traces for friction patterns."""
+              # Implementation uses FrictionAnalyzer with session grouping
+          ```
+        acceptance_criteria:
+          - "--sessions parameter added"
+          - "--min-affected filter implemented"
+          - "--validate flag controls deduplication check"
+
+      - id: cli_02
+        name: "Add agentic langsmith sessions command"
+        status: completed
+        description: "List sessions for a project"
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/commands/langsmith.py"
+        guidance: |
+          Add new subcommand to list sessions:
+
+          ```python
+          @langsmith.command()
+          @click.option("--project", required=True, help="LangSmith project name")
+          @click.option("--limit", default=10, help="Number of sessions to show")
+          @click.option("--since", help="Start date (ISO format)")
+          @click.option("--json", "output_json", is_flag=True, help="JSON output")
+          def sessions(project, limit, since, output_json):
+              """List recent sessions with run counts."""
+              # Group runs by session_id
+              # Show: session_id, start_time, run_count, error_count
+          ```
+        acceptance_criteria:
+          - "sessions subcommand implemented"
+          - "Groups runs by session_id"
+          - "Shows useful session summary"
+
+  # ----------------------------------------
+  # PHASE 5: Integration Completion
+  # ----------------------------------------
+  - name: "Phase 5: Integration Completion"
+    execution: sequential
+    description: "Complete integration gaps"
+    tasks:
+      - id: int_01
+        name: "Create orchestration-friction manifest.yml"
+        status: completed
+        description: "Add manifest for consistency with other agents"
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-friction/manifest.yml"
+        guidance: |
+          Create manifest following orchestration agent pattern:
+
+          ```yaml
+          agent:
+            name: orchestration-friction
+            version: "1.0"
+            category: orchestration
+
+          description: |
+            Orchestrates on-demand friction analysis of LangSmith traces.
+            Read-only analysis - no automatic changes made.
+
+          responsibilities:
+            - "Query LangSmith traces for specified project/timeframe"
+            - "Detect friction patterns (FP-001 through FP-006)"
+            - "Classify patterns by severity"
+            - "Validate recommendations against existing guidance"
+            - "Present findings with actionable recommendations"
+
+          inputs_from:
+            - "User context (project name, timeframe)"
+            - "LangSmith API (trace data)"
+            - "Existing guidance files (for validation)"
+
+          outputs_to:
+            - "User (friction report with recommendations)"
+            - "Next entrypoint (if user chooses to implement)"
+
+          boundaries:
+            - "Read-only: does not modify any files"
+            - "User decides resolution approach"
+            - "Recommendations validated before presentation"
+
+          spawns: []
+
+          invoked_by:
+            - "_analyze_friction.yml entrypoint"
+          ```
+        acceptance_criteria:
+          - "Manifest follows existing patterns"
+          - "Boundaries clearly state read-only"
+          - "Validation responsibility documented"
+
+      - id: int_02
+        name: "Reference guidance-quality.yml in teacher inputs"
+        status: completed
+        description: "Ensure teacher agents load quality definition"
+        target_files:
+          - "modules/AgenticGuidance/agents/teacher/teacher-update-guidance/inputs.yml"
+          - "modules/AgenticGuidance/agents/teacher/teacher-trace-diagnostics/inputs.yml"
+        guidance: |
+          Add reference to guidance-quality definition in teacher inputs:
+
+          In definitions_to_load section:
+          ```yaml
+          definitions_to_load:
+            # ... existing definitions ...
+            - path: "modules/AgenticGuidance/assets/definitions/guidance-quality.yml"
+              purpose: "Anti-patterns to avoid when writing guidance"
+          ```
+
+          In context_layer or relevant section:
+          ```yaml
+          quality_enforcement:
+            definition: "modules/AgenticGuidance/assets/definitions/guidance-quality.yml"
+            validation: |
+              Before generating guidance recommendations:
+              - Check recommendation against anti_patterns list
+              - Ensure recommendation uses effective_patterns
+              - Flag if recommendation would introduce anti-pattern
+          ```
+        acceptance_criteria:
+          - "guidance-quality.yml referenced in both teacher agents"
+          - "Quality validation step documented"
+
+# ========================================
+# SUCCESS CRITERIA
+# ========================================
+success_criteria:
+  - "guidance-quality.yml definition created with effective/anti patterns"
+  - "session_count and min_affected_sessions inputs available"
+  - "Validation subagent step added to prevent duplicate recommendations"
+  - "CLI supports --sessions and --min-affected flags"
+  - "orchestration-friction manifest.yml created"
+  - "Teacher agents reference guidance-quality definition"
+
+# ========================================
+# DEPENDENCIES
+# ========================================
+dependencies:
+  - item: "plan_live_trace_friction_detection.yml"
+    status: "completed"
+    note: "Base friction analysis infrastructure already built"
+
+  - item: "AgenticLangSmith module"
+    status: "available"
+    note: "FrictionAnalyzer and ResolutionRecommender classes exist"
+
+# ========================================
+# RESOLVED DECISIONS
+# ========================================
+resolved_decisions:
+  - id: D-001
+    decision: "How to prevent duplicate recommendations?"
+    resolution: "Add explore subagent validation step before presenting recommendations"
+    rationale: "Subagent can read target files and check for existing similar guidance"
+
+  - id: D-002
+    decision: "How to document quality anti-patterns?"
+    resolution: "Create guidance-quality.yml definition"
+    rationale: "Definitions are reusable and can be referenced by multiple agents"
+
+  - id: D-003
+    decision: "How to support session-based analysis?"
+    resolution: "Add session_count input + CLI --sessions flag"
+    rationale: "CLI offload for deterministic session grouping operation"
+
+  - id: D-004
+    decision: "Minimum affected sessions threshold?"
+    resolution: "Default to 2 sessions"
+    rationale: "Single-session patterns may be user error, not guidance gaps"

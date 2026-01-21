@@ -30,21 +30,7 @@ required_inputs:
 
 # Planner-Audit Agent Inputs
 # Defines the files, directories, and context needed to audit plan folder compliance.
-#
-# PURPOSE:
-# Planner-audit agents examine plan folders to identify compliance issues:
-# - Files in wrong locations (completed items in live/, audit reports not archived)
-# - Stale artifacts that should be cleaned up
-# - Misleading content that could cause future agents to take wrong actions
-# - Plans that were executed but not marked complete (or vice versa)
-#
-# RESPONSIBILITIES:
-# - Inventory all files in the plan folder
-# - Evaluate each file against placement rules
-# - Identify completed files still in live/
-# - Flag potential noise/red-herrings
-# - Verify plan-to-execution tracking
-# - Produce actionable compliance report
+# See process.yml for goal, execution steps, and output structure.
 
 agent_context:
   category: "modules/AgenticGuidance/assets/definitions/agent-categories.yml#agent_categories.planner"
@@ -117,46 +103,20 @@ inputs:
       required: true
 
   # Audit-specific definitions
+  # See plans.yml for authoritative file placement rules and lifecycle
   definitions:
     compliance_question: |
-      For each file in the plan folder, ask:
-      "Is this file compliant? Does it belong here?"
-
-      This question forces deliberate evaluation rather than passive acceptance.
-      Files that pass this test contribute to agent effectiveness.
+      For each file: "Is this file compliant? Does it belong here?"
       Files that fail create friction and potential misdirection.
 
     file_placement_rules: |
-      Files have expected locations based on their type and status:
-
-      live/: Active work in progress
-      - Phase plans with pending/in-progress items
-      - plan_next_actions.yml (tracking file)
-      - Remediation plans awaiting review
-
-      completed/: Finished work
-      - Phase plans where all items are done
-      - plan_completed.yml summary
-
-      audit/: Audit artifacts
-      - audit_*.yml reports after processing
-
-      analysis/: Analysis and iteration history
-      - plan_iteration_*.yml logs
-      - review_*.yml decisions
-      - *.md analysis documents
+      See plans.yml#path_conventions for authoritative rules.
+      live/: Active work. completed/: Finished work. audit/: Audit reports. analysis/: Iteration history.
 
     misleading_content_patterns: |
-      Content that could mislead future agents:
-      - References to deleted/moved files
-      - Outdated recommendations marked as current
-      - Unresolved TODOs for resolved issues
-      - Plans superseded without documentation
-      - Analysis based on old code state
+      Content that could mislead: references to deleted files, outdated recommendations,
+      unresolved TODOs for resolved issues, superseded plans without documentation.
 
     execution_tracking: |
-      Plan-to-execution tracking verifies that:
-      - Plans marked complete have evidence of execution
-      - Active plans show recent activity
-      - Abandoned plans are documented as such
-      - Partial completion is clearly indicated
+      Verify: plans marked complete have execution evidence, active plans show activity,
+      abandoned plans are documented, partial completion is indicated.

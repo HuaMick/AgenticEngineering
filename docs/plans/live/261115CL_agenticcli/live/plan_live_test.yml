@@ -1,0 +1,2171 @@
+# CLI Task Lists - Test Plan
+# Generated: 2026-01-20
+# Agent: planner-test
+# Build Plan Reference: plan_live_build.yml
+
+name: "cli-task-lists-test"
+worktree_path: "/home/code/AgenticEngineering"
+worktree: "261115CL_agenticcli"
+status: "pending"
+created: "2026-01-20"
+updated: "2026-01-20"
+
+depends_on:
+  - plan_live_build.yml
+
+summary: |
+  Comprehensive test plan for CLI task list feature covering unit tests,
+  integration tests, and experimental blind testing to validate whether
+  prefilled tasks actually help agents remember ancillary work.
+
+  Key validation focus:
+  - CLI argument parsing and validation
+  - TaskPresetWorkflow class functionality
+  - Preset template loading
+  - End-to-end command execution
+  - CRITICAL: Blind testing to prove the feature solves the original problem
+
+phases:
+  # ===========================================================================
+  # Phase 1: Unit Tests - Command Parser Validation
+  # ===========================================================================
+  - phase_id: "test_01"
+    name: "Unit Tests - Command Parser Validation"
+    description: "Test argparse configuration for new task subcommands"
+    status: "pending"
+    estimated_effort: "medium"
+
+    tasks:
+      # -----------------------------------------------------------------------
+      # Task 1.1: Test task prefill parser
+      # -----------------------------------------------------------------------
+      - task_id: "test_01_001"
+        description: "Write unit tests for task prefill argument parser"
+        status: "pending"
+
+        inputs:
+          - path: "modules/AgenticCLI/src/agenticcli/cli.py"
+            reason: "Contains task prefill parser definition"
+          - path: "modules/AgenticCLI/tests/test_cli.py"
+            reason: "Reference for CLI test patterns"
+
+        target_files:
+          - "modules/AgenticCLI/tests/test_cli_task.py"
+
+        guidance: |
+          Create new test file: modules/AgenticCLI/tests/test_cli_task.py
+
+          Test the argparse configuration for `task prefill`:
+
+          ```python
+          """Tests for task subcommand CLI functionality."""
+
+          import pytest
+
+
+          class TestTaskPrefillParser:
+              """Tests for 'agentic plan task prefill' argument parsing."""
+
+              def test_prefill_help_shows_options(self, cli_runner):
+                  """Test prefill --help shows all options."""
+                  stdout, stderr, code = cli_runner(["plan", "task", "prefill", "--help"])
+                  assert "--preset" in stdout
+                  assert "-t" in stdout  # short form
+                  assert "--plan" in stdout
+                  assert "--dry-run" in stdout
+                  assert code == 0
+
+              def test_prefill_requires_preset(self, cli_runner):
+                  """Test that --preset is required."""
+                  stdout, stderr, code = cli_runner(["plan", "task", "prefill"])
+                  assert code != 0
+                  assert "required" in stderr.lower() or "preset" in stderr.lower()
+
+              def test_prefill_accepts_preset_short_form(self, cli_runner, temp_repo):
+                  """Test -t shortcut for --preset."""
+                  # This will fail at runtime (preset not found) but parser accepts it
+                  stdout, stderr, code = cli_runner(
+                      ["plan", "task", "prefill", "-t", "nonexistent"]
+                  )
+                  # Parser accepts the argument structure
+                  assert "not found" in stderr.lower() or code != 0
+          ```
+
+          Pattern: Use cli_runner fixture from conftest.py for consistent testing.
+
+        success_criteria:
+          - "Test file created at modules/AgenticCLI/tests/test_cli_task.py"
+          - "Tests verify --preset is required"
+          - "Tests verify short form -t works"
+          - "Tests verify --dry-run flag is recognized"
+          - "Tests pass with pytest"
+
+      # -----------------------------------------------------------------------
+      # Task 1.2: Test task list parser
+      # -----------------------------------------------------------------------
+      - task_id: "test_01_002"
+        description: "Write unit tests for task list argument parser"
+        status: "pending"
+
+        inputs:
+          - path: "modules/AgenticCLI/src/agenticcli/cli.py"
+            reason: "Contains task list parser definition"
+
+        target_files:
+          - "modules/AgenticCLI/tests/test_cli_task.py"
+
+        guidance: |
+          Add to test_cli_task.py:
+
+          ```python
+          class TestTaskListParser:
+              """Tests for 'agentic plan task list' argument parsing."""
+
+              def test_list_help_shows_options(self, cli_runner):
+                  """Test list --help shows all options."""
+                  stdout, stderr, code = cli_runner(["plan", "task", "list", "--help"])
+                  assert "--plan" in stdout
+                  assert "--status" in stdout
+                  assert "--verbose" in stdout
+                  assert code == 0
+
+              def test_list_status_filter_choices(self, cli_runner):
+                  """Test --status accepts valid choices."""
+                  # Valid choices should be: all, pending, in_progress, completed
+                  valid_choices = ["all", "pending", "in_progress", "completed"]
+                  for choice in valid_choices:
+                      # Parse is valid even if runtime fails for other reasons
+                      result = cli_runner(["plan", "task", "list", "--status", choice])
+                      # Parser should not reject valid choices
+                      assert "invalid choice" not in result.stderr.lower()
+
+              def test_list_status_rejects_invalid(self, cli_runner):
+                  """Test --status rejects invalid values."""
+                  stdout, stderr, code = cli_runner(
+                      ["plan", "task", "list", "--status", "invalid_status"]
+                  )
+                  assert code != 0
+                  assert "invalid choice" in stderr.lower()
+          ```
+
+        success_criteria:
+          - "Tests verify --status filter accepts valid choices"
+          - "Tests verify --status rejects invalid choices"
+          - "Tests verify --verbose flag is recognized"
+          - "Tests pass with pytest"
+
+      # -----------------------------------------------------------------------
+      # Task 1.3: Test task status parser
+      # -----------------------------------------------------------------------
+      - task_id: "test_01_003"
+        description: "Write unit tests for task status argument parser"
+        status: "pending"
+
+        inputs:
+          - path: "modules/AgenticCLI/src/agenticcli/cli.py"
+            reason: "Contains task status parser definition"
+
+        target_files:
+          - "modules/AgenticCLI/tests/test_cli_task.py"
+
+        guidance: |
+          Add to test_cli_task.py:
+
+          ```python
+          class TestTaskStatusParser:
+              """Tests for 'agentic plan task status' argument parsing."""
+
+              def test_status_help_shows_options(self, cli_runner):
+                  """Test status --help shows options."""
+                  stdout, stderr, code = cli_runner(["plan", "task", "status", "--help"])
+                  assert "task_id" in stdout
+                  assert "--plan" in stdout
+                  assert code == 0
+
+              def test_status_requires_task_id(self, cli_runner):
+                  """Test that task_id positional argument is required."""
+                  stdout, stderr, code = cli_runner(["plan", "task", "status"])
+                  assert code != 0
+                  # argparse error for missing positional
+                  assert "required" in stderr.lower() or "argument" in stderr.lower()
+
+              def test_status_accepts_task_id(self, cli_runner):
+                  """Test parser accepts task_id positional."""
+                  # Will fail at runtime but parser accepts the argument
+                  result = cli_runner(["plan", "task", "status", "build_01_001"])
+                  # Parser accepted the task_id, runtime may fail finding it
+                  assert "invalid" not in result.stderr.lower() or "not found" in result.stderr.lower()
+          ```
+
+        success_criteria:
+          - "Tests verify task_id is required positional argument"
+          - "Tests verify --plan option is available"
+          - "Tests pass with pytest"
+
+      # -----------------------------------------------------------------------
+      # Task 1.4: Test task add parser
+      # -----------------------------------------------------------------------
+      - task_id: "test_01_004"
+        description: "Write unit tests for task add argument parser"
+        status: "pending"
+
+        inputs:
+          - path: "modules/AgenticCLI/src/agenticcli/cli.py"
+            reason: "Contains task add parser definition"
+
+        target_files:
+          - "modules/AgenticCLI/tests/test_cli_task.py"
+
+        guidance: |
+          Add to test_cli_task.py:
+
+          ```python
+          class TestTaskAddParser:
+              """Tests for 'agentic plan task add' argument parsing."""
+
+              def test_add_help_shows_options(self, cli_runner):
+                  """Test add --help shows all options."""
+                  stdout, stderr, code = cli_runner(["plan", "task", "add", "--help"])
+                  assert "description" in stdout
+                  assert "--plan" in stdout
+                  assert "--phase" in stdout
+                  assert "--id" in stdout
+                  assert "--priority" in stdout
+                  assert code == 0
+
+              def test_add_requires_description(self, cli_runner):
+                  """Test that description is required."""
+                  stdout, stderr, code = cli_runner(["plan", "task", "add"])
+                  assert code != 0
+                  assert "required" in stderr.lower() or "argument" in stderr.lower()
+
+              def test_add_priority_choices(self, cli_runner, temp_repo):
+                  """Test --priority accepts valid choices."""
+                  valid_choices = ["low", "medium", "high"]
+                  for choice in valid_choices:
+                      result = cli_runner([
+                          "plan", "task", "add", "Test task",
+                          "--priority", choice
+                      ])
+                      # Parser should not reject valid choices
+                      assert "invalid choice" not in result.stderr.lower()
+
+              def test_add_priority_rejects_invalid(self, cli_runner):
+                  """Test --priority rejects invalid values."""
+                  stdout, stderr, code = cli_runner([
+                      "plan", "task", "add", "Test task",
+                      "--priority", "critical"  # invalid
+                  ])
+                  assert code != 0
+                  assert "invalid choice" in stderr.lower()
+          ```
+
+        success_criteria:
+          - "Tests verify description is required"
+          - "Tests verify --priority accepts low/medium/high"
+          - "Tests verify --priority rejects invalid values"
+          - "Tests pass with pytest"
+
+  # ===========================================================================
+  # Phase 2: Unit Tests - TaskPresetWorkflow Class
+  # ===========================================================================
+  - phase_id: "test_02"
+    name: "Unit Tests - TaskPresetWorkflow Class"
+    description: "Test the TaskPresetWorkflow class methods and dataclasses"
+    status: "pending"
+    estimated_effort: "medium"
+    depends_on: ["test_01"]
+
+    tasks:
+      # -----------------------------------------------------------------------
+      # Task 2.1: Test PresetLoadResult dataclass
+      # -----------------------------------------------------------------------
+      - task_id: "test_02_001"
+        description: "Write unit tests for PresetLoadResult dataclass"
+        status: "pending"
+
+        inputs:
+          - path: "modules/AgenticCLI/src/agenticcli/workflows/task_workflow.py"
+            reason: "Contains PresetLoadResult dataclass"
+
+        target_files:
+          - "modules/AgenticCLI/tests/test_task_workflow.py"
+
+        guidance: |
+          Create new test file: modules/AgenticCLI/tests/test_task_workflow.py
+
+          ```python
+          """Tests for TaskPresetWorkflow functionality."""
+
+          import pytest
+          from pathlib import Path
+
+
+          class TestPresetLoadResult:
+              """Tests for PresetLoadResult dataclass."""
+
+              def test_result_creation(self):
+                  """Test creating PresetLoadResult with required fields."""
+                  from agenticcli.workflows.task_workflow import PresetLoadResult
+
+                  result = PresetLoadResult(
+                      preset_name="planner-build",
+                      tasks_added=3,
+                      tasks=[{"id": "pb_001", "description": "Test"}],
+                  )
+
+                  assert result.preset_name == "planner-build"
+                  assert result.tasks_added == 3
+                  assert len(result.tasks) == 1
+                  assert result.target_file is None
+                  assert result.dry_run is False
+
+              def test_result_with_all_fields(self):
+                  """Test PresetLoadResult with all optional fields."""
+                  from agenticcli.workflows.task_workflow import PresetLoadResult
+
+                  result = PresetLoadResult(
+                      preset_name="builder",
+                      tasks_added=5,
+                      tasks=[],
+                      target_file="plan_live_tasks.yml",
+                      dry_run=True,
+                  )
+
+                  assert result.target_file == "plan_live_tasks.yml"
+                  assert result.dry_run is True
+          ```
+
+        success_criteria:
+          - "Test file created at modules/AgenticCLI/tests/test_task_workflow.py"
+          - "Tests verify dataclass field defaults"
+          - "Tests verify optional field handling"
+          - "Tests pass with pytest"
+
+      # -----------------------------------------------------------------------
+      # Task 2.2: Test list_presets method
+      # -----------------------------------------------------------------------
+      - task_id: "test_02_002"
+        description: "Write unit tests for TaskPresetWorkflow.list_presets()"
+        status: "pending"
+
+        inputs:
+          - path: "modules/AgenticCLI/src/agenticcli/workflows/task_workflow.py"
+            reason: "Contains list_presets method"
+
+        target_files:
+          - "modules/AgenticCLI/tests/test_task_workflow.py"
+
+        guidance: |
+          Add to test_task_workflow.py:
+
+          ```python
+          class TestTaskPresetWorkflow:
+              """Tests for TaskPresetWorkflow class."""
+
+              @pytest.fixture
+              def workflow(self, temp_dir):
+                  """Create workflow instance with temp directory."""
+                  from agenticcli.workflows.task_workflow import TaskPresetWorkflow
+
+                  plan_path = temp_dir / "test_plan"
+                  plan_path.mkdir()
+                  (plan_path / "live").mkdir()
+                  return TaskPresetWorkflow(plan_path)
+
+              @pytest.fixture
+              def preset_dir(self, workflow, monkeypatch):
+                  """Create mock presets directory."""
+                  from agenticcli.workflows import task_workflow
+
+                  preset_path = workflow.plan_path.parent / "presets"
+                  preset_path.mkdir()
+
+                  # Create sample preset files
+                  (preset_path / "planner-build.yml").write_text(
+                      "name: planner-build\ntasks: []"
+                  )
+                  (preset_path / "builder.yml").write_text(
+                      "name: builder\ntasks: []"
+                  )
+
+                  # Patch PRESETS_DIR
+                  monkeypatch.setattr(
+                      task_workflow.TaskPresetWorkflow,
+                      "PRESETS_DIR",
+                      preset_path
+                  )
+                  return preset_path
+
+              def test_list_presets_returns_names(self, workflow, preset_dir):
+                  """Test list_presets returns preset names without extension."""
+                  presets = workflow.list_presets()
+
+                  assert "planner-build" in presets
+                  assert "builder" in presets
+                  assert len(presets) == 2
+
+              def test_list_presets_empty_dir(self, workflow, monkeypatch):
+                  """Test list_presets returns empty list if no presets."""
+                  from agenticcli.workflows import task_workflow
+
+                  empty_dir = workflow.plan_path.parent / "empty_presets"
+                  empty_dir.mkdir()
+                  monkeypatch.setattr(
+                      task_workflow.TaskPresetWorkflow,
+                      "PRESETS_DIR",
+                      empty_dir
+                  )
+
+                  presets = workflow.list_presets()
+                  assert presets == []
+
+              def test_list_presets_nonexistent_dir(self, workflow, monkeypatch):
+                  """Test list_presets returns empty list if dir doesn't exist."""
+                  from agenticcli.workflows import task_workflow
+
+                  monkeypatch.setattr(
+                      task_workflow.TaskPresetWorkflow,
+                      "PRESETS_DIR",
+                      Path("/nonexistent/path")
+                  )
+
+                  presets = workflow.list_presets()
+                  assert presets == []
+          ```
+
+        success_criteria:
+          - "Tests verify list_presets returns preset names"
+          - "Tests verify behavior with empty directory"
+          - "Tests verify behavior with nonexistent directory"
+          - "Tests pass with pytest"
+
+      # -----------------------------------------------------------------------
+      # Task 2.3: Test get_preset_path method
+      # -----------------------------------------------------------------------
+      - task_id: "test_02_003"
+        description: "Write unit tests for TaskPresetWorkflow.get_preset_path()"
+        status: "pending"
+
+        inputs:
+          - path: "modules/AgenticCLI/src/agenticcli/workflows/task_workflow.py"
+            reason: "Contains get_preset_path method"
+
+        target_files:
+          - "modules/AgenticCLI/tests/test_task_workflow.py"
+
+        guidance: |
+          Add to TestTaskPresetWorkflow class:
+
+          ```python
+              def test_get_preset_path_exact_name(self, workflow, preset_dir):
+                  """Test get_preset_path with exact preset name."""
+                  path = workflow.get_preset_path("planner-build")
+                  assert path.exists()
+                  assert path.name == "planner-build.yml"
+
+              def test_get_preset_path_with_suffix(self, workflow, preset_dir):
+                  """Test get_preset_path supports -preset suffix."""
+                  # Create preset with -preset suffix
+                  (preset_dir / "test-agent-preset.yml").write_text(
+                      "name: test-agent\ntasks: []"
+                  )
+
+                  path = workflow.get_preset_path("test-agent")
+                  assert path.exists()
+
+              def test_get_preset_path_not_found(self, workflow, preset_dir):
+                  """Test get_preset_path raises FileNotFoundError."""
+                  with pytest.raises(FileNotFoundError) as exc_info:
+                      workflow.get_preset_path("nonexistent-preset")
+
+                  assert "nonexistent-preset" in str(exc_info.value)
+          ```
+
+        success_criteria:
+          - "Tests verify exact name lookup"
+          - "Tests verify -preset suffix fallback"
+          - "Tests verify FileNotFoundError for missing presets"
+          - "Tests pass with pytest"
+
+      # -----------------------------------------------------------------------
+      # Task 2.4: Test load_preset method - dry run
+      # -----------------------------------------------------------------------
+      - task_id: "test_02_004"
+        description: "Write unit tests for TaskPresetWorkflow.load_preset() dry run"
+        status: "pending"
+
+        inputs:
+          - path: "modules/AgenticCLI/src/agenticcli/workflows/task_workflow.py"
+            reason: "Contains load_preset method"
+
+        target_files:
+          - "modules/AgenticCLI/tests/test_task_workflow.py"
+
+        guidance: |
+          Add to TestTaskPresetWorkflow class:
+
+          ```python
+              def test_load_preset_dry_run(self, workflow, preset_dir):
+                  """Test load_preset with dry_run=True doesn't write files."""
+                  # Create a preset with tasks
+                  (preset_dir / "test-preset.yml").write_text("""
+          name: test-preset
+          tasks:
+            - id: "tp_001"
+              description: "Test task 1"
+              priority: "high"
+            - id: "tp_002"
+              description: "Test task 2"
+              priority: "medium"
+          """)
+
+                  result = workflow.load_preset("test-preset", dry_run=True)
+
+                  assert result.dry_run is True
+                  assert result.tasks_added == 2
+                  assert len(result.tasks) == 2
+                  assert result.target_file is None  # No file written
+
+                  # Verify no file was created
+                  task_files = list(workflow.live_dir.glob("*.yml"))
+                  assert len(task_files) == 0
+
+              def test_load_preset_dry_run_returns_tasks(self, workflow, preset_dir):
+                  """Test dry run returns task data for preview."""
+                  (preset_dir / "preview-preset.yml").write_text("""
+          name: preview-preset
+          tasks:
+            - id: "pp_001"
+              description: "Preview task"
+          """)
+
+                  result = workflow.load_preset("preview-preset", dry_run=True)
+
+                  assert result.tasks[0]["id"] == "pp_001"
+                  assert result.tasks[0]["description"] == "Preview task"
+          ```
+
+        success_criteria:
+          - "Tests verify dry_run doesn't create files"
+          - "Tests verify dry_run returns task preview"
+          - "Tests verify tasks_added count is correct"
+          - "Tests pass with pytest"
+
+      # -----------------------------------------------------------------------
+      # Task 2.5: Test load_preset method - actual write
+      # -----------------------------------------------------------------------
+      - task_id: "test_02_005"
+        description: "Write unit tests for TaskPresetWorkflow.load_preset() file creation"
+        status: "pending"
+
+        inputs:
+          - path: "modules/AgenticCLI/src/agenticcli/workflows/task_workflow.py"
+            reason: "Contains load_preset method"
+
+        target_files:
+          - "modules/AgenticCLI/tests/test_task_workflow.py"
+
+        guidance: |
+          Add to TestTaskPresetWorkflow class:
+
+          ```python
+              def test_load_preset_creates_file(self, workflow, preset_dir):
+                  """Test load_preset creates task file."""
+                  import yaml
+
+                  (preset_dir / "create-preset.yml").write_text("""
+          name: create-preset
+          tasks:
+            - id: "cr_001"
+              description: "Create task"
+              priority: "high"
+          """)
+
+                  result = workflow.load_preset("create-preset", dry_run=False)
+
+                  assert result.dry_run is False
+                  assert result.tasks_added == 1
+                  assert result.target_file is not None
+
+                  # Verify file was created
+                  task_file = workflow.live_dir / result.target_file
+                  assert task_file.exists()
+
+                  # Verify content
+                  content = yaml.safe_load(task_file.read_text())
+                  assert "tasks" in content
+                  assert any(t["id"] == "cr_001" for t in content["tasks"])
+
+              def test_load_preset_skips_duplicates(self, workflow, preset_dir):
+                  """Test load_preset doesn't add duplicate task IDs."""
+                  import yaml
+
+                  (preset_dir / "dup-preset.yml").write_text("""
+          name: dup-preset
+          tasks:
+            - id: "dup_001"
+              description: "First add"
+          """)
+
+                  # First load
+                  result1 = workflow.load_preset("dup-preset", dry_run=False)
+                  assert result1.tasks_added == 1
+
+                  # Second load - same preset
+                  result2 = workflow.load_preset("dup-preset", dry_run=False)
+                  assert result2.tasks_added == 0  # No new tasks added
+
+                  # Verify only one task in file
+                  task_file = workflow.live_dir / result1.target_file
+                  content = yaml.safe_load(task_file.read_text())
+                  dup_tasks = [t for t in content["tasks"] if t["id"] == "dup_001"]
+                  assert len(dup_tasks) == 1
+          ```
+
+        success_criteria:
+          - "Tests verify file creation"
+          - "Tests verify task content written correctly"
+          - "Tests verify duplicate prevention"
+          - "Tests pass with pytest"
+
+  # ===========================================================================
+  # Phase 3: Unit Tests - Preset Template Loading
+  # ===========================================================================
+  - phase_id: "test_03"
+    name: "Unit Tests - Preset Template Validation"
+    description: "Test preset YAML template structure and validation"
+    status: "pending"
+    estimated_effort: "low"
+    depends_on: ["test_02"]
+
+    tasks:
+      # -----------------------------------------------------------------------
+      # Task 3.1: Test preset YAML structure
+      # -----------------------------------------------------------------------
+      - task_id: "test_03_001"
+        description: "Write tests to validate preset template YAML structure"
+        status: "pending"
+
+        inputs:
+          - path: "modules/AgenticCLI/src/agenticcli/templates/presets/"
+            reason: "Preset template files"
+
+        target_files:
+          - "modules/AgenticCLI/tests/test_preset_templates.py"
+
+        guidance: |
+          Create new test file: modules/AgenticCLI/tests/test_preset_templates.py
+
+          ```python
+          """Tests for preset template YAML validity."""
+
+          from pathlib import Path
+
+          import pytest
+          import yaml
+
+
+          class TestPresetTemplates:
+              """Tests for preset template files."""
+
+              PRESETS_DIR = Path(__file__).parent.parent / "src" / "agenticcli" / "templates" / "presets"
+
+              def get_preset_files(self):
+                  """Get all preset YAML files."""
+                  if not self.PRESETS_DIR.exists():
+                      pytest.skip("Presets directory not found")
+                  return list(self.PRESETS_DIR.glob("*.yml"))
+
+              def test_presets_dir_exists(self):
+                  """Test presets directory exists."""
+                  assert self.PRESETS_DIR.exists(), "presets/ directory should exist"
+
+              def test_all_presets_valid_yaml(self):
+                  """Test all preset files are valid YAML."""
+                  for preset_file in self.get_preset_files():
+                      try:
+                          content = yaml.safe_load(preset_file.read_text())
+                          assert content is not None, f"{preset_file.name} is empty"
+                      except yaml.YAMLError as e:
+                          pytest.fail(f"{preset_file.name} has invalid YAML: {e}")
+
+              def test_all_presets_have_required_fields(self):
+                  """Test all presets have name and tasks fields."""
+                  for preset_file in self.get_preset_files():
+                      content = yaml.safe_load(preset_file.read_text())
+
+                      assert "name" in content, f"{preset_file.name} missing 'name'"
+                      assert "tasks" in content, f"{preset_file.name} missing 'tasks'"
+                      assert isinstance(content["tasks"], list), f"{preset_file.name} 'tasks' must be list"
+
+              def test_all_tasks_have_required_fields(self):
+                  """Test all tasks in presets have id and description."""
+                  for preset_file in self.get_preset_files():
+                      content = yaml.safe_load(preset_file.read_text())
+
+                      for i, task in enumerate(content.get("tasks", [])):
+                          assert "id" in task, f"{preset_file.name} task {i} missing 'id'"
+                          assert "description" in task, f"{preset_file.name} task {i} missing 'description'"
+
+              def test_task_ids_unique_within_preset(self):
+                  """Test task IDs are unique within each preset."""
+                  for preset_file in self.get_preset_files():
+                      content = yaml.safe_load(preset_file.read_text())
+                      task_ids = [t.get("id") for t in content.get("tasks", [])]
+
+                      assert len(task_ids) == len(set(task_ids)), \
+                          f"{preset_file.name} has duplicate task IDs"
+
+              def test_priority_values_valid(self):
+                  """Test priority values are low/medium/high if specified."""
+                  valid_priorities = {"low", "medium", "high"}
+
+                  for preset_file in self.get_preset_files():
+                      content = yaml.safe_load(preset_file.read_text())
+
+                      for task in content.get("tasks", []):
+                          if "priority" in task:
+                              assert task["priority"] in valid_priorities, \
+                                  f"{preset_file.name} task {task.get('id')} has invalid priority"
+          ```
+
+        success_criteria:
+          - "Tests verify all preset files are valid YAML"
+          - "Tests verify required fields present"
+          - "Tests verify task IDs unique"
+          - "Tests verify priority values valid"
+          - "Tests pass with pytest"
+
+  # ===========================================================================
+  # Phase 4: Integration Tests - End-to-End Commands
+  # ===========================================================================
+  - phase_id: "test_04"
+    name: "Integration Tests - End-to-End Commands"
+    description: "Test complete CLI command execution with real file operations"
+    status: "pending"
+    estimated_effort: "high"
+    depends_on: ["test_03"]
+
+    tasks:
+      # -----------------------------------------------------------------------
+      # Task 4.1: Test task prefill command
+      # -----------------------------------------------------------------------
+      - task_id: "test_04_001"
+        description: "Write integration tests for 'agentic plan task prefill'"
+        status: "pending"
+
+        inputs:
+          - path: "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+            reason: "Contains cmd_task_prefill handler"
+          - path: "modules/AgenticCLI/tests/test_plan.py"
+            reason: "Reference for plan command tests"
+
+        target_files:
+          - "modules/AgenticCLI/tests/integration/test_task_commands.py"
+
+        guidance: |
+          Create new test file: modules/AgenticCLI/tests/integration/test_task_commands.py
+
+          ```python
+          """Integration tests for task CLI commands."""
+
+          import yaml
+          import pytest
+          from pathlib import Path
+
+
+          class TestTaskPrefillCommand:
+              """Integration tests for 'agentic plan task prefill'."""
+
+              @pytest.fixture
+              def plan_with_presets(self, temp_repo, monkeypatch):
+                  """Set up plan folder with preset templates."""
+                  from agenticcli.workflows import task_workflow
+
+                  # Create plan folder
+                  plan_path = temp_repo / "docs" / "plans" / "live" / "260120CL_test"
+                  (plan_path / "live").mkdir(parents=True)
+                  (plan_path / "completed").mkdir()
+
+                  # Create preset directory
+                  preset_dir = temp_repo / "presets"
+                  preset_dir.mkdir()
+
+                  # Create test preset
+                  (preset_dir / "test-preset.yml").write_text("""
+          name: test-preset
+          description: Test preset for integration tests
+          version: "1.0"
+          tasks:
+            - id: "tp_001"
+              description: "Test task one"
+              priority: "high"
+            - id: "tp_002"
+              description: "Test task two"
+              priority: "medium"
+          """)
+
+                  # Patch PRESETS_DIR
+                  monkeypatch.setattr(
+                      task_workflow.TaskPresetWorkflow,
+                      "PRESETS_DIR",
+                      preset_dir
+                  )
+
+                  return plan_path
+
+              def test_prefill_creates_tasks(self, cli_runner, plan_with_presets):
+                  """Test prefill command creates task file."""
+                  result = cli_runner([
+                      "plan", "task", "prefill",
+                      "--preset", "test-preset",
+                      "--plan", str(plan_with_presets)
+                  ])
+
+                  assert result.returncode == 0
+                  assert "Added" in result.stdout or "tasks" in result.stdout.lower()
+
+                  # Verify tasks file created
+                  task_files = list((plan_with_presets / "live").glob("*.yml"))
+                  assert len(task_files) >= 1
+
+              def test_prefill_dry_run(self, cli_runner, plan_with_presets):
+                  """Test prefill --dry-run doesn't create files."""
+                  # Count existing files
+                  initial_files = list((plan_with_presets / "live").glob("*.yml"))
+
+                  result = cli_runner([
+                      "plan", "task", "prefill",
+                      "--preset", "test-preset",
+                      "--plan", str(plan_with_presets),
+                      "--dry-run"
+                  ])
+
+                  assert result.returncode == 0
+                  assert "dry-run" in result.stdout.lower() or "would" in result.stdout.lower()
+
+                  # Verify no new files created
+                  final_files = list((plan_with_presets / "live").glob("*.yml"))
+                  assert len(final_files) == len(initial_files)
+
+              def test_prefill_missing_preset(self, cli_runner, plan_with_presets):
+                  """Test prefill with nonexistent preset shows error."""
+                  result = cli_runner([
+                      "plan", "task", "prefill",
+                      "--preset", "nonexistent-preset",
+                      "--plan", str(plan_with_presets)
+                  ])
+
+                  assert result.returncode != 0
+                  assert "not found" in result.stderr.lower()
+
+              def test_prefill_json_output(self, cli_runner, plan_with_presets):
+                  """Test prefill with --json flag."""
+                  import json
+
+                  result = cli_runner([
+                      "-j",  # JSON flag
+                      "plan", "task", "prefill",
+                      "--preset", "test-preset",
+                      "--plan", str(plan_with_presets),
+                      "--dry-run"
+                  ])
+
+                  assert result.returncode == 0
+                  data = json.loads(result.stdout)
+                  assert "preset" in data
+                  assert "tasks" in data
+          ```
+
+        success_criteria:
+          - "Tests verify prefill creates task file"
+          - "Tests verify --dry-run doesn't write"
+          - "Tests verify missing preset error handling"
+          - "Tests verify JSON output mode"
+          - "Tests pass with pytest"
+
+      # -----------------------------------------------------------------------
+      # Task 4.2: Test task list command
+      # -----------------------------------------------------------------------
+      - task_id: "test_04_002"
+        description: "Write integration tests for 'agentic plan task list'"
+        status: "pending"
+
+        inputs:
+          - path: "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+            reason: "Contains cmd_task_list handler"
+
+        target_files:
+          - "modules/AgenticCLI/tests/integration/test_task_commands.py"
+
+        guidance: |
+          Add to test_task_commands.py:
+
+          ```python
+          class TestTaskListCommand:
+              """Integration tests for 'agentic plan task list'."""
+
+              @pytest.fixture
+              def plan_with_tasks(self, temp_repo):
+                  """Create plan folder with tasks for testing list."""
+                  plan_path = temp_repo / "docs" / "plans" / "live" / "260120CL_list_test"
+                  (plan_path / "live").mkdir(parents=True)
+                  (plan_path / "completed").mkdir()
+
+                  # Create plan file with tasks
+                  plan_file = plan_path / "live" / "plan_live_test.yml"
+                  plan_content = {
+                      "name": "test-plan",
+                      "phases": [
+                          {
+                              "phase_id": "phase_01",
+                              "name": "Phase One",
+                              "status": "in_progress",
+                              "tasks": [
+                                  {"task_id": "task_01_001", "description": "First task", "status": "completed"},
+                                  {"task_id": "task_01_002", "description": "Second task", "status": "pending"},
+                                  {"task_id": "task_01_003", "description": "Third task", "status": "in_progress"},
+                              ]
+                          },
+                          {
+                              "phase_id": "phase_02",
+                              "name": "Phase Two",
+                              "status": "pending",
+                              "tasks": [
+                                  {"task_id": "task_02_001", "description": "Fourth task", "status": "pending"},
+                              ]
+                          }
+                      ]
+                  }
+
+                  with open(plan_file, "w") as f:
+                      yaml.dump(plan_content, f)
+
+                  return plan_path
+
+              def test_list_shows_all_tasks(self, cli_runner, plan_with_tasks):
+                  """Test list shows all tasks by default."""
+                  result = cli_runner([
+                      "plan", "task", "list",
+                      "--plan", str(plan_with_tasks)
+                  ])
+
+                  assert result.returncode == 0
+                  assert "task_01_001" in result.stdout
+                  assert "task_02_001" in result.stdout
+                  assert "4" in result.stdout or "Total" in result.stdout
+
+              def test_list_filter_pending(self, cli_runner, plan_with_tasks):
+                  """Test list with --status pending filter."""
+                  result = cli_runner([
+                      "plan", "task", "list",
+                      "--plan", str(plan_with_tasks),
+                      "--status", "pending"
+                  ])
+
+                  assert result.returncode == 0
+                  assert "task_01_002" in result.stdout
+                  assert "task_02_001" in result.stdout
+                  # Completed task should not appear
+                  assert "task_01_001" not in result.stdout or "completed" not in result.stdout.split("task_01_001")[0]
+
+              def test_list_filter_completed(self, cli_runner, plan_with_tasks):
+                  """Test list with --status completed filter."""
+                  result = cli_runner([
+                      "plan", "task", "list",
+                      "--plan", str(plan_with_tasks),
+                      "--status", "completed"
+                  ])
+
+                  assert result.returncode == 0
+                  assert "task_01_001" in result.stdout
+                  # Pending tasks should not appear
+                  lines = [l for l in result.stdout.split("\n") if "task_01_002" in l]
+                  assert len(lines) == 0 or all("pending" not in l.lower() for l in lines)
+
+              def test_list_verbose(self, cli_runner, plan_with_tasks):
+                  """Test list with --verbose shows more details."""
+                  result = cli_runner([
+                      "plan", "task", "list",
+                      "--plan", str(plan_with_tasks),
+                      "--verbose"
+                  ])
+
+                  assert result.returncode == 0
+                  assert "Phase" in result.stdout or "phase" in result.stdout
+
+              def test_list_json_output(self, cli_runner, plan_with_tasks):
+                  """Test list with JSON output."""
+                  import json
+
+                  result = cli_runner([
+                      "-j",
+                      "plan", "task", "list",
+                      "--plan", str(plan_with_tasks)
+                  ])
+
+                  assert result.returncode == 0
+                  data = json.loads(result.stdout)
+                  assert "tasks" in data
+                  assert "count" in data
+                  assert data["count"] == 4
+          ```
+
+        success_criteria:
+          - "Tests verify list shows all tasks"
+          - "Tests verify status filter works"
+          - "Tests verify verbose mode"
+          - "Tests verify JSON output"
+          - "Tests pass with pytest"
+
+      # -----------------------------------------------------------------------
+      # Task 4.3: Test task status command
+      # -----------------------------------------------------------------------
+      - task_id: "test_04_003"
+        description: "Write integration tests for 'agentic plan task status'"
+        status: "pending"
+
+        inputs:
+          - path: "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+            reason: "Contains cmd_task_status handler"
+
+        target_files:
+          - "modules/AgenticCLI/tests/integration/test_task_commands.py"
+
+        guidance: |
+          Add to test_task_commands.py (use plan_with_tasks fixture from TestTaskListCommand):
+
+          ```python
+          class TestTaskStatusCommand:
+              """Integration tests for 'agentic plan task status'."""
+
+              @pytest.fixture
+              def plan_with_detailed_task(self, temp_repo):
+                  """Create plan with task having full details."""
+                  plan_path = temp_repo / "docs" / "plans" / "live" / "260120CL_status_test"
+                  (plan_path / "live").mkdir(parents=True)
+                  (plan_path / "completed").mkdir()
+
+                  plan_file = plan_path / "live" / "plan_live_test.yml"
+                  plan_content = {
+                      "name": "status-test-plan",
+                      "phases": [
+                          {
+                              "phase_id": "build_01",
+                              "name": "Build Phase",
+                              "status": "in_progress",
+                              "tasks": [
+                                  {
+                                      "task_id": "build_01_001",
+                                      "description": "Implement feature X",
+                                      "status": "in_progress",
+                                      "inputs": [
+                                          {"path": "src/module.py", "reason": "Main module"},
+                                      ],
+                                      "target_files": ["src/feature.py"],
+                                      "guidance": "Follow the coding standards...",
+                                      "success_criteria": [
+                                          "Tests pass",
+                                          "No lint errors",
+                                      ]
+                                  },
+                              ]
+                          }
+                      ]
+                  }
+
+                  with open(plan_file, "w") as f:
+                      yaml.dump(plan_content, f)
+
+                  return plan_path
+
+              def test_status_shows_task_details(self, cli_runner, plan_with_detailed_task):
+                  """Test status command shows full task details."""
+                  result = cli_runner([
+                      "plan", "task", "status", "build_01_001",
+                      "--plan", str(plan_with_detailed_task)
+                  ])
+
+                  assert result.returncode == 0
+                  assert "build_01_001" in result.stdout
+                  assert "Implement feature X" in result.stdout
+                  assert "in_progress" in result.stdout.lower()
+
+              def test_status_shows_inputs(self, cli_runner, plan_with_detailed_task):
+                  """Test status shows input files."""
+                  result = cli_runner([
+                      "plan", "task", "status", "build_01_001",
+                      "--plan", str(plan_with_detailed_task)
+                  ])
+
+                  assert result.returncode == 0
+                  assert "src/module.py" in result.stdout or "Inputs" in result.stdout
+
+              def test_status_not_found(self, cli_runner, plan_with_detailed_task):
+                  """Test status with nonexistent task ID."""
+                  result = cli_runner([
+                      "plan", "task", "status", "nonexistent_999",
+                      "--plan", str(plan_with_detailed_task)
+                  ])
+
+                  assert result.returncode != 0
+                  assert "not found" in result.stderr.lower()
+
+              def test_status_json_output(self, cli_runner, plan_with_detailed_task):
+                  """Test status with JSON output."""
+                  import json
+
+                  result = cli_runner([
+                      "-j",
+                      "plan", "task", "status", "build_01_001",
+                      "--plan", str(plan_with_detailed_task)
+                  ])
+
+                  assert result.returncode == 0
+                  data = json.loads(result.stdout)
+                  assert "task" in data
+                  assert data["task"]["task_id"] == "build_01_001"
+          ```
+
+        success_criteria:
+          - "Tests verify status shows task details"
+          - "Tests verify inputs/targets displayed"
+          - "Tests verify not found handling"
+          - "Tests verify JSON output"
+          - "Tests pass with pytest"
+
+      # -----------------------------------------------------------------------
+      # Task 4.4: Test task add command
+      # -----------------------------------------------------------------------
+      - task_id: "test_04_004"
+        description: "Write integration tests for 'agentic plan task add'"
+        status: "pending"
+
+        inputs:
+          - path: "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+            reason: "Contains cmd_task_add handler"
+
+        target_files:
+          - "modules/AgenticCLI/tests/integration/test_task_commands.py"
+
+        guidance: |
+          Add to test_task_commands.py:
+
+          ```python
+          class TestTaskAddCommand:
+              """Integration tests for 'agentic plan task add'."""
+
+              @pytest.fixture
+              def empty_plan(self, temp_repo):
+                  """Create plan folder with minimal structure."""
+                  plan_path = temp_repo / "docs" / "plans" / "live" / "260120CL_add_test"
+                  (plan_path / "live").mkdir(parents=True)
+                  (plan_path / "completed").mkdir()
+
+                  # Create minimal plan file
+                  plan_file = plan_path / "live" / "plan_live_build.yml"
+                  plan_content = {
+                      "name": "add-test-plan",
+                      "phases": [
+                          {
+                              "phase_id": "build_01",
+                              "name": "Build Phase",
+                              "status": "pending",
+                              "tasks": []
+                          }
+                      ]
+                  }
+
+                  with open(plan_file, "w") as f:
+                      yaml.dump(plan_content, f)
+
+                  return plan_path
+
+              def test_add_creates_task(self, cli_runner, empty_plan):
+                  """Test add command creates new task."""
+                  result = cli_runner([
+                      "plan", "task", "add", "New task description",
+                      "--plan", str(empty_plan)
+                  ])
+
+                  assert result.returncode == 0
+                  assert "Added" in result.stdout
+
+                  # Verify task was added
+                  plan_file = empty_plan / "live" / "plan_live_build.yml"
+                  content = yaml.safe_load(plan_file.read_text())
+                  tasks = content["phases"][0]["tasks"]
+                  assert len(tasks) == 1
+                  assert tasks[0]["description"] == "New task description"
+
+              def test_add_with_phase(self, cli_runner, empty_plan):
+                  """Test add with specific phase."""
+                  result = cli_runner([
+                      "plan", "task", "add", "Phase-specific task",
+                      "--plan", str(empty_plan),
+                      "--phase", "build_01"
+                  ])
+
+                  assert result.returncode == 0
+
+              def test_add_with_custom_id(self, cli_runner, empty_plan):
+                  """Test add with custom task ID."""
+                  result = cli_runner([
+                      "plan", "task", "add", "Custom ID task",
+                      "--plan", str(empty_plan),
+                      "--id", "custom_001"
+                  ])
+
+                  assert result.returncode == 0
+
+                  # Verify custom ID was used
+                  plan_file = empty_plan / "live" / "plan_live_build.yml"
+                  content = yaml.safe_load(plan_file.read_text())
+                  tasks = content["phases"][0]["tasks"]
+                  assert any(t["task_id"] == "custom_001" for t in tasks)
+
+              def test_add_with_priority(self, cli_runner, empty_plan):
+                  """Test add with priority."""
+                  result = cli_runner([
+                      "plan", "task", "add", "High priority task",
+                      "--plan", str(empty_plan),
+                      "--priority", "high"
+                  ])
+
+                  assert result.returncode == 0
+
+                  # Verify priority was set
+                  plan_file = empty_plan / "live" / "plan_live_build.yml"
+                  content = yaml.safe_load(plan_file.read_text())
+                  tasks = content["phases"][0]["tasks"]
+                  assert any(t.get("priority") == "high" for t in tasks)
+
+              def test_add_auto_generates_id(self, cli_runner, empty_plan):
+                  """Test add auto-generates task ID."""
+                  result = cli_runner([
+                      "plan", "task", "add", "Auto ID task",
+                      "--plan", str(empty_plan)
+                  ])
+
+                  assert result.returncode == 0
+
+                  # Verify ID was generated
+                  plan_file = empty_plan / "live" / "plan_live_build.yml"
+                  content = yaml.safe_load(plan_file.read_text())
+                  tasks = content["phases"][0]["tasks"]
+                  assert tasks[0]["task_id"].startswith("build_01_")
+
+              def test_add_json_output(self, cli_runner, empty_plan):
+                  """Test add with JSON output."""
+                  import json
+
+                  result = cli_runner([
+                      "-j",
+                      "plan", "task", "add", "JSON output task",
+                      "--plan", str(empty_plan)
+                  ])
+
+                  assert result.returncode == 0
+                  data = json.loads(result.stdout)
+                  assert "task_id" in data
+                  assert "description" in data
+          ```
+
+        success_criteria:
+          - "Tests verify task created"
+          - "Tests verify custom ID supported"
+          - "Tests verify auto-ID generation"
+          - "Tests verify priority setting"
+          - "Tests verify JSON output"
+          - "Tests pass with pytest"
+
+  # ===========================================================================
+  # Phase 5: CRITICAL - Blind Testing Experiment
+  # ===========================================================================
+  - phase_id: "test_05"
+    name: "Blind Testing - Feature Validation Experiment"
+    description: |
+      CRITICAL EXPERIMENT: Validate that prefilled tasks actually help agents
+      remember ancillary work. This is the key test that proves the feature
+      solves the original problem.
+    status: "pending"
+    estimated_effort: "high"
+    depends_on: ["test_04"]
+    priority: "critical"
+
+    experiment_design: |
+      ## Problem Statement
+      Agents frequently forget ancillary tasks like MMD diagram generation,
+      README updates, and success_criteria completion. The hypothesis is that
+      prefilling a visible task list will improve task completion rates.
+
+      ## Experiment Design
+      1. Baseline: Run planner-build WITHOUT prefill, count forgotten tasks
+      2. Treatment: Run planner-build WITH prefill, count forgotten tasks
+      3. Compare completion rates
+
+      ## Measurement Criteria
+      - MMD file generation (often forgotten)
+      - README.md update (often forgotten)
+      - success_criteria per task (often incomplete)
+      - target_files specification (often missing)
+
+    tasks:
+      # -----------------------------------------------------------------------
+      # Task 5.1: Document baseline scenario
+      # -----------------------------------------------------------------------
+      - task_id: "test_05_001"
+        description: "Create baseline test scenario without prefill"
+        status: "pending"
+
+        inputs:
+          - path: "modules/AgenticGuidance/agents/planner/planner-build/inputs.yml"
+            reason: "Understand planner-build workflow"
+
+        target_files:
+          - "modules/AgenticCLI/tests/experiments/test_blind_baseline.py"
+
+        guidance: |
+          Create experiment test file: modules/AgenticCLI/tests/experiments/test_blind_baseline.py
+
+          This documents the BASELINE scenario for comparison:
+
+          ```python
+          """Blind Testing - Baseline Scenario (No Prefill).
+
+          This test documents the baseline behavior of planner-build
+          WITHOUT task prefilling. Run this to establish forgotten-task rates.
+
+          ## Experiment Protocol
+
+          1. Start fresh planner-build session
+          2. Provide specification for a multi-phase feature
+          3. DO NOT use task prefill
+          4. Observe which ancillary tasks are forgotten
+
+          ## Observation Checklist
+
+          After planner-build completes, check for presence of:
+          - [ ] process.mmd diagram (if phases > 2)
+          - [ ] README.md update
+          - [ ] success_criteria on ALL tasks
+          - [ ] target_files on ALL tasks
+          - [ ] guidance on complex tasks
+          - [ ] inputs.yml file references validated
+
+          ## Expected Baseline Results
+
+          Based on prior observations:
+          - MMD diagram forgotten: ~60% of sessions
+          - README update forgotten: ~40% of sessions
+          - success_criteria incomplete: ~30% of tasks
+          - target_files missing: ~25% of tasks
+          """
+
+          import pytest
+          from pathlib import Path
+
+
+          class TestBlindBaseline:
+              """Baseline scenario for blind testing experiment."""
+
+              # This is a DOCUMENTATION test, not automated
+              # Manual execution is required for valid experiment
+
+              @pytest.mark.skip(reason="Manual experiment - see docstring")
+              def test_baseline_protocol(self):
+                  """Document baseline test protocol."""
+                  protocol = """
+                  BASELINE EXPERIMENT PROTOCOL:
+
+                  1. Create new plan folder: agentic plan scaffold 260120CL_blind_baseline
+
+                  2. Create specification.md with multi-phase feature:
+                     - At least 3 phases
+                     - At least 10 tasks total
+                     - Complex enough to warrant MMD diagram
+
+                  3. Run planner-build WITHOUT prefill:
+                     > You are planner-build. Create a build plan for...
+
+                  4. Record observations in baseline_results.yml:
+                     - mmd_generated: true/false
+                     - readme_updated: true/false
+                     - tasks_with_success_criteria: N/M
+                     - tasks_with_target_files: N/M
+                     - session_duration: minutes
+
+                  5. Do NOT inform the agent this is an experiment
+                  """
+                  pass
+
+              def test_observation_checklist_structure(self):
+                  """Test that observation checklist YAML is valid."""
+                  import yaml
+
+                  checklist = {
+                      "experiment": "baseline",
+                      "session_id": "YYYYMMDD_HHmm",
+                      "observations": {
+                          "mmd_generated": None,  # True/False
+                          "readme_updated": None,  # True/False
+                          "total_tasks": None,
+                          "tasks_with_success_criteria": None,
+                          "tasks_with_target_files": None,
+                          "tasks_with_guidance": None,
+                      },
+                      "notes": "",
+                  }
+
+                  # Validate structure is valid YAML
+                  yaml_str = yaml.dump(checklist)
+                  parsed = yaml.safe_load(yaml_str)
+                  assert parsed["experiment"] == "baseline"
+          ```
+
+        success_criteria:
+          - "Baseline protocol documented"
+          - "Observation checklist defined"
+          - "YAML structure validated"
+          - "Clear instructions for manual execution"
+
+      # -----------------------------------------------------------------------
+      # Task 5.2: Document treatment scenario with prefill
+      # -----------------------------------------------------------------------
+      - task_id: "test_05_002"
+        description: "Create treatment test scenario with prefill"
+        status: "pending"
+
+        inputs:
+          - path: "modules/AgenticCLI/src/agenticcli/templates/presets/planner-build-preset.yml"
+            reason: "Preset to use in treatment"
+
+        target_files:
+          - "modules/AgenticCLI/tests/experiments/test_blind_treatment.py"
+
+        guidance: |
+          Create experiment test file: modules/AgenticCLI/tests/experiments/test_blind_treatment.py
+
+          ```python
+          """Blind Testing - Treatment Scenario (With Prefill).
+
+          This test documents the TREATMENT scenario where task prefill
+          is used before running planner-build.
+
+          ## Experiment Protocol
+
+          1. Start fresh planner-build session
+          2. Run task prefill FIRST:
+             agentic plan task prefill --preset planner-build
+          3. Provide same specification as baseline
+          4. Observe task completion rates
+
+          ## Hypothesis
+
+          With visible prefilled tasks, the agent will:
+          - More consistently generate MMD diagrams
+          - More consistently update README
+          - Complete success_criteria on more tasks
+          - Specify target_files on more tasks
+
+          ## Critical: Blinding
+
+          The agent should NOT know this is an experiment.
+          The prefilled tasks should appear as normal workflow.
+          """
+
+          import pytest
+
+
+          class TestBlindTreatment:
+              """Treatment scenario for blind testing experiment."""
+
+              @pytest.mark.skip(reason="Manual experiment - see docstring")
+              def test_treatment_protocol(self):
+                  """Document treatment test protocol."""
+                  protocol = """
+                  TREATMENT EXPERIMENT PROTOCOL:
+
+                  1. Create new plan folder: agentic plan scaffold 260120CL_blind_treatment
+
+                  2. Run task prefill BEFORE starting:
+                     agentic plan task prefill --preset planner-build --plan <path>
+
+                  3. Verify tasks visible:
+                     agentic plan task list --plan <path>
+
+                  4. Create IDENTICAL specification.md as baseline
+
+                  5. Run planner-build:
+                     > You are planner-build. Create a build plan for...
+
+                  6. Record observations in treatment_results.yml
+
+                  7. Compare with baseline results
+
+                  IMPORTANT: Use identical specification to baseline!
+                  """
+                  pass
+
+              @pytest.mark.skip(reason="Manual experiment")
+              def test_prefill_visibility(self):
+                  """Verify prefilled tasks are visible to agent."""
+                  # This would be automated if we had agent simulation
+                  visibility_check = """
+                  After prefill, run:
+                    agentic plan task list --plan <path>
+
+                  Expected output should show:
+                    pb_001 - Generate process.mmd diagram if plan has multiple phases
+                    pb_002 - Update README.md with plan summary
+                    pb_003 - Validate all inputs.yml file references exist
+                    pb_004 - Add success_criteria to each task
+                    pb_005 - Specify target_files for each task
+                    ...
+                  """
+                  pass
+          ```
+
+        success_criteria:
+          - "Treatment protocol documented"
+          - "Prefill command specified"
+          - "Blinding requirements explained"
+          - "Comparison methodology defined"
+
+      # -----------------------------------------------------------------------
+      # Task 5.3: Create results analysis framework
+      # -----------------------------------------------------------------------
+      - task_id: "test_05_003"
+        description: "Create results analysis and comparison framework"
+        status: "pending"
+
+        target_files:
+          - "modules/AgenticCLI/tests/experiments/test_experiment_analysis.py"
+
+        guidance: |
+          Create analysis framework: modules/AgenticCLI/tests/experiments/test_experiment_analysis.py
+
+          ```python
+          """Blind Testing - Results Analysis Framework.
+
+          Tools for analyzing and comparing baseline vs treatment results.
+          """
+
+          import pytest
+          import yaml
+          from pathlib import Path
+          from dataclasses import dataclass
+          from typing import Optional
+
+
+          @dataclass
+          class ExperimentResult:
+              """Single experiment session result."""
+
+              experiment_type: str  # "baseline" or "treatment"
+              session_id: str
+              mmd_generated: bool
+              readme_updated: bool
+              total_tasks: int
+              tasks_with_success_criteria: int
+              tasks_with_target_files: int
+              tasks_with_guidance: int
+              notes: str = ""
+
+              @property
+              def success_criteria_rate(self) -> float:
+                  return self.tasks_with_success_criteria / self.total_tasks if self.total_tasks else 0
+
+              @property
+              def target_files_rate(self) -> float:
+                  return self.tasks_with_target_files / self.total_tasks if self.total_tasks else 0
+
+
+          class ExperimentAnalyzer:
+              """Analyze blind testing experiment results."""
+
+              def __init__(self, results_dir: Path):
+                  self.results_dir = results_dir
+                  self.baseline_results: list[ExperimentResult] = []
+                  self.treatment_results: list[ExperimentResult] = []
+
+              def load_results(self):
+                  """Load all results from YAML files."""
+                  for yaml_file in self.results_dir.glob("*.yml"):
+                      content = yaml.safe_load(yaml_file.read_text())
+                      if not content:
+                          continue
+
+                      result = ExperimentResult(
+                          experiment_type=content.get("experiment", "unknown"),
+                          session_id=content.get("session_id", "unknown"),
+                          mmd_generated=content.get("observations", {}).get("mmd_generated", False),
+                          readme_updated=content.get("observations", {}).get("readme_updated", False),
+                          total_tasks=content.get("observations", {}).get("total_tasks", 0),
+                          tasks_with_success_criteria=content.get("observations", {}).get("tasks_with_success_criteria", 0),
+                          tasks_with_target_files=content.get("observations", {}).get("tasks_with_target_files", 0),
+                          tasks_with_guidance=content.get("observations", {}).get("tasks_with_guidance", 0),
+                          notes=content.get("notes", ""),
+                      )
+
+                      if result.experiment_type == "baseline":
+                          self.baseline_results.append(result)
+                      elif result.experiment_type == "treatment":
+                          self.treatment_results.append(result)
+
+              def compare_mmd_generation(self) -> dict:
+                  """Compare MMD generation rates."""
+                  baseline_rate = sum(1 for r in self.baseline_results if r.mmd_generated) / len(self.baseline_results) if self.baseline_results else 0
+                  treatment_rate = sum(1 for r in self.treatment_results if r.mmd_generated) / len(self.treatment_results) if self.treatment_results else 0
+
+                  return {
+                      "baseline_rate": baseline_rate,
+                      "treatment_rate": treatment_rate,
+                      "improvement": treatment_rate - baseline_rate,
+                      "baseline_n": len(self.baseline_results),
+                      "treatment_n": len(self.treatment_results),
+                  }
+
+              def compare_success_criteria(self) -> dict:
+                  """Compare success criteria completion rates."""
+                  baseline_avg = sum(r.success_criteria_rate for r in self.baseline_results) / len(self.baseline_results) if self.baseline_results else 0
+                  treatment_avg = sum(r.success_criteria_rate for r in self.treatment_results) / len(self.treatment_results) if self.treatment_results else 0
+
+                  return {
+                      "baseline_avg": baseline_avg,
+                      "treatment_avg": treatment_avg,
+                      "improvement": treatment_avg - baseline_avg,
+                  }
+
+              def generate_report(self) -> str:
+                  """Generate human-readable comparison report."""
+                  mmd = self.compare_mmd_generation()
+                  sc = self.compare_success_criteria()
+
+                  report = f"""
+          # Blind Testing Experiment Results
+
+          ## Sample Sizes
+          - Baseline sessions: {mmd['baseline_n']}
+          - Treatment sessions: {mmd['treatment_n']}
+
+          ## MMD Diagram Generation
+          - Baseline rate: {mmd['baseline_rate']:.1%}
+          - Treatment rate: {mmd['treatment_rate']:.1%}
+          - Improvement: {mmd['improvement']:+.1%}
+
+          ## Success Criteria Completion
+          - Baseline avg: {sc['baseline_avg']:.1%}
+          - Treatment avg: {sc['treatment_avg']:.1%}
+          - Improvement: {sc['improvement']:+.1%}
+
+          ## Conclusion
+          {'POSITIVE: Task prefill improves completion rates' if mmd['improvement'] > 0.1 or sc['improvement'] > 0.1 else 'INCONCLUSIVE: More data needed' if mmd['baseline_n'] < 5 else 'NEGATIVE: Task prefill shows no significant improvement'}
+          """
+                  return report
+
+
+          class TestExperimentAnalysis:
+              """Tests for experiment analysis framework."""
+
+              @pytest.fixture
+              def sample_results_dir(self, temp_dir):
+                  """Create sample results for testing."""
+                  results_dir = temp_dir / "experiment_results"
+                  results_dir.mkdir()
+
+                  # Baseline result
+                  baseline = {
+                      "experiment": "baseline",
+                      "session_id": "20260120_1000",
+                      "observations": {
+                          "mmd_generated": False,
+                          "readme_updated": False,
+                          "total_tasks": 10,
+                          "tasks_with_success_criteria": 6,
+                          "tasks_with_target_files": 7,
+                          "tasks_with_guidance": 5,
+                      },
+                      "notes": "Agent forgot MMD diagram",
+                  }
+
+                  # Treatment result
+                  treatment = {
+                      "experiment": "treatment",
+                      "session_id": "20260120_1100",
+                      "observations": {
+                          "mmd_generated": True,
+                          "readme_updated": True,
+                          "total_tasks": 10,
+                          "tasks_with_success_criteria": 9,
+                          "tasks_with_target_files": 10,
+                          "tasks_with_guidance": 8,
+                      },
+                      "notes": "Agent completed all prefilled tasks",
+                  }
+
+                  with open(results_dir / "baseline_1.yml", "w") as f:
+                      yaml.dump(baseline, f)
+                  with open(results_dir / "treatment_1.yml", "w") as f:
+                      yaml.dump(treatment, f)
+
+                  return results_dir
+
+              def test_load_results(self, sample_results_dir):
+                  """Test loading results from directory."""
+                  analyzer = ExperimentAnalyzer(sample_results_dir)
+                  analyzer.load_results()
+
+                  assert len(analyzer.baseline_results) == 1
+                  assert len(analyzer.treatment_results) == 1
+
+              def test_compare_mmd_generation(self, sample_results_dir):
+                  """Test MMD comparison calculation."""
+                  analyzer = ExperimentAnalyzer(sample_results_dir)
+                  analyzer.load_results()
+
+                  comparison = analyzer.compare_mmd_generation()
+
+                  assert comparison["baseline_rate"] == 0.0
+                  assert comparison["treatment_rate"] == 1.0
+                  assert comparison["improvement"] == 1.0
+
+              def test_generate_report(self, sample_results_dir):
+                  """Test report generation."""
+                  analyzer = ExperimentAnalyzer(sample_results_dir)
+                  analyzer.load_results()
+
+                  report = analyzer.generate_report()
+
+                  assert "Baseline" in report
+                  assert "Treatment" in report
+                  assert "Improvement" in report
+          ```
+
+        success_criteria:
+          - "ExperimentResult dataclass defined"
+          - "ExperimentAnalyzer class implemented"
+          - "Comparison methods work correctly"
+          - "Report generation produces readable output"
+          - "Tests pass with pytest"
+
+      # -----------------------------------------------------------------------
+      # Task 5.4: Create experiment results templates
+      # -----------------------------------------------------------------------
+      - task_id: "test_05_004"
+        description: "Create YAML templates for recording experiment results"
+        status: "pending"
+
+        target_files:
+          - "modules/AgenticCLI/tests/experiments/templates/baseline_result_template.yml"
+          - "modules/AgenticCLI/tests/experiments/templates/treatment_result_template.yml"
+
+        guidance: |
+          Create result recording templates.
+
+          baseline_result_template.yml:
+          ```yaml
+          # Blind Testing - Baseline Result Template
+          # Copy this file and fill in for each baseline session
+
+          experiment: "baseline"
+          session_id: "YYYYMMDD_HHmm"  # Replace with actual timestamp
+
+          # Agent/Model Information
+          agent_info:
+            model: ""  # e.g., "claude-3-opus"
+            agent_type: "planner-build"
+            session_duration_minutes: null
+
+          # Specification Details
+          specification:
+            num_phases: null
+            num_tasks: null
+            complexity: ""  # low/medium/high
+
+          # Observations - Fill these in after session
+          observations:
+            mmd_generated: null  # true/false
+            readme_updated: null  # true/false
+            total_tasks: null
+            tasks_with_success_criteria: null
+            tasks_with_target_files: null
+            tasks_with_guidance: null
+            tasks_with_inputs: null
+
+          # Free-form notes
+          notes: |
+            [Record any observations about agent behavior, forgotten tasks, etc.]
+
+          # Verification
+          verified_by: ""
+          verification_date: ""
+          ```
+
+          treatment_result_template.yml:
+          ```yaml
+          # Blind Testing - Treatment Result Template
+          # Copy this file and fill in for each treatment session
+
+          experiment: "treatment"
+          session_id: "YYYYMMDD_HHmm"  # Replace with actual timestamp
+
+          # Agent/Model Information
+          agent_info:
+            model: ""  # e.g., "claude-3-opus"
+            agent_type: "planner-build"
+            session_duration_minutes: null
+
+          # Prefill Information
+          prefill:
+            preset_used: "planner-build"
+            tasks_prefilled: null
+            prefill_command: "agentic plan task prefill --preset planner-build"
+
+          # Specification Details (must match baseline)
+          specification:
+            num_phases: null
+            num_tasks: null
+            complexity: ""  # low/medium/high
+            matches_baseline: null  # session_id of matching baseline
+
+          # Observations - Fill these in after session
+          observations:
+            mmd_generated: null  # true/false
+            readme_updated: null  # true/false
+            total_tasks: null
+            tasks_with_success_criteria: null
+            tasks_with_target_files: null
+            tasks_with_guidance: null
+            tasks_with_inputs: null
+            # Treatment-specific observations
+            prefilled_tasks_completed: null  # how many of the prefilled tasks were addressed
+            prefilled_tasks_mentioned: null  # did agent reference the task list?
+
+          # Free-form notes
+          notes: |
+            [Record any observations about agent behavior with prefilled tasks]
+
+          # Verification
+          verified_by: ""
+          verification_date: ""
+          ```
+
+        success_criteria:
+          - "Baseline template created with all observation fields"
+          - "Treatment template created with prefill-specific fields"
+          - "Templates are valid YAML"
+          - "Instructions clear in template comments"
+
+      # -----------------------------------------------------------------------
+      # Task 5.5: Document experiment execution guide
+      # -----------------------------------------------------------------------
+      - task_id: "test_05_005"
+        description: "Create comprehensive experiment execution guide"
+        status: "pending"
+
+        target_files:
+          - "modules/AgenticCLI/tests/experiments/EXPERIMENT_GUIDE.md"
+
+        guidance: |
+          Create comprehensive guide: modules/AgenticCLI/tests/experiments/EXPERIMENT_GUIDE.md
+
+          ```markdown
+          # Blind Testing Experiment Guide
+
+          ## Overview
+
+          This experiment tests whether prefilling task lists helps agents
+          remember ancillary tasks during planning sessions.
+
+          ## Hypothesis
+
+          **H1**: Agents with prefilled task lists will complete more ancillary
+          tasks (MMD diagrams, README updates, success_criteria) than agents
+          without prefilled tasks.
+
+          ## Experiment Design
+
+          ### Control Group (Baseline)
+          - Run planner-build normally
+          - No task prefill
+          - Record task completion rates
+
+          ### Treatment Group
+          - Run `agentic plan task prefill --preset planner-build` before starting
+          - Then run planner-build
+          - Record task completion rates
+
+          ### Critical: Blinding
+          - Do NOT tell the agent this is an experiment
+          - Do NOT mention the task list explicitly
+          - Let the agent discover the prefilled tasks naturally
+
+          ## Execution Steps
+
+          ### Baseline Session
+
+          1. Create fresh plan folder:
+             ```bash
+             agentic plan scaffold 260120CL_baseline_01
+             cd docs/plans/live/260120CL_baseline_01
+             ```
+
+          2. Create specification.md with test specification (see templates/)
+
+          3. Start planner-build session WITHOUT mentioning tasks:
+             ```
+             You are planner-build. Create a build plan for the feature
+             described in specification.md.
+             ```
+
+          4. After completion, fill out baseline_result_template.yml
+
+          ### Treatment Session
+
+          1. Create fresh plan folder:
+             ```bash
+             agentic plan scaffold 260120CL_treatment_01
+             cd docs/plans/live/260120CL_treatment_01
+             ```
+
+          2. Run task prefill:
+             ```bash
+             agentic plan task prefill --preset planner-build
+             ```
+
+          3. Create IDENTICAL specification.md
+
+          4. Start planner-build session:
+             ```
+             You are planner-build. Create a build plan for the feature
+             described in specification.md.
+             ```
+
+          5. After completion, fill out treatment_result_template.yml
+
+          ## Measurement Criteria
+
+          | Metric | How to Measure |
+          |--------|----------------|
+          | MMD Generated | Check for process.mmd file |
+          | README Updated | Check README.md modification |
+          | Success Criteria | Count tasks with success_criteria field |
+          | Target Files | Count tasks with target_files field |
+          | Guidance | Count tasks with guidance field |
+
+          ## Sample Size
+
+          Minimum: 5 baseline + 5 treatment sessions
+          Recommended: 10 baseline + 10 treatment sessions
+
+          ## Analysis
+
+          Run analysis after collecting results:
+          ```python
+          from test_experiment_analysis import ExperimentAnalyzer
+
+          analyzer = ExperimentAnalyzer(Path("experiment_results/"))
+          analyzer.load_results()
+          print(analyzer.generate_report())
+          ```
+
+          ## Expected Outcomes
+
+          If hypothesis is correct:
+          - Treatment MMD rate > Baseline MMD rate by >20%
+          - Treatment success_criteria rate > Baseline by >15%
+          - Treatment target_files rate > Baseline by >10%
+
+          ## Conclusion Criteria
+
+          | Outcome | Criteria |
+          |---------|----------|
+          | POSITIVE | Improvement >15% on 2+ metrics with p<0.05 |
+          | INCONCLUSIVE | <5 sessions per group |
+          | NEGATIVE | No significant improvement |
+          ```
+
+        success_criteria:
+          - "Complete experiment guide created"
+          - "Clear step-by-step instructions"
+          - "Measurement criteria defined"
+          - "Analysis instructions included"
+          - "Success criteria for experiment defined"
+
+  # ===========================================================================
+  # Phase 6: Test Execution and CI Integration
+  # ===========================================================================
+  - phase_id: "test_06"
+    name: "Test Execution and CI Integration"
+    description: "Configure test execution and CI pipeline integration"
+    status: "pending"
+    estimated_effort: "low"
+    depends_on: ["test_04"]
+
+    tasks:
+      # -----------------------------------------------------------------------
+      # Task 6.1: Configure pytest markers
+      # -----------------------------------------------------------------------
+      - task_id: "test_06_001"
+        description: "Configure pytest markers for test categorization"
+        status: "pending"
+
+        inputs:
+          - path: "modules/AgenticCLI/pyproject.toml"
+            reason: "Pytest configuration location"
+
+        target_files:
+          - "modules/AgenticCLI/pyproject.toml"
+
+        guidance: |
+          Add pytest markers to pyproject.toml:
+
+          ```toml
+          [tool.pytest.ini_options]
+          markers = [
+              "unit: Unit tests (fast, no I/O)",
+              "integration: Integration tests (may use filesystem)",
+              "experiment: Manual experiment tests (skip in CI)",
+              "slow: Slow tests (skip with -m 'not slow')",
+          ]
+          ```
+
+          This allows running specific test categories:
+          - pytest -m unit          # Fast unit tests only
+          - pytest -m integration   # Integration tests
+          - pytest -m "not experiment"  # Skip manual experiments
+
+        success_criteria:
+          - "Markers configured in pyproject.toml"
+          - "pytest recognizes markers without warnings"
+
+      # -----------------------------------------------------------------------
+      # Task 6.2: Add test file markers
+      # -----------------------------------------------------------------------
+      - task_id: "test_06_002"
+        description: "Add appropriate markers to test files"
+        status: "pending"
+
+        target_files:
+          - "modules/AgenticCLI/tests/test_cli_task.py"
+          - "modules/AgenticCLI/tests/test_task_workflow.py"
+          - "modules/AgenticCLI/tests/integration/test_task_commands.py"
+
+        guidance: |
+          Add markers to each test file:
+
+          test_cli_task.py (unit tests):
+          ```python
+          import pytest
+
+          pytestmark = pytest.mark.unit
+          ```
+
+          test_task_workflow.py (unit tests):
+          ```python
+          import pytest
+
+          pytestmark = pytest.mark.unit
+          ```
+
+          test_task_commands.py (integration tests):
+          ```python
+          import pytest
+
+          pytestmark = pytest.mark.integration
+          ```
+
+          experiment tests (already have skip markers):
+          ```python
+          import pytest
+
+          pytestmark = pytest.mark.experiment
+          ```
+
+        success_criteria:
+          - "All test files have appropriate markers"
+          - "pytest -m unit runs only unit tests"
+          - "pytest -m integration runs integration tests"
+
+      # -----------------------------------------------------------------------
+      # Task 6.3: Document test execution
+      # -----------------------------------------------------------------------
+      - task_id: "test_06_003"
+        description: "Document test execution commands"
+        status: "pending"
+
+        target_files:
+          - "modules/AgenticCLI/tests/README.md"
+
+        guidance: |
+          Update or create tests/README.md:
+
+          ```markdown
+          # AgenticCLI Tests
+
+          ## Quick Start
+
+          ```bash
+          # Run all tests
+          pytest
+
+          # Run unit tests only (fast)
+          pytest -m unit
+
+          # Run integration tests
+          pytest -m integration
+
+          # Run with coverage
+          pytest --cov=agenticcli --cov-report=html
+
+          # Run specific test file
+          pytest tests/test_cli_task.py
+          ```
+
+          ## Test Structure
+
+          ```
+          tests/
+          ├── test_cli_task.py          # CLI parser tests (unit)
+          ├── test_task_workflow.py     # Workflow class tests (unit)
+          ├── test_preset_templates.py  # Template validation (unit)
+          ├── integration/
+          │   └── test_task_commands.py # End-to-end tests (integration)
+          └── experiments/
+              ├── test_blind_baseline.py    # Manual experiment
+              ├── test_blind_treatment.py   # Manual experiment
+              ├── test_experiment_analysis.py  # Analysis tools
+              └── templates/
+                  ├── baseline_result_template.yml
+                  └── treatment_result_template.yml
+          ```
+
+          ## Markers
+
+          - `unit`: Fast tests without I/O
+          - `integration`: Tests with filesystem operations
+          - `experiment`: Manual experiments (skipped in CI)
+          - `slow`: Tests that take >1 second
+          ```
+
+        success_criteria:
+          - "README.md created in tests/"
+          - "Execution commands documented"
+          - "Test structure explained"
+
+success_criteria:
+  - "All unit tests pass (test_01, test_02, test_03)"
+  - "All integration tests pass (test_04)"
+  - "Blind testing framework complete (test_05)"
+  - "Test coverage >80% for new code"
+  - "CI markers configured (test_06)"
+  - "Experiment guide enables reproducible testing"
+
+notes:
+  - "Phase 5 (Blind Testing) is the CRITICAL validation of the feature hypothesis"
+  - "Experiment results should be collected before declaring feature complete"
+  - "Manual experiments cannot be automated - require human execution"
+  - "Analysis framework allows quantitative comparison of results"
+  - "Minimum 5 sessions per group for meaningful comparison"

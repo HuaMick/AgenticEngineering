@@ -1,0 +1,767 @@
+# JIT Context Retrieval + CLI Task List Integration Build Plan
+# Status: active
+# Priority: high
+# Created: 2026-01-20
+
+# ========================================
+# ROOT-LEVEL PLAN METADATA (Required)
+# ========================================
+name: "jit-context-retrieval-with-task-lists"
+worktree_path: "/home/code/AgenticEngineering"
+branch: "main"
+status: "active"
+priority: "high"
+
+# ========================================
+# CONTEXT
+# ========================================
+context: |
+  This plan implements a JIT (Just-In-Time) Pull-based context architecture for agents,
+  integrating CLI Context Commands with CLI Plan Update tools. The goal is to evolve
+  from the current "Push" model (pre-loading large static markdown files) to a "Pull" model
+  where agents fetch exactly what they need via the CLI.
+
+  KEY PRINCIPLE - SEPARATION OF CONCERNS:
+  - PLANNER AGENTS own plan management (creating plans, determining phases, task breakdown)
+  - CLI provides TOOLS for agents to:
+    1. READ context (objective, guidance, inputs) without loading full files
+    2. UPDATE plan status (task completion) without holding plan in context
+  - The CLI is a persistence layer / external memory, NOT a planning engine
+
+  CONTEXT RETRIEVAL ARCHITECTURE:
+  The CLI will PARSE YAML files and return structured JSON to agents:
+  - CLI reads: process.yml, inputs.yml, plan.yml, plan_live_*.yml
+  - CLI extracts: relevant fields (objective, process steps, current task, inputs)
+  - CLI returns: structured JSON that agents consume directly
+  - Benefit: Agents get only what they need, reducing token usage
+
+  Example flow:
+    Agent runs: `agentic context bootstrap --role planner-build -j`
+    CLI parses: process.yml, inputs.yml, active plan files
+    CLI returns: {"role": "planner-build", "objective": "...", "current_task": {...}, ...}
+
+  INTEGRATION SCOPE:
+  - JIT Context Commands: `agentic context bootstrap|role|task|inputs` (READ operations)
+  - CLI Plan Tools: `agentic plan task status|update|current` (READ/WRITE operations)
+  - Both reduce context burden by moving plan state to external storage
+
+  MAIN-FIRST PLANNING:
+  The CLI already has worktree detection via `agentic worktree status` which can be
+  extended to resolve plans from the main worktree into feature worktree sessions.
+
+# ========================================
+# ROOT-LEVEL INPUTS (Pre-gathered Context)
+# ========================================
+inputs:
+  - location: "docs/plans/live/260114CL_context_entrypoints/specification.md"
+    description: "Technical specification for JIT context retrieval architecture"
+
+  - location: "docs/plans/live/261115CL_agenticcli/live/plan_live_cli_task_lists.yml"
+    description: "CLI Task List experiment plan to integrate"
+
+  - location: "modules/AgenticCLI/src/agenticcli/cli.py"
+    description: "Main CLI command structure and routing"
+
+  - location: "modules/AgenticCLI/src/agenticcli/context.py"
+    description: "CLI context discovery and project root detection"
+
+  - location: "modules/AgenticCLI/src/agenticcli/commands/worktree.py"
+    description: "Existing worktree detection and Main-First plan resolution"
+
+  - location: "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+    description: "Existing plan commands to extend with task list operations"
+
+# ========================================
+# SUCCESS CRITERIA
+# ========================================
+success_criteria:
+  - "Agents can correctly identify their task objective by running `agentic context bootstrap`"
+  - "CLI plan task commands (status, update, current) are operational"
+  - "Agents can update task status without holding plan in context"
+  - "Policies updated in the CLI are immediately respected by agents in all worktrees"
+  - "Main-First planning folders are successfully resolved in feature worktree sessions"
+  - "All agents migrated to Pull model (thin-client bootstrap instructions)"
+
+# ========================================
+# PHASES AND TASKS
+# ========================================
+phases:
+
+  # ----------------------------------------
+  # PHASE 1: CLI Context Command Infrastructure
+  # ----------------------------------------
+  - name: "CLI Context Command Infrastructure"
+    id: "phase_01"
+    execution: sequential
+    description: "Build the core 'agentic context' command group and Main-First plan resolution"
+    tasks:
+
+      - id: "01.1"
+        name: "Create cmd_context module and parser"
+        description: |
+          Add a new command module for context retrieval with subcommands:
+          - bootstrap: Primary entrypoint for Seed Context
+          - role: Get role-specific process/guidelines
+          - task: Get active task from Main-First plan
+          - inputs: Get JIT manifest of relevant project files
+        status: "pending"
+        agent_type: "build"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/cli.py"
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+          - "modules/AgenticCLI/src/agenticcli/context.py"
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/cli.py"
+          - "modules/AgenticCLI/src/agenticcli/commands/context.py"
+        guidance: |
+          1. Create new command module: `modules/AgenticCLI/src/agenticcli/commands/context.py`
+          2. Add parser definition in cli.py using `_add_context_parser(subparsers)` pattern
+          3. Register as PROJECT_COMMAND (requires .git or .agenticcli.yml)
+          4. Implement handle() function routing to subcommand handlers
+          5. Support --json flag for machine-readable output (critical for agent consumption)
+          6. Follow existing command patterns from plan.py and worktree.py
+        success_criteria:
+          - "`agentic context --help` shows all subcommands"
+          - "`agentic context bootstrap` returns structured JSON when invoked with -j"
+          - "Command registered in cli.py and imports correctly"
+
+      - id: "01.2"
+        name: "Implement Main-First Plan Hunter"
+        description: |
+          CLI logic to find the active plan in the main worktree based on current branch.
+          Extends existing find_main_worktree() from plan.py with plan resolution.
+        status: "pending"
+        agent_type: "build"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+          - "modules/AgenticCLI/src/agenticcli/commands/worktree.py"
+          - "modules/AgenticCLI/src/agenticcli/context.py"
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/workflows/context_workflow.py"
+        guidance: |
+          1. Create `context_workflow.py` in workflows/ directory
+          2. Implement `MainFirstPlanResolver` class with methods:
+             - find_main_worktree() - reuse/extend from plan.py
+             - resolve_active_plan(branch: str) -> Path|None
+             - extract_plan_objective(plan_path: Path) -> dict
+          3. Resolution algorithm:
+             a. Detect if current directory is in a worktree
+             b. Find the main worktree path (git worktree list --porcelain)
+             c. Scan main_worktree/docs/plans/live/ for folders matching branch pattern
+             d. Parse plan.yml to extract objective, status, active tasks
+          4. Handle edge cases: no match, multiple matches, plan.yml missing
+          5. Return structured dict: {plan_folder, objective, status, active_tasks, main_worktree}
+        success_criteria:
+          - "Plan resolver finds correct plan when invoked from feature worktree"
+          - "Returns None gracefully when no matching plan exists"
+          - "Handles both YYMMDDXX_description naming and branch-based matching"
+
+      - id: "01.3"
+        name: "Implement context bootstrap command"
+        description: |
+          Create the primary entrypoint for agents to get their 'Seed Context'.
+          Aggregates: Active Task + Primary Role Guidance + Essential Inputs.
+        status: "pending"
+        agent_type: "build"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/context.py"
+          - "modules/AgenticCLI/src/agenticcli/workflows/context_workflow.py"
+          - "modules/AgenticGuidance/agents/planner/planner-build/process.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-build/inputs.yml"
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/commands/context.py"
+        guidance: |
+          1. Implement cmd_bootstrap(args, ctx) handler
+          2. Accept optional --role <role-id> flag to specify agent role
+          3. Aggregate context from multiple sources:
+             a. Active task from Main-First plan (via context_workflow.py)
+             b. Role process/guidelines from AgenticGuidance agents
+             c. Essential inputs from inputs.yml (filtered by role)
+          4. Output format (JSON):
+             {
+               "role": "planner-build",
+               "objective": "...",
+               "plan_folder": "260114CL_context_entrypoints",
+               "process": { ... },  # From process.yml
+               "essential_inputs": [ ... ],  # High-priority files
+               "cli_commands": {  # Available CLI commands for this role
+                 "task_prefill": "agentic plan task prefill --preset planner-build",
+                 "task_status": "agentic plan task list"
+               }
+             }
+          5. Default role detection based on plan.yml agent_type if --role not specified
+        success_criteria:
+          - "`agentic context bootstrap --role planner-build -j` returns valid JSON"
+          - "Output includes objective from active plan"
+          - "Output includes role-specific process guidance"
+          - "Output includes CLI command hints for task list integration"
+
+      - id: "01.4"
+        name: "Implement context role command"
+        description: |
+          Returns standardized process and 'Ways of Working' for a specific role.
+        status: "pending"
+        agent_type: "build"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/context.py"
+          - "modules/AgenticGuidance/agents/planner/planner-build/process.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-build/manifest.yml"
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/commands/context.py"
+        guidance: |
+          1. Implement cmd_role(args, ctx) handler
+          2. Accept required role-id argument (e.g., planner-build, build-python)
+          3. Locate agent definition at:
+             modules/AgenticGuidance/agents/{category}/{role}/
+          4. Return process.yml content + key manifest.yml fields
+          5. Support --format flag: yaml (default) or json
+          6. Include invocation_context from process.yml for caller chain awareness
+        success_criteria:
+          - "`agentic context role planner-build` returns process content"
+          - "Role not found returns clear error message"
+          - "Both YAML and JSON output formats work"
+
+      - id: "01.5"
+        name: "Implement context task command"
+        description: |
+          Specifically crawls the Main Worktree's docs/plans/live/ directory
+          to identify and extract the active task for the current worktree/branch.
+        status: "pending"
+        agent_type: "build"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/context.py"
+          - "modules/AgenticCLI/src/agenticcli/workflows/context_workflow.py"
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/commands/context.py"
+        guidance: |
+          1. Implement cmd_task(args, ctx) handler
+          2. Use MainFirstPlanResolver to find active plan
+          3. Parse plan YAML to find current task (status: in_progress)
+          4. Return structured task info:
+             {
+               "task_id": "01.3",
+               "name": "Implement context bootstrap command",
+               "description": "...",
+               "status": "in_progress",
+               "inputs": [...],
+               "guidance": "..."
+             }
+          5. If no in_progress task, return first pending task
+          6. Support --all flag to return all tasks
+        success_criteria:
+          - "`agentic context task` returns current task from active plan"
+          - "Works from both main worktree and feature worktrees"
+          - "Returns clear message when no tasks available"
+
+      - id: "01.6"
+        name: "Implement context inputs command"
+        description: |
+          Provides JIT manifest of relevant project files, replacing static
+          inputs.yml references with dynamic discovery.
+        status: "pending"
+        agent_type: "build"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/context.py"
+          - "modules/AgenticCLI/src/agenticcli/commands/inputs.py"
+          - "modules/AgenticGuidance/agents/planner/planner-build/inputs.yml"
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/commands/context.py"
+        guidance: |
+          1. Implement cmd_inputs(args, ctx) handler
+          2. Accept optional --role <role-id> to filter inputs
+          3. Accept optional --resolve flag to expand layer references
+          4. Load inputs.yml for the specified role
+          5. Resolve relative paths to absolute paths
+          6. Validate file existence and report missing files
+          7. Return structured manifest:
+             {
+               "role": "planner-build",
+               "inputs": [
+                 {"path": "/absolute/path", "description": "...", "exists": true}
+               ],
+               "layers": [...],
+               "missing": [...]
+             }
+        success_criteria:
+          - "`agentic context inputs --role planner-build` returns input manifest"
+          - "Paths are resolved to absolute paths"
+          - "Missing files are clearly identified"
+
+  # ----------------------------------------
+  # PHASE 2: CLI Plan Status Tools
+  # ----------------------------------------
+  - name: "CLI Plan Status Tools"
+    id: "phase_02"
+    execution: sequential
+    description: |
+      Implement CLI tools for agents to READ and UPDATE plan status without holding
+      the plan in context. NOTE: Planner agents own plan creation/management.
+      CLI provides persistence tools only.
+    tasks:
+
+      - id: "02.1"
+        name: "Implement plan task status command"
+        description: |
+          CLI command to READ task status from existing plan files:
+          - Shows all tasks with their current status
+          - Filters by phase or status
+          - Works from any worktree (resolves to Main-First plan)
+        status: "pending"
+        agent_type: "build"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/cli.py"
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+          - "modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/plan_example.yml"
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/cli.py"
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+        guidance: |
+          1. Extend _add_plan_parser() in cli.py to add task subcommand:
+             - plan task status [--phase <phase-id>] [--status pending|in_progress|completed]
+          2. Implement cmd_task_status() handler in plan.py:
+             a. Use Main-First resolution to find active plan
+             b. Parse plan YAML to extract tasks from all phases
+             c. Display using Rich table (ID, Name, Status, Phase)
+          3. Support --json flag for machine-readable output
+          4. This is a READ operation - does NOT modify plan files
+        success_criteria:
+          - "`agentic plan task status` shows all tasks from active plan"
+          - "`agentic plan task status --status pending` filters correctly"
+          - "Works from feature worktree (resolves Main-First)"
+
+      - id: "02.2"
+        name: "Implement plan task update command"
+        description: |
+          CLI command to UPDATE task status in existing plan files:
+          - Mark tasks as in_progress, completed, or blocked
+          - Writes directly to plan YAML file
+          - Enables agents to persist progress without holding plan in context
+        status: "pending"
+        agent_type: "build"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+          - "modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/plan_example.yml"
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+        guidance: |
+          1. Add subcommand: plan task update <task-id> --status <status>
+          2. Implement cmd_task_update() handler:
+             a. Use Main-First resolution to find plan file
+             b. Parse YAML, locate task by ID
+             c. Update status field
+             d. Write back to file (preserve formatting where possible)
+          3. Validate status transitions (pending->in_progress->completed)
+          4. Support --note flag to add completion notes
+          5. This modifies the EXISTING plan created by planner agents
+        success_criteria:
+          - "`agentic plan task update 01.1 --status completed` updates plan file"
+          - "Plan YAML is valid after update"
+          - "Status transitions are validated"
+
+      - id: "02.3"
+        name: "Implement plan task current command"
+        description: |
+          CLI command to get the CURRENT task (first in_progress or next pending).
+          Convenience wrapper for agents to know what to work on next.
+        status: "pending"
+        agent_type: "build"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+          - "modules/AgenticCLI/src/agenticcli/workflows/context_workflow.py"
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+        guidance: |
+          1. Add subcommand: plan task current
+          2. Implement cmd_task_current() handler:
+             a. Find active plan via Main-First resolution
+             b. Return first task with status 'in_progress'
+             c. If none in_progress, return first 'pending' task
+             d. If all completed, return completion message
+          3. Output includes task details: id, name, inputs, guidance, target_files
+          4. Support --json for structured output
+          5. This is the primary "what should I do next?" query for agents
+        success_criteria:
+          - "`agentic plan task current` returns actionable task"
+          - "Includes all task context (inputs, guidance, etc.)"
+          - "Returns appropriate message when all tasks done"
+
+  # ----------------------------------------
+  # PHASE 3: Thin-Client Agent Migration
+  # ----------------------------------------
+  - name: "Thin-Client Agent Migration"
+    id: "phase_03"
+    execution: sequential
+    description: "Migrate ALL agents to Pull model with minimal bootstrap instructions"
+    tasks:
+
+      - id: "03.1"
+        name: "Draft Bootstrap Context template"
+        description: |
+          Define the minimal instructions for an agent to perform self-initialization
+          via CLI commands. This becomes the new .claude/agents/ file format.
+        status: "pending"
+        agent_type: "planner-guidance"
+        inputs:
+          - "docs/plans/live/260114CL_context_entrypoints/specification.md"
+          - "modules/AgenticGuidance/agents/planner/planner-build/manifest.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-build/process.yml"
+        target_files:
+          - "modules/AgenticGuidance/assets/templates/bootstrap-agent-template.md"
+        guidance: |
+          1. Create bootstrap template with minimal context:
+             ```markdown
+             # {{ROLE_NAME}} Agent
+
+             You are the {{ROLE_ID}} agent.
+
+             ## Bootstrap Protocol
+             Before taking action, you MUST run these commands:
+
+             1. Get your context: `agentic context bootstrap --role {{ROLE_ID}}`
+             2. Get current task: `agentic plan task current`
+
+             ## Execution Loop
+             - Work on current task from the plan
+             - When done: `agentic plan task update <task-id> --status completed`
+             - Get next task: `agentic plan task current`
+             - Repeat until all tasks done
+
+             NOTE: Plan management is owned by planner agents. You READ your
+             tasks and UPDATE your progress via CLI, but planners create plans.
+             ```
+          2. Template supports variable substitution: {{ROLE_ID}}, {{ROLE_NAME}}
+          3. Include error handling guidance (what to do if commands fail)
+          4. Keep total token count under 500 tokens
+        success_criteria:
+          - "Template is under 500 tokens"
+          - "All CLI commands are correct and tested"
+          - "Agent can self-initialize from template alone"
+
+      - id: "03.2"
+        name: "Create agent bootstrap generator"
+        description: |
+          CLI command to generate thin-client agent files from the template.
+        status: "pending"
+        agent_type: "build"
+        inputs:
+          - "modules/AgenticGuidance/assets/templates/bootstrap-agent-template.md"
+          - "modules/AgenticGuidance/agents/planner/planner-build/manifest.yml"
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/commands/context.py"
+        guidance: |
+          1. Add subcommand: `agentic context generate-agent <role-id>`
+          2. Load bootstrap template from assets
+          3. Load role manifest for name/description
+          4. Substitute variables: {{ROLE_ID}}, {{ROLE_NAME}}, etc.
+          5. Output to stdout (user redirects to .claude/agents/)
+          6. Support --output <path> for direct file creation
+          7. Validate role exists before generating
+        success_criteria:
+          - "`agentic context generate-agent planner-build` outputs valid markdown"
+          - "Generated file references correct CLI commands"
+          - "Output can be directly used as .claude/agents/ file"
+
+      - id: "03.3"
+        name: "Migrate planner agents to Pull model"
+        description: |
+          Update all planner category agents to use thin-client bootstrap.
+        status: "pending"
+        agent_type: "build"
+        inputs:
+          - "modules/AgenticGuidance/assets/templates/bootstrap-agent-template.md"
+          - "modules/AgenticGuidance/agents/planner/planner-build/manifest.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-test/manifest.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-guidance/manifest.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-reviewer/manifest.yml"
+        target_files:
+          - ".claude/agents/planner-build.md"
+          - ".claude/agents/planner-test.md"
+          - ".claude/agents/planner-guidance.md"
+          - ".claude/agents/planner-reviewer.md"
+          - ".claude/agents/planner-audit.md"
+          - ".claude/agents/planner-cleaning.md"
+        guidance: |
+          1. Generate thin-client files for each planner agent
+          2. Use `agentic context generate-agent <role>` to create
+          3. Place in .claude/agents/ directory
+          4. Verify each file is under 500 tokens
+          5. Test by manually invoking bootstrap commands
+          6. Archive old large .md files if they exist
+        success_criteria:
+          - "All planner agents have thin-client .md files"
+          - "Each file is under 500 tokens"
+          - "Bootstrap commands work correctly"
+
+      - id: "03.4"
+        name: "Migrate build agents to Pull model"
+        description: |
+          Update all build category agents to use thin-client bootstrap.
+        status: "pending"
+        agent_type: "build"
+        inputs:
+          - "modules/AgenticGuidance/assets/templates/bootstrap-agent-template.md"
+          - "modules/AgenticGuidance/agents/build/build-python/manifest.yml"
+          - "modules/AgenticGuidance/agents/build/build-flutter/manifest.yml"
+        target_files:
+          - ".claude/agents/build-python.md"
+          - ".claude/agents/build-flutter.md"
+        guidance: |
+          1. Generate thin-client files for each build agent
+          2. Follow same process as planner migration
+          3. Create builder-preset.yml if not already done
+        success_criteria:
+          - "All build agents have thin-client .md files"
+          - "Bootstrap commands work correctly"
+
+      - id: "03.5"
+        name: "Migrate test agents to Pull model"
+        description: |
+          Update all test category agents to use thin-client bootstrap.
+        status: "pending"
+        agent_type: "build"
+        inputs:
+          - "modules/AgenticGuidance/assets/templates/bootstrap-agent-template.md"
+          - "modules/AgenticGuidance/agents/test/test-runner/manifest.yml"
+          - "modules/AgenticGuidance/agents/test/test-builder/manifest.yml"
+          - "modules/AgenticGuidance/agents/test/test-audit/manifest.yml"
+        target_files:
+          - ".claude/agents/test-runner.md"
+          - ".claude/agents/test-builder.md"
+          - ".claude/agents/test-audit.md"
+          - ".claude/agents/test-guidance-simulator.md"
+          - ".claude/agents/test-user-simulator.md"
+        guidance: |
+          1. Generate thin-client files for each test agent
+          2. Follow same process as planner migration
+          3. Create test-preset.yml for test-specific tasks
+        success_criteria:
+          - "All test agents have thin-client .md files"
+          - "Bootstrap commands work correctly"
+
+      - id: "03.6"
+        name: "Migrate orchestration and other agents"
+        description: |
+          Update remaining agents (orchestration, teacher, deploy) to Pull model.
+        status: "pending"
+        agent_type: "build"
+        inputs:
+          - "modules/AgenticGuidance/assets/templates/bootstrap-agent-template.md"
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/manifest.yml"
+          - "modules/AgenticGuidance/agents/teacher/teacher-update-guidance/manifest.yml"
+          - "modules/AgenticGuidance/agents/deploy/deploy-worktree/manifest.yml"
+        target_files:
+          - ".claude/agents/orchestration-planning.md"
+          - ".claude/agents/orchestration-build.md"
+          - ".claude/agents/orchestration-executor.md"
+          - ".claude/agents/teacher-update-guidance.md"
+          - ".claude/agents/teacher-update-assets.md"
+          - ".claude/agents/deploy-worktree.md"
+          - ".claude/agents/deploy-cicd.md"
+        guidance: |
+          1. Generate thin-client files for remaining agents
+          2. Create category-specific presets as needed
+          3. Document any special bootstrap requirements
+        success_criteria:
+          - "All agents migrated to thin-client model"
+          - "No large static .md files remain in .claude/agents/"
+
+  # ----------------------------------------
+  # PHASE 4: Integration and Testing
+  # ----------------------------------------
+  - name: "Integration and Testing"
+    id: "phase_04"
+    execution: sequential
+    description: "Validate the integrated system works correctly"
+    tasks:
+
+      - id: "04.1"
+        name: "Create integration test suite"
+        description: |
+          Build tests validating the full JIT context + task list flow.
+        status: "pending"
+        agent_type: "build"
+        inputs:
+          - "modules/AgenticCLI/tests/test_cli.py"
+          - "modules/AgenticCLI/src/agenticcli/commands/context.py"
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_context_commands.py"
+          - "modules/AgenticCLI/tests/test_task_list_commands.py"
+        guidance: |
+          1. Create test_context_commands.py with tests:
+             - test_context_bootstrap_returns_json
+             - test_context_role_finds_agent
+             - test_context_task_resolves_from_worktree
+             - test_context_inputs_resolves_paths
+          2. Create test_task_list_commands.py with tests:
+             - test_task_prefill_loads_preset
+             - test_task_list_shows_status
+             - test_task_add_creates_task
+             - test_task_complete_updates_status
+          3. Use fixtures for temporary plan folders
+          4. Mock git worktree commands where needed
+        success_criteria:
+          - "All context command tests pass"
+          - "All task list command tests pass"
+          - "Tests run in CI/CD pipeline"
+
+      - id: "04.2"
+        name: "End-to-end agent bootstrap test"
+        description: |
+          Verify an agent can successfully bootstrap and complete a simple task
+          using only the thin-client instructions.
+        status: "pending"
+        agent_type: "test"
+        inputs:
+          - ".claude/agents/planner-build.md"
+          - "modules/AgenticCLI/src/agenticcli/commands/context.py"
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+        target_files:
+          - "docs/plans/live/260114CL_context_entrypoints/audit/e2e_bootstrap_test.yml"
+        guidance: |
+          1. Create a test plan with simple objective
+          2. Invoke planner-build agent using thin-client .md file
+          3. Observe agent behavior:
+             - Does it run bootstrap commands?
+             - Does it prefill task list?
+             - Does it complete tasks in order?
+             - Does it mark tasks complete?
+          4. Document findings in e2e_bootstrap_test.yml
+          5. Compare token usage: old Push model vs new Pull model
+        success_criteria:
+          - "Agent successfully bootstraps from thin-client file"
+          - "Agent completes all prefilled tasks"
+          - "Agent uses CLI commands as instructed"
+
+      - id: "04.3"
+        name: "Main-First resolution from feature worktree"
+        description: |
+          Verify plan resolution works when agent runs in feature worktree.
+        status: "pending"
+        agent_type: "test"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/workflows/context_workflow.py"
+          - "modules/AgenticCLI/src/agenticcli/commands/worktree.py"
+        target_files:
+          - "docs/plans/live/260114CL_context_entrypoints/audit/main_first_test.yml"
+        guidance: |
+          1. Create a feature worktree
+          2. From feature worktree, run: `agentic context bootstrap`
+          3. Verify it finds plan in main worktree
+          4. Verify objective is correctly extracted
+          5. Document resolution path for debugging
+        success_criteria:
+          - "Context commands work from feature worktree"
+          - "Plan resolved from main worktree correctly"
+          - "No errors when plan folder matches branch"
+
+  # ----------------------------------------
+  # PHASE 5: Cleanup and Documentation
+  # ----------------------------------------
+  - name: "Cleanup and Documentation"
+    id: "phase_05"
+    execution: sequential
+    description: "Remove legacy artifacts and document the new architecture"
+    tasks:
+
+      - id: "05.1"
+        name: "Archive legacy static agent files"
+        description: |
+          Move large flattened .md files from .claude/agents/ to archive.
+        status: "pending"
+        agent_type: "build"
+        inputs:
+          - ".claude/agents/"
+        target_files:
+          - ".claude/agents/archive/"
+        guidance: |
+          1. Create .claude/agents/archive/ directory
+          2. Move any large (>1000 tokens) .md files to archive
+          3. Keep thin-client files in place
+          4. Update .gitignore if needed to exclude archive
+          5. Do NOT delete - archive for reference
+        success_criteria:
+          - "Only thin-client files remain in .claude/agents/"
+          - "Legacy files archived for reference"
+
+      - id: "05.2"
+        name: "Update CLI documentation"
+        description: |
+          Document new context and task list commands in CLI help.
+        status: "pending"
+        agent_type: "build"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/cli.py"
+          - "modules/AgenticCLI/README.md"
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/cli.py"
+        guidance: |
+          1. Update epilog in create_parser() to document new commands
+          2. Add context commands to help text:
+             - context bootstrap: Get agent seed context
+             - context role: Get role-specific guidance
+             - context task: Get current task from plan
+             - context inputs: Get input file manifest
+          3. Add task list commands to help text:
+             - plan task prefill: Load preset task list
+             - plan task list: Show all tasks
+             - plan task add: Add new task
+          4. Ensure --help on each command is comprehensive
+        success_criteria:
+          - "`agentic --help` shows context commands"
+          - "`agentic context --help` shows all subcommands"
+          - "`agentic plan task --help` shows all operations"
+
+      - id: "05.3"
+        name: "Document JIT Context architecture"
+        description: |
+          Create architecture documentation explaining the Pull model.
+        status: "pending"
+        agent_type: "build"
+        inputs:
+          - "docs/plans/live/260114CL_context_entrypoints/specification.md"
+          - "docs/ARCHITECTURE.md"
+        target_files:
+          - "docs/JIT_CONTEXT_ARCHITECTURE.md"
+        guidance: |
+          1. Create JIT_CONTEXT_ARCHITECTURE.md documenting:
+             - Overview of Push vs Pull model
+             - CLI command reference
+             - Bootstrap protocol for agents
+             - Main-First plan resolution
+             - Task list integration
+          2. Include diagrams (mermaid) showing:
+             - Agent initialization flow
+             - Context retrieval sequence
+             - Task list lifecycle
+          3. Link from main ARCHITECTURE.md
+        success_criteria:
+          - "Architecture document exists and is comprehensive"
+          - "Includes mermaid diagrams"
+          - "Linked from main architecture docs"
+
+# ========================================
+# NOTES
+# ========================================
+notes: |
+  SEPARATION OF CONCERNS:
+  - PLANNER AGENTS own plan management (creating phases, defining tasks, determining sequence)
+  - CLI provides TOOLS for other agents to:
+    - READ context (objective, guidance, inputs) without loading full files
+    - UPDATE task status in existing plans without holding plan in context
+
+  When an agent bootstraps:
+  1. `agentic context bootstrap` returns objective + role guidance
+  2. `agentic plan task current` returns the next task to work on
+  3. Agent completes task
+  4. `agentic plan task update <id> --status completed` persists progress
+  5. Repeat until all tasks done
+
+  The CLI serves as a persistence layer / external memory. The plan content
+  (tasks, phases, guidance) is created by planner agents. The CLI just provides
+  read/write access to that content.
+
+  TOKEN REDUCTION:
+  The 50% token reduction metric has been removed from success criteria per user request.
+  Focus is on functional correctness and workflow improvement.

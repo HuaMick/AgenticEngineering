@@ -1,0 +1,112 @@
+# Orchestration-Friction Agent Manifest
+# Orchestrates on-demand friction analysis of LangSmith traces
+# Created: 2026-01-21
+# Source: plan_live_friction_analysis_improvements.yml (int_01)
+
+name: orchestration-friction
+status: active
+version: "1.0"
+# Version scheme: X.Y where X = architecture version, Y = iteration
+
+description: |
+  Orchestrates on-demand friction analysis of LangSmith traces.
+  Read-only analysis - no automatic changes made to guidance files.
+  User decides which recommendations to implement.
+
+purpose: |
+  Orchestration-friction analyzes agent execution traces to identify
+  friction patterns that indicate guidance gaps. It queries LangSmith
+  traces, detects patterns (FP-001 through FP-006), classifies by
+  severity, validates recommendations against existing guidance,
+  and presents actionable findings to the user.
+
+# ==============================================
+# INPUTS
+# ==============================================
+inputs:
+  location: "modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml"
+  description: "Configuration for friction analysis including session grouping and thresholds"
+
+# ==============================================
+# RESPONSIBILITIES
+# ==============================================
+responsibilities:
+  - "Query LangSmith traces for specified project/timeframe"
+  - "Detect friction patterns (FP-001 through FP-006)"
+  - "Classify patterns by severity (LOW, MEDIUM, HIGH, CRITICAL)"
+  - "Group patterns by session for cross-session analysis"
+  - "Validate recommendations against existing guidance"
+  - "Filter out duplicate or already-addressed patterns"
+  - "Present findings with actionable recommendations"
+
+# ==============================================
+# INPUTS FROM
+# ==============================================
+inputs_from:
+  - source: "User context"
+    provides:
+      - "project_name: LangSmith project to analyze"
+      - "lookback_days: Time range for analysis"
+      - "session_count: Number of sessions to analyze (optional)"
+      - "min_affected_sessions: Threshold for pattern filtering"
+
+  - source: "LangSmith API"
+    provides:
+      - "Trace data (runs, child runs, metadata)"
+      - "Token usage statistics"
+      - "Error information"
+      - "Timing data"
+
+  - source: "Existing guidance files"
+    provides:
+      - "Current guidance content for validation"
+      - "Target files for recommendations"
+
+# ==============================================
+# OUTPUTS TO
+# ==============================================
+outputs_to:
+  - destination: "User"
+    format: "Friction report with recommendations"
+    content:
+      - "Detected friction patterns with evidence"
+      - "Severity classification"
+      - "Affected sessions count"
+      - "Validated recommendations"
+      - "Next steps if user chooses to implement"
+
+  - destination: "Next entrypoint (optional)"
+    format: "Structured recommendation data"
+    content:
+      - "If user chooses to implement recommendations"
+      - "Passes to _plan_teach.yml or direct to teacher agents"
+
+# ==============================================
+# BOUNDARIES
+# ==============================================
+boundaries:
+  - "READ-ONLY: Does not modify any files"
+  - "User decides resolution approach"
+  - "Recommendations validated before presentation"
+  - "Does not spawn implementation agents"
+  - "Does not auto-approve changes"
+
+# ==============================================
+# SPAWNS FENCE
+# ==============================================
+# This orchestrator is analysis-only and does not spawn other agents
+spawns: []
+
+# ==============================================
+# INVOKED BY
+# ==============================================
+invoked_by:
+  - "_analyze_friction.yml entrypoint"
+  - "agentic langsmith friction CLI command"
+
+# ==============================================
+# PROCESS
+# ==============================================
+process:
+  location: "modules/AgenticGuidance/agents/orchestration/orchestration-friction/process.mmd"
+  description: "MMD-driven friction analysis workflow"

@@ -5,120 +5,18 @@ process:
 
   loop_definitions:
     reference: "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
-    description: "Loop types (audit-test-fix-loop) defined in agent-loops.yml"
     # NOTE: Do not duplicate loop definitions here - see agent-loops.yml for full definitions
 
-  # ===========================================================================
-  # RLM PATTERNS FOR LARGE TEST PACKAGE ANALYSIS
-  # Reference: modules/AgenticGuidance/assets/definitions/rlm-patterns.yml
-  # ===========================================================================
-  rlm_patterns:
-    description: |
-      RLM (Recursive Language Model) patterns enable programmatic analysis of large test
-      packages that exceed context limits. Use these patterns when test packages contain
-      20+ files or 2000+ lines of test code.
-
-    context_accessor_operations:
-      list_test_files:
-        description: "List all test files in package by pattern"
-        example: |
-          # Store test package
-          store_context("CONTEXT_TESTS", path="tests/workflows/packaging/**/*.py")
-          # List all test files
-          files = list_contexts(filter="test_*.py")
-
-      extract_test_signatures:
-        description: "Extract test function signatures without full bodies"
-        example: |
-          # Get test signatures only (level 1 context)
-          signatures = get_context("CONTEXT_TESTS", filter="def test_\\w+")
-
-      find_assertion_patterns:
-        description: "Find and categorize assertion patterns in tests"
-        example: |
-          # Find all assertions
-          assertions = get_context("CONTEXT_TESTS", filter="assert\\s+")
-          # Find weak assertions
-          weak = get_context("CONTEXT_TESTS", filter="assert len\\(.*\\) > 0")
-
-      detect_skip_patterns:
-        description: "Find all skip patterns and their conditions"
-        example: |
-          # Find pytest.skip calls
-          skips = get_context("CONTEXT_TESTS", filter="pytest\\.skip|@pytest\\.mark\\.skip")
-
-      examine_specific_test:
-        description: "Load full implementation of specific test for detailed analysis"
-        example: |
-          # Get specific test with context lines
-          test = find_usage("CONTEXT_TESTS", symbol="test_installation_flow", include_context=10)
-
-    recursive_decomposition_pattern:
-      description: |
-        For large test packages (>20 files), decompose analysis recursively:
-        1. List all test files
-        2. For each file, extract test signatures
-        3. Categorize tests (skip patterns, assertion quality, etc.)
-        4. Accumulate findings
-        5. Signal final report
-
-      example: |
-        # 1. Store test package
-        store_context("CONTEXT_TESTS", path="{test_package}/**/*.py")
-
-        # 2. Create accumulator for findings
-        create_accumulator("ACCUMULATOR_FINDINGS", schema={
-            "type": "object",
-            "required": ["file", "test", "issue_type", "severity"],
-            "properties": {
-                "file": {"type": "string"},
-                "test": {"type": "string"},
-                "issue_type": {"enum": ["skip_pattern", "weak_assertion", "reward_hacking", "silent_failure"]},
-                "severity": {"enum": ["low", "medium", "high", "critical"]},
-                "evidence": {"type": "string"}
-            }
-        })
-
-        # 3. For each test file (depth 1)
-        for file in list_contexts(filter="test_*.py"):
-            # Extract tests from file (depth 2)
-            tests = get_context(file, filter="def test_\\w+")
-            for test in tests:
-                # Analyze test (depth 3 - max)
-                if has_skip_pattern(test):
-                    accumulate("ACCUMULATOR_FINDINGS", {
-                        "file": file, "test": test.name,
-                        "issue_type": "skip_pattern",
-                        "severity": classify_skip(test),
-                        "evidence": extract_skip_reason(test)
-                    })
-                if has_weak_assertion(test):
-                    accumulate("ACCUMULATOR_FINDINGS", {...})
-
-        # 4. Signal completion
-        signal_final("FINAL_AUDIT_REPORT", result=get_accumulated("ACCUMULATOR_FINDINGS"))
-
-      max_recursion_depth: 3
-      trigger_condition: "Test package contains >20 files or >2000 lines"
-
-    reward_hacking_detection:
-      description: "Programmatic detection of reward hacking patterns in tests"
-      patterns:
-        - name: "success_flag_only"
-          grep_pattern: "assert.*success.*True|assert.*result.*==.*True"
-          description: "Tests checking success=True without verifying actual outcomes"
-
-        - name: "weak_length_check"
-          grep_pattern: "assert len\\(.*\\) > 0|assert.*is not None"
-          description: "Overly permissive assertions"
-
-        - name: "help_only_validation"
-          grep_pattern: "--help|help_text|usage:|Usage:"
-          description: "Tests that only validate help text without functional testing"
-
-        - name: "mock_everything"
-          grep_pattern: "@mock\\.|@patch\\.|Mock\\(\\)|MagicMock"
-          description: "Excessive mocking that may hide real behavior"
+  # RLM patterns for large test package analysis
+  # See: modules/AgenticGuidance/assets/definitions/rlm-patterns.yml
+  # See: inputs.yml#rlm_audit_strategy and #rlm_context_thresholds for audit-specific usage
+  rlm_reference:
+    definition_file: "modules/AgenticGuidance/assets/definitions/rlm-patterns.yml"
+    trigger: "Test package contains >20 files or >2000 lines"
+    key_patterns:
+      - "recursive_decomposition (filter-then-process)"
+      - "programmatic_access (filtered extraction)"
+      - "variable_management (accumulator pattern)"
 
   # ==============================================
   # LOOP CONTEXT
@@ -154,58 +52,23 @@ process:
 
   steps:
     - |
-      Review all inputs if an input cannot be found do not proceed.
-      If an input is found in a different location, note the discrepancy in your output report.
+      VALIDATE INPUTS: Review all inputs per inputs.yml. If an input cannot be found, STOP.
+      Focus ONLY on your assigned test package - other agents handle other packages in parallel.
     - |
-      Focus on your assigned test package directory. You are auditing ONLY this package,
-      not the entire test suite. Other audit agents are handling other packages in parallel.
+      AUDIT TEST QUALITY: Apply audit_checks per inputs.yml#audit_checks.
+      For installation-related packages, also apply inputs.yml#installation_architecture_validation.
+      For large packages (>20 files), use RLM per rlm_reference above and inputs.yml#rlm_audit_strategy.
     - |
-      SYSTEM STATE VALIDATION (for installation-related test packages):
-      Apply installation_architecture_validation checks per inputs.yml:
-      - Check pyproject.toml for local path dependencies
-      - Verify test assumptions about cli_installed
-      - Check for worktree-specific references
-      This catches installation architecture issues that bypass normal testing.
+      AUDIT SKIP PATTERNS: Find all skip patterns and cross-reference with acceptable-skips.yml.
+      Apply inputs.yml#skip_pattern_audit criteria. Also review test-results/ XML for runtime skips.
+      Categorize each: justified, unjustified (fixable), or needs investigation.
     - |
-      Review the test results trace back to the test code and any relevant source code:
-      - Apply audit_checks per inputs.yml (outcome verification, evidence-based validation, etc.)
-      - Does the test verify actual outcomes, or only success booleans?
-      - How is failure reported - can it reach logs or monitoring?
-      - Do referenced paths in config files exist in the installed package?
-
-      RLM FOR LARGE PACKAGES (>20 files or >2000 lines):
-      If your assigned test package exceeds these thresholds, use RLM decomposition:
-      - Store test package as context variable
-      - Use recursive_decomposition_pattern from rlm_patterns section
-      - Accumulate findings programmatically
-      - This enables auditing 100+ test file packages without context overflow
-      Reference: rlm_patterns.context_accessor_operations for available operations
+      AUDIT STRUCTURE: Review file/folder structure per inputs.yml#structural_issues.
+      Flag duplicates or architectural violations. Do not fix - report to orchestrator.
     - |
-      Review actual test execution results for skipped tests:
-      - Locate test result XML files in test-results/ directory (if available)
-      - Parse JUnit XML files to identify tests that were skipped during execution
-      - Extract skip messages/reasons from XML
-      - Validate each skip against acceptable-skips.yml criteria
-      - Categorize: unjustified (fixable), justified (acceptable), needs investigation
-      - Document unjustified skips with test name, skip message, file location, and fix recommendation
-    - |
-      Audit skip patterns in your assigned test package:
-      - Find all skip patterns: pytest.skip(), @pytest.mark.skip, @pytest.mark.skipif
-      - Analyze each skip against skip_pattern_audit criteria in inputs.yml
-      - Cross-reference with acceptable-skips.yml
-      - Document unjustified skips with file, line, condition, reason, and fix recommendation
-    - |
-      Review file and folder structure per structural_issues definition in inputs.yml.
-      Flag duplicates or architectural violations within your package.
-      The orchestration agent can spawn dedicated agents to investigate.
-    - |
-      Report findings per audit_reporting format in inputs.yml:
-      - Package name and path
-      - Skip pattern audit results
-      - Test quality issues (reward hacking signals from inputs.yml)
-      - Structural issues
-      - Installation/packaging issues (if applicable)
-      - Report back to orchestration agent for coordination
+      REPORT FINDINGS: Output per inputs.yml#audit_reporting format.
+      Include: package path, skip audit results, test quality issues, structural issues.
+      Constraints: inputs.yml#audit_constraints (do not fix, do not run tests).
 
   guidelines:
     # Core guidelines: See modules/AgenticGuidance/assets/guidelines/

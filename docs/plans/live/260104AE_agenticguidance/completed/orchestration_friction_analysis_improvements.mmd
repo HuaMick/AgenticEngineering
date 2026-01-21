@@ -1,0 +1,120 @@
+flowchart LR
+    %% GOAL: Orchestrate guidance improvements for friction analysis system
+    %% PROFILE: Orchestration-Executor
+    %% OUTPUT: Improved friction analysis with session inputs, validation, quality enforcement
+    %% GUIDELINE: TEACH FOCUS - guidance definitions, process steps, CLI enhancements
+    %% GUIDELINE: modules/AgenticGuidance/assets/guidelines/fix-the-source.yml
+    %% INPUT_PATH: modules/AgenticGuidance/agents/orchestration/orchestration-executor/inputs.yml
+    %%
+    %% AGENT_ROUTING: Phase1 -> teacher-update-assets, Phase2 -> teacher-update-guidance, Phase3 -> teacher-update-guidance, Phase4 -> build-python, Phase5 -> teacher-update-guidance
+    %% STATUS: Phase1_Definition=pending, Phase2_SessionInput=pending, Phase3_Validation=pending, Phase4_CLI=pending, Phase5_Integration=pending
+    %%
+    %% PHASES (from plan_live_friction_analysis_improvements.yml):
+    %% - Phase 1: Guidance Quality Definition (def_01) - Create guidance-quality.yml
+    %% - Phase 2: Session-Based Input (input_01, input_02) - Update entrypoint and orchestration inputs
+    %% - Phase 3: Validation Subagent (validate_01, validate_02) - Add explore validation step
+    %% - Phase 4: CLI Enhancements (cli_01, cli_02) - Add session-based CLI params
+    %% - Phase 5: Integration Completion (int_01, int_02) - Create manifest, update teacher inputs
+    %%
+    %% FEEDBACK_TRIGGERS:
+    %% - GUIDANCE_GAP -> ReturnToPhase (enhance existing guidance)
+    %% - BUILD_FAILURE -> ReturnToPhase (fix CLI implementation)
+
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    LoadInputs --> ReviewInputs[Review Plan Files]
+    ReviewInputs --> ValidatePlans{Plans Valid?}
+    ValidatePlans -- "No: Missing" --> AskUser((Ask User for Clarification))
+    ValidatePlans -- "Yes: Found" --> EnterPhase1
+
+    %% ========================================
+    %% PHASE 1: GUIDANCE QUALITY DEFINITION
+    %% ========================================
+    %% Creates foundational definition used by later phases
+    %% Enforcement type: DEFINITION
+
+    subgraph Phase1_SG ["Phase 1: Guidance Quality Definition"]
+        EnterPhase1[Enter Definition Phase] --> SpawnTeacherAssets[Spawn teacher-update-assets Agent]
+        SpawnTeacherAssets --> CreateDefinition[Create guidance-quality.yml]
+        CreateDefinition --> Phase1Complete{Definition Valid?}
+        Phase1Complete -- "No: Fix" --> SpawnTeacherAssets
+        Phase1Complete -- "Yes: Ready" --> EnterPhase2
+    end
+
+    %% ========================================
+    %% PHASE 2: SESSION-BASED INPUT
+    %% ========================================
+    %% Adds session_count and min_affected_sessions inputs
+    %% Enforcement type: PROCESS_STEP
+
+    subgraph Phase2_SG ["Phase 2: Session-Based Input"]
+        EnterPhase2[Enter Input Phase] --> SpawnTeacherGuidance2[Spawn teacher-update-guidance Agent]
+        SpawnTeacherGuidance2 --> UpdateEntrypoint[Update _analyze_friction.yml]
+        UpdateEntrypoint --> UpdateOrchestrationInputs[Update orchestration-friction inputs.yml]
+        UpdateOrchestrationInputs --> Phase2Complete{Inputs Valid?}
+        Phase2Complete -- "No: Fix" --> SpawnTeacherGuidance2
+        Phase2Complete -- "Yes: Ready" --> EnterPhase3
+    end
+
+    %% ========================================
+    %% PHASE 3: VALIDATION SUBAGENT
+    %% ========================================
+    %% Adds explore validation step before recommendations
+    %% Enforcement type: SUBAGENT
+
+    subgraph Phase3_SG ["Phase 3: Validation Subagent"]
+        EnterPhase3[Enter Validation Phase] --> SpawnTeacherGuidance3[Spawn teacher-update-guidance Agent]
+        SpawnTeacherGuidance3 --> UpdateProcess[Update teacher-trace-diagnostics process.yml]
+        UpdateProcess --> AddExample[Add validation example]
+        AddExample --> Phase3Complete{Validation Step Added?}
+        Phase3Complete -- "No: Fix" --> SpawnTeacherGuidance3
+        Phase3Complete -- "Yes: Ready" --> EnterPhase4
+    end
+
+    %% ========================================
+    %% PHASE 4: CLI ENHANCEMENTS
+    %% ========================================
+    %% Adds --sessions and --min-affected CLI params
+    %% Enforcement type: CLI_OFFLOAD
+
+    subgraph Phase4_SG ["Phase 4: CLI Enhancements"]
+        EnterPhase4[Enter CLI Phase] --> SpawnBuilder[Spawn build-python Agent]
+        SpawnBuilder --> AddFrictionParams[Add friction command params]
+        AddFrictionParams --> AddSessionsCommand[Add sessions subcommand]
+        AddSessionsCommand --> Phase4Complete{CLI Updated?}
+        Phase4Complete -- "No: Build Error" --> SpawnBuilder
+        Phase4Complete -- "Yes: Ready" --> EnterPhase5
+    end
+
+    %% ========================================
+    %% PHASE 5: INTEGRATION COMPLETION
+    %% ========================================
+    %% Creates manifest.yml, updates teacher inputs
+
+    subgraph Phase5_SG ["Phase 5: Integration Completion"]
+        EnterPhase5[Enter Integration Phase] --> SpawnTeacherGuidance5[Spawn teacher-update-guidance Agent]
+        SpawnTeacherGuidance5 --> CreateManifest[Create orchestration-friction manifest.yml]
+        CreateManifest --> UpdateTeacherInputs[Update teacher inputs with guidance-quality ref]
+        UpdateTeacherInputs --> Phase5Complete{Integration Complete?}
+        Phase5Complete -- "No: Fix" --> SpawnTeacherGuidance5
+        Phase5Complete -- "Yes: Ready" --> Finalize
+    end
+
+    %% ========================================
+    %% FINALIZATION
+    %% ========================================
+
+    subgraph Finalization_SG ["Finalization Subgraph"]
+        Finalize[Finalize Plan] --> UpdatePlanStatus[Update Plan Status to Completed]
+        UpdatePlanStatus --> ReportComplete[Report Completion]
+    end
+
+    ReportComplete --> End((End: Plan Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef dashedstroke stroke-dasharray: 5 5;

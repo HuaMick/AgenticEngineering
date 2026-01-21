@@ -14,164 +14,32 @@ process:
   steps:
     - "Review all inputs. Locate the plan files in the provided live plan folder (`live/`)."
     - |
-      Verify plan structure using the following approval checklist:
+      Verify plan structure using checklists from:
+      modules/AgenticGuidance/assets/definitions/planner-reviewer-checklists.yml
 
-      PLAN STRUCTURE CHECKLIST (each criterion must pass):
-      - [ ] Plan has unique name at root level (plan_name field)
-      - [ ] Worktree path is absolute and correct (worktree field)
-      - [ ] Plan folder follows YYMMDDXX_description naming (enforced by CLI - do not manually validate format)
-      - [ ] Plan objective clearly states what will be improved
+      Apply in order:
+      1. checklists.plan_structure - Validate root plan fields
+      2. checklists.inputs - Validate context references
+      3. checklists.success_criteria - Validate verifiable outcomes
+      4. checklists.task_structure - Validate task definitions
+      5. checklists.pattern_alignment - Validate established patterns
 
-      NOTE: Plan folder naming convention (YYMMDDXX_description) is enforced by
-      `agentic plan init`. If a plan folder exists, the CLI already validated its name.
-      Reviewers should NOT reject plans for naming format - trust CLI enforcement.
-
-      INPUTS CHECKLIST:
-      - [ ] Context references are at file-level or directory-level (both are acceptable)
-      - [ ] Each input has location and description fields
-      - [ ] Referenced files exist in the repository or worktree
-
-      SUCCESS CRITERIA CHECKLIST:
-      - [ ] Each phase has measurable success criteria
-      - [ ] Success criteria include user-focused validation (experience-driven checks)
-      - [ ] Technical validation criteria are verifiable (see success-criteria.yml in inputs)
-      - [ ] Criteria define observable outcomes, not implementation details
-
-      TASK STRUCTURE CHECKLIST:
-      - [ ] Each task specifies exact target file(s) to edit
-      - [ ] Agent types are correctly allocated by category (planner/teacher/build/test)
-      - [ ] Operations are properly ordered (CREATE before UPDATE, dependencies respected)
-      - [ ] Each task has concrete acceptance criteria
-
-      PATTERN ALIGNMENT CHECKLIST:
-      - [ ] Tasks follow Domain -> Workflow -> Entrypoint patterns where applicable
-      - [ ] Phase dependencies are explicitly declared
-      - [ ] All mandatory loops included (audit-test-fix after cleanup, etc.)
-
-      RLM USAGE CHECKLIST (when plan includes RLM patterns):
-      Only validate if plan references rlm-patterns.yml, rlm-context-accessor.yml, or
-      includes RLM-specific elements (CONTEXT_, ACCUMULATOR_, FILTER_, FINAL_ variables).
-
-      - [ ] RLM trigger conditions were met (context >1000 lines OR >10 files across directories)
-      - [ ] Recursion depth is bounded (max_recursion_depth <= 5, prefer <= 3)
-      - [ ] Variable naming follows conventions (CONTEXT_SOURCE_SECTION, ACCUMULATOR_TYPE, FINAL_OUTPUT)
-      - [ ] Context accessor calls reference valid patterns from rlm-context-accessor.yml
-      - [ ] FINAL() signal is called only at top level, not inside recursive branches
-      - [ ] RLM-generated content conforms to standard plan structure (phases, tasks, success_criteria)
-
-      FENCES - RLM MISUSE DETECTION:
-
-      FENCE: Unjustified RLM Usage
-      - If plan uses RLM patterns but context is <500 lines total: REJECT
-      - Feedback: "RLM overhead unjustified. Context size ({X} lines) is below 500-line threshold.
-        Remove RLM elements and use standard context loading."
-
-      FENCE: Excessive Recursion Depth
-      - If plan specifies max_recursion_depth > 5: REJECT
-      - Feedback: "Recursion depth {X} exceeds maximum of 5. Reduce depth and consider
-        restructuring decomposition strategy."
-
-      FENCE: Missing Completion Signal
-      - If plan uses accumulators but lacks FINAL() signal: REJECT
-      - Feedback: "Plan uses RLM accumulators but missing FINAL() signal. Add explicit
-        completion signal at top level to ensure results are aggregated."
-
-      NO RLM IN PLAN:
-      If plan does not reference RLM patterns, skip this checklist entirely.
-      Plans without RLM patterns should be reviewed without additional overhead.
-
-      MMD PRESENCE CHECKLIST (required for orchestrated plans):
-      NOTE: Orchestration-planning is responsible for generating MMD files.
-      Individual planners (planner-guidance, planner-build) create plan YAML only.
-      If MMD is missing, the orchestration sequence was incomplete.
-
-      - [ ] orchestration_*.mmd file exists in live/ folder alongside plan_*.yml files
-      - [ ] MMD contains GOAL header comment
-      - [ ] MMD contains AGENT_ROUTING header comment or metadata
-      - [ ] MMD contains PHASES list (can be in header or derived from flowchart structure)
-
-      FENCE: If orchestration_*.mmd is missing from the plan folder:
-      - REJECT the plan with feedback: "Missing orchestration MMD. The orchestration-planning
-        agent should have generated orchestration_<plan_name>.mmd before this review stage.
-        Return to orchestration-planning to complete MMD generation for this plan."
-      - Do NOT approve plans that require orchestrated execution without an MMD file.
-
-      EXCEPTION: Single-task plans or quick fixes that don't require agent coordination
-      may be approved without MMD. Check plan.phases - if only 1 phase with 1 task, MMD is optional.
-
-      FILE PLACEMENT CHECKLIST (BLOCKING - all must pass):
-      The live/ folder must contain ONLY active work artifacts. Misplaced files cause
-      agent confusion and are a BLOCKING issue requiring rejection.
-
-      ALLOWED in live/:
-      - [ ] plan_live_*.yml files with status: pending, approved, or in_progress
-      - [ ] orchestration_*.mmd files for active plans
-      - [ ] backlog_*.yml files explicitly marked with status: backlog
-      - [ ] README.md (folder documentation)
-
-      FORBIDDEN in live/ (REJECT if found):
-      - [ ] Completed plans (status: completed) - must be in completed/
-      - [ ] Analysis/documentation files (*.md except README.md) - must be in analysis/
-      - [ ] Audit reports (audit_*.yml) - must be in audit/
-      - [ ] Diagnostic/investigation documents - must be in analysis/
-      - [ ] Batch processing outputs or intermediate artifacts - must be in analysis/
-
-      FENCE: If ANY misplaced files are found in live/:
-      - REJECT the plan folder with feedback listing each misplaced file
-      - Specify the correct destination folder for each file
-      - Do NOT approve with "non-blocking" or "organizational concerns" exceptions
-      - File placement issues ARE blocking issues that mislead future agents
-
-      CODEBASE VERIFICATION CHECKLIST (BLOCKING - spawns explore agents):
-      Before approving, spawn explore agents to verify live/ files reflect codebase reality.
-      This prevents approving plans with stale content or already-implemented tasks.
-
-      FOR EACH plan_live_*.yml FILE:
-      - Spawn explore agent to check: Do target_files referenced in tasks still exist?
-      - Spawn explore agent to check: Have any "pending" tasks already been implemented?
-      - If >50% of pending tasks are already done, FLAG: "Plan contains stale tasks"
-
-      FOR EACH analysis/documentation file (*.md except README.md):
-      - Spawn explore agent to check: Has documented work been implemented?
-      - Classify as: IMPLEMENTED, PARTIALLY_IMPLEMENTED, or NOT_IMPLEMENTED
-      - If PARTIALLY_IMPLEMENTED: FLAG: "Contains incomplete work - convert to live plan or complete first"
-      - If NOT_IMPLEMENTED: FLAG: "Contains pending work - should be live plan, not analysis"
-      - If IMPLEMENTED: OK to archive in analysis/
-
-      FENCE: If ANY explore agent finds significant discrepancies:
-      - REJECT with explore findings attached
-      - Require planner-guidance to update/fix the flagged files
-      - Do NOT approve with "will fix later" exceptions
-
-      CODEBASE VERIFICATION FOR RLM ARTIFACTS:
-      When plan includes RLM patterns, extend verification to include:
-      - [ ] Referenced context accessor patterns exist in rlm-context-accessor.yml
-      - [ ] Variable naming follows documented conventions
-      - [ ] Accumulator schemas (if specified) are valid JSON Schema
-      - [ ] RLM-specific phases have bounded iteration counts
+      Apply fences (BLOCKING):
+      - fences.rlm_usage - Only if plan references RLM patterns
+      - fences.mmd_presence - For orchestrated plans
+      - fences.file_placement - All plans
+      - fences.codebase_verification - Spawn explore agents to verify
     - |
       Decision:
-      - APPROVE: If all checklist items pass and the plan is ready for execution.
-      - REJECT: If any checklist items fail. Provide specific feedback for the planner agents to fix, referencing which checklist items failed and why.
+      - APPROVE: All checklist items pass, plan ready for execution.
+      - REJECT: Any checklist items fail. Cite failed items with specific feedback.
     - "Report decision and feedback."
     - |
-      POST-APPROVAL CLEANUP (execute only on APPROVE decision):
-
-      1. Report to orchestrator that remediation tasks should be merged:
-         "APPROVED: Merge tasks from [plan_name] into authoritative phase plan"
-
-      2. Specify artifacts to archive (paths relative to plan folder root):
-         - audit_*.yml related to this review -> move from live/ to audit/
-           Example: live/audit_planner_build.yml -> audit/audit_planner_build.yml
-         - review_*.yml (this decision file) -> move from live/ to analysis/
-           Example: live/review_planner_build.yml -> analysis/review_planner_build.yml
-
-      3. Specify remediation plan disposition:
-         - After tasks are merged into phase plan, DELETE the remediation plan from live/
-         - Do NOT archive remediation plans (tasks are preserved in merged phase plan)
-
-      FENCE: Do not execute cleanup on REJECT decisions. Rejected plans remain
-      in live/ for the next iteration of the planner-loop.
+      POST-APPROVAL CLEANUP (on APPROVE only):
+      1. Report to orchestrator: "APPROVED: Merge tasks from [plan_name] into authoritative phase plan"
+      2. Archive artifacts: audit_*.yml -> audit/, review_*.yml -> analysis/
+      3. After merge: DELETE remediation plan from live/ (tasks preserved in merged plan)
+      Note: REJECT decisions leave plans in live/ for next planner-loop iteration.
 
   guidelines:
     - "Reject plans with structural issues, missing critical information, OR misplaced files in live/."

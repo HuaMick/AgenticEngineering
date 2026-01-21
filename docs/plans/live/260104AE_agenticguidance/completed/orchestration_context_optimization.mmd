@@ -1,0 +1,134 @@
+flowchart LR
+    %% GOAL: Orchestrate teacher agents to remediate context-minimisation issues in 4 agents.
+    %% PROFILE: Orchestration-Executor
+    %% GUIDELINE: Context-minimisation - reduce redundancy in agent guidance files.
+    %% GUIDELINE: modules/AgenticGuidance/assets/guidelines/context-minimisation.yml
+    %% INPUT_PATH: modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml
+    %%
+    %% PLAN_FILE: plan_live_teach_context_optimization.yml
+    %% PHASES: TeachPhase1 (test-audit), TeachPhase2 (planner-reviewer), TeachPhase3 (deploy-cicd), TeachPhase4 (test-builder)
+    %%
+    # AGENT_ROUTING: TeachPhase1 -> teacher-update-guidance, TeachPhase2 -> teacher-update-guidance, TeachPhase3 -> teacher-update-guidance, TeachPhase4 -> teacher-update-guidance, Validation -> test-audit
+    # STATUS: InputValidation=completed, TeachPhase1=completed, TeachPhase2=completed, TeachPhase3=completed, TeachPhase4=completed, Validation=completed
+
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    %% Verify plan file exists and is properly structured.
+    LoadInputs --> ReviewInputs[Review Plan and Agent Files]
+    ReviewInputs --> CheckInputs{All Inputs Found?}
+
+    CheckInputs -- "No: Missing" --> AskUser((Ask User for Clarification))
+    CheckInputs -- "Yes: Verified" --> TeachPhase1Start
+
+    %% ========================================
+    %% TEACH PHASE 1: test-audit Agent
+    %% ========================================
+    %% Remediate context-minimisation issues in test-audit agent.
+    %% Tasks: ta_001 (consolidate definitions), ta_002 (eliminate reporting duplication), ta_003 (consolidate steps)
+    %% Expected reduction: 34%
+    %%
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.guidance-self-review-loop
+    %% MAX_ITERATIONS: 3 (per guidance-self-review-loop definition)
+    %% ESCALATION: If max iterations reached, stop and Ask User
+
+    subgraph TeachPhase1_SG ["Teach Phase 1: test-audit Subgraph"]
+        TeachPhase1Start((Phase 1: test-audit)) --> SpawnTeacher1[Spawn teacher-update-guidance Agent]
+        SpawnTeacher1 --> Phase1Tasks[Execute ta_001, ta_002, ta_003]
+        Phase1Tasks --> ValidatePhase1{Phase 1 Complete?}
+        ValidatePhase1 -- "No: Issues" --> SpawnTeacher1Fix[Spawn teacher-update-guidance Agent]
+        SpawnTeacher1Fix --> Phase1Tasks
+        ValidatePhase1 -- "Yes: Done" --> Phase1Complete((Phase 1 Complete))
+    end
+
+    Phase1Complete --> TeachPhase2Start
+
+    %% ========================================
+    %% TEACH PHASE 2: planner-reviewer Agent
+    %% ========================================
+    %% Remediate context-minimisation issues in planner-reviewer agent.
+    %% Tasks: pr_001 (externalize checklist), pr_002 (remove redundant procedure), pr_003 (trim explanations)
+    %% Expected reduction: 54%
+
+    subgraph TeachPhase2_SG ["Teach Phase 2: planner-reviewer Subgraph"]
+        TeachPhase2Start((Phase 2: planner-reviewer)) --> SpawnTeacher2[Spawn teacher-update-guidance Agent]
+        SpawnTeacher2 --> Phase2Tasks[Execute pr_001, pr_002, pr_003]
+        Phase2Tasks --> ValidatePhase2{Phase 2 Complete?}
+        ValidatePhase2 -- "No: Issues" --> SpawnTeacher2Fix[Spawn teacher-update-guidance Agent]
+        SpawnTeacher2Fix --> Phase2Tasks
+        ValidatePhase2 -- "Yes: Done" --> Phase2Complete((Phase 2 Complete))
+    end
+
+    Phase2Complete --> TeachPhase3Start
+
+    %% ========================================
+    %% TEACH PHASE 3: deploy-cicd Agent
+    %% ========================================
+    %% Remediate context-minimisation issues in deploy-cicd agent.
+    %% Tasks: dc_001 (convert enumerations), dc_002 (replace process steps)
+    %% Expected reduction: 18.8%
+
+    subgraph TeachPhase3_SG ["Teach Phase 3: deploy-cicd Subgraph"]
+        TeachPhase3Start((Phase 3: deploy-cicd)) --> SpawnTeacher3[Spawn teacher-update-guidance Agent]
+        SpawnTeacher3 --> Phase3Tasks[Execute dc_001, dc_002]
+        Phase3Tasks --> ValidatePhase3{Phase 3 Complete?}
+        ValidatePhase3 -- "No: Issues" --> SpawnTeacher3Fix[Spawn teacher-update-guidance Agent]
+        SpawnTeacher3Fix --> Phase3Tasks
+        ValidatePhase3 -- "Yes: Done" --> Phase3Complete((Phase 3 Complete))
+    end
+
+    Phase3Complete --> TeachPhase4Start
+
+    %% ========================================
+    %% TEACH PHASE 4: test-builder Agent
+    %% ========================================
+    %% Remediate context-minimisation issues in test-builder agent.
+    %% Tasks: tb_001 (remove layers), tb_002 (externalize test types), tb_003 (trim explanations), tb_004 (fix comment)
+    %% Expected reduction: 18.7%
+
+    subgraph TeachPhase4_SG ["Teach Phase 4: test-builder Subgraph"]
+        TeachPhase4Start((Phase 4: test-builder)) --> SpawnTeacher4[Spawn teacher-update-guidance Agent]
+        SpawnTeacher4 --> Phase4Tasks[Execute tb_001, tb_002, tb_003, tb_004]
+        Phase4Tasks --> ValidatePhase4{Phase 4 Complete?}
+        ValidatePhase4 -- "No: Issues" --> SpawnTeacher4Fix[Spawn teacher-update-guidance Agent]
+        SpawnTeacher4Fix --> Phase4Tasks
+        ValidatePhase4 -- "Yes: Done" --> Phase4Complete((Phase 4 Complete))
+    end
+
+    Phase4Complete --> ValidationStart
+
+    %% ========================================
+    %% VALIDATION PHASE
+    %% ========================================
+    %% Final validation that all agents still function correctly.
+    %% FEEDBACK_TRIGGER: VALIDATION_FAILURE -> TeachPhase1Start (re-do affected phase)
+
+    subgraph Validation_SG ["Validation Subgraph"]
+        ValidationStart((Enter Validation)) --> SpawnAudit[Spawn test-audit Agent]
+        SpawnAudit --> CheckSyntax[Verify YAML Syntax All Agents]
+        CheckSyntax --> CheckFunctionality{All Agents Valid?}
+        CheckFunctionality -- "No: Regression" --> IdentifyRegression[Identify Affected Phase]
+        IdentifyRegression -.->|Return to Fix| TeachPhase1Start
+        CheckFunctionality -- "Yes: Valid" --> ValidationComplete((Validation Complete))
+    end
+
+    ValidationComplete --> OutputPhase
+
+    %% ========================================
+    %% OUTPUT PHASE
+    %% ========================================
+    subgraph Output_SG ["Output Subgraph"]
+        OutputPhase[Generate Output] --> ReportReduction[Report Line Reductions]
+        ReportReduction --> ArchivePlan[Archive Completed Plan]
+    end
+
+    ArchivePlan --> End((End: Context Optimization Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    %% Dotted lines for feedback loops (return paths for re-work)
+    classDef dashedstroke stroke-dasharray: 5 5;
+    linkStyle 22 stroke:#888,stroke-width:2px,stroke-dasharray: 5 5;

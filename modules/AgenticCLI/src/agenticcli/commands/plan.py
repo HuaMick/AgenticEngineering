@@ -30,8 +30,16 @@ def handle(args, ctx=None):
             cmd_task_start(args)
         elif args.task_action == "complete":
             cmd_task_complete(args)
+        elif args.task_action == "prefill":
+            cmd_task_prefill(args, ctx)
+        elif args.task_action == "list":
+            cmd_task_list(args, ctx)
+        elif args.task_action == "status":
+            cmd_task_status(args, ctx)
+        elif args.task_action == "add":
+            cmd_task_add(args, ctx)
         else:
-            print("Usage: agentic plan task <start|complete> <task-id>", file=sys.stderr)
+            print("Usage: agentic plan task <start|complete|prefill|list|status|add> ...", file=sys.stderr)
             sys.exit(1)
     elif args.plan_command == "archive":
         cmd_archive(args)
@@ -515,6 +523,363 @@ def _update_task_status(plan_path: Path, task_id: str, new_status: str):
 
     print(f"Error: Task {task_id} not found in plan files", file=sys.stderr)
     sys.exit(1)
+
+
+def cmd_task_prefill(args, ctx=None):
+    """Load preset task list from template.
+
+    Loads tasks from a preset YAML template and adds them to the
+    current plan's task list for tracking.
+
+    Args:
+        args: Parsed arguments with preset, plan, dry_run.
+        ctx: Optional CLIContext.
+    """
+    from agenticcli.console import (
+        console,
+        is_json_output,
+        print_error,
+        print_info,
+        print_json,
+        print_success,
+        print_table,
+    )
+
+    # TaskPresetWorkflow will be created in Phase 3
+    # For now, stub the import and show informative error
+    try:
+        from agenticcli.workflows.task_workflow import TaskPresetWorkflow
+    except ImportError:
+        print_error("TaskPresetWorkflow not yet available")
+        print_info("This feature will be available after Phase 3 implementation.")
+        sys.exit(1)
+
+    preset_name = args.preset
+    plan_path = find_plan_folder(getattr(args, "plan", None))
+    dry_run = getattr(args, "dry_run", False)
+
+    workflow = TaskPresetWorkflow(plan_path)
+
+    try:
+        result = workflow.load_preset(preset_name, dry_run=dry_run)
+    except FileNotFoundError:
+        print_error(f"Preset '{preset_name}' not found")
+        print_info("Available presets: " + ", ".join(workflow.list_presets()))
+        sys.exit(1)
+
+    if is_json_output():
+        print_json({
+            "preset": preset_name,
+            "tasks_added": result.tasks_added,
+            "tasks": result.tasks,
+            "dry_run": dry_run,
+        })
+    else:
+        if dry_run:
+            console.print(f"[dim][dry-run] Would add {len(result.tasks)} tasks from preset '{preset_name}'[/dim]")
+        else:
+            print_success(f"Added {result.tasks_added} tasks from preset '{preset_name}'")
+
+        # Show tasks
+        rows = [[t["id"], t["description"], t.get("priority", "medium")] for t in result.tasks]
+        print_table("Tasks", ["ID", "Description", "Priority"], rows)
+
+
+def cmd_task_list(args, ctx=None):
+    """List all tasks in plan folder.
+
+    Iterates through all YAML files in live/ and extracts tasks,
+    supporting status filtering and verbose output.
+
+    Args:
+        args: Parsed arguments with plan, status filter, verbose.
+        ctx: Optional CLIContext.
+    """
+    from agenticcli.console import (
+        console,
+        format_status,
+        is_json_output,
+        print_error,
+        print_header,
+        print_json,
+        print_table,
+    )
+
+    plan_path = find_plan_folder(getattr(args, "plan", None))
+    status_filter = getattr(args, "status", "all")
+    verbose = getattr(args, "verbose", False)
+    live_dir = plan_path / "live"
+
+    if not live_dir.exists():
+        print_error(f"No live/ directory in {plan_path}")
+        sys.exit(1)
+
+    all_tasks = []
+
+    for yaml_file in sorted(live_dir.glob("*.yml")):
+        try:
+            content = yaml.safe_load(yaml_file.read_text())
+        except yaml.YAMLError:
+            continue
+
+        if not content:
+            continue
+
+        # Extract tasks from phases structure
+        phases = content.get("phases", [])
+        for phase in phases:
+            phase_id = phase.get("phase_id", "")
+            phase_name = phase.get("name", "")
+            tasks = phase.get("tasks", [])
+
+            for task in tasks:
+                task_status = task.get("status", "pending")
+                if status_filter != "all" and task_status != status_filter:
+                    continue
+
+                task_info = {
+                    "id": task.get("task_id", ""),
+                    "description": task.get("description", ""),
+                    "status": task_status,
+                    "phase_id": phase_id,
+                    "phase_name": phase_name,
+                    "source_file": yaml_file.name,
+                }
+
+                if verbose:
+                    task_info["guidance"] = task.get("guidance", "")
+                    task_info["success_criteria"] = task.get("success_criteria", [])
+
+                all_tasks.append(task_info)
+
+    if is_json_output():
+        print_json({"tasks": all_tasks, "count": len(all_tasks)})
+    else:
+        print_header(f"Tasks in {plan_path.name}")
+
+        if not all_tasks:
+            console.print("[dim]No tasks found.[/dim]")
+            return
+
+        if verbose:
+            for task in all_tasks:
+                console.print(f"\n[bold]{task['id']}[/bold]: {task['description']}")
+                console.print(f"  Status: {format_status(task['status'])}")
+                console.print(f"  Phase: {task['phase_name']}")
+                if task.get("guidance"):
+                    guidance_preview = task["guidance"][:100].replace("\n", " ")
+                    console.print(f"  [dim]Guidance: {guidance_preview}...[/dim]")
+        else:
+            rows = [
+                [task["id"], task["description"][:50], format_status(task["status"]), task["phase_id"]]
+                for task in all_tasks
+            ]
+            print_table("", ["ID", "Description", "Status", "Phase"], rows)
+
+        console.print(f"\n[dim]Total: {len(all_tasks)} tasks[/dim]")
+
+
+def cmd_task_status(args, ctx=None):
+    """Show detailed status for a specific task.
+
+    Finds task by ID and displays all available information
+    including guidance, success criteria, inputs, and target files.
+
+    Args:
+        args: Parsed arguments with task_id and plan.
+        ctx: Optional CLIContext.
+    """
+    from agenticcli.console import (
+        console,
+        format_status,
+        is_json_output,
+        print_error,
+        print_header,
+        print_json,
+        print_key_value,
+    )
+
+    task_id = args.task_id
+    plan_path = find_plan_folder(getattr(args, "plan", None))
+    live_dir = plan_path / "live"
+
+    task_data = None
+    source_file = None
+    phase_info = None
+
+    for yaml_file in live_dir.glob("*.yml"):
+        try:
+            content = yaml.safe_load(yaml_file.read_text())
+        except yaml.YAMLError:
+            continue
+
+        if not content:
+            continue
+
+        phases = content.get("phases", [])
+        for phase in phases:
+            tasks = phase.get("tasks", [])
+            for task in tasks:
+                if task.get("task_id") == task_id:
+                    task_data = task
+                    source_file = yaml_file.name
+                    phase_info = {
+                        "phase_id": phase.get("phase_id"),
+                        "name": phase.get("name"),
+                        "status": phase.get("status"),
+                    }
+                    break
+            if task_data:
+                break
+        if task_data:
+            break
+
+    if not task_data:
+        print_error(f"Task '{task_id}' not found")
+        sys.exit(1)
+
+    if is_json_output():
+        print_json({
+            "task": task_data,
+            "phase": phase_info,
+            "source_file": source_file,
+        })
+    else:
+        print_header(f"Task: {task_id}")
+
+        print_key_value("Description", task_data.get("description", "N/A"))
+        print_key_value("Status", format_status(task_data.get("status", "pending")))
+        print_key_value("Phase", f"{phase_info['phase_id']} - {phase_info['name']}")
+        print_key_value("Source File", source_file)
+
+        if task_data.get("inputs"):
+            console.print("\n[bold]Inputs:[/bold]")
+            for inp in task_data["inputs"]:
+                if isinstance(inp, dict):
+                    console.print(f"  - {inp.get('path', inp)}")
+                else:
+                    console.print(f"  - {inp}")
+
+        if task_data.get("target_files"):
+            console.print("\n[bold]Target Files:[/bold]")
+            for tf in task_data["target_files"]:
+                console.print(f"  - {tf}")
+
+        if task_data.get("guidance"):
+            console.print("\n[bold]Guidance:[/bold]")
+            console.print(f"[dim]{task_data['guidance']}[/dim]")
+
+        if task_data.get("success_criteria"):
+            console.print("\n[bold]Success Criteria:[/bold]")
+            for criterion in task_data["success_criteria"]:
+                console.print(f"  - {criterion}")
+
+
+def cmd_task_add(args, ctx=None):
+    """Add a new task to the plan.
+
+    Creates a new task entry in the specified phase or appends
+    to the default/last phase if not specified.
+
+    Args:
+        args: Parsed arguments with description, plan, phase, id, priority.
+        ctx: Optional CLIContext.
+    """
+    from agenticcli.console import (
+        is_json_output,
+        print_error,
+        print_json,
+        print_success,
+    )
+
+    description = args.description
+    plan_path = find_plan_folder(getattr(args, "plan", None))
+    phase_id = getattr(args, "phase", None)
+    custom_id = getattr(args, "id", None)
+    priority = getattr(args, "priority", "medium")
+    live_dir = plan_path / "live"
+
+    # Find the first plan_live_*.yml file or plan_build*.yml
+    target_file = None
+    for pattern in ["plan_live_*.yml", "plan_build*.yml", "*.yml"]:
+        files = list(live_dir.glob(pattern))
+        if files:
+            target_file = files[0]
+            break
+
+    if not target_file:
+        print_error("No plan file found in live/ directory")
+        sys.exit(1)
+
+    try:
+        content = yaml.safe_load(target_file.read_text())
+    except yaml.YAMLError as e:
+        print_error(f"Failed to parse {target_file.name}: {e}")
+        sys.exit(1)
+
+    if not content:
+        content = {"phases": []}
+
+    phases = content.get("phases", [])
+
+    # Find target phase
+    target_phase = None
+    if phase_id:
+        for phase in phases:
+            if phase.get("phase_id") == phase_id:
+                target_phase = phase
+                break
+        if not target_phase:
+            print_error(f"Phase '{phase_id}' not found")
+            sys.exit(1)
+    else:
+        if phases:
+            target_phase = phases[-1]  # Add to last phase
+        else:
+            # Create default phase
+            target_phase = {
+                "phase_id": "adhoc_01",
+                "name": "Ad-hoc Tasks",
+                "status": "pending",
+                "tasks": [],
+            }
+            phases.append(target_phase)
+            content["phases"] = phases
+
+    # Generate task ID
+    if custom_id:
+        new_task_id = custom_id
+    else:
+        existing_ids = [t.get("task_id", "") for t in target_phase.get("tasks", [])]
+        phase_prefix = target_phase.get("phase_id", "task")
+        task_num = len(existing_ids) + 1
+        new_task_id = f"{phase_prefix}_{task_num:03d}"
+
+    # Create task entry
+    new_task = {
+        "task_id": new_task_id,
+        "description": description,
+        "status": "pending",
+        "priority": priority,
+    }
+
+    if "tasks" not in target_phase:
+        target_phase["tasks"] = []
+    target_phase["tasks"].append(new_task)
+
+    # Write back
+    with open(target_file, "w") as f:
+        yaml.dump(content, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+
+    if is_json_output():
+        print_json({
+            "task_id": new_task_id,
+            "description": description,
+            "phase_id": target_phase.get("phase_id"),
+            "file": target_file.name,
+        })
+    else:
+        print_success(f"Added task '{new_task_id}' to {target_file.name}")
 
 
 def cmd_archive(args):

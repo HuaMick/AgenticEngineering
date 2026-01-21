@@ -83,6 +83,69 @@ guideline:
         - "Details only on failure: what failed, why, suggested fix"
         - "Orchestrator logs failures in plan for tracking"
 
+    - rule: "Validation-Before-Commit Fence"
+      description: |
+        FENCE: All validation phases defined in the orchestration MMD MUST execute
+        and PASS before any git commit or plan status update to "completed".
+      justification: |
+        Commits are irreversible state changes. Validation after commit defeats the
+        purpose of validation - errors are already persisted. The audit/validation
+        phase exists to catch errors BEFORE they become permanent.
+      execution_pattern:
+        - "Identify all validation/audit subgraphs in the MMD"
+        - "Verify each validation subgraph has AGENT_ROUTING entry"
+        - "Execute all validation phases before marking plan complete"
+        - "Only proceed to git commit after ALL validation phases PASS"
+        - "If validation fails → Do NOT commit → Trigger feedback loop"
+      fence: |
+        FENCE: NO COMMIT BEFORE VALIDATION
+        Git commits are PROHIBITED until:
+        1. All MMD-defined validation subgraphs have executed
+        2. All validation phases report PASS
+        3. Validation agent (test-final-output) has approved the changes
+
+        Violation indicators:
+        - Commit created while Validation_SG status = pending
+        - Plan marked completed without validation phase execution
+        - "Skipping validation to save time" reasoning
+      characteristics:
+        - "Validation is MANDATORY, not optional"
+        - "Validation subgraphs MUST have AGENT_ROUTING entries to be executable"
+        - "Missing AGENT_ROUTING for validation = blocked workflow, not skipped validation"
+        - "Exception: Documentation-only changes may skip with explicit notation"
+
+    - rule: "Exhaustive Task Completion Policy"
+      description: |
+        FENCE: Orchestration loops MUST continue until ALL tasks in the plan are completed,
+        including minor, LOW priority, and optional items. Do NOT mark a plan complete
+        while any pending tasks remain.
+      justification: |
+        Users expect the full plan to be executed. Stopping after major items leaves work
+        incomplete and forces users to repeatedly push agents to finish. Minor improvements
+        are still improvements - they were included for a reason.
+      execution_pattern:
+        - "Before shutdown, scan ALL tasks in the plan YAML"
+        - "Count tasks by status: pending, in_progress, completed, blocked"
+        - "If ANY task has status: pending or in_progress → DO NOT proceed to shutdown"
+        - "Continue executing phases until all tasks reach completed or blocked"
+        - "Only stop when: (a) all tasks completed, (b) blocked awaiting user, or (c) user explicitly requests stopping"
+      fence: |
+        FENCE: NO EARLY EXIT
+        Orchestration shutdown is PROHIBITED while:
+        1. Any task has status: pending
+        2. Any task has status: in_progress
+        3. Any phase has unexecuted tasks
+
+        Violation indicators:
+        - "All major items done" while minor tasks remain
+        - Skipping tasks because they are LOW priority
+        - Plan marked completed with pending tasks
+      characteristics:
+        - "Priority level (HIGH/MEDIUM/LOW) does NOT determine whether to complete"
+        - "ALL priority levels MUST be completed before shutdown"
+        - "LOW priority means 'do last', NOT 'skip if convenient'"
+        - "Only user can authorize early termination"
+
   examples:
     good:
       - description: "Agent-task alignment check before spawning"
@@ -135,37 +198,6 @@ guideline:
             file: "src/auth.py"
             fix: "Add timeout handling"
           # Right: Spawn build agent to handle the fix
-
-    - rule: "Validation-Before-Commit Fence"
-      description: |
-        FENCE: All validation phases defined in the orchestration MMD MUST execute
-        and PASS before any git commit or plan status update to "completed".
-      justification: |
-        Commits are irreversible state changes. Validation after commit defeats the
-        purpose of validation - errors are already persisted. The audit/validation
-        phase exists to catch errors BEFORE they become permanent.
-      execution_pattern:
-        - "Identify all validation/audit subgraphs in the MMD"
-        - "Verify each validation subgraph has AGENT_ROUTING entry"
-        - "Execute all validation phases before marking plan complete"
-        - "Only proceed to git commit after ALL validation phases PASS"
-        - "If validation fails → Do NOT commit → Trigger feedback loop"
-      fence: |
-        FENCE: NO COMMIT BEFORE VALIDATION
-        Git commits are PROHIBITED until:
-        1. All MMD-defined validation subgraphs have executed
-        2. All validation phases report PASS
-        3. Validation agent (test-final-output) has approved the changes
-
-        Violation indicators:
-        - Commit created while Validation_SG status = pending
-        - Plan marked completed without validation phase execution
-        - "Skipping validation to save time" reasoning
-      characteristics:
-        - "Validation is MANDATORY, not optional"
-        - "Validation subgraphs MUST have AGENT_ROUTING entries to be executable"
-        - "Missing AGENT_ROUTING for validation = blocked workflow, not skipped validation"
-        - "Exception: Documentation-only changes may skip with explicit notation"
 
   related_guidelines:
     - location: "modules/AgenticGuidance/assets/guidelines/validation-strategy.yml"

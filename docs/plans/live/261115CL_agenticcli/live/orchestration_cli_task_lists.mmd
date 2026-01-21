@@ -1,0 +1,110 @@
+flowchart LR
+    %% GOAL: Orchestrate implementation and testing of CLI task list feature
+    %% PROFILE: Orchestration-Executor
+    %% OUTPUT: Implemented CLI task commands with tests and blind experiment validation
+    %% GUIDELINE: BUILD FOCUS - implementation and testing, not guidance changes
+    %% GUIDELINE: modules/AgenticGuidance/assets/guidelines/iteration.yml - Small steps, test frequently
+    %% INPUT_PATH: modules/AgenticGuidance/agents/orchestration/orchestration-executor/inputs.yml
+    %%
+    %% AGENT_ROUTING: BuildPhase -> build-python, TestPhase -> test-runner, ExperimentPhase -> test-guidance-simulator
+    %% STATUS: Validation=completed, BuildPhase=completed, TestPhase=completed, ExperimentPhase=ready_manual, Finalization=pending
+    %%
+    %% PHASES (from plan files):
+    %% - build_01: CLI Task Command Extensions (argparse)
+    %% - build_02: Command Handler Implementation (plan.py)
+    %% - build_03: Task Workflow Module (task_workflow.py)
+    %% - build_04: Preset Templates (YAML files)
+    %% - build_05: Integration and Polish
+    %% - test_01-04: Unit and Integration Tests
+    %% - test_05: CRITICAL Blind Testing Experiment
+    %% - test_06: Test Execution and CI Integration
+    %%
+    %% FEEDBACK_TRIGGERS:
+    %% - TEST_FAILURE -> ReturnToBuild (fix in iteration)
+    %% - BUILD_FAILURE -> ReturnToBuild (fix compilation/syntax)
+    %% - EXPERIMENT_INCONCLUSIVE -> AskUser (need human judgment)
+
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    LoadInputs --> ReviewInputs[Review Plan Files]
+    ReviewInputs --> ValidatePlans{Plans Valid?}
+    ValidatePlans -- "No: Missing" --> AskUser((Ask User for Clarification))
+    ValidatePlans -- "Yes: Found" --> EnterBuildPhase
+
+    %% ========================================
+    %% BUILD PHASE
+    %% ========================================
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.test-fix-loop
+    %% MAX_ITERATIONS: 5 (per test-fix-loop definition)
+    %% ESCALATION: If max iterations reached, stop and Ask User
+
+    subgraph BuildPhase_SG ["Build Phase Subgraph"]
+        EnterBuildPhase[Enter Build Phase] --> SpawnBuilder[Spawn build-python Agent]
+        SpawnBuilder --> BuildComplete{Build Successful?}
+        BuildComplete -- "No: Syntax Error" --> FixBuild[Fix Build Issues]
+        FixBuild --> SpawnBuilder
+        BuildComplete -- "No: Escalate" --> AskUser
+        BuildComplete -- "Yes: Ready" --> RunUnitTests
+    end
+
+    %% ========================================
+    %% UNIT TEST PHASE
+    %% ========================================
+    %% Validates: Parser tests, workflow tests, template tests
+
+    subgraph TestPhase_SG ["Test Phase Subgraph"]
+        RunUnitTests[Run Unit Tests] --> SpawnTestRunner[Spawn test-runner Agent]
+        SpawnTestRunner --> UnitTestsPass{Unit Tests Pass?}
+        UnitTestsPass -- "No: Fix in Iteration" --> ReturnToBuild[Return to Build Phase]
+        ReturnToBuild -.->|TEST_FAILURE| SpawnBuilder
+        UnitTestsPass -- "Yes: Pass" --> RunIntegrationTests
+
+        RunIntegrationTests[Run Integration Tests] --> SpawnTestRunnerInt[Spawn test-runner Agent]
+        SpawnTestRunnerInt --> IntegrationPass{Integration Tests Pass?}
+        IntegrationPass -- "No: Fix" --> ReturnToBuild
+        IntegrationPass -- "Yes: Pass" --> EnterExperiment
+    end
+
+    %% ========================================
+    %% BLIND TESTING EXPERIMENT PHASE
+    %% ========================================
+    %% CRITICAL: This validates whether the feature solves the original problem
+    %% - Baseline: Run planner without prefill, measure MMD completion rate
+    %% - Treatment: Run planner WITH prefill, measure improvement
+
+    subgraph ExperimentPhase_SG ["Experiment Phase Subgraph"]
+        EnterExperiment[Enter Blind Testing Experiment] --> SetupBaseline[Setup Baseline Scenario]
+        SetupBaseline --> SpawnSimulator[Spawn test-guidance-simulator Agent]
+        SpawnSimulator --> RecordBaseline[Record Baseline Results]
+        RecordBaseline --> SetupTreatment[Setup Treatment Scenario]
+        SetupTreatment --> SpawnSimulatorTreatment[Spawn test-guidance-simulator Agent]
+        SpawnSimulatorTreatment --> RecordTreatment[Record Treatment Results]
+        RecordTreatment --> AnalyzeResults[Analyze Experiment Results]
+        AnalyzeResults --> ExperimentSuccess{Improvement > 15%?}
+        ExperimentSuccess -- "No: Inconclusive" --> DocumentFindings[Document Inconclusive Findings]
+        ExperimentSuccess -- "Yes: Success" --> DocumentSuccess[Document Successful Experiment]
+        DocumentFindings --> AskUserExperiment((Ask User: Continue or Pivot?))
+        DocumentSuccess --> FinalizeFeature
+    end
+
+    %% ========================================
+    %% FINALIZATION PHASE
+    %% ========================================
+
+    subgraph Finalization_SG ["Finalization Subgraph"]
+        FinalizeFeature[Finalize Feature] --> UpdateStability[Update Stability Decorators]
+        UpdateStability --> VerifyHelp[Verify Help Text]
+        VerifyHelp --> ReportComplete[Report Completion]
+    end
+
+    ReportComplete --> End((End: Feature Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    %% Dashed lines for feedback loops
+    classDef dashedstroke stroke-dasharray: 5 5;
+    linkStyle 11,14 stroke:#888,stroke-width:2px,stroke-dasharray: 5 5;

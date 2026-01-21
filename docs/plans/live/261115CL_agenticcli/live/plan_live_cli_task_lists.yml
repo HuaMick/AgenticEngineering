@@ -65,10 +65,10 @@ requirements:
         - "Run tests and validate"
 
   validation_approach:
-    - "Blind planning loop test: Invoke planner agent without explicit MMD reminder"
-    - "Agent sees prefilled task list via CLI"
-    - "Observe if agent completes MMD generation task"
-    - "Compare success rate: with CLI task list vs without"
+    - "Subagent Observation: Spawn context-less subagents and observe if they gather context via CLI"
+    - "Guidance Check: Ask subagents about definitions/guidelines retrieveable only via CLI"
+    - "Task Execution: Observe subagents completing tasks from other plan folders using CLI context"
+    - "First Step Rule: Every agent's first action must be a CLI command to encourage continued usage"
 
 experiment_phases:
   - name: "Phase 1: CLI Task Commands"
@@ -90,37 +90,33 @@ experiment_phases:
       - "builder-preset.yml"
       - "teacher-preset.yml"
 
-  - name: "Phase 3: Blind Testing"
-    description: "Test if agents naturally complete prefilled tasks"
+  - name: "Phase 3: Subagent Context Observation"
+    description: "Verify if subagents can gather context and guidelines via CLI"
     test_scenarios:
-      - scenario: "Baseline (no prefill)"
-        agent: "planner-build"
-        objective: "Create simple build plan"
-        observe: "Does agent generate MMD?"
-        expected: "Likely NO (current behavior)"
+      - scenario: "Guidance Retrieval"
+        agent: "subagent-explorer"
+        objective: "Understand current project guidelines and definitions"
+        action: "Spawn subagent and ask: 'What are the current MMD diagram naming conventions and where should status files be stored?'"
+        observe: "Does agent run CLI commands first? Does it find correct info?"
 
-      - scenario: "With CLI prefill"
-        agent: "planner-build"
-        objective: "Create simple build plan"
-        setup: "agentic plan task prefill --preset planner-build"
-        observe: "Does agent see and complete MMD task?"
-        expected: "Hypothesis: YES (task is visible in their context)"
+      - scenario: "Task Execution with CLI Context"
+        agent: "subagent-worker"
+        objective: "Perform a task from an existing plan folder"
+        action: "Spawn subagent and point it at a backlog item. Observe its context gathering."
+        observe: "Does it use CLI to understand task status and dependencies? Does it continue using CLI?"
 
-  - name: "Phase 4: Integration with Agents"
-    description: "Update agent process files to reference CLI task lists"
+  - name: "Phase 4: Mandatory CLI Entrypoint"
+    description: "Update agent process files to mandate CLI usage as first step"
     approach: |
-      If experiment shows improvement, update agent process files to suggest:
-      "At start: Consider prefilling task list with `agentic plan task prefill --preset <agent-name>`"
-      "During work: Check task status with `agentic plan task list`"
-
-      This is suggestive, not prescriptive - agents can choose to use it.
+      Update all agent process files and guidance to include:
+      "CRITICAL: The first action of any session MUST be a CLI command (e.g., `agentic plan task list` or `agentic info status`) to establish context and encourage continued CLI usage."
 
 success_criteria:
   - "CLI task commands implemented and tested"
   - "Preset templates created for all planner categories"
-  - "Blind test shows improvement in task completion (MMD, README, tests)"
-  - "Agent adoption feels natural (not forced)"
-  - "Documentation shows when/how to use CLI task lists"
+  - "Subagents successfully gather context via CLI without performance comparison"
+  - "Agents demonstrate 'CLI-first' behavior as their first step"
+  - "Documentation shows how CLI context injection replaces manual context management"
 
 risks:
   - "Agents might ignore prefilled tasks (same as guidance reminders)"

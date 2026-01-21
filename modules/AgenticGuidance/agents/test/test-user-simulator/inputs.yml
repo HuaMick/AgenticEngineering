@@ -10,16 +10,7 @@
 # Defines the minimal context needed for user simulator agents to execute
 # user journeys following documentation only (agent-blind-test strategy)
 #
-# PURPOSE:
-# User simulator agents simulate real users following documentation to complete
-# user stories. They test BOTH local AND Docker environments to validate
-# documentation completeness and catch discoverability gaps.
-#
-# RESPONSIBILITIES:
-# - Execute user stories following ONLY documentation (agent-blind test)
-# - Test in both local and Docker environments
-# - Report documentation gaps and unclear instructions
-# - Validate that journeys are completable with zero prior knowledge
+# See process.yml for goal and execution steps.
 #
 # CONSTRAINTS:
 # - NO code inspection (black box testing)
@@ -78,94 +69,29 @@ inputs:
       description: "User acceptance testing requirements"
 
   # User simulator specific terminology and concepts
+  # Full definitions in strategy-user-acceptance.yml and user-stories.yml
   definitions:
     agent_blind_test: |
-      Testing strategy where agent follows documentation only, without
-      inspecting code. Simulates real user experience to catch UX gaps.
-      Agent treats system as black box and reports documentation issues.
-
-      Purpose: Validate documentation completeness and usability
-      Phase: Documentation validation, release preparation
-
-      Critical requirements:
-      - Testing with subagents, NOT testing with code
-      - Subagents execute actual commands as users would
-      - Test BOTH local AND Docker environments
-      - Execute each journey step EXACTLY as written
-      - Verify ACTUAL outcomes, not just help text
-      - NO --help-only validation
-
-      Process:
-      - Orchestration agent reads user stories from docs/userstories/<project>/
-      - One agent per user story
-      - Agent receives only: docs/README.md, modules/AgenticGuidance/docs/ARCHITECTURE.md, and user story definition
-      - Agent does NOT read userstories files directly (keeps it "blind")
+      Testing strategy where agent follows documentation only, without inspecting code.
+      Critical: Execute actual commands (not --help), test BOTH local and Docker environments.
+      See strategy-user-acceptance.yml for full requirements.
 
     user_story: |
-      User stories define personas, starting states, journey steps, and success
-      criteria for UAT testing. Located in docs/userstories/<project>/.
-
-      Each user story includes:
-      - id: Unique identifier (e.g., US-CLI-001)
-      - name: Human-readable name
-      - category: Grouping (cli_basics, setup, development, etc.)
-      - persona: Who is the user
-      - priority: critical, high, medium, low
-      - starting_state: Initial environment conditions
-      - journey: Step-by-step actions with expected outcomes
-      - success_criteria: What must pass
-      - testing: Local and Docker testing instructions
-
-      Orchestration agent passes user story definition in prompt to keep
-      simulator "blind" (no code or extra context).
+      Defines persona, starting state, journey steps, and success criteria.
+      Located in docs/userstories/<project>/. See user-stories.yml for structure.
 
     multi_environment_testing: |
-      User simulator agents MUST test BOTH local AND Docker environments
-      to validate developer workflow AND CI/CD parity.
-
-      Purpose: Catch environment-specific issues
-      - Local test validates developer experience
-      - Docker test validates CI/CD and deployment parity
-      - Differences between environments are important findings
+      MUST test BOTH local AND Docker environments. Local validates developer
+      experience; Docker validates CI/CD parity. Report environment differences.
 
     documentation_gap: |
-      When a user simulator cannot complete a journey step using only
-      documentation, that's a documentation gap (test failure).
-
-      Types of gaps:
-      - Missing steps or instructions
-      - Unclear or ambiguous wording
-      - Undiscoverable commands or options
-      - Wrong or outdated information
-
-      Report these as failures with recommendations for documentation fixes.
+      When a journey step cannot be completed using only documentation.
+      Report as failure with specific recommendation for documentation fix.
 
     functional_testing_requirement: |
-      User simulators MUST execute ACTUAL commands, not just --help validation.
-
-      PROHIBITED:
-      - Running only `myagents <command> --help` instead of actual commands
-      - Reporting "PASS" based on help text validation alone
-      - Skipping journey steps because they "require infrastructure"
-
-      REQUIRED:
-      - Execute each journey step EXACTLY as written
-      - Verify ACTUAL outcomes, not just that help text exists
-      - Test from the EXACT directories specified in the user story
-      - Capture actual command outputs as evidence
+      Execute ACTUAL commands, not --help validation. Verify ACTUAL outcomes.
+      Test from exact directories specified. Capture command outputs as evidence.
 
     failure_reporting_structure: |
-      When executing in test-fix-loop context, failures must be reported
-      to the live plan in a structured format:
-
-      - user_story_id: the user story being tested
-      - step: which journey step failed (number and description)
-      - failure_type: "documentation_gap", "unexpected_error", "unclear_instructions", "docker_difference"
-      - description: clear description of what failed
-      - user_impact: how this affects the user persona
-      - tested_environments: ["local", "docker"] or subset that was tested
-      - local_result: pass/fail and details
-      - docker_result: pass/fail and details
-      - recommendation: what should be fixed
-
-      This enables build agents to consume and fix failures independently.
+      Required fields: user_story_id, step, failure_type, description,
+      user_impact, tested_environments, local_result, docker_result, recommendation.

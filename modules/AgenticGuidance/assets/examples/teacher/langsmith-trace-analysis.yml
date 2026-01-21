@@ -266,6 +266,79 @@ examples:
 
           return all_runs
 
+  recommendation_validation:
+    description: "Validate recommendations against existing guidance before presenting"
+    purpose: |
+      Prevents generating recommendations that duplicate existing guidance.
+      Identifies opportunities to enhance existing guidance instead of adding new.
+
+    pattern: |
+      # For each recommendation, check target file for existing similar content
+      def validate_recommendation(recommendation, target_file_content):
+          """
+          Check if recommended guidance already exists in target file.
+          Returns validation status and any existing matches.
+          """
+          keywords = extract_keywords(recommendation['proposed_change'])
+          existing_matches = []
+
+          for keyword in keywords:
+              if keyword.lower() in target_file_content.lower():
+                  existing_matches.append({
+                      "keyword": keyword,
+                      "context": extract_surrounding_context(target_file_content, keyword)
+                  })
+
+          if existing_matches:
+              return {
+                  "status": "potential_duplicate",
+                  "existing_guidance": existing_matches,
+                  "suggestion": "Consider enhancing existing guidance instead of adding new"
+              }
+          return {"status": "validated", "existing_guidance": None}
+
+      def validate_all_recommendations(recommendations):
+          """
+          Validate batch of recommendations, reading each target file once.
+          """
+          validated = []
+          duplicates = []
+
+          # Group by target file to minimize reads
+          by_target = group_by(recommendations, key=lambda r: r['affected_guidance']['file'])
+
+          for target_file, recs in by_target.items():
+              content = read_file(target_file)
+              for rec in recs:
+                  result = validate_recommendation(rec, content)
+                  if result['status'] == 'validated':
+                      validated.append(rec)
+                  else:
+                      rec['validation'] = result
+                      duplicates.append(rec)
+
+          return {
+              'validated_recommendations': validated,
+              'potential_duplicates': duplicates,
+              'duplicate_rate': len(duplicates) / len(recommendations) if recommendations else 0
+          }
+
+    anti_pattern: |
+      # BAD: Generating recommendations without checking existing guidance
+      def generate_report(friction_patterns):
+          recommendations = generate_recommendations(friction_patterns)
+          # No validation - may duplicate existing guidance!
+          return {
+              'friction_findings': friction_patterns,
+              'recommendations': recommendations  # Could contain duplicates
+          }
+
+      # This leads to:
+      # - Redundant guidance additions
+      # - Conflicting instructions in different locations
+      # - Increased maintenance burden
+      # - Agent confusion from duplicate/conflicting guidance
+
 anti_patterns:
   - name: "Loading full inputs/outputs for all traces"
     problem: "Inputs and outputs can be very large, causing context overflow"
@@ -282,3 +355,7 @@ anti_patterns:
   - name: "Treating all errors equally"
     problem: "Floods recommendations with low-priority items"
     solution: "Use severity classification to prioritize findings"
+
+  - name: "Generating recommendations without validation"
+    problem: "May duplicate existing guidance, causing redundancy and confusion"
+    solution: "Validate each recommendation against target file before presenting"

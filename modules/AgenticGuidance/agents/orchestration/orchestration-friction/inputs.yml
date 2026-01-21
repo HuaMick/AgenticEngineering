@@ -28,6 +28,43 @@ inputs:
       required: false
       default: 100
 
+    - name: "session_count"
+      type: "integer"
+      description: "Number of recent sessions to analyze (overrides lookback_days when provided)"
+      required: false
+      default: null
+      note: "When specified, queries the N most recent sessions regardless of date range"
+
+    - name: "min_affected_sessions"
+      type: "integer"
+      description: "Only report patterns affecting at least this many sessions"
+      required: false
+      default: 2
+      note: "Single-session patterns may be user error, not guidance gaps"
+
+  # ========================================
+  # SESSION ANALYSIS
+  # ========================================
+  session_analysis:
+    description: "Session-based analysis configuration"
+
+    grouping:
+      method: "session_id"
+      fallback: "time_window_30min"
+      note: "Uses session_id from LangSmith metadata; falls back to time-based grouping if unavailable"
+
+    thresholds:
+      min_affected_sessions: 2
+      min_pattern_frequency_per_session: 1
+      note: "Pattern must occur at least once in at least 2 sessions to be reported"
+
+    filtering:
+      exclude_single_session_patterns: true
+      rationale: "Single-session patterns may be user error, not guidance gaps"
+      exceptions:
+        - "Critical severity patterns are always reported"
+        - "Patterns with explicit user feedback are always reported"
+
   # ========================================
   # FRICTION PATTERNS
   # ========================================

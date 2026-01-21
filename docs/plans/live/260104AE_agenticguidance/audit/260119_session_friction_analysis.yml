@@ -1,0 +1,371 @@
+# Session Friction Analysis Report
+# Generated: 2026-01-19
+# Source: Trace diagnostics teacher agent analysis
+
+session_analysis:
+  date: 2026-01-19
+  sessions_analyzed:
+    - "260119BR_test_main_first_planning"
+    - "260119AG_guidance_entrypoint_remediation"
+    - "260119CL_cli_main_first_planning"
+    - "260104AE_agenticguidance"
+  analysis_scope: |
+    Review of session artifacts including plan files, completed work, live work,
+    and READMEs to identify friction points where agents got stuck, had to backtrack,
+    asked excessive questions, or showed signs of confusion.
+
+friction_findings:
+
+  # ============================================================================
+  # CRITICAL FINDINGS
+  # ============================================================================
+
+  - id: FF-001
+    pattern_type: convention_violation
+    severity: CRITICAL
+    description: |
+      Worktree policy violation detected: 21 AgenticGuidance files were modified
+      in the main worktree instead of the dedicated agenticguidance worktree.
+      This required a full remediation plan (plan_live_worktree_remediation.yml)
+      with 4 phases to stash, transfer, commit, and verify the changes.
+    evidence:
+      - file: "/home/code/AgenticEngineering/docs/plans/live/260104AE_agenticguidance/completed/plan_live_worktree_remediation.yml"
+        observation: |
+          21 files modified incorrectly in main worktree requiring stash+transfer remediation.
+          Impact: 1,190 insertions, 69 deletions that had to be moved.
+          Affected: 16 agent files + 5 asset files.
+    affected_guidance:
+      - "modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml"
+      - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml"
+    suggested_resolution: |
+      1. The Main-First Planning policy was implemented in 260119AG session to address this
+      2. Consider adding a pre-commit hook or CLI validation to detect worktree violations
+      3. Ensure all agents loading orchestration-planning inputs understand the Main-First policy
+
+  - id: FF-002
+    pattern_type: missing_context
+    severity: CRITICAL
+    description: |
+      Agent confusion about where planning should occur (worktree vs main).
+      This was the root cause of the 260119AG_guidance_entrypoint_remediation session.
+      Agents were creating plans in feature worktrees instead of main, making plans
+      invisible to users tracking from the main worktree.
+    evidence:
+      - file: "/home/code/AgenticEngineering/docs/plans/live/260119AG_guidance_entrypoint_remediation/README.md"
+        observation: |
+          Session objective: "Address agent confusion regarding where planning should occur
+          (worktree vs main) and ensure the user has a centralized view of all planning state."
+      - file: "/home/code/AgenticEngineering/docs/plans/live/260119AG_guidance_entrypoint_remediation/completed/plan_live_teach.yml"
+        observation: |
+          4 files had to be updated to add Main-First Planning policy:
+          - worktree-and-branching.yml (new rule)
+          - plans.yml (main_first_policy section)
+          - process.mmd (GUIDELINE comments)
+          - inputs.yml (planning_policy section)
+    affected_guidance:
+      - "modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml"
+      - "modules/AgenticGuidance/assets/definitions/plans.yml"
+      - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+      - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml"
+    suggested_resolution: |
+      COMPLETED: Main-First Planning guidance has been added to all 4 target files.
+      CLI update pending in 260119CL_cli_main_first_planning session.
+
+  # ============================================================================
+  # HIGH SEVERITY FINDINGS
+  # ============================================================================
+
+  - id: FF-003
+    pattern_type: backtracking
+    severity: HIGH
+    description: |
+      Multiple self-review iterations required to achieve agent compliance.
+      The self-review process went through 14+ iterations before all 24 agents
+      passed review. Original PASS assessments were "significantly too lenient"
+      with a 78% flag rate on spot-checks.
+    evidence:
+      - file: "/home/code/AgenticEngineering/docs/plans/live/260104AE_agenticguidance/live/plan_live_self_review_remediation.yml"
+        observation: |
+          "Spot-Check Campaign Results (iterations 12-14):
+          - 9 original PASS agents spot-checked
+          - 7 flagged for review (78% flag rate)
+          - 2 confirmed pass (test-runner, planner-cleaning)
+          - Original PASS assessments were significantly too lenient"
+      - file: "/home/code/AgenticEngineering/docs/plans/live/260104AE_agenticguidance/README.md"
+        observation: |
+          Multiple remediation rounds documented:
+          - Self-Review Round 2 -> R2 Remediation
+          - Self-Review Round 3 -> R3 Remediation
+          - Self-Review Round 4 -> ALL PASS
+          Each round found new critical issues requiring remediation.
+    affected_guidance:
+      - "modules/AgenticGuidance/assets/guidelines/context-minimisation.yml"
+      - "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+    suggested_resolution: |
+      1. Add stricter self-review criteria to prevent lenient initial assessments
+      2. Implement automated context-minimisation checks (token counting)
+      3. Consider adding self-review as a standard phase in agent guidance updates
+
+  - id: FF-004
+    pattern_type: schema_violation
+    severity: HIGH
+    description: |
+      Test criteria in blind tests did not match actual CLI output.
+      The README.md criterion mentioned that plans should have README.md files,
+      but the CLI scaffold does not create README.md files.
+    evidence:
+      - file: "/home/code/AgenticEngineering/docs/plans/live/260119AG_guidance_entrypoint_remediation/completed/plan_live_test.yml"
+        observation: |
+          "Minor discrepancy: test criteria mentions README.md but guidance does not require it"
+          Result note: "README.md criterion not in actual guidance - discrepancy noted"
+          Recommendation: "Either add README.md to CLI scaffold output or remove from test criteria"
+    affected_guidance:
+      - "modules/AgenticGuidance/assets/definitions/plans.yml"
+      - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+    suggested_resolution: |
+      1. Update plans.yml to explicitly state whether README.md is required or optional
+      2. Either add README.md generation to CLI plan init, or remove from test criteria
+      3. Ensure test blind tests use only documented guidance, not assumed conventions
+
+  - id: FF-005
+    pattern_type: missing_context
+    severity: HIGH
+    description: |
+      CLI tool does not yet implement Main-First Planning policy.
+      The agentic plan init command creates plans in the feature worktree,
+      not the main worktree as required by the updated guidance.
+    evidence:
+      - file: "/home/code/AgenticEngineering/docs/plans/live/260119AG_guidance_entrypoint_remediation/README.md"
+        observation: |
+          "Finding: CLI tool (agentic plan init) doesn't yet implement Main-First"
+          "This confirms CLI update is needed (separate build plan)"
+      - file: "/home/code/AgenticEngineering/docs/plans/live/260119CL_cli_main_first_planning/completed/plan_live_build.yml"
+        observation: |
+          Build plan created but status is still "pending" for all 3 phases:
+          - Phase 1: Implement Main Worktree Detection (pending)
+          - Phase 2: Modify cmd_init() Logic (pending)
+          - Phase 3: Build Verification (pending)
+    affected_guidance:
+      - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+      - "modules/AgenticGuidance/assets/definitions/cli-commands.yml"
+    suggested_resolution: |
+      Complete the 260119CL_cli_main_first_planning build plan to implement:
+      1. find_main_worktree() helper function
+      2. Always create plan folder in main worktree
+      3. Update output messages to reflect Main-First behavior
+
+  # ============================================================================
+  # MEDIUM SEVERITY FINDINGS
+  # ============================================================================
+
+  - id: FF-006
+    pattern_type: exploration_drift
+    severity: MEDIUM
+    description: |
+      Context-minimisation issues accumulated across multiple agents over time.
+      4 agents with CRITICAL context issues identified requiring 8-10 hours of
+      remediation work. Agents accumulated redundancy despite context-minimisation
+      guidance being in place.
+    evidence:
+      - file: "/home/code/AgenticEngineering/docs/plans/live/260104AE_agenticguidance/live/plan_live_teach_context_optimization.yml"
+        observation: |
+          "ISSUES TO ADDRESS:
+          1. test-audit (TA-CRIT-001): 34% reduction possible
+          2. planner-reviewer (PR-CRIT-001): 54% reduction possible
+          3. deploy-cicd (DC-CRIT-001): 18.8% reduction
+          4. test-builder (TB-CRIT-001): 18.7% reduction"
+      - file: "/home/code/AgenticEngineering/docs/plans/live/260104AE_agenticguidance/live/plan_live_self_review_remediation.yml"
+        observation: |
+          Multiple agents flagged for context violations:
+          - planner-build: PB-001 through PB-003
+          - planner-test: PT-001 through PT-004
+          - test-final-output: TFO-001 through TFO-004
+          - test-guidance-simulator: TGS-001 through TGS-005
+          - test-user-simulator: TUS-001 through TUS-005
+    affected_guidance:
+      - "modules/AgenticGuidance/assets/guidelines/context-minimisation.yml"
+      - "modules/AgenticGuidance/agents/test/test-audit/process.yml"
+      - "modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml"
+      - "modules/AgenticGuidance/agents/deploy/deploy-cicd/inputs.yml"
+      - "modules/AgenticGuidance/agents/test/test-builder/inputs.yml"
+    suggested_resolution: |
+      1. Execute plan_live_teach_context_optimization.yml to address 4 CRITICAL agents
+      2. Consider periodic automated context audits using token counting
+      3. Add context-minimisation checks to the planner-reviewer approval checklist
+
+  - id: FF-007
+    pattern_type: path_ambiguity
+    severity: MEDIUM
+    description: |
+      Empty stub files created by CLI scaffold that serve no purpose.
+      The 260119CL session had to clean up empty stub files (plan_live_test.yml,
+      plan_live_teach.yml, plan_live_audit_clean.yml) that were scaffolds with
+      no tasks defined.
+    evidence:
+      - file: "/home/code/AgenticEngineering/docs/plans/live/260119CL_cli_main_first_planning/completed/plan_completed.yml"
+        observation: |
+          "cleanup_notes:
+          - Removed empty stub files: plan_live_test.yml, plan_live_teach.yml, plan_live_audit_clean.yml
+          - These were scaffolds with no tasks defined"
+      - file: "/home/code/AgenticEngineering/docs/plans/live/260119BR_test_main_first_planning/live/plan_live_test.yml"
+        observation: |
+          File contains only stub structure with empty phases and no actual test content:
+          "phases: []"
+    affected_guidance:
+      - "modules/AgenticGuidance/assets/definitions/plans.yml"
+      - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+    suggested_resolution: |
+      1. Consider not creating empty stub files in CLI plan init
+      2. Or mark stub files clearly as templates requiring population
+      3. Add validation to warn about empty stub files during plan review
+
+  - id: FF-008
+    pattern_type: backtracking
+    severity: MEDIUM
+    description: |
+      Quick wins in self-review remediation were already resolved in prior iterations
+      but not properly tracked, causing unnecessary re-analysis.
+    evidence:
+      - file: "/home/code/AgenticEngineering/docs/plans/live/260104AE_agenticguidance/live/plan_live_self_review_remediation.yml"
+        observation: |
+          "2026-01-19 Re-verification:
+          - PG-001: RESOLVED - MMD note already removed in iteration 3
+          - DW-001: RESOLVED - NOT AN ISSUE - loop_context section is informative metadata
+          - TUA-001: RESOLVED - Only one guidance-artifacts.yml reference exists
+
+          QUICK WINS RESOLVED:
+          - PG-001: Already fixed in iteration 3 (teach_context_remediation)
+          - TUA-001: Already fixed - duplicate guidance-artifacts.yml reference removed
+          - DW-001: Not an issue - loop_context is informative metadata, not noise"
+    affected_guidance:
+      - "modules/AgenticGuidance/assets/definitions/plans.yml"
+    suggested_resolution: |
+      1. Improve tracking of resolved issues across iterations
+      2. Mark issues as RESOLVED immediately when fixed, not in later verification
+      3. Consider adding "resolved_in" field to track which iteration fixed an issue
+
+  # ============================================================================
+  # LOW SEVERITY FINDINGS
+  # ============================================================================
+
+  - id: FF-009
+    pattern_type: convention_violation
+    severity: LOW
+    description: |
+      Inconsistent folder structure between plan sessions. Some sessions have
+      analysis/ subfolders, others do not. The 260119AG session references
+      analysis/ folder but the folder does not exist.
+    evidence:
+      - file: "/home/code/AgenticEngineering/docs/plans/live/260119AG_guidance_entrypoint_remediation/README.md"
+        observation: |
+          References "analysis/audit_worktree_locality.md" and "analysis/review_260119_teach_test.yml"
+          but the analysis folder does not exist in that session.
+      - file: "/home/code/AgenticEngineering/docs/plans/live/260119AG_guidance_entrypoint_remediation/completed/plan_live_audit_clean.yml"
+        observation: |
+          Completion evidence states: "Analysis files already in correct location:
+          - analysis/audit_worktree_locality.md (initial audit findings)"
+          But Glob tool confirms: "Directory does not exist: analysis"
+    affected_guidance:
+      - "modules/AgenticGuidance/assets/definitions/plans.yml"
+    suggested_resolution: |
+      1. Add explicit folder structure requirements to plans.yml
+      2. Include analysis/ as optional subfolder in CLI scaffold
+      3. Ensure README references match actual folder structure
+
+  - id: FF-010
+    pattern_type: missing_context
+    severity: LOW
+    description: |
+      260119BR session has empty placeholder plans with no actual content.
+      All three live plan files have empty phases arrays and TODO placeholders.
+    evidence:
+      - file: "/home/code/AgenticEngineering/docs/plans/live/260119BR_test_main_first_planning/live/plan_live_teach.yml"
+        observation: |
+          Contains: "objective: |
+            TODO: Describe the objective"
+          And: "phases: []"
+      - file: "/home/code/AgenticEngineering/docs/plans/live/260119BR_test_main_first_planning/completed/plan_completed.yml"
+        observation: |
+          Contains: "completed_items: []"
+          No actual work has been completed in this session.
+    affected_guidance:
+      - "modules/AgenticGuidance/assets/definitions/plans.yml"
+    suggested_resolution: |
+      1. Either populate the 260119BR plans with actual content
+      2. Or mark session as abandoned/superseded if work moved elsewhere
+      3. Add guidance about when to create new sessions vs extend existing ones
+
+summary:
+  total_friction_points: 10
+  by_severity:
+    critical: 2
+    high: 3
+    medium: 3
+    low: 2
+
+  by_pattern_type:
+    convention_violation: 2
+    missing_context: 3
+    backtracking: 2
+    schema_violation: 1
+    exploration_drift: 1
+    path_ambiguity: 1
+
+  recommendations:
+    - priority: 1
+      action: "Complete CLI Main-First Planning implementation (260119CL session)"
+      rationale: "Prevents future worktree policy violations (FF-001, FF-002, FF-005)"
+      effort: "1-2 hours"
+
+    - priority: 2
+      action: "Execute context optimization plan (plan_live_teach_context_optimization.yml)"
+      rationale: "Addresses 4 CRITICAL context-minimisation violations (FF-006)"
+      effort: "8-10 hours"
+
+    - priority: 3
+      action: "Add stricter self-review criteria and automated context checks"
+      rationale: "Prevents accumulation of context issues requiring multiple review rounds (FF-003)"
+      effort: "2-3 hours"
+
+    - priority: 4
+      action: "Resolve test criteria vs CLI output discrepancy for README.md"
+      rationale: "Ensures blind tests match actual guidance (FF-004)"
+      effort: "30 minutes"
+
+    - priority: 5
+      action: "Clean up empty placeholder sessions (260119BR) or document their purpose"
+      rationale: "Reduces confusion about session state (FF-010)"
+      effort: "15 minutes"
+
+  key_insights:
+    - insight: |
+        The Main-First Planning policy remediation (260119AG) is the most impactful
+        finding - it addresses the root cause of worktree confusion that led to the
+        21-file violation in FF-001.
+      status: "PARTIALLY ADDRESSED - guidance updated, CLI pending"
+
+    - insight: |
+        Self-review iterations reveal that agents accumulate context violations over
+        time despite guidance being in place. This suggests a need for automated
+        enforcement mechanisms.
+      status: "IDENTIFIED - context optimization plan created"
+
+    - insight: |
+        The 78% flag rate on spot-checks indicates initial self-review was too
+        lenient. Future reviews should use stricter criteria from the start.
+      status: "LEARNING - apply to future reviews"
+
+notes: |
+  This friction analysis was conducted by examining session artifacts, plan files,
+  and README documentation. No actual LangSmith traces were analyzed as the
+  friction detection infrastructure (plan_live_trace_friction_detection.yml) was
+  only recently completed.
+
+  The findings represent observable friction patterns in the documentation and
+  plan execution history, not automated trace analysis.
+
+  NEXT STEPS:
+  1. Use the new _analyze_friction.yml entrypoint to run trace-based friction
+     detection for more granular insights
+  2. Address priority 1-2 recommendations immediately
+  3. Schedule context optimization work for dedicated session

@@ -1,0 +1,684 @@
+# JIT Context Retrieval Test Plan
+# Status: active
+# Priority: high
+# Created: 2026-01-20
+
+# ========================================
+# ROOT-LEVEL PLAN METADATA (Required)
+# ========================================
+name: "jit-context-retrieval-test-plan"
+worktree_path: "/home/code/AgenticEngineering"
+branch: "main"
+status: "active"
+priority: "high"
+
+# ========================================
+# CONTEXT
+# ========================================
+context: |
+  Test plan for validating the JIT Context Retrieval implementation. This plan
+  covers unit tests for CLI commands, integration tests for cross-component flows,
+  and UAT tests for user journeys (agent bootstrap flow).
+
+  KEY TEST OBJECTIVES:
+  1. CLI context commands work correctly (bootstrap, role, task, inputs)
+  2. CLI plan task commands (status, update, current) work correctly
+  3. Main-First plan resolution from feature worktrees
+  4. Agent bootstrap flow (thin-client -> CLI -> context)
+
+  TEST STRATEGY:
+  - Unit: Individual command handlers
+  - Integration: Cross-component flows (context + plan commands)
+  - UAT: Agent bootstrap journey validation (MANDATORY)
+
+# ========================================
+# ROOT-LEVEL INPUTS (Pre-gathered Context)
+# ========================================
+inputs:
+  # Build plan being tested
+  - location: "docs/plans/live/260114CL_context_entrypoints/live/plan_live_build.yml"
+    description: "Build plan defining implemented features to test"
+
+  - location: "docs/plans/live/260114CL_context_entrypoints/specification.md"
+    description: "Technical specification for JIT context retrieval"
+
+  # Implementation targets
+  - location: "modules/AgenticCLI/src/agenticcli/commands/context.py"
+    description: "CLI context command implementation"
+
+  - location: "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+    description: "CLI plan command implementation (task subcommands)"
+
+  - location: "modules/AgenticCLI/src/agenticcli/workflows/context_workflow.py"
+    description: "Main-First plan resolution workflow"
+
+  # Thin-client agent templates
+  - location: "modules/AgenticGuidance/assets/templates/bootstrap-agent-template.md"
+    description: "Bootstrap template for thin-client agents"
+
+  - location: ".claude/agents/"
+    description: "Migrated thin-client agent files"
+
+# ========================================
+# SUCCESS CRITERIA
+# ========================================
+success_criteria:
+  - "All context command unit tests pass"
+  - "All plan task command unit tests pass"
+  - "Integration tests validate cross-component flows"
+  - "Main-First resolution works from feature worktrees"
+  - "Agent bootstrap flow completes successfully (UAT)"
+  - "Thin-client agents retrieve correct context via CLI"
+
+# ========================================
+# PHASES AND TASKS
+# ========================================
+phases:
+
+  # ----------------------------------------
+  # PHASE 1: Environment Setup
+  # ----------------------------------------
+  - name: "Environment Setup"
+    id: "phase_01"
+    execution: sequential
+    description: "Prepare test environment with latest code installed"
+    tasks:
+
+      - id: "01.1"
+        name: "Install latest CLI version"
+        description: |
+          Install the latest version of AgenticCLI to ensure tests
+          run against the current implementation.
+        status: "pending"
+        agent_type: "test-runner"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/pyproject.toml"
+        target_files:
+          - "modules/AgenticCLI/"
+        guidance: |
+          1. Navigate to modules/AgenticCLI/
+          2. Run `uv pip install -e .` to install in development mode
+          3. Verify installation: `agentic --version`
+          4. Confirm version matches source (pyproject.toml)
+          5. Verify context commands exist: `agentic context --help`
+          6. Verify plan task commands exist: `agentic plan task --help`
+        success_criteria:
+          - "`agentic --version` returns expected version"
+          - "`agentic context --help` shows bootstrap, role, task, inputs subcommands"
+          - "`agentic plan task --help` shows status, update, current subcommands"
+
+      - id: "01.2"
+        name: "Verify test fixtures available"
+        description: |
+          Ensure test fixtures and mock data are in place for testing
+          Main-First resolution and plan parsing.
+        status: "pending"
+        agent_type: "test-runner"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/tests/"
+        target_files:
+          - "modules/AgenticCLI/tests/fixtures/"
+        guidance: |
+          1. Check for existing test fixtures in tests/fixtures/
+          2. If missing, create fixture directory
+          3. Verify mock plan YAML files exist for testing
+          4. Verify mock worktree structure for Main-First tests
+        success_criteria:
+          - "Test fixture directory exists"
+          - "Mock plan YAML files available for parsing tests"
+
+  # ----------------------------------------
+  # PHASE 2: Unit Tests - Context Commands
+  # ----------------------------------------
+  - name: "Unit Tests - Context Commands"
+    id: "phase_02"
+    execution: sequential
+    description: "Unit tests for agentic context command group"
+    tasks:
+
+      - id: "02.1"
+        name: "Test context bootstrap command"
+        description: |
+          Unit tests for `agentic context bootstrap` command that returns
+          aggregated Seed Context (Active Task + Role Guidance + Essential Inputs).
+        status: "pending"
+        agent_type: "test-builder"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/context.py"
+          - "modules/AgenticCLI/tests/test_cli.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_context_commands.py"
+        guidance: |
+          1. Create test_context_commands.py if it doesn't exist
+          2. Implement test cases:
+             - test_context_bootstrap_returns_json: Verify --json flag produces valid JSON
+             - test_context_bootstrap_includes_objective: Verify objective from plan included
+             - test_context_bootstrap_includes_role: Verify role process guidance included
+             - test_context_bootstrap_includes_inputs: Verify essential inputs listed
+             - test_context_bootstrap_with_role_flag: Verify --role flag filters correctly
+             - test_context_bootstrap_no_plan_found: Verify graceful handling when no plan
+          3. Mock git worktree detection for isolated testing
+          4. Mock file system access for plan parsing
+        success_criteria:
+          - "All bootstrap tests pass"
+          - "JSON output is valid and parseable"
+          - "Error cases handled gracefully"
+
+      - id: "02.2"
+        name: "Test context role command"
+        description: |
+          Unit tests for `agentic context role <role-id>` command that
+          returns standardized process and guidelines for a specific role.
+        status: "pending"
+        agent_type: "test-builder"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/context.py"
+          - "modules/AgenticGuidance/agents/planner/planner-build/process.yml"
+        target_files:
+          - "modules/AgenticCLI/tests/test_context_commands.py"
+        guidance: |
+          1. Add role command test cases to test_context_commands.py:
+             - test_context_role_finds_agent: Verify role lookup works for valid role
+             - test_context_role_returns_process: Verify process.yml content returned
+             - test_context_role_invalid_role: Verify error for non-existent role
+             - test_context_role_yaml_output: Verify YAML output format (default)
+             - test_context_role_json_output: Verify JSON output with --format json
+          2. Use real agent directories for integration, mock for unit
+          3. Verify invocation_context included in output
+        success_criteria:
+          - "All role tests pass"
+          - "Both YAML and JSON formats work correctly"
+          - "Invalid role returns clear error message"
+
+      - id: "02.3"
+        name: "Test context task command"
+        description: |
+          Unit tests for `agentic context task` command that extracts
+          the active task from the Main-First resolved plan.
+        status: "pending"
+        agent_type: "test-builder"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/context.py"
+          - "modules/AgenticCLI/src/agenticcli/workflows/context_workflow.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_context_commands.py"
+        guidance: |
+          1. Add task command test cases:
+             - test_context_task_returns_current: Verify returns in_progress task
+             - test_context_task_returns_next_pending: Verify returns first pending if none in_progress
+             - test_context_task_all_completed: Verify message when all tasks done
+             - test_context_task_all_flag: Verify --all returns all tasks
+             - test_context_task_structured_output: Verify output includes id, name, inputs, guidance
+          2. Mock plan file with multiple task states
+          3. Verify Main-First resolution is invoked
+        success_criteria:
+          - "All task command tests pass"
+          - "Correct task priority: in_progress > pending"
+          - "Structured output includes all required fields"
+
+      - id: "02.4"
+        name: "Test context inputs command"
+        description: |
+          Unit tests for `agentic context inputs` command that provides
+          JIT manifest of relevant project files.
+        status: "pending"
+        agent_type: "test-builder"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/context.py"
+          - "modules/AgenticGuidance/agents/planner/planner-build/inputs.yml"
+        target_files:
+          - "modules/AgenticCLI/tests/test_context_commands.py"
+        guidance: |
+          1. Add inputs command test cases:
+             - test_context_inputs_returns_manifest: Verify manifest structure
+             - test_context_inputs_role_filter: Verify --role filters inputs
+             - test_context_inputs_resolves_paths: Verify paths are absolute
+             - test_context_inputs_validates_existence: Verify missing files flagged
+             - test_context_inputs_resolve_layers: Verify --resolve expands layers
+          2. Use actual inputs.yml files for realistic testing
+          3. Test with both existing and non-existing files
+        success_criteria:
+          - "All inputs command tests pass"
+          - "Paths resolved to absolute"
+          - "Missing files clearly identified in output"
+
+  # ----------------------------------------
+  # PHASE 3: Unit Tests - Plan Task Commands
+  # ----------------------------------------
+  - name: "Unit Tests - Plan Task Commands"
+    id: "phase_03"
+    execution: sequential
+    description: "Unit tests for agentic plan task command group"
+    tasks:
+
+      - id: "03.1"
+        name: "Test plan task status command"
+        description: |
+          Unit tests for `agentic plan task status` command that shows
+          all tasks with their current status from the active plan.
+        status: "pending"
+        agent_type: "test-builder"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+          - "modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/live/plan_example.yml"
+        target_files:
+          - "modules/AgenticCLI/tests/test_plan_task_commands.py"
+        guidance: |
+          1. Create test_plan_task_commands.py if it doesn't exist
+          2. Implement test cases:
+             - test_task_status_shows_all_tasks: Verify all tasks displayed
+             - test_task_status_filter_by_status: Verify --status flag works
+             - test_task_status_filter_by_phase: Verify --phase flag works
+             - test_task_status_json_output: Verify --json produces valid JSON
+             - test_task_status_rich_table: Verify Rich table formatting
+          3. Mock plan file with multiple phases and task states
+          4. Verify Main-First resolution is used
+        success_criteria:
+          - "All task status tests pass"
+          - "Filtering works correctly"
+          - "JSON and Rich table outputs both work"
+
+      - id: "03.2"
+        name: "Test plan task update command"
+        description: |
+          Unit tests for `agentic plan task update` command that modifies
+          task status in the plan YAML file.
+        status: "pending"
+        agent_type: "test-builder"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_plan_task_commands.py"
+        guidance: |
+          1. Add task update test cases:
+             - test_task_update_marks_completed: Verify status change persisted
+             - test_task_update_marks_in_progress: Verify pending->in_progress works
+             - test_task_update_validates_transitions: Verify invalid transitions rejected
+             - test_task_update_adds_note: Verify --note flag adds completion note
+             - test_task_update_invalid_task_id: Verify error for non-existent task
+             - test_task_update_preserves_yaml: Verify YAML structure preserved after update
+          2. Use temporary file for update tests to avoid modifying real files
+          3. Verify file is valid YAML after update
+        success_criteria:
+          - "All task update tests pass"
+          - "Status transitions validated correctly"
+          - "YAML file remains valid after updates"
+
+      - id: "03.3"
+        name: "Test plan task current command"
+        description: |
+          Unit tests for `agentic plan task current` command that returns
+          the next actionable task.
+        status: "pending"
+        agent_type: "test-builder"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+          - "modules/AgenticCLI/src/agenticcli/workflows/context_workflow.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_plan_task_commands.py"
+        guidance: |
+          1. Add task current test cases:
+             - test_task_current_returns_in_progress: Verify in_progress task priority
+             - test_task_current_returns_pending: Verify first pending when none in_progress
+             - test_task_current_completion_message: Verify message when all done
+             - test_task_current_includes_details: Verify inputs, guidance included
+             - test_task_current_json_output: Verify --json flag works
+          2. Test with various plan states (mixed, all done, all pending)
+        success_criteria:
+          - "All task current tests pass"
+          - "Returns appropriate task or completion message"
+          - "Full task context included in output"
+
+  # ----------------------------------------
+  # PHASE 4: Integration Tests
+  # ----------------------------------------
+  - name: "Integration Tests"
+    id: "phase_04"
+    execution: sequential
+    description: "Integration tests for cross-component flows"
+    tasks:
+
+      - id: "04.1"
+        name: "Test Main-First plan resolution"
+        description: |
+          Integration test for MainFirstPlanResolver that finds plans
+          in the main worktree from feature worktrees.
+        status: "pending"
+        agent_type: "test-builder"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/workflows/context_workflow.py"
+          - "modules/AgenticCLI/src/agenticcli/commands/worktree.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_main_first_resolution.py"
+        guidance: |
+          1. Create test_main_first_resolution.py
+          2. Implement test cases:
+             - test_resolve_plan_from_main_worktree: Direct main worktree access
+             - test_resolve_plan_from_feature_worktree: Feature->Main resolution
+             - test_no_matching_plan: Graceful None return
+             - test_multiple_plan_matches: Handle YYMMDDXX naming convention
+             - test_branch_pattern_matching: Verify branch-based plan matching
+          3. Create temporary worktree structure for realistic testing
+          4. Test with actual git worktree list output (mocked)
+        success_criteria:
+          - "Plan resolution works from any worktree"
+          - "Correct plan matched by branch pattern"
+          - "No errors when plan not found"
+
+      - id: "04.2"
+        name: "Test context to plan task flow"
+        description: |
+          Integration test verifying the flow from `agentic context bootstrap`
+          to `agentic plan task current` works seamlessly.
+        status: "pending"
+        agent_type: "test-builder"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/context.py"
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_context_plan_integration.py"
+        guidance: |
+          1. Create test_context_plan_integration.py
+          2. Implement test cases:
+             - test_bootstrap_then_task_current: Verify both commands use same plan
+             - test_task_update_then_bootstrap: Verify bootstrap reflects updates
+             - test_context_task_matches_plan_task_current: Verify consistency
+          3. Use same mock plan file for both command flows
+          4. Verify no state inconsistency between commands
+        success_criteria:
+          - "Context and plan commands use same plan source"
+          - "Updates from plan commands reflected in context commands"
+          - "No state drift between command groups"
+
+      - id: "04.3"
+        name: "Test bootstrap template generation"
+        description: |
+          Integration test for generating thin-client agent files
+          from the bootstrap template.
+        status: "pending"
+        agent_type: "test-builder"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticGuidance/assets/templates/bootstrap-agent-template.md"
+          - "modules/AgenticCLI/src/agenticcli/commands/context.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_agent_generation.py"
+        guidance: |
+          1. Create test_agent_generation.py
+          2. Implement test cases:
+             - test_generate_agent_valid_role: Verify template substitution works
+             - test_generate_agent_includes_cli_commands: Verify CLI commands correct
+             - test_generate_agent_under_500_tokens: Verify token limit
+             - test_generate_agent_invalid_role: Verify error handling
+          3. Count tokens in generated output
+          4. Verify all {{VARIABLE}} placeholders substituted
+        success_criteria:
+          - "Generated agents under 500 tokens"
+          - "All placeholders substituted correctly"
+          - "CLI commands in generated file are valid"
+
+  # ----------------------------------------
+  # PHASE 5: UAT Tests (MANDATORY)
+  # ----------------------------------------
+  - name: "UAT Tests - Agent Bootstrap Flow"
+    id: "phase_05"
+    execution: sequential
+    description: |
+      User Acceptance Testing for the complete agent bootstrap journey.
+      MANDATORY - Primary success criteria for this implementation.
+    tasks:
+
+      - id: "05.1"
+        name: "UAT: Thin-client agent bootstrap journey"
+        description: |
+          Validate that an agent using the thin-client model can successfully
+          bootstrap, retrieve context, and complete a task using CLI commands.
+        status: "pending"
+        agent_type: "test-user-simulator"
+        loop: "user-story-validation-loop"
+        strategy: "simulator"
+        inputs:
+          - ".claude/agents/planner-build.md"
+          - "modules/AgenticCLI/src/agenticcli/commands/context.py"
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+        target_files:
+          - "docs/plans/live/260114CL_context_entrypoints/audit/uat_bootstrap_journey.yml"
+        guidance: |
+          USER STORY: As an AI agent, I want to bootstrap my context via CLI
+          so that I can work with minimal initial token usage.
+
+          ACCEPTANCE CRITERIA:
+          1. Agent reads thin-client .md file (under 500 tokens)
+          2. Agent runs `agentic context bootstrap --role planner-build -j`
+          3. Agent receives objective, process, and essential inputs
+          4. Agent runs `agentic plan task current` to get next task
+          5. Agent can work on the task with retrieved context
+          6. Agent runs `agentic plan task update <id> --status completed`
+          7. Agent can repeat cycle for next task
+
+          VALIDATION STEPS:
+          1. Invoke planner-build agent with thin-client file
+          2. Observe: Does agent run bootstrap commands?
+          3. Observe: Does agent successfully parse JSON output?
+          4. Observe: Does agent retrieve correct task?
+          5. Observe: Does agent complete task update cycle?
+          6. Document any friction points or failures
+        success_criteria:
+          - "Agent bootstraps from thin-client file only"
+          - "Agent retrieves context via CLI commands"
+          - "Agent completes task update cycle"
+          - "No manual context loading required"
+
+      - id: "05.2"
+        name: "UAT: Main-First resolution from feature worktree"
+        description: |
+          Validate that context commands work correctly when invoked
+          from a feature worktree, resolving to the main worktree plan.
+        status: "pending"
+        agent_type: "test-user-simulator"
+        loop: "user-story-validation-loop"
+        strategy: "simulator"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/workflows/context_workflow.py"
+          - "modules/AgenticCLI/src/agenticcli/commands/worktree.py"
+        target_files:
+          - "docs/plans/live/260114CL_context_entrypoints/audit/uat_main_first.yml"
+        guidance: |
+          USER STORY: As an agent working in a feature worktree, I want my
+          context commands to find my plan in the main worktree so that I
+          can track my progress correctly.
+
+          ACCEPTANCE CRITERIA:
+          1. Agent is invoked in a feature worktree (not main)
+          2. `agentic context bootstrap` finds plan in main worktree
+          3. Objective matches the feature branch being worked on
+          4. Task list reflects correct plan from main worktree
+          5. Task updates persist to main worktree plan file
+
+          VALIDATION STEPS:
+          1. Create or use existing feature worktree
+          2. Run `agentic context bootstrap` from feature worktree
+          3. Verify objective is from main worktree plan
+          4. Run `agentic plan task status` and verify tasks shown
+          5. Document resolution path for debugging
+        success_criteria:
+          - "Context commands work from feature worktree"
+          - "Plan correctly resolved from main worktree"
+          - "No errors when plan folder matches branch"
+          - "Updates persist to correct location"
+
+      - id: "05.3"
+        name: "UAT: Policy update propagation"
+        description: |
+          Validate that policy updates in CLI are immediately respected
+          by agents in all worktrees (zero stale guidance).
+        status: "pending"
+        agent_type: "test-user-simulator"
+        loop: "user-story-validation-loop"
+        strategy: "simulator"
+        inputs:
+          - "modules/AgenticGuidance/agents/planner/planner-build/process.yml"
+          - "modules/AgenticCLI/src/agenticcli/commands/context.py"
+        target_files:
+          - "docs/plans/live/260114CL_context_entrypoints/audit/uat_policy_propagation.yml"
+        guidance: |
+          USER STORY: As a developer, I want policy updates to be immediately
+          reflected in agent context so that I don't have stale guidance.
+
+          ACCEPTANCE CRITERIA:
+          1. Modify a process.yml or inputs.yml file
+          2. Run `agentic context role <role>` and verify new content
+          3. No cache invalidation required
+          4. Change visible immediately across all sessions
+
+          VALIDATION STEPS:
+          1. Note current content of a process.yml field
+          2. Modify the field (add a test marker)
+          3. Run `agentic context role <role>` immediately
+          4. Verify new content appears
+          5. Revert the change after test
+        success_criteria:
+          - "Policy updates appear immediately"
+          - "No stale guidance in context responses"
+          - "Works across multiple worktrees"
+
+  # ----------------------------------------
+  # PHASE 6: Test Audit (MANDATORY)
+  # ----------------------------------------
+  - name: "Test Audit"
+    id: "phase_06"
+    execution: sequential
+    description: |
+      Mandatory audit phase to review test quality and detect potential
+      reward hacking or test gaps.
+    tasks:
+
+      - id: "06.1"
+        name: "Audit test coverage and quality"
+        description: |
+          Review all test phases to validate test quality, check for
+          reward hacking patterns, and identify gaps.
+        status: "pending"
+        agent_type: "test-audit"
+        loop: "audit-test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/tests/test_context_commands.py"
+          - "modules/AgenticCLI/tests/test_plan_task_commands.py"
+          - "modules/AgenticCLI/tests/test_main_first_resolution.py"
+        target_files:
+          - "docs/plans/live/260114CL_context_entrypoints/audit/test_audit_results.yml"
+        guidance: |
+          AUDIT CHECKLIST:
+          1. Review skipped tests - are skip justifications valid?
+          2. Check for hardcoded paths that would break in CI
+          3. Verify mocks are appropriate (not hiding real bugs)
+          4. Check for reward hacking patterns:
+             - Tests that always pass
+             - Tests that don't actually validate behavior
+             - Tests with overly relaxed assertions
+          5. Identify missing test cases:
+             - Error handling paths
+             - Edge cases
+             - Boundary conditions
+          6. Verify test isolation (no shared state leakage)
+        success_criteria:
+          - "All skipped tests have valid justification"
+          - "No hardcoded paths found"
+          - "No reward hacking patterns detected"
+          - "Test coverage adequate for implementation"
+
+      - id: "06.2"
+        name: "Audit UAT completeness"
+        description: |
+          Review UAT tests to ensure all user journeys are covered
+          and acceptance criteria are properly validated.
+        status: "pending"
+        agent_type: "test-audit"
+        loop: "audit-test-fix-loop"
+        inputs:
+          - "docs/plans/live/260114CL_context_entrypoints/audit/uat_bootstrap_journey.yml"
+          - "docs/plans/live/260114CL_context_entrypoints/audit/uat_main_first.yml"
+          - "docs/plans/live/260114CL_context_entrypoints/audit/uat_policy_propagation.yml"
+        target_files:
+          - "docs/plans/live/260114CL_context_entrypoints/audit/uat_audit_results.yml"
+        guidance: |
+          UAT AUDIT CHECKLIST:
+          1. All user stories from specification covered?
+          2. Acceptance criteria measurable and validated?
+          3. Friction points documented for remediation?
+          4. Success/failure clearly distinguished?
+          5. Edge cases considered (no plan, invalid role, etc.)?
+        success_criteria:
+          - "All specification user journeys have UAT coverage"
+          - "Acceptance criteria are measurable"
+          - "Friction points documented"
+
+  # ----------------------------------------
+  # PHASE 7: Documentation Validation
+  # ----------------------------------------
+  - name: "Documentation Validation"
+    id: "phase_07"
+    execution: sequential
+    description: "Validate documentation matches implementation"
+    tasks:
+
+      - id: "07.1"
+        name: "Validate CLI help documentation"
+        description: |
+          Verify CLI help text accurately describes implemented commands.
+        status: "pending"
+        agent_type: "test-runner"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/cli.py"
+        target_files:
+          - "docs/plans/live/260114CL_context_entrypoints/audit/doc_validation.yml"
+        guidance: |
+          1. Run `agentic --help` and verify all commands documented
+          2. Run `agentic context --help` and verify all subcommands
+          3. Run `agentic plan task --help` and verify all subcommands
+          4. Check each command's --help matches actual behavior
+          5. Document any discrepancies
+        success_criteria:
+          - "All commands appear in help output"
+          - "Help text matches actual behavior"
+          - "No undocumented flags or options"
+
+# ========================================
+# NOTES
+# ========================================
+notes: |
+  TEST STRATEGY RATIONALE:
+  - Unit tests cover individual command handlers in isolation
+  - Integration tests validate cross-component flows
+  - UAT tests validate complete user journeys (MANDATORY)
+  - Audit phase catches test quality issues and reward hacking
+
+  MAIN-FIRST TESTING:
+  Tests must validate that context commands work correctly from both:
+  - The main worktree (direct plan access)
+  - Feature worktrees (Main-First resolution)
+
+  TOKEN REDUCTION VALIDATION:
+  While specific token reduction metrics were removed from success criteria,
+  UAT tests should still observe that thin-client agents successfully
+  bootstrap without requiring large static context files.
+
+  TEST EXECUTION ORDER:
+  1. Environment Setup (install latest CLI)
+  2. Unit Tests (isolated command testing)
+  3. Integration Tests (cross-component flows)
+  4. UAT Tests (user journey validation)
+  5. Test Audit (quality review)
+  6. Documentation Validation (help text accuracy)
