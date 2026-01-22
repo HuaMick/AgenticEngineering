@@ -63,5 +63,3 @@ Updated the following files with Main-First Planning policy:
 - `live/plan_live_test.yml`: Blind test validation
 - `live/plan_live_audit_clean.yml`: Final audit tasks
 - `live/orchestration_guidance_entrypoint.mmd`: Execution flowchart
-- `analysis/audit_worktree_locality.md`: Initial audit findings
-- `analysis/review_260119_teach_test.yml`: Plan review

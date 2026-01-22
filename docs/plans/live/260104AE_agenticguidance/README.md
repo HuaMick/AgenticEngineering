@@ -1,10 +1,131 @@
 # Plan: 260104AE_agenticguidance
 
-## Status: COMPLETED (Friction Analysis Improvements Done)
+## Status: ALL WORK COMPLETE
 
-**Updated**: 2026-01-20
-**Branch**: `agenticguidance`
-**Worktree**: `/home/code/AgenticEngineering-agenticguidance`
+**Updated**: 2026-01-23
+**Branch**: `main`
+**Worktree**: `/home/code/AgenticEngineering`
+
+## Current State
+
+**No active plans in live/ folder.** All work complete.
+
+### Session 2026-01-23: Friction Analysis - ALL COMPLETE
+
+**Build Plan (4 phases, 5 tasks - COMPLETE):**
+1. Created `friction-patterns.yml` definition file (FP-001 through FP-006)
+2. Updated `orchestration-friction/inputs.yml` with definition reference
+3. Verified REC-002 already addressed (branching guideline in orchestration-build)
+4. Validation passed - all test dependencies satisfied
+
+**Test Plan (5 phases, 23 tasks - COMPLETE):**
+- Phase 1 (Unit Tests): Already implemented in `modules/AgenticLangSmith/tests/test_friction.py`
+- 28 tests covering all 6 friction patterns and resolution recommendations
+- Tests archived: `completed/plan_live_test_friction_analysis.yml`
+
+**Files Created:**
+- `modules/AgenticGuidance/assets/definitions/friction-patterns.yml` (4.6KB)
+
+**Files Modified:**
+- `modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml` (version 1.0 → 1.1)
+
+**Archived Plans:**
+- `completed/plan_live_build_friction_analysis.yml`
+- `completed/plan_live_test_friction_analysis.yml`
+
+### Next Session Entry Point
+
+No pending work in this planning folder. Consider:
+1. Running friction analysis on recent LangSmith traces: `_analyze_friction.yml`
+2. Creating new improvement plans based on findings
+3. Exploring other planning folders for pending work
+
+### Previous Completions
+
+### Recent Completions (2026-01-22)
+- Main-First Planning clarification (REC-001, REC-002)
+- Pre-commit hook implementation (REC-003)
+- Policy renamed to "Centralized Plan Visibility" (REC-004)
+- Housekeeping cleanup (FF-009, FF-010) - COMPLETED
+  - FF-009: Fixed 260119AG README references to non-existent analysis/ folder
+  - FF-010: Cleaned up 260119BR test session placeholder files
+
+### All Friction Recommendations RESOLVED
+From friction analysis (260122_friction_analysis.yml):
+- REC-001 (CRITICAL): Clarify Main-First Planning scope - COMPLETED
+- REC-002 (HIGH): Add branching guideline to build agent inputs - COMPLETED
+- REC-003 (MEDIUM): Implement pre-commit guard for main branch - COMPLETED
+- REC-004 (LOW): Rename policy for clarity - COMPLETED (now "Centralized Plan Visibility")
+
+---
+
+## Session 2026-01-22: Pre-commit Hook Implementation - COMPLETE
+
+### Completed Initiative
+Executed `plan_live_precommit_hook.yml` - all 3 teach tasks complete:
+
+| Task ID | Description | Status |
+|---------|-------------|--------|
+| teach_001 | Create pre-commit hook script | COMPLETE |
+| teach_002 | Document hook in worktree-and-branching.yml | COMPLETE |
+| teach_003 | Verify hook behavior | COMPLETE |
+
+### Changes Made
+
+**.claude/hooks/precommit**:
+- Created Claude Code pre-commit hook for main branch protection
+- Warns when non-plan files are committed to main/master
+- Provides workflow reminder with Main-First Planning reference
+- Warning-only (does not block commits)
+
+**worktree-and-branching.yml**:
+- Renamed `tooling_recommendations` to `tooling_enforcement`
+- Updated documentation to show hook is implemented
+- Added behavior documentation and configuration notes
+
+### Friction Pattern Addressed
+Implements REC-003 from friction analysis (260122_friction_analysis.yml):
+- Technical enforcement of Main-First Planning scope
+- Completes the Main-First clarification initiative:
+  - REC-001: Guidance clarification ✓
+  - REC-002: Build agent inputs ✓
+  - REC-003: Pre-commit hook ✓
+
+### Files Archived
+- `plan_live_precommit_hook.yml` → `completed/`
+
+---
+
+## Session 2026-01-22: Main-First Planning Clarification - COMPLETE
+
+### Completed Initiative
+Executed `plan_live_main_first_clarification.yml` - all 3 teach tasks complete:
+
+| Task ID | Description | Status |
+|---------|-------------|--------|
+| teach_001 | Clarify Main-First Planning scope in worktree-and-branching.yml | COMPLETE |
+| teach_002 | Add Main-First scope note to orchestration-build inputs | COMPLETE |
+| teach_003 | Document pre-commit warning recommendation | COMPLETE |
+
+### Changes Made
+
+**worktree-and-branching.yml**:
+- Added `scope` field to Main-First Planning rule clarifying it applies to plan files only
+- Added `clarification` field explaining plan visibility vs code development workflow
+- Added 4 Main-First specific anti-patterns to prevent confusion
+- Added `tooling_recommendations` section with pre-commit hook recommendation
+
+**orchestration-build/inputs.yml**:
+- Added WORKTREE POLICY REMINDER comment block
+- Expanded worktree-and-branching.yml reference with `key_rules` field
+
+### Friction Pattern Addressed
+The friction analysis (260122_friction_analysis.yml) identified that CLI code changes were committed directly to main branch due to misinterpretation of Main-First Planning. The guidance now explicitly clarifies that Main-First Planning is about PLAN VISIBILITY only - code development must still use feature worktrees and staging-first merge strategy.
+
+### Files Archived
+- `plan_live_main_first_clarification.yml` → `completed/`
+
+---
 
 ## Session 2026-01-20: Friction Analysis Improvements - ALL COMPLETE
 

@@ -1,0 +1,243 @@
+# Plan: Main-First Planning Guidance Clarification
+# Created: 2026-01-22
+# Objective: Clarify that Main-First Planning applies to PLAN FILES, not code work
+
+name: "main-first-planning-clarification"
+worktree_path: "/home/code/AgenticEngineering"
+branch: "agenticguidance"
+status: "completed"
+priority: "high"
+created: "2026-01-22"
+
+# ========================================
+# PLAN METADATA
+# ========================================
+plan_metadata:
+  name: "Main-First Planning Clarification"
+  created: "2026-01-22"
+  status: "completed"
+  completed: "2026-01-22"
+  objective: |
+    Clarify the Main-First Planning guidance to explicitly distinguish between:
+    - Plan files: created and maintained in the main worktree for visibility
+    - Development work (code changes): must be done in feature worktrees, then merged through staging
+
+# ========================================
+# CONTEXT & FRICTION ANALYSIS
+# ========================================
+context: |
+  The friction analysis (260122_friction_analysis.yml) identified confusion around
+  Main-First Planning that led to CLI code being committed directly to the main branch.
+
+  ROOT CAUSE:
+  The Main-First Planning guidance in worktree-and-branching.yml clearly states that
+  PLAN FILES should be created in the main worktree, but it does not explicitly clarify
+  that DEVELOPMENT WORK (code changes) must still happen in feature worktrees.
+
+  OBSERVED FRICTION:
+  - AgenticCLI code changes were committed directly to main branch
+  - This violated the staging-first merge strategy
+  - The agent interpreted "Main-First Planning" too broadly
+
+  WHAT MAIN-FIRST PLANNING ACTUALLY MEANS:
+  1. Plan YAML files (docs/plans/live/*) go in main worktree - for centralized visibility
+  2. Code implementation goes in feature worktrees - then merges via staging to main
+  3. The two concerns are separate: plan visibility vs code development workflow
+
+friction_analysis:
+  source: "docs/plans/live/260104AE_agenticguidance/audit/260122_friction_analysis.yml"
+  summary: |
+    Main-First Planning guidance was misinterpreted to mean ALL work happens in main.
+    The guidance needs explicit clarification that only PLAN FILES go in main, while
+    CODE WORK follows the standard worktree branching strategy.
+
+  affected_components:
+    - file: "modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml"
+      issue: "Main-First Planning rule does not explicitly clarify scope (plan files only)"
+      impact: "Agents may interpret it as permission to do all work in main"
+
+    - file: "modules/AgenticGuidance/agents/orchestration/orchestration-build/inputs.yml"
+      issue: "Worktree-and-branching.yml is referenced but the distinction is not emphasized"
+      impact: "Build agents may not understand plan files vs code work separation"
+
+# ========================================
+# PHASES
+# ========================================
+phases:
+  - name: "Teach Phase - Guidance Clarification"
+    description: "Update guidance files to explicitly clarify Main-First Planning scope"
+    execution: sequential
+    tasks:
+      # ----------------------------------------
+      # Task 1: Update worktree-and-branching.yml
+      # ----------------------------------------
+      - id: "teach_001"
+        name: "Clarify Main-First Planning scope in worktree-and-branching.yml"
+        status: "completed"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml"
+        target_files:
+          - "modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml"
+        guidance: |
+          Update the Main-First Planning rule to explicitly clarify scope:
+
+          1. Add a "scope" field to the Main-First Planning rule:
+             scope: |
+               APPLIES TO: Plan files only (docs/plans/live/*.yml, orchestration MMDs)
+               DOES NOT APPLY TO: Code changes, feature implementation, module updates
+
+          2. Add explicit "anti_patterns" for Main-First Planning:
+             anti_patterns:
+               - "Committing code changes directly to main branch"
+               - "Implementing features in the main worktree"
+               - "Confusing plan file visibility with code development workflow"
+
+          3. Add a "clarification" field:
+             clarification: |
+               Main-First Planning is about PLAN VISIBILITY, not code development:
+               - Plan YAML files: Created in main worktree so user sees all plans in one place
+               - Code changes: Must be developed in feature worktrees, merged via staging
+               - After plan approval: Switch to feature worktree for actual implementation
+               - The 'agentic plan init' command creates BOTH: plan folder in main, worktree for code
+
+          4. Update characteristics to add:
+             - "Plan files only - code work happens in feature worktrees"
+             - "After plan creation in main, switch to feature worktree for implementation"
+
+        acceptance_criteria:
+          - "Main-First Planning rule has explicit scope field"
+          - "Anti-patterns clarify that code commits to main are NOT permitted"
+          - "Clarification field explains plan visibility vs code development"
+          - "Characteristics updated to reinforce scope"
+
+      # ----------------------------------------
+      # Task 2: Add emphasis to orchestration-build inputs
+      # ----------------------------------------
+      - id: "teach_002"
+        name: "Add Main-First scope note to orchestration-build inputs"
+        status: "completed"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-build/inputs.yml"
+          - "modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml"
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-build/inputs.yml"
+        guidance: |
+          Update the worktree-and-branching.yml reference in inputs.yml to add context:
+
+          1. Expand the description for worktree-and-branching.yml entry (around line 82-83):
+             - location: "modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml"
+               description: "Worktree + branching policy."
+               key_rules:
+                 - "Main-First Planning: Plan FILES go in main worktree for visibility"
+                 - "Staging-first merge: CODE changes go in feature worktrees, merge via staging"
+                 - "CRITICAL: Main-First applies to plan files only, NOT code implementation"
+
+          2. Add a comment block near the top of the inputs section:
+             # WORKTREE POLICY REMINDER:
+             # - Main-First Planning = plan YAML files in main worktree
+             # - Code implementation = feature worktrees, merge via staging
+             # - Reference: worktree-and-branching.yml#Main-First Planning
+
+        acceptance_criteria:
+          - "Worktree-and-branching reference has expanded key_rules"
+          - "Comment block clarifies plan files vs code work distinction"
+          - "Build agents reading inputs will understand scope limitation"
+
+      # ----------------------------------------
+      # Task 3: Optional pre-commit warning (if feasible)
+      # ----------------------------------------
+      - id: "teach_003"
+        name: "Document pre-commit warning recommendation"
+        status: "completed"
+        agent: "teacher-update-guidance"
+        priority: "low"
+        inputs:
+          - "modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml"
+        target_files:
+          - "modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml"
+        guidance: |
+          Add a "tooling_recommendations" section to worktree-and-branching.yml:
+
+          tooling_recommendations:
+            - name: "Pre-commit branch check"
+              description: |
+                Consider implementing a pre-commit hook that warns when committing
+                non-plan files to the main branch. This provides a safety net against
+                accidental Main-First Planning misinterpretation.
+              implementation_note: |
+                This is a recommendation for future tooling improvement, not a
+                requirement for this plan. The guidance clarification is the
+                primary remediation.
+
+        acceptance_criteria:
+          - "Tooling recommendation documented"
+          - "Marked as optional/future improvement"
+
+# ========================================
+# DELIVERABLES
+# ========================================
+deliverables:
+  - file: "modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml"
+    changes:
+      - "Add scope field to Main-First Planning rule"
+      - "Add anti_patterns for Main-First Planning"
+      - "Add clarification field explaining plan files vs code work"
+      - "Update characteristics to reinforce scope"
+      - "Add tooling_recommendations section (optional)"
+
+  - file: "modules/AgenticGuidance/agents/orchestration/orchestration-build/inputs.yml"
+    changes:
+      - "Expand worktree-and-branching.yml reference with key_rules"
+      - "Add WORKTREE POLICY REMINDER comment block"
+
+# ========================================
+# ACCEPTANCE CRITERIA
+# ========================================
+acceptance_criteria:
+  - "worktree-and-branching.yml Main-First Planning rule has explicit scope limiting it to plan files"
+  - "Anti-patterns clearly state that code commits to main are NOT part of Main-First Planning"
+  - "orchestration-build inputs.yml includes explicit reminder about plan files vs code work"
+  - "An agent reading the updated guidance will understand that Main-First = plan visibility only"
+  - "The distinction between plan file location and code development workflow is unambiguous"
+  - "No YAML syntax errors in updated files"
+
+# ========================================
+# SUCCESS CRITERIA
+# ========================================
+success_criteria:
+  - "After reading worktree-and-branching.yml, agents correctly identify:"
+  - "  - Plan files (YAML, MMD) -> create in main worktree"
+  - "  - Code changes -> develop in feature worktree, merge via staging"
+  - "Friction pattern of 'code committed to main' is prevented by clear guidance"
+  - "orchestration-build agents have context reminder in their inputs"
+
+# ========================================
+# VALIDATION APPROACH
+# ========================================
+validation:
+  approach: "agent-self-review"
+  description: |
+    After updates, simulate an agent reading the guidance:
+    1. Read worktree-and-branching.yml Main-First Planning rule
+    2. Verify the scope field clearly limits to plan files
+    3. Verify anti-patterns list code commits to main as forbidden
+    4. Confirm an agent would NOT interpret this as permission to commit code to main
+
+# ========================================
+# NOTES
+# ========================================
+notes: |
+  This plan addresses a guidance gap discovered through friction analysis.
+  The original Main-First Planning guidance was correct but incomplete -
+  it focused on what TO DO (put plans in main) without clarifying what NOT TO DO
+  (don't commit code to main).
+
+  The remediation is purely a teaching/guidance update - no code changes required.
+  This is a "fence" addition: adding guardrails to prevent agents from taking
+  the wrong path.
+
+  Reference friction analysis: docs/plans/live/260104AE_agenticguidance/audit/260122_friction_analysis.yml
+
+estimated_effort: "30-45 minutes"

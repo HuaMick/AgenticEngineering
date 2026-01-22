@@ -33,6 +33,7 @@ Global Commands (work from any directory):
 Project Commands (require .git or .agenticcli.yml):
   worktree (wt)   Manage git worktrees with planning folder integration
   plan            Manage planning folders and track task status
+  context (ctx)   JIT context retrieval for agents
   langsmith (ls)  Query LangSmith traces and runs
   inputs          Validate and resolve inputs.yml references
   template (tpl)  Generate plan files from templates
@@ -47,11 +48,21 @@ Flags:
   -h, --help      Show help
 
 Examples:
-  agentic setup
-  agentic health
-  agentic prefs set editor.theme dark
-  agentic wt create feature-auth
-  agentic -j plan status
+  agentic setup                          # Interactive setup wizard
+  agentic health                         # Check CLI health
+  agentic wt create feature-auth         # Create worktree
+
+Context Commands (JIT context retrieval for agents):
+  agentic context bootstrap --role build # Get agent seed context
+  agentic context role planner-build     # Get role-specific guidance
+  agentic context task                   # Get current task from plan
+  agentic context inputs --role build    # Get input file manifest
+
+Plan Task Commands (task list management):
+  agentic plan task list                 # List all tasks with status
+  agentic plan task current              # Get current/next task
+  agentic plan task update 01.1 --status completed  # Update task
+  agentic plan task prefill --preset planner-build  # Load preset
 """,
     )
 
@@ -112,6 +123,9 @@ Examples:
 
     # Environment management
     _add_env_parser(subparsers)
+
+    # JIT Context commands
+    _add_context_parser(subparsers)
 
     # Note: LangSmith parser already added at line 101
     # Duplicate call removed during Phase 5 integration
@@ -408,6 +422,42 @@ def _add_plan_parser(subparsers):
         choices=["low", "medium", "high"],
         default="medium",
         help="Task priority (default: medium)",
+    )
+
+    # task update
+    update_parser = task_subparsers.add_parser(
+        "update",
+        help="Update task status in plan file",
+        description="Mark a task as in_progress, completed, or blocked.",
+    )
+    update_parser.add_argument(
+        "task_id",
+        help="Task ID (e.g., 01.1, build_01_001)",
+    )
+    update_parser.add_argument(
+        "--status", "-s",
+        required=True,
+        choices=["pending", "in_progress", "completed", "blocked"],
+        help="New status for the task",
+    )
+    update_parser.add_argument(
+        "--plan", "-p",
+        help="Plan path (default: auto-detect)",
+    )
+    update_parser.add_argument(
+        "--note", "-n",
+        help="Add a completion note to the task",
+    )
+
+    # task current
+    current_parser = task_subparsers.add_parser(
+        "current",
+        help="Get the current task to work on",
+        description="Returns the first in_progress task, or first pending if none in progress.",
+    )
+    current_parser.add_argument(
+        "--plan", "-p",
+        help="Plan path (default: auto-detect)",
     )
 
     # plan archive
@@ -1037,6 +1087,100 @@ def _add_env_parser(subparsers):
 # The complete implementation is at line 498 with friction subcommand.
 
 
+def _add_context_parser(subparsers):
+    """Add context subcommand parser for JIT context retrieval."""
+    context_parser = subparsers.add_parser(
+        "context",
+        aliases=["ctx"],
+        help="JIT context retrieval for agents",
+        description=(
+            "Just-In-Time context commands for agents to fetch exactly what they need "
+            "via CLI instead of loading large static files."
+        ),
+    )
+    context_subparsers = context_parser.add_subparsers(
+        dest="context_command", help="Context commands"
+    )
+
+    # context bootstrap
+    bootstrap_parser = context_subparsers.add_parser(
+        "bootstrap",
+        help="Get Seed Context for agent initialization",
+        description=(
+            "Primary entrypoint for agents to self-initialize. "
+            "Aggregates: Active Task + Role Guidance + Essential Inputs."
+        ),
+    )
+    bootstrap_parser.add_argument(
+        "--role", "-r",
+        help="Role ID (e.g., planner-build, build-python). Auto-detected if not specified.",
+    )
+
+    # context role
+    role_parser = context_subparsers.add_parser(
+        "role",
+        help="Get role-specific process and guidelines",
+        description="Returns process.yml and manifest.yml content for a specific role.",
+    )
+    role_parser.add_argument(
+        "role_id",
+        help="Role ID (e.g., planner-build, build-python)",
+    )
+    role_parser.add_argument(
+        "--format", "-f",
+        choices=["yaml", "json"],
+        default="yaml",
+        help="Output format (default: yaml)",
+    )
+
+    # context task
+    task_parser = context_subparsers.add_parser(
+        "task",
+        help="Get active task from Main-First plan",
+        description=(
+            "Crawls the main worktree's docs/plans/live/ to find and extract "
+            "the active task for the current branch."
+        ),
+    )
+    task_parser.add_argument(
+        "--all", "-a",
+        action="store_true",
+        help="Show all tasks instead of just current task",
+    )
+
+    # context inputs
+    inputs_parser = context_subparsers.add_parser(
+        "inputs",
+        help="Get JIT manifest of relevant project files",
+        description="Returns input files for a role with path resolution and existence checks.",
+    )
+    inputs_parser.add_argument(
+        "--role", "-r",
+        required=True,
+        help="Role ID (e.g., planner-build, build-python)",
+    )
+    inputs_parser.add_argument(
+        "--resolve",
+        action="store_true",
+        help="Expand layer references",
+    )
+
+    # context generate-agent
+    generate_parser = context_subparsers.add_parser(
+        "generate-agent",
+        help="Generate thin-client agent file from bootstrap template",
+        description="Creates minimal agent .md file using bootstrap protocol.",
+    )
+    generate_parser.add_argument(
+        "role_id",
+        help="Role ID (e.g., planner-build, build-python)",
+    )
+    generate_parser.add_argument(
+        "--output", "-o",
+        help="Output file path (default: stdout)",
+    )
+
+
 # Command categories for project requirement checking
 # Includes aliases for each command
 GLOBAL_COMMANDS = {
@@ -1068,6 +1212,8 @@ PROJECT_COMMANDS = {
     "manifest",
     "mf",  # alias for manifest
     "cicd",
+    "context",
+    "ctx",  # alias for context
 }
 
 
@@ -1189,6 +1335,10 @@ def run_cli():
         from agenticcli.commands import langsmith
 
         langsmith.handle(args, ctx=ctx)
+    elif args.command in ("context", "ctx"):
+        from agenticcli.commands import context
+
+        context.handle(args, ctx=ctx)
     else:
         parser.print_help()
         sys.exit(1)

@@ -1,0 +1,441 @@
+# Friction Analysis System Build Plan
+# Generated: 2026-01-23
+# Agent: planner-build
+# Status: pending
+#
+# Purpose: Complete the friction analysis system implementation by creating
+# missing components and addressing recommendations from friction audit.
+
+name: "friction-analysis-system-build"
+worktree_path: "/home/code/AgenticEngineering"
+worktree: "260104AE_agenticguidance"
+status: "completed"
+created: "2026-01-23"
+updated: "2026-01-23"
+completed: "2026-01-23"
+
+# =============================================================================
+# CONTEXT
+# =============================================================================
+context: |
+  The friction analysis system is partially implemented but has missing components
+  that the test plan (plan_live_test_friction_analysis.yml) depends on:
+
+  EXISTING COMPONENTS:
+  - modules/AgenticGuidance/entrypoints/_analyze_friction.yml (entrypoint)
+  - modules/AgenticGuidance/agents/orchestration/orchestration-friction/manifest.yml
+  - modules/AgenticGuidance/agents/orchestration/orchestration-friction/process.mmd
+  - modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml
+
+  MISSING COMPONENTS:
+  - modules/AgenticGuidance/assets/definitions/friction-patterns.yml
+    (friction patterns are currently embedded in inputs.yml, need standalone definition)
+
+  AUDIT RECOMMENDATIONS TO ADDRESS:
+  - REC-002: Add branching guideline to orchestration-build inputs.yml
+    (from 260122_friction_analysis.yml audit report)
+
+objective: |
+  1. Create friction-patterns.yml as standalone reusable definition file
+  2. Update orchestration-friction/inputs.yml to reference the definition file
+  3. Update orchestration-build/inputs.yml to include branching guidelines (REC-002)
+  4. Ensure all test plan dependencies are satisfied
+
+# =============================================================================
+# DEPENDENCIES
+# =============================================================================
+depends_on:
+  - item: "plan_live_friction_analysis_improvements.yml"
+    status: "completed"
+    reason: "Base friction analysis infrastructure already built"
+
+  - item: "260122_friction_analysis.yml (audit report)"
+    status: "available"
+    reason: "Source of REC-002 recommendation"
+
+# =============================================================================
+# REFERENCE MATERIALS
+# =============================================================================
+references:
+  test_plan: "docs/plans/live/260104AE_agenticguidance/live/plan_live_test_friction_analysis.yml"
+  audit_report: "docs/plans/live/260104AE_agenticguidance/audit/260122_friction_analysis.yml"
+  existing_friction_inputs: "modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml"
+  orchestration_build_inputs: "modules/AgenticGuidance/agents/orchestration/orchestration-build/inputs.yml"
+  worktree_branching: "modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml"
+
+# =============================================================================
+# FRICTION PATTERNS TO DEFINE (FP-001 through FP-006)
+# =============================================================================
+friction_patterns_spec:
+  - id: FP-001
+    name: "Excessive Retries"
+    default_resolution: GUIDANCE_UPDATE
+
+  - id: FP-002
+    name: "Exploration Drift"
+    default_resolution: GUIDANCE_UPDATE
+
+  - id: FP-003
+    name: "Missing Context Requests"
+    default_resolution: GUIDANCE_UPDATE
+
+  - id: FP-004
+    name: "Output Schema Violations"
+    default_resolution: GUIDANCE_UPDATE
+
+  - id: FP-005
+    name: "Convention Violations"
+    default_resolution: CLI_OFFLOAD
+
+  - id: FP-006
+    name: "Automatable Patterns"
+    default_resolution: CLI_OFFLOAD
+
+# =============================================================================
+# PHASES
+# =============================================================================
+phases:
+
+  # ===========================================================================
+  # Phase 1: Create Friction Patterns Definition File
+  # ===========================================================================
+  - phase_id: "build_01"
+    name: "Create Friction Patterns Definition"
+    description: |
+      Create a standalone friction-patterns.yml definition file in the assets
+      directory. This enables reuse across agents and provides a single source
+      of truth for friction pattern definitions.
+    status: "completed"
+    estimated_effort: "medium"
+
+    tasks:
+      # -----------------------------------------------------------------------
+      # Task 1.1: Create friction-patterns.yml
+      # -----------------------------------------------------------------------
+      - task_id: "build_01_001"
+        description: "Create friction-patterns.yml definition file"
+        status: "completed"
+        completed_at: "2026-01-23"
+
+        inputs:
+          - path: "modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml"
+            reason: "Contains existing friction pattern definitions to extract"
+          - path: "modules/AgenticGuidance/assets/definitions/friction.yml"
+            reason: "Existing friction definition for consistency"
+          - path: "modules/AgenticGuidance/assets/definitions/definition.yml"
+            reason: "Schema for definition files"
+
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/friction-patterns.yml"
+
+        guidance: |
+          Create a new definition file for friction patterns. The file should:
+
+          1. Follow the standard definition file schema
+          2. Define all 6 friction patterns (FP-001 through FP-006)
+          3. Include detection_signals for each pattern
+          4. Include default_resolution type for each pattern
+          5. Include resolution_hint for each pattern
+          6. Define resolution_types (GUIDANCE_UPDATE, CLI_OFFLOAD, ASSET_UPDATE)
+          7. Define severity_classification rules
+
+          Structure:
+          ```yaml
+          definition:
+            name: friction-patterns
+            version: "1.0"
+            description: |
+              Friction patterns detected during agent execution trace analysis.
+              These patterns indicate guidance gaps or automation opportunities.
+
+          patterns:
+            - id: FP-001
+              name: "Excessive Retries"
+              description: "Agent retries same operation multiple times"
+              detection_signals:
+                - "Multiple consecutive runs with same name pattern"
+                - "Error -> Retry -> Error -> Retry sequences"
+              default_resolution: GUIDANCE_UPDATE
+              resolution_hint: "Add clearer error handling guidance or retry limits"
+
+            # ... (continue for FP-002 through FP-006)
+
+          resolution_types:
+            - type: GUIDANCE_UPDATE
+              description: "Update process files, add signposts, clarify fences"
+              target_locations:
+                - "modules/AgenticGuidance/agents/*/process.yml"
+                - "modules/AgenticGuidance/agents/*/inputs.yml"
+                - "modules/AgenticGuidance/assets/guidelines/"
+            # ... (continue for CLI_OFFLOAD, ASSET_UPDATE)
+
+          severity_classification:
+            high:
+              criteria:
+                - "Pattern occurs in >50% of analyzed sessions"
+                - "Pattern causes visible user impact"
+              action: "Prioritize for immediate resolution"
+            # ... (continue for medium, low)
+          ```
+
+        success_criteria:
+          - "Definition file created at assets/definitions/friction-patterns.yml"
+          - "All 6 friction patterns defined with complete metadata"
+          - "Resolution types documented with target locations"
+          - "Severity classification rules defined"
+          - "File follows existing definition schema conventions"
+
+  # ===========================================================================
+  # Phase 2: Update Orchestration-Friction Inputs
+  # ===========================================================================
+  - phase_id: "build_02"
+    name: "Update Orchestration-Friction Inputs"
+    description: |
+      Update orchestration-friction/inputs.yml to reference the new
+      friction-patterns.yml definition file instead of embedding patterns inline.
+    status: "completed"
+    estimated_effort: "low"
+    depends_on: ["build_01"]
+
+    tasks:
+      # -----------------------------------------------------------------------
+      # Task 2.1: Update inputs.yml to reference definition
+      # -----------------------------------------------------------------------
+      - task_id: "build_02_001"
+        description: "Update orchestration-friction inputs to reference friction-patterns.yml"
+        status: "completed"
+        completed_at: "2026-01-23"
+        completion_note: "Added friction_patterns_definition reference and updated header comment"
+
+        inputs:
+          - path: "modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml"
+            reason: "File to be updated"
+          - path: "modules/AgenticGuidance/assets/definitions/friction-patterns.yml"
+            reason: "New definition file to reference"
+
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml"
+
+        guidance: |
+          Modify inputs.yml to reference the definition file:
+
+          1. Add reference to friction-patterns.yml at the top of the file
+          2. Remove inline friction_patterns section (now in definition file)
+          3. Remove inline resolution_types section (now in definition file)
+          4. Remove inline severity_classification section (now in definition file)
+          5. Keep session_analysis configuration (specific to this agent)
+          6. Keep required_inputs section (specific to this agent)
+          7. Keep dependencies section (specific to this agent)
+          8. Keep output_format section (specific to this agent)
+
+          Updated structure:
+          ```yaml
+          inputs:
+            agent_type: "orchestration-friction"
+            version: "1.0"
+
+            # Reference friction patterns definition
+            friction_patterns_definition: "modules/AgenticGuidance/assets/definitions/friction-patterns.yml"
+
+            required_inputs:
+              # ... (keep existing)
+
+            session_analysis:
+              # ... (keep existing)
+
+            dependencies:
+              # ... (keep existing)
+
+            output_format:
+              # ... (keep existing)
+          ```
+
+        success_criteria:
+          - "inputs.yml references friction-patterns.yml"
+          - "Inline friction pattern definitions removed"
+          - "Session analysis configuration preserved"
+          - "Required inputs preserved"
+          - "No duplicate definitions between files"
+
+  # ===========================================================================
+  # Phase 3: Update Orchestration-Build Inputs (REC-002)
+  # ===========================================================================
+  - phase_id: "build_03"
+    name: "Update Orchestration-Build Inputs (REC-002)"
+    description: |
+      Address REC-002 from the friction analysis audit: Add branching guideline
+      to orchestration-build inputs.yml so build agents have context about
+      the merge workflow during implementation.
+    status: "completed"
+    completion_note: "Already addressed in previous session - worktree-and-branching.yml with key_rules present at lines 87-92"
+    estimated_effort: "low"
+    priority: "high"
+
+    tasks:
+      # -----------------------------------------------------------------------
+      # Task 3.1: Add branching guideline to orchestration-build inputs
+      # -----------------------------------------------------------------------
+      - task_id: "build_03_001"
+        description: "Add worktree-and-branching.yml to orchestration-build inputs"
+        status: "completed"
+        completed_at: "2026-01-22"
+        completion_note: "Already present at lines 87-92 with key_rules - REC-002 was addressed in previous session"
+
+        inputs:
+          - path: "modules/AgenticGuidance/agents/orchestration/orchestration-build/inputs.yml"
+            reason: "File to be updated"
+          - path: "modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml"
+            reason: "Guideline to reference"
+          - path: "docs/plans/live/260104AE_agenticguidance/audit/260122_friction_analysis.yml"
+            reason: "Source of REC-002 recommendation"
+
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-build/inputs.yml"
+
+        guidance: |
+          Add the worktree-and-branching.yml guideline to orchestration-build inputs.
+
+          This addresses REC-002 from the friction analysis audit:
+          - FP-003-001: Missing Context - Agents performing builds may not have
+            branching guidance in their context
+          - Root cause: orchestration-build inputs.yml does not include the guideline
+
+          Note: The inputs.yml already has a commented reminder about worktree policy
+          at lines 82-86 and includes the guideline at line 87-92. However, the key_rules
+          section should be strengthened to ensure agents understand the distinction
+          between plan files (main worktree) and code changes (feature worktrees).
+
+          If the guideline is already referenced, verify:
+          1. The key_rules clearly state code goes in feature worktrees
+          2. The CRITICAL distinction is explicit
+          3. Reference to staging-first merge is present
+
+          If not already present, add:
+          ```yaml
+          - location: "modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml"
+            description: "Worktree + branching policy including code development workflow"
+            key_rules:
+              - "Main-First Planning: Plan FILES go in main worktree for visibility"
+              - "Staging-first merge: CODE changes go in feature worktrees, merge via staging"
+              - "CRITICAL: Main-First applies to plan files only, NOT code implementation"
+          ```
+
+        success_criteria:
+          - "worktree-and-branching.yml is referenced in inputs"
+          - "Key rules explicitly distinguish plan files from code changes"
+          - "Staging-first merge workflow is referenced"
+          - "Build agents will have branching context during execution"
+
+  # ===========================================================================
+  # Phase 4: Validation
+  # ===========================================================================
+  - phase_id: "build_04"
+    name: "Validation"
+    description: |
+      Validate that all test plan dependencies are satisfied and the friction
+      analysis system is ready for testing.
+    status: "completed"
+    estimated_effort: "low"
+    depends_on: ["build_01", "build_02", "build_03"]
+
+    tasks:
+      # -----------------------------------------------------------------------
+      # Task 4.1: Verify test plan dependencies
+      # -----------------------------------------------------------------------
+      - task_id: "build_04_001"
+        description: "Verify all test plan dependencies exist"
+        status: "completed"
+        completed_at: "2026-01-23"
+        validation_results:
+          - "_analyze_friction.yml: EXISTS"
+          - "orchestration-friction/process.mmd: EXISTS"
+          - "orchestration-friction/inputs.yml: EXISTS (updated with definition reference)"
+          - "friction-patterns.yml: EXISTS (created)"
+
+        inputs:
+          - path: "docs/plans/live/260104AE_agenticguidance/live/plan_live_test_friction_analysis.yml"
+            reason: "Test plan to validate against"
+
+        guidance: |
+          Verify that all files referenced in the test plan's depends_on section
+          now exist:
+
+          1. Check: modules/AgenticGuidance/entrypoints/_analyze_friction.yml
+             Expected: EXISTS (already present)
+
+          2. Check: modules/AgenticGuidance/agents/orchestration/orchestration-friction/process.mmd
+             Expected: EXISTS (already present)
+
+          3. Check: modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml
+             Expected: EXISTS and UPDATED (references friction-patterns.yml)
+
+          4. Check: modules/AgenticGuidance/assets/definitions/friction-patterns.yml
+             Expected: EXISTS (created in Phase 1)
+
+          Validation steps:
+          - Read each file to confirm it exists
+          - Verify inputs.yml references the definition file
+          - Verify friction-patterns.yml contains all 6 patterns
+
+        success_criteria:
+          - "All 4 files exist at expected locations"
+          - "inputs.yml references friction-patterns.yml"
+          - "friction-patterns.yml defines FP-001 through FP-006"
+          - "Test plan dependencies are fully satisfied"
+
+      # -----------------------------------------------------------------------
+      # Task 4.2: Verify REC-002 implementation
+      # -----------------------------------------------------------------------
+      - task_id: "build_04_002"
+        description: "Verify REC-002 is addressed"
+        status: "completed"
+        completed_at: "2026-01-23"
+        validation_results:
+          - "worktree-and-branching.yml: referenced at line 87"
+          - "key_rules: present with Main-First, staging-first, and CRITICAL distinction"
+          - "REC-002: FULLY ADDRESSED"
+
+        inputs:
+          - path: "modules/AgenticGuidance/agents/orchestration/orchestration-build/inputs.yml"
+            reason: "Verify branching guideline is included"
+          - path: "docs/plans/live/260104AE_agenticguidance/audit/260122_friction_analysis.yml"
+            reason: "Source recommendation to verify against"
+
+        guidance: |
+          Verify that REC-002 from the friction analysis is addressed:
+
+          REC-002: "Add branching guideline to build agent inputs"
+          Target: modules/AgenticGuidance/agents/orchestration/orchestration-build/inputs.yml
+
+          Verification:
+          1. Read orchestration-build/inputs.yml
+          2. Confirm worktree-and-branching.yml is listed in inputs
+          3. Confirm key_rules include the code development workflow
+          4. Confirm distinction between plan files and code changes is explicit
+
+        success_criteria:
+          - "worktree-and-branching.yml referenced in orchestration-build inputs"
+          - "Key rules clearly state staging-first for code"
+          - "REC-002 recommendation is fully addressed"
+
+# =============================================================================
+# SUCCESS CRITERIA
+# =============================================================================
+success_criteria:
+  - "friction-patterns.yml created with all 6 patterns (FP-001 through FP-006)"
+  - "orchestration-friction/inputs.yml updated to reference definition file"
+  - "orchestration-build/inputs.yml includes branching guideline (REC-002)"
+  - "All test plan dependencies satisfied"
+  - "No duplicate pattern definitions between files"
+  - "Build agents have branching context during execution"
+
+# =============================================================================
+# NOTES
+# =============================================================================
+notes:
+  - "Phase 1 creates the new definition file"
+  - "Phase 2 refactors inputs.yml to use the definition"
+  - "Phase 3 addresses audit recommendation REC-002"
+  - "Phase 4 validates all dependencies for test plan"
+  - "Most orchestration-friction files already exist - this plan fills gaps"
+  - "The friction pattern definitions come from the existing inputs.yml"

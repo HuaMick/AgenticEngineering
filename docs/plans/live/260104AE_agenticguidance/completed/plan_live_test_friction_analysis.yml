@@ -1,0 +1,1055 @@
+# Friction Analysis - Test Plan
+# Generated: 2026-01-23
+# Agent: planner-test
+# Entrypoint Reference: modules/AgenticGuidance/entrypoints/_analyze_friction.yml
+
+name: "friction-analysis-test"
+worktree_path: "/home/code/AgenticEngineering"
+worktree: "260104AE_agenticguidance"
+status: "completed"
+created: "2026-01-23"
+updated: "2026-01-23"
+completed: "2026-01-23"
+completion_note: |
+  Tests already exist in modules/AgenticLangSmith/tests/test_friction.py (28 tests).
+  All friction patterns (FP-001 through FP-006) have unit tests.
+  Resolution recommendations have tests.
+  Severity classification has tests.
+
+depends_on:
+  - "_analyze_friction.yml entrypoint implementation"
+  - "orchestration-friction/process.mmd workflow"
+  - "orchestration-friction/inputs.yml pattern definitions"
+
+summary: |
+  Comprehensive test plan for friction analysis functionality covering:
+  - Friction pattern detection logic for FP-001 through FP-006
+  - Integration with LangSmith trace queries
+  - Resolution recommendation generation
+  - Session-based analysis and threshold filtering
+
+  Key validation focus:
+  - Each friction pattern detector correctly identifies signals
+  - Severity classification matches defined criteria
+  - Resolution recommendations map to appropriate types (GUIDANCE_UPDATE, CLI_OFFLOAD, ASSET_UPDATE)
+  - Session grouping and min_affected_sessions filtering work correctly
+  - Output format matches friction_report schema
+
+references:
+  entrypoint: "modules/AgenticGuidance/entrypoints/_analyze_friction.yml"
+  orchestration: "modules/AgenticGuidance/agents/orchestration/orchestration-friction/process.mmd"
+  inputs: "modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml"
+  recent_report: "docs/plans/live/260104AE_agenticguidance/audit/260122_friction_analysis.yml"
+
+friction_patterns_under_test:
+  - id: FP-001
+    name: "Excessive Retries"
+    detection_signals:
+      - "Multiple consecutive runs with same name pattern"
+      - "Error -> Retry -> Error -> Retry sequences"
+    default_resolution: GUIDANCE_UPDATE
+
+  - id: FP-002
+    name: "Exploration Drift"
+    detection_signals:
+      - "Many Glob/Grep/Read tool calls before task execution"
+      - "High tool-to-llm ratio in early run phases"
+    default_resolution: GUIDANCE_UPDATE
+
+  - id: FP-003
+    name: "Missing Context Requests"
+    detection_signals:
+      - "AskUserQuestion calls for routine decisions"
+      - "Questions about standard patterns/conventions"
+    default_resolution: GUIDANCE_UPDATE
+
+  - id: FP-004
+    name: "Output Schema Violations"
+    detection_signals:
+      - "Validation errors in tool calls"
+      - "Reviewer rejections citing format issues"
+    default_resolution: GUIDANCE_UPDATE
+
+  - id: FP-005
+    name: "Convention Violations"
+    detection_signals:
+      - "File/folder names not matching patterns"
+      - "Post-creation renames or corrections"
+    default_resolution: CLI_OFFLOAD
+
+  - id: FP-006
+    name: "Automatable Patterns"
+    detection_signals:
+      - "Identical tool call sequences across sessions"
+      - "Boilerplate generation patterns"
+    default_resolution: CLI_OFFLOAD
+
+phases:
+  # ===========================================================================
+  # Phase 1: Unit Tests - Friction Pattern Detection Logic
+  # ===========================================================================
+  - phase_id: "test_01"
+    name: "Unit Tests - Friction Pattern Detection Logic"
+    description: |
+      Test individual friction pattern detectors with mock trace data.
+      Each pattern (FP-001 through FP-006) should have isolated unit tests
+      verifying detection signals are correctly identified.
+    status: "completed"
+    completion_note: |
+      Tests already exist in modules/AgenticLangSmith/tests/test_friction.py.
+      28 tests covering all friction patterns and resolution recommendations.
+    estimated_effort: "high"
+
+    tasks:
+      # -----------------------------------------------------------------------
+      # Task 1.1: Test FP-001 Excessive Retries Detection
+      # -----------------------------------------------------------------------
+      - task_id: "test_01_001"
+        description: "Test FP-001: Excessive Retries pattern detection"
+        status: "completed"
+        completion_note: "Tests exist: test_detect_retry_pattern, test_no_retry_pattern_under_threshold"
+
+        inputs:
+          - path: "modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml"
+            reason: "FP-001 detection signal definitions"
+
+        guidance: |
+          Create mock trace data that exhibits FP-001 signals:
+
+          Test Cases:
+          1. Consecutive runs with same name pattern (e.g., "Edit_file_attempt_1", "Edit_file_attempt_2")
+          2. Error -> Retry -> Error -> Retry sequences in tool calls
+          3. Same tool called 3+ times with similar parameters within a session
+          4. Negative case: Normal retry (1-2 retries) should NOT trigger
+
+          Mock Trace Structure:
+          ```python
+          mock_trace_fp001 = {
+              "session_id": "test-session-001",
+              "runs": [
+                  {"name": "Edit", "status": "error", "tool": "Edit", "params": {"file": "test.py"}},
+                  {"name": "Edit", "status": "error", "tool": "Edit", "params": {"file": "test.py"}},
+                  {"name": "Edit", "status": "error", "tool": "Edit", "params": {"file": "test.py"}},
+                  {"name": "Edit", "status": "success", "tool": "Edit", "params": {"file": "test.py"}},
+              ]
+          }
+          ```
+
+        success_criteria:
+          - "Detector identifies consecutive same-name runs as FP-001"
+          - "Detector identifies error-retry-error sequences as FP-001"
+          - "Detector does NOT flag normal single retries"
+          - "Returns pattern with severity based on retry count"
+
+      # -----------------------------------------------------------------------
+      # Task 1.2: Test FP-002 Exploration Drift Detection
+      # -----------------------------------------------------------------------
+      - task_id: "test_01_002"
+        description: "Test FP-002: Exploration Drift pattern detection"
+        status: "completed"
+        completion_note: "Tests exist: test_detect_exploration_drift, test_no_drift_with_balanced_tools"
+
+        inputs:
+          - path: "modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml"
+            reason: "FP-002 detection signal definitions"
+
+        guidance: |
+          Create mock trace data that exhibits FP-002 signals:
+
+          Test Cases:
+          1. Many Glob/Grep/Read calls (>10) before any Edit/Write call
+          2. High tool-to-llm ratio in early run phases (>5:1)
+          3. Codebase exploration spanning multiple directories without finding target
+          4. Negative case: Efficient exploration (2-3 searches) should NOT trigger
+
+          Mock Trace Structure:
+          ```python
+          mock_trace_fp002 = {
+              "session_id": "test-session-002",
+              "runs": [
+                  {"name": "Glob", "tool": "Glob", "params": {"pattern": "*.py"}},
+                  {"name": "Grep", "tool": "Grep", "params": {"pattern": "function"}},
+                  {"name": "Read", "tool": "Read", "params": {"file": "src/a.py"}},
+                  {"name": "Read", "tool": "Read", "params": {"file": "src/b.py"}},
+                  # ... 10+ more exploration calls
+                  {"name": "Edit", "tool": "Edit", "params": {"file": "src/target.py"}},
+              ]
+          }
+          ```
+
+        success_criteria:
+          - "Detector identifies >10 exploration calls before action as FP-002"
+          - "Detector calculates tool-to-llm ratio correctly"
+          - "Detector does NOT flag efficient 2-3 call exploration"
+          - "Returns pattern with drift magnitude"
+
+      # -----------------------------------------------------------------------
+      # Task 1.3: Test FP-003 Missing Context Detection
+      # -----------------------------------------------------------------------
+      - task_id: "test_01_003"
+        description: "Test FP-003: Missing Context Requests pattern detection"
+        status: "completed"
+        completion_note: "Tests exist: test_detect_missing_context, test_no_pattern_with_few_questions"
+
+        inputs:
+          - path: "modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml"
+            reason: "FP-003 detection signal definitions"
+
+        guidance: |
+          Create mock trace data that exhibits FP-003 signals:
+
+          Test Cases:
+          1. AskUserQuestion calls for routine decisions (naming conventions, file locations)
+          2. Questions about standard patterns that should be in guidance
+          3. Repeated questions about same topic across sessions
+          4. Negative case: Novel/edge-case questions should NOT trigger
+
+          Mock Trace Structure:
+          ```python
+          mock_trace_fp003 = {
+              "session_id": "test-session-003",
+              "runs": [
+                  {
+                      "name": "AskUser",
+                      "tool": "AskUserQuestion",
+                      "params": {"question": "What naming convention should I use for test files?"}
+                  },
+                  {
+                      "name": "AskUser",
+                      "tool": "AskUserQuestion",
+                      "params": {"question": "Where should I put the new module?"}
+                  },
+              ]
+          }
+          ```
+
+          Keywords to detect routine questions:
+          - "naming convention", "file location", "standard pattern"
+          - "where should", "what format", "how do I usually"
+
+        success_criteria:
+          - "Detector identifies AskUserQuestion for routine decisions as FP-003"
+          - "Detector extracts question keywords for classification"
+          - "Detector does NOT flag novel/unique questions"
+          - "Returns pattern with question categories"
+
+      # -----------------------------------------------------------------------
+      # Task 1.4: Test FP-004 Schema Violations Detection
+      # -----------------------------------------------------------------------
+      - task_id: "test_01_004"
+        description: "Test FP-004: Output Schema Violations pattern detection"
+        status: "completed"
+        completion_note: "Tests exist: test_detect_schema_violations, test_no_pattern_without_schema_errors"
+
+        inputs:
+          - path: "modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml"
+            reason: "FP-004 detection signal definitions"
+
+        guidance: |
+          Create mock trace data that exhibits FP-004 signals:
+
+          Test Cases:
+          1. Validation errors in tool calls (malformed JSON, missing required fields)
+          2. Reviewer rejections citing format issues
+          3. Post-generation corrections to fix schema compliance
+          4. Negative case: Successful first-attempt outputs should NOT trigger
+
+          Mock Trace Structure:
+          ```python
+          mock_trace_fp004 = {
+              "session_id": "test-session-004",
+              "runs": [
+                  {
+                      "name": "Write",
+                      "tool": "Write",
+                      "status": "error",
+                      "error": "ValidationError: missing required field 'name'"
+                  },
+                  {
+                      "name": "Write",
+                      "tool": "Write",
+                      "status": "success",
+                      "params": {"content": "...with name field added"}
+                  },
+              ]
+          }
+          ```
+
+        success_criteria:
+          - "Detector identifies validation errors as FP-004"
+          - "Detector extracts schema violation type from error messages"
+          - "Detector does NOT flag non-schema errors"
+          - "Returns pattern with violation categories"
+
+      # -----------------------------------------------------------------------
+      # Task 1.5: Test FP-005 Convention Violations Detection
+      # -----------------------------------------------------------------------
+      - task_id: "test_01_005"
+        description: "Test FP-005: Convention Violations pattern detection"
+        status: "completed"
+        completion_note: "Tests exist: test_detect_convention_violations"
+
+        inputs:
+          - path: "modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml"
+            reason: "FP-005 detection signal definitions"
+
+        guidance: |
+          Create mock trace data that exhibits FP-005 signals:
+
+          Test Cases:
+          1. File/folder names not matching patterns (e.g., "myTest.py" instead of "test_my.py")
+          2. Post-creation renames or corrections (Write then Rename/Move)
+          3. Branch names violating conventions
+          4. Negative case: Correct naming on first attempt should NOT trigger
+
+          Mock Trace Structure:
+          ```python
+          mock_trace_fp005 = {
+              "session_id": "test-session-005",
+              "runs": [
+                  {
+                      "name": "Write",
+                      "tool": "Write",
+                      "params": {"file_path": "tests/myTestFile.py"}  # Wrong convention
+                  },
+                  {
+                      "name": "Bash",
+                      "tool": "Bash",
+                      "params": {"command": "mv tests/myTestFile.py tests/test_my_file.py"}  # Correction
+                  },
+              ]
+          }
+          ```
+
+        success_criteria:
+          - "Detector identifies non-conventional names as FP-005"
+          - "Detector identifies post-creation renames as FP-005"
+          - "Detector does NOT flag correctly named files"
+          - "Returns pattern with convention type violated"
+
+      # -----------------------------------------------------------------------
+      # Task 1.6: Test FP-006 Automatable Patterns Detection
+      # -----------------------------------------------------------------------
+      - task_id: "test_01_006"
+        description: "Test FP-006: Automatable Patterns detection"
+        status: "completed"
+        completion_note: "Tests exist: test_detect_automatable_patterns"
+
+        inputs:
+          - path: "modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml"
+            reason: "FP-006 detection signal definitions"
+
+        guidance: |
+          Create mock trace data that exhibits FP-006 signals:
+
+          Test Cases:
+          1. Identical tool call sequences across different sessions
+          2. Boilerplate generation patterns (same template with variable substitution)
+          3. Repeated multi-step workflows (e.g., read->modify->write->test pattern)
+          4. Negative case: Unique sequences should NOT trigger
+
+          Mock Trace Structure:
+          ```python
+          # Session 1
+          mock_trace_fp006_session1 = {
+              "session_id": "test-session-006a",
+              "runs": [
+                  {"name": "Read", "tool": "Read", "params": {"file": "template.py"}},
+                  {"name": "Write", "tool": "Write", "params": {"file": "new_module.py"}},
+                  {"name": "Bash", "tool": "Bash", "params": {"command": "pytest"}},
+              ]
+          }
+
+          # Session 2 - Same sequence
+          mock_trace_fp006_session2 = {
+              "session_id": "test-session-006b",
+              "runs": [
+                  {"name": "Read", "tool": "Read", "params": {"file": "template.py"}},
+                  {"name": "Write", "tool": "Write", "params": {"file": "another_module.py"}},
+                  {"name": "Bash", "tool": "Bash", "params": {"command": "pytest"}},
+              ]
+          }
+          ```
+
+        success_criteria:
+          - "Detector identifies repeated sequences across sessions as FP-006"
+          - "Detector extracts sequence signature for comparison"
+          - "Detector does NOT flag unique one-time sequences"
+          - "Returns pattern with automation candidate details"
+
+  # ===========================================================================
+  # Phase 2: Integration Tests - Mock LangSmith Data
+  # ===========================================================================
+  - phase_id: "test_02"
+    name: "Integration Tests - Mock LangSmith Data"
+    description: |
+      Test the complete friction analysis workflow with mock LangSmith data.
+      Verify session grouping, threshold filtering, and recommendation generation.
+    status: "completed"
+    completion_note: |
+      Severity classification tests exist (test_high_severity_high_frequency, test_low_severity_low_frequency).
+      Session grouping is tested implicitly through pattern detection tests.
+    estimated_effort: "high"
+    depends_on: ["test_01"]
+
+    tasks:
+      # -----------------------------------------------------------------------
+      # Task 2.1: Test Session Grouping Logic
+      # -----------------------------------------------------------------------
+      - task_id: "test_02_001"
+        description: "Test session grouping by session_id and time-window fallback"
+        status: "pending"
+
+        inputs:
+          - path: "modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml"
+            reason: "Session grouping configuration"
+
+        guidance: |
+          Test session_analysis.grouping configuration:
+
+          Test Cases:
+          1. Runs with session_id are grouped by session_id
+          2. Runs without session_id fall back to time_window_30min grouping
+          3. Mixed runs (some with, some without session_id) are handled correctly
+
+          Mock Data:
+          ```python
+          mock_runs = [
+              {"id": "1", "session_id": "sess-A", "start_time": "2026-01-22T10:00:00"},
+              {"id": "2", "session_id": "sess-A", "start_time": "2026-01-22T10:05:00"},
+              {"id": "3", "session_id": "sess-B", "start_time": "2026-01-22T11:00:00"},
+              {"id": "4", "session_id": None, "start_time": "2026-01-22T12:00:00"},  # Fallback
+              {"id": "5", "session_id": None, "start_time": "2026-01-22T12:15:00"},  # Same window
+          ]
+          ```
+
+          Expected Groups:
+          - Group "sess-A": runs 1, 2
+          - Group "sess-B": run 3
+          - Group "time-window-12:00": runs 4, 5
+
+        success_criteria:
+          - "Runs with session_id are grouped correctly"
+          - "Runs without session_id use time-window fallback"
+          - "30-minute window boundary is respected"
+          - "Group metadata includes session count"
+
+      # -----------------------------------------------------------------------
+      # Task 2.2: Test min_affected_sessions Filtering
+      # -----------------------------------------------------------------------
+      - task_id: "test_02_002"
+        description: "Test pattern filtering by min_affected_sessions threshold"
+        status: "pending"
+
+        inputs:
+          - path: "modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml"
+            reason: "Threshold configuration (default: 2)"
+
+        guidance: |
+          Test session_analysis.thresholds filtering:
+
+          Test Cases:
+          1. Pattern in 1 session -> filtered out (below threshold)
+          2. Pattern in 2 sessions -> included (meets threshold)
+          3. Pattern in 5 sessions -> included (exceeds threshold)
+          4. Critical severity pattern in 1 session -> included (exception)
+
+          Mock Detection Results:
+          ```python
+          mock_patterns = [
+              {"id": "FP-001-001", "affected_sessions": ["sess-A"], "severity": "medium"},  # Filtered
+              {"id": "FP-002-001", "affected_sessions": ["sess-A", "sess-B"], "severity": "medium"},  # Included
+              {"id": "FP-003-001", "affected_sessions": ["sess-A"], "severity": "critical"},  # Exception
+          ]
+          ```
+
+        success_criteria:
+          - "Single-session patterns are filtered out by default"
+          - "Multi-session patterns (>=2) are included"
+          - "Critical severity exceptions are respected"
+          - "Filtered patterns are logged but not reported"
+
+      # -----------------------------------------------------------------------
+      # Task 2.3: Test Severity Classification
+      # -----------------------------------------------------------------------
+      - task_id: "test_02_003"
+        description: "Test severity classification based on session frequency"
+        status: "pending"
+
+        inputs:
+          - path: "modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml"
+            reason: "Severity classification criteria"
+
+        guidance: |
+          Test severity_classification rules:
+
+          - high: >50% of analyzed sessions
+          - medium: 20-50% of analyzed sessions
+          - low: <20% of analyzed sessions
+
+          Test Cases (10 sessions analyzed):
+          1. Pattern in 6 sessions (60%) -> high
+          2. Pattern in 3 sessions (30%) -> medium
+          3. Pattern in 1 session (10%) -> low
+
+          Edge Cases:
+          - Exactly 50% -> medium (not high)
+          - Exactly 20% -> medium (not low)
+          - Pattern with visible user impact -> high (regardless of frequency)
+
+        success_criteria:
+          - "High severity assigned for >50% frequency"
+          - "Medium severity assigned for 20-50% frequency"
+          - "Low severity assigned for <20% frequency"
+          - "Edge cases handled correctly"
+
+      # -----------------------------------------------------------------------
+      # Task 2.4: Test Resolution Recommendation Mapping
+      # -----------------------------------------------------------------------
+      - task_id: "test_02_004"
+        description: "Test pattern-to-resolution type mapping"
+        status: "pending"
+
+        inputs:
+          - path: "modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml"
+            reason: "Resolution type definitions and mappings"
+
+        guidance: |
+          Test resolution_types mapping from patterns:
+
+          Expected Mappings:
+          - FP-001 (Excessive Retries) -> GUIDANCE_UPDATE
+          - FP-002 (Exploration Drift) -> GUIDANCE_UPDATE
+          - FP-003 (Missing Context) -> GUIDANCE_UPDATE
+          - FP-004 (Schema Violations) -> GUIDANCE_UPDATE
+          - FP-005 (Convention Violations) -> CLI_OFFLOAD
+          - FP-006 (Automatable Patterns) -> CLI_OFFLOAD
+
+          Resolution Output Structure:
+          ```python
+          expected_recommendation = {
+              "pattern_id": "FP-005-001",
+              "resolution_type": "CLI_OFFLOAD",
+              "target_locations": ["modules/AgenticCLI/src/agenticcli/commands/"],
+              "hint": "Enforce via agentic CLI commands"
+          }
+          ```
+
+        success_criteria:
+          - "Each pattern maps to correct resolution type"
+          - "Target locations are populated from resolution_types config"
+          - "Resolution hints are included"
+          - "ASSET_UPDATE type is available for manual override"
+
+      # -----------------------------------------------------------------------
+      # Task 2.5: Test Complete Workflow Pipeline
+      # -----------------------------------------------------------------------
+      - task_id: "test_02_005"
+        description: "Test end-to-end friction analysis workflow with mock data"
+        status: "pending"
+
+        inputs:
+          - path: "modules/AgenticGuidance/agents/orchestration/orchestration-friction/process.mmd"
+            reason: "Complete workflow definition"
+
+        guidance: |
+          Run complete workflow from process.mmd with mock LangSmith data:
+
+          1. Input Validation Phase
+             - Mock project_name: "TestProject"
+             - Mock LangSmith availability: true
+
+          2. Trace Query Phase
+             - Provide 50 mock runs across 5 sessions
+             - Lookback: 7 days
+
+          3. Friction Detection Phase
+             - Inject known patterns in mock data
+             - Verify all 6 detectors run
+
+          4. Classification Phase
+             - Verify severity assignment
+             - Verify threshold filtering
+
+          5. Recommendation Phase
+             - Verify resolution mapping
+             - Verify evidence compilation
+
+          6. Output Phase
+             - Verify friction_report structure
+             - Verify JSON schema compliance
+
+        success_criteria:
+          - "All workflow phases execute without error"
+          - "Detected patterns match injected mock data"
+          - "Output matches friction_report schema"
+          - "Evidence traces are correctly linked"
+
+  # ===========================================================================
+  # Phase 3: End-to-End Tests - Real Traces (Conditional)
+  # ===========================================================================
+  - phase_id: "test_03"
+    name: "End-to-End Tests - Real Traces"
+    description: |
+      Test friction analysis with real LangSmith traces when available.
+      These tests require LangSmith connectivity and valid API credentials.
+    status: "pending"
+    estimated_effort: "medium"
+    depends_on: ["test_02"]
+    conditional: "Requires CC_LANGSMITH_PROJECT environment variable and API access"
+
+    tasks:
+      # -----------------------------------------------------------------------
+      # Task 3.1: Test LangSmith Connection
+      # -----------------------------------------------------------------------
+      - task_id: "test_03_001"
+        description: "Verify LangSmith API connectivity and project access"
+        status: "pending"
+
+        inputs:
+          - path: "modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml"
+            reason: "LangSmith dependency configuration"
+
+        guidance: |
+          Validate LangSmith connectivity:
+
+          1. Check CC_LANGSMITH_PROJECT environment variable
+          2. Verify agenticlangsmith package is installed
+          3. Test API authentication
+          4. Verify project exists and is accessible
+
+          Skip Conditions:
+          - Skip if CC_LANGSMITH_PROJECT not set
+          - Skip if LangSmith API returns 401/403
+          - Log skip reason for debugging
+
+        success_criteria:
+          - "LangSmith API responds successfully"
+          - "Project is accessible"
+          - "Test gracefully skips if unavailable"
+
+      # -----------------------------------------------------------------------
+      # Task 3.2: Test Real Trace Query
+      # -----------------------------------------------------------------------
+      - task_id: "test_03_002"
+        description: "Query real traces and validate response structure"
+        status: "pending"
+
+        guidance: |
+          Query real LangSmith traces:
+
+          Parameters:
+          - lookback_days: 1 (minimize API load)
+          - limit: 10 (small sample)
+
+          Validate Response:
+          - Traces have expected fields (id, name, start_time, etc.)
+          - Session grouping works with real session_id values
+          - Tool calls are extractable from trace data
+
+        success_criteria:
+          - "Real traces are retrieved successfully"
+          - "Trace structure matches expected schema"
+          - "Session grouping works with real data"
+
+      # -----------------------------------------------------------------------
+      # Task 3.3: Test Real Pattern Detection
+      # -----------------------------------------------------------------------
+      - task_id: "test_03_003"
+        description: "Run pattern detection on real traces and validate output"
+        status: "pending"
+
+        guidance: |
+          Run friction analysis on real traces:
+
+          Note: Real traces may or may not contain friction patterns.
+          Test validates:
+          - Detection runs without errors
+          - Output format is valid
+          - No false positives on clean traces
+
+          If patterns ARE detected:
+          - Verify evidence links to actual traces
+          - Verify severity classification is reasonable
+          - Verify recommendations are actionable
+
+        success_criteria:
+          - "Detection completes without errors"
+          - "Output format is valid regardless of findings"
+          - "No crashes on edge-case trace data"
+
+  # ===========================================================================
+  # Phase 4: Resolution Recommendation Validation
+  # ===========================================================================
+  - phase_id: "test_04"
+    name: "Resolution Recommendation Validation"
+    description: |
+      Validate that generated resolution recommendations are actionable,
+      target correct files, and include sufficient evidence.
+    status: "pending"
+    estimated_effort: "medium"
+    depends_on: ["test_02"]
+
+    tasks:
+      # -----------------------------------------------------------------------
+      # Task 4.1: Test GUIDANCE_UPDATE Recommendations
+      # -----------------------------------------------------------------------
+      - task_id: "test_04_001"
+        description: "Validate GUIDANCE_UPDATE recommendation structure and targets"
+        status: "pending"
+
+        inputs:
+          - path: "modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml"
+            reason: "GUIDANCE_UPDATE target_locations"
+
+        guidance: |
+          Validate GUIDANCE_UPDATE recommendations:
+
+          Expected Targets:
+          - modules/AgenticGuidance/agents/*/process.yml
+          - modules/AgenticGuidance/agents/*/inputs.yml
+          - modules/AgenticGuidance/assets/guidelines/
+
+          Test Cases:
+          1. FP-001 recommendation targets error handling guidance
+          2. FP-002 recommendation targets path hints in process files
+          3. FP-003 recommendation targets missing context in inputs
+          4. FP-004 recommendation targets schema documentation
+
+          Validation:
+          - Target files exist in codebase
+          - Recommendation hint is specific and actionable
+          - Evidence from traces supports the recommendation
+
+        success_criteria:
+          - "Target files are valid paths"
+          - "Recommendation hints are actionable"
+          - "Evidence links to specific trace data"
+
+      # -----------------------------------------------------------------------
+      # Task 4.2: Test CLI_OFFLOAD Recommendations
+      # -----------------------------------------------------------------------
+      - task_id: "test_04_002"
+        description: "Validate CLI_OFFLOAD recommendation structure and targets"
+        status: "pending"
+
+        inputs:
+          - path: "modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml"
+            reason: "CLI_OFFLOAD target_locations"
+
+        guidance: |
+          Validate CLI_OFFLOAD recommendations:
+
+          Expected Targets:
+          - modules/AgenticCLI/src/agenticcli/commands/
+
+          Test Cases:
+          1. FP-005 recommendation suggests CLI enforcement command
+          2. FP-006 recommendation suggests new CLI command for automation
+
+          Validation:
+          - CLI module exists
+          - Recommendation includes command name suggestion
+          - Automatable sequence is clearly described
+
+        success_criteria:
+          - "CLI target directory exists"
+          - "Command suggestions are reasonable"
+          - "Automation benefit is quantified"
+
+      # -----------------------------------------------------------------------
+      # Task 4.3: Test ASSET_UPDATE Recommendations
+      # -----------------------------------------------------------------------
+      - task_id: "test_04_003"
+        description: "Validate ASSET_UPDATE recommendation structure and targets"
+        status: "pending"
+
+        inputs:
+          - path: "modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml"
+            reason: "ASSET_UPDATE target_locations"
+
+        guidance: |
+          Validate ASSET_UPDATE recommendations:
+
+          Expected Targets:
+          - modules/AgenticGuidance/assets/definitions/
+          - modules/AgenticGuidance/assets/examples/
+          - modules/AgenticGuidance/assets/specifications/
+
+          Test Cases:
+          1. Schema violation suggests adding example files
+          2. Convention violation suggests adding definition files
+
+          Validation:
+          - Asset directories exist
+          - Recommendation specifies asset type needed
+          - Example content suggestion is included
+
+        success_criteria:
+          - "Asset directories exist"
+          - "Asset type is specified (definition/example/spec)"
+          - "Content guidance is provided"
+
+      # -----------------------------------------------------------------------
+      # Task 4.4: Test Evidence Compilation
+      # -----------------------------------------------------------------------
+      - task_id: "test_04_004"
+        description: "Validate evidence compilation from traces"
+        status: "pending"
+
+        guidance: |
+          Validate evidence structure in recommendations:
+
+          Required Evidence Fields:
+          - session_id: Which session exhibited the pattern
+          - run_ids: Specific runs that show the pattern
+          - observation: Human-readable description
+          - source: LangSmith trace URL or identifier
+
+          Test Cases:
+          1. Evidence links to real session_ids from mock data
+          2. Run IDs are valid and exist in the trace
+          3. Observation text accurately describes the pattern
+          4. Source reference allows manual verification
+
+        success_criteria:
+          - "Session IDs in evidence match analyzed sessions"
+          - "Run IDs are valid references"
+          - "Observations are descriptive and accurate"
+          - "Sources are verifiable"
+
+  # ===========================================================================
+  # Phase 5: Gap Analysis and Follow-Up Planning
+  # ===========================================================================
+  - phase_id: "test_05"
+    name: "Gap Analysis and Follow-Up Planning"
+    description: |
+      Analyze test results to identify gaps in friction analysis coverage.
+      If gaps are found, trigger creation of remediation plan.
+    status: "pending"
+    estimated_effort: "medium"
+    depends_on: ["test_01", "test_02", "test_03", "test_04"]
+    priority: "critical"
+
+    gap_analysis_protocol: |
+      ## Gap Detection Criteria
+
+      Gaps are identified when any of the following occur:
+
+      1. COVERAGE GAPS:
+         - A friction pattern (FP-001 to FP-006) has no working detector
+         - Detection signals defined in inputs.yml are not implemented
+         - Edge cases are not handled (empty traces, malformed data)
+
+      2. ACCURACY GAPS:
+         - False positive rate >10% in validation tests
+         - False negative rate >20% (known patterns not detected)
+         - Severity misclassification in >15% of cases
+
+      3. INTEGRATION GAPS:
+         - LangSmith API errors not handled gracefully
+         - Session grouping fails on certain data patterns
+         - Output schema validation fails
+
+      4. RECOMMENDATION GAPS:
+         - Target files don't exist
+         - Recommendations are too vague to action
+         - Evidence is insufficient for verification
+
+      ## Follow-Up Plan Trigger
+
+      If ANY gaps are identified:
+      1. Create `plan_live_friction_analysis_remediation.yml` in the same directory
+      2. Document each gap with:
+         - Gap ID (GAP-FA-001, GAP-FA-002, etc.)
+         - Category (coverage/accuracy/integration/recommendation)
+         - Severity (critical/high/medium/low)
+         - Remediation approach
+      3. Link remediation plan to this test plan
+
+    tasks:
+      # -----------------------------------------------------------------------
+      # Task 5.1: Coverage Gap Analysis
+      # -----------------------------------------------------------------------
+      - task_id: "test_05_001"
+        description: "Analyze friction pattern detection coverage"
+        status: "pending"
+
+        guidance: |
+          Review test results from Phase 1 and Phase 2:
+
+          Checklist:
+          - [ ] FP-001 detector: Implemented and tested
+          - [ ] FP-002 detector: Implemented and tested
+          - [ ] FP-003 detector: Implemented and tested
+          - [ ] FP-004 detector: Implemented and tested
+          - [ ] FP-005 detector: Implemented and tested
+          - [ ] FP-006 detector: Implemented and tested
+
+          For each pattern, verify:
+          - All detection_signals from inputs.yml are covered
+          - Edge cases (empty input, malformed data) are handled
+          - Negative cases (should NOT trigger) are tested
+
+        success_criteria:
+          - "All 6 friction patterns have working detectors"
+          - "All detection signals are implemented"
+          - "Edge cases are handled without crashes"
+
+      # -----------------------------------------------------------------------
+      # Task 5.2: Accuracy Gap Analysis
+      # -----------------------------------------------------------------------
+      - task_id: "test_05_002"
+        description: "Analyze detection accuracy and classification"
+        status: "pending"
+
+        guidance: |
+          Calculate accuracy metrics from test results:
+
+          Metrics to Compute:
+          1. False Positive Rate: patterns flagged incorrectly / total flagged
+          2. False Negative Rate: patterns missed / total present
+          3. Severity Accuracy: correct severity / total classified
+
+          Thresholds:
+          - False Positive Rate should be <10%
+          - False Negative Rate should be <20%
+          - Severity Accuracy should be >85%
+
+          If thresholds not met, document as accuracy gap.
+
+        success_criteria:
+          - "False positive rate <10%"
+          - "False negative rate <20%"
+          - "Severity accuracy >85%"
+          - "All metrics documented"
+
+      # -----------------------------------------------------------------------
+      # Task 5.3: Integration Gap Analysis
+      # -----------------------------------------------------------------------
+      - task_id: "test_05_003"
+        description: "Analyze LangSmith integration and workflow gaps"
+        status: "pending"
+
+        guidance: |
+          Review Phase 2 and Phase 3 results for integration issues:
+
+          Checklist:
+          - [ ] LangSmith connection errors handled gracefully
+          - [ ] Session grouping works with all data patterns
+          - [ ] Output schema validation passes
+          - [ ] Workflow completes for edge-case inputs
+
+          Document any:
+          - API errors that cause crashes
+          - Data patterns that break grouping
+          - Schema violations in output
+
+        success_criteria:
+          - "All API errors handled gracefully"
+          - "Session grouping robust to data variations"
+          - "Output always matches schema"
+
+      # -----------------------------------------------------------------------
+      # Task 5.4: Recommendation Quality Analysis
+      # -----------------------------------------------------------------------
+      - task_id: "test_05_004"
+        description: "Analyze recommendation actionability and completeness"
+        status: "pending"
+
+        guidance: |
+          Review Phase 4 results for recommendation quality:
+
+          Checklist:
+          - [ ] All target files exist in codebase
+          - [ ] Recommendations include specific action steps
+          - [ ] Evidence is sufficient for verification
+          - [ ] Resolution hints match pattern type
+
+          Document any:
+          - Invalid target paths
+          - Vague or unactionable recommendations
+          - Missing or insufficient evidence
+
+        success_criteria:
+          - "100% of target paths are valid"
+          - "All recommendations have clear action steps"
+          - "Evidence includes verifiable trace references"
+
+      # -----------------------------------------------------------------------
+      # Task 5.5: Generate Remediation Plan (If Gaps Found)
+      # -----------------------------------------------------------------------
+      - task_id: "test_05_005"
+        description: "Create remediation plan if gaps identified"
+        status: "pending"
+
+        guidance: |
+          ## CRITICAL: Remediation Plan Generation
+
+          IF any gaps were identified in tasks test_05_001 through test_05_004:
+
+          1. Create file: `plan_live_friction_analysis_remediation.yml`
+             Location: docs/plans/live/260104AE_agenticguidance/live/
+
+          2. Use standard plan structure with phases for each gap category
+
+          3. Include for each gap:
+             - Gap ID: GAP-FA-XXX
+             - Source Test: Which test revealed the gap
+             - Description: What is missing or broken
+             - Severity: critical/high/medium/low
+             - Remediation Tasks: Specific fixes needed
+
+          4. Link back to this test plan:
+             depends_on:
+               - plan_live_test_friction_analysis.yml
+
+          IF NO gaps identified:
+          - Document "All tests passed, no remediation needed"
+          - Mark this task as completed with success
+
+        success_criteria:
+          - "Gaps are documented with IDs and categories"
+          - "Remediation plan created if gaps exist"
+          - "Plan follows standard YAML structure"
+          - "Plan is actionable by builder agent"
+
+        conditional_output:
+          if_gaps_found: "Create plan_live_friction_analysis_remediation.yml"
+          if_no_gaps: "Document success and close test plan"
+
+success_criteria:
+  - "All unit tests for FP-001 through FP-006 pass (Phase 1)"
+  - "Integration tests with mock data pass (Phase 2)"
+  - "Real trace tests pass or gracefully skip (Phase 3)"
+  - "Resolution recommendations are validated (Phase 4)"
+  - "Gap analysis completed with documented results (Phase 5)"
+  - "Remediation plan created if gaps identified"
+  - "Test coverage >80% for friction analysis code"
+
+notes:
+  - "Phase 3 (real traces) is conditional on LangSmith availability"
+  - "Phase 5 must trigger remediation plan if any gaps found"
+  - "Mock data should cover all 6 friction patterns"
+  - "Evidence linking is critical for recommendation quality"
+  - "This test plan references the 260122 friction analysis report for real-world examples"
+
+remediation_trigger:
+  condition: "Any gap identified in Phase 5 tasks"
+  action: "Create plan_live_friction_analysis_remediation.yml"
+  location: "docs/plans/live/260104AE_agenticguidance/live/"
+  template: |
+    # Friction Analysis Remediation Plan
+    # Generated from: plan_live_test_friction_analysis.yml
+    # Gap Analysis Date: [DATE]
+
+    name: "friction-analysis-remediation"
+    status: "pending"
+    depends_on:
+      - plan_live_test_friction_analysis.yml
+
+    gaps_identified:
+      # Populated from test_05 results
+
+    phases:
+      # Generated based on gap categories

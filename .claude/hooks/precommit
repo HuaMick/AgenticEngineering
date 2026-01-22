@@ -1,0 +1,53 @@
+#!/bin/bash
+# Pre-commit hook: Main Branch Protection
+# Purpose: Warn when non-plan files are committed to main branch
+# Reference: worktree-and-branching.yml#Main-First Planning
+# Implements: REC-003 from friction analysis (260122_friction_analysis.yml)
+
+BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+
+if [[ "$BRANCH" == "main" || "$BRANCH" == "master" ]]; then
+  # Get list of staged files
+  STAGED_FILES=$(git diff --cached --name-only 2>/dev/null)
+
+  if [[ -z "$STAGED_FILES" ]]; then
+    # No staged files, nothing to check
+    exit 0
+  fi
+
+  # Check for non-plan files
+  NON_PLAN_FILES=""
+  while IFS= read -r file; do
+    # Plan files are in docs/plans/ directory
+    # Also allow .claude/ config files and README updates
+    if [[ ! "$file" =~ ^docs/plans/ ]] && [[ ! "$file" =~ ^\.claude/ ]]; then
+      NON_PLAN_FILES="${NON_PLAN_FILES}  - ${file}\n"
+    fi
+  done <<< "$STAGED_FILES"
+
+  if [[ -n "$NON_PLAN_FILES" ]]; then
+    echo ""
+    echo "⚠️  WARNING: Non-plan files being committed to main branch"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    echo "Main-First Planning applies to PLAN FILES only."
+    echo "Code changes should use feature branches and staging-first merge."
+    echo ""
+    echo "Workflow reminder:"
+    echo "  1. Create plan in main worktree (Main-First Planning)"
+    echo "  2. Create/switch to feature worktree for code"
+    echo "  3. Implement code in feature branch"
+    echo "  4. Merge via staging to main"
+    echo ""
+    echo "Non-plan files detected:"
+    echo -e "$NON_PLAN_FILES"
+    echo ""
+    echo "Reference: worktree-and-branching.yml#Main-First Planning"
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "Commit will proceed (this is a warning, not a block)."
+    echo ""
+  fi
+fi
+
+exit 0  # Always allow commit (warning only)

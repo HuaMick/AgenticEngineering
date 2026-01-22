@@ -38,8 +38,12 @@ def handle(args, ctx=None):
             cmd_task_status(args, ctx)
         elif args.task_action == "add":
             cmd_task_add(args, ctx)
+        elif args.task_action == "update":
+            cmd_task_update(args, ctx)
+        elif args.task_action == "current":
+            cmd_task_current(args, ctx)
         else:
-            print("Usage: agentic plan task <start|complete|prefill|list|status|add> ...", file=sys.stderr)
+            print("Usage: agentic plan task <start|complete|prefill|list|status|add|update|current> ...", file=sys.stderr)
             sys.exit(1)
     elif args.plan_command == "archive":
         cmd_archive(args)
@@ -1122,3 +1126,248 @@ def cmd_move(args, ctx=None):
     else:
         print("Usage: agentic plan move <task|tasks|folder>", file=sys.stderr)
         sys.exit(1)
+
+
+def cmd_task_update(args, ctx=None):
+    """Update task status in plan YAML file.
+
+    Enables agents to persist progress without holding plan in context.
+    Modifies EXISTING plan files created by planner agents.
+
+    Args:
+        args: Parsed arguments with task_id, status, optional note.
+        ctx: Optional CLIContext.
+    """
+    from agenticcli.console import (
+        is_json_output,
+        print_error,
+        print_json,
+        print_success,
+        print_warning,
+    )
+
+    task_id = args.task_id
+    new_status = args.status
+    note = getattr(args, "note", None)
+    plan_path = find_plan_folder(getattr(args, "plan", None))
+    live_dir = plan_path / "live"
+
+    if not live_dir.exists():
+        print_error(f"No live/ directory in {plan_path}")
+        sys.exit(1)
+
+    # Find and update the task
+    task_found = False
+    updated_file = None
+
+    for yaml_file in live_dir.glob("*.yml"):
+        try:
+            content = yaml.safe_load(yaml_file.read_text())
+        except yaml.YAMLError:
+            continue
+
+        if not content:
+            continue
+
+        # Look for the task in phases
+        phases = content.get("phases", [])
+        for phase in phases:
+            tasks = phase.get("tasks", [])
+            for task in tasks:
+                # Match task by various ID field names
+                tid = task.get("id") or task.get("task_id") or ""
+                if tid == task_id:
+                    # Found the task - update status
+                    old_status = task.get("status", "pending")
+
+                    # Validate status transition
+                    valid_transitions = {
+                        "pending": ["in_progress", "blocked"],
+                        "in_progress": ["completed", "blocked", "pending"],
+                        "completed": ["pending", "in_progress"],  # Allow rollback
+                        "blocked": ["pending", "in_progress"],
+                    }
+
+                    if new_status not in valid_transitions.get(old_status, []) and old_status != new_status:
+                        if is_json_output():
+                            print_json({
+                                "error": f"Invalid transition from {old_status} to {new_status}",
+                                "task_id": task_id,
+                                "current_status": old_status,
+                            })
+                        else:
+                            print_warning(f"Status transition from '{old_status}' to '{new_status}' for task {task_id}")
+
+                    task["status"] = new_status
+
+                    # Add completion note if provided
+                    if note:
+                        task["completion_note"] = note
+
+                    # Add timestamp for completed tasks
+                    if new_status == "completed":
+                        task["completed_at"] = datetime.now().isoformat()
+
+                    task_found = True
+                    updated_file = yaml_file
+                    break
+            if task_found:
+                break
+
+        if task_found:
+            # Write back to file
+            try:
+                yaml_file.write_text(yaml.dump(content, default_flow_style=False, sort_keys=False))
+            except IOError as e:
+                print_error(f"Failed to write {yaml_file}: {e}")
+                sys.exit(1)
+            break
+
+    if not task_found:
+        if is_json_output():
+            print_json({"error": f"Task not found: {task_id}"})
+        else:
+            print_error(f"Task not found: {task_id}")
+            print("Hint: Use 'agentic plan task list' to see available task IDs", file=sys.stderr)
+        sys.exit(1)
+
+    if is_json_output():
+        print_json({
+            "task_id": task_id,
+            "new_status": new_status,
+            "file": updated_file.name if updated_file else None,
+            "note": note,
+        })
+    else:
+        print_success(f"Updated task {task_id} to '{new_status}'")
+
+
+def cmd_task_current(args, ctx=None):
+    """Get the current/next task to work on.
+
+    Returns the first in_progress task, or first pending if none in progress.
+    This is the primary "what should I do next?" query for agents.
+
+    Args:
+        args: Parsed arguments with optional plan path.
+        ctx: Optional CLIContext.
+    """
+    from agenticcli.console import (
+        console,
+        format_status,
+        is_json_output,
+        print_error,
+        print_header,
+        print_json,
+        print_key_value,
+    )
+
+    plan_path = find_plan_folder(getattr(args, "plan", None))
+    live_dir = plan_path / "live"
+
+    if not live_dir.exists():
+        print_error(f"No live/ directory in {plan_path}")
+        sys.exit(1)
+
+    # Collect all tasks with full details
+    all_tasks = []
+
+    for yaml_file in sorted(live_dir.glob("*.yml")):
+        try:
+            content = yaml.safe_load(yaml_file.read_text())
+        except yaml.YAMLError:
+            continue
+
+        if not content:
+            continue
+
+        phases = content.get("phases", [])
+        for phase in phases:
+            phase_name = phase.get("name", "")
+            phase_id = phase.get("id", "")
+            tasks = phase.get("tasks", [])
+
+            for task in tasks:
+                task_info = {
+                    "id": task.get("id") or task.get("task_id", ""),
+                    "name": task.get("name", ""),
+                    "description": task.get("description", ""),
+                    "status": task.get("status", "pending"),
+                    "phase": phase_name,
+                    "phase_id": phase_id,
+                    "inputs": task.get("inputs", []),
+                    "target_files": task.get("target_files", []),
+                    "guidance": task.get("guidance", ""),
+                    "success_criteria": task.get("success_criteria", []),
+                    "agent_type": task.get("agent_type", ""),
+                    "source_file": yaml_file.name,
+                }
+                all_tasks.append(task_info)
+
+    # Find current task: first in_progress, or first pending
+    current_task = None
+
+    for task in all_tasks:
+        if task["status"] == "in_progress":
+            current_task = task
+            break
+
+    if not current_task:
+        for task in all_tasks:
+            if task["status"] == "pending":
+                current_task = task
+                break
+
+    if is_json_output():
+        if current_task:
+            print_json({
+                "plan_folder": plan_path.name,
+                "task": current_task,
+                "all_complete": False,
+            })
+        else:
+            # Check if all are completed
+            completed_count = sum(1 for t in all_tasks if t["status"] == "completed")
+            print_json({
+                "plan_folder": plan_path.name,
+                "task": None,
+                "all_complete": completed_count == len(all_tasks),
+                "total_tasks": len(all_tasks),
+                "completed_tasks": completed_count,
+            })
+    else:
+        print_header(f"Current Task - {plan_path.name}")
+
+        if current_task:
+            console.print(f"\n[bold]Task:[/bold] {current_task['id']} - {current_task['name']}")
+            console.print(f"[bold]Status:[/bold] {format_status(current_task['status'])}")
+            console.print(f"[bold]Phase:[/bold] {current_task['phase']}")
+
+            if current_task.get("description"):
+                console.print(f"\n[bold]Description:[/bold]")
+                console.print(current_task["description"][:500])
+
+            if current_task.get("guidance"):
+                console.print(f"\n[bold]Guidance:[/bold]")
+                console.print(current_task["guidance"][:500])
+
+            if current_task.get("inputs"):
+                console.print(f"\n[bold]Inputs:[/bold]")
+                for inp in current_task["inputs"][:5]:
+                    console.print(f"  - {inp}")
+
+            if current_task.get("target_files"):
+                console.print(f"\n[bold]Target Files:[/bold]")
+                for tf in current_task["target_files"][:5]:
+                    console.print(f"  - {tf}")
+
+            if current_task.get("success_criteria"):
+                console.print(f"\n[bold]Success Criteria:[/bold]")
+                for sc in current_task["success_criteria"][:3]:
+                    console.print(f"  - {sc}")
+        else:
+            completed_count = sum(1 for t in all_tasks if t["status"] == "completed")
+            if completed_count == len(all_tasks) and all_tasks:
+                console.print("[green]All tasks completed![/green]")
+            else:
+                console.print("[dim]No tasks found or no pending tasks.[/dim]")

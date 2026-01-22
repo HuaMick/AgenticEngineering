@@ -1,0 +1,1100 @@
+# JIT Context Entrypoints Implementation Test Plan
+# Status: active
+# Priority: high
+# Created: 2026-01-23
+
+# ========================================
+# ROOT-LEVEL PLAN METADATA (Required)
+# ========================================
+name: "jit-context-entrypoints-implementation-test"
+worktree_path: "/home/code/AgenticEngineering"
+branch: "main"
+status: "completed"
+priority: "high"
+created: "2026-01-23"
+completed: "2026-01-23"
+completion_note: |
+  Implementation verification completed via:
+  - CLI smoke tests: agentic context/plan task --help verified
+  - Main-First resolution: main_first_test.yml audit report (PASS)
+  - E2E bootstrap: e2e_bootstrap_test.yml audit report (PASS)
+  - Agent integration: 26 thin-client agents generated and verified
+  - Regression: No breaks to existing CLI (64 tests passing)
+  - Gap analysis: No gaps found, all features working
+
+# ========================================
+# CONTEXT
+# ========================================
+context: |
+  DEDICATED Implementation Verification Test Plan for JIT Context Entrypoints.
+
+  This plan differs from the general test plan (plan_live_test.yml) by focusing
+  specifically on IMPLEMENTATION VERIFICATION - validating that the built
+  functionality matches the specification and works end-to-end.
+
+  KEY COMMANDS UNDER TEST:
+  - `agentic context bootstrap --role <role-id>` - Primary Seed Context entrypoint
+  - `agentic context role <role-id>` - Role-specific process/guidelines
+  - `agentic context task` - Active task from Main-First plan
+  - `agentic context inputs` - JIT manifest of relevant files
+  - `agentic plan task status|update|current` - Plan task management
+
+  KEY FEATURES TO VALIDATE:
+  1. Main-First Plan Resolution from feature worktrees
+  2. Thin-client agent bootstrap flow
+  3. Context aggregation and JSON output
+  4. Plan task status updates without holding plan in context
+
+  TEST STRATEGY:
+  - Phase 1: CLI availability and help validation (smoke tests)
+  - Phase 2: Main-First plan resolution verification
+  - Phase 3: Context bootstrap end-to-end testing
+  - Phase 4: Agent integration testing (subagent using JIT commands)
+  - Phase 5: Regression testing against existing CLI functionality
+  - Phase 6: Gap analysis and follow-up planning
+
+  RELATIONSHIP TO OTHER PLANS:
+  - Build plan: plan_live_build.yml (implementation reference)
+  - General test plan: plan_live_test.yml (unit/integration/UAT coverage)
+  - This plan: Implementation verification and gap detection
+
+# ========================================
+# ROOT-LEVEL INPUTS (Pre-gathered Context)
+# ========================================
+inputs:
+  # Reference plans
+  - location: "docs/plans/live/261115CL_agenticcli/live/plan_live_build.yml"
+    description: "Build plan defining implemented features (5 phases, 20+ tasks)"
+
+  - location: "docs/plans/live/261115CL_agenticcli/live/plan_live_test.yml"
+    description: "General test plan (7 phases - unit/integration/UAT)"
+
+  - location: "docs/plans/live/261115CL_agenticcli/specification.md"
+    description: "Technical specification for JIT context retrieval"
+
+  # Implementation targets
+  - location: "modules/AgenticCLI/src/agenticcli/commands/context.py"
+    description: "CLI context command implementation"
+
+  - location: "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+    description: "CLI plan command implementation (task subcommands)"
+
+  - location: "modules/AgenticCLI/src/agenticcli/workflows/context_workflow.py"
+    description: "Main-First plan resolution workflow"
+
+  - location: "modules/AgenticCLI/src/agenticcli/cli.py"
+    description: "Main CLI command structure and routing"
+
+  # Agent templates
+  - location: "modules/AgenticGuidance/assets/templates/bootstrap-agent-template.md"
+    description: "Bootstrap template for thin-client agents"
+
+  - location: ".claude/agents/"
+    description: "Thin-client agent files (migration targets)"
+
+# ========================================
+# SUCCESS CRITERIA
+# ========================================
+success_criteria:
+  - "All JIT context commands are available and show correct help text"
+  - "Main-First plan resolution correctly finds plans from feature worktrees"
+  - "Context bootstrap returns complete Seed Context in JSON format"
+  - "Plan task commands (status, update, current) operate correctly"
+  - "Agent can complete full bootstrap flow using only CLI commands"
+  - "No regressions in existing CLI functionality"
+  - "All gaps identified and documented for remediation"
+
+# ========================================
+# PHASES AND TASKS
+# ========================================
+phases:
+
+  # ----------------------------------------
+  # PHASE 1: CLI Command Availability and Help Validation
+  # ----------------------------------------
+  - name: "CLI Command Availability and Help Validation"
+    id: "phase_01"
+    execution: sequential
+    description: |
+      Smoke tests to verify all JIT context commands are registered,
+      available, and provide correct help documentation.
+    tasks:
+
+      - id: "01.1"
+        name: "Verify context command group registration"
+        description: |
+          Validate that the `agentic context` command group is properly
+          registered in the CLI and shows in top-level help.
+        status: "pending"
+        agent_type: "test-runner"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/cli.py"
+        guidance: |
+          VALIDATION STEPS:
+          1. Run `agentic --help` and verify 'context' appears in command list
+          2. Run `agentic context --help` and verify it returns help (not error)
+          3. Verify help text describes JIT context retrieval purpose
+          4. Document exact output for regression baseline
+
+          EXPECTED BEHAVIOR:
+          - `agentic --help` shows: context - JIT context retrieval commands
+          - `agentic context --help` shows subcommands: bootstrap, role, task, inputs
+
+          FAILURE CRITERIA:
+          - Command not found error
+          - Help text missing or incorrect
+          - Subcommands not listed
+        success_criteria:
+          - "`agentic context --help` shows all 4 subcommands"
+          - "No import errors or crashes"
+
+      - id: "01.2"
+        name: "Verify context bootstrap command help"
+        description: |
+          Validate `agentic context bootstrap` command help documentation
+          accurately describes arguments, flags, and purpose.
+        status: "pending"
+        agent_type: "test-runner"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/context.py"
+        guidance: |
+          VALIDATION STEPS:
+          1. Run `agentic context bootstrap --help`
+          2. Verify --role flag is documented with role-id argument
+          3. Verify -j/--json flag is documented for machine output
+          4. Verify description mentions "Seed Context" or equivalent
+          5. Document exact help output
+
+          EXPECTED FLAGS:
+          - --role <role-id>: Specify agent role for filtering
+          - -j, --json: Output in JSON format for agent consumption
+
+          ACCEPTANCE CRITERIA:
+          - Help clearly explains the bootstrap purpose
+          - All flags documented with descriptions
+          - Examples provided (optional but preferred)
+        success_criteria:
+          - "Help text shows --role and --json flags"
+          - "Purpose description is clear and accurate"
+
+      - id: "01.3"
+        name: "Verify context role command help"
+        description: |
+          Validate `agentic context role` command help documentation.
+        status: "pending"
+        agent_type: "test-runner"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/context.py"
+        guidance: |
+          VALIDATION STEPS:
+          1. Run `agentic context role --help`
+          2. Verify role-id argument is documented (required)
+          3. Verify --format flag documented (yaml/json)
+          4. Verify description mentions process/guidelines
+
+          EXPECTED ARGS:
+          - role-id (required): Agent role identifier (e.g., planner-build)
+          - --format: Output format (yaml default, json optional)
+        success_criteria:
+          - "role-id argument documented as required"
+          - "Output format options documented"
+
+      - id: "01.4"
+        name: "Verify context task command help"
+        description: |
+          Validate `agentic context task` command help documentation.
+        status: "pending"
+        agent_type: "test-runner"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/context.py"
+        guidance: |
+          VALIDATION STEPS:
+          1. Run `agentic context task --help`
+          2. Verify --all flag documented (show all tasks vs current)
+          3. Verify description mentions Main-First resolution
+          4. Verify JSON output option documented
+
+          KEY CONCEPTS TO VERIFY IN HELP:
+          - Extracts active task from Main-First resolved plan
+          - Returns in_progress task, or first pending if none in_progress
+          - Works from any worktree (feature or main)
+        success_criteria:
+          - "Help mentions Main-First plan resolution"
+          - "--all flag documented for full task list"
+
+      - id: "01.5"
+        name: "Verify context inputs command help"
+        description: |
+          Validate `agentic context inputs` command help documentation.
+        status: "pending"
+        agent_type: "test-runner"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/context.py"
+        guidance: |
+          VALIDATION STEPS:
+          1. Run `agentic context inputs --help`
+          2. Verify --role flag documented (filter by role)
+          3. Verify --resolve flag documented (expand layers)
+          4. Verify description mentions JIT manifest
+        success_criteria:
+          - "Help describes JIT input manifest purpose"
+          - "--role and --resolve flags documented"
+
+      - id: "01.6"
+        name: "Verify plan task subcommand group"
+        description: |
+          Validate `agentic plan task` subcommand group is available
+          and shows status, update, and current commands.
+        status: "pending"
+        agent_type: "test-runner"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+          - "modules/AgenticCLI/src/agenticcli/cli.py"
+        guidance: |
+          VALIDATION STEPS:
+          1. Run `agentic plan task --help`
+          2. Verify subcommands: status, update, current
+          3. Verify each subcommand has --help
+          4. Run `agentic plan task status --help`
+          5. Run `agentic plan task update --help`
+          6. Run `agentic plan task current --help`
+
+          EXPECTED STRUCTURE:
+          agentic plan task status [--phase] [--status] [--json]
+          agentic plan task update <task-id> --status <status> [--note]
+          agentic plan task current [--json]
+        success_criteria:
+          - "All 3 task subcommands available"
+          - "Each subcommand has complete help documentation"
+
+  # ----------------------------------------
+  # PHASE 2: Main-First Plan Resolution Testing
+  # ----------------------------------------
+  - name: "Main-First Plan Resolution Testing"
+    id: "phase_02"
+    execution: sequential
+    description: |
+      Verify the Main-First plan resolution logic correctly finds
+      plans in the main worktree from feature worktrees.
+    tasks:
+
+      - id: "02.1"
+        name: "Test plan resolution from main worktree"
+        description: |
+          Verify context commands correctly find plans when executed
+          from the main worktree directly.
+        status: "pending"
+        agent_type: "test-runner"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/workflows/context_workflow.py"
+          - "docs/plans/live/261115CL_agenticcli/"
+        guidance: |
+          VALIDATION STEPS:
+          1. Ensure working directory is main worktree
+          2. Run `agentic context task -j` from main worktree
+          3. Verify plan is found in docs/plans/live/
+          4. Verify correct plan folder is matched
+          5. Run `agentic context bootstrap -j` and verify output
+
+          TEST DATA:
+          - Use existing plan folder: 261115CL_agenticcli
+          - Verify resolution finds live/plan_live_build.yml or equivalent
+
+          EXPECTED OUTPUT:
+          - plan_folder field shows matched folder
+          - objective extracted from plan
+          - No resolution errors
+        success_criteria:
+          - "Plan resolved successfully from main worktree"
+          - "Correct plan folder matched"
+          - "Objective extracted from plan YAML"
+
+      - id: "02.2"
+        name: "Test plan resolution from feature worktree"
+        description: |
+          Verify context commands correctly resolve plans from the
+          main worktree when executed in a feature worktree.
+        status: "pending"
+        agent_type: "test-runner"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/workflows/context_workflow.py"
+          - "modules/AgenticCLI/src/agenticcli/commands/worktree.py"
+        guidance: |
+          VALIDATION STEPS:
+          1. List existing worktrees: `git worktree list`
+          2. If feature worktree exists, cd to it
+          3. If not, create temporary feature worktree for testing
+          4. From feature worktree, run `agentic context task -j`
+          5. Verify plan resolved from MAIN worktree (not feature)
+          6. Verify plan_folder and main_worktree fields in output
+
+          KEY BEHAVIOR:
+          - Feature worktree should NOT have plans
+          - CLI must detect main worktree location
+          - CLI must scan main_worktree/docs/plans/live/
+
+          DEBUGGING OUTPUT:
+          - If fails, capture git worktree list output
+          - Capture resolution path for analysis
+        success_criteria:
+          - "Plan resolved from main worktree while in feature worktree"
+          - "main_worktree field shows correct path"
+          - "Resolution path is correct"
+
+      - id: "02.3"
+        name: "Test plan resolution with no matching plan"
+        description: |
+          Verify graceful handling when no plan matches the current
+          branch or worktree context.
+        status: "pending"
+        agent_type: "test-runner"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/workflows/context_workflow.py"
+        guidance: |
+          VALIDATION STEPS:
+          1. Create or switch to a branch with no matching plan
+          2. Run `agentic context task -j`
+          3. Verify graceful error/message (no crash)
+          4. Verify output indicates no plan found
+          5. Run `agentic context bootstrap -j` and verify handling
+
+          EXPECTED BEHAVIOR:
+          - Clear message: "No matching plan found"
+          - JSON output with null/empty plan fields
+          - Non-zero exit code (optional, verify behavior)
+
+          NOT ACCEPTABLE:
+          - Stack trace or crash
+          - Cryptic error message
+          - Hanging/timeout
+        success_criteria:
+          - "Graceful message when no plan found"
+          - "No crashes or stack traces"
+          - "JSON output is valid (even if empty)"
+
+      - id: "02.4"
+        name: "Test branch-to-plan-folder matching"
+        description: |
+          Verify the branch pattern matching correctly identifies
+          plans based on YYMMDDXX naming convention.
+        status: "pending"
+        agent_type: "test-runner"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/workflows/context_workflow.py"
+          - "docs/plans/live/"
+        guidance: |
+          VALIDATION STEPS:
+          1. List plan folders in docs/plans/live/
+          2. Identify naming patterns (YYMMDDXX_description)
+          3. Verify context commands match based on:
+             - Direct folder name match
+             - Branch name containing folder prefix
+             - Feature index matching
+          4. Test edge cases:
+             - Multiple potential matches
+             - Partial matches
+             - No matches
+
+          PATTERN EXAMPLES:
+          - Folder: 261115CL_agenticcli
+          - Branch: agenticcli -> should match
+          - Branch: feature/261115CL -> should match
+          - Branch: unrelated-branch -> should not match
+        success_criteria:
+          - "Branch pattern matching works correctly"
+          - "Multiple match handling documented"
+          - "Edge cases handled gracefully"
+
+  # ----------------------------------------
+  # PHASE 3: Context Bootstrap End-to-End Testing
+  # ----------------------------------------
+  - name: "Context Bootstrap End-to-End Testing"
+    id: "phase_03"
+    execution: sequential
+    description: |
+      Comprehensive testing of the context bootstrap command and
+      aggregated Seed Context output.
+    tasks:
+
+      - id: "03.1"
+        name: "Test bootstrap JSON output structure"
+        description: |
+          Verify `agentic context bootstrap -j` returns valid JSON
+          with all required fields for agent consumption.
+        status: "pending"
+        agent_type: "test-runner"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/context.py"
+        guidance: |
+          VALIDATION STEPS:
+          1. Run `agentic context bootstrap -j`
+          2. Parse output as JSON (must be valid)
+          3. Verify required fields present:
+             - role (if --role specified)
+             - objective (from active plan)
+             - plan_folder (resolved plan location)
+             - process (role guidance)
+             - essential_inputs (file list)
+             - cli_commands (available commands)
+          4. Verify JSON is directly consumable by agent
+
+          JSON SCHEMA VALIDATION:
+          {
+            "role": "string",
+            "objective": "string",
+            "plan_folder": "string",
+            "process": { ... },
+            "essential_inputs": [ ... ],
+            "cli_commands": { ... }
+          }
+        success_criteria:
+          - "JSON output is valid and parseable"
+          - "All required fields present"
+          - "Field values are correct/populated"
+
+      - id: "03.2"
+        name: "Test bootstrap with --role flag"
+        description: |
+          Verify --role flag correctly filters context to specified role.
+        status: "pending"
+        agent_type: "test-runner"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/context.py"
+          - "modules/AgenticGuidance/agents/"
+        guidance: |
+          VALIDATION STEPS:
+          1. Run `agentic context bootstrap --role planner-build -j`
+          2. Verify role field matches 'planner-build'
+          3. Verify process field contains planner-build guidance
+          4. Run with different role: --role build-python
+          5. Verify output changes to reflect new role
+          6. Test invalid role: --role nonexistent-role
+          7. Verify error handling for invalid role
+
+          ROLES TO TEST:
+          - planner-build (should work)
+          - build-python (should work)
+          - test-runner (should work)
+          - invalid-role (should error gracefully)
+        success_criteria:
+          - "--role flag filters context correctly"
+          - "Invalid role returns clear error"
+          - "Different roles return different guidance"
+
+      - id: "03.3"
+        name: "Test bootstrap includes task objective"
+        description: |
+          Verify bootstrap output includes the objective from the
+          active plan (via Main-First resolution).
+        status: "pending"
+        agent_type: "test-runner"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/context.py"
+          - "modules/AgenticCLI/src/agenticcli/workflows/context_workflow.py"
+        guidance: |
+          VALIDATION STEPS:
+          1. Read the active plan file to get expected objective
+          2. Run `agentic context bootstrap -j`
+          3. Extract objective field from JSON output
+          4. Compare with expected objective from plan file
+          5. Verify objective is complete (not truncated)
+
+          CROSS-REFERENCE:
+          - Plan file: docs/plans/live/261115CL_agenticcli/live/plan_live_build.yml
+          - Expected: context field or objective field from plan
+        success_criteria:
+          - "Objective matches plan file content"
+          - "Objective is complete and accurate"
+
+      - id: "03.4"
+        name: "Test bootstrap includes CLI commands"
+        description: |
+          Verify bootstrap output includes CLI command hints for
+          the agent to know available operations.
+        status: "pending"
+        agent_type: "test-runner"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/context.py"
+        guidance: |
+          VALIDATION STEPS:
+          1. Run `agentic context bootstrap -j`
+          2. Extract cli_commands field from JSON
+          3. Verify commands are correct and executable:
+             - task_status or similar
+             - task_update or similar
+             - task_current or similar
+          4. Actually run the suggested commands to verify
+
+          EXPECTED CLI_COMMANDS STRUCTURE:
+          {
+            "cli_commands": {
+              "task_status": "agentic plan task status",
+              "task_update": "agentic plan task update <id> --status <status>",
+              "task_current": "agentic plan task current"
+            }
+          }
+        success_criteria:
+          - "CLI commands field populated"
+          - "Commands are syntactically correct"
+          - "Commands execute successfully when run"
+
+      - id: "03.5"
+        name: "Test context role command output"
+        description: |
+          Verify `agentic context role <role-id>` returns correct
+          process guidance for the specified role.
+        status: "pending"
+        agent_type: "test-runner"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/context.py"
+          - "modules/AgenticGuidance/agents/planner/planner-build/process.yml"
+        guidance: |
+          VALIDATION STEPS:
+          1. Run `agentic context role planner-build`
+          2. Verify output contains process.yml content
+          3. Test JSON format: `agentic context role planner-build --format json`
+          4. Verify invocation_context included if present
+          5. Test invalid role error handling
+
+          CROSS-REFERENCE:
+          - Agent location: modules/AgenticGuidance/agents/planner/planner-build/
+          - Process file: process.yml in that directory
+        success_criteria:
+          - "Process content matches source file"
+          - "Both YAML and JSON formats work"
+          - "Invalid role returns clear error"
+
+      - id: "03.6"
+        name: "Test context inputs command output"
+        description: |
+          Verify `agentic context inputs` returns JIT manifest of
+          relevant project files.
+        status: "pending"
+        agent_type: "test-runner"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/context.py"
+          - "modules/AgenticGuidance/agents/planner/planner-build/inputs.yml"
+        guidance: |
+          VALIDATION STEPS:
+          1. Run `agentic context inputs --role planner-build`
+          2. Verify manifest structure:
+             - inputs array with path, description, exists
+             - layers array if applicable
+             - missing array for non-existent files
+          3. Verify paths are absolute (not relative)
+          4. Test --resolve flag for layer expansion
+          5. Verify file existence checking works
+
+          EXPECTED OUTPUT STRUCTURE:
+          {
+            "role": "planner-build",
+            "inputs": [
+              {"path": "/absolute/path", "description": "...", "exists": true}
+            ],
+            "layers": [...],
+            "missing": [...]
+          }
+        success_criteria:
+          - "Manifest structure is correct"
+          - "Paths are absolute"
+          - "Missing files identified"
+
+  # ----------------------------------------
+  # PHASE 4: Agent Integration Testing
+  # ----------------------------------------
+  - name: "Agent Integration Testing"
+    id: "phase_04"
+    execution: sequential
+    description: |
+      Validate that agents can successfully use JIT commands to
+      bootstrap, work on tasks, and update progress.
+    tasks:
+
+      - id: "04.1"
+        name: "Test thin-client agent bootstrap flow"
+        description: |
+          Simulate an agent using the thin-client model to bootstrap
+          via CLI commands.
+        status: "pending"
+        agent_type: "test-user-simulator"
+        loop: "user-story-validation-loop"
+        strategy: "simulator"
+        inputs:
+          - ".claude/agents/"
+          - "modules/AgenticGuidance/assets/templates/bootstrap-agent-template.md"
+        guidance: |
+          USER STORY: As a thin-client agent, I need to bootstrap my context
+          using only CLI commands so I can start working with minimal tokens.
+
+          SIMULATION STEPS:
+          1. Start with ONLY the thin-client .md file (under 500 tokens)
+          2. Agent executes: `agentic context bootstrap --role <role> -j`
+          3. Agent parses JSON output for objective and process
+          4. Agent executes: `agentic plan task current -j`
+          5. Agent receives current task with guidance
+          6. Verify all steps complete without errors
+
+          SUCCESS INDICATORS:
+          - Agent has objective after bootstrap
+          - Agent has task to work on
+          - Agent has guidance for completing task
+          - Total context loaded is minimal
+        success_criteria:
+          - "Bootstrap flow completes without errors"
+          - "Agent receives complete working context"
+          - "All CLI commands execute successfully"
+
+      - id: "04.2"
+        name: "Test task update cycle"
+        description: |
+          Verify an agent can complete the full task update cycle:
+          get task, work, mark complete, get next task.
+        status: "pending"
+        agent_type: "test-user-simulator"
+        loop: "user-story-validation-loop"
+        strategy: "simulator"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+        guidance: |
+          SIMULATION STEPS:
+          1. Get current task: `agentic plan task current -j`
+          2. Note task ID from output
+          3. "Complete" the task (simulate work)
+          4. Update status: `agentic plan task update <id> --status completed`
+          5. Verify update succeeded
+          6. Get next task: `agentic plan task current -j`
+          7. Verify different task returned (or completion message)
+
+          VALIDATION:
+          - Task status persists to plan file
+          - Plan YAML remains valid after update
+          - Next task correctly identified
+
+          CAUTION:
+          - Use test plan file to avoid modifying real plans
+          - Or restore original status after test
+        success_criteria:
+          - "Task update persists to file"
+          - "Next task correctly returned"
+          - "Plan file remains valid YAML"
+
+      - id: "04.3"
+        name: "Test subagent invocation with JIT context"
+        description: |
+          Verify a subagent can be invoked with minimal bootstrap
+          and successfully retrieve its context via CLI.
+        status: "pending"
+        agent_type: "test-user-simulator"
+        loop: "user-story-validation-loop"
+        strategy: "simulator"
+        inputs:
+          - ".claude/agents/"
+        guidance: |
+          SCENARIO: Orchestration agent spawns build subagent
+
+          SIMULATION STEPS:
+          1. Load orchestration context (minimal)
+          2. Orchestration identifies need for build subagent
+          3. Subagent starts with thin-client file only
+          4. Subagent runs bootstrap: `agentic context bootstrap --role build-python -j`
+          5. Subagent receives build-specific context
+          6. Subagent completes assigned task
+          7. Subagent updates status via CLI
+
+          KEY VALIDATION:
+          - Subagent context is role-specific
+          - Subagent can access plan from orchestration's session
+          - Updates from subagent visible to orchestration
+        success_criteria:
+          - "Subagent bootstraps independently"
+          - "Subagent receives correct role context"
+          - "Updates propagate correctly"
+
+      - id: "04.4"
+        name: "Test policy update propagation"
+        description: |
+          Verify that policy updates in guidance files are immediately
+          reflected in context command output.
+        status: "pending"
+        agent_type: "test-runner"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticGuidance/agents/"
+        guidance: |
+          VALIDATION STEPS:
+          1. Run `agentic context role planner-build` and note output
+          2. Temporarily modify process.yml (add marker text)
+          3. Immediately run `agentic context role planner-build` again
+          4. Verify marker text appears in output (no cache)
+          5. Revert process.yml change
+
+          SUCCESS CRITERIA:
+          - Changes appear immediately (no stale cache)
+          - No restart or cache invalidation needed
+          - Works across all context commands
+
+          CLEANUP:
+          - MUST revert any test changes to process.yml
+        success_criteria:
+          - "Policy updates appear immediately"
+          - "No caching issues detected"
+
+  # ----------------------------------------
+  # PHASE 5: Regression Testing
+  # ----------------------------------------
+  - name: "Regression Testing"
+    id: "phase_05"
+    execution: sequential
+    description: |
+      Verify that JIT Context Entrypoints implementation does not
+      break existing CLI functionality.
+    tasks:
+
+      - id: "05.1"
+        name: "Test existing plan commands still work"
+        description: |
+          Verify existing `agentic plan` commands (before task subgroup)
+          continue to function correctly.
+        status: "pending"
+        agent_type: "test-runner"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+        guidance: |
+          VALIDATION STEPS:
+          1. Run `agentic plan --help` and verify help shows
+          2. Test existing plan subcommands:
+             - `agentic plan list` (if exists)
+             - `agentic plan show` (if exists)
+             - Any other pre-existing subcommands
+          3. Verify no changes in behavior from before
+
+          REGRESSION CHECK:
+          - Compare current help output with expected
+          - Verify no commands were accidentally removed
+          - Verify no argument changes broke compatibility
+        success_criteria:
+          - "All pre-existing plan commands work"
+          - "No behavioral changes detected"
+
+      - id: "05.2"
+        name: "Test existing worktree commands still work"
+        description: |
+          Verify `agentic worktree` commands used by Main-First
+          resolution continue to function correctly.
+        status: "pending"
+        agent_type: "test-runner"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/worktree.py"
+        guidance: |
+          VALIDATION STEPS:
+          1. Run `agentic worktree --help`
+          2. Run `agentic worktree status` and verify output
+          3. Run `agentic worktree list` (if exists)
+          4. Verify Main-First resolution uses these correctly
+
+          CROSS-CHECK:
+          - context_workflow.py should use worktree commands
+          - No duplicate implementations
+        success_criteria:
+          - "Worktree commands function correctly"
+          - "Status output is accurate"
+
+      - id: "05.3"
+        name: "Test CLI global options still work"
+        description: |
+          Verify global CLI options (--verbose, --json, etc.) work
+          correctly with new context commands.
+        status: "pending"
+        agent_type: "test-runner"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/cli.py"
+        guidance: |
+          VALIDATION STEPS:
+          1. Test --verbose flag with context commands
+          2. Test --json flag at CLI level (if different from -j)
+          3. Test --help at various command levels
+          4. Test --version
+
+          COMBINATIONS TO TEST:
+          - `agentic --verbose context bootstrap`
+          - `agentic context bootstrap --help`
+          - `agentic --version`
+        success_criteria:
+          - "Global options work with new commands"
+          - "No flag conflicts detected"
+
+      - id: "05.4"
+        name: "Test error handling consistency"
+        description: |
+          Verify error messages and exit codes are consistent with
+          existing CLI error handling patterns.
+        status: "pending"
+        agent_type: "test-runner"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/cli.py"
+        guidance: |
+          VALIDATION STEPS:
+          1. Test error scenarios for new commands:
+             - Invalid role: `agentic context role invalid-role`
+             - No plan found: (test in branch with no plan)
+             - Invalid task ID: `agentic plan task update invalid-id --status completed`
+          2. Verify error message format matches existing patterns
+          3. Verify exit codes are appropriate (non-zero for errors)
+          4. Verify no stack traces in normal error cases
+
+          ERROR PATTERN CHECK:
+          - Errors should use Rich console formatting
+          - Exit codes should be consistent
+          - Error messages should be actionable
+        success_criteria:
+          - "Error messages are consistent"
+          - "Exit codes are appropriate"
+          - "No unhandled exceptions"
+
+  # ----------------------------------------
+  # PHASE 6: Gap Analysis and Follow-up Planning
+  # ----------------------------------------
+  - name: "Gap Analysis and Follow-up Planning"
+    id: "phase_06"
+    execution: sequential
+    description: |
+      CRITICAL PHASE: Analyze test results to identify gaps and trigger
+      remediation planning if needed.
+
+      GAP CRITERIA:
+      - Missing functionality: Feature specified but not implemented
+      - Failed tests: Tests that cannot pass due to implementation issues
+      - Edge cases: Scenarios not covered by current implementation
+      - UX issues: Commands work but are confusing or error-prone
+
+      REMEDIATION TRIGGER:
+      If ANY gaps are identified, create plan_live_jit_remediation.yml
+      following the same structure as this test plan.
+    tasks:
+
+      - id: "06.1"
+        name: "Compile test results summary"
+        description: |
+          Aggregate results from all previous phases into a structured
+          test results document.
+        status: "pending"
+        agent_type: "test-audit"
+        loop: "audit-test-fix-loop"
+        inputs:
+          - "This plan (all previous phases)"
+        target_files:
+          - "docs/plans/live/261115CL_agenticcli/audit/jit_implementation_test_results.yml"
+        guidance: |
+          COMPILATION STEPS:
+          1. Review all tasks from phases 1-5
+          2. Document for each task:
+             - Status: passed / failed / blocked / skipped
+             - Issues found (if any)
+             - Evidence (command outputs, error messages)
+          3. Create summary statistics:
+             - Total tests: N
+             - Passed: N
+             - Failed: N
+             - Blocked: N
+             - Skipped: N
+          4. Categorize failures:
+             - Implementation bugs
+             - Test environment issues
+             - Specification ambiguity
+             - Edge case not handled
+
+          OUTPUT FORMAT:
+          Create jit_implementation_test_results.yml with structured results.
+        success_criteria:
+          - "All test results documented"
+          - "Results categorized by type"
+          - "Summary statistics accurate"
+
+      - id: "06.2"
+        name: "Identify implementation gaps"
+        description: |
+          Analyze test failures and edge cases to identify gaps
+          in the implementation.
+        status: "pending"
+        agent_type: "test-audit"
+        loop: "audit-test-fix-loop"
+        inputs:
+          - "docs/plans/live/261115CL_agenticcli/audit/jit_implementation_test_results.yml"
+          - "docs/plans/live/261115CL_agenticcli/specification.md"
+        target_files:
+          - "docs/plans/live/261115CL_agenticcli/audit/jit_gap_analysis.yml"
+        guidance: |
+          GAP IDENTIFICATION CRITERIA:
+
+          1. MISSING FUNCTIONALITY:
+             - Feature in specification not implemented
+             - Command exists but missing expected flag/option
+             - Output missing required field
+
+          2. FAILED TESTS:
+             - Test fails due to implementation bug
+             - Test fails due to incorrect behavior
+             - Test blocked by missing prerequisite
+
+          3. EDGE CASES:
+             - Scenario works but with unexpected behavior
+             - Error handling missing for valid error case
+             - Race condition or timing issue identified
+
+          4. UX ISSUES:
+             - Command works but output is confusing
+             - Error message not actionable
+             - Help text misleading or incomplete
+
+          DOCUMENTATION:
+          For each gap, document:
+          - Gap ID (GAP-001, GAP-002, etc.)
+          - Category (missing/failed/edge/ux)
+          - Description
+          - Test that exposed the gap
+          - Severity (critical/high/medium/low)
+          - Suggested remediation
+        success_criteria:
+          - "All gaps identified and categorized"
+          - "Severity assigned to each gap"
+          - "Remediation suggestions provided"
+
+      - id: "06.3"
+        name: "Create remediation plan if gaps found"
+        description: |
+          IF gaps are identified in the previous task, create a
+          remediation plan to address them.
+        status: "pending"
+        agent_type: "planner-build"
+        loop: "planning-loop"
+        inputs:
+          - "docs/plans/live/261115CL_agenticcli/audit/jit_gap_analysis.yml"
+          - "docs/plans/live/261115CL_agenticcli/live/plan_live_build.yml"
+        target_files:
+          - "docs/plans/live/261115CL_agenticcli/live/plan_live_jit_remediation.yml"
+        guidance: |
+          REMEDIATION PLAN CREATION:
+
+          TRIGGER CONDITION:
+          Create plan_live_jit_remediation.yml ONLY IF:
+          - Any critical or high severity gaps identified
+          - Any missing functionality gaps identified
+          - Any failed tests that indicate implementation bugs
+
+          IF NO GAPS:
+          - Document "No remediation needed" in audit folder
+          - Mark this task as completed with note "No gaps found"
+
+          IF GAPS FOUND:
+          1. Create plan_live_jit_remediation.yml
+          2. Follow same structure as plan_live_build.yml:
+             - Root metadata (name, status, priority)
+             - Context (reference gap analysis)
+             - Inputs (gap analysis + original specs)
+             - Phases organized by gap category
+             - Tasks for each gap remediation
+
+          REMEDIATION PLAN STRUCTURE:
+          - Phase 1: Critical gap fixes
+          - Phase 2: High priority fixes
+          - Phase 3: Medium priority fixes
+          - Phase 4: Low priority / UX improvements
+          - Phase 5: Re-test remediated items
+
+          TASK REQUIREMENTS FOR EACH GAP:
+          - Reference gap ID (GAP-001, etc.)
+          - Clear success criteria
+          - Test to verify fix
+        success_criteria:
+          - "Remediation plan created if gaps found"
+          - "Plan follows standard structure"
+          - "All gaps have remediation tasks"
+          - "OR: 'No gaps' documented if none found"
+
+      - id: "06.4"
+        name: "Update coordination doc with test status"
+        description: |
+          Update the JIT Context Entrypoints coordination document
+          with test completion status and any follow-up actions.
+        status: "pending"
+        agent_type: "planner-build"
+        loop: "planning-loop"
+        inputs:
+          - "docs/plans/live/261115CL_agenticcli/audit/jit_implementation_test_results.yml"
+          - "docs/plans/live/261115CL_agenticcli/live/plan_live_jit_context_entrypoints.yml"
+        target_files:
+          - "docs/plans/live/261115CL_agenticcli/live/plan_live_jit_context_entrypoints.yml"
+        guidance: |
+          UPDATE COORDINATION DOC:
+          1. Add test_status section:
+             test_status:
+               implementation_test_plan: "plan_live_test_jit_implementation.yml"
+               execution_date: "YYYY-MM-DD"
+               status: "passed" | "failed" | "partial"
+               summary: "Brief summary of results"
+               gaps_found: true | false
+               remediation_plan: "plan_live_jit_remediation.yml" | null
+
+          2. Update overall status if needed
+
+          3. Add next_steps if remediation required
+        success_criteria:
+          - "Coordination doc updated with test status"
+          - "Status accurately reflects test results"
+          - "Follow-up actions documented"
+
+# ========================================
+# NOTES
+# ========================================
+notes: |
+  TEST PLAN PHILOSOPHY:
+  This is an IMPLEMENTATION VERIFICATION plan, distinct from the general
+  test plan (plan_live_test.yml). While the general test plan covers unit
+  tests, integration tests, and UAT, this plan focuses on:
+
+  1. Verifying built features match specification
+  2. End-to-end validation of user workflows
+  3. Gap detection and remediation planning
+
+  GAP ANALYSIS IMPORTANCE:
+  Phase 6 is CRITICAL. Any gaps identified MUST trigger creation of
+  a remediation plan. This ensures:
+  - No gaps are lost or forgotten
+  - Remediation follows the same structured approach
+  - Progress is trackable across iterations
+
+  RELATIONSHIP TO OTHER PLANS:
+  - plan_live_build.yml: What we're testing
+  - plan_live_test.yml: Detailed test cases (unit/integration/UAT)
+  - plan_live_jit_context_entrypoints.yml: Coordination doc
+  - plan_live_jit_remediation.yml: Created IF gaps found (Phase 6)
+
+  EXECUTION ORDER:
+  This plan should be executed AFTER build implementation is complete
+  (or after significant milestones). It is NOT a substitute for the
+  general test plan, which should run during development.
+
+  AUDIT TRAIL:
+  All test results and gap analysis go to the audit/ folder:
+  - audit/jit_implementation_test_results.yml
+  - audit/jit_gap_analysis.yml

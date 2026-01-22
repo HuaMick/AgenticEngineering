@@ -1,0 +1,286 @@
+# Plan: Pre-commit Hook for Main Branch Protection
+# Created: 2026-01-22
+# Source: REC-003 from audit/260122_friction_analysis.yml
+# Entrypoint: _plan_teach.yml (teaching/guidance implementation)
+
+name: "precommit-hook-main-protection"
+worktree_path: "/home/code/AgenticEngineering"
+branch: "agenticguidance"
+status: "completed"
+priority: "medium"
+created: "2026-01-22"
+
+# ========================================
+# PLAN METADATA
+# ========================================
+plan_metadata:
+  name: "Pre-commit Hook for Main Branch Protection"
+  created: "2026-01-22"
+  status: "completed"
+  completed: "2026-01-22"
+  objective: |
+    Implement a pre-commit hook that warns when non-plan files are committed
+    directly to the main branch, providing technical enforcement of the
+    Main-First Planning scope clarification.
+
+# ========================================
+# CONTEXT & FRICTION ANALYSIS
+# ========================================
+context: |
+  The friction analysis (260122_friction_analysis.yml) identified that large
+  CLI code changes (3,400+ lines) were committed directly to main branch.
+
+  REC-001 and REC-002 (guidance clarification) have been COMPLETED via
+  plan_live_main_first_clarification.yml. However, guidance alone doesn't
+  prevent future violations - technical enforcement is needed.
+
+  REC-003 recommends implementing a pre-commit hook as a safety net.
+
+friction_reference:
+  source: "docs/plans/live/260104AE_agenticguidance/audit/260122_friction_analysis.yml"
+  pattern_id: "FP-006-001"
+  recommendation_id: "REC-003"
+
+# ========================================
+# IMPLEMENTATION OPTIONS
+# ========================================
+implementation_options:
+  - option: "Claude Code Hook"
+    description: "Use .claude/hooks/precommit for Claude-aware warning"
+    pros:
+      - "Integrates with Claude Code workflow"
+      - "Can provide intelligent context about why commit is flagged"
+      - "Doesn't block non-Claude git usage"
+    cons:
+      - "Only applies to Claude Code sessions"
+
+  - option: "Git Pre-commit Hook"
+    description: "Use .git/hooks/pre-commit for universal enforcement"
+    pros:
+      - "Applies to all git commits regardless of tool"
+      - "Standard git workflow"
+    cons:
+      - "Not shared via git (hooks are local-only)"
+      - "May interfere with legitimate main commits"
+
+  - option: "Husky + lint-staged"
+    description: "Use npm-based hook management"
+    pros:
+      - "Shareable via package.json"
+      - "Industry standard for JS projects"
+    cons:
+      - "Requires npm setup"
+      - "May not fit non-JS repos"
+
+  selected_option: "Claude Code Hook"
+  rationale: |
+    Claude Code Hook is the best fit because:
+    1. This is primarily about agent behavior, not human commits
+    2. Agents use Claude Code, so hook will be triggered for agent commits
+    3. Non-blocking warning is appropriate (not a hard block)
+    4. Can provide intelligent explanation of why commit was flagged
+
+# ========================================
+# PHASES
+# ========================================
+phases:
+  - name: "Teach Phase - Implement Pre-commit Hook"
+    description: "Create Claude Code pre-commit hook with main branch protection"
+    execution: sequential
+    tasks:
+      # ----------------------------------------
+      # Task 1: Create the hook script
+      # ----------------------------------------
+      - id: "teach_001"
+        name: "Create pre-commit hook script"
+        status: "completed"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml"
+        target_files:
+          - ".claude/hooks/precommit"
+        guidance: |
+          Create a Claude Code pre-commit hook at .claude/hooks/precommit
+
+          The hook should:
+          1. Check if the current branch is 'main' or 'master'
+          2. If on main, check if any non-plan files are being committed
+          3. Plan files are: docs/plans/**/*.yml, docs/plans/**/*.mmd, docs/plans/**/README.md
+          4. If non-plan files detected, output a WARNING (not blocking)
+          5. Include context about Main-First Planning scope
+
+          Hook script template:
+          ```bash
+          #!/bin/bash
+          # Pre-commit hook: Main Branch Protection
+          # Purpose: Warn when non-plan files are committed to main
+          # Reference: worktree-and-branching.yml#Main-First Planning
+
+          BRANCH=$(git rev-parse --abbrev-ref HEAD)
+
+          if [[ "$BRANCH" == "main" || "$BRANCH" == "master" ]]; then
+            # Get list of staged files
+            STAGED_FILES=$(git diff --cached --name-only)
+
+            # Check for non-plan files
+            NON_PLAN_FILES=""
+            while IFS= read -r file; do
+              if [[ ! "$file" =~ ^docs/plans/ ]]; then
+                NON_PLAN_FILES="$NON_PLAN_FILES$file\n"
+              fi
+            done <<< "$STAGED_FILES"
+
+            if [[ -n "$NON_PLAN_FILES" ]]; then
+              echo "⚠️  WARNING: Non-plan files being committed to main branch"
+              echo ""
+              echo "Main-First Planning applies to PLAN FILES only."
+              echo "Code changes should use feature branches and staging-first merge."
+              echo ""
+              echo "Non-plan files detected:"
+              echo -e "$NON_PLAN_FILES"
+              echo ""
+              echo "Reference: worktree-and-branching.yml#Main-First Planning"
+              echo ""
+              echo "To proceed anyway, the commit will continue (this is a warning)."
+            fi
+          fi
+
+          exit 0  # Always allow commit (warning only)
+          ```
+
+        acceptance_criteria:
+          - "Hook file created at .claude/hooks/precommit"
+          - "Hook is executable (chmod +x)"
+          - "Hook detects commits to main/master branch"
+          - "Hook identifies non-plan files in staged changes"
+          - "Hook outputs warning with Main-First Planning reference"
+          - "Hook does NOT block commit (exit 0)"
+
+      # ----------------------------------------
+      # Task 2: Document the hook
+      # ----------------------------------------
+      - id: "teach_002"
+        name: "Document hook in worktree-and-branching.yml"
+        status: "completed"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml"
+        target_files:
+          - "modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml"
+        guidance: |
+          Update the tooling_recommendations section in worktree-and-branching.yml
+          to document that the pre-commit hook has been implemented.
+
+          Change from:
+          ```yaml
+          tooling_recommendations:
+            - name: "Pre-commit branch check"
+              description: |
+                Consider implementing a pre-commit hook that warns when committing
+                non-plan files to the main branch...
+              implementation_note: |
+                This is a recommendation for future tooling improvement...
+          ```
+
+          To:
+          ```yaml
+          tooling_enforcement:
+            - name: "Pre-commit branch check"
+              status: "implemented"
+              location: ".claude/hooks/precommit"
+              description: |
+                A Claude Code pre-commit hook that warns when non-plan files
+                are committed to the main branch. This provides technical
+                enforcement of the Main-First Planning scope.
+              behavior:
+                - "Triggers on commits to main or master branch"
+                - "Identifies non-plan files (anything outside docs/plans/)"
+                - "Outputs warning with Main-First Planning reference"
+                - "Does NOT block commit (warning only)"
+              configuration: |
+                The hook is automatically active for Claude Code sessions.
+                No configuration required.
+          ```
+
+        acceptance_criteria:
+          - "tooling_recommendations renamed to tooling_enforcement"
+          - "Hook documented with status: implemented"
+          - "Hook location documented"
+          - "Behavior documented"
+
+      # ----------------------------------------
+      # Task 3: Test the hook
+      # ----------------------------------------
+      - id: "teach_003"
+        name: "Verify hook behavior"
+        status: "completed"
+        agent: "teacher-update-guidance"
+        priority: "low"
+        inputs:
+          - ".claude/hooks/precommit"
+        guidance: |
+          Test the hook by:
+          1. Ensure hook is executable: ls -la .claude/hooks/precommit
+          2. Run hook manually: bash .claude/hooks/precommit
+          3. Verify it produces expected warning when on main branch
+
+          Note: Full integration testing requires a Claude Code commit
+          on main branch, which we want to avoid. Manual execution
+          verification is sufficient.
+
+        acceptance_criteria:
+          - "Hook file exists and is executable"
+          - "Hook produces warning output when run on main branch"
+          - "Warning includes Main-First Planning reference"
+
+# ========================================
+# DELIVERABLES
+# ========================================
+deliverables:
+  - file: ".claude/hooks/precommit"
+    changes:
+      - "Create new pre-commit hook script"
+      - "Make executable"
+
+  - file: "modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml"
+    changes:
+      - "Rename tooling_recommendations to tooling_enforcement"
+      - "Update documentation to show hook is implemented"
+
+# ========================================
+# ACCEPTANCE CRITERIA
+# ========================================
+acceptance_criteria:
+  - "Pre-commit hook exists at .claude/hooks/precommit"
+  - "Hook is executable"
+  - "Hook warns on non-plan commits to main"
+  - "Hook does NOT block commits (exit 0)"
+  - "worktree-and-branching.yml documents the implemented hook"
+  - "No YAML syntax errors"
+
+# ========================================
+# SUCCESS CRITERIA
+# ========================================
+success_criteria:
+  - "Future Claude Code sessions on main will see warning for non-plan commits"
+  - "Warning provides clear context about Main-First Planning scope"
+  - "Guidance documentation reflects implemented enforcement"
+  - "REC-003 from friction analysis is addressed"
+
+# ========================================
+# NOTES
+# ========================================
+notes: |
+  This plan addresses REC-003 from the friction analysis.
+
+  The hook is WARNING-ONLY by design:
+  - Blocking commits could interfere with legitimate maintenance
+  - The goal is awareness, not prevention
+  - Agents can still commit to main with --force if truly needed
+
+  This completes the Main-First Planning clarification initiative:
+  - REC-001: Guidance clarification ✓ (completed 2026-01-22)
+  - REC-002: Build agent inputs ✓ (completed 2026-01-22)
+  - REC-003: Pre-commit hook (this plan)
+
+estimated_effort: "30-45 minutes"
