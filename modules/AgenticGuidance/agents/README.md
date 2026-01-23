@@ -8,14 +8,14 @@ This directory contains agent process definitions for the AgenticGuidance module
 
 | Category | Agents | Description |
 |----------|--------|-------------|
-| [orchestration](#orchestration) | 5 | High-level coordination of planning and execution workflows |
+| [orchestration](#orchestration) | 3 | High-level coordination of planning and execution workflows |
 | [planner](#planner) | 7 | Create executable implementation plans from objectives |
 | [build](#build) | 2 | Code implementation for production deployment |
 | [test](#test) | 7 | Validation through testing and quality assurance |
 | [teacher](#teacher) | 3 | Improve agent guidance (paths, fences, signposts) |
 | [deploy](#deploy) | 2 | Infrastructure and deployment tooling |
 
-**Total: 26 agents (24 active, 2 deprecated)**
+**Total: 24 active agents**
 
 ---
 
@@ -28,15 +28,11 @@ High-level orchestration agents that coordinate planning and execution workflows
 | orchestration-planning | 2.0 | Planning-only workflows - human-in-the-loop plan creation and approval | Complete |
 | orchestration-executor | 2.0 | Generic MMD-driven execution - dynamic agent routing from Plan-MMD metadata | Complete |
 | orchestration-friction | 1.0 | LangSmith trace friction analysis - detects patterns and recommends resolutions | Complete |
-| ~~orchestration-build~~ | 2.0 | ~~Code implementation workflows~~ | **DEPRECATED** (use orchestration-executor) |
-| ~~orchestration-guidance~~ | 1.0 | ~~Guidance/context engineering workflows~~ | **DEPRECATED** (use orchestration-executor) |
 
 **Routing Logic:**
 - `orchestration-planning`: Planning-only workflows, produces approved plans for downstream use. **Also generates orchestration_*.mmd** for executor consumption.
 - `orchestration-executor`: Generic MMD-driven execution (dynamic agent routing from Plan-MMD metadata). **Use this for all execution workflows.**
 - `orchestration-friction`: Friction analysis from LangSmith traces. Detects FP-001 through FP-006 patterns, classifies severity, and recommends GUIDANCE_UPDATE, CLI_OFFLOAD, or ASSET_UPDATE resolutions.
-- ~~`orchestration-build`~~: **DEPRECATED** - Replaced by `orchestration-executor` with dynamic MMD routing
-- ~~`orchestration-guidance`~~: **DEPRECATED** - Replaced by `orchestration-executor` with dynamic MMD routing
 
 ---
 
@@ -147,19 +143,21 @@ Each agent directory contains:
 - **Partial**: Some files missing
 - **Stub**: Only manifest.yml exists
 
-All 26 agents in this directory are **Complete** (24 active, 2 deprecated).
+All 24 agents in this directory are **Complete**.
 
 ---
 
-## Categories Not Yet Migrated
+## Categories Planned But Not Implemented
 
-The following categories remain as placeholders and may be deprecated:
+The following categories have infrastructure (definitions, guidelines, shared inputs) but no dedicated agent implementations. Their functionality is handled by existing agents:
 
-| Category | Description |
-|----------|-------------|
-| cleaner | Code cleanup (migration TBD) |
-| explore | Discovery and research (migration TBD) |
-| documentation | Documentation generation (migration TBD) |
+| Category | Infrastructure | Current Workaround | Status |
+|----------|---------------|-------------------|--------|
+| cleaner | 5 files (definitions, guidelines, examples) | `planner-cleaning` handles cleanup planning | Planned |
+| explore | 1 file (exploration-principles.yml) | Planner agents handle ad-hoc discovery | Planned |
+| documentation | Minimal | `teacher-update-assets` handles doc updates | Planned |
+
+These categories may be implemented if dedicated agents become necessary, but current workarounds are sufficient.
 
 ---
 
@@ -173,9 +171,7 @@ modules/AgenticGuidance/agents/
 │   ├── manifest.yml
 │   ├── orchestration-planning/
 │   ├── orchestration-executor/
-│   ├── orchestration-friction/     # NEW: Friction analysis
-│   ├── orchestration-build/        # DEPRECATED
-│   └── orchestration-guidance/     # DEPRECATED
+│   └── orchestration-friction/
 ├── planner/                        # Planner agents
 │   ├── manifest.yml
 │   ├── planner-build/

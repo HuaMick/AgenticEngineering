@@ -453,7 +453,7 @@ def _load_agent_bootstrap_context(agent_name: str) -> dict:
                         context["process_steps"].append(step_info)
 
                 # Extract guidelines from process
-                proc_guidelines = proc.get("guidelines", [])
+                proc_guidelines = proc.get("guidelines") or []
                 for guideline in proc_guidelines[:5]:
                     if isinstance(guideline, str):
                         context["guidelines"].append(guideline[:300])

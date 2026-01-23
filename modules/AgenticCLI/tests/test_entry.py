@@ -69,6 +69,85 @@ class TestEntryPoint:
             assert exc_info.value.code == 0
 
 
+class TestAgentNamePositionalRouting:
+    """Tests for CCI positional agent name routing in entry point."""
+
+    def test_agent_name_early_detection(self):
+        """Test positional agent names are detected early for fast response."""
+        from agenticcli.entry import main
+        import io
+        from contextlib import redirect_stdout
+
+        with patch.object(sys, "argv", ["agentic", "planner-guidance"]):
+            captured = io.StringIO()
+            with redirect_stdout(captured):
+                with pytest.raises(SystemExit) as exc_info:
+                    main()
+            assert exc_info.value.code == 0
+            # Should have agent output
+            assert "planner-guidance" in captured.getvalue().lower()
+
+    def test_agent_name_with_bootstrap_flag(self):
+        """Test positional agent name with --bootstrap flag."""
+        from agenticcli.entry import main
+        import io
+        from contextlib import redirect_stdout
+
+        with patch.object(sys, "argv", ["agentic", "test-runner", "--bootstrap"]):
+            captured = io.StringIO()
+            with redirect_stdout(captured):
+                with pytest.raises(SystemExit) as exc_info:
+                    main()
+            assert exc_info.value.code == 0
+            output = captured.getvalue()
+            # Bootstrap should have more content
+            assert "test-runner" in output.lower()
+
+    def test_agent_name_with_json_flag(self):
+        """Test positional agent name with -j flag."""
+        from agenticcli.entry import main
+        import io
+        import json
+        from contextlib import redirect_stdout
+
+        with patch.object(sys, "argv", ["agentic", "build-python", "-j"]):
+            captured = io.StringIO()
+            with redirect_stdout(captured):
+                with pytest.raises(SystemExit) as exc_info:
+                    main()
+            assert exc_info.value.code == 0
+            # Output should be valid JSON
+            output = captured.getvalue()
+            data = json.loads(output)
+            assert data["agent"] == "build-python"
+
+    def test_unknown_positional_not_routed_as_agent(self):
+        """Test non-agent positional args go to normal CLI routing."""
+        from agenticcli.entry import main
+
+        with patch("agenticcli.cli.run_cli") as mock_run:
+            with patch.object(sys, "argv", ["agentic", "unknown-command"]):
+                try:
+                    main()
+                except SystemExit:
+                    pass
+            # Should delegate to run_cli, not handle as agent
+            mock_run.assert_called()
+
+    def test_flag_args_not_treated_as_agent(self):
+        """Test arguments starting with - are not treated as agent names."""
+        from agenticcli.entry import main
+
+        with patch("agenticcli.cli.run_cli") as mock_run:
+            with patch.object(sys, "argv", ["agentic", "-j"]):
+                try:
+                    main()
+                except SystemExit:
+                    pass
+            # Should delegate to run_cli, not handle as agent
+            mock_run.assert_called()
+
+
 class TestEntryPointImports:
     """Test that entry point handles imports correctly."""
 

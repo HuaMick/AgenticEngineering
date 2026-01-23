@@ -1,6 +1,7 @@
 """Tests for agent-specific help commands.
 
-Tests the agent flag detection and help output functionality.
+Tests the agent name detection and help output functionality.
+Updated for CCI (CLI Context Injection) pattern: positional agent names instead of --flags.
 """
 
 import json
@@ -15,51 +16,53 @@ import pytest
 from agenticcli.commands.agent_help import (
     AGENT_CATEGORIES,
     KNOWN_AGENTS,
-    get_agent_from_flag,
-    is_agent_flag,
+    get_agent_name,
+    is_agent_name,
     show_agent_help,
     _load_agent_context,
     _find_agent_directory,
 )
 
 
-class TestAgentFlagDetection:
-    """Tests for agent flag detection functions."""
+class TestAgentNameDetection:
+    """Tests for agent name detection functions (CCI positional syntax)."""
 
-    def test_is_agent_flag_valid(self):
-        """Test detection of valid agent flags."""
-        assert is_agent_flag("--planner-guidance") is True
-        assert is_agent_flag("--build-python") is True
-        assert is_agent_flag("--test-runner") is True
-        assert is_agent_flag("--orchestration-executor") is True
+    def test_is_agent_name_valid(self):
+        """Test detection of valid agent names (positional, no -- prefix)."""
+        assert is_agent_name("planner-guidance") is True
+        assert is_agent_name("build-python") is True
+        assert is_agent_name("test-runner") is True
+        assert is_agent_name("orchestration-executor") is True
 
-    def test_is_agent_flag_invalid(self):
-        """Test rejection of invalid agent flags."""
-        assert is_agent_flag("--nonexistent-agent") is False
-        assert is_agent_flag("--help") is False
-        assert is_agent_flag("-j") is False
-        assert is_agent_flag("planner-guidance") is False
-        assert is_agent_flag("--") is False
+    def test_is_agent_name_invalid(self):
+        """Test rejection of invalid agent names."""
+        assert is_agent_name("nonexistent-agent") is False
+        assert is_agent_name("help") is False
+        assert is_agent_name("-j") is False
+        # Old flag syntax should NOT work
+        assert is_agent_name("--planner-guidance") is False
+        assert is_agent_name("--") is False
 
-    def test_agent_flag_with_dashes(self):
-        """Test multi-word agent flags work correctly."""
+    def test_agent_name_with_dashes(self):
+        """Test multi-word agent names work correctly."""
         # All agents with multiple dashes
-        assert is_agent_flag("--planner-guidance-testing") is True
-        assert is_agent_flag("--teacher-trace-diagnostics") is True
-        assert is_agent_flag("--test-guidance-simulator") is True
-        assert is_agent_flag("--teacher-update-guidance") is True
+        assert is_agent_name("planner-guidance-testing") is True
+        assert is_agent_name("teacher-trace-diagnostics") is True
+        assert is_agent_name("test-guidance-simulator") is True
+        assert is_agent_name("teacher-update-guidance") is True
 
-    def test_get_agent_from_flag_valid(self):
-        """Test extracting agent name from valid flags."""
-        assert get_agent_from_flag("--planner-guidance") == "planner-guidance"
-        assert get_agent_from_flag("--build-python") == "build-python"
-        assert get_agent_from_flag("--test-runner") == "test-runner"
+    def test_get_agent_name_valid(self):
+        """Test extracting agent name from valid positional argument."""
+        assert get_agent_name("planner-guidance") == "planner-guidance"
+        assert get_agent_name("build-python") == "build-python"
+        assert get_agent_name("test-runner") == "test-runner"
 
-    def test_get_agent_from_flag_invalid(self):
-        """Test returns None for invalid flags."""
-        assert get_agent_from_flag("--nonexistent") is None
-        assert get_agent_from_flag("--help") is None
-        assert get_agent_from_flag("planner-guidance") is None
+    def test_get_agent_name_invalid(self):
+        """Test returns None for invalid names."""
+        assert get_agent_name("nonexistent") is None
+        assert get_agent_name("help") is None
+        # Old flag syntax should return None
+        assert get_agent_name("--planner-guidance") is None
 
     def test_all_26_agents_registered(self):
         """Verify all 26 agents are in KNOWN_AGENTS."""
@@ -225,12 +228,12 @@ class TestAgentDirectoryFinding:
 
 
 class TestCLIIntegration:
-    """Integration tests for CLI invocation."""
+    """Integration tests for CLI invocation with CCI positional syntax."""
 
-    def test_cli_agent_flag_invocation(self):
-        """Test invoking CLI with agent flag."""
+    def test_cli_agent_positional_invocation(self):
+        """Test invoking CLI with positional agent name (CCI pattern)."""
         result = subprocess.run(
-            [sys.executable, "-m", "agenticcli.entry", "--planner-guidance"],
+            [sys.executable, "-m", "agenticcli.entry", "planner-guidance"],
             capture_output=True,
             text=True,
             cwd=Path(__file__).parent.parent / "src",
@@ -243,10 +246,10 @@ class TestCLIIntegration:
         # Output should contain agent info
         assert "planner-guidance" in result.stdout.lower()
 
-    def test_cli_agent_flag_with_json(self):
-        """Test invoking CLI with agent flag and -j."""
+    def test_cli_agent_positional_with_json(self):
+        """Test invoking CLI with positional agent name and -j."""
         result = subprocess.run(
-            [sys.executable, "-m", "agenticcli.entry", "--build-python", "-j"],
+            [sys.executable, "-m", "agenticcli.entry", "build-python", "-j"],
             capture_output=True,
             text=True,
             cwd=Path(__file__).parent.parent / "src",
@@ -259,19 +262,65 @@ class TestCLIIntegration:
         data = json.loads(result.stdout)
         assert data["agent"] == "build-python"
 
-    def test_cli_unknown_agent_flag_error(self):
-        """Test CLI with unknown agent flag produces error."""
+    def test_cli_agent_positional_with_bootstrap(self):
+        """Test invoking CLI with positional agent name and --bootstrap."""
         result = subprocess.run(
-            [sys.executable, "-m", "agenticcli.entry", "--nonexistent-agent-xyz"],
+            [sys.executable, "-m", "agenticcli.entry", "test-runner", "--bootstrap"],
             capture_output=True,
             text=True,
             cwd=Path(__file__).parent.parent / "src",
             timeout=10,
         )
 
-        # Should go through normal CLI (may show help or error)
-        # Unknown flag is not detected as agent flag, so it goes to argparse
-        # which will either show help or error
+        assert result.returncode == 0, f"CLI failed: {result.stderr}"
+
+        # Bootstrap output should have more detail
+        assert "BOOTSTRAP CONTEXT" in result.stdout or "test-runner" in result.stdout.lower()
+
+    def test_cli_agent_bootstrap_with_json(self):
+        """Test invoking CLI with agent name, --bootstrap and -j."""
+        result = subprocess.run(
+            [sys.executable, "-m", "agenticcli.entry", "planner-build", "--bootstrap", "-j"],
+            capture_output=True,
+            text=True,
+            cwd=Path(__file__).parent.parent / "src",
+            timeout=10,
+        )
+
+        assert result.returncode == 0, f"CLI failed: {result.stderr}"
+
+        # Output should be valid JSON with expanded fields
+        data = json.loads(result.stdout)
+        assert data["agent"] == "planner-build"
+        # Bootstrap includes more fields
+        assert "process_goal" in data or "process_steps" in data
+
+    def test_cli_old_flag_syntax_rejected(self):
+        """Test old --agent-name syntax no longer works (breaking change)."""
+        result = subprocess.run(
+            [sys.executable, "-m", "agenticcli.entry", "--planner-guidance"],
+            capture_output=True,
+            text=True,
+            cwd=Path(__file__).parent.parent / "src",
+            timeout=10,
+        )
+
+        # Old flag syntax should fail (unrecognized argument)
+        # It goes to argparse which doesn't recognize it
+        assert result.returncode != 0 or "unrecognized" in result.stderr.lower() or "error" in result.stderr.lower()
+
+    def test_cli_unknown_agent_positional(self):
+        """Test CLI with unknown agent name produces error."""
+        result = subprocess.run(
+            [sys.executable, "-m", "agenticcli.entry", "nonexistent-agent-xyz"],
+            capture_output=True,
+            text=True,
+            cwd=Path(__file__).parent.parent / "src",
+            timeout=10,
+        )
+
+        # Unknown positional is not detected as agent name, goes to normal CLI
+        # which treats it as subcommand - will produce error or help
         pass  # Just verify it doesn't crash
 
     @pytest.mark.skipif(
@@ -284,7 +333,7 @@ class TestCLIIntegration:
 
         start = time.time()
         result = subprocess.run(
-            [sys.executable, "-m", "agenticcli.entry", "--test-runner"],
+            [sys.executable, "-m", "agenticcli.entry", "test-runner"],
             capture_output=True,
             text=True,
             cwd=Path(__file__).parent.parent / "src",
