@@ -298,6 +298,7 @@ validation_checklist:
     - "All required_fields present at each level"
     - "Phase/task IDs unique within their scope"
     - "Status values match valid enum options"
+    - "loop_structure present for non-trivial plans"
   naming:
     - "Folder matches YYMMDDXX_description pattern (see naming_convention.regex)"
     - "Phase files in live/ or completed/ subfolder"
@@ -306,6 +307,170 @@ validation_checklist:
     - "Success criteria are specific and verifiable"
     - "Task descriptions start with action verb"
     - "Phase ordering reflects dependencies"
+    - "loop_structure exit_criteria are measurable"
+
+# Loop Structure Requirements
+# Defines how plans declare their execution loop patterns
+# Reference: modules/AgenticGuidance/assets/definitions/agent-loops.yml
+loop_structure:
+  description: |
+    Plans must declare their loop structure to enable planners to understand
+    the iterative execution pattern, exit conditions, and participant roles.
+    This ensures consistent loop handling across the planning system.
+
+  requirement_level:
+    non_trivial_plans: "REQUIRED - Any plan with multiple phases or agent coordination"
+    single_task_plans: "OPTIONAL - Simple plans may omit if no iteration needed"
+    trivial_threshold: |
+      A plan is considered trivial if:
+      - Single phase with 3 or fewer tasks
+      - No agent coordination required
+      - No iteration or feedback loops
+      All other plans MUST include loop_structure.
+
+  schema:
+    type:
+      required: true
+      description: "Loop type from agent-loops.yml"
+      valid_values:
+        - "test-fix-loop"
+        - "audit-test-fix-loop"
+        - "cleaner-dependency-loop"
+        - "documentation-loop"
+        - "user-story-validation-loop"
+        - "exploration-loop"
+        - "rlm-decomposition-loop"
+        - "rlm-context-refinement-loop"
+        - "planner-loop"
+        - "guidance-test-loop"
+        - "agent-self-review"
+        - "guidance-self-review-loop"
+      reference: "modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types"
+
+    trigger:
+      required: true
+      description: "Condition that starts the loop execution"
+      examples:
+        - "Phase enters 'in_progress' status"
+        - "All prerequisite phases completed"
+        - "User approves plan for execution"
+        - "Test failures detected in previous iteration"
+
+    exit_criteria:
+      required: true
+      description: "Conditions that terminate the loop"
+      sub_fields:
+        success:
+          required: true
+          description: "Condition for successful loop completion"
+          examples:
+            - "All tests pass with zero failures"
+            - "Reviewer approves plan structure"
+            - "No guidance gaps identified"
+            - "All user stories validated"
+        max_iterations:
+          required: true
+          type: "integer"
+          description: "Maximum iterations before escalation"
+          constraints:
+            minimum: 1
+            maximum: 10
+            recommended: "Match agent-loops.yml maximum_iterations for loop type"
+        escalation:
+          required: true
+          description: "Action when max_iterations reached without success"
+          valid_values:
+            - "escalate_to_human"
+            - "escalate_with_partial_results"
+            - "abort_with_rollback"
+            - "continue_with_warning"
+
+    participants:
+      required: true
+      description: "Agents involved in the loop with their roles"
+      item_schema:
+        agent:
+          required: true
+          description: "Agent name (from agents/ directory)"
+        role:
+          required: true
+          description: "Agent's function in the loop"
+          common_roles:
+            - "executor"      # Performs primary action
+            - "validator"     # Checks/validates output
+            - "reviewer"      # Approves/rejects
+            - "fixer"         # Addresses issues found
+            - "observer"      # Monitors without modifying
+
+  examples:
+    build_plan_with_test_fix_loop:
+      loop_structure:
+        type: "test-fix-loop"
+        trigger: "Build phase enters 'in_progress' status"
+        exit_criteria:
+          success: "All unit tests pass and coverage >= 80%"
+          max_iterations: 5
+          escalation: "escalate_to_human"
+        participants:
+          - agent: "build-python"
+            role: "executor"
+          - agent: "test-runner"
+            role: "validator"
+          - agent: "build-python"
+            role: "fixer"
+
+    guidance_plan_with_self_review:
+      loop_structure:
+        type: "guidance-self-review-loop"
+        trigger: "Guidance files created or modified"
+        exit_criteria:
+          success: "All agents report NO ISSUES REMAINING"
+          max_iterations: 3
+          escalation: "escalate_with_partial_results"
+        participants:
+          - agent: "planner-guidance"
+            role: "executor"
+          - agent: "teacher-update-guidance"
+            role: "fixer"
+
+    cleanup_plan_with_dependency_check:
+      loop_structure:
+        type: "cleaner-dependency-loop"
+        trigger: "Cleanup phase starts"
+        exit_criteria:
+          success: "All targets removed or documented as deferred"
+          max_iterations: 3
+          escalation: "escalate_to_human"
+        participants:
+          - agent: "cleaner"
+            role: "executor"
+          - agent: "explorer"
+            role: "validator"
+          - agent: "orchestrator"
+            role: "reviewer"
+
+    planner_review_loop:
+      loop_structure:
+        type: "planner-loop"
+        trigger: "Plan creation initiated"
+        exit_criteria:
+          success: "Reviewer approves AND explore verification passes"
+          max_iterations: 5
+          escalation: "escalate_to_human"
+        participants:
+          - agent: "planner-build"
+            role: "executor"
+          - agent: "explorer"
+            role: "validator"
+          - agent: "planner-reviewer"
+            role: "reviewer"
+
+  validation_rules:
+    - "type must reference valid loop from agent-loops.yml"
+    - "max_iterations should not exceed loop type's maximum_iterations"
+    - "participants must include at least one executor role"
+    - "exit_criteria.success must be measurable/verifiable"
+    - "escalation must be one of the valid_values"
 
 concrete_example:
   # See: modules/AgenticGuidance/assets/guidelines/plan-completion.yml

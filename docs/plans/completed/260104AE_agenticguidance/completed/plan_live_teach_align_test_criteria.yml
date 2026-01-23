@@ -1,0 +1,512 @@
+# Teaching Plan: Align Test Criteria with CLI Scaffold Output
+# Purpose: Resolve discrepancy between test criteria (README.md) and CLI scaffold output
+# Source: Friction Analysis FF-004 (260119_session_friction_analysis.yml)
+# Type: TEACH
+
+# ========================================
+# ROOT-LEVEL PLAN METADATA
+# ========================================
+name: "teach-align-test-criteria"
+worktree_path: "/home/code/AgenticEngineering"
+branch: "main"
+status: "completed"
+completed_date: "2026-01-23"
+completion_notes: |
+  Assessment found that FF-004 (README.md discrepancy) is a HISTORICAL issue:
+  1. plans.yml does NOT require README.md in plan folders
+  2. CLI scaffold correctly creates only live/, completed/, and placeholder YAML files
+  3. The referenced test plan (260119AG) is already in completed/ folder
+  4. No active test criteria expect README.md to exist
+  5. No remediation needed - guidance and CLI are already aligned
+priority: "high"
+created: "2026-01-23"
+type: "TEACH"
+
+# File paths for plan management
+worktree: "/home/code/AgenticEngineering"
+plan_file: "docs/plans/live/260104AE_agenticguidance/live/plan_live_teach_align_test_criteria.yml"
+
+# ========================================
+# OBJECTIVE
+# ========================================
+objective: |
+  Align test criteria expectations with actual CLI scaffold output. The friction analysis
+  FF-004 identified that README.md is mentioned in test criteria but is not produced by
+  the CLI scaffold (`agentic plan init` / `agentic plan scaffold`). This causes blind
+  tests to not align with actual guidance expectations.
+
+  Resolution approach: Audit both the plans.yml definition and CLI plan.py scaffold
+  output, then align them so test criteria accurately reflect what the CLI produces.
+
+# ========================================
+# CONTEXT
+# ========================================
+context: |
+  BACKGROUND:
+  The friction analysis (260119_session_friction_analysis.yml) identified finding FF-004:
+
+    "Test criteria in blind tests did not match actual CLI output.
+    The README.md criterion mentioned that plans should have README.md files,
+    but the CLI scaffold does not create README.md files."
+
+  EVIDENCE FROM FRICTION ANALYSIS:
+  - Source: plan_live_test.yml from 260119AG session
+  - Observation: "Minor discrepancy: test criteria mentions README.md but guidance does not require it"
+  - Result note: "README.md criterion not in actual guidance - discrepancy noted"
+  - Recommendation: "Either add README.md to CLI scaffold output or remove from test criteria"
+
+  CURRENT STATE:
+  - plans.yml: Defines plan folder structure requirements (validation_checklist)
+  - CLI plan.py: create_planning_folder() creates live/, completed/, and stub YAML files
+  - CLI does NOT create README.md in plan folders
+  - Some test criteria expect README.md to exist
+
+  GOAL:
+  Ensure that:
+  1. plans.yml clearly documents what files CLI scaffold produces
+  2. CLI scaffold output matches documented expectations
+  3. Test criteria only check for files that are actually produced
+  4. If README.md is valuable, add it to CLI; if not, remove from test expectations
+
+# ========================================
+# ROOT-LEVEL INPUTS
+# ========================================
+inputs:
+  - location: "modules/AgenticGuidance/assets/definitions/plans.yml"
+    description: "Plan definition file with structure requirements and validation checklist"
+
+  - location: "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+    description: "CLI plan command including scaffold functionality"
+
+  - location: "modules/AgenticCLI/src/agenticcli/commands/worktree.py"
+    description: "Worktree command with create_planning_folder() function"
+
+  - location: "docs/plans/live/260104AE_agenticguidance/audit/260119_session_friction_analysis.yml"
+    description: "Friction analysis documenting FF-004 discrepancy"
+
+# ========================================
+# PHASES AND TASKS
+# ========================================
+phases:
+  # ----------------------------------------
+  # PHASE 1: Audit plans.yml Definition
+  # ----------------------------------------
+  - name: "teach_phase_1"
+    description: "Audit plans.yml for test criteria requirements related to scaffold output"
+    execution: sequential
+    estimated_effort: "30 minutes"
+    tasks:
+      - id: "atc_001"
+        name: "Audit plans.yml validation_checklist for scaffold expectations"
+        description: |
+          Review the validation_checklist section in plans.yml to identify all
+          expectations related to plan folder contents that tests would verify.
+        status: "pending"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/plans.yml"
+        guidance: |
+          Examine plans.yml sections:
+          1. validation_checklist.structure - What folder/file requirements are stated?
+          2. file_taxonomy - What files are expected in live/ and completed/ subfolders?
+          3. required_fields - What must be present in plan files?
+
+          Document:
+          - Explicit file requirements (e.g., "live/ directory must exist")
+          - Implicit file expectations (e.g., "plan_completed.yml in completed/")
+          - Any mention of README.md or documentation files
+
+          Key question: Does plans.yml require README.md in plan folders?
+        acceptance_criteria:
+          - "List of explicit file/folder requirements from plans.yml documented"
+          - "Determination made: is README.md explicitly required, implied, or absent?"
+          - "Any ambiguous requirements identified"
+        inputs:
+          - "modules/AgenticGuidance/assets/definitions/plans.yml"
+
+      - id: "atc_002"
+        name: "Document current CLI scaffold output specification"
+        description: |
+          Review CLI plan.py and worktree.py to document exactly what the
+          scaffold functions create.
+        status: "pending"
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+          - "modules/AgenticCLI/src/agenticcli/commands/worktree.py"
+        guidance: |
+          From worktree.py create_planning_folder():
+          - live/ subdirectory
+          - completed/ subdirectory
+          - plan_live_teach.yml (in live/)
+          - plan_live_test.yml (in live/)
+          - plan_live_audit_clean.yml (in live/)
+          - plan_completed.yml (in completed/)
+
+          Note: NO README.md is created.
+
+          Document the complete file structure that scaffold produces:
+          plan_folder/
+            live/
+              plan_live_teach.yml
+              plan_live_test.yml
+              plan_live_audit_clean.yml
+            completed/
+              plan_completed.yml
+
+          Compare this to plans.yml requirements.
+        acceptance_criteria:
+          - "Complete list of files/folders created by scaffold"
+          - "Comparison table: scaffold output vs plans.yml requirements"
+          - "Discrepancies identified"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+          - "modules/AgenticCLI/src/agenticcli/commands/worktree.py"
+
+  # ----------------------------------------
+  # PHASE 2: Compare and Identify Gaps
+  # ----------------------------------------
+  - name: "teach_phase_2"
+    description: "Compare scaffold output against test criteria and identify misalignments"
+    execution: sequential
+    estimated_effort: "30 minutes"
+    tasks:
+      - id: "atc_003"
+        name: "Identify test criteria that reference non-scaffold files"
+        description: |
+          Search for test criteria or guidance that expects files the CLI scaffold
+          does not produce (e.g., README.md).
+        status: "pending"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/plans.yml"
+          - "modules/AgenticGuidance/assets/guidelines/"
+        guidance: |
+          Search for:
+          1. Any mention of README.md in plan folder context
+          2. Test criteria that check for specific files
+          3. Validation rules that expect files not in scaffold output
+
+          Use grep/search across:
+          - plans.yml
+          - Guidelines that reference plan structure
+          - Test-related agent guidance
+
+          Document each discrepancy with:
+          - File location
+          - The expectation stated
+          - Whether scaffold produces it (yes/no)
+        acceptance_criteria:
+          - "List of all file expectations found in guidance/definitions"
+          - "Each expectation marked as: scaffold-produced / not-scaffold-produced"
+          - "README.md status specifically clarified"
+        inputs:
+          - "modules/AgenticGuidance/assets/definitions/plans.yml"
+          - "modules/AgenticGuidance/assets/guidelines/"
+
+      - id: "atc_004"
+        name: "Determine resolution approach for each gap"
+        description: |
+          For each identified gap between test criteria and scaffold output,
+          determine the appropriate resolution approach.
+        status: "pending"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/plans.yml"
+        guidance: |
+          For each gap, evaluate:
+
+          OPTION A: Add to scaffold (if file is valuable)
+          - Is the file useful for agents/users?
+          - Does it reduce confusion or improve workflow?
+          - What should its default content be?
+
+          OPTION B: Remove from test criteria (if file is not essential)
+          - Is the expectation based on convention, not requirement?
+          - Can tests work without this file?
+          - Is it causing false failures in blind tests?
+
+          For README.md specifically:
+          - Consider: Plan folders already have plan_live_*.yml files
+          - README.md would be redundant if plan files are descriptive
+          - But README.md might help human users understand the plan folder
+
+          Recommendation: If README.md is not essential for agent workflow,
+          remove it from test criteria rather than adding to scaffold.
+        acceptance_criteria:
+          - "Resolution approach documented for each gap"
+          - "README.md decision made with rationale"
+          - "Any CLI changes needed identified (for separate build plan)"
+        inputs:
+          - "modules/AgenticGuidance/assets/definitions/plans.yml"
+          - "modules/AgenticCLI/src/agenticcli/commands/worktree.py"
+
+  # ----------------------------------------
+  # PHASE 3: Update plans.yml Documentation
+  # ----------------------------------------
+  - name: "teach_phase_3"
+    description: "Update plans.yml to accurately document scaffold output expectations"
+    execution: sequential
+    estimated_effort: "45 minutes"
+    tasks:
+      - id: "atc_005"
+        name: "Add scaffold_output section to plans.yml"
+        description: |
+          Add explicit documentation of what the CLI scaffold produces, so tests
+          can reference authoritative expectations.
+        status: "pending"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/plans.yml"
+        guidance: |
+          Add a new section to plans.yml called "scaffold_output":
+
+          scaffold_output:
+            description: |
+              Files and folders created by 'agentic plan init' and 'agentic plan scaffold'.
+              Test criteria should only check for files listed here when validating
+              newly-created plan folders.
+
+            folder_structure:
+              - path: "live/"
+                purpose: "Active work files"
+                required: true
+
+              - path: "completed/"
+                purpose: "Finished work files"
+                required: true
+
+            files_created:
+              - path: "live/plan_live_teach.yml"
+                purpose: "Implementation/teaching plan stub"
+                required: true
+
+              - path: "live/plan_live_test.yml"
+                purpose: "Test plan stub"
+                required: true
+
+              - path: "live/plan_live_audit_clean.yml"
+                purpose: "Audit and cleanup plan stub"
+                required: true
+
+              - path: "completed/plan_completed.yml"
+                purpose: "Completed items index"
+                required: true
+
+            files_NOT_created:
+              - path: "README.md"
+                reason: "Plan folders use YAML plan files for documentation"
+
+              - path: "analysis/"
+                reason: "Optional subfolder created as needed, not by scaffold"
+
+              - path: "audit/"
+                reason: "Optional subfolder created as needed, not by scaffold"
+
+          Place this section after the "validation_checklist" section.
+        acceptance_criteria:
+          - "scaffold_output section exists in plans.yml"
+          - "All scaffold-created files listed with required: true"
+          - "files_NOT_created clarifies README.md is not expected"
+          - "Section is placed logically in document structure"
+        inputs:
+          - "modules/AgenticGuidance/assets/definitions/plans.yml"
+          - "modules/AgenticCLI/src/agenticcli/commands/worktree.py"
+
+      - id: "atc_006"
+        name: "Update validation_checklist to reference scaffold_output"
+        description: |
+          Modify the validation_checklist to reference the scaffold_output section
+          for file existence checks.
+        status: "pending"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/plans.yml"
+        guidance: |
+          Update the validation_checklist.structure section to clarify:
+
+          validation_checklist:
+            structure:
+              - "All required_fields present at each level"
+              - "Phase/task IDs unique within their scope"
+              - "Status values match valid enum options"
+              - "Scaffold-created files present (see scaffold_output section)"
+
+          And add a note:
+
+            note: |
+              For newly-scaffolded plan folders, only check for files listed in
+              scaffold_output.files_created. Optional subfolders (analysis/, audit/)
+              are created as needed during plan execution, not by scaffold.
+
+          This prevents tests from expecting files that scaffold doesn't create.
+        acceptance_criteria:
+          - "validation_checklist references scaffold_output section"
+          - "Note clarifies what files to expect in new vs mature plan folders"
+          - "No ambiguity about README.md requirement"
+        inputs:
+          - "modules/AgenticGuidance/assets/definitions/plans.yml"
+
+  # ----------------------------------------
+  # PHASE 4: Update Test Guidance
+  # ----------------------------------------
+  - name: "teach_phase_4"
+    description: "Update test-related guidance to use scaffold_output for validation"
+    execution: sequential
+    estimated_effort: "30 minutes"
+    tasks:
+      - id: "atc_007"
+        name: "Search for test criteria referencing README.md in plan folders"
+        description: |
+          Find any test criteria or blind test guidance that incorrectly expects
+          README.md in plan folders.
+        status: "pending"
+        target_files:
+          - "modules/AgenticGuidance/agents/test/"
+          - "modules/AgenticGuidance/assets/guidelines/"
+        guidance: |
+          Search patterns:
+          - "README.md" in test agent process files
+          - "plan folder" + "README" in guidelines
+          - Blind test criteria that check file existence
+
+          If found, document location and the specific expectation.
+
+          If README.md expectations exist, they should be updated to either:
+          - Remove the expectation entirely
+          - Clarify that README.md is optional/user-created, not scaffold-produced
+        acceptance_criteria:
+          - "All README.md references in test context identified"
+          - "Each reference marked for update or removal"
+        inputs:
+          - "modules/AgenticGuidance/agents/test/"
+          - "modules/AgenticGuidance/assets/guidelines/"
+
+      - id: "atc_008"
+        name: "Update test guidance to reference scaffold_output for validation"
+        description: |
+          Ensure test agents reference the scaffold_output section when validating
+          plan folder structure.
+        status: "pending"
+        target_files:
+          - "modules/AgenticGuidance/agents/test/test-audit/process.yml"
+          - "modules/AgenticGuidance/agents/test/test-audit/inputs.yml"
+        guidance: |
+          If test-audit or other test agents validate plan folder structure,
+          update their guidance to:
+
+          1. Reference plans.yml#scaffold_output for file expectations
+          2. Clarify that validation differs for:
+             - New plan folders: Check only scaffold_output files
+             - Mature plan folders: May have additional files (analysis/, etc.)
+
+          Add to test agent inputs if needed:
+            - location: "modules/AgenticGuidance/assets/definitions/plans.yml#scaffold_output"
+              description: "Authoritative list of scaffold-created files"
+
+          This ensures blind tests don't fail on README.md or other non-scaffold files.
+        acceptance_criteria:
+          - "Test agent guidance references scaffold_output for validation"
+          - "Distinction between new and mature plan folders documented"
+          - "README.md not expected in validation criteria"
+        inputs:
+          - "modules/AgenticGuidance/agents/test/test-audit/process.yml"
+          - "modules/AgenticGuidance/agents/test/test-audit/inputs.yml"
+          - "modules/AgenticGuidance/assets/definitions/plans.yml"
+
+  # ----------------------------------------
+  # PHASE 5: Verification
+  # ----------------------------------------
+  - name: "teach_phase_5"
+    description: "Verify alignment between plans.yml, CLI scaffold, and test criteria"
+    execution: sequential
+    estimated_effort: "20 minutes"
+    tasks:
+      - id: "atc_009"
+        name: "Verify plans.yml YAML syntax and consistency"
+        description: |
+          Validate that plans.yml parses correctly and new sections integrate
+          with existing content.
+        status: "pending"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/plans.yml"
+        guidance: |
+          Verification steps:
+          1. Parse YAML: python -c "import yaml; yaml.safe_load(open('plans.yml'))"
+          2. Check scaffold_output lists match create_planning_folder() output
+          3. Verify validation_checklist references are accurate
+          4. Ensure no duplicate or conflicting guidance
+        acceptance_criteria:
+          - "YAML parses without errors"
+          - "scaffold_output matches CLI implementation"
+          - "No conflicting guidance about file requirements"
+        inputs:
+          - "modules/AgenticGuidance/assets/definitions/plans.yml"
+
+      - id: "atc_010"
+        name: "Verify no README.md expectations remain in test criteria"
+        description: |
+          Final verification that README.md is not expected in any test validation
+          for scaffolded plan folders.
+        status: "pending"
+        target_files:
+          - "modules/AgenticGuidance/agents/test/"
+          - "modules/AgenticGuidance/assets/definitions/plans.yml"
+        guidance: |
+          Search and verify:
+          1. grep -r "README" in test agent folders - should not expect README.md
+          2. plans.yml files_NOT_created includes README.md
+          3. validation_checklist does not require README.md
+
+          This is the key verification that FF-004 is resolved.
+        acceptance_criteria:
+          - "No test criteria expect README.md in scaffolded plan folders"
+          - "plans.yml explicitly lists README.md as not-created"
+          - "Friction point FF-004 resolution confirmed"
+        inputs:
+          - "modules/AgenticGuidance/agents/test/"
+          - "modules/AgenticGuidance/assets/definitions/plans.yml"
+
+# ========================================
+# SUCCESS CRITERIA
+# ========================================
+success_criteria:
+  - "plans.yml contains scaffold_output section documenting CLI output"
+  - "scaffold_output.files_NOT_created includes README.md with rationale"
+  - "validation_checklist references scaffold_output for file expectations"
+  - "No test criteria expect README.md in newly-scaffolded plan folders"
+  - "Test agent guidance references scaffold_output for plan folder validation"
+  - "All YAML files parse without errors"
+  - "Friction point FF-004 from friction analysis is resolved"
+
+# ========================================
+# NOTES
+# ========================================
+notes: |
+  IMPLEMENTATION APPROACH:
+  This is a TEACH plan - it updates guidance documentation, not code.
+  All changes are to YAML definition/guideline files in modules/AgenticGuidance/.
+
+  If this analysis determines README.md SHOULD be added to scaffold output,
+  a separate BUILD plan would be needed to modify the CLI. This TEACH plan
+  assumes README.md is NOT essential and should be removed from expectations.
+
+  FRICTION ANALYSIS REFERENCE:
+  FF-004 from 260119_session_friction_analysis.yml:
+  - Pattern type: schema_violation
+  - Severity: HIGH
+  - Impact: Blind tests do not align with actual guidance expectations
+  - Suggested resolution: "Either add README.md to CLI scaffold output or
+    remove from test criteria"
+
+  This plan implements the "remove from test criteria" approach, with explicit
+  documentation that README.md is not scaffold-produced.
+
+  RELATED FINDINGS:
+  FF-007 also identified empty stub files as friction. This plan focuses on
+  FF-004 (README.md) but the scaffold_output documentation also clarifies
+  what stub files ARE created.
+
+  CLI SCAFFOLD FUNCTION:
+  The create_planning_folder() function in worktree.py creates:
+  - live/ directory
+  - completed/ directory
+  - 3 YAML stub files in live/
+  - 1 YAML stub file in completed/
+
+  This plan documents this authoritative output in plans.yml so tests can
+  reference it accurately.

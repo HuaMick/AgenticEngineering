@@ -1,0 +1,578 @@
+# Loop Inclusion for Planners
+# Reference for planners when building plans that require iterative work patterns.
+# For loop definitions (types, phases, max iterations): see agent-loops.yml
+# For behavioral rules during loops: see iteration.yml
+
+guideline:
+  name: "Loop Inclusion for Planners"
+  description: |
+    Guidance for planners on when and how to include loops in orchestration plans.
+    Loops are essential for iterative work that requires validation, feedback, and
+    improvement cycles. Plans without appropriate loops often fail to achieve
+    quality outcomes because they lack the iteration needed for convergence.
+
+  authoritative_source:
+    location: "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+    provides: "Loop types, phases, when_to_use, maximum_iterations, core_pattern"
+
+  # ===========================================================================
+  # WHAT ARE LOOPS AND WHY DO PLANS NEED THEM?
+  # ===========================================================================
+
+  what_are_loops:
+    concept: |
+      An agent loop is an iterative execution pattern where agents collaborate
+      in cycles until success criteria are met or maximum iterations reached.
+
+      Loops transform linear "do once and hope" plans into robust "iterate until
+      right" plans. They are the mechanism by which plans self-correct and
+      converge on quality outcomes.
+
+    why_plans_need_loops:
+      - reason: "First attempts rarely succeed"
+        explanation: |
+          Even skilled agents make mistakes or miss edge cases on first pass.
+          Loops provide the feedback cycles needed to catch and fix issues.
+
+      - reason: "Validation requires separation of concerns"
+        explanation: |
+          The agent that builds should not be the only agent that validates.
+          Loops enable distinct roles (builder, tester, auditor, reviewer) to
+          collaborate across iterations.
+
+      - reason: "Quality emerges from iteration"
+        explanation: |
+          Complex deliverables (code, documentation, guidance) require multiple
+          rounds of refinement. Loops structure this refinement process.
+
+      - reason: "Prevent reward hacking"
+        explanation: |
+          Without audit loops, agents may optimize for test passage rather than
+          actual correctness. Loops with external validation catch these issues.
+
+      - reason: "Maximum iterations provide safety"
+        explanation: |
+          Loops have explicit exit conditions and max iteration limits. This
+          prevents infinite loops and ensures escalation when progress stalls.
+
+  # ===========================================================================
+  # WHEN TO INCLUDE LOOPS
+  # ===========================================================================
+
+  when_to_include_loops:
+    always_include_loops_when:
+      - condition: "Any iterative work exists"
+        description: |
+          If the work involves build-test-fix cycles, review-revise cycles,
+          or any pattern where feedback drives improvement, use a loop.
+        example: "Building a feature and testing it requires test-fix-loop"
+
+      - condition: "External validation is needed"
+        description: |
+          When an independent agent (auditor, reviewer, tester) must validate
+          work produced by another agent, structure this as a loop.
+        example: "Audit agent reviewing test quality uses audit-test-fix-loop"
+
+      - condition: "User acceptance is required"
+        description: |
+          UAT phases should use validation loops (user-story-validation-loop
+          or documentation-loop) to iterate until acceptance.
+        example: "UAT with user simulator iterates until stories pass"
+
+      - condition: "Cleanup or refactoring is planned"
+        description: |
+          Destructive changes (removal, major refactoring) should use
+          cleaner-dependency-loop to verify safety before execution.
+        example: "Removing deprecated code uses cleaner-dependency-loop"
+
+      - condition: "Exploration precedes implementation"
+        description: |
+          When understanding must be built before action, use exploration-loop
+          to structure the discovery process.
+        example: "Understanding a legacy codebase before modifying it"
+
+      - condition: "Planning requires iteration"
+        description: |
+          Complex plans benefit from planner-loop to refine structure through
+          reviewer feedback before execution.
+        example: "Large implementation plans reviewed before execution"
+
+    mandatory_loops:
+      audit-test-fix-loop:
+        when: "After any test creation or modification"
+        reason: "Catches reward hacking and validates test quality"
+        reference: "agent-loops.yml#mandatory_loops"
+
+      user-story-validation-loop:
+        when: "Before marking implementation complete"
+        reason: "PRIMARY SUCCESS CRITERIA - proves implementation meets user needs"
+
+  # ===========================================================================
+  # HOW TO SPECIFY LOOPS IN PLAN YAML
+  # ===========================================================================
+
+  loop_structure_template:
+    description: |
+      Copy-pasteable templates for including loops in orchestration plans.
+      Adapt the loop_type, participants, and exit_conditions to your context.
+
+    basic_loop_template: |
+      # Basic loop structure - copy and adapt
+      phases:
+        - name: "Phase Name"
+          loop:
+            type: "test-fix-loop"              # Loop type from agent-loops.yml
+            maximum_iterations: 5               # Safety limit
+            participants:
+              - agent: "builder-agent"
+                role: "primary"
+              - agent: "test-agent"
+                role: "validator"
+            exit_conditions:
+              success: "All tests PASS"
+              max_iterations: "Escalate to human for decision"
+            tasks:
+              - id: "task-001"
+                description: "Build initial implementation"
+                agent: "builder-agent"
+              - id: "task-002"
+                description: "Test implementation"
+                agent: "test-agent"
+                on_failure: "Return to task-001 with feedback"
+
+    test_fix_loop_template: |
+      # Test-Fix Loop - for active development with testing
+      - name: "Implementation"
+        loop:
+          type: "test-fix-loop"
+          maximum_iterations: 5
+          participants:
+            - agent: "builder"
+              role: "implements features and fixes"
+            - agent: "test-user-simulator"
+              role: "validates as real user would"
+          core_pattern:
+            - "Build: Agent implements or fixes code"
+            - "Test: Simulator executes user flows"
+            - "Feedback: Test results guide next iteration"
+            - "Repeat until PASS or max iterations"
+          exit_conditions:
+            success:
+              condition: "PASS"
+              criteria: "All user simulation tests pass"
+            max_iterations:
+              action: "escalate"
+              reason: "Progress stalled after 5 attempts"
+
+    audit_test_fix_loop_template: |
+      # Audit-Test-Fix Loop - MANDATORY for test validation
+      - name: "Test Quality Validation"
+        loop:
+          type: "audit-test-fix-loop"
+          mandatory: true
+          maximum_iterations: 3
+          participants:
+            - agent: "auditor"
+              role: "reviews tests for quality and reward hacking"
+            - agent: "test-builder"
+              role: "fixes test issues identified by auditor"
+          core_pattern:
+            - "Audit: Review tests for reward hacking patterns"
+            - "Report: Document findings with specific issues"
+            - "Fix: Test builder addresses audit findings"
+            - "Repeat until clean audit or max iterations"
+          exit_conditions:
+            success:
+              condition: "PASS"
+              criteria: "Audit finds no reward hacking, tests verify actual behavior"
+            max_iterations:
+              action: "escalate"
+              reason: "Test quality issues persist after 3 audit rounds"
+
+    self_review_loop_template: |
+      # Agent Self-Review Loop - for guidance validation
+      - name: "Guidance Self-Review"
+        loop:
+          type: "agent-self-review"
+          maximum_iterations: 3
+          participants:
+            - agent: "target-agent"
+              role: "reviews own guidance files"
+          core_pattern:
+            - "Read: Agent reads process.yml, inputs.yml, manifest.yml"
+            - "Apply: Agent applies self-review-criteria.yml checklist"
+            - "Report: Agent identifies gaps and inconsistencies"
+            - "Fix: Agent or teacher fixes identified issues"
+            - "Spot-check: Sample 20% of PASS items for verification"
+          exit_conditions:
+            success:
+              condition: "PASS"
+              criteria: "All checklist items pass, spot-check passes"
+            max_iterations:
+              action: "escalate"
+              reason: "Issues persist after 3 review rounds"
+
+    exploration_loop_template: |
+      # Exploration Loop - for discovery before implementation
+      - name: "Codebase Discovery"
+        loop:
+          type: "exploration-loop"
+          maximum_iterations: 3
+          participants:
+            - agent: "explorer"
+              role: "discovers and documents findings"
+          core_pattern:
+            - "Explore: Search codebase for relevant patterns"
+            - "Analyze: Document findings and dependencies"
+            - "Decide: Determine if more exploration needed"
+            - "Repeat until sufficient understanding"
+          exit_conditions:
+            success:
+              condition: "sufficient_understanding"
+              criteria: "Key dependencies mapped, patterns documented"
+            max_iterations:
+              action: "proceed_with_partial"
+              reason: "Some unknowns acceptable - document gaps"
+
+  # ===========================================================================
+  # EXIT CRITERIA PATTERNS
+  # ===========================================================================
+
+  exit_criteria_patterns:
+    description: |
+      Explicit patterns for how loops terminate. Every loop must have clear
+      exit conditions to prevent infinite execution.
+
+    patterns:
+      PASS:
+        description: "Loop exits when success criteria are met"
+        usage: |
+          exit_conditions:
+            success:
+              condition: "PASS"
+              criteria: "Specific measurable criteria here"
+        examples:
+          - "All tests pass"
+          - "Audit finds no issues"
+          - "Reviewer approves plan"
+          - "User simulator completes journey"
+          - "Documentation validated by blind test"
+        when_to_use: "Most common - use when objective success is measurable"
+
+      max_iterations:
+        description: "Loop exits when maximum iteration count reached"
+        usage: |
+          exit_conditions:
+            max_iterations:
+              limit: 5
+              action: "escalate"
+              reason: "Clear explanation of why escalation needed"
+        standard_limits:
+          - loop_type: "test-fix-loop"
+            limit: 5
+          - loop_type: "audit-test-fix-loop"
+            limit: 3
+          - loop_type: "documentation-loop"
+            limit: 3
+          - loop_type: "exploration-loop"
+            limit: 3
+          - loop_type: "planner-loop"
+            limit: 5
+        when_to_use: "ALWAYS - every loop must have max iterations as safety"
+        on_max_reached: |
+          When max iterations reached:
+          1. Do NOT continue looping
+          2. Document current state and blockers
+          3. Escalate to human for decision
+          4. Human may: extend iterations, change approach, or accept partial
+
+      user_decision:
+        description: "Loop exits when human approves or provides direction"
+        usage: |
+          exit_conditions:
+            user_decision:
+              gate: "user_approval_required"
+              prompt: "Review implementation and approve or provide feedback"
+        when_to_use: |
+          - Subjective quality assessment needed
+          - Critical decisions requiring human judgment
+          - Ambiguous requirements needing clarification
+        examples:
+          - "User approves documentation wording"
+          - "User selects between alternative approaches"
+          - "User confirms acceptance criteria interpretation"
+
+      combined:
+        description: "Multiple exit conditions - first satisfied wins"
+        usage: |
+          exit_conditions:
+            success:
+              condition: "PASS"
+              criteria: "All tests pass"
+            max_iterations:
+              limit: 5
+              action: "escalate"
+            blocked:
+              condition: "cannot_proceed"
+              action: "escalate immediately"
+        when_to_use: "Standard pattern - combine PASS with max_iterations"
+
+  # ===========================================================================
+  # COMMON LOOP PATTERNS
+  # ===========================================================================
+
+  common_loop_patterns:
+    description: |
+      Pre-defined patterns for common scenarios. Use these as starting points
+      and adapt to your specific plan context.
+
+    test-fix:
+      name: "Test-Fix Pattern"
+      purpose: "Iterative development with user simulation testing"
+      typical_phases: ["active-development"]
+      structure: |
+        loop_structure:
+          iteration_flow:
+            1: "Builder implements feature or fix"
+            2: "Test agent executes user simulation"
+            3: "If FAIL: Feedback to builder, goto step 1"
+            4: "If PASS: Exit loop successfully"
+
+          agents:
+            - builder: "Implements code changes"
+            - test-user-simulator: "Validates as real user"
+
+          exit:
+            success: "All user simulations pass"
+            max_iterations: 5
+            on_max: "Escalate with test failure summary"
+
+      example_plan_snippet: |
+        phases:
+          - name: "Feature Implementation"
+            loop:
+              type: "test-fix-loop"
+              maximum_iterations: 5
+              tasks:
+                - id: "impl-001"
+                  description: "Implement feature according to spec"
+                  agent: "builder"
+                - id: "test-001"
+                  description: "Execute user simulation tests"
+                  agent: "test-user-simulator"
+                  depends_on: ["impl-001"]
+                  on_failure:
+                    action: "iterate"
+                    feedback_to: "impl-001"
+              exit_conditions:
+                success: "test-001 passes"
+                max_iterations: 5
+
+    self-review:
+      name: "Self-Review Pattern"
+      purpose: "Agent validates own work against criteria"
+      typical_phases: ["guidance-validation", "quality-check"]
+      structure: |
+        loop_structure:
+          iteration_flow:
+            1: "Agent reads own guidance/work files"
+            2: "Agent applies review criteria checklist"
+            3: "Agent reports issues found"
+            4: "If issues: Fix and goto step 1"
+            5: "If no issues: Spot-check sample"
+            6: "If spot-check passes: Exit successfully"
+
+          agents:
+            - target-agent: "Reviews own work"
+            - teacher (optional): "Fixes complex issues"
+
+          exit:
+            success: "All criteria pass + spot-check passes"
+            max_iterations: 3
+            on_max: "Escalate with unresolved issues"
+
+      spot_check_requirement: |
+        IMPORTANT: Self-review loops must include spot-check phase.
+        - Sample 20% of PASS items (minimum 2)
+        - If >50% flagged, re-review all with stricter criteria
+        - Reference: self-review-criteria.yml
+
+      example_plan_snippet: |
+        phases:
+          - name: "Guidance Self-Review"
+            loop:
+              type: "agent-self-review"
+              maximum_iterations: 3
+              tasks:
+                - id: "review-001"
+                  description: "Review own process.yml, inputs.yml, manifest.yml"
+                  agent: "target-agent"
+                  criteria: "self-review-criteria.yml"
+                - id: "spot-check-001"
+                  description: "Spot-check 20% of PASS items"
+                  agent: "target-agent"
+                  depends_on: ["review-001"]
+                  condition: "review-001 reports all pass"
+              exit_conditions:
+                success: "All criteria pass and spot-check clean"
+                max_iterations: 3
+
+    audit-fix:
+      name: "Audit-Fix Pattern"
+      purpose: "External validation of work quality"
+      typical_phases: ["test-validation", "quality-assurance"]
+      mandatory: true
+      structure: |
+        loop_structure:
+          iteration_flow:
+            1: "Auditor reviews work for quality issues"
+            2: "Auditor documents findings with specific issues"
+            3: "If findings: Builder fixes issues, goto step 1"
+            4: "If clean: Exit loop successfully"
+
+          agents:
+            - auditor: "Reviews for quality and reward hacking"
+            - builder: "Fixes identified issues"
+
+          focus_areas:
+            - "Reward hacking detection"
+            - "Test validity verification"
+            - "Edge case coverage"
+            - "Error handling completeness"
+
+          exit:
+            success: "Audit finds no issues"
+            max_iterations: 3
+            on_max: "Escalate - quality issues persist"
+
+      when_mandatory: |
+        audit-test-fix-loop is MANDATORY when:
+        - Tests have been created or modified
+        - After any cleanup/removal operations
+        - Before marking implementation complete
+
+      example_plan_snippet: |
+        phases:
+          - name: "Test Quality Audit"
+            mandatory: true
+            loop:
+              type: "audit-test-fix-loop"
+              maximum_iterations: 3
+              tasks:
+                - id: "audit-001"
+                  description: "Audit tests for reward hacking and quality"
+                  agent: "auditor"
+                  focus:
+                    - "Tests verify actual behavior, not just success=True"
+                    - "Edge cases covered"
+                    - "Error conditions tested"
+                - id: "fix-001"
+                  description: "Fix audit findings"
+                  agent: "test-builder"
+                  depends_on: ["audit-001"]
+                  condition: "audit-001 reports findings"
+                  on_complete: "iterate"
+              exit_conditions:
+                success: "audit-001 finds no issues"
+                max_iterations: 3
+
+  # ===========================================================================
+  # EXAMPLES
+  # ===========================================================================
+
+  examples:
+    good:
+      - description: "Complete implementation plan with appropriate loops"
+        example: |
+          phases:
+            - name: "Discovery"
+              loop:
+                type: "exploration-loop"
+                maximum_iterations: 3
+              # Explore before building
+
+            - name: "Implementation"
+              loop:
+                type: "test-fix-loop"
+                maximum_iterations: 5
+              # Build with testing
+
+            - name: "Quality Validation"
+              loop:
+                type: "audit-test-fix-loop"
+                maximum_iterations: 3
+                mandatory: true
+              # MANDATORY audit phase
+
+            - name: "User Acceptance"
+              loop:
+                type: "user-story-validation-loop"
+                maximum_iterations: 3
+              # Final validation against stories
+
+      - description: "Loop with clear exit conditions"
+        example: |
+          loop:
+            type: "test-fix-loop"
+            maximum_iterations: 5
+            exit_conditions:
+              success:
+                condition: "PASS"
+                criteria: "All user simulation tests pass"
+              max_iterations:
+                limit: 5
+                action: "escalate"
+                reason: "Test failures persist - human decision needed"
+              blocked:
+                condition: "dependency_unavailable"
+                action: "escalate immediately"
+
+    bad:
+      - description: "Plan without loops for iterative work"
+        why_bad: "Linear plans cannot self-correct"
+        example: |
+          # BAD: No loop around build-test cycle
+          phases:
+            - name: "Build"
+              tasks:
+                - "Implement feature"
+            - name: "Test"
+              tasks:
+                - "Run tests"  # What if tests fail? No iteration!
+
+      - description: "Loop without maximum iterations"
+        why_bad: "Can loop forever without escalation"
+        example: |
+          # BAD: No max iterations
+          loop:
+            type: "test-fix-loop"
+            exit_conditions:
+              success: "All tests pass"
+            # Missing: maximum_iterations
+
+      - description: "Missing mandatory audit loop"
+        why_bad: "Reward hacking in tests will go undetected"
+        example: |
+          # BAD: Goes straight from test to UAT
+          phases:
+            - name: "Build and Test"
+              loop:
+                type: "test-fix-loop"
+            - name: "UAT"
+              # Missing: audit-test-fix-loop between test and UAT
+
+  # ===========================================================================
+  # RELATED GUIDELINES
+  # ===========================================================================
+
+  related_guidelines:
+    - location: "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+      description: "Loop type definitions (structure, max iterations, patterns)"
+    - location: "modules/AgenticGuidance/assets/guidelines/iteration.yml"
+      description: "Behavioral rules for agents during loops"
+    - location: "modules/AgenticGuidance/assets/guidelines/planning-standard.yml"
+      description: "Planning standards including mandatory UAT"
+    - location: "modules/AgenticGuidance/assets/guidelines/reward-hacking-prevention.yml"
+      description: "Why audit loops are mandatory"
+    - location: "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml"
+      description: "Criteria for self-review loop validation"

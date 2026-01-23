@@ -410,11 +410,44 @@ def cmd_status(args):
         console.print(f"[bold]Progress:[/bold] [cyan]{pct:.1f}%[/cyan]")
 
 
+def is_stub_template(content: dict) -> bool:
+    """Check if content is an unpopulated stub template.
+
+    Stub templates are scaffolds created by `agentic plan init` that need
+    to be populated with actual content or deleted.
+
+    Args:
+        content: Parsed YAML content from a plan file.
+
+    Returns:
+        True if the file is a stub template, False otherwise.
+    """
+    if not content:
+        return False
+
+    # Check explicit template status field
+    if content.get("_template_status") == "stub":
+        return True
+
+    # Check for legacy empty stub patterns (before _template_status was added)
+    plan = content.get("plan", content.get("feature", {}))
+    phases = plan.get("phases", [])
+    objective = str(plan.get("objective", ""))
+
+    # Empty phases array with TODO in objective indicates legacy stub
+    if not phases and "TODO" in objective:
+        return True
+
+    return False
+
+
 def cmd_validate(args):
     """Validate plan folder structure and YAML."""
     plan_path = Path(args.path)
+    strict = getattr(args, "strict", False)
     errors = []
     warnings = []
+    stub_files = []
 
     # Check folder structure
     if not plan_path.exists():
@@ -435,12 +468,14 @@ def cmd_validate(args):
         if not yaml_files:
             warnings.append("No YAML files in live/ directory")
 
-        # Validate YAML syntax
+        # Validate YAML syntax and check for stub templates
         for yaml_file in yaml_files:
             try:
                 content = yaml.safe_load(yaml_file.read_text())
                 if content is None:
                     warnings.append(f"{yaml_file.name}: Empty file")
+                elif is_stub_template(content):
+                    stub_files.append(yaml_file.name)
             except yaml.YAMLError as e:
                 errors.append(f"{yaml_file.name}: Invalid YAML - {e}")
 
@@ -449,6 +484,15 @@ def cmd_validate(args):
         completed_file = completed_dir / "plan_completed.yml"
         if not completed_file.exists():
             warnings.append("Missing completed/plan_completed.yml")
+
+    # Handle stub files - promote to errors in strict mode
+    if stub_files:
+        stub_message = "Stub template - needs population or deletion"
+        for stub_file in stub_files:
+            if strict:
+                errors.append(f"{stub_file}: {stub_message}")
+            else:
+                warnings.append(f"{stub_file}: {stub_message}")
 
     # Report results
     print(f"Validating: {plan_path}")
@@ -463,6 +507,11 @@ def cmd_validate(args):
         print("\nWarnings:")
         for warn in warnings:
             print(f"  - {warn}")
+
+    # Special message for stub templates
+    if stub_files and not strict:
+        print("\nNote: Stub templates detected. Use --strict to fail validation on stubs.")
+        print("      Either populate these files with content or delete them if unused.")
 
     if not errors and not warnings:
         print("  All checks passed")

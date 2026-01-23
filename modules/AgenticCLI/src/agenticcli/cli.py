@@ -33,7 +33,7 @@ Global Commands (work from any directory):
 Project Commands (require .git or .agenticcli.yml):
   worktree (wt)   Manage git worktrees with planning folder integration
   plan            Manage planning folders and track task status
-  context (ctx)   JIT context retrieval for agents
+  context (ctx)   CCI context retrieval for agents
   langsmith (ls)  Query LangSmith traces and runs
   inputs          Validate and resolve inputs.yml references
   template (tpl)  Generate plan files from templates
@@ -52,7 +52,7 @@ Examples:
   agentic health                         # Check CLI health
   agentic wt create feature-auth         # Create worktree
 
-Context Commands (JIT context retrieval for agents):
+Context Commands (CCI context retrieval for agents):
   agentic context bootstrap --role build # Get agent seed context
   agentic context role planner-build     # Get role-specific guidance
   agentic context task                   # Get current task from plan
@@ -63,6 +63,17 @@ Plan Task Commands (task list management):
   agentic plan task current              # Get current/next task
   agentic plan task update 01.1 --status completed  # Update task
   agentic plan task prefill --preset planner-build  # Load preset
+
+Agent Quick Help (positional commands):
+  agentic planner-guidance               # Quick agent help (summary)
+  agentic build-python                   # Quick agent help (summary)
+  agentic test-runner                    # Quick agent help (summary)
+  agentic orchestration-executor         # Quick agent help (summary)
+
+Agent Bootstrap (full context with file paths):
+  agentic planner-guidance --bootstrap   # Full bootstrap context
+  agentic build-python --bootstrap       # Full bootstrap context
+  agentic <agent-name> --bootstrap       # Works for all 26 agents
 """,
     )
 
@@ -124,7 +135,7 @@ Plan Task Commands (task list management):
     # Environment management
     _add_env_parser(subparsers)
 
-    # JIT Context commands
+    # CCI Context commands
     _add_context_parser(subparsers)
 
     # Note: LangSmith parser already added at line 101
@@ -320,6 +331,11 @@ def _add_plan_parser(subparsers):
         description="Check folder structure, file presence, and YAML syntax.",
     )
     validate_parser.add_argument("path", help="Path to plan folder to validate")
+    validate_parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Fail validation on stub templates (default: warn only)",
+    )
 
     # plan task
     task_parser = plan_subparsers.add_parser(
@@ -1088,13 +1104,13 @@ def _add_env_parser(subparsers):
 
 
 def _add_context_parser(subparsers):
-    """Add context subcommand parser for JIT context retrieval."""
+    """Add context subcommand parser for CCI (CLI Context Injection) context retrieval."""
     context_parser = subparsers.add_parser(
         "context",
         aliases=["ctx"],
-        help="JIT context retrieval for agents",
+        help="CCI context retrieval for agents",
         description=(
-            "Just-In-Time context commands for agents to fetch exactly what they need "
+            "CLI Context Injection (CCI) commands for agents to fetch exactly what they need "
             "via CLI instead of loading large static files."
         ),
     )
@@ -1151,7 +1167,7 @@ def _add_context_parser(subparsers):
     # context inputs
     inputs_parser = context_subparsers.add_parser(
         "inputs",
-        help="Get JIT manifest of relevant project files",
+        help="Get CCI manifest of relevant project files",
         description="Returns input files for a role with path resolution and existence checks.",
     )
     inputs_parser.add_argument(

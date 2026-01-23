@@ -1,13 +1,7 @@
 process:
   goal: |
-    Audit plan folder compliance to identify files that are misplaced, stale, or misleading.
-    Ensure plan folders follow lifecycle conventions and don't accumulate noise that could
-    mislead future agents.
-
-    OUTPUT STRUCTURE:
-    - Produces audit_plan_compliance.yml in the audit/ subfolder
-    - Optionally produces compliance-analysis.md in analysis/ for detailed findings
-    - Recommends specific actions for each finding (move, archive, delete, update)
+    Audit plan folder compliance: identify misplaced, stale, or misleading files.
+    Output: audit_plan_compliance.yml in audit/ subfolder with findings and actions.
 
   inputs:
     - location: "modules/AgenticGuidance/agents/planner/planner-audit/inputs.yml"
@@ -17,35 +11,22 @@ process:
 
   steps:
     - |
-      VALIDATE REQUIRED INPUTS:
-      The following inputs MUST be provided by the orchestrator or user:
+      CCI BOOTSTRAP (CLI Context Injection) - Run FIRST:
+      ```bash
+      agentic context bootstrap --role planner-audit -j
+      agentic plan task current -j
+      ```
+      Use Glob/Grep/Read only if CLI output indicates specific files to examine.
 
-      1. plan_folder_path (string, required)
-         - Path to the plan folder to audit
-         - Example: "docs/plans/live/260106MyProject_feature_auth/"
-         - ERROR if missing: "STOP: No plan_folder_path provided. Cannot audit without a target folder."
-
-      2. target_project_path (string, required)
-         - Absolute path to target project root
-         - Example: "/home/code/MyProject"
-         - ERROR if missing: "STOP: No target_project_path provided. Cannot resolve plan folder location."
-
-      If ANY required input is missing, report the specific error and STOP.
+    - |
+      VALIDATE REQUIRED INPUTS (STOP if missing):
+      1. plan_folder_path - Path to audit (e.g., "docs/plans/live/260106MyProject_feature_auth/")
+      2. target_project_path - Absolute path to project root (e.g., "/home/code/MyProject")
 
     - |
       INVENTORY THE PLAN FOLDER:
-      List all files in the plan folder and its subfolders:
-      - Root level files
-      - live/ subfolder contents
-      - completed/ subfolder contents
-      - audit/ subfolder contents
-      - analysis/ subfolder contents
-      - Any other subfolders
-
-      For each file, record:
-      - File name and path
-      - File type (based on naming pattern)
-      - Last modified date (if available)
+      List all files in root and subfolders (live/, completed/, audit/, analysis/).
+      Record: file path, type (from naming pattern), last modified date.
 
     - |
       AUDIT FILE PLACEMENT (for each file ask: "Does this file belong here?"):

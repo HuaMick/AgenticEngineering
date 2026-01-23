@@ -1,0 +1,153 @@
+%% =============================================================================
+%% ORCHESTRATION: CCI Guidance Update Plans
+%% =============================================================================
+%% GOAL: Execute CCI-related guidance plans (agent-selfreview-cci, cci-rename-simplification)
+%% PROFILE: Orchestration-Executor
+%%
+%% PLANS:
+%% - plan_live_agent_selfreview_cci.yml: Update agent self-review to use CCI pattern
+%% - plan_live_cci_rename_simplification.yml: Rename JIT to CCI across guidance
+%%
+%% STATUS: Discovery=completed, Teach=pending, Validation=pending
+%%
+%% AGENT_ROUTING:
+%%   teach -> teacher-update-guidance
+%%   validation -> test-guidance-simulator
+%%   self-review -> test-guidance-simulator
+%%
+%% PHASES: Discovery(COMPLETED), Teach, Validation
+%%
+%% FEEDBACK_TRIGGERS:
+%%   TEACH_FAILURE: loop_to=TeachPhase, max_iterations=3
+%%   VALIDATION_FAILURE: loop_to=TeachPhase, max_iterations=2
+%%
+%% STATUS:
+%%   Discovery=completed
+%%   Teach=completed
+%%   Validation=completed
+%%   PLAN_STATUS=completed
+%% =============================================================================
+
+flowchart LR
+    %% ========================================
+    %% ENTRY AND CONTEXT
+    %% ========================================
+    Start((Start)) --> LoadPlans[Load Plan Files]
+    LoadPlans --> DiscoveryComplete{Discovery Complete?}
+
+    %% Discovery was completed in planning phase
+    DiscoveryComplete -- "No" --> RunDiscovery[Run Discovery Phase]
+    RunDiscovery --> DiscoveryComplete
+    DiscoveryComplete -- "Yes" --> TeachPhase
+
+    %% ========================================
+    %% TEACH PHASE
+    %% ========================================
+    %% Execute guidance updates for both plans concurrently
+    %% - agent-selfreview-cci: 4 teach tasks (teach_001 to teach_004)
+    %% - cci-rename-simplification: 5 teach tasks (teach_001 to teach_005)
+
+    subgraph TeachPhase_SG ["Teach Phase Subgraph"]
+        TeachPhase((Teach Phase)) --> SpawnTeacherSelfReview[Spawn teacher-update-guidance: Self-Review CCI]
+        TeachPhase --> SpawnTeacherRename[Spawn teacher-update-guidance: CCI Rename]
+
+        SpawnTeacherSelfReview --> SelfReviewTeachDone{Self-Review Tasks Done?}
+        SpawnTeacherRename --> RenameTeachDone{Rename Tasks Done?}
+
+        SelfReviewTeachDone -- "No: Issues" --> SpawnTeacherSelfReviewFix[Spawn teacher-update-guidance: Fix]
+        SpawnTeacherSelfReviewFix --> SelfReviewTeachDone
+
+        RenameTeachDone -- "No: Issues" --> SpawnTeacherRenameFix[Spawn teacher-update-guidance: Fix]
+        SpawnTeacherRenameFix --> RenameTeachDone
+
+        SelfReviewTeachDone -- "Yes" --> TeachMerge[Teach Merge]
+        RenameTeachDone -- "Yes" --> TeachMerge
+
+        TeachMerge --> AllTeachComplete{Both Plans Taught?}
+        AllTeachComplete -- "No: Waiting" --> TeachMerge
+    end
+
+    AllTeachComplete -- "Yes" --> SelfReviewLoop
+
+    %% ========================================
+    %% SELF-REVIEW LOOP (Mandatory for Guidance Changes)
+    %% ========================================
+    %% Agent self-review validates guidance modifications
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#guidance-self-review-loop
+
+    subgraph SelfReviewLoop_SG ["Self-Review Loop Subgraph"]
+        SelfReviewLoop((Self-Review Loop)) --> SpawnSelfReview[Spawn test-guidance-simulator: Self-Review]
+        SpawnSelfReview --> SelfReviewResult{Self-Review PASS?}
+
+        SelfReviewResult -- "No: NEEDS_ATTENTION" --> SpawnSelfReviewFix[Spawn teacher-update-guidance: Fix Issues]
+        SpawnSelfReviewFix --> CheckSelfReviewIterations{Max Iterations?}
+        CheckSelfReviewIterations -- "No" --> SpawnSelfReview
+        CheckSelfReviewIterations -- "Yes: Limit" --> EscalateSelfReview((Escalate: Self-Review Blocked))
+
+        SelfReviewResult -- "Yes: PASS" --> SelfReviewComplete[Self-Review Complete]
+    end
+
+    SelfReviewComplete --> ValidationPhase
+
+    %% ========================================
+    %% VALIDATION PHASE
+    %% ========================================
+    %% Validate CCI pattern works correctly:
+    %% - val_001: Verify CCI output includes self-review paths
+    %% - val_002: Execute self-review using CCI pattern
+    %% - val_003: Validate 3 agents with CCI self-review
+    %% - cci-rename val_001: Self-review all updated agents
+    %% - cci-rename val_002: Verify no remaining JIT references
+
+    subgraph ValidationPhase_SG ["Validation Phase Subgraph"]
+        ValidationPhase((Validation Phase)) --> SpawnValidator[Spawn test-guidance-simulator: Validate CCI]
+        SpawnValidator --> ValidationResult{Validation PASS?}
+
+        ValidationResult -- "No: Failure" --> CaptureValidationFeedback[Capture Failure Details]
+        CaptureValidationFeedback --> CheckValidationIterations{Max Iterations?}
+        CheckValidationIterations -- "No" --> ReturnToTeach[Return to Teach Phase]
+        ReturnToTeach -.->|FEEDBACK_TRIGGER| TeachPhase
+        CheckValidationIterations -- "Yes: Limit" --> EscalateValidation((Escalate: Validation Blocked))
+
+        ValidationResult -- "Yes" --> Validate3Agents[Validate 3 Agents with CCI Self-Review]
+        Validate3Agents --> All3Pass{3 Agents Pass?}
+        All3Pass -- "No" --> CaptureValidationFeedback
+        All3Pass -- "Yes" --> ValidationComplete[Validation Complete]
+    end
+
+    ValidationComplete --> JITReferenceCheck
+
+    %% ========================================
+    %% JIT REFERENCE AUDIT (CCI Rename Validation)
+    %% ========================================
+
+    subgraph JITAudit_SG ["JIT Reference Audit Subgraph"]
+        JITReferenceCheck((JIT Audit)) --> SpawnAudit[Spawn test-audit: Check JIT References]
+        SpawnAudit --> JITAuditResult{Zero JIT in Active Files?}
+
+        JITAuditResult -- "No: References Found" --> SpawnTeacherCleanup[Spawn teacher-update-guidance: Remove JIT]
+        SpawnTeacherCleanup --> SpawnAudit
+
+        JITAuditResult -- "Yes" --> AuditComplete[Audit Complete]
+    end
+
+    AuditComplete --> OutputPhase
+
+    %% ========================================
+    %% OUTPUT PHASE
+    %% ========================================
+
+    subgraph Output_SG ["Output Subgraph"]
+        OutputPhase((Output)) --> ReportSuccess[Report Plan Completion]
+        ReportSuccess --> UpdatePlanStatus[Update Plan Status: completed]
+        UpdatePlanStatus --> ArchivePlans[Move Plans to completed/]
+    end
+
+    ArchivePlans --> End((End: Plans Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    %% Dashed lines for feedback loops
+    classDef dashedstroke stroke-dasharray: 5 5
+    linkStyle 25 stroke:#888,stroke-width:2px,stroke-dasharray: 5 5

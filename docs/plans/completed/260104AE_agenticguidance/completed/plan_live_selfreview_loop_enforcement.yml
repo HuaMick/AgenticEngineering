@@ -1,0 +1,590 @@
+# TEACH Plan: Self-Review Loop Enforcement
+# Plan: 260104AE_agenticguidance
+# Generated: 2026-01-23
+# Agent: planner-guidance
+#
+# ========================================
+# COMPLETION STATUS:
+# - All 9 tasks COMPLETED on 2026-01-23
+# - Phase 1 (SRLE-001 to SRLE-003): FENCE and exit criteria added to agent-loops.yml
+# - Phase 2 (SRLE-004 to SRLE-006): Output requirements added to self-review-criteria.yml, agent-self-review.yml, spot-check-checklist.yml
+# - Phase 3 (SRLE-007 to SRLE-009): Test scenarios added to guidance-test-scenarios.yml
+# ========================================
+#
+# CONTEXT:
+# In the last Ralph loop iteration, agents performed self-reviews but:
+# - Did NOT create planning files in live/
+# - Only documented findings in audit/ folder
+# - Without plans in live/, nothing executed and loop never iterated
+# - Agents made autonomous deferral decisions instead of presenting to user
+#
+# ROOT CAUSE:
+# - guidance-self-review-loop in agent-loops.yml doesn't FENCE plan file creation
+# - No explicit requirement that NEEDS_ATTENTION status MUST produce a plan file
+# - No definition of what constitutes loop exit ("NO ISSUES REMAINING")
+# - Orchestrator responsibility for enforcing plan creation not documented
+
+name: "teach-selfreview-loop-enforcement"
+worktree_path: "/home/code/AgenticEngineering"
+branch: "main"
+status: "completed"
+priority: "high"
+phase_type: "teach"
+created: "2026-01-23"
+completed: "2026-01-23"
+
+objective: |
+  Enforce that self-review agents MUST create planning files when they find issues,
+  preventing the pattern where agents document findings but produce no actionable plans.
+  Clarify that users decide deferrals, not agents. Define clear loop exit criteria.
+
+inputs:
+  - location: "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+    description: "Contains guidance-self-review-loop that needs FENCE for plan creation"
+
+  - location: "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml"
+    description: "Defines PASS/NEEDS_ATTENTION criteria but not output requirements"
+
+  - location: "modules/AgenticGuidance/assets/definitions/spot-check-checklist.yml"
+    description: "Defines spot-check protocol but not plan file requirements"
+
+  - location: "modules/AgenticGuidance/assets/guidelines/agent-self-review.yml"
+    description: "Agent self-review process guidelines"
+
+context: |
+  The guidance-self-review-loop defines the iteration pattern but lacks critical
+  enforcement mechanisms:
+
+  1. MISSING FENCE: No requirement that NEEDS_ATTENTION status must produce a plan file
+  2. MISSING OUTPUT SPEC: Self-review agents don't have a required output schema
+  3. MISSING EXIT CRITERIA: "NO ISSUES REMAINING" is vague - needs precise definition
+  4. MISSING ORCHESTRATOR ROLE: Primary agent spawning subagents must enforce plan creation
+
+  The result: Agents self-reviewed, found issues, documented in audit/, but created
+  no plans in live/. The loop never iterated because there was nothing to execute.
+
+  Additionally, agents made autonomous deferral decisions ("this is low priority,
+  deferring") instead of presenting findings to the user for decision.
+
+phases:
+  # ========================================
+  # PHASE 1: ADD FENCE TO AGENT-LOOPS.YML
+  # Priority: CRITICAL
+  # This is the core enforcement mechanism
+  # ========================================
+  - name: "Add Self-Review Plan Creation FENCE"
+    priority: "critical"
+    execution: "sequential"
+    description: "Add FENCE to guidance-self-review-loop requiring plan file creation on NEEDS_ATTENTION"
+
+    tasks:
+      - id: "SRLE-001"
+        name: "Add Plan Creation FENCE to guidance-self-review-loop"
+        severity: "critical"
+        description: |
+          Add a FENCE section to guidance-self-review-loop that makes plan file
+          creation a hard requirement when NEEDS_ATTENTION status is found.
+        agent_type: "teacher-update-assets"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+        instructions:
+          - "Locate guidance-self-review-loop section (around line 364)"
+          - "Add fence_plan_creation section after exit_conditions"
+          - "Document that NEEDS_ATTENTION MUST produce plan file"
+          - "Specify plan file location: {plan_folder}/live/plan_guidance_*.yml"
+          - "Add user_deferral_policy: agents present, users decide"
+        content_requirements:
+          fence_plan_creation:
+            name: "Self-Review Plan Creation FENCE"
+            trigger: "NEEDS_ATTENTION status from any self-reviewing agent"
+            requirement: |
+              FENCE: When self-review returns NEEDS_ATTENTION:
+              1. Agent MUST create plan file at: {plan_folder}/live/plan_guidance_{agent_name}_{issue_type}.yml
+              2. Agent MUST NOT autonomously defer issues - present ALL findings to user
+              3. Plan file MUST include: objective, findings list, proposed tasks
+              4. Without plan file in live/, the loop CANNOT iterate
+            violation: |
+              If NEEDS_ATTENTION but no plan file created:
+              - Self-review is INCOMPLETE
+              - Loop iteration is BLOCKED
+              - Orchestrator MUST reject the self-review result
+            user_deferral_policy: |
+              FENCE: Agents DO NOT decide deferral.
+              - Agent presents findings with severity assessment
+              - User decides which findings to address now vs defer
+              - Only user can mark a finding as "deferred"
+              - Agent may RECOMMEND deferral but MUST NOT implement it unilaterally
+        acceptance_criteria:
+          - "fence_plan_creation section exists in guidance-self-review-loop"
+          - "FENCE explicitly requires plan file on NEEDS_ATTENTION"
+          - "User deferral policy documented (agents present, users decide)"
+          - "Plan file path pattern specified"
+        status: "completed"
+        completion_notes: |
+          Added fence_plan_creation section to guidance-self-review-loop at line ~405.
+          Includes: requirement, violation handling, user_deferral_policy, plan_file_template.
+          FENCE statement enforces plan file creation for NEEDS_ATTENTION status.
+
+      - id: "SRLE-002"
+        name: "Define NO ISSUES REMAINING Exit Criteria"
+        severity: "critical"
+        description: |
+          Clarify what constitutes "NO ISSUES REMAINING" as the loop exit condition.
+          Must be precise enough to prevent agents from prematurely declaring success.
+        agent_type: "teacher-update-assets"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+        instructions:
+          - "Update exit_conditions in guidance-self-review-loop"
+          - "Replace vague 'Multiple agents report no issues found' with precise criteria"
+          - "Define NO_ISSUES_REMAINING as: PASS status with zero NAT-* triggers"
+          - "Reference self-review-criteria.yml for NAT-* definitions"
+        content_requirements:
+          exit_conditions_update:
+            old: "Multiple agents report no issues found"
+            new: |
+              NO_ISSUES_REMAINING defined as ALL of:
+              1. Self-review status is PASS (not NEEDS_ATTENTION)
+              2. Zero NEEDS_ATTENTION triggers (NAT-001 through NAT-006) detected
+              3. Spot-check flag rate <50% (if spot-check phase applies)
+              4. No pending plan files in live/ folder for this agent
+              Reference: self-review-criteria.yml needs_attention_triggers section
+          iteration_continues_when: |
+            Loop continues while ANY of:
+            - Any agent has NEEDS_ATTENTION status
+            - Any NAT-* trigger is active
+            - Plan files exist in live/ that haven't been executed
+            - Spot-check flag rate >= 50%
+        acceptance_criteria:
+          - "NO_ISSUES_REMAINING explicitly defined with 4 conditions"
+          - "Reference to NAT-* triggers from self-review-criteria.yml"
+          - "Spot-check flag rate threshold included"
+          - "iteration_continues_when section added"
+        status: "completed"
+        completion_notes: |
+          Updated exit_conditions in guidance-self-review-loop with structured definition.
+          Added: no_issues_remaining with 4 precise criteria, iteration_continues_when conditions.
+          References self-review-criteria.yml#needs_attention_triggers for NAT-* definitions.
+
+      - id: "SRLE-003"
+        name: "Document Orchestrator Enforcement Responsibility"
+        severity: "high"
+        description: |
+          Clarify that the primary agent spawning subagents IS the orchestrator
+          and is responsible for enforcing plan file creation.
+        agent_type: "teacher-update-assets"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+        instructions:
+          - "Add orchestrator_role section to guidance-self-review-loop"
+          - "Define that spawning agent enforces plan file check"
+          - "Document the enforcement checkpoint after self-review returns"
+        content_requirements:
+          orchestrator_role:
+            definition: |
+              The PRIMARY AGENT that spawns self-review subagents IS the orchestrator
+              for this loop. The orchestrator:
+              1. Spawns subagents for self-review
+              2. Collects self-review results
+              3. ENFORCES plan file creation check
+              4. Rejects incomplete self-reviews (NEEDS_ATTENTION without plan file)
+              5. Continues loop until NO_ISSUES_REMAINING
+            enforcement_checkpoint: |
+              After each self-review subagent returns:
+              IF status == NEEDS_ATTENTION:
+                CHECK: Does live/ contain plan_guidance_{agent_name}_*.yml?
+                IF NO: Reject result, require plan file creation
+                IF YES: Present plan to user for approval
+              IF status == PASS:
+                CHECK: Verify zero NAT-* triggers
+                IF ANY NAT-* active: Reject, status should be NEEDS_ATTENTION
+            visual_reference: |
+              modules/AgenticGuidance/assets/examples/orchestration/phase_templates/guidance_self_review_loop.mmd
+        acceptance_criteria:
+          - "orchestrator_role section added to guidance-self-review-loop"
+          - "Enforcement checkpoint documented with decision tree"
+          - "Clear statement that spawning agent IS the orchestrator"
+          - "Reference to visual diagram"
+        status: "completed"
+        completion_notes: |
+          Added orchestrator_role section with definition, enforcement_checkpoint, rejection_response.
+          Checkpoint includes decision tree: NEEDS_ATTENTION -> check plan file -> reject if missing.
+          PASS status also verified against NAT-* triggers to catch false positives.
+
+  # ========================================
+  # PHASE 2: UPDATE SELF-REVIEW OUTPUT REQUIREMENTS
+  # Priority: HIGH
+  # Define what self-review agents MUST produce
+  # ========================================
+  - name: "Update Self-Review Output Requirements"
+    priority: "high"
+    execution: "parallel"
+    description: "Define required output schema for self-review agents"
+
+    tasks:
+      - id: "SRLE-004"
+        name: "Add Output Schema to self-review-criteria.yml"
+        severity: "high"
+        description: |
+          Define the required output schema for self-review agents, including
+          the mandatory plan file path when status is NEEDS_ATTENTION.
+        agent_type: "teacher-update-assets"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml"
+        instructions:
+          - "Add 'output_requirements' section after the fence section"
+          - "Define status field (PASS | NEEDS_ATTENTION)"
+          - "Define findings list structure"
+          - "Define plan_file_path (required when NEEDS_ATTENTION)"
+          - "Add validation rule for plan file existence"
+        content_requirements:
+          output_requirements:
+            description: |
+              Self-review agents MUST output all of the following:
+            required_fields:
+              - field: "status"
+                type: "enum"
+                values: ["PASS", "NEEDS_ATTENTION"]
+                description: "Overall assessment result"
+
+              - field: "findings"
+                type: "list"
+                item_schema:
+                  id: "string (NAT-XXX or custom)"
+                  severity: "CRITICAL | HIGH | MEDIUM | LOW"
+                  description: "string - what was found"
+                  recommendation: "string - how to fix"
+                description: "List of all issues found (empty list for PASS)"
+
+              - field: "plan_file_path"
+                type: "string | null"
+                description: |
+                  Path to created plan file.
+                  REQUIRED when status == NEEDS_ATTENTION
+                  null when status == PASS
+                example: "docs/plans/live/260104AE_agenticguidance/live/plan_guidance_test_audit_broken_refs.yml"
+
+              - field: "spot_check_eligible"
+                type: "boolean"
+                description: "Whether this result is eligible for spot-check sampling"
+
+            validation_rule: |
+              FENCE: If status == NEEDS_ATTENTION AND plan_file_path is null/empty:
+              - Output is INVALID
+              - Self-review is INCOMPLETE
+              - Orchestrator MUST reject and require plan file creation
+        acceptance_criteria:
+          - "output_requirements section added to self-review-criteria.yml"
+          - "All 4 required fields defined with types and descriptions"
+          - "Validation rule explicitly FENCEs plan_file_path requirement"
+          - "Example path provided"
+        status: "completed"
+        completion_notes: |
+          Added output_requirements section before FENCE section in self-review-criteria.yml.
+          Defined 4 required fields: status, findings, plan_file_path, spot_check_eligible.
+          Added validation_rule with FENCE statement and output_example for both PASS and NEEDS_ATTENTION.
+
+      - id: "SRLE-005"
+        name: "Update agent-self-review.yml with Output Specification"
+        severity: "high"
+        description: |
+          Update the agent self-review guideline to reference the output
+          requirements and make plan file creation explicit in the process.
+        agent_type: "teacher-update-guidance"
+        target_files:
+          - "modules/AgenticGuidance/assets/guidelines/agent-self-review.yml"
+        instructions:
+          - "Add reference to output_requirements from self-review-criteria.yml"
+          - "Add explicit step for plan file creation when NEEDS_ATTENTION"
+          - "Document that plan file creation is NOT optional"
+        content_requirements:
+          process_update:
+            add_step: |
+              Step N: Create Plan File (if NEEDS_ATTENTION)
+              IF status == NEEDS_ATTENTION:
+                1. Create plan file at: {plan_folder}/live/plan_guidance_{agent_name}_{issue_type}.yml
+                2. Include: objective, findings list, proposed remediation tasks
+                3. Set plan status: pending
+                4. Return plan_file_path in output
+              FENCE: This step is NOT optional. NEEDS_ATTENTION without plan file = incomplete.
+            output_reference: |
+              Output must conform to: self-review-criteria.yml#output_requirements
+              Required fields: status, findings, plan_file_path, spot_check_eligible
+        acceptance_criteria:
+          - "agent-self-review.yml references output_requirements"
+          - "Explicit step for plan file creation added"
+          - "FENCE statement about non-optional nature"
+          - "Output reference to self-review-criteria.yml"
+        status: "completed"
+        completion_notes: |
+          Added Step 6 (Create Plan File) and Step 7 (Generate Output) to protocol.review_steps.
+          Step 6 includes FENCE statement and procedure for both NEEDS_ATTENTION and PASS paths.
+          Step 7 references self-review-criteria.yml#output_requirements and lists required fields.
+
+      - id: "SRLE-006"
+        name: "Add Completion Validation to spot-check-checklist.yml"
+        severity: "high"
+        description: |
+          Add a check to spot-check-checklist.yml that validates plan file
+          creation for NEEDS_ATTENTION results.
+        agent_type: "teacher-update-assets"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/spot-check-checklist.yml"
+        instructions:
+          - "Add SC-006 check for plan file existence"
+          - "This catches the pattern where agents report NEEDS_ATTENTION but create no plan"
+          - "Add to high_frequency_issues section"
+        content_requirements:
+          new_check:
+            id: "SC-006"
+            name: "Plan File Creation Validation"
+            frequency_percent: 100
+            description: |
+              Validates that NEEDS_ATTENTION results include a plan file.
+              This is a 100% check (not sampled) because missing plan files
+              completely break the loop iteration.
+            check_procedure: |
+              1. Get self-review result status
+              2. If NEEDS_ATTENTION, check plan_file_path field
+              3. If plan_file_path provided, verify file exists
+              4. Flag if NEEDS_ATTENTION but no plan file
+            validation_command: |
+              # Check if plan file exists for NEEDS_ATTENTION result
+              if [ "$status" = "NEEDS_ATTENTION" ]; then
+                [ -f "$plan_file_path" ] || echo "MISSING PLAN FILE: $plan_file_path"
+              fi
+            flag_if: "status == NEEDS_ATTENTION AND (plan_file_path is null OR file does not exist)"
+            remediation: "Create plan file before marking self-review complete"
+        acceptance_criteria:
+          - "SC-006 added to high_frequency_issues"
+          - "frequency_percent is 100 (always checked)"
+          - "Validation command provided"
+          - "Clear flag condition and remediation"
+        status: "completed"
+        completion_notes: |
+          Added SC-006 "Plan File Creation Validation" after SC-005 in high_frequency_issues.
+          frequency_percent: 100 (always checked, not sampled).
+          Includes validation_command (bash script), flag_if condition, remediation steps.
+          Added severity: CRITICAL and note explaining why this is 100% frequency.
+
+  # ========================================
+  # PHASE 3: TEST WITH SAMPLE AGENTS
+  # Priority: HIGH
+  # Validate the enforcement works
+  # ========================================
+  - name: "Test Self-Review Loop Enforcement"
+    priority: "high"
+    execution: "sequential"
+    description: "Validate that the new FENCE prevents incomplete self-reviews"
+
+    tasks:
+      - id: "SRLE-007"
+        name: "Test FENCE with Intentional NEEDS_ATTENTION (No Plan)"
+        severity: "high"
+        description: |
+          Create a test scenario where a self-review returns NEEDS_ATTENTION
+          but doesn't create a plan file. Verify the orchestrator rejects it.
+        agent_type: "test-guidance-simulator"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/guidance-test-scenarios.yml"
+        instructions:
+          - "Add test scenario 'selfreview_no_plan_rejection'"
+          - "Simulate NEEDS_ATTENTION result without plan_file_path"
+          - "Verify orchestrator enforcement rejects the result"
+          - "Document expected error message"
+        content_requirements:
+          test_scenario:
+            id: "selfreview_no_plan_rejection"
+            description: "Verify FENCE rejects NEEDS_ATTENTION without plan file"
+            setup: |
+              1. Configure test agent to return NEEDS_ATTENTION status
+              2. Do NOT create plan file
+              3. Provide plan_file_path as null
+            expected_behavior: |
+              Orchestrator should:
+              1. Detect missing plan file
+              2. Reject self-review result
+              3. Require plan file creation
+              4. NOT advance loop iteration
+            expected_error: "Self-review incomplete: NEEDS_ATTENTION status requires plan file"
+            pass_criteria: "Loop does not advance without plan file"
+        acceptance_criteria:
+          - "Test scenario added to guidance-test-scenarios.yml"
+          - "Scenario tests FENCE enforcement specifically"
+          - "Expected error message documented"
+          - "Pass criteria is loop blocking"
+        status: "completed"
+        completion_notes: |
+          Added selfreview_no_plan_rejection test scenario to guidance-test-scenarios.yml.
+          Includes setup, inputs, constraints, expected_behavior, expected_outputs.
+          Expected rejection message: "Self-review incomplete: NEEDS_ATTENTION status requires plan file"
+          Pass criteria: loop does not advance without plan file.
+
+      - id: "SRLE-008"
+        name: "Test Loop Exit with PASS Status"
+        severity: "high"
+        description: |
+          Verify that PASS status with zero NAT-* triggers correctly exits
+          the loop and doesn't require plan file.
+        agent_type: "test-guidance-simulator"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/guidance-test-scenarios.yml"
+        instructions:
+          - "Add test scenario 'selfreview_pass_exits_loop'"
+          - "Simulate PASS result with empty findings"
+          - "Verify loop correctly exits"
+          - "Verify no plan file is required"
+        content_requirements:
+          test_scenario:
+            id: "selfreview_pass_exits_loop"
+            description: "Verify PASS with zero NAT-* triggers exits loop"
+            setup: |
+              1. Configure test agent to return PASS status
+              2. Set findings to empty list
+              3. Set plan_file_path to null
+            expected_behavior: |
+              Orchestrator should:
+              1. Accept PASS result
+              2. Verify zero NAT-* triggers
+              3. Exit loop for this agent
+              4. NOT require plan file
+            pass_criteria: "Loop exits cleanly with PASS status and no plan file required"
+        acceptance_criteria:
+          - "Test scenario added to guidance-test-scenarios.yml"
+          - "Scenario tests PASS exit path"
+          - "Confirms plan file not required for PASS"
+          - "NAT-* trigger verification documented"
+        status: "completed"
+        completion_notes: |
+          Added selfreview_pass_exits_loop test scenario to guidance-test-scenarios.yml.
+          Tests that PASS status with empty findings exits loop without requiring plan file.
+          Includes nat_trigger_count: 0 verification in expected_outputs.
+          References exit_conditions.no_issues_remaining in agent-loops.yml.
+
+      - id: "SRLE-009"
+        name: "Test User Deferral Policy"
+        severity: "high"
+        description: |
+          Verify that agents present findings for user decision rather than
+          making autonomous deferral decisions.
+        agent_type: "test-guidance-simulator"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/guidance-test-scenarios.yml"
+        instructions:
+          - "Add test scenario 'selfreview_user_deferral'"
+          - "Simulate finding with LOW severity"
+          - "Verify agent presents finding, does NOT auto-defer"
+          - "Document expected output format for user decision"
+        content_requirements:
+          test_scenario:
+            id: "selfreview_user_deferral"
+            description: "Verify agents present findings rather than auto-deferring"
+            setup: |
+              1. Configure test agent to find LOW severity issue
+              2. Issue could reasonably be deferred
+            expected_behavior: |
+              Agent should:
+              1. Include issue in findings list
+              2. Include issue in plan file
+              3. Mark as severity: LOW
+              4. NOT automatically defer
+              5. Present to user with: "Recommend deferral: [reason]. User decision required."
+            anti_pattern: |
+              Agent should NOT:
+              - Remove low-severity issues from findings
+              - Mark plan as "deferred" without user input
+              - Decide not to create plan file because "issues are minor"
+            pass_criteria: "LOW severity issues appear in findings and plan file"
+        acceptance_criteria:
+          - "Test scenario added to guidance-test-scenarios.yml"
+          - "Scenario tests user deferral policy"
+          - "Anti-pattern explicitly documented"
+          - "Pass criteria requires issues in plan"
+        status: "completed"
+        completion_notes: |
+          Added selfreview_user_deferral test scenario to guidance-test-scenarios.yml.
+          Tests that LOW severity issues are included in findings and plan file.
+          Anti-pattern section documents what agents should NOT do (auto-deferral).
+          Pass criteria: LOW severity issues appear in findings and plan; user decides deferral.
+
+# ========================================
+# SUCCESS CRITERIA
+# ========================================
+success_criteria:
+  phase_1:
+    - "fence_plan_creation section exists in guidance-self-review-loop"
+    - "NO_ISSUES_REMAINING precisely defined with 4 conditions"
+    - "orchestrator_role section documents enforcement responsibility"
+    - "User deferral policy clearly states agents present, users decide"
+
+  phase_2:
+    - "output_requirements section exists in self-review-criteria.yml"
+    - "agent-self-review.yml references output requirements"
+    - "SC-006 check added for plan file validation"
+    - "Validation rule FENCEs plan_file_path requirement"
+
+  phase_3:
+    - "Test scenario for FENCE rejection exists"
+    - "Test scenario for PASS exit exists"
+    - "Test scenario for user deferral policy exists"
+    - "All test scenarios have clear pass criteria"
+
+  overall:
+    - "Future self-review loops MUST create plan files for NEEDS_ATTENTION"
+    - "Agents MUST NOT make autonomous deferral decisions"
+    - "Loop iteration blocked until plan files exist in live/"
+    - "NO_ISSUES_REMAINING is unambiguous (PASS + zero NAT-* + spot-check pass)"
+
+# ========================================
+# TEST-FIX-LOOP VALIDATION
+# ========================================
+test_fix_loop:
+  description: |
+    After implementing all phases, validate by running a self-review loop
+    and verifying the new enforcement mechanisms work correctly.
+
+  validation_steps:
+    - step: 1
+      action: "Run self-review on 3 test agents (deploy-worktree, planner-test, test-audit)"
+      expected: "Any NEEDS_ATTENTION results include plan files in live/"
+
+    - step: 2
+      action: "Attempt to complete self-review with NEEDS_ATTENTION but no plan file"
+      expected: "Orchestrator rejects, requires plan file creation"
+
+    - step: 3
+      action: "Verify PASS results correctly exit loop"
+      expected: "Loop exits without requiring plan file"
+
+    - step: 4
+      action: "Verify low-severity findings are presented, not auto-deferred"
+      expected: "All findings in plan file regardless of severity"
+
+  success_metrics:
+    - "0 self-reviews complete with NEEDS_ATTENTION but no plan file"
+    - "100% of findings appear in plan files (not filtered by agent)"
+    - "Loop correctly iterates when plan files exist in live/"
+
+# ========================================
+# REFERENCES
+# ========================================
+references:
+  - id: "guidance-self-review-loop"
+    source: "modules/AgenticGuidance/assets/definitions/agent-loops.yml#guidance-self-review-loop"
+    description: "Loop definition that needs FENCE for plan creation"
+
+  - id: "self-review-criteria"
+    source: "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml"
+    description: "PASS/NEEDS_ATTENTION criteria that needs output requirements"
+
+  - id: "spot-check-checklist"
+    source: "modules/AgenticGuidance/assets/definitions/spot-check-checklist.yml"
+    description: "Spot-check protocol that needs plan file validation check"
+
+  - id: "agent-self-review"
+    source: "modules/AgenticGuidance/assets/guidelines/agent-self-review.yml"
+    description: "Self-review process guideline that needs output specification"
+
+  - id: "ralph-loop-session"
+    source: "Internal observation"
+    description: "Last Ralph loop iteration where agents self-reviewed but created no plans"

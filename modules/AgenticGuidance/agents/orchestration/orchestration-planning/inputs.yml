@@ -9,6 +9,8 @@
 # these exist in the project being worked on, not in AgenticGuidance.
 # ==============================================
 
+version: "2.0"
+
 # ==============================================
 # PLANNING POLICY
 # ==============================================
@@ -243,6 +245,26 @@ loop_selection_guidance:
   loop_definition_reference: "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
 
 # ==============================================
+# LOOP VALIDATION
+# ==============================================
+# Plans for non-trivial work MUST include loop_structure.
+# This ensures iterative patterns are explicitly defined.
+# ==============================================
+loop_validation:
+  fence: |
+    FENCE: PLANS-MUST-INCLUDE-LOOPS
+    Plans for non-trivial work MUST include loop_structure section.
+    Reviewer MUST reject plans without loops for:
+    - Build phases (requires test-fix-loop)
+    - Test phases (requires audit-test-fix-loop)
+    - Cleanup phases (requires audit-test-fix-loop)
+    - Teach phases (requires guidance-self-review-loop OR agent-self-review)
+
+  trivial_exception: |
+    Single-task plans with no iteration need (e.g., "fix typo")
+    may omit loop_structure with justification.
+
+# ==============================================
 # CLI COMMAND REFERENCE
 # ==============================================
 # Centralized CLI commands - see shared definition for full documentation
@@ -281,6 +303,57 @@ phase_file_strategy: |
   - Do NOT attempt to consolidate all phases into a single "unified" file
 
   The plan_example.yml is a STRUCTURE reference, not a file organization template.
+# ==============================================
+
+# ==============================================
+# GUIDANCE CHANGE ROUTING
+# ==============================================
+# When a build plan includes guidance file modifications, the orchestration
+# MUST include teach phase validation to ensure guidance quality.
+# ==============================================
+guidance_change_routing:
+  description: |
+    Build plans may legitimately include guidance file paths (e.g., infrastructure
+    work that updates agent inputs). However, any modifications to agent guidance
+    MUST be validated through the teach process before deployment.
+
+  detection_trigger: |
+    If planner-build sets requires_teach_validation: true in plan output,
+    this indicates the plan modifies guidance files. Check plan output for:
+    - requires_teach_validation: true
+    - guidance_files_modified: [list of files]
+
+  routing_action: |
+    When requires_teach_validation is true:
+    1. INCLUDE teach phase in orchestration sequence
+    2. Position teach phase AFTER build tasks that modify guidance
+    3. Include agent self-review for each modified agent
+    4. Teach phase MUST complete successfully before plan completion
+
+  fence: |
+    FENCE: GUIDANCE-CHANGES-REQUIRE-TEACH
+    A build plan with requires_teach_validation: true MUST NOT be marked
+    complete until teach phase validation passes. This is NON-NEGOTIABLE.
+
+    The following validation is REQUIRED:
+    - Agent self-review for each agent whose guidance was modified
+    - Path resolution validation for all modified inputs.yml files
+    - Consistency check between process.yml and inputs.yml
+
+    INCIDENT REFERENCE: CLI Context Injection initiative (2025-11) modified 26 agent
+    bootstrap files without validation, causing broken paths and missing
+    references that weren't caught until execution.
+
+  phase_insertion_pattern: |
+    Original: [Build Phase] -> [Test Phase] -> [Complete]
+    Modified: [Build Phase] -> [Teach Validation Phase] -> [Test Phase] -> [Complete]
+
+    The Teach Validation Phase includes:
+    - SpawnPlannerGuidance for validation task creation
+    - SpawnSelfReview for each modified agent
+    - SpawnReviewer to approve guidance changes
+
+  planner_build_fence_reference: "modules/AgenticGuidance/agents/planner/planner-build/inputs.yml#guidance_modification_fence"
 # ==============================================
 
 # ==============================================
@@ -338,9 +411,9 @@ inputs:
     description: "Process for reviewing and approving implementation plans."
 
   # Plan examples for structure reference
-  - location: "modules/AgenticGuidance/assets/examples/planner/YYMMDDWorktree_Description/plan_example.yml"
+  - location: "modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/live/plan_example.yml"
     description: "Unified plan example showing integrated phases (Build, Test, Teach, Audit) in a single file with context updates and decision tracking."
-  - location: "modules/AgenticGuidance/assets/examples/planner/YYMMDDWorktree_Description/README.md"
+  - location: "modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/README.md"
     description: "README example showing consolidated session tracking, next steps, and decision items."
   - location: "modules/AgenticGuidance/assets/examples/planner/teaching-plan-example.yml"
     description: "Teaching plan example for guidance improvements with phases and tasks."

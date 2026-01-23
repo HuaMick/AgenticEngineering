@@ -1,0 +1,924 @@
+# Deploy-Worktree Agent Self-Review
+# Date: 2026-01-23
+# Reviewer: deploy-worktree (self)
+# Scope: Complete guidance review against system principles and best practices
+
+report_metadata:
+  review_date: "2026-01-23"
+  agent_role: "deploy-worktree"
+  review_type: "self-review"
+  review_scope: "Complete guidance assessment"
+  reference_principles:
+    - "context-minimisation.yml"
+    - "worktree-and-branching.yml"
+    - "safety.yml"
+    - "fix-the-source.yml"
+  guidance_files_reviewed:
+    - ".claude/agents/deploy-worktree.md"
+    - "modules/AgenticGuidance/agents/deploy/deploy-worktree/manifest.yml"
+    - "modules/AgenticGuidance/agents/deploy/deploy-worktree/process.yml"
+    - "modules/AgenticGuidance/agents/deploy/deploy-worktree/inputs.yml"
+
+# =============================================================================
+# SECTION 1: ROLE CLARITY AND BOUNDARIES
+# =============================================================================
+
+role_clarity:
+  criterion: "Agent role is clearly defined with explicit boundaries"
+  status: PASS
+  findings:
+    - finding: "Role definition is clear and specific"
+      evidence: |
+        manifest.yml lines 2-5: "Create git worktrees and initialize plan folder
+        structures for feature development. Handles VS Code workspace file updates
+        and validates the complete worktree setup including planning folder scaffolding
+        with live/, completed/, and audit/ directories."
+      assessment: "Role is concise and action-focused"
+
+    - finding: "Explicit boundaries documented"
+      evidence: |
+        manifest.yml lines 26-31: Lists 5 specific boundaries:
+        - Does NOT create implementation plans
+        - Does NOT execute builds or tests
+        - Does NOT modify existing code in worktrees
+        - Does NOT manage CI/CD configuration
+        - Does NOT participate in iteration loops
+      assessment: "Boundaries are well-defined and prevent role confusion"
+
+    - finding: "Main-First Planning clarified"
+      evidence: |
+        process.yml lines 23-25: "MAIN-FIRST PLANNING: Plan folders are in main
+        worktree, not feature worktree. YYMMDDXX format: YY=year, MM=month, DD=day,
+        XX=worktree ID (2 uppercase letters from worktree suffix)"
+      assessment: "Clarification addresses common confusion point"
+
+  rating: STRONG
+  recommendation: "No changes needed. Role and boundaries are clearly defined."
+
+# =============================================================================
+# SECTION 2: CONTEXT MINIMISATION COMPLIANCE
+# =============================================================================
+
+context_minimisation:
+  criterion: "Guidance follows context-minimisation principles"
+  status: MIXED
+  findings:
+    - finding: "JIT CLI Bootstrap Referenced in Process"
+      status: PASS
+      evidence: |
+        process.yml lines 51-64: Explicit JIT CLI bootstrap step documented
+        with concrete commands and output expectations.
+      assessment: |
+        POSITIVE: Process file now includes JIT CLI commands as FIRST step,
+        directly addressing friction analysis REC-001.
+
+    - finding: "Bootstrap File Exists"
+      status: PASS
+      evidence: |
+        .claude/agents/deploy-worktree.md contains complete bootstrap protocol
+        with CLI command reference table (lines 24-34)
+      assessment: "Bootstrap file provides thin-client alternative to full guidance"
+
+    - finding: "Inline Definitions Bloat"
+      status: CONCERN
+      evidence: |
+        inputs.yml lines 103-166: Agent-specific definitions section contains
+        4 inline definitions (worktree_naming_convention, git_worktree_commands,
+        workspace_file, worktree_operations, planning_scaffolding).
+
+        Token estimate for definitions section: ~800 tokens
+        These definitions duplicate content from other files:
+        - worktree_naming_convention: Duplicate of plans.yml#naming_convention
+        - worktree_operations: Duplicate of worktree-and-branching.yml rules
+      assessment: |
+        CONCERN: Inline definitions create duplication and maintenance burden.
+        According to context-minimisation.yml line 114: "Inline definitions >100
+        tokens should be extracted to shared assets."
+
+    - finding: "Layer Architecture is Sound"
+      status: PASS
+      evidence: |
+        inputs.yml lines 54-68: Uses transitive layer loading pattern:
+        - layer: core-system.yml (required: true)
+        - layer: deploy-minimal.yml (required: true)
+        - layer: deploy-shared.yml (required: true)
+
+        This design allows CLI bootstrap to return minimal seed context,
+        with file-based fallback for detailed procedures.
+      assessment: |
+        POSITIVE: Architecture supports context-minimisation via layering.
+        Agents can start with bootstrap and retrieve detailed guidance on-demand.
+
+    - finding: "Required Inputs Section is Appropriate"
+      status: PASS
+      evidence: |
+        inputs.yml lines 11-41: Required inputs clearly specified:
+        - REPO_ROOT: Essential for path resolution
+        - branch_name: Essential for git operations
+        - base_branch: Optional with reasonable default
+
+        Each input has description, type, example, and note explaining usage.
+      assessment: |
+        POSITIVE: Required inputs section is minimal and focused.
+        No unnecessary context provided upfront.
+
+  ratings:
+    layer_architecture: STRONG
+    bootstrap_protocol: STRONG
+    inline_definitions: WEAK
+    overall: GOOD_WITH_IMPROVEMENT_OPPORTUNITY
+
+  recommendations:
+    - action: "Extract inline definitions to dedicated reference file"
+      rationale: |
+        Create modules/AgenticGuidance/agents/deploy/deploy-worktree/references.yml
+        containing worktree_naming_convention, git_worktree_commands,
+        workspace_file, worktree_operations, planning_scaffolding.
+
+        Replace inline content in inputs.yml with:
+        ```
+        references:
+          - path: "deploy-worktree/references.yml"
+            description: "Worktree operation procedures and definitions"
+            required: true
+        ```
+
+        Token savings: ~600 tokens per agent session
+
+      priority: MEDIUM
+      effort: "30 minutes"
+      impact: "Reduced context bloat, improved maintainability"
+
+    - action: "Add 'prefer JIT CLI' note to bootstrap section"
+      rationale: |
+        Add note to process.yml line 64-65:
+        ```
+        CLI output provides your objective, process summary, input file paths.
+        PREFER JIT CLI: For structured context, use CLI commands.
+        ONLY use Glob/Grep/Read if CLI output indicates specific files to examine.
+        ```
+      priority: LOW
+      effort: "5 minutes"
+      impact: "Reinforces context-minimisation for agent implementation"
+
+# =============================================================================
+# SECTION 3: FRICTION ANALYSIS ALIGNMENT
+# =============================================================================
+
+friction_analysis_alignment:
+  criterion: "Guidance addresses known friction patterns"
+  status: PASS
+  findings:
+    - finding: "REC-001 Implementation Status"
+      issue_id: "260123_friction_analysis.yml#REC-001"
+      status: IMPLEMENTED
+      evidence: |
+        process.yml lines 51-64: JIT CLI bootstrap step is now FIRST step
+        in agent execution loop, directly implementing REC-001.
+
+        Lines 52-53: "JIT CLI BOOTSTRAP (Run FIRST before any file exploration)"
+      assessment: |
+        COMPLETE: Friction analysis recommendation REC-001 has been
+        successfully integrated into the deploy-worktree process.
+
+    - finding: "FP-002 (Exploration Drift) Addressed"
+      pattern_id: "260123_friction_analysis.yml#FP-002"
+      status: MITIGATED
+      evidence: |
+        By prioritizing JIT CLI bootstrap, exploration drift is prevented.
+        Agents will call `agentic context bootstrap` before any file exploration,
+        reducing exploration calls from 11 to ~2 (bootstrap + fallback if needed).
+      assessment: |
+        MITIGATED: Architecture now follows exploration-optimal pattern.
+
+    - finding: "No Outstanding Friction Items for Deploy-Worktree"
+      status: CONFIRMED
+      evidence: |
+        260123_friction_analysis.yml#agents_analyzed lists deploy-worktree
+        but no specific friction patterns are attributed to it beyond the
+        general JIT CLI non-adoption (now remediated).
+      assessment: "No outstanding issues specific to deploy-worktree role"
+
+  rating: STRONG
+  recommendation: "Guidance is well-aligned with friction analysis."
+
+# =============================================================================
+# SECTION 4: MAIN-FIRST PLANNING IMPLEMENTATION
+# =============================================================================
+
+main_first_planning:
+  criterion: "Guidance correctly implements Main-First Planning policy"
+  status: PASS
+  findings:
+    - finding: "Policy Understood and Documented"
+      status: PASS
+      evidence: |
+        process.yml lines 23-25: Clear explanation of Main-First Planning
+        worktree_id_derivation: Explains XX component derivation
+        example: "/home/code/AgenticEngineering-agenticguidance -> AG"
+      assessment: "Agent understands the policy and can implement it"
+
+    - finding: "CLI Enforcement Documented"
+      status: PASS
+      evidence: |
+        process.yml lines 76-100: "Determine current worktree context" and
+        "Create worktree and plan folder in one operation" steps show
+        awareness that CLI enforces naming convention programmatically.
+
+        Line 99: "NOTE: Do NOT create folders manually. The CLI enforces
+        naming convention and Main-First Planning behavior programmatically,
+        eliminating agent errors."
+      assessment: |
+        EXCELLENT: Agent is instructed to trust CLI rather than manually
+        manage folder structure. This prevents reimplementation of CLI logic.
+
+    - finding: "Output Specification Matches Policy"
+      status: PASS
+      evidence: |
+        process.yml lines 27-29: Output specification includes:
+        - plan_folder_path: In main worktree (for centralized visibility)
+        - worktree_path: Feature worktree (for execution)
+        - main_worktree_path: Main worktree root (for reference)
+
+        Step 6 (lines 112-119) instructs agent to report all three paths
+        for downstream use.
+      assessment: |
+        CORRECT: Output structure supports Main-First Planning workflow.
+        Reporting both plan and worktree locations prevents confusion.
+
+  rating: STRONG
+  recommendation: "No changes needed. Main-First Planning is well-implemented."
+
+# =============================================================================
+# SECTION 5: SAFETY AND PREFLIGHT VALIDATION
+# =============================================================================
+
+safety_and_validation:
+  criterion: "Guidance includes proper safety checks and preflight validation"
+  status: GOOD
+  findings:
+    - finding: "Preflight Coverage"
+      status: GOOD
+      evidence: |
+        inputs.yml lines 146-159: "Safety checks" section covers:
+        - Verify worktree path doesn't already exist
+        - Ensure branch name doesn't conflict with existing branches
+        - Validate workspace file remains valid JSON after modification
+        - Confirm git operations succeed before updating workspace file
+      assessment: |
+        GOOD: Safety checks are documented and appropriate.
+        However, no explicit "FAIL-FAST PREFLIGHT" section in process.yml
+        showing these checks run before main operations.
+
+    - finding: "Missing Explicit Preflight Step in Process"
+      status: CONCERN
+      evidence: |
+        process.yml lines 51-114: Process steps proceed directly to CLI
+        bootstrap and worktree creation without explicit preflight validation.
+
+        safety.yml lines 27-37 define "Fail-fast preflight" as a core rule:
+        - "Verify required input files exist"
+        - "Confirm tool availability (Docker, git, package managers)"
+        - "Check environment variables and permissions"
+      assessment: |
+        MINOR ISSUE: Process should include explicit preflight step that
+        validates git availability, REPO_ROOT accessibility, and permissions
+        before attempting worktree operations.
+
+    - finding: "Error Handling Documentation"
+      status: GOOD
+      evidence: |
+        process.yml lines 90-95: Exit codes documented for agentic plan init:
+        - 0: Success
+        - 1: Worktree creation failed
+        - 2: Folder already exists
+        - 3: Invalid branch name or description
+
+        .claude/agents/deploy-worktree.md lines 36-40: Error Handling section
+        provides guidance for common failure modes.
+      assessment: |
+        GOOD: Error handling documentation enables graceful failure recovery.
+
+    - finding: "No Escalation Triggers Documented"
+      status: CONCERN
+      evidence: |
+        safety.yml lines 39-49 defines "Proactive escalation" rule:
+        - "Ambiguous or conflicting requirements"
+        - "Prerequisites cannot be met after multiple attempts"
+        - "System behavior contradicts safety guidelines"
+
+        Deploy-worktree guidance does not include escalation guidance for
+        scenarios like: insufficient disk space, workspace file corruption,
+        git configuration issues.
+      assessment: |
+        MINOR ISSUE: Guidance should include escalation triggers for
+        unrecoverable errors to prevent endless retry loops.
+
+  rating: GOOD
+  recommendations:
+    - action: "Add explicit preflight step to process.yml"
+      text: |
+        Add before step 1 (JIT CLI bootstrap):
+
+        ```
+        - |
+          PREFLIGHT VALIDATION (Run FIRST):
+          Before bootstrapping context, validate all prerequisites:
+
+          1. Verify git is available:
+             git --version
+
+          2. Verify REPO_ROOT is accessible:
+             test -d ${REPO_ROOT} && echo "REPO_ROOT exists"
+
+          3. Verify git configuration is valid in REPO_ROOT:
+             cd ${REPO_ROOT} && git rev-parse --show-toplevel
+
+          4. Verify .code-workspace file is readable:
+             ls ${REPO_ROOT}/*.code-workspace 2>/dev/null || echo "No workspace file found"
+
+          If any check fails, escalate immediately with diagnostic information.
+        ```
+      priority: MEDIUM
+      effort: "15 minutes"
+
+    - action: "Add escalation triggers to Error Handling"
+      text: |
+        Add to .claude/agents/deploy-worktree.md after line 40:
+
+        ```
+        ## Escalation Triggers
+
+        Stop work and request human intervention if:
+        - Preflight checks fail (git unavailable, REPO_ROOT inaccessible)
+        - Worktree creation fails after 1 retry with clear error
+        - Workspace file is corrupt or unparseable JSON
+        - Disk space is insufficient (< 500MB free)
+        - Git configuration is broken (invalid repository)
+        ```
+      priority: MEDIUM
+      effort: "10 minutes"
+
+# =============================================================================
+# SECTION 6: PROCESS CLARITY AND STEP ORDERING
+# =============================================================================
+
+process_clarity:
+  criterion: "Process steps are clear, ordered logically, and actionable"
+  status: PASS
+  findings:
+    - finding: "Step Ordering is Logical"
+      status: PASS
+      evidence: |
+        process.yml steps proceed in optimal order:
+        1. JIT CLI bootstrap (context gathering)
+        2. Review all inputs (validation)
+        3. Determine worktree context (state assessment)
+        4. Create worktree and plan folder (core operation)
+        5. Update VS Code workspace file (integration)
+        6. Verify workspace file (validation)
+        7. Final verification (success confirmation)
+      assessment: |
+        STRONG: Steps follow logical progression from context → validation →
+        execution → integration → verification. No backtracking required.
+
+    - finding: "Step Descriptions are Actionable"
+      status: PASS
+      evidence: |
+        Each step includes concrete actions with examples:
+        - Step 4 (lines 76-100): Concrete CLI command with exit codes
+        - Step 5 (lines 101-107): References to input definitions for guidance
+        - Step 6 (lines 108-110): Specific validation requirements
+      assessment: |
+        POSITIVE: Steps are specific enough for implementation without
+        ambiguity. Agents can follow instructions directly.
+
+    - finding: "Process References are Well-Organized"
+      status: PASS
+      evidence: |
+        process.yml lines 121-126: Guidelines section explains where to find
+        detailed procedures:
+        - Lines 122-124: References to guidelines location
+        - Line 125-126: "All detailed worktree procedures are in inputs.yml"
+      assessment: |
+        GOOD: Clear signposting helps agents find detailed procedures
+
+  rating: STRONG
+  recommendation: "No changes needed. Process flow is clear and logical."
+
+# =============================================================================
+# SECTION 7: INPUT DEFINITIONS AND REFERENCE COMPLETENESS
+# =============================================================================
+
+input_completeness:
+  criterion: "All required inputs are documented with sufficient detail"
+  status: PASS
+  findings:
+    - finding: "Required Inputs Fully Specified"
+      status: PASS
+      evidence: |
+        inputs.yml lines 11-41: All required inputs documented with:
+        - name: Clear identifier
+        - type: Data type
+        - description: Purpose statement
+        - required: Boolean flag
+        - example: Concrete example
+        - note: Usage guidance
+      assessment: "Required inputs are well-documented and specific"
+
+    - finding: "Layer References Complete"
+      status: PASS
+      evidence: |
+        inputs.yml lines 54-68: Three layers defined:
+        - core-system.yml: Contains system architecture definitions
+        - deploy-minimal.yml: Lightweight deployment guidelines
+        - deploy-shared.yml: Shared deployment guidance
+
+        Each layer includes path, description, and required flag.
+      assessment: |
+        POSITIVE: Layer architecture enables selective context loading.
+        Agents can follow layers incrementally without loading everything.
+
+    - finding: "No Missing Critical References"
+      status: PASS
+      evidence: |
+        Verification against referenced guidelines:
+        - worktree-and-branching.yml: Referenced in steps 3-5
+        - plans.yml#naming_convention: Referenced in inputs and outputs
+        - safety.yml: Implicitly referenced via deploy-minimal layer
+        - context-minimisation.yml: Implicitly referenced via deploy-minimal layer
+      assessment: |
+        COMPLETE: All critical references are either directly included
+        or loaded via layer mechanism.
+
+  rating: STRONG
+  recommendation: "No changes needed. Inputs are complete and well-organized."
+
+# =============================================================================
+# SECTION 8: OUTPUT SPECIFICATION AND VALIDATION
+# =============================================================================
+
+output_specification:
+  criterion: "Output schema is clearly defined with validation requirements"
+  status: PASS
+  findings:
+    - finding: "Output Schema is Complete"
+      status: PASS
+      evidence: |
+        process.yml lines 10-44: Outputs fully specified:
+        - worktree_path: string, required, with example and notes
+        - plan_folder_path: string, required, with template and example
+        - main_worktree_path: string, required, with example
+        - workspace_updated: boolean, required
+        - validation_status: object, required, with field specification
+      assessment: |
+        STRONG: Output schema is detailed and includes validation specs.
+        Field types, requirements, and examples are all present.
+
+    - finding: "FENCE (Output Validation) Documented"
+      status: PASS
+      evidence: |
+        process.yml line 10: "# FENCE: Output must match declared schema
+        before marking complete"
+
+        This fence prevents agents from claiming success without proper
+        validation of output structure.
+      assessment: |
+        POSITIVE: Fence provides clear validation barrier.
+        Agent cannot complete task without producing valid output.
+
+    - finding: "Validation Status Fields Specified"
+      status: PASS
+      evidence: |
+        process.yml lines 40-44: validation_status output includes
+        required_fields list:
+        - live_subfolder_exists
+        - completed_subfolder_exists
+        - yaml_syntax_valid
+      assessment: |
+        GOOD: Required validation fields are specified.
+        Agent knows exactly what to validate before claiming success.
+
+  rating: STRONG
+  recommendation: "No changes needed. Output specification is clear."
+
+# =============================================================================
+# SECTION 9: CROSS-REFERENCE AND CONSISTENCY CHECK
+# =============================================================================
+
+cross_reference_consistency:
+  criterion: "Guidance is internally consistent and references are accurate"
+  status: PASS
+  findings:
+    - finding: "Bootstrap File Consistent with Process"
+      status: PASS
+      evidence: |
+        .claude/agents/deploy-worktree.md:
+        - Line 11: References same CLI commands as process.yml
+        - Lines 24-34: CLI Commands Reference matches process.yml recommendations
+        - Line 44-47: Role Boundary matches manifest.yml boundaries
+      assessment: "Bootstrap file and process file are aligned"
+
+    - finding: "Manifest Version Alignment"
+      status: PASS
+      evidence: |
+        manifest.yml line 8: "version: 2.0"
+        inputs.yml line 47: "version: 2.0"
+
+        Both reference "reference layer architecture" and transitive loading
+      assessment: "Version and architecture patterns are consistent"
+
+    - finding: "No Contradictory Guidance"
+      status: PASS
+      evidence: |
+        Process.yml and inputs.yml provide complementary, non-contradictory
+        guidance on worktree creation, planning, and validation.
+        All policy references point to same authoritative sources
+        (plans.yml, worktree-and-branching.yml).
+      assessment: "No contradictions detected"
+
+    - finding: "Path References Accuracy"
+      status: CONCERN
+      evidence: |
+        inputs.yml line 77: "${REPO_ROOT}/*.code-workspace"
+
+        While globbing is appropriate for workspace file discovery,
+        this assumes exactly one workspace file per repository.
+        If multiple workspace files exist, behavior is undefined.
+      assessment: |
+        MINOR ISSUE: Path reference could be more robust by documenting
+        how agent handles multiple workspace files. Should add note:
+        "If multiple workspace files exist, user must specify which to update."
+
+  rating: GOOD
+  recommendations:
+    - action: "Add note about multiple workspace file handling"
+      text: |
+        In inputs.yml, add after line 79:
+
+        ```
+        note: |
+          If multiple .code-workspace files exist in REPO_ROOT,
+          agent should report all found files and ask user to specify
+          which one to update. This is an escalation point if glob
+          returns multiple matches.
+        ```
+      priority: LOW
+      effort: "5 minutes"
+
+# =============================================================================
+# SECTION 10: COMPARISON WITH PEER AGENT GUIDANCE
+# =============================================================================
+
+peer_comparison:
+  criterion: "Guidance follows same patterns as peer deploy agents"
+  status: PASS
+  findings:
+    - finding: "Consistent Manifest Structure"
+      status: PASS
+      evidence: |
+        deploy-worktree manifest.yml follows same structure as deploy-cicd:
+        - name, description, version fields
+        - structure section with file paths
+        - responsibilities section
+        - boundaries section
+        - outputs section with schema
+      assessment: "Consistent with peer agents"
+
+    - finding: "Consistent Process File Pattern"
+      status: PASS
+      evidence: |
+        deploy-worktree process.yml follows same pattern as peer agents:
+        - goal statement
+        - inputs reference
+        - outputs specification with schema
+        - loop_context (participates_in field)
+        - steps as numbered list
+        - guidelines section
+      assessment: "Consistent pattern with peer deploy agents"
+
+    - finding: "Consistent Inputs File Pattern"
+      status: PASS
+      evidence: |
+        deploy-worktree inputs.yml follows same pattern:
+        - required_inputs section
+        - agent context section
+        - transitive layer loading
+        - core_inputs section
+        - definitions section
+      assessment: "Consistent with deploy-cicd and other agents"
+
+  rating: STRONG
+  recommendation: "No changes needed. Guidance follows peer patterns."
+
+# =============================================================================
+# SECTION 11: DOCUMENTATION COMPLETENESS FOR HUMAN USERS
+# =============================================================================
+
+documentation_for_humans:
+  criterion: "Guidance includes documentation suitable for human users"
+  status: GOOD
+  findings:
+    - finding: "Bootstrap Protocol Includes CLI Reference"
+      status: PASS
+      evidence: |
+        .claude/agents/deploy-worktree.md includes:
+        - Clear "Execution Loop" with 4 steps
+        - "CLI Commands Reference" table (lines 24-34)
+        - "Error Handling" section for troubleshooting
+        - "Role Boundary" section explaining scope
+      assessment: |
+        GOOD: Bootstrap file is suitable for human reference.
+        Provides quick reference without requiring full process file read.
+
+    - finding: "README Documentation"
+      status: MISSING
+      evidence: |
+        modules/AgenticGuidance/agents/deploy/deploy-worktree/ directory
+        lacks README.md file that explains role, usage, and examples
+        for human developers.
+      assessment: |
+        MINOR GAP: Human-oriented README would improve discoverability.
+        Developers using this agent should have high-level overview.
+
+    - finding: "Manifest Includes Helpful Descriptions"
+      status: PASS
+      evidence: |
+        manifest.yml includes human-readable descriptions of:
+        - Agent purpose (lines 2-5)
+        - Responsibilities (lines 19-24)
+        - Output descriptions (lines 33-49)
+      assessment: "Manifest provides good overview for humans"
+
+  rating: GOOD
+  recommendations:
+    - action: "Create README.md for deploy-worktree agent"
+      text: |
+        Create modules/AgenticGuidance/agents/deploy/deploy-worktree/README.md
+        with sections:
+        - Role Overview (2-3 sentences)
+        - When to Use This Agent (bulleted list)
+        - Key Concepts (worktrees, main-first planning)
+        - Common Tasks (create worktree, update workspace)
+        - Troubleshooting Guide (with error scenarios)
+        - See Also (related agents, guidelines)
+      priority: LOW
+      effort: "30 minutes"
+      impact: "Improved human discoverability and usability"
+
+# =============================================================================
+# SECTION 12: COMPLIANCE WITH ARCHITECTURAL PATTERNS
+# =============================================================================
+
+architectural_patterns:
+  criterion: "Guidance aligns with AgenticGuidance architectural patterns"
+  status: PASS
+  findings:
+    - finding: "JIT Context Architecture Compliant"
+      status: PASS
+      evidence: |
+        process.yml implements JIT context principles:
+        - Bootstrap step returns structured seed context (lines 51-64)
+        - Agents instructed to use CLI before file exploration (line 64)
+        - Layer-based context loading in inputs.yml (lines 54-68)
+      assessment: |
+        STRONG: Guidance is aligned with JIT context architecture.
+        Remedies the friction analysis finding (REC-001) completely.
+
+    - finding: "Reference Layer Architecture Correct"
+      status: PASS
+      evidence: |
+        inputs.yml lines 54-68: Uses transitive layer loading pattern
+        with three layers properly specified and required fields set.
+      assessment: "Correctly implements reference layer architecture"
+
+    - finding: "Thin-Client Pattern Enabled"
+      status: PASS
+      evidence: |
+        .claude/agents/deploy-worktree.md represents thin-client approach:
+        - Provides CLI command bootstrap (9 commands documented)
+        - Bootstrap file is 50 lines (minimal)
+        - Agents can start with thin-client bootstrap and load details JIT
+      assessment: "Thin-client pattern is properly enabled"
+
+  rating: STRONG
+  recommendation: "No changes needed. Architectural alignment is strong."
+
+# =============================================================================
+# SECTION 13: MAINTAINABILITY AND FUTURE-PROOFING
+# =============================================================================
+
+maintainability:
+  criterion: "Guidance is maintainable and resistant to drift"
+  status: GOOD
+  findings:
+    - finding: "Single Source of Truth for Policies"
+      status: GOOD
+      evidence: |
+        inputs.yml lines 127-128: "Command reference only - policy in
+        worktree-and-branching.yml"
+
+        Rather than duplicating policy, guidance references canonical location.
+      assessment: |
+        GOOD: Guidance points to canonical sources to prevent policy drift.
+        However, inline definitions (lines 103-166) still create duplication risk.
+
+    - finding: "Duplication Risk in Inline Definitions"
+      status: CONCERN
+      evidence: |
+        inputs.yml lines 103-166 contain definitions that duplicate or
+        closely parallel content in:
+        - plans.yml#naming_convention (worktree_naming_convention)
+        - worktree-and-branching.yml (worktree_operations)
+
+        Future changes to source materials could leave these definitions
+        stale and contradictory.
+      assessment: |
+        MAINTENANCE RISK: Inline definitions create drift potential.
+        If worktree procedures change, must update both places.
+
+    - finding: "Version Numbers in Place"
+      status: PASS
+      evidence: |
+        manifest.yml line 8: "version: 2.0"
+        inputs.yml line 47: "version: 2.0"
+        inputs.yml line 11: "version: 1.0" for layers (appropriate)
+      assessment: |
+        GOOD: Version numbers enable tracking of guidance evolution.
+        Major version change would indicate breaking changes to process.
+
+  ratings:
+    policy_references: GOOD
+    duplication_risk: MEDIUM_CONCERN
+    version_tracking: GOOD
+    overall: GOOD
+
+  recommendations:
+    - action: "Extract inline definitions to reduce duplication"
+      priority: MEDIUM
+      effort: "30 minutes"
+      (See earlier recommendation in Section 2)
+
+# =============================================================================
+# SECTION 14: TEST COVERAGE AND VALIDATION STRATEGY
+# =============================================================================
+
+test_validation:
+  criterion: "Guidance enables effective validation and testing of implementation"
+  status: GOOD
+  findings:
+    - finding: "Output Validation is Specified"
+      status: PASS
+      evidence: |
+        process.yml lines 40-44: validation_status object specifies
+        exactly which fields must be validated for success.
+      assessment: |
+        POSITIVE: Clear success criteria enable test automation.
+
+    - finding: "Exit Codes Documented"
+      status: PASS
+      evidence: |
+        process.yml lines 90-95: CLI exit codes defined:
+        - 0: Success
+        - 1: Worktree creation failed
+        - 2: Folder already exists
+        - 3: Invalid branch name or description
+      assessment: |
+        GOOD: Exit codes enable test verification of failure modes.
+
+    - finding: "No Explicit Integration Test Strategy"
+      status: CONCERN
+      evidence: |
+        Guidance does not document how to verify that:
+        - Created worktree is actually tracked by git
+        - Plan folder structure is correct (live/, completed/, audit/)
+        - VS Code workspace file integration works end-to-end
+        - Subsequent operations in worktree succeed
+      assessment: |
+        MINOR GAP: Integration test strategy would improve confidence
+        in worktree setup. Guidance focuses on CLI success but not
+        downstream functionality verification.
+
+  rating: GOOD
+  recommendations:
+    - action: "Add integration verification checklist to final step"
+      text: |
+        Expand step 7 (Final verification, lines 112-119) to include:
+
+        ```
+        Integration Verification:
+        - Verify created worktree is initialized in git: `cd {worktree} && git status`
+        - Verify plan folder structure is correct: `ls -la {plan_folder}/live/ completed/ audit/`
+        - Verify workspace file includes new worktree folder entry
+        - Verify workspace file includes new path in git.scanRepositories
+        ```
+
+        These checks confirm the complete workflow, not just CLI success.
+      priority: MEDIUM
+      effort: "20 minutes"
+
+# =============================================================================
+# SECTION 15: CRITICAL ISSUES SUMMARY
+# =============================================================================
+
+critical_issues:
+  count: 0
+  details: |
+    No critical issues found. Guidance is functionally sound and
+    implements required patterns (JIT CLI, Main-First Planning, layer architecture).
+
+# =============================================================================
+# SECTION 16: RECOMMENDATIONS SUMMARY
+# =============================================================================
+
+recommendations_summary:
+  total_recommendations: 6
+
+  by_priority:
+    CRITICAL: 0
+    HIGH: 0
+    MEDIUM: 3
+      - Extract inline definitions (context-minimisation)
+      - Add preflight validation step (safety)
+      - Add escalation triggers (safety)
+    LOW: 3
+      - Add JIT CLI preference note (context-minimisation)
+      - Add multiple workspace file handling note (robustness)
+      - Create README.md for humans (discoverability)
+
+  implementation_effort_total: "2-2.5 hours"
+
+  expected_outcomes:
+    - "Reduced context bloat (estimated 40-60% token savings)"
+    - "Improved robustness with preflight and escalation"
+    - "Better human discoverability via README"
+    - "Reduced maintenance risk by eliminating duplication"
+
+# =============================================================================
+# SECTION 17: STRENGTHS SUMMARY
+# =============================================================================
+
+strengths:
+  - "Clear role definition with explicit boundaries"
+  - "Full implementation of JIT CLI bootstrap (REC-001)"
+  - "Proper Main-First Planning architecture"
+  - "Consistent with peer agent patterns"
+  - "Comprehensive output schema with validation fence"
+  - "Layer-based context loading enables minimal contexts"
+  - "Bootstrap file provides thin-client alternative"
+  - "No critical issues or contradictions found"
+
+# =============================================================================
+# SECTION 18: OVERALL ASSESSMENT
+# =============================================================================
+
+overall_assessment:
+  rating: GOOD
+
+  summary: |
+    Deploy-worktree guidance is functionally sound with strong architectural
+    alignment. The agent has clear role boundaries, implements JIT CLI pattern
+    correctly, and properly handles Main-First Planning requirements.
+
+    Friction analysis recommendation REC-001 has been successfully integrated,
+    addressing the primary concern about JIT CLI non-adoption.
+
+    Primary improvement opportunity is context-minimisation via extracting
+    inline definitions to reduce duplication and token overhead.
+
+    Secondary improvements focus on safety (preflight, escalation) and
+    human usability (README documentation).
+
+    No blocking issues prevent deployment. Recommended improvements are
+    quality-focused, not functionality-critical.
+
+  recommendation: |
+    APPROVED FOR CONTINUED USE with non-blocking improvements scheduled.
+
+    Immediate (implement next session):
+    - Extract inline definitions (Medium priority, High impact)
+
+    Short-term (implement within 2 weeks):
+    - Add preflight validation (Medium priority)
+    - Add escalation triggers (Medium priority)
+    - Create README.md (Low priority, High value)
+
+    Long-term (monitor):
+    - Watch for new friction patterns in usage
+    - Ensure inline definitions extraction doesn't create new issues
+
+validation_checklist:
+  - "Role boundaries are clear and explicitly documented: PASS"
+  - "JIT CLI bootstrap is implemented: PASS"
+  - "Main-First Planning is correctly handled: PASS"
+  - "Output specification has validation fence: PASS"
+  - "No critical issues identified: PASS"
+  - "Architectural patterns are followed: PASS"
+  - "Safety guidelines are mostly covered: PASS (with preflight improvement)"
+  - "Context-minimisation is improved but can be better: GOOD"
+
+confidence_level: HIGH
+review_completeness: COMPREHENSIVE
+next_review_trigger: |
+  After extracting inline definitions (REC-1), or after 5 agent
+  executions in production, whichever comes first.

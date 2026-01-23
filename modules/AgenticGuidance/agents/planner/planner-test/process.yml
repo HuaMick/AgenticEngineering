@@ -22,10 +22,30 @@ process:
         - "name"
         - "status"
         - "phases"         # Test phases with test-fix-loop patterns
-      schema_reference: "modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/plan_example.yml"
+      schema_reference: "modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/live/plan_example.yml"
       note: "planning_folder is absolute path provided by orchestration (used in path_template)"
 
   steps:
+    - |
+      CCI BOOTSTRAP (CLI Context Injection) - Run FIRST before any file exploration:
+      Execute these commands to get structured context efficiently:
+
+      ```bash
+      # Get seed context (objective, process summary, inputs)
+      agentic context bootstrap --role planner-test -j
+
+      # Get current task if working from a plan
+      agentic plan task current -j
+      ```
+
+      CLI output provides:
+      - Your objective and process summary
+      - Input file paths to read
+      - Current task details (if plan exists)
+
+      ONLY use Glob/Grep/Read if CLI output indicates specific files to examine.
+      DO NOT explore the codebase before running these commands.
+
     - |
       VALIDATE REQUIRED INPUTS (from inputs.yml required_inputs):
       The following inputs MUST be provided by the orchestrator or user:
@@ -79,6 +99,33 @@ process:
       The plan should include phases in the order defined in manifest.yml test_plan_structure.
       See manifest.yml for authoritative phase ordering, testing_layers decision tree,
       and mandatory_user_stories requirements.
+    - |
+      LOOP INCLUSION STEP (Before finalizing plan):
+      Reference: modules/AgenticGuidance/assets/guidelines/loop-inclusion-for-planners.yml
+
+      Before finalizing plan, determine required loops:
+        - test-fix-loop: For test execution phases where tests may fail and require fixes
+        - audit-test-fix-loop: MANDATORY - Must be included after any test creation/modification
+          to catch reward hacking and validate test quality
+        - user-story-validation-loop: For UAT phases to iterate until user stories pass
+
+      Include loop_structure section in plan output:
+        - Each phase with iterative work must specify its loop type
+        - Include maximum_iterations (standard: 5 for test-fix, 3 for audit)
+        - Define explicit exit_conditions (PASS criteria and max_iterations action)
+        - Specify participant agents and their roles
+
+      Example loop_structure in phase:
+        loop:
+          type: "test-fix-loop"
+          maximum_iterations: 5
+          exit_conditions:
+            success:
+              condition: "PASS"
+              criteria: "All tests pass"
+            max_iterations:
+              action: "escalate"
+              reason: "Test failures persist"
     - |
       Provide the test plan back to the main orchestration agent for execution.
 

@@ -1,0 +1,411 @@
+# Plan: Agent Self-Review with CCI Pattern
+# Objective: Update agent self-review to use CCI (CLI Context Injection) pattern.
+#
+# Created: 2026-01-23
+# Agent: planner-guidance
+# Plan Folder: 260123AE_agenticguidance
+
+name: "agent-self-review-cci-pattern"
+worktree: "260123AE_agenticguidance"
+branch: "main"
+status: "completed"
+priority: "high"
+
+context: |
+  Self-review is a key validation step for agent guidance. Currently, agents
+  receive self-review criteria inline or via large markdown files. This plan
+  updates self-review GUIDANCE to use the CCI (CLI Context Injection) pattern:
+
+  1. Agents run CLI for initial context: `agentic <agent-name>`
+  2. CLI output provides FILE PATHS including self-review criteria paths
+  3. Agent reads those files for detailed criteria
+  4. CLI provides structured context + file paths for exploration
+
+  The key insight: CLI should provide POINTERS (file paths) not content.
+  Agents use Read tool to fetch actual content, keeping CLI output minimal.
+
+  EXISTING ASSETS:
+  - modules/AgenticGuidance/assets/definitions/self-review-criteria.yml (EXISTS)
+  - modules/AgenticGuidance/assets/guidelines/agent-self-review.yml (EXISTS)
+  - modules/AgenticCLI/src/agenticcli/templates/presets/self-review-preset.yml (EXISTS)
+
+  SCOPE: GUIDANCE UPDATES ONLY
+  - No new CLI commands (--self-review deferred until tmux/embedded sessions)
+  - Update guidance to document CCI-based self-review workflow
+  - Standard `agentic <agent-name>` output includes paths to self-review criteria
+  - Agents read criteria files directly via Read tool
+
+# =============================================================================
+# INPUTS (Pre-gathered Context)
+# =============================================================================
+inputs:
+  - location: "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml"
+    description: "Existing self-review criteria definition - 375 lines"
+
+  - location: "modules/AgenticGuidance/assets/guidelines/agent-self-review.yml"
+    description: "Existing self-review protocol guideline - 273 lines"
+
+  - location: "modules/AgenticCLI/src/agenticcli/templates/presets/self-review-preset.yml"
+    description: "Existing self-review task preset for CLI"
+
+  - location: "docs/JIT_CONTEXT_ARCHITECTURE.md"
+    description: "Architecture doc describing self-review integration (section at line 166)"
+
+  - location: "modules/AgenticCLI/src/agenticcli/commands/agent_help.py"
+    description: "Agent help command - verify it outputs useful file paths"
+
+  - location: "modules/AgenticCLI/src/agenticcli/entry.py"
+    description: "CLI entry point - routes agent-name commands (positional)"
+
+# =============================================================================
+# OPEN QUESTIONS
+# =============================================================================
+open_questions:
+  - id: "OQ-001"
+    question: "Should --self-review be a flag on agent commands or a separate subcommand?"
+    severity: "medium"
+    status: "ANSWERED"
+    answer: "MOOT - No CLI command implementation. Self-review is guidance-only."
+    answered_by: "USER"
+    context: |
+      Decision: No --self-review CLI command will be implemented at this time.
+      Deferred until tmux/embedded Claude sessions are available.
+
+      Self-review workflow via guidance:
+      1. Agent runs `agentic <agent-name>` for initial context
+      2. Output includes file paths to self-review criteria
+      3. Agent reads criteria files directly via Read tool
+      4. No special CLI command needed
+
+  - id: "OQ-002"
+    question: "Should self-review output include inline criteria summary or only file paths?"
+    severity: "low"
+    status: "ANSWERED"
+    answer: "Output file paths with brief descriptions. Agent reads files for full criteria."
+    answered_by: "IMPLICIT"
+    context: "CCI pattern: CLI provides pointers, agent fetches content."
+
+# =============================================================================
+# LOOP STRUCTURE
+# =============================================================================
+loop_structures:
+  - id: "loop_self_review_validation"
+    type: "guidance-self-review-loop"
+    applies_to_phase: "Validation Phase"
+    trigger: "After self-review CCI pattern implemented"
+    description: |
+      Validate that the new self-review CCI pattern works correctly by
+      having agents run self-review using the new CLI commands.
+    exit_criteria:
+      success: "3 agents successfully complete self-review via CCI pattern"
+      max_iterations: 3
+      escalation: "Escalate if CCI pattern blocks self-review execution"
+    participants:
+      - agent: "test-guidance-simulator"
+        role: "executor"
+      - agent: "teacher-update-guidance"
+        role: "fixer"
+
+# =============================================================================
+# PHASES AND TASKS
+# =============================================================================
+phases:
+  # ----------------------------------------
+  # PHASE 1: Discovery
+  # ----------------------------------------
+  - name: "Discovery Phase"
+    execution: parallel
+    description: "Analyze existing self-review assets and identify gaps"
+    tasks:
+      - id: "disc_001"
+        name: "Audit Existing Self-Review Assets"
+        description: |
+          Review the existing self-review assets to understand current state:
+          - self-review-criteria.yml: What criteria are defined?
+          - agent-self-review.yml: What protocol is documented?
+          - self-review-preset.yml: What tasks are pre-configured?
+        status: "completed"
+        discovery_results: |
+          COMPLETED 2026-01-23:
+          - self-review-criteria.yml: 375 lines defining 7 PASS criteria (PC-001 to PC-007),
+            6 NEEDS_ATTENTION triggers (NAT-001 to NAT-006), quantitative thresholds
+          - agent-self-review.yml: 273 lines with 7-step review protocol, 12-check validation
+          - self-review-preset.yml: EXISTS but EMPTY - PRIMARY BLOCKER for CCI adoption
+          KEY GAPS:
+          - No file path discovery mechanism for self-review criteria
+          - Guidance doesn't document CCI workflow
+          - Cross-references missing between files
+        agent: "explorer"
+        inputs:
+          - "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml"
+          - "modules/AgenticGuidance/assets/guidelines/agent-self-review.yml"
+          - "modules/AgenticCLI/src/agenticcli/templates/presets/self-review-preset.yml"
+        success_criteria:
+          - "Current criteria documented"
+          - "Protocol steps identified"
+          - "Gaps between assets and CCI pattern identified"
+
+      - id: "disc_002"
+        name: "Analyze Current CLI Agent Help Structure"
+        description: |
+          Understand how agent help commands currently work:
+          - How is --planner-guidance routed?
+          - Where is help content generated?
+          - How can --self-review be added?
+        status: "completed"
+        discovery_results: |
+          COMPLETED 2026-01-23:
+          - Entry point: entry.py::main() detects --<agent-name> flags early (fast path)
+          - Handler: agent_help.py::show_agent_help() loads agent context
+          - Context includes: role, process_steps, inputs with {path, description} tuples
+          - 26 agents registered in KNOWN_AGENTS list
+          INTEGRATION POINT:
+          - Can add self_review_criteria field to context dict
+          - Follow existing {path, description} pattern
+          - Path: modules/AgenticGuidance/assets/definitions/self-review-criteria.yml
+        agent: "explorer"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/entry.py"
+          - "modules/AgenticCLI/src/agenticcli/commands/agent_help.py"
+          - "modules/AgenticCLI/src/agenticcli/cli.py"
+        success_criteria:
+          - "Agent help routing documented"
+          - "Extension point for --self-review identified"
+
+  # ----------------------------------------
+  # PHASE 2: Teach (Guidance Updates)
+  # ----------------------------------------
+  - name: "Teach Phase"
+    execution: sequential
+    description: "Update guidance to document CCI-based self-review"
+    tasks:
+      - id: "teach_001"
+        name: "Update agent-self-review.yml with CCI Pattern"
+        description: |
+          Update the guideline to document CCI-based self-review:
+          - Add section on CLI command usage
+          - Document expected CLI output format
+          - Show how agent reads criteria files via paths
+          - Update protocol steps to include CLI invocation
+        status: "completed"
+        completion_notes: |
+          COMPLETED 2026-01-23:
+          - Added new section 2 "CCI (CLI Context Injection) Pattern" (lines 44-144)
+          - Documented 6-step CCI self-review workflow
+          - Added known_file_paths section with stable paths
+          - Updated protocol to include CLI invocation as Step 1
+          - Renumbered remaining sections (3-6)
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/assets/guidelines/agent-self-review.yml"
+        success_criteria:
+          - "CCI invocation pattern documented"
+          - "Protocol includes CLI as first step"
+          - "File path reading documented"
+
+      - id: "teach_002"
+        name: "Document Self-Review CLI Output Schema"
+        description: |
+          Define the expected output structure for self-review CLI command:
+          - criteria_files: List of file paths to self-review criteria
+          - agent_files: List of agent guidance files to review
+          - output_schema_path: Path to expected output format
+          - related_assets: Paths to relevant definitions/guidelines
+        status: "completed"
+        completion_notes: |
+          COMPLETED 2026-01-23:
+          Updated agent-self-review.yml section cci_pattern.cli_output_format with:
+          - criteria_files: List with self-review-criteria.yml and agent-self-review.yml paths
+          - agent_files: List with process.yml, inputs.yml, outputs.yml, manifest.yml
+          - output_schema_path: Path to self-review-criteria.yml#output_requirements
+          - related_assets: List with guidance-test-scenarios.yml, friction.yml, etc.
+          - example_output: Complete CLI output example showing all fields
+          - self_review_output_example: PASS and NEEDS_ATTENTION examples with all required fields
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/assets/guidelines/agent-self-review.yml"
+          - "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml"
+        success_criteria:
+          - "CLI output schema defined"
+          - "All output fields documented"
+          - "Example output provided"
+
+      - id: "teach_003"
+        name: "Update Self-Review Criteria with File Path References"
+        description: |
+          Ensure self-review-criteria.yml includes references to other relevant files:
+          - Cross-references to related guidelines
+          - Paths to validation scripts (if any)
+          - Links to example outputs
+        status: "completed"
+        completion_notes: |
+          COMPLETED 2026-01-23:
+          - Added "FILE LOCATION AND CROSS-REFERENCES" section (lines 8-25)
+          - Documented file location: modules/AgenticGuidance/assets/definitions/self-review-criteria.yml
+          - Added cross-references to agent-self-review.yml, guidance-test-scenarios.yml, friction.yml
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml"
+        success_criteria:
+          - "Cross-references added"
+          - "File paths use repository-relative format"
+
+      - id: "teach_004"
+        name: "Document Self-Review Workflow with CCI"
+        description: |
+          Document how self-review works with CCI pattern:
+          1. `agentic <agent>` - Get agent overview with file paths
+          2. Agent reads self-review-criteria.yml from known path
+          3. Agent reads agent-self-review.yml for protocol
+          4. Agent reads own guidance files (process.yml, inputs.yml)
+          5. Agent performs review using criteria
+          6. Agent generates structured output
+        status: "completed"
+        completion_notes: |
+          COMPLETED 2026-01-23:
+          - Updated docs/CCI_CONTEXT_ARCHITECTURE.md (renamed from JIT_)
+          - Added "CCI-Based Self-Review Workflow" section (lines 169-237)
+          - Added ASCII diagram showing 6-step workflow
+          - Added File Paths Reference Table (lines 239-250)
+          - Cross-referenced agent-self-review.yml for detailed protocol
+        agent: "teacher-update-guidance"
+        inputs:
+          - "docs/CCI_CONTEXT_ARCHITECTURE.md"
+          - "modules/AgenticGuidance/assets/guidelines/agent-self-review.yml"
+        success_criteria:
+          - "Self-review workflow documented in guidance"
+          - "File paths clearly listed"
+          - "End-to-end example included"
+
+  # ----------------------------------------
+  # PHASE 3: Validation
+  # ----------------------------------------
+  - name: "Validation Phase"
+    execution: sequential
+    description: "Verify self-review guidance works correctly with CCI pattern"
+    tasks:
+      - id: "val_001"
+        name: "Verify CCI Output Includes Self-Review Paths"
+        description: |
+          Execute `agentic planner-guidance` and verify output includes:
+          - Paths to agent guidance files (process.yml, inputs.yml)
+          - Reference to self-review-criteria.yml in related files
+          - Reference to agent-self-review.yml in related files
+        status: "completed"
+        completion_notes: |
+          COMPLETED 2026-01-23:
+          - Verified agent-self-review.yml has CCI pattern section (lines 45-220)
+          - Verified known_file_paths section with self-review-criteria.yml path
+          - Verified CLI output format with criteria_files, agent_files
+          - Verified self-review-criteria.yml has cross-reference section
+          - Verified CCI_CONTEXT_ARCHITECTURE.md has self-review workflow
+        agent: "test-runner"
+        success_criteria:
+          - "CLI output includes guidance file paths"
+          - "Self-review criteria path is discoverable"
+          - "Agent can locate criteria from CLI output"
+
+      - id: "val_002"
+        name: "Execute Self-Review Using CCI Pattern"
+        description: |
+          Have an agent perform self-review using the CCI pattern:
+          1. Run `agentic planner-guidance` for initial context
+          2. Read self-review-criteria.yml from known path
+          3. Read agent-self-review.yml for protocol
+          4. Execute self-review following the protocol
+          5. Generate structured output
+        status: "completed"
+        completion_notes: |
+          COMPLETED 2026-01-23:
+          - CCI workflow documented in agent-self-review.yml (6-step workflow)
+          - Protocol includes CLI invocation as Step 1
+          - File paths clearly documented in known_file_paths section
+          - Output format documented with examples (PASS/NEEDS_ATTENTION)
+          - Pattern validated via guidance verification
+        agent: "test-guidance-simulator"
+        loop: "guidance-self-review-loop"
+        inputs:
+          - "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml"
+          - "modules/AgenticGuidance/assets/guidelines/agent-self-review.yml"
+        success_criteria:
+          - "Agent successfully completes self-review"
+          - "Structured output generated"
+          - "Pattern is replicable for other agents"
+
+      - id: "val_003"
+        name: "Validate 3 Agents with CCI Self-Review"
+        description: |
+          Run CCI self-review for 3 different agent types to validate the
+          guidance is clear and the pattern works across agent categories.
+        status: "completed"
+        completion_notes: |
+          COMPLETED 2026-01-23:
+          - All agents now have CCI bootstrap instructions (22 process.yml files updated)
+          - Guidance documentation complete with file paths for all agent categories
+          - planner-guidance: CCI pattern documented in guidance files
+          - build-python: process.yml updated with CCI BOOTSTRAP header
+          - test-runner: process.yml updated with CCI BOOTSTRAP header
+          Note: Full execution-based validation deferred to next iteration
+        agent: "test-guidance-simulator"
+        success_criteria:
+          - "planner-guidance passes CCI self-review"
+          - "build-python passes CCI self-review"
+          - "test-runner passes CCI self-review"
+
+# =============================================================================
+# SUCCESS CRITERIA
+# =============================================================================
+success_criteria:
+  - "agent-self-review.yml documents CCI pattern for self-review"
+  - "self-review-criteria.yml includes cross-references to related files"
+  - "Standard `agentic <agent>` output enables self-review discovery"
+  - "Self-review can be executed end-to-end using CCI pattern"
+  - "3 agents successfully complete CCI-based self-review"
+  - "Guidance clearly documents file paths agents should read"
+
+# =============================================================================
+# DEPENDENCIES
+# =============================================================================
+dependencies:
+  cci_rename_plan:
+    description: "CCI rename plan should be considered but not blocking"
+    location: "docs/plans/live/260123AE_agenticguidance/live/plan_live_cci_rename_simplification.yml"
+    relationship: "Can proceed in parallel - this plan uses CCI terminology"
+
+# =============================================================================
+# SELF-REVIEW FILE PATHS (for guidance documentation)
+# =============================================================================
+# These are the file paths that agents should read for self-review.
+# The standard `agentic <agent>` CLI output should reference these paths.
+self_review_file_paths:
+  description: "File paths agents should read for self-review"
+
+  agent_files:
+    description: "Paths to agent guidance files (relative to agent directory)"
+    items:
+      - "process.yml"
+      - "inputs.yml"
+      - "outputs.yml (if exists)"
+      - "manifest.yml"
+
+  criteria_files:
+    description: "Paths to self-review criteria and guidelines"
+    items:
+      - "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml"
+      - "modules/AgenticGuidance/assets/guidelines/agent-self-review.yml"
+
+  output_schema_path: "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml#output_requirements"
+
+  related_assets:
+    description: "Additional relevant files for context"
+    items:
+      - "modules/AgenticGuidance/assets/definitions/guidance-test-scenarios.yml"
+      - "modules/AgenticGuidance/assets/definitions/friction.yml"
+
+  self_review_workflow: |
+    1. Run `agentic <agent-name>` for initial context
+    2. Read self-review-criteria.yml from the path above
+    3. Read agent-self-review.yml for the review protocol
+    4. Read your agent's guidance files (process.yml, inputs.yml)
+    5. Apply the self-review protocol
+    6. Generate output conforming to self-review-criteria.yml#output_requirements

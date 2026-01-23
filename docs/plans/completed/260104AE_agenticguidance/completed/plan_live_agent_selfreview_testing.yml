@@ -1,0 +1,543 @@
+# Live Plan - Agent Self-Review Testing
+# Plan: 260104AE_agenticguidance
+# Objective: Establish agent self-review as a basic-level testing practice for guidance changes
+# Created: 2026-01-23
+
+name: agent_selfreview_testing
+worktree_path: /home/code/AgenticEngineering
+branch: main
+status: completed
+completed_date: "2026-01-23"
+
+objective: |
+  Establish agent self-review as a standard, basic-level testing practice for guidance changes.
+  When agent guidance is modified, agents should be able to self-review their own guidance to
+  catch issues like broken paths, missing files, and inconsistencies before those issues
+  propagate into production workflows.
+
+rationale: |
+  Self-review is the most fundamental form of guidance validation. An agent reviewing its own
+  guidance can immediately identify:
+  - Broken file paths that don't resolve
+  - Missing referenced files
+  - Ambiguous instructions that require interpretation
+  - Inconsistencies between process.yml, inputs.yml, and outputs.yml
+  - Prerequisites that aren't documented
+
+  This catches basic errors that would otherwise surface during actual task execution,
+  causing friction and wasted iterations.
+
+success_criteria:
+  - Self-review protocol documented in agent-self-review.yml guideline
+  - Self-review added to guidance-test-scenarios.yml as standard test type
+  - test-guidance-simulator can invoke self-review mode
+  - Self-review output schema defined for structured reporting
+  - CLI preset template created for running agent self-reviews
+  - Usage documented in JIT_CONTEXT_ARCHITECTURE.md
+
+related_artifacts:
+  guidance_test_scenarios: "modules/AgenticGuidance/assets/definitions/guidance-test-scenarios.yml"
+  test_guidance_simulator: "modules/AgenticGuidance/agents/test/test-guidance-simulator/process.yml"
+  completed_self_review: "docs/plans/live/260104AE_agenticguidance/completed/plan_agent_self_review_testing.yml"
+  cli_presets: "modules/AgenticCLI/src/agenticcli/templates/presets/"
+  jit_context_docs: "docs/JIT_CONTEXT_ARCHITECTURE.md"
+
+phases:
+  # ========================================
+  # PHASE 1: Document Self-Review Protocol
+  # ========================================
+  - name: "Phase 1: Document Self-Review Protocol"
+    description: |
+      Define the self-review process as a formal guideline and integrate it into the
+      standard guidance test scenarios. This establishes self-review as a recognized
+      testing practice within the AgenticGuidance framework.
+
+    success_criteria:
+      - "agent-self-review.yml guideline created with clear protocol definition"
+      - "Self-review added to guidance-test-scenarios.yml as always_include scenario"
+      - "Protocol compatible with existing test-guidance-simulator workflow"
+
+    tasks:
+      - id: "selfreview_001"
+        name: "Create agent-self-review.yml guideline"
+        description: |
+          Create a new guideline at modules/AgenticGuidance/assets/guidelines/agent-self-review.yml
+          that defines the self-review process for agent guidance validation.
+
+          The guideline should specify:
+
+          1. PURPOSE
+             - Why self-review is essential for guidance quality
+             - What types of issues self-review detects
+             - When self-review should be triggered (after any guidance change)
+
+          2. SELF-REVIEW PROTOCOL
+             - Agent receives only its own guidance files (process.yml, inputs.yml, outputs.yml)
+             - Agent reads each file and validates internal consistency
+             - Agent checks all file path references resolve correctly
+             - Agent identifies ambiguities, missing context, or unclear instructions
+             - Agent attempts minimal task understanding to expose gaps
+
+          3. VALIDATION CHECKLIST
+             - All input paths in inputs.yml exist?
+             - All referenced assets/definitions/guidelines exist?
+             - Process steps are clear and actionable?
+             - Prerequisites are explicitly documented?
+             - Loop context defined if agent participates in loops?
+             - Outputs are clearly specified?
+
+          4. REPORTING FORMAT
+             - Structured output with passed/failed status
+             - List of friction points with severity levels
+             - Specific file paths and line references for issues
+             - Suggested fixes for each issue found
+
+          5. INTEGRATION
+             - How self-review fits into guidance-test-loop
+             - Relationship to test-guidance-simulator agent
+             - When to escalate findings (CRITICAL severity)
+
+        status: pending
+        priority: high
+        inputs:
+          - "modules/AgenticGuidance/assets/definitions/guidance-test-scenarios.yml"
+          - "modules/AgenticGuidance/agents/test/test-guidance-simulator/process.yml"
+          - "modules/AgenticGuidance/assets/definitions/friction.yml"
+        target_files:
+          - "modules/AgenticGuidance/assets/guidelines/agent-self-review.yml"
+        acceptance_criteria:
+          - "File created at modules/AgenticGuidance/assets/guidelines/agent-self-review.yml"
+          - "Purpose section explains why self-review is essential"
+          - "Protocol section provides step-by-step self-review process"
+          - "Validation checklist covers all common guidance issues"
+          - "Reporting format aligns with existing FRICTION_POINT structure"
+          - "Integration section explains relationship to existing testing workflows"
+
+      - id: "selfreview_002"
+        name: "Add self-review to guidance-test-scenarios.yml"
+        description: |
+          Update modules/AgenticGuidance/assets/definitions/guidance-test-scenarios.yml to
+          add self-review as a standard test scenario that is always included when testing
+          agent guidance.
+
+          Add new test_scenario entry:
+
+          ```yaml
+          self_review_test:
+            id: "self_review_test"
+            purpose: "Can agent validate its own guidance for basic correctness?"
+            description: |
+              Validates that an agent can review its own guidance files and identify
+              basic issues like broken paths, missing files, and inconsistencies.
+              This is the most fundamental form of guidance validation.
+
+            inputs:
+              target_agent: "Path to agent directory containing guidance files"
+              guidance_files:
+                - "process.yml"
+                - "inputs.yml"
+                - "outputs.yml (if present)"
+
+            constraints:
+              - "Agent receives ONLY its own guidance files"
+              - "Agent must identify issues without external hints"
+              - "Agent cannot explore beyond referenced paths"
+
+            expected_outputs:
+              success_criteria:
+                - "All file path references resolve to existing files"
+                - "No circular or broken references"
+                - "Process steps are internally consistent"
+                - "Prerequisites are documented"
+
+              failure_indicators:
+                - "Referenced files do not exist"
+                - "Ambiguous paths without clear base directory"
+                - "Contradictory instructions in process steps"
+                - "Missing prerequisite documentation"
+
+              report_structure:
+                - "self_review_passed: boolean"
+                - "broken_paths: list of paths that don't resolve"
+                - "missing_files: list of referenced but missing files"
+                - "inconsistencies: list of contradictions found"
+                - "ambiguities: list of unclear instructions"
+                - "suggested_fixes: specific improvements needed"
+
+            validation_checklist:
+              - "Do all paths in inputs.yml resolve?"
+              - "Do all asset references exist?"
+              - "Are process steps internally consistent?"
+              - "Are prerequisites explicitly documented?"
+          ```
+
+          Also update test_scenario_application_rules.always_include to add self_review_test.
+
+        status: pending
+        priority: high
+        depends_on: ["selfreview_001"]
+        inputs:
+          - "modules/AgenticGuidance/assets/definitions/guidance-test-scenarios.yml"
+          - "modules/AgenticGuidance/assets/guidelines/agent-self-review.yml"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/guidance-test-scenarios.yml"
+        acceptance_criteria:
+          - "self_review_test scenario added to test_scenarios section"
+          - "Scenario follows existing format with id, purpose, description, inputs, constraints, expected_outputs"
+          - "test_scenario_application_rules.always_include updated to include self_review_test"
+          - "Scenario is compatible with test-guidance-simulator execution pattern"
+
+  # ========================================
+  # PHASE 2: Update test-guidance-simulator
+  # ========================================
+  - name: "Phase 2: Update test-guidance-simulator"
+    description: |
+      Extend the test-guidance-simulator agent to support explicit self-review invocation
+      and define the output schema for self-review reports. This enables automated and
+      consistent execution of self-review testing.
+
+    success_criteria:
+      - "test-guidance-simulator can be invoked in self-review mode"
+      - "Self-review output schema defined and documented"
+      - "Integration with existing guidance-test-loop preserved"
+
+    tasks:
+      - id: "selfreview_003"
+        name: "Add self-review invocation to test-guidance-simulator"
+        description: |
+          Update modules/AgenticGuidance/agents/test/test-guidance-simulator/process.yml
+          to add explicit support for self-review mode invocation.
+
+          Changes needed:
+
+          1. Add self_review_mode section to process.yml:
+             ```yaml
+             self_review_mode:
+               description: |
+                 When invoked for self-review, the simulator spawns the target agent
+                 with only its own guidance files and instructs it to validate them.
+
+               invocation_pattern: |
+                 Target agent is spawned with prompt:
+                 "You are agent: {agent_name}. Your guidance files are at:
+                 - process.yml: {path}
+                 - inputs.yml: {path}
+                 TASK: Review your own guidance for correctness. Report:
+                 1. Any file paths that don't exist
+                 2. Any missing referenced files
+                 3. Any unclear or ambiguous instructions
+                 4. Any missing prerequisites
+                 5. Any inconsistencies between files"
+
+               output_collection: |
+                 Collect structured output from spawned agent:
+                 - self_review_passed: boolean
+                 - issues_found: list of categorized issues
+                 - severity_breakdown: count by CRITICAL/HIGH/MEDIUM/LOW
+             ```
+
+          2. Update steps to include self-review scenario:
+             Add step for executing self_review_test from guidance-test-scenarios.yml
+
+          3. Ensure self-review is executed FIRST before other scenarios
+             (catch basic issues before testing more complex behaviors)
+
+        status: pending
+        priority: high
+        inputs:
+          - "modules/AgenticGuidance/agents/test/test-guidance-simulator/process.yml"
+          - "modules/AgenticGuidance/agents/test/test-guidance-simulator/inputs.yml"
+          - "modules/AgenticGuidance/assets/definitions/guidance-test-scenarios.yml"
+          - "modules/AgenticGuidance/assets/guidelines/agent-self-review.yml"
+        target_files:
+          - "modules/AgenticGuidance/agents/test/test-guidance-simulator/process.yml"
+        acceptance_criteria:
+          - "self_review_mode section added to process.yml"
+          - "Invocation pattern clearly specifies how to spawn agent for self-review"
+          - "Steps updated to execute self_review_test scenario"
+          - "Self-review executes first before other test scenarios"
+          - "Existing guidance-test-loop integration preserved"
+
+      - id: "selfreview_004"
+        name: "Define self-review report output schema"
+        description: |
+          Define a structured output schema for self-review reports that can be consumed
+          by orchestration and teacher agents for subsequent guidance improvements.
+
+          Create or update the outputs section in test-guidance-simulator to include:
+
+          ```yaml
+          outputs:
+            - name: "self_review_report"
+              description: "Structured self-review validation results"
+              format:
+                agent_name: "string - name of agent that performed self-review"
+                agent_path: "string - path to agent directory"
+                review_timestamp: "ISO datetime"
+                self_review_passed: "boolean - overall pass/fail"
+
+                path_validation:
+                  total_paths_checked: "integer"
+                  paths_resolved: "integer"
+                  broken_paths:
+                    - path: "string - the path that failed"
+                      referenced_in: "string - file where reference exists"
+                      error: "string - reason for failure"
+
+                file_validation:
+                  required_files_present: "list of files that exist"
+                  missing_files: "list of files that should exist but don't"
+
+                consistency_check:
+                  passed: "boolean"
+                  inconsistencies:
+                    - type: "string - type of inconsistency"
+                      location: "string - file and section"
+                      issue: "string - description of inconsistency"
+                      suggested_fix: "string - how to resolve"
+
+                clarity_check:
+                  ambiguities:
+                    - location: "string - file and section"
+                      issue: "string - what is unclear"
+                      severity: "CRITICAL | HIGH | MEDIUM | LOW"
+                      suggested_fix: "string - how to clarify"
+
+                summary:
+                  total_issues: "integer"
+                  by_severity:
+                    CRITICAL: "integer"
+                    HIGH: "integer"
+                    MEDIUM: "integer"
+                    LOW: "integer"
+                  recommended_action: "string - PASS | FIX_REQUIRED | ESCALATE"
+
+              usage: |
+                - Orchestration consumes to determine if guidance is ready for use
+                - Teacher agents consume to prioritize guidance improvements
+                - Audit trails consume for tracking guidance quality over time
+          ```
+
+          Also update inputs.yml to reference this output schema.
+
+        status: pending
+        priority: high
+        depends_on: ["selfreview_003"]
+        inputs:
+          - "modules/AgenticGuidance/agents/test/test-guidance-simulator/process.yml"
+          - "modules/AgenticGuidance/agents/test/test-guidance-simulator/inputs.yml"
+          - "modules/AgenticGuidance/assets/definitions/friction.yml"
+        target_files:
+          - "modules/AgenticGuidance/agents/test/test-guidance-simulator/process.yml"
+          - "modules/AgenticGuidance/agents/test/test-guidance-simulator/inputs.yml"
+        acceptance_criteria:
+          - "self_review_report output schema defined in process.yml outputs section"
+          - "Schema includes path_validation, file_validation, consistency_check, clarity_check"
+          - "Summary section provides quick pass/fail determination"
+          - "recommended_action field enables orchestration routing decisions"
+          - "inputs.yml references output schema appropriately"
+
+  # ========================================
+  # PHASE 3: Create Self-Review Preset
+  # ========================================
+  - name: "Phase 3: Create Self-Review Preset"
+    description: |
+      Create a CLI preset template for running agent self-reviews via the agentic CLI,
+      and document usage in the JIT Context Architecture documentation.
+
+    success_criteria:
+      - "self-review-preset.yml created in CLI presets directory"
+      - "Preset integrates with agentic plan task prefill command"
+      - "Usage documented in JIT_CONTEXT_ARCHITECTURE.md"
+
+    tasks:
+      - id: "selfreview_005"
+        name: "Create self-review CLI preset template"
+        description: |
+          Create a new preset template at:
+          modules/AgenticCLI/src/agenticcli/templates/presets/self-review-preset.yml
+
+          The preset should define tasks for running comprehensive agent self-review:
+
+          ```yaml
+          # Self-Review Preset
+          # Tasks for running agent self-review validation
+
+          name: self-review
+          description: "Tasks for agent self-review validation"
+          version: "1.0"
+
+          tasks:
+            - id: "sreview_001"
+              description: "Validate all input paths resolve to existing files"
+              priority: "critical"
+              trigger: "always"
+
+            - id: "sreview_002"
+              description: "Check all asset/definition/guideline references exist"
+              priority: "critical"
+              trigger: "always"
+
+            - id: "sreview_003"
+              description: "Verify process steps are internally consistent"
+              priority: "high"
+              trigger: "always"
+
+            - id: "sreview_004"
+              description: "Confirm prerequisites are explicitly documented"
+              priority: "high"
+              trigger: "always"
+
+            - id: "sreview_005"
+              description: "Validate loop_context if agent participates in loops"
+              priority: "medium"
+              trigger: "loop_participant"
+
+            - id: "sreview_006"
+              description: "Check output specifications are complete"
+              priority: "medium"
+              trigger: "always"
+
+            - id: "sreview_007"
+              description: "Identify ambiguous instructions requiring interpretation"
+              priority: "medium"
+              trigger: "always"
+
+            - id: "sreview_008"
+              description: "Generate self-review report in standard format"
+              priority: "critical"
+              trigger: "always"
+          ```
+
+          This preset enables users to run:
+          `agentic plan task prefill --preset self-review`
+
+          to load self-review tasks into their current task list.
+
+        status: pending
+        priority: high
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/templates/presets/planner-test-preset.yml"
+          - "modules/AgenticGuidance/assets/guidelines/agent-self-review.yml"
+          - "modules/AgenticGuidance/assets/definitions/guidance-test-scenarios.yml"
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/templates/presets/self-review-preset.yml"
+        acceptance_criteria:
+          - "File created at modules/AgenticCLI/src/agenticcli/templates/presets/self-review-preset.yml"
+          - "Preset follows existing preset format (name, description, version, tasks)"
+          - "Tasks cover all self-review validation checklist items"
+          - "Priority levels appropriately assigned (critical for path validation)"
+          - "Preset loadable via agentic plan task prefill --preset self-review"
+
+      - id: "selfreview_006"
+        name: "Document self-review usage in JIT_CONTEXT_ARCHITECTURE.md"
+        description: |
+          Update docs/JIT_CONTEXT_ARCHITECTURE.md to document how to use the self-review
+          preset and integrate self-review into guidance change workflows.
+
+          Add a new section:
+
+          ```markdown
+          ## Agent Self-Review Testing
+
+          Self-review is a basic-level testing practice for validating agent guidance.
+          When guidance files (process.yml, inputs.yml, outputs.yml) are modified,
+          agents can self-review their own guidance to catch issues before deployment.
+
+          ### Running Self-Review
+
+          Load the self-review task preset:
+          ```bash
+          agentic plan task prefill --preset self-review
+          ```
+
+          This loads standard self-review tasks that validate:
+          - All input paths resolve to existing files
+          - All asset/definition/guideline references exist
+          - Process steps are internally consistent
+          - Prerequisites are explicitly documented
+          - Loop context is defined (if applicable)
+          - Output specifications are complete
+
+          ### Self-Review Output
+
+          Self-review produces a structured report with:
+          - Path validation results (broken paths, missing files)
+          - Consistency check results (contradictions, ambiguities)
+          - Severity breakdown (CRITICAL/HIGH/MEDIUM/LOW)
+          - Recommended action (PASS/FIX_REQUIRED/ESCALATE)
+
+          ### Integration with Guidance Changes
+
+          Self-review should be run after any guidance modification:
+
+          1. Modify agent guidance (process.yml, inputs.yml, etc.)
+          2. Load self-review preset: `agentic plan task prefill --preset self-review`
+          3. Execute self-review tasks
+          4. Fix any issues found
+          5. Re-run until self-review passes
+          6. Commit guidance changes
+
+          ### Related Artifacts
+
+          - Guideline: modules/AgenticGuidance/assets/guidelines/agent-self-review.yml
+          - Test Scenarios: modules/AgenticGuidance/assets/definitions/guidance-test-scenarios.yml
+          - Test Simulator: modules/AgenticGuidance/agents/test/test-guidance-simulator/
+          - CLI Preset: modules/AgenticCLI/src/agenticcli/templates/presets/self-review-preset.yml
+          ```
+
+        status: pending
+        priority: medium
+        depends_on: ["selfreview_005"]
+        inputs:
+          - "docs/JIT_CONTEXT_ARCHITECTURE.md"
+          - "modules/AgenticCLI/src/agenticcli/templates/presets/self-review-preset.yml"
+          - "modules/AgenticGuidance/assets/guidelines/agent-self-review.yml"
+        target_files:
+          - "docs/JIT_CONTEXT_ARCHITECTURE.md"
+        acceptance_criteria:
+          - "New 'Agent Self-Review Testing' section added to JIT_CONTEXT_ARCHITECTURE.md"
+          - "Running Self-Review subsection explains preset usage"
+          - "Self-Review Output subsection explains report structure"
+          - "Integration with Guidance Changes subsection explains workflow"
+          - "Related Artifacts subsection links to all relevant files"
+          - "Examples use correct CLI command syntax"
+
+# ========================================
+# Implementation Notes
+# ========================================
+implementation_notes:
+  prior_work: |
+    The completed/plan_agent_self_review_testing.yml documents a previous self-review
+    execution that reviewed all 19 agents. This new plan formalizes self-review as
+    a standard testing practice, building on lessons learned from that execution.
+
+    Key findings from previous self-review:
+    - 2 legacy-only agents discovered (planner-phases, planner-teach)
+    - Fragment reference resolution inconsistency
+    - orchestration agents missing process.yml (only have process.mmd)
+    - NOT_MIGRATED test agents referenced without fallback paths
+    - Version mismatches between manifest.yml and inputs.yml
+    - Empty outputs: [] sections despite documented outputs
+
+    These findings demonstrate the value of self-review and the need to formalize it.
+
+  integration_points:
+    - "test-guidance-simulator: Primary executor of self-review scenarios"
+    - "guidance-test-loop: Self-review executes within existing loop structure"
+    - "teacher agents: Consume self-review reports to prioritize guidance fixes"
+    - "orchestration: Routes based on self-review pass/fail status"
+    - "CLI presets: Enable easy invocation of self-review tasks"
+
+  testing_approach: |
+    Once implemented, the self-review infrastructure should be validated by:
+    1. Running self-review on test-guidance-simulator itself (dogfooding)
+    2. Comparing results with manual inspection for accuracy
+    3. Verifying CLI preset loads correctly
+    4. Confirming output schema is parseable by orchestration
+
+next_steps:
+  - "Execute Phase 1 tasks to establish self-review documentation"
+  - "Execute Phase 2 tasks to update test-guidance-simulator"
+  - "Execute Phase 3 tasks to create CLI preset and documentation"
+  - "Validate implementation by running self-review on sample agents"

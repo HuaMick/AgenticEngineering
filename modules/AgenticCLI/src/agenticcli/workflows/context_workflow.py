@@ -1,7 +1,7 @@
-"""Context workflow for JIT context retrieval.
+"""Context workflow for CCI context retrieval.
 
 Implements Main-First plan resolution and role context loading
-for the JIT Pull-based context architecture.
+for the CCI Pull-based context architecture.
 """
 
 import subprocess

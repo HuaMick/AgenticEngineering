@@ -92,6 +92,88 @@ open_questions:
     context: "Old clients might still depend on XML, but JSON is the new standard."
 
 # ========================================
+# LOOP STRUCTURES (Required for non-trivial plans)
+# ========================================
+# Loop structures define iterative patterns for validation and quality assurance.
+# Planners define the STRUCTURE; orchestration selects the specific loop TYPE.
+# Reference: modules/AgenticGuidance/assets/definitions/agent-loops.yml
+#
+# Common loop patterns:
+# - test-fix-loop: Build phases (implementation iteration)
+# - audit-test-fix-loop: After cleanup (MANDATORY - catches reward hacking)
+# - guidance-self-review-loop: Teach phases (guidance validation)
+# - agent-self-review: Lighter alternative for guidance development
+#
+loop_structures:
+  # ----------------------------------------
+  # Pattern 1: Test-Fix Loop (for development/validation phases)
+  # ----------------------------------------
+  - id: "loop_validation"
+    type: "test-fix-loop"
+    applies_to_phase: "Validation Phase"
+    trigger: "After development tasks complete"
+    description: |
+      Iterative testing pattern where implementation is validated against
+      user stories. Each iteration runs tests, identifies failures, and
+      fixes issues until all tests pass or max iterations reached.
+    exit_criteria:
+      success: "All integration tests pass AND user stories validated"
+      max_iterations: 5
+      escalation: "Escalate to user with test results and remaining failures"
+    participants:
+      - agent: "test-builder"
+        role: "Creates and executes tests"
+      - agent: "builder"
+        role: "Fixes failures identified by tests"
+      - agent: "test-audit"
+        role: "Validates test quality (prevents reward hacking)"
+
+  # ----------------------------------------
+  # Pattern 2: Self-Review Loop (for guidance/teach phases)
+  # ----------------------------------------
+  - id: "loop_self_review"
+    type: "guidance-self-review-loop"
+    applies_to_phase: "Cleanup Phase"  # Documentation review uses self-review
+    trigger: "After cleanup tasks complete"
+    description: |
+      Agents review their own guidance files for correctness and completeness.
+      Good for iterative development but includes spot-check phase to catch
+      lenient initial assessments.
+    exit_criteria:
+      success: "All checklist items pass AND spot-check validation passes"
+      max_iterations: 3
+      escalation: "Escalate to human reviewer with specific gaps identified"
+    participants:
+      - agent: "reviewer"
+        role: "Self-reviews documentation against requirements"
+      - agent: "spot-checker"
+        role: "Validates a sample of PASS items for accuracy"
+    user_decision_gate: true  # Questions/ambiguities require user resolution
+
+  # ----------------------------------------
+  # Pattern 3: Audit-Test-Fix Loop (MANDATORY after cleanup)
+  # ----------------------------------------
+  - id: "loop_audit"
+    type: "audit-test-fix-loop"
+    applies_to_phase: "Validation Phase"
+    trigger: "After initial testing completes"
+    description: |
+      MANDATORY validation loop to detect reward hacking and verify test quality.
+      Auditor examines tests for shortcuts, mocking issues, and false positives.
+    exit_criteria:
+      success: "Audit passes AND all tests still pass after audit corrections"
+      max_iterations: 3
+      escalation: "BLOCK deployment - audit failures must be resolved"
+    participants:
+      - agent: "test-audit"
+        role: "Audits test quality and detects reward hacking"
+      - agent: "test-builder"
+        role: "Fixes audit-identified test issues"
+      - agent: "builder"
+        role: "Fixes implementation issues revealed by audit"
+    mandatory: true  # Cannot skip this loop
+
+# ========================================
 # PHASES AND TASKS
 # ========================================
 # All phases in one file (default). Split only when context minimisation benefits.

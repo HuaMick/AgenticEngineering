@@ -41,6 +41,12 @@ inputs:
 
   # Agent-specific inputs (only what's unique to test-audit)
   core_inputs:
+    # Self-review criteria (for guidance validation)
+    - type: file
+      path: "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml"
+      description: "Precise PASS/NEEDS_ATTENTION criteria for self-review validation"
+      required: true
+
     # Audit-specific strategies
     - type: file
       path: "modules/AgenticGuidance/assets/guidelines/strategy-multi-layer.yml"
@@ -102,6 +108,36 @@ inputs:
       5. Assertion quality:
          - Are assertions specific or overly permissive?
          - Do assertions verify correctness or just "not empty"?
+
+    # FENCE: PASS requires ALL criteria met (conjunction rule)
+    # Reference: self-review-criteria.yml for full definitions
+    self_review_criteria: |
+      FENCE: Self-review PASS requires ALL criteria met.
+
+      PASS only if ALL of these are TRUE:
+      - No duplicate definitions (>50 tokens matching asset content)
+      - All file references resolve to existing files
+      - No circular references
+      - Version alignment between manifest.yml and inputs.yml
+      - No inline definitions >100 tokens that exist in assets
+      - Layer references use transitive loading
+
+      NEEDS_ATTENTION if ANY of these are detected:
+      - ANY duplicate definition found
+      - ANY broken file reference
+      - ANY inline definition >100 tokens duplicating assets
+      - ANY version mismatch
+      - ANY deprecated pattern without migration
+      - >30% context reduction potential
+
+      Quantitative thresholds:
+      - inputs.yml max recommended: 2000 tokens
+      - Inline definition extraction threshold: 100 tokens
+      - Duplicate detection threshold: 50 tokens
+      - Context reduction trigger: 30%
+
+      Historical context: 78% flag rate in FF-003 was caused by lenient
+      assessment. When in doubt, choose NEEDS_ATTENTION over PASS.
 
     skip_pattern_audit: |
       Audit skip patterns against acceptable-skips criteria:

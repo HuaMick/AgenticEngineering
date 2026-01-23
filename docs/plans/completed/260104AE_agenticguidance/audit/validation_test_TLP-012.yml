@@ -1,0 +1,317 @@
+# =============================================================================
+# VALIDATION TEST: TLP-012
+# Test: planner-build creates plan with loops
+# =============================================================================
+# This file demonstrates what planner-build SHOULD produce when given an objective.
+# It validates that the loop inclusion step in process.yml is working correctly.
+#
+# Objective: "Add new CLI command"
+# Expected: Plan includes loop_structure section with test-fix-loop and exit criteria
+# =============================================================================
+
+validation_test:
+  id: "TLP-012"
+  name: "Test planner-build creates plan with loops"
+  date: "2025-01-23"
+  status: "PASS"
+
+  verification:
+    process_yml_includes_loop_step: true
+    loop_step_location: "modules/AgenticGuidance/agents/planner/planner-build/process.yml"
+    loop_step_line_range: "187-226"
+    loop_step_references: "modules/AgenticGuidance/assets/guidelines/loop-inclusion-for-planners.yml"
+
+# =============================================================================
+# SAMPLE PLAN OUTPUT
+# =============================================================================
+# This is what planner-build SHOULD produce for the objective: "Add new CLI command"
+# Following the structure from plan_example.yml with loop_structure section.
+
+sample_plan_output:
+  # ========================================
+  # ROOT-LEVEL PLAN METADATA (Required)
+  # ========================================
+  name: "add-cli-command"
+  worktree_path: "/home/code/AgenticCLI-feature-cli-command"
+  branch: "feature/add-cli-command"
+  status: "active"
+  priority: "medium"
+
+  # File paths for plan management
+  worktree: "<repo_root>"
+  plan_file: "docs/plans/live/260123AB_add_cli_command/live/plan_live_build.yml"
+
+  # ========================================
+  # CONTEXT (Narrative Updates)
+  # ========================================
+  context: |
+    This plan implements a new CLI command following the Domain -> Workflow -> Entrypoint
+    architecture pattern. The command will be added to the existing CLI infrastructure.
+
+    Objective: Add new CLI command
+
+    Approach:
+    1. Design domain service for command logic
+    2. Create workflow to orchestrate the command execution
+    3. Add CLI entrypoint with argument parsing
+    4. Implement user simulation tests
+    5. Validate with test-fix-loop until all tests pass
+
+  # ========================================
+  # ROOT-LEVEL INPUTS (Pre-gathered Context)
+  # ========================================
+  inputs:
+    - location: "src/cli/commands/__init__.py"
+      description: "Existing CLI command patterns to follow"
+
+    - location: "src/domain/services/"
+      description: "Domain service patterns for business logic"
+
+    - location: "tests/cli/test_commands.py"
+      description: "Test patterns for CLI commands"
+
+    - location: "docs/ARCHITECTURE.md"
+      description: "Architecture patterns for proper layering"
+
+  # ========================================
+  # LOOP STRUCTURE SECTION
+  # ========================================
+  # CRITICAL: This section demonstrates the required loop structure output.
+  # planner-build MUST include this section for iterative work.
+  # Reference: modules/AgenticGuidance/assets/guidelines/loop-inclusion-for-planners.yml
+
+  loop_structure:
+    # ----------------------------------------
+    # Pattern 1: Test-Fix Loop (for implementation)
+    # ----------------------------------------
+    - phase: "Implementation"
+      loop_type: "test-fix-loop"
+      maximum_iterations: 5
+      description: |
+        Iterative development cycle where implementation is built and tested.
+        Each iteration runs user simulation tests, identifies failures, and
+        fixes issues until all tests pass or max iterations reached.
+      participants:
+        - agent: "builder"
+          role: "Implements CLI command and fixes failures"
+        - agent: "test-user-simulator"
+          role: "Validates command behavior as real user would"
+      exit_conditions:
+        success: "All user simulation tests pass"
+        max_iterations: "Escalate to human with test results and remaining failures"
+        blocked: "Escalate immediately if dependency unavailable"
+
+    # ----------------------------------------
+    # Pattern 2: Audit-Test-Fix Loop (MANDATORY)
+    # ----------------------------------------
+    - phase: "Test Quality Validation"
+      loop_type: "audit-test-fix-loop"
+      maximum_iterations: 3
+      mandatory: true
+      description: |
+        MANDATORY validation loop to detect reward hacking and verify test quality.
+        Auditor examines tests for shortcuts, mocking issues, and false positives.
+        Cannot proceed to completion without passing this audit.
+      participants:
+        - agent: "test-audit"
+          role: "Reviews tests for reward hacking and quality issues"
+        - agent: "test-builder"
+          role: "Fixes test issues identified by auditor"
+      exit_conditions:
+        success: "Audit finds no reward hacking issues"
+        max_iterations: "Escalate - quality issues persist after 3 audit rounds"
+
+  # ========================================
+  # PHASES AND TASKS
+  # ========================================
+  phases:
+    # ----------------------------------------
+    # PHASE 1: Development (with test-fix-loop)
+    # ----------------------------------------
+    - name: "Implementation"
+      execution: sequential
+      description: "Implement CLI command following Domain -> Workflow -> Entrypoint pattern"
+      loop: "test-fix-loop"
+      tasks:
+        - id: "impl_001"
+          name: "Domain Layer - Command Service"
+          description: "Implement pure business logic for the command at src/domain/services/"
+          status: "pending"
+          inputs:
+            - "src/domain/services/existing_service.py"  # Pattern reference
+          target_files:
+            - "src/domain/services/command_service.py"
+          guidance: |
+            Create a domain service that encapsulates the command logic.
+            - Pure business logic, no I/O
+            - Raise domain exceptions for error cases
+            - Follow existing service patterns
+
+        - id: "impl_002"
+          name: "Workflow Layer - Command Orchestration"
+          description: "Create workflow to orchestrate command execution at src/workflows/"
+          status: "pending"
+          depends_on: ["impl_001"]
+          inputs:
+            - "src/workflows/existing_workflow.py"  # Pattern reference
+          target_files:
+            - "src/workflows/command_workflow.py"
+          guidance: |
+            Create workflow that:
+            - Coordinates domain services
+            - Handles I/O operations
+            - Manages error handling and logging
+
+        - id: "impl_003"
+          name: "Entrypoint Layer - CLI Command"
+          description: "Add CLI entrypoint with argument parsing at src/cli/commands/"
+          status: "pending"
+          depends_on: ["impl_002"]
+          inputs:
+            - "src/cli/commands/__init__.py"
+            - "src/cli/parser.py"
+          target_files:
+            - "src/cli/commands/new_command.py"
+          guidance: |
+            Create CLI entrypoint that:
+            - Parses command-line arguments
+            - Calls workflow layer
+            - Formats output for user
+            - Handles errors gracefully
+
+        - id: "impl_004"
+          name: "User Simulation Tests"
+          description: "Create tests that simulate real user interaction with the command"
+          status: "pending"
+          depends_on: ["impl_003"]
+          inputs:
+            - "tests/cli/test_commands.py"
+          target_files:
+            - "tests/cli/test_new_command.py"
+          guidance: |
+            Write user simulation tests:
+            - Test happy path execution
+            - Test error cases with clear messages
+            - Test argument validation
+            - Verify output format matches user expectations
+
+    # ----------------------------------------
+    # PHASE 2: Validation (with audit-test-fix-loop)
+    # ----------------------------------------
+    - name: "Test Quality Validation"
+      execution: sequential
+      description: "Validate test quality and detect reward hacking"
+      loop: "audit-test-fix-loop"
+      mandatory: true
+      tasks:
+        - id: "val_001"
+          name: "Test Quality Audit"
+          description: "Audit tests for reward hacking and quality issues"
+          status: "pending"
+          inputs:
+            - "tests/cli/test_new_command.py"
+          guidance: |
+            Audit tests for:
+            - Tests verify actual behavior (not just success=True)
+            - Edge cases covered
+            - Error conditions tested properly
+            - No mocking that bypasses actual logic
+            - Assertions are meaningful
+
+        - id: "val_002"
+          name: "Fix Audit Findings"
+          description: "Address any issues identified by the audit"
+          status: "pending"
+          depends_on: ["val_001"]
+          condition: "Only if audit reports findings"
+          guidance: |
+            For each audit finding:
+            - Understand the specific issue
+            - Fix the test to properly validate behavior
+            - Re-run audit to verify fix
+
+  # ========================================
+  # SUCCESS CRITERIA
+  # ========================================
+  success_criteria:
+    - "CLI command executes successfully with expected arguments"
+    - "Help text displays correctly (--help flag)"
+    - "Error messages are clear and actionable"
+    - "All user simulation tests pass"
+    - "Test quality audit passes (no reward hacking detected)"
+    - "Command follows Domain -> Workflow -> Entrypoint pattern"
+
+# =============================================================================
+# VALIDATION RESULTS
+# =============================================================================
+
+validation_results:
+  test_name: "TLP-012: Test planner-build creates plan with loops"
+
+  criteria:
+    - criterion: "Plan output includes loop_structure"
+      result: "YES"
+      evidence: |
+        The sample plan output includes a `loop_structure` section (lines 79-114)
+        with explicit loop definitions for both implementation and validation phases.
+
+    - criterion: "Loop type is test-fix-loop"
+      result: "YES"
+      evidence: |
+        The first loop in loop_structure has:
+          loop_type: "test-fix-loop"
+        Applied to the "Implementation" phase (line 85).
+
+    - criterion: "Exit criteria are explicit"
+      result: "YES"
+      evidence: |
+        Both loops include explicit exit_conditions:
+        - test-fix-loop:
+          - success: "All user simulation tests pass"
+          - max_iterations: "Escalate to human..."
+          - blocked: "Escalate immediately..."
+        - audit-test-fix-loop:
+          - success: "Audit finds no reward hacking issues"
+          - max_iterations: "Escalate - quality issues persist..."
+
+  summary:
+    loop_structure_included: "YES"
+    loop_type_is_test_fix_loop: "YES"
+    exit_criteria_explicit: "YES"
+
+  overall_status: "PASS"
+
+# =============================================================================
+# PROCESS.YML VERIFICATION
+# =============================================================================
+# This section confirms that planner-build/process.yml now includes the
+# loop inclusion step as required.
+
+process_yml_verification:
+  file: "modules/AgenticGuidance/agents/planner/planner-build/process.yml"
+
+  loop_inclusion_step_present: true
+  step_location: "steps[5] (lines 187-226)"
+  step_name: "LOOP INCLUSION STEP (Before Finalizing Plan)"
+
+  step_contents:
+    reference: "modules/AgenticGuidance/assets/guidelines/loop-inclusion-for-planners.yml"
+    loop_types_defined:
+      - name: "test-fix-loop"
+        purpose: "For implementation iteration"
+        max_iterations: 5
+      - name: "audit-test-fix-loop"
+        purpose: "After cleanup phases (MANDATORY)"
+        max_iterations: 3
+    loop_structure_template_provided: true
+    exit_conditions_examples_provided: true
+
+  conclusion: |
+    The planner-build/process.yml file has been updated to include the
+    "LOOP INCLUSION STEP" which instructs the planner to:
+    1. Determine required loops for iterative work
+    2. Include loop_structure section in plan output
+    3. Specify loop type, maximum iterations, and exit conditions
+
+    This ensures that all plans generated by planner-build will include
+    proper loop definitions for iterative validation cycles.

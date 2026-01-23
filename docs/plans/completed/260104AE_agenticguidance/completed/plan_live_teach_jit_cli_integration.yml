@@ -1,0 +1,878 @@
+# Plan: Teach JIT CLI Integration to All Agents
+# Plan ID: 260104AE_agenticguidance
+# Created: 2026-01-23
+# Agent: planner-guidance
+# Type: TEACH
+#
+# PURPOSE:
+# Update all 26 agent process.yml files to add JIT CLI bootstrap as the FIRST step,
+# enabling agents to use structured CLI commands instead of file exploration.
+#
+# ROOT CAUSE:
+# Friction analysis (audit/260123_friction_analysis.yml) found that 0 out of 26 agents
+# used JIT CLI commands despite them being fully implemented. Root cause: agent process.yml
+# files don't instruct agents to use JIT CLI. The thin-client bootstrap files exist but
+# are not referenced in the agent guidance.
+
+name: "teach-jit-cli-integration"
+worktree_path: "/home/code/AgenticEngineering"
+branch: "agenticguidance"
+status: "completed"
+completed_date: "2026-01-23"
+priority: "critical"
+created: "2026-01-23"
+plan_file: "docs/plans/live/260104AE_agenticguidance/live/plan_live_teach_jit_cli_integration.yml"
+
+# ========================================
+# CONTEXT
+# ========================================
+context: |
+  Friction analysis (260123_friction_analysis.yml) discovered a critical gap:
+
+  FINDING: 0 out of 26 agents used JIT CLI commands
+  - agentic context bootstrap: 0 uses
+  - agentic plan task current: 0 uses
+  - agentic context role: 0 uses
+  - agentic context inputs: 0 uses
+
+  ROOT CAUSE: AgenticGuidance process.yml files do NOT instruct agents to use JIT CLI.
+  The thin-client architecture is COMPLETE but NOT INTEGRATED into agent guidance.
+
+  EXISTING ASSETS:
+  - CLI Implementation: COMPLETE (agentic context/plan commands work)
+  - Thin-client bootstrap files: COMPLETE (.claude/agents/*.md reference CLI)
+  - Integration into guidance: MISSING (process.yml files don't mention CLI)
+
+  IMPACT OF FIX:
+  - Estimated 40-60% context reduction per agent (JIT returns structured data vs full files)
+  - Eliminates exploration drift friction pattern (FP-002)
+  - Agents get structured context immediately instead of using Glob/Grep/Read
+
+# ========================================
+# ROOT-LEVEL INPUTS
+# ========================================
+inputs:
+  - location: "docs/plans/live/260104AE_agenticguidance/audit/260123_friction_analysis.yml"
+    description: "Friction analysis showing 0% JIT CLI adoption and root cause"
+
+  - location: ".claude/agents/planner-build.md"
+    description: "Example thin-client bootstrap file showing CLI commands"
+
+  - location: "modules/AgenticGuidance/assets/definitions/cli-commands.yml"
+    description: "Centralized CLI command definitions"
+
+  - location: "modules/AgenticGuidance/agents/planner/planner-build/process.yml"
+    description: "Example process.yml to use as pattern for JIT CLI step"
+
+# ========================================
+# PHASES
+# ========================================
+phases:
+
+  # ========================================
+  # PHASE 1: PLANNER AGENTS (7 agents)
+  # ========================================
+  - name: "Phase 1 - Update Planner Agent Process Files"
+    priority: "critical"
+    execution: "parallel"
+    description: "Add JIT CLI bootstrap step as FIRST step in all 7 planner process.yml files"
+
+    tasks:
+      - id: "TEACH-JIT-001"
+        name: "Update planner-audit process.yml"
+        status: "pending"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/planner/planner-audit/process.yml"
+          - ".claude/agents/planner-audit.md"
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-audit/process.yml"
+        guidance: |
+          Add a JIT CLI BOOTSTRAP step as the FIRST step in the process.
+
+          INSERT this step BEFORE any existing steps:
+
+          ```yaml
+          steps:
+            - id: "jit_bootstrap"
+              name: "JIT CLI Bootstrap"
+              description: |
+                FIRST: Run JIT CLI commands to get structured context.
+                This is MORE EFFICIENT than file exploration (Glob/Grep/Read).
+
+                ```bash
+                # Get seed context (objective, process summary, inputs)
+                agentic context bootstrap --role planner-audit -j
+
+                # Get current task if working from a plan
+                agentic plan task current -j
+                ```
+
+                CLI OUTPUT provides:
+                - Your objective and process summary
+                - Input file paths to read
+                - Current task details (if plan exists)
+
+                ONLY use Glob/Grep/Read if CLI output indicates specific files to examine.
+                DO NOT explore the codebase before running these commands.
+          ```
+
+          ALSO add to guidelines section:
+          ```yaml
+          guidelines:
+            - |
+              JIT CLI FIRST: Always run `agentic context bootstrap --role planner-audit -j`
+              before any file exploration. This provides structured context more efficiently
+              than Glob/Grep/Read operations.
+          ```
+
+        acceptance_criteria:
+          - "JIT CLI bootstrap step is FIRST step in process.yml"
+          - "Step includes both `agentic context bootstrap` and `agentic plan task current` commands"
+          - "Guidelines include JIT CLI FIRST instruction"
+          - "YAML syntax is valid"
+
+      - id: "TEACH-JIT-002"
+        name: "Update planner-build process.yml"
+        status: "pending"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/planner/planner-build/process.yml"
+          - ".claude/agents/planner-build.md"
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-build/process.yml"
+        guidance: |
+          Add a JIT CLI BOOTSTRAP step as the FIRST step in the process.
+          Use the same pattern as TEACH-JIT-001 but with --role planner-build.
+
+          The current first step is "VALIDATE REQUIRED INPUTS".
+          Insert the JIT bootstrap step BEFORE it.
+
+        acceptance_criteria:
+          - "JIT CLI bootstrap step is FIRST step (before VALIDATE REQUIRED INPUTS)"
+          - "Step uses --role planner-build"
+          - "Guidelines include JIT CLI FIRST instruction"
+
+      - id: "TEACH-JIT-003"
+        name: "Update planner-cleaning process.yml"
+        status: "pending"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/planner/planner-cleaning/process.yml"
+          - ".claude/agents/planner-cleaning.md"
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-cleaning/process.yml"
+        guidance: |
+          Add JIT CLI bootstrap step as FIRST step with --role planner-cleaning.
+          Same pattern as TEACH-JIT-001.
+
+        acceptance_criteria:
+          - "JIT CLI bootstrap step is FIRST step"
+          - "Step uses --role planner-cleaning"
+
+      - id: "TEACH-JIT-004"
+        name: "Update planner-guidance process.yml"
+        status: "pending"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/planner/planner-guidance/process.yml"
+          - ".claude/agents/planner-guidance.md"
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-guidance/process.yml"
+        guidance: |
+          Add JIT CLI bootstrap step as FIRST step with --role planner-guidance.
+          Same pattern as TEACH-JIT-001.
+
+        acceptance_criteria:
+          - "JIT CLI bootstrap step is FIRST step"
+          - "Step uses --role planner-guidance"
+
+      - id: "TEACH-JIT-005"
+        name: "Update planner-guidance-testing process.yml"
+        status: "pending"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/planner/planner-guidance-testing/process.yml"
+          - ".claude/agents/planner-guidance-testing.md"
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-guidance-testing/process.yml"
+        guidance: |
+          Add JIT CLI bootstrap step as FIRST step with --role planner-guidance-testing.
+          Same pattern as TEACH-JIT-001.
+
+        acceptance_criteria:
+          - "JIT CLI bootstrap step is FIRST step"
+          - "Step uses --role planner-guidance-testing"
+
+      - id: "TEACH-JIT-006"
+        name: "Update planner-reviewer process.yml"
+        status: "pending"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml"
+          - ".claude/agents/planner-reviewer.md"
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml"
+        guidance: |
+          Add JIT CLI bootstrap step as FIRST step with --role planner-reviewer.
+          Same pattern as TEACH-JIT-001.
+
+        acceptance_criteria:
+          - "JIT CLI bootstrap step is FIRST step"
+          - "Step uses --role planner-reviewer"
+
+      - id: "TEACH-JIT-007"
+        name: "Update planner-test process.yml"
+        status: "pending"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/planner/planner-test/process.yml"
+          - ".claude/agents/planner-test.md"
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-test/process.yml"
+        guidance: |
+          Add JIT CLI bootstrap step as FIRST step with --role planner-test.
+          Same pattern as TEACH-JIT-001.
+
+        acceptance_criteria:
+          - "JIT CLI bootstrap step is FIRST step"
+          - "Step uses --role planner-test"
+
+  # ========================================
+  # PHASE 2: TEST AGENTS (7 agents)
+  # ========================================
+  - name: "Phase 2 - Update Test Agent Process Files"
+    priority: "critical"
+    execution: "parallel"
+    description: "Add JIT CLI bootstrap step as FIRST step in all 7 test process.yml files"
+
+    tasks:
+      - id: "TEACH-JIT-008"
+        name: "Update test-audit process.yml"
+        status: "pending"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/test/test-audit/process.yml"
+          - ".claude/agents/test-audit.md"
+        target_files:
+          - "modules/AgenticGuidance/agents/test/test-audit/process.yml"
+        guidance: |
+          Add JIT CLI bootstrap step as FIRST step with --role test-audit.
+          Same pattern as TEACH-JIT-001.
+
+        acceptance_criteria:
+          - "JIT CLI bootstrap step is FIRST step"
+          - "Step uses --role test-audit"
+
+      - id: "TEACH-JIT-009"
+        name: "Update test-builder process.yml"
+        status: "pending"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/test/test-builder/process.yml"
+          - ".claude/agents/test-builder.md"
+        target_files:
+          - "modules/AgenticGuidance/agents/test/test-builder/process.yml"
+        guidance: |
+          Add JIT CLI bootstrap step as FIRST step with --role test-builder.
+          Same pattern as TEACH-JIT-001.
+
+        acceptance_criteria:
+          - "JIT CLI bootstrap step is FIRST step"
+          - "Step uses --role test-builder"
+
+      - id: "TEACH-JIT-010"
+        name: "Update test-final-output process.yml"
+        status: "pending"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/test/test-final-output/process.yml"
+          - ".claude/agents/test-final-output.md"
+        target_files:
+          - "modules/AgenticGuidance/agents/test/test-final-output/process.yml"
+        guidance: |
+          Add JIT CLI bootstrap step as FIRST step with --role test-final-output.
+          Same pattern as TEACH-JIT-001.
+
+        acceptance_criteria:
+          - "JIT CLI bootstrap step is FIRST step"
+          - "Step uses --role test-final-output"
+
+      - id: "TEACH-JIT-011"
+        name: "Update test-guidance-simulator process.yml"
+        status: "pending"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/test/test-guidance-simulator/process.yml"
+          - ".claude/agents/test-guidance-simulator.md"
+        target_files:
+          - "modules/AgenticGuidance/agents/test/test-guidance-simulator/process.yml"
+        guidance: |
+          Add JIT CLI bootstrap step as FIRST step with --role test-guidance-simulator.
+          Same pattern as TEACH-JIT-001.
+
+        acceptance_criteria:
+          - "JIT CLI bootstrap step is FIRST step"
+          - "Step uses --role test-guidance-simulator"
+
+      - id: "TEACH-JIT-012"
+        name: "Update test-runner process.yml"
+        status: "pending"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/test/test-runner/process.yml"
+          - ".claude/agents/test-runner.md"
+        target_files:
+          - "modules/AgenticGuidance/agents/test/test-runner/process.yml"
+        guidance: |
+          Add JIT CLI bootstrap step as FIRST step with --role test-runner.
+          Same pattern as TEACH-JIT-001.
+
+        acceptance_criteria:
+          - "JIT CLI bootstrap step is FIRST step"
+          - "Step uses --role test-runner"
+
+      - id: "TEACH-JIT-013"
+        name: "Update test-service process.yml"
+        status: "pending"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/test/test-service/process.yml"
+          - ".claude/agents/test-service.md"
+        target_files:
+          - "modules/AgenticGuidance/agents/test/test-service/process.yml"
+        guidance: |
+          Add JIT CLI bootstrap step as FIRST step with --role test-service.
+          Same pattern as TEACH-JIT-001.
+
+        acceptance_criteria:
+          - "JIT CLI bootstrap step is FIRST step"
+          - "Step uses --role test-service"
+
+      - id: "TEACH-JIT-014"
+        name: "Update test-user-simulator process.yml"
+        status: "pending"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/test/test-user-simulator/process.yml"
+          - ".claude/agents/test-user-simulator.md"
+        target_files:
+          - "modules/AgenticGuidance/agents/test/test-user-simulator/process.yml"
+        guidance: |
+          Add JIT CLI bootstrap step as FIRST step with --role test-user-simulator.
+          Same pattern as TEACH-JIT-001.
+
+        acceptance_criteria:
+          - "JIT CLI bootstrap step is FIRST step"
+          - "Step uses --role test-user-simulator"
+
+  # ========================================
+  # PHASE 3: ORCHESTRATION AGENTS (5 agents)
+  # ========================================
+  - name: "Phase 3 - Update Orchestration Agent Files"
+    priority: "critical"
+    execution: "parallel"
+    description: |
+      Add JIT CLI bootstrap to orchestration agents.
+      NOTE: Orchestration agents use .mmd files (Mermaid) for process, not .yml.
+      Add JIT CLI instruction as a COMMENT BLOCK at the top of the flowchart.
+
+    tasks:
+      - id: "TEACH-JIT-015"
+        name: "Update orchestration-build process.mmd"
+        status: "pending"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-build/process.mmd"
+          - ".claude/agents/orchestration-build.md"
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-build/process.mmd"
+        guidance: |
+          Add JIT CLI bootstrap instruction at the TOP of the .mmd file.
+          MMD files use %% for comments.
+
+          INSERT at the very beginning of the file:
+          ```
+          %% =============================================================================
+          %% JIT CLI BOOTSTRAP (EXECUTE FIRST)
+          %% =============================================================================
+          %% Before following this flowchart, run:
+          %%   agentic context bootstrap --role orchestration-build -j
+          %%   agentic plan task current -j
+          %%
+          %% This provides structured context more efficiently than file exploration.
+          %% =============================================================================
+          ```
+
+        acceptance_criteria:
+          - "JIT CLI bootstrap comment block is at TOP of file"
+          - "Comment uses %% MMD syntax"
+          - "Includes both bootstrap and task current commands"
+
+      - id: "TEACH-JIT-016"
+        name: "Update orchestration-executor process.yml"
+        status: "pending"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml"
+          - ".claude/agents/orchestration-executor.md"
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml"
+        guidance: |
+          Add JIT CLI bootstrap step as the FIRST step in the steps section.
+          The current first step is "startup_validate_inputs".
+          Insert a new step "jit_bootstrap" BEFORE it.
+
+          Use --role orchestration-executor.
+
+        acceptance_criteria:
+          - "jit_bootstrap step is FIRST step (before startup_validate_inputs)"
+          - "Step uses --role orchestration-executor"
+
+      - id: "TEACH-JIT-017"
+        name: "Update orchestration-friction process.mmd"
+        status: "pending"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-friction/process.mmd"
+          - ".claude/agents/orchestration-friction.md"
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-friction/process.mmd"
+        guidance: |
+          Add JIT CLI bootstrap comment block at TOP of .mmd file.
+          Same pattern as TEACH-JIT-015 but with --role orchestration-friction.
+
+        acceptance_criteria:
+          - "JIT CLI bootstrap comment block is at TOP of file"
+          - "Uses --role orchestration-friction"
+
+      - id: "TEACH-JIT-018"
+        name: "Update orchestration-guidance process.mmd"
+        status: "pending"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-guidance/process.mmd"
+          - ".claude/agents/orchestration-guidance.md"
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-guidance/process.mmd"
+        guidance: |
+          Add JIT CLI bootstrap comment block at TOP of .mmd file.
+          Same pattern as TEACH-JIT-015 but with --role orchestration-guidance.
+
+        acceptance_criteria:
+          - "JIT CLI bootstrap comment block is at TOP of file"
+          - "Uses --role orchestration-guidance"
+
+      - id: "TEACH-JIT-019"
+        name: "Update orchestration-planning process.mmd"
+        status: "pending"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+          - ".claude/agents/orchestration-planning.md"
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+        guidance: |
+          Add JIT CLI bootstrap comment block at TOP of .mmd file.
+          Same pattern as TEACH-JIT-015 but with --role orchestration-planning.
+
+        acceptance_criteria:
+          - "JIT CLI bootstrap comment block is at TOP of file"
+          - "Uses --role orchestration-planning"
+
+  # ========================================
+  # PHASE 4: TEACHER AGENTS (3 agents)
+  # ========================================
+  - name: "Phase 4 - Update Teacher Agent Process Files"
+    priority: "critical"
+    execution: "parallel"
+    description: "Add JIT CLI bootstrap step as FIRST step in all 3 teacher process.yml files"
+
+    tasks:
+      - id: "TEACH-JIT-020"
+        name: "Update teacher-trace-diagnostics process.yml"
+        status: "pending"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/teacher/teacher-trace-diagnostics/process.yml"
+          - ".claude/agents/teacher-trace-diagnostics.md"
+        target_files:
+          - "modules/AgenticGuidance/agents/teacher/teacher-trace-diagnostics/process.yml"
+        guidance: |
+          Add JIT CLI bootstrap step as FIRST step with --role teacher-trace-diagnostics.
+          Same pattern as TEACH-JIT-001.
+
+        acceptance_criteria:
+          - "JIT CLI bootstrap step is FIRST step"
+          - "Step uses --role teacher-trace-diagnostics"
+
+      - id: "TEACH-JIT-021"
+        name: "Update teacher-update-assets process.yml"
+        status: "pending"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/teacher/teacher-update-assets/process.yml"
+          - ".claude/agents/teacher-update-assets.md"
+        target_files:
+          - "modules/AgenticGuidance/agents/teacher/teacher-update-assets/process.yml"
+        guidance: |
+          Add JIT CLI bootstrap step as FIRST step with --role teacher-update-assets.
+          Same pattern as TEACH-JIT-001.
+
+        acceptance_criteria:
+          - "JIT CLI bootstrap step is FIRST step"
+          - "Step uses --role teacher-update-assets"
+
+      - id: "TEACH-JIT-022"
+        name: "Update teacher-update-guidance process.yml"
+        status: "pending"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/teacher/teacher-update-guidance/process.yml"
+          - ".claude/agents/teacher-update-guidance.md"
+        target_files:
+          - "modules/AgenticGuidance/agents/teacher/teacher-update-guidance/process.yml"
+        guidance: |
+          Add JIT CLI bootstrap step as FIRST step with --role teacher-update-guidance.
+          Same pattern as TEACH-JIT-001.
+
+        acceptance_criteria:
+          - "JIT CLI bootstrap step is FIRST step"
+          - "Step uses --role teacher-update-guidance"
+
+  # ========================================
+  # PHASE 5: BUILD AND DEPLOY AGENTS (4 agents)
+  # ========================================
+  - name: "Phase 5 - Update Build and Deploy Agent Process Files"
+    priority: "critical"
+    execution: "parallel"
+    description: "Add JIT CLI bootstrap step as FIRST step in build and deploy process.yml files"
+
+    tasks:
+      - id: "TEACH-JIT-023"
+        name: "Update build-flutter process.yml"
+        status: "pending"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/build/build-flutter/process.yml"
+          - ".claude/agents/build-flutter.md"
+        target_files:
+          - "modules/AgenticGuidance/agents/build/build-flutter/process.yml"
+        guidance: |
+          Add JIT CLI bootstrap step as FIRST step with --role build-flutter.
+          Same pattern as TEACH-JIT-001.
+
+        acceptance_criteria:
+          - "JIT CLI bootstrap step is FIRST step"
+          - "Step uses --role build-flutter"
+
+      - id: "TEACH-JIT-024"
+        name: "Update build-python process.yml"
+        status: "pending"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/build/build-python/process.yml"
+          - ".claude/agents/build-python.md"
+        target_files:
+          - "modules/AgenticGuidance/agents/build/build-python/process.yml"
+        guidance: |
+          Add JIT CLI bootstrap step as FIRST step with --role build-python.
+          Same pattern as TEACH-JIT-001.
+
+        acceptance_criteria:
+          - "JIT CLI bootstrap step is FIRST step"
+          - "Step uses --role build-python"
+
+      - id: "TEACH-JIT-025"
+        name: "Update deploy-cicd process.yml"
+        status: "pending"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/deploy/deploy-cicd/process.yml"
+          - ".claude/agents/deploy-cicd.md"
+        target_files:
+          - "modules/AgenticGuidance/agents/deploy/deploy-cicd/process.yml"
+        guidance: |
+          Add JIT CLI bootstrap step as FIRST step with --role deploy-cicd.
+          Same pattern as TEACH-JIT-001.
+
+        acceptance_criteria:
+          - "JIT CLI bootstrap step is FIRST step"
+          - "Step uses --role deploy-cicd"
+
+      - id: "TEACH-JIT-026"
+        name: "Update deploy-worktree process.yml"
+        status: "pending"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/deploy/deploy-worktree/process.yml"
+          - ".claude/agents/deploy-worktree.md"
+        target_files:
+          - "modules/AgenticGuidance/agents/deploy/deploy-worktree/process.yml"
+        guidance: |
+          Add JIT CLI bootstrap step as FIRST step with --role deploy-worktree.
+          Same pattern as TEACH-JIT-001.
+
+        acceptance_criteria:
+          - "JIT CLI bootstrap step is FIRST step"
+          - "Step uses --role deploy-worktree"
+
+  # ========================================
+  # PHASE 6: UPDATE INPUTS.YML FILES
+  # ========================================
+  - name: "Phase 6 - Update Orchestration Inputs Files"
+    priority: "high"
+    execution: "parallel"
+    description: |
+      Update orchestration agent inputs.yml files to reference CLI commands and
+      thin-client bootstrap files, ensuring subagent spawning includes JIT CLI context.
+
+    tasks:
+      - id: "TEACH-JIT-027"
+        name: "Update orchestration-build inputs.yml"
+        status: "pending"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-build/inputs.yml"
+          - "modules/AgenticGuidance/assets/definitions/cli-commands.yml"
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-build/inputs.yml"
+        guidance: |
+          Add a section referencing the thin-client bootstrap files for spawned agents:
+
+          ```yaml
+          # ==============================================
+          # JIT CLI BOOTSTRAP CONTEXT
+          # ==============================================
+          # When spawning subagents, reference their thin-client bootstrap files
+          # which document the JIT CLI commands they should run first.
+          jit_cli_context:
+            note: |
+              All spawned agents have thin-client bootstrap files at .claude/agents/<agent-name>.md
+              These files instruct agents to run JIT CLI commands FIRST before file exploration.
+              The CLI commands provide structured context more efficiently than Glob/Grep/Read.
+            bootstrap_files_location: ".claude/agents/"
+            key_commands:
+              - "agentic context bootstrap --role <role-id> -j"
+              - "agentic plan task current -j"
+          ```
+
+          ALSO ensure cli_commands_reference points to the centralized definition:
+          ```yaml
+          cli_commands_reference: "modules/AgenticGuidance/assets/definitions/cli-commands.yml"
+          ```
+
+        acceptance_criteria:
+          - "jit_cli_context section exists documenting bootstrap files"
+          - "cli_commands_reference points to centralized definition"
+          - "Key commands listed for subagent context"
+
+      - id: "TEACH-JIT-028"
+        name: "Update orchestration-executor inputs.yml"
+        status: "pending"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-executor/inputs.yml"
+          - "modules/AgenticGuidance/assets/definitions/cli-commands.yml"
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-executor/inputs.yml"
+        guidance: |
+          Add JIT CLI context section same as TEACH-JIT-027.
+          orchestration-executor spawns agents based on AGENT_ROUTING, so it needs
+          to pass JIT CLI context to spawned agents.
+
+        acceptance_criteria:
+          - "jit_cli_context section exists"
+          - "cli_commands_reference points to centralized definition"
+
+  # ========================================
+  # PHASE 7: VALIDATION VIA AGENT SELF-REVIEW
+  # ========================================
+  - name: "Phase 7 - Validate JIT CLI Integration"
+    priority: "high"
+    execution: "sequential"
+    description: |
+      Run agent self-reviews to validate that agents now reference JIT CLI commands.
+      This validates the teaching was effective.
+
+    tasks:
+      - id: "TEACH-JIT-029"
+        name: "Run sample agent self-review (planner-build)"
+        status: "pending"
+        agent: "test-guidance-simulator"
+        inputs:
+          - "modules/AgenticGuidance/agents/planner/planner-build/process.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-build/inputs.yml"
+        target_files: []
+        guidance: |
+          Simulate planner-build agent behavior and verify:
+
+          1. The agent's process.yml has JIT CLI bootstrap as FIRST step
+          2. When simulating agent behavior, the agent would run CLI commands FIRST
+          3. The agent does NOT begin with Glob/Grep/Read exploration
+
+          VALIDATION CRITERIA:
+          - process.yml step 1 mentions "agentic context bootstrap"
+          - process.yml step 1 mentions "agentic plan task current"
+          - Guidelines mention "JIT CLI FIRST"
+
+          Report: PASS if all criteria met, FAIL with details if not.
+
+        acceptance_criteria:
+          - "planner-build process.yml has JIT CLI as first step"
+          - "Simulation confirms agent would use CLI before file exploration"
+
+      - id: "TEACH-JIT-030"
+        name: "Run sample agent self-review (orchestration-build)"
+        status: "pending"
+        agent: "test-guidance-simulator"
+        inputs:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-build/process.mmd"
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-build/inputs.yml"
+        target_files: []
+        guidance: |
+          Simulate orchestration-build agent behavior and verify:
+
+          1. The agent's process.mmd has JIT CLI bootstrap comment at TOP
+          2. The agent's inputs.yml has jit_cli_context section
+          3. When simulating, the agent would run CLI commands FIRST
+
+          VALIDATION CRITERIA:
+          - process.mmd begins with JIT CLI bootstrap comment block
+          - inputs.yml has jit_cli_context with bootstrap_files_location
+          - inputs.yml has cli_commands_reference
+
+          Report: PASS if all criteria met, FAIL with details if not.
+
+        acceptance_criteria:
+          - "orchestration-build has JIT CLI in both process.mmd and inputs.yml"
+          - "Simulation confirms agent would use CLI before file exploration"
+
+      - id: "TEACH-JIT-031"
+        name: "Verify all 26 agents have JIT CLI step"
+        status: "pending"
+        agent: "test-audit"
+        inputs:
+          - "modules/AgenticGuidance/agents/"
+        target_files: []
+        guidance: |
+          Audit all 26 agent process files to verify JIT CLI integration:
+
+          FOR EACH AGENT (26 total):
+          1. Locate process.yml or process.mmd
+          2. Verify JIT CLI bootstrap instruction exists
+          3. For .yml: Check first step mentions "agentic context bootstrap"
+          4. For .mmd: Check file begins with JIT CLI comment block
+
+          AGENTS TO CHECK:
+          - planner/*: 7 agents (planner-audit, planner-build, planner-cleaning,
+                       planner-guidance, planner-guidance-testing, planner-reviewer, planner-test)
+          - test/*: 7 agents (test-audit, test-builder, test-final-output,
+                    test-guidance-simulator, test-runner, test-service, test-user-simulator)
+          - orchestration/*: 5 agents (orchestration-build, orchestration-executor,
+                             orchestration-friction, orchestration-guidance, orchestration-planning)
+          - teacher/*: 3 agents (teacher-trace-diagnostics, teacher-update-assets,
+                       teacher-update-guidance)
+          - build/*: 2 agents (build-flutter, build-python)
+          - deploy/*: 2 agents (deploy-cicd, deploy-worktree)
+
+          OUTPUT: Report with pass/fail for each agent.
+
+        acceptance_criteria:
+          - "All 26 agents have JIT CLI bootstrap instruction"
+          - "No agents missing the JIT CLI step"
+          - "Audit report documents status of each agent"
+
+# ========================================
+# SUCCESS CRITERIA
+# ========================================
+success_criteria:
+  phase_1:
+    - "All 7 planner process.yml files have JIT CLI as first step"
+    - "Each uses correct --role flag for the agent"
+    - "Guidelines include JIT CLI FIRST instruction"
+
+  phase_2:
+    - "All 7 test process.yml files have JIT CLI as first step"
+    - "Each uses correct --role flag for the agent"
+
+  phase_3:
+    - "All 5 orchestration process files have JIT CLI instruction"
+    - ".mmd files have comment block at top"
+    - ".yml file (executor) has JIT CLI as first step"
+
+  phase_4:
+    - "All 3 teacher process.yml files have JIT CLI as first step"
+
+  phase_5:
+    - "Both build process.yml files have JIT CLI as first step"
+    - "Both deploy process.yml files have JIT CLI as first step"
+
+  phase_6:
+    - "orchestration-build inputs.yml has jit_cli_context section"
+    - "orchestration-executor inputs.yml has jit_cli_context section"
+    - "Both reference cli-commands.yml"
+
+  phase_7:
+    - "Sample self-reviews pass (planner-build, orchestration-build)"
+    - "Full audit confirms all 26 agents have JIT CLI integration"
+    - "No agents missing the JIT CLI step"
+
+# ========================================
+# EXPECTED OUTCOMES
+# ========================================
+expected_outcomes:
+  - outcome: "All 26 agents will use JIT CLI commands as their first action"
+    metric: "100% JIT CLI adoption in process files"
+
+  - outcome: "Reduced exploration drift friction"
+    metric: "FP-002 pattern eliminated in future sessions"
+
+  - outcome: "Improved context efficiency"
+    metric: "40-60% reduction in file exploration tool calls"
+
+  - outcome: "Consistent agent behavior"
+    metric: "All agents follow same bootstrap protocol"
+
+# ========================================
+# NOTES
+# ========================================
+notes: |
+  This plan addresses the CRITICAL finding from friction analysis 260123:
+  0% JIT CLI adoption despite complete implementation.
+
+  The fix is purely a TEACH operation - updating guidance files to instruct
+  agents to use the existing CLI infrastructure.
+
+  PATTERN FOR PROCESS.YML FILES:
+  Add this as the FIRST step (before any existing steps):
+
+  ```yaml
+  - id: "jit_bootstrap"
+    name: "JIT CLI Bootstrap"
+    description: |
+      FIRST: Run JIT CLI commands to get structured context.
+      This is MORE EFFICIENT than file exploration (Glob/Grep/Read).
+
+      ```bash
+      agentic context bootstrap --role <agent-role> -j
+      agentic plan task current -j
+      ```
+
+      ONLY use Glob/Grep/Read if CLI output indicates specific files to examine.
+  ```
+
+  PATTERN FOR PROCESS.MMD FILES:
+  Add this comment block at the TOP of the file:
+
+  ```
+  %% =============================================================================
+  %% JIT CLI BOOTSTRAP (EXECUTE FIRST)
+  %% =============================================================================
+  %% Before following this flowchart, run:
+  %%   agentic context bootstrap --role <agent-role> -j
+  %%   agentic plan task current -j
+  %% =============================================================================
+  ```
+
+estimated_effort: "2-3 hours"

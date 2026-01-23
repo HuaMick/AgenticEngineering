@@ -70,7 +70,7 @@ inputs:
 
     # Unified plan example
     - type: file
-      path: "modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/plan_example.yml"
+      path: "modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/live/plan_example.yml"
       description: "Unified plan example showing how to coordinate multiple phases (Build, Test, Teach) in a single file with root-level inputs and context updates."
       required: true
 
@@ -147,3 +147,62 @@ inputs:
     build_artifacts: |
       Build artifacts should be placed in build-artifacts/dist/ directory.
       Never commit build artifacts to version control.
+
+# ==============================================
+# GUIDANCE MODIFICATION FENCE
+# ==============================================
+# Detect when build plan tasks modify agent guidance files.
+# Guidance changes require teach process validation.
+# ==============================================
+guidance_modification_fence:
+  description: |
+    Build plans may legitimately include guidance file paths for infrastructure work.
+    However, any modifications to agent guidance MUST be validated through the teach
+    process before deployment. This fence detects such modifications and flags them.
+
+  detection_patterns:
+    critical_guidance_files:
+      - "modules/AgenticGuidance/agents/**/process.yml"
+      - "modules/AgenticGuidance/agents/**/process.mmd"
+      - "modules/AgenticGuidance/agents/**/inputs.yml"
+      - "modules/AgenticGuidance/agents/**/manifest.yml"
+      - "modules/AgenticGuidance/agents/**/outputs.yml"
+    definition_files:
+      - "modules/AgenticGuidance/assets/definitions/*.yml"
+    guideline_files:
+      - "modules/AgenticGuidance/assets/guidelines/*.yml"
+    entrypoint_files:
+      - "modules/AgenticGuidance/entrypoints/*.yml"
+
+  fence: |
+    FENCE: GUIDANCE-MODIFICATION-DETECTION
+    Before finalizing any build plan, check if ANY task target_files
+    match the detection_patterns above.
+
+    IF MATCH FOUND:
+    1. DO NOT proceed with build-only execution
+    2. FLAG the plan as requiring teach process validation
+    3. ADD to plan output: requires_teach_validation: true
+    4. LIST the specific guidance files being modified in guidance_files_modified
+    5. RECOMMEND running _plan_teach.yml for these changes
+
+    RATIONALE: Guidance changes affect agent behavior across the entire
+    system. They MUST go through validation (agent self-review, guidance
+    testing) before deployment. Build-only execution skips this validation.
+
+    INCIDENT REFERENCE: CLI Context Injection initiative (2025-11) modified 26 agent
+    bootstrap files without validation, causing broken paths and missing
+    references that weren't caught until execution.
+
+  output_flag:
+    name: "requires_teach_validation"
+    type: "boolean"
+    triggered_when: "Any target_file matches detection_patterns"
+    action: "Set to true and list matched files in guidance_files_modified"
+
+  output_schema_addition: |
+    # Add to plan output when guidance modifications detected:
+    requires_teach_validation: true
+    guidance_files_modified:
+      - "modules/AgenticGuidance/agents/planner/planner-build/inputs.yml"
+      - "modules/AgenticGuidance/assets/definitions/example.yml"

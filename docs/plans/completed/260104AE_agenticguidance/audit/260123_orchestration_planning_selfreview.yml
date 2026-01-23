@@ -1,0 +1,351 @@
+# Self-Review Report: orchestration-planning Agent
+# Generated: 2026-01-23
+# Conducted by: orchestration-planning agent (self-review)
+# Framework: self-review-criteria.yml + spot-check-checklist.yml
+# Purpose: Validate orchestration-planning guidance using same strict criteria as other agents
+
+report_metadata:
+  agent: "orchestration-planning"
+  assessment_date: "2026-01-23"
+  assessment_method: "self-review with strict criteria"
+  framework_reference: "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml"
+  spot_check_reference: "modules/AgenticGuidance/assets/definitions/spot-check-checklist.yml"
+  overall_result: "NEEDS_ATTENTION"
+  issues_found: 3
+  critical_count: 1
+  medium_count: 2
+
+# =============================================================================
+# ASSESSMENT RESULT
+# =============================================================================
+
+assessment_result: "NEEDS_ATTENTION"
+
+summary: |
+  The orchestration-planning agent guidance fails critical PASS criteria due to:
+  1. CRITICAL (NAT-004): Version mismatch - inputs.yml lacks version field
+  2. MEDIUM (NAT-003 + NAT-006): Large inline MMD guidance (80+ lines, not extracted to shared asset)
+  3. MEDIUM (NAT-006): Context bloat - inputs.yml exceeds 2000-token recommendation
+
+explanation: |
+  Using the conjunction rule from self-review-criteria.yml (ALL criteria must be TRUE for PASS),
+  orchestration-planning fails at PC-005 (version alignment). The missing version field in
+  inputs.yml triggers automatic NEEDS_ATTENTION status.
+
+  Additionally, the agent experiences context bloat with 2480 estimated tokens in inputs.yml
+  (exceeds 2000-token target) due to large inline MMD guidance section. This section could be
+  extracted to a shared asset for reuse by other orchestrators.
+
+# =============================================================================
+# SPOT-CHECK FINDINGS (SC-001 through SC-005)
+# =============================================================================
+
+spot_check_results:
+  SC-001_inline_definition_duplication:
+    status: "FLAG"
+    severity: "MEDIUM"
+    finding: |
+      mmd_node_granularity section contains 80+ lines of inline guidance about MMD patterns.
+      This content is NOT duplicated in shared assets (no existing asset to duplicate from),
+      but it represents substantial inline guidance that could be extracted to a shared
+      guideline for reuse by other orchestrators.
+    location: "inputs.yml lines 74-164"
+    evidence:
+      - "80+ lines of detailed MMD pattern guidance"
+      - "Estimated token count: ~650 tokens for this section"
+      - "Not found in shared assets/definitions/"
+    classification: "INLINE_EXTRACTION_OPPORTUNITY (not duplication, but bloat)"
+    remediation: "Extract to modules/AgenticGuidance/assets/guidelines/mmd-node-granularity.yml"
+
+  SC-002_context_bloat:
+    status: "FLAG"
+    severity: "MEDIUM"
+    finding: |
+      inputs.yml is 1908 words (estimated 2480 tokens), exceeding the 2000-token recommendation.
+      Identified 15-20% reduction potential by extracting MMD guidance to shared asset.
+    context_measurements:
+      inputs_yml_words: 1908
+      inputs_yml_estimated_tokens: 2480
+      target_max_tokens: 2000
+      exceeds_target_by: 480
+      reduction_potential_percent: 18.75
+    evidence:
+      - "inputs.yml 1908 words × 1.3 = 2480 estimated tokens"
+      - "Target is 2000 tokens per recommendations"
+      - "Reduction potential: extract 90-line MMD guidance section"
+    remediation: "Extract mmd_node_granularity and condense loop_selection_guidance"
+
+  SC-003_broken_references:
+    status: "PASS"
+    severity: "NONE"
+    finding: "All file path references resolve correctly"
+    references_validated:
+      - path: "modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml"
+        status: "✓ OK"
+      - path: "modules/AgenticGuidance/assets/examples/orchestration/phase_templates/"
+        status: "✓ OK"
+      - path: "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+        status: "✓ OK"
+      - path: "modules/AgenticGuidance/assets/definitions/cli-commands.yml"
+        status: "✓ OK"
+      - path: "modules/AgenticGuidance/agents/planner/planner-build/inputs.yml"
+        status: "✓ OK"
+    all_paths_verified: true
+
+  SC-004_version_mismatch:
+    status: "CRITICAL_FLAG"
+    severity: "CRITICAL"
+    finding: "Version alignment failure - inputs.yml missing version field"
+    manifest_version: "2.0"
+    inputs_version: "NOT_DECLARED"
+    mismatch_detected: true
+    requires_fix: true
+    remediation: "Add version: \"2.0\" to inputs.yml after planning_policy section"
+
+  SC-005_deprecated_pattern_usage:
+    status: "PASS"
+    severity: "NONE"
+    finding: "No deprecated patterns detected"
+    patterns_checked:
+      - "definitions/strategy-*": "NOT_FOUND ✓"
+      - "success-criteria-teacher.yml": "NOT_FOUND ✓"
+      - "test-roles.yml": "NOT_FOUND ✓"
+      - "outputs.yml": "NOT_FOUND ✓"
+    all_patterns_current: true
+
+# =============================================================================
+# PASS CRITERIA EVALUATION (PC-001 through PC-007)
+# =============================================================================
+
+pass_criteria_assessment:
+  PC-001_no_duplicate_definitions:
+    criterion: "No duplicate definitions between inputs.yml and referenced assets"
+    status: "✓ PASS"
+    evidence: "No definitions >50 tokens found duplicated in shared assets"
+
+  PC-002_all_references_resolve:
+    criterion: "All file references resolve to existing files"
+    status: "✓ PASS"
+    evidence: "All 5 file path references verified as existing on 2026-01-23"
+
+  PC-003_no_circular_references:
+    criterion: "No circular or self-referencing includes"
+    status: "✓ PASS"
+    evidence: "No circular reference chains detected in reference graph"
+
+  PC-004_path_resolution_semantics:
+    criterion: "Context references follow documented path resolution semantics"
+    status: "✓ PASS"
+    evidence: "All paths follow repository-root-relative format documented in inputs.yml header"
+
+  PC-005_version_alignment:
+    criterion: "Version numbers aligned between manifest.yml and inputs.yml"
+    status: "✗ FAIL"
+    evidence: "manifest.yml version='2.0' but inputs.yml has no version field"
+    trigger: "NAT-004 (automatic NEEDS_ATTENTION)"
+
+  PC-006_no_large_inline_duplicates:
+    criterion: "No inline definitions duplicating asset content >50 tokens"
+    status: "? PARTIAL"
+    evidence: "MMD guidance not duplicated (no shared asset exists to duplicate), but large inline section exists"
+    note: "Classified as extraction opportunity rather than duplication"
+
+  PC-007_transitive_layer_loading:
+    criterion: "Layer references use transitive loading, not flat duplication"
+    status: "✓ PASS"
+    evidence: "Correctly references agent-loops.yml and other layer files"
+
+pass_criteria_result: "FAILS - PC-005 version alignment not met"
+conjunction_rule_applied: "YES - ALL criteria must be TRUE for PASS; failure of any triggers NEEDS_ATTENTION"
+
+# =============================================================================
+# NEEDS_ATTENTION TRIGGERS (NAT-001 through NAT-006)
+# =============================================================================
+
+needs_attention_triggers:
+  NAT-001_duplicate_definition:
+    triggered: false
+    severity: "N/A"
+
+  NAT-002_broken_file_reference:
+    triggered: false
+    severity: "N/A"
+
+  NAT-003_large_inline_definition:
+    triggered: true
+    severity: "MEDIUM"
+    description: "mmd_node_granularity section is 80+ lines (~650 tokens)"
+    condition_met: "Inline definition >100 tokens that could be extracted to shared asset"
+    evidence: "Lines 74-164 of inputs.yml contain substantial MMD pattern guidance"
+    action_required: "Extract to modules/AgenticGuidance/assets/guidelines/mmd-node-granularity.yml"
+
+  NAT-004_version_mismatch:
+    triggered: true
+    severity: "CRITICAL"
+    description: "inputs.yml version field missing (manifest.yml=2.0)"
+    condition_met: "manifest.yml version differs from inputs.yml version (missing)"
+    evidence: "grep -oP 'version:' manifest.yml returns 2.0; grep -oP 'version:' inputs.yml returns empty"
+    action_required: "Add version: \"2.0\" to inputs.yml"
+
+  NAT-005_deprecated_pattern:
+    triggered: false
+    severity: "N/A"
+
+  NAT-006_context_bloat:
+    triggered: true
+    severity: "MEDIUM"
+    description: "inputs.yml exceeds 2000-token recommendation with 15-20% reduction potential"
+    condition_met: ">30% content reduction potential identified (18.75% confirmed)"
+    evidence: "1908 words × 1.3 = 2480 tokens (exceeds 2000-token target by 480 tokens)"
+    action_required: "Extract MMD guidance and condense loop explanations"
+
+escalation_triggers: ["NAT-004"]
+requires_remediation: true
+
+# =============================================================================
+# QUANTITATIVE THRESHOLDS ANALYSIS
+# =============================================================================
+
+quantitative_analysis:
+  inline_definition_threshold:
+    max_tokens_before_extraction: 100
+    mmd_node_granularity_tokens: 650
+    exceeds_threshold: true
+    status: "EXTRACTION_RECOMMENDED"
+
+  context_reduction_analysis:
+    target_percent: 30
+    current_tokens: 2480
+    target_tokens: 2000
+    reduction_needed_tokens: 480
+    reduction_potential_percent: 18.75
+    note: "Below 30% threshold but still above 2000-token max. Reduction potential confirmed at 18.75%."
+
+  redundancy_detection:
+    trigger_locations: 2
+    redundancies_found: 0
+    status: "NO_DUPLICATES"
+
+  transitive_depth:
+    max_allowed_depth: 3
+    current_max_depth: 2
+    status: "ACCEPTABLE"
+
+  inputs_yml_size:
+    max_recommended_tokens: 2000
+    warning_threshold_tokens: 1500
+    current_tokens: 2480
+    status: "EXCEEDS_MAX_RECOMMENDED"
+
+# =============================================================================
+# REMEDIATION PLAN
+# =============================================================================
+
+remediation_actions:
+  critical:
+    - task_id: "CRITICAL-001"
+      action: "Add version field to inputs.yml"
+      location: "After planning_policy section (line ~30)"
+      change: |
+        Add this line:
+        version: "2.0"
+      impact_lines: "+1"
+      priority: "MUST_FIX"
+      estimated_effort_minutes: 2
+
+  high:
+    - task_id: "HIGH-001"
+      action: "Extract MMD node granularity guidance to shared asset"
+      description: "Create modules/AgenticGuidance/assets/guidelines/mmd-node-granularity.yml"
+      source_lines: "inputs.yml lines 74-164"
+      impact_lines: "-90 from inputs.yml, +90 in new asset"
+      benefits:
+        - "Reduces inputs.yml to ~1600 tokens (within target)"
+        - "Enables reuse by other orchestrators"
+        - "Improves asset modularity"
+      priority: "SHOULD_FIX"
+      estimated_effort_minutes: 15
+
+    - task_id: "HIGH-002"
+      action: "Condense loop_selection_guidance section"
+      description: "Replace verbose explanation with reference to agent-loops.yml"
+      source_lines: "inputs.yml lines 166-260 (approximate)"
+      impact_lines: "-30 from inputs.yml"
+      benefits:
+        - "Reduces redundancy with agent-loops.yml"
+        - "Improves consistency"
+        - "Delegates loop strategy details to canonical source"
+      priority: "SHOULD_FIX"
+      estimated_effort_minutes: 10
+
+  medium:
+    - task_id: "MEDIUM-001"
+      action: "Document planning_policy as reusable asset (future)"
+      description: "Consider extracting planning_policy as shared guidelines"
+      reason: "Not currently duplicated, but will be if more planning orchestrators added"
+      priority: "NICE_TO_HAVE"
+      estimated_effort_minutes: 20
+
+# =============================================================================
+# VALIDATION CHECKLIST
+# =============================================================================
+
+next_validation_steps:
+  after_critical_fix:
+    - "Verify inputs.yml syntax after adding version field"
+    - "Re-run version alignment check"
+    - "Confirm no new issues introduced"
+
+  after_high_priority_fixes:
+    - "Create mmd-node-granularity.yml with extracted content"
+    - "Update inputs.yml to reference new asset: 'reference: modules/AgenticGuidance/assets/guidelines/mmd-node-granularity.yml'"
+    - "Re-measure tokens: target is <2000"
+    - "Update loop_selection_guidance to be condensed reference"
+    - "Run all SC-01 through SC-05 checks again"
+
+  revalidation_criteria:
+    - "All PASS criteria (PC-001 through PC-007) must be TRUE"
+    - "No NEEDS_ATTENTION triggers (NAT-001 through NAT-006) must be TRUE"
+    - "inputs.yml estimated tokens must be <2000"
+    - "All file references must resolve"
+    - "Version fields must match"
+
+# =============================================================================
+# SELF-ASSESSMENT REFLECTION
+# =============================================================================
+
+reflection: |
+  This self-review demonstrates that the orchestration-planning agent holds itself to the
+  same rigorous standards it applies to other agents. Despite being a critical orchestration
+  component, the guidance has gaps that would cause other agents to be marked NEEDS_ATTENTION.
+
+  Key insight: The missing version field is a metadata oversight rather than a guidance issue,
+  but it still violates the strict criteria that prevent subtle inconsistencies from propagating.
+
+  The inline MMD guidance is valuable for orchestration-planning's operation, but its size
+  suggests it should be a shared asset for other orchestrators to reference. This creates
+  opportunity for improved modularity while reducing agent-specific context bloat.
+
+  By fixing these issues, orchestration-planning becomes a model of compliance with the
+  guidance quality standards it helps enforce.
+
+historical_context: |
+  This review applies lessons from FF-003 (260119 friction analysis) which revealed 78% flag
+  rate on agent self-review assessments. The strict criteria in self-review-criteria.yml were
+  created specifically to prevent lenient assessments. By applying these same criteria to my
+  own guidance, I demonstrate that the standards are universal, not selective.
+
+# =============================================================================
+# AUDIT TRAIL
+# =============================================================================
+
+audit_trail:
+  review_date: "2026-01-23"
+  reviewer: "orchestration-planning (self)"
+  methodology: "Spot-check protocol from spot-check-checklist.yml"
+  criteria_framework: "self-review-criteria.yml"
+  files_examined:
+    - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/manifest.yml"
+    - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml"
+    - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+  validation_timestamp: "2026-01-23T12:00:00Z"

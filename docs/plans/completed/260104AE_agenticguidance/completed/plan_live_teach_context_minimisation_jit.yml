@@ -1,0 +1,439 @@
+# Teaching Plan: Context Minimisation JIT CLI Enhancement
+# Purpose: Update context-minimisation guideline to prefer JIT CLI over file exploration
+# Source: Friction Analysis REC-003 (260122_friction_analysis.yml)
+# Type: TEACH
+
+# ========================================
+# ROOT-LEVEL PLAN METADATA
+# ========================================
+name: "teach-context-minimisation-jit"
+worktree_path: "/home/code/AgenticEngineering"
+branch: "main"
+status: "pending"
+priority: "medium"
+created: "2026-01-23"
+type: "TEACH"
+
+# File paths for plan management
+worktree: "/home/code/AgenticEngineering"
+plan_file: "docs/plans/live/260104AE_agenticguidance/live/plan_live_teach_context_minimisation_jit.yml"
+
+# ========================================
+# OBJECTIVE
+# ========================================
+objective: |
+  Update the context-minimisation.yml guideline to recommend JIT CLI commands as
+  the preferred method for context retrieval, rather than file exploration tools
+  (Glob/Grep/Read). This addresses friction analysis REC-003 which identified
+  that agents often use expensive file exploration when structured CLI commands
+  would provide the same information at lower token cost.
+
+# ========================================
+# CONTEXT
+# ========================================
+context: |
+  BACKGROUND:
+  The friction analysis (260122_friction_analysis.yml) identified that agents gather
+  context through CLI exploration patterns (ls, find, grep, Read) rather than
+  structured JIT context commands. While file exploration works, it is:
+  - Token-expensive: Reading entire files when only specific data is needed
+  - Inconsistent: Different agents explore differently, leading to variable results
+  - Slower: Multiple round-trips vs single CLI command
+
+  JIT CLI CONTEXT COMMANDS (now implemented):
+  - `agentic context bootstrap` - Primary Seed Context entrypoint
+  - `agentic context role <role-id>` - Role-specific process/guidelines
+  - `agentic context task` - Active task from Main-First plan
+  - `agentic context inputs` - JIT manifest of relevant files
+
+  GOAL:
+  Update context-minimisation.yml to establish JIT CLI as the FIRST choice for
+  context retrieval, with file exploration as a fallback when JIT commands don't
+  provide the needed information.
+
+  SOURCE RECOMMENDATION:
+  REC-003 from 260122_friction_analysis.yml recommended updating context guidance
+  to prefer structured CLI commands over ad-hoc file exploration.
+
+# ========================================
+# ROOT-LEVEL INPUTS
+# ========================================
+inputs:
+  - location: "modules/AgenticGuidance/assets/guidelines/context-minimisation.yml"
+    description: "Current context minimisation guideline (target for update)"
+
+  - location: "docs/plans/live/260104AE_agenticguidance/audit/260122_friction_analysis.yml"
+    description: "Friction analysis recommending JIT CLI preference (REC-003)"
+
+  - location: "docs/plans/live/261115CL_agenticcli/completed/plan_live_jit_context_entrypoints.yml"
+    description: "JIT context entrypoints implementation (completed)"
+
+  - location: "modules/AgenticGuidance/assets/definitions/guidance-artifacts.yml#fence"
+    description: "Definition of fence concept for guardrails"
+
+  - location: "modules/AgenticGuidance/assets/guidelines/plan-inputs.yml"
+    description: "Related guideline for plan input specification"
+
+# ========================================
+# PHASES AND TASKS
+# ========================================
+phases:
+  # ----------------------------------------
+  # PHASE 1: Add JIT CLI Rule to Context Minimisation
+  # ----------------------------------------
+  - name: "teach_phase_1"
+    description: "Add JIT CLI as preferred context retrieval method"
+    execution: sequential
+    estimated_effort: "30 minutes"
+    tasks:
+      - id: "cm_001"
+        name: "Add JIT CLI preference rule to context-minimisation.yml"
+        description: |
+          Add a new rule that establishes JIT CLI commands as the preferred method
+          for context retrieval, ahead of file exploration tools.
+        status: "pending"
+        target_files:
+          - "modules/AgenticGuidance/assets/guidelines/context-minimisation.yml"
+        guidance: |
+          Add a new rule to the rules section:
+
+          - rule: "Prefer JIT CLI over file exploration"
+            description: |
+              Use JIT CLI commands (agentic context *) as the FIRST choice for
+              gathering context. Fall back to file exploration (Glob/Grep/Read)
+              only when JIT commands don't provide the specific information needed.
+            justification: |
+              JIT CLI commands return structured, pre-curated context at minimal
+              token cost. File exploration requires multiple tool calls, reads
+              entire files, and forces the agent to parse and filter raw content.
+            characteristics:
+              - "Run `agentic context bootstrap` at session start for seed context"
+              - "Use `agentic context role <role-id>` for role-specific guidance"
+              - "Use `agentic context task` to get active plan task details"
+              - "Use `agentic context inputs` for JIT manifest of relevant files"
+              - "Only use Glob/Grep/Read when exploring unknown or unstructured content"
+
+          Place this rule AFTER "Need-to-know basis" and BEFORE "Precise file targeting"
+          to establish the retrieval hierarchy: JIT CLI > Precise Files > Exploration.
+        acceptance_criteria:
+          - "New rule 'Prefer JIT CLI over file exploration' exists in rules section"
+          - "Rule includes justification explaining token cost benefits"
+          - "Rule lists specific CLI commands with their purposes"
+          - "Rule clarifies when file exploration is still appropriate"
+        inputs:
+          - "modules/AgenticGuidance/assets/guidelines/context-minimisation.yml"
+
+  # ----------------------------------------
+  # PHASE 2: Add Token Cost Examples
+  # ----------------------------------------
+  - name: "teach_phase_2"
+    description: "Add examples comparing JIT CLI vs file exploration token costs"
+    execution: sequential
+    estimated_effort: "45 minutes"
+    tasks:
+      - id: "cm_002"
+        name: "Add JIT CLI examples section to context-minimisation.yml"
+        description: |
+          Add an examples section showing the token cost difference between
+          JIT CLI commands and equivalent file exploration approaches.
+        status: "pending"
+        target_files:
+          - "modules/AgenticGuidance/assets/guidelines/context-minimisation.yml"
+        guidance: |
+          Add a new section called "jit_cli_examples" after the "rlm_alternative" section:
+
+          jit_cli_examples:
+            description: |
+              Examples demonstrating when to use JIT CLI commands vs file exploration,
+              with approximate token cost comparisons.
+
+            examples:
+              - scenario: "Getting active task details"
+                jit_approach:
+                  command: "agentic context task"
+                  tokens: "~200-500 tokens"
+                  description: "Returns structured task object with id, description, status, inputs"
+                file_exploration_approach:
+                  steps:
+                    - "Glob: **/plan_live*.yml (find plan files)"
+                    - "Read: plan file (~500-2000 tokens)"
+                    - "Parse: extract current task from phases"
+                  tokens: "~1000-3000 tokens"
+                  description: "Multiple tool calls, reads entire plan, manual parsing"
+                recommendation: "Use JIT CLI - 5-10x more efficient"
+
+              - scenario: "Getting role process and guidelines"
+                jit_approach:
+                  command: "agentic context role build-python"
+                  tokens: "~300-800 tokens"
+                  description: "Returns role process.yml content and relevant guidelines"
+                file_exploration_approach:
+                  steps:
+                    - "Glob: **/build-python/process.yml"
+                    - "Read: process.yml (~200-500 tokens)"
+                    - "Glob: Read inputs.yml for guideline references"
+                    - "Read: Each referenced guideline file"
+                  tokens: "~1500-4000 tokens"
+                  description: "Multiple reads, manual reference resolution"
+                recommendation: "Use JIT CLI - consolidated output, fewer tool calls"
+
+              - scenario: "Bootstrap context for new session"
+                jit_approach:
+                  command: "agentic context bootstrap --role orchestration-build"
+                  tokens: "~500-1500 tokens"
+                  description: "Returns seed context: task, role, key guidelines, active plan summary"
+                file_exploration_approach:
+                  steps:
+                    - "Read: CLAUDE.md or README for orientation (~500 tokens)"
+                    - "Glob: Find plan folders, agent folders"
+                    - "Read: Multiple files to understand context"
+                  tokens: "~2000-5000+ tokens"
+                  description: "Ad-hoc exploration, inconsistent results"
+                recommendation: "Use JIT CLI - structured bootstrap, consistent context"
+
+              - scenario: "Finding specific implementation details"
+                jit_approach:
+                  command: "Not applicable - use file exploration"
+                  description: "JIT CLI provides curated context, not arbitrary code search"
+                file_exploration_approach:
+                  steps:
+                    - "Grep: Search for function/class name"
+                    - "Read: Relevant source files"
+                  tokens: "Variable based on search scope"
+                  description: "File exploration appropriate for unstructured search"
+                recommendation: "Use file exploration - JIT CLI not designed for arbitrary code search"
+
+        acceptance_criteria:
+          - "jit_cli_examples section exists with 4+ examples"
+          - "Each example shows JIT approach vs file exploration approach"
+          - "Token cost estimates provided for both approaches"
+          - "Includes example where file exploration IS appropriate"
+          - "Recommendations clarify when to use each approach"
+        inputs:
+          - "modules/AgenticGuidance/assets/guidelines/context-minimisation.yml"
+          - "docs/plans/live/261115CL_agenticcli/completed/plan_live_jit_context_entrypoints.yml"
+
+  # ----------------------------------------
+  # PHASE 3: Add FENCE for File Exploration
+  # ----------------------------------------
+  - name: "teach_phase_3"
+    description: "Add fence to discourage file exploration when JIT CLI is available"
+    execution: sequential
+    estimated_effort: "30 minutes"
+    tasks:
+      - id: "cm_003"
+        name: "Add file exploration fence to context-minimisation.yml"
+        description: |
+          Add a fence (guardrail) section that explicitly discourages file exploration
+          when JIT CLI commands would provide equivalent context.
+        status: "pending"
+        target_files:
+          - "modules/AgenticGuidance/assets/guidelines/context-minimisation.yml"
+        guidance: |
+          Add a new section called "fences" after the "anti_patterns" section:
+
+          fences:
+            - name: "File exploration when JIT CLI available"
+              trigger: |
+                Agent uses Glob/Grep/Read to gather standard context that JIT CLI
+                commands could provide (task details, role context, plan information).
+              risk: |
+                - Token waste: File exploration typically costs 3-10x more tokens
+                - Inconsistency: Ad-hoc exploration produces variable results
+                - Noise: Raw file content includes irrelevant details
+              guard: |
+                BEFORE using file exploration for context gathering, check if a JIT CLI
+                command provides the needed information:
+
+                Context Type           | JIT CLI Command
+                -----------------------|--------------------------------
+                Active task details    | agentic context task
+                Role process/guidance  | agentic context role <role-id>
+                Plan task inputs       | agentic context inputs
+                Session bootstrap      | agentic context bootstrap
+
+                Use file exploration ONLY when:
+                - Searching for arbitrary code patterns (Grep)
+                - Exploring unknown file structures (Glob)
+                - Reading specific implementation files not covered by JIT
+              validation: |
+                After completing context gathering, verify:
+                - Did I check JIT CLI first for standard context types?
+                - Is file exploration justified for this specific need?
+                - Would a JIT command have been more efficient?
+
+          Also add to the anti_patterns section:
+            - "Using Glob/Grep/Read for task details when `agentic context task` available"
+            - "Reading plan files directly when `agentic context bootstrap` provides summary"
+            - "Multiple file reads to assemble role context when `agentic context role` consolidates it"
+
+        acceptance_criteria:
+          - "fences section exists with file exploration fence"
+          - "Fence includes trigger, risk, guard, and validation sections"
+          - "Guard section includes context type to CLI command mapping"
+          - "Guard clarifies legitimate uses of file exploration"
+          - "Anti-patterns updated with 3 new JIT-related patterns"
+        inputs:
+          - "modules/AgenticGuidance/assets/guidelines/context-minimisation.yml"
+          - "modules/AgenticGuidance/assets/definitions/guidance-artifacts.yml#fence"
+
+  # ----------------------------------------
+  # PHASE 4: Update Related Guidelines
+  # ----------------------------------------
+  - name: "teach_phase_4"
+    description: "Update related guidelines that reference context gathering"
+    execution: sequential
+    estimated_effort: "30 minutes"
+    tasks:
+      - id: "cm_004"
+        name: "Update plan-inputs.yml to reference JIT CLI"
+        description: |
+          Update plan-inputs.yml to mention JIT CLI as a complement to
+          static plan inputs for dynamic context retrieval.
+        status: "pending"
+        target_files:
+          - "modules/AgenticGuidance/assets/guidelines/plan-inputs.yml"
+        guidance: |
+          Add a section about JIT CLI context retrieval:
+
+          JIT context retrieval:
+            When agents need context beyond static plan inputs, prefer JIT CLI commands
+            over ad-hoc file exploration:
+            - `agentic context task` - Get active task details from plan
+            - `agentic context inputs` - Get JIT manifest of relevant files
+            - `agentic context role <role-id>` - Get role-specific context
+
+            Static plan inputs define WHAT files are relevant.
+            JIT CLI commands retrieve the content efficiently at runtime.
+
+            See: modules/AgenticGuidance/assets/guidelines/context-minimisation.yml#jit_cli_examples
+
+        acceptance_criteria:
+          - "plan-inputs.yml includes JIT context retrieval section"
+          - "Section lists relevant JIT CLI commands"
+          - "Section clarifies relationship between static inputs and JIT retrieval"
+          - "Cross-reference to context-minimisation.yml included"
+        inputs:
+          - "modules/AgenticGuidance/assets/guidelines/plan-inputs.yml"
+          - "modules/AgenticGuidance/assets/guidelines/context-minimisation.yml"
+
+      - id: "cm_005"
+        name: "Add related_guidelines entry to context-minimisation.yml"
+        description: |
+          Add cross-reference to JIT context entrypoints documentation in the
+          related_guidelines section.
+        status: "pending"
+        target_files:
+          - "modules/AgenticGuidance/assets/guidelines/context-minimisation.yml"
+        guidance: |
+          Add to the related_guidelines section:
+
+            - location: "modules/AgenticCLI/docs/context-commands.md"
+              description: "JIT CLI context command reference and usage"
+
+          (If the CLI docs file doesn't exist, reference the CLI commands definition instead)
+
+        acceptance_criteria:
+          - "related_guidelines includes JIT CLI documentation reference"
+          - "Reference path is accurate"
+        inputs:
+          - "modules/AgenticGuidance/assets/guidelines/context-minimisation.yml"
+
+  # ----------------------------------------
+  # PHASE 5: Verification
+  # ----------------------------------------
+  - name: "teach_phase_5"
+    description: "Verify guideline updates are consistent and complete"
+    execution: sequential
+    estimated_effort: "15 minutes"
+    tasks:
+      - id: "cm_006"
+        name: "Verify context-minimisation.yml consistency"
+        description: |
+          Validate that all updates to context-minimisation.yml are internally
+          consistent and properly formatted.
+        status: "pending"
+        target_files:
+          - "modules/AgenticGuidance/assets/guidelines/context-minimisation.yml"
+        guidance: |
+          Verification checklist:
+          1. YAML syntax is valid (no parse errors)
+          2. New rule fits logically in rules section hierarchy
+          3. jit_cli_examples section provides clear comparisons
+          4. fences section follows fence definition format
+          5. Anti-patterns are actionable and specific
+          6. Cross-references are accurate
+
+          Run: python -c "import yaml; yaml.safe_load(open('path/to/file.yml'))"
+        acceptance_criteria:
+          - "YAML parses without errors"
+          - "New content integrates smoothly with existing structure"
+          - "No duplicate or conflicting guidance"
+        inputs:
+          - "modules/AgenticGuidance/assets/guidelines/context-minimisation.yml"
+
+      - id: "cm_007"
+        name: "Verify cross-references are accurate"
+        description: |
+          Confirm all cross-references between context-minimisation.yml and
+          related files are accurate and bidirectional where appropriate.
+        status: "pending"
+        target_files:
+          - "modules/AgenticGuidance/assets/guidelines/context-minimisation.yml"
+          - "modules/AgenticGuidance/assets/guidelines/plan-inputs.yml"
+        guidance: |
+          Check:
+          1. context-minimisation.yml references to JIT CLI docs exist
+          2. plan-inputs.yml reference to context-minimisation.yml is accurate
+          3. File paths in examples match actual CLI command structure
+        acceptance_criteria:
+          - "All referenced files exist"
+          - "Cross-references are bidirectional where appropriate"
+          - "CLI command names match implemented commands"
+        inputs:
+          - "modules/AgenticGuidance/assets/guidelines/context-minimisation.yml"
+          - "modules/AgenticGuidance/assets/guidelines/plan-inputs.yml"
+
+# ========================================
+# SUCCESS CRITERIA
+# ========================================
+success_criteria:
+  - "context-minimisation.yml contains 'Prefer JIT CLI over file exploration' rule"
+  - "jit_cli_examples section provides 4+ comparison examples with token estimates"
+  - "fences section includes file exploration guardrail with trigger/risk/guard/validation"
+  - "anti_patterns section includes 3+ JIT-related anti-patterns"
+  - "plan-inputs.yml references JIT CLI for dynamic context retrieval"
+  - "All cross-references are accurate and files parse without errors"
+  - "Guidance is actionable - agents can follow the hierarchy: JIT CLI > Precise Files > Exploration"
+
+# ========================================
+# NOTES
+# ========================================
+notes: |
+  IMPLEMENTATION APPROACH:
+  This is a TEACH plan - it updates guidance documentation, not code.
+  All changes are to YAML guideline files in modules/AgenticGuidance/.
+
+  DEPENDENCIES:
+  - JIT Context Entrypoints must be implemented (confirmed completed per
+    plan_live_jit_context_entrypoints.yml)
+  - Context CLI commands must be functional:
+    - agentic context bootstrap
+    - agentic context role
+    - agentic context task
+    - agentic context inputs
+
+  TOKEN ESTIMATES:
+  The token estimates in examples are approximate and based on typical file sizes.
+  Actual costs vary based on plan complexity and role definition size.
+
+  FENCE DEFINITION REFERENCE:
+  From guidance-artifacts.yml#fence:
+  "Guardrails that prevent wrong work:
+   - Success criteria that are measurable
+   - Validation/audit steps appropriate to risk
+   - Constraints that remove ambiguity"
+
+  RELATIONSHIP TO FRICTION ANALYSIS:
+  This plan addresses REC-003 from 260122_friction_analysis.yml which recommended
+  updating context guidance to prefer structured CLI commands over ad-hoc exploration.

@@ -249,3 +249,107 @@ class TestWorktreeStatus:
             assert "error" in combined or "project" in combined
         finally:
             os.chdir(original_cwd)
+
+
+class TestStubTemplates:
+    """Tests for stub template generation and detection (FF-007)."""
+
+    def test_stub_templates_have_header(self, temp_dir):
+        """Test that generated stub files contain template header."""
+        from agenticcli.commands.worktree import STUB_TEMPLATE_HEADER, create_planning_folder
+
+        plan_path = temp_dir / "test_plan_stubs"
+        create_planning_folder(plan_path)
+
+        live_dir = plan_path / "live"
+        for filename in ["plan_live_teach.yml", "plan_live_test.yml", "plan_live_audit_clean.yml"]:
+            content = (live_dir / filename).read_text()
+            assert "TEMPLATE FILE - ACTION REQUIRED" in content
+            assert "OPTIONS:" in content
+            assert "POPULATE:" in content
+            assert "DELETE:" in content
+
+    def test_stub_templates_have_status_field(self, temp_dir):
+        """Test that generated stub files contain _template_status: stub field."""
+        from agenticcli.commands.worktree import create_planning_folder
+
+        plan_path = temp_dir / "test_plan_stubs"
+        create_planning_folder(plan_path)
+
+        live_dir = plan_path / "live"
+        for filename in ["plan_live_teach.yml", "plan_live_test.yml", "plan_live_audit_clean.yml"]:
+            content = (live_dir / filename).read_text()
+            assert "_template_status: stub" in content
+
+    def test_stub_templates_have_todo_markers(self, temp_dir):
+        """Test that generated stub files contain TODO markers with guidance."""
+        from agenticcli.commands.worktree import create_planning_folder
+
+        plan_path = temp_dir / "test_plan_stubs"
+        create_planning_folder(plan_path)
+
+        live_dir = plan_path / "live"
+        for filename in ["plan_live_teach.yml", "plan_live_test.yml", "plan_live_audit_clean.yml"]:
+            content = (live_dir / filename).read_text()
+            assert "TODO:" in content
+
+
+class TestIsStubTemplate:
+    """Tests for is_stub_template() detection function."""
+
+    def test_detects_template_status_stub(self):
+        """Test detection via _template_status: stub field."""
+        from agenticcli.commands.plan import is_stub_template
+
+        content = {
+            "_template_status": "stub",
+            "plan": {"name": "Test", "phases": []},
+        }
+        assert is_stub_template(content) is True
+
+    def test_detects_legacy_empty_stub(self):
+        """Test detection of legacy empty stubs with TODO in objective."""
+        from agenticcli.commands.plan import is_stub_template
+
+        content = {
+            "plan": {
+                "name": "Test",
+                "objective": "TODO: Describe the objective",
+                "phases": [],
+            }
+        }
+        assert is_stub_template(content) is True
+
+    def test_rejects_active_plan(self):
+        """Test that active plans are not flagged as stubs."""
+        from agenticcli.commands.plan import is_stub_template
+
+        content = {
+            "_template_status": "active",
+            "plan": {
+                "name": "Real Plan",
+                "objective": "Implement user authentication",
+                "phases": [{"name": "Phase 1", "tasks": []}],
+            },
+        }
+        assert is_stub_template(content) is False
+
+    def test_rejects_populated_plan(self):
+        """Test that populated plans without _template_status are not flagged."""
+        from agenticcli.commands.plan import is_stub_template
+
+        content = {
+            "plan": {
+                "name": "Real Plan",
+                "objective": "Implement something useful",
+                "phases": [{"name": "Phase 1", "tasks": []}],
+            }
+        }
+        assert is_stub_template(content) is False
+
+    def test_handles_empty_content(self):
+        """Test handling of empty/None content."""
+        from agenticcli.commands.plan import is_stub_template
+
+        assert is_stub_template(None) is False
+        assert is_stub_template({}) is False

@@ -1,0 +1,233 @@
+# Plan: Minor Audit Remediation (3 Issues)
+# Plan ID: 260104AE_agenticguidance
+# Created: 2026-01-23 (Iteration 2)
+# Agent: orchestration-planning
+# Type: TEACH
+#
+# PURPOSE:
+# Remediate 3 minor issues identified in self-review audits from Iteration 1.
+# These are marginal violations of strict criteria, not functional problems.
+
+name: "audit-remediation-minor"
+worktree_path: "/home/code/AgenticEngineering"
+branch: "main"
+status: "completed"
+priority: "high"
+created: "2026-01-23"
+plan_file: "docs/plans/live/260104AE_agenticguidance/live/plan_live_audit_remediation_minor.yml"
+
+# ========================================
+# CONTEXT
+# ========================================
+context: |
+  ORIGIN: Self-review audits from 2026-01-23 (Ralph Loop Iteration 1)
+
+  Three agents were flagged during self-review:
+  1. planner-audit: Context bloat (2008 tokens vs 2000 limit) - MEDIUM
+  2. orchestration-planning: Missing version field in inputs.yml - CRITICAL (NAT-004)
+  3. test-user-simulator: JIT CLI bootstrap not first step - CRITICAL
+
+  TOTAL ESTIMATED EFFORT: 30-60 minutes
+
+  REMEDIATION SCOPE:
+  - Quick fixes to inputs.yml and process.yml files
+  - No architectural changes required
+  - Verification via re-running self-review criteria
+
+# ========================================
+# PHASES
+# ========================================
+phases:
+
+  # ========================================
+  # PHASE 1: ORCHESTRATION-PLANNING FIX
+  # Priority: CRITICAL (NAT-004 trigger)
+  # ========================================
+  - name: "Phase 1 - Fix orchestration-planning version field"
+    priority: "critical"
+    execution: "sequential"
+    description: |
+      Add missing version field to orchestration-planning/inputs.yml.
+      This is a 1-line fix that resolves NAT-004 trigger.
+
+    tasks:
+      - id: "OPF-001"
+        name: "Add version field to orchestration-planning/inputs.yml"
+        status: "completed"
+        completion_notes: "Added version: \"2.0\" after PATH RESOLUTION SEMANTICS header block at line 12"
+        agent: "teacher-update-guidance"
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml"
+        guidance: |
+          Add version field to the header section of inputs.yml.
+
+          ADD TO TOP OF FILE (after any existing header):
+          ```yaml
+          version: "2.0"
+          ```
+
+          This resolves NAT-004 (missing version field) trigger.
+        acceptance_criteria:
+          - "Version field present in inputs.yml"
+          - "File parses as valid YAML"
+
+  # ========================================
+  # PHASE 2: TEST-USER-SIMULATOR FIX
+  # Priority: CRITICAL (JIT CLI positioning)
+  # ========================================
+  - name: "Phase 2 - Fix test-user-simulator JIT CLI ordering"
+    priority: "critical"
+    execution: "sequential"
+    description: |
+      Ensure JIT CLI bootstrap is the FIRST step in test-user-simulator/process.yml.
+      This enforces the orchestrator contract for agent initialization.
+
+    tasks:
+      - id: "TUS-001"
+        name: "Reorder test-user-simulator/process.yml steps"
+        status: "completed"
+        completion_notes: "JIT CLI Bootstrap already Step 1 (first item in steps array at line 93). No changes needed - already compliant."
+        agent: "teacher-update-guidance"
+        target_files:
+          - "modules/AgenticGuidance/agents/test/test-user-simulator/process.yml"
+        guidance: |
+          Verify JIT CLI bootstrap is Step 1 in the process.
+
+          REQUIRED FIRST STEP:
+          ```yaml
+          steps:
+            - step: 1
+              name: "JIT CLI Bootstrap"
+              action: "Run `agentic --test-user-simulator` to load context"
+              critical: true
+              description: "MUST be first action - establishes agent context via CLI"
+          ```
+
+          If JIT CLI is not Step 1, reorder the steps to make it first.
+          All other steps should be renumbered accordingly.
+        acceptance_criteria:
+          - "JIT CLI bootstrap is Step 1"
+          - "All steps properly numbered"
+          - "File parses as valid YAML"
+
+  # ========================================
+  # PHASE 3: PLANNER-AUDIT FIX
+  # Priority: MEDIUM (context bloat)
+  # ========================================
+  - name: "Phase 3 - Fix planner-audit context bloat"
+    priority: "medium"
+    execution: "sequential"
+    description: |
+      Reduce context size by 8+ tokens to bring planner-audit under the 2000 token limit.
+
+    tasks:
+      - id: "PAF-001"
+        name: "Reduce planner-audit context size"
+        status: "completed"
+        completion_notes: "Reduced from ~2009 tokens to ~1760 tokens by condensing goal, JIT CLI bootstrap, required inputs, and inventory steps. All essential process steps preserved."
+        agent: "teacher-update-guidance"
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-audit/process.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-audit/inputs.yml"
+        guidance: |
+          Current context: 2008 tokens (8 over limit)
+          Target: < 2000 tokens
+
+          STRATEGIES (choose one or combine):
+          1. Remove redundant description text
+          2. Consolidate similar input references
+          3. Use terser language for guidance sections
+          4. Remove any commented-out sections
+          5. Reference external guidelines instead of inline text
+
+          DO NOT reduce essential process steps or input definitions.
+          Focus on verbose descriptions that can be shortened.
+
+          VERIFICATION:
+          After edit, count approximate tokens (words * 1.3).
+        acceptance_criteria:
+          - "Combined context < 2000 tokens"
+          - "All essential process steps preserved"
+          - "File parses as valid YAML"
+
+  # ========================================
+  # PHASE 4: VALIDATION
+  # ========================================
+  - name: "Phase 4 - Verify fixes"
+    priority: "high"
+    execution: "sequential"
+    description: |
+      Verify all three fixes are applied correctly and agents now pass self-review.
+
+    tasks:
+      - id: "VAL-001"
+        name: "Verify orchestration-planning has version field"
+        status: "completed"
+        completion_notes: "Verified: version: \"2.0\" present at line 12 of inputs.yml. No NAT-004 trigger."
+        agent: "test-audit"
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml"
+        guidance: |
+          Verify inputs.yml contains version field.
+          Expected: version: "2.0" (or similar)
+        acceptance_criteria:
+          - "Version field present"
+          - "No NAT-004 trigger"
+
+      - id: "VAL-002"
+        name: "Verify test-user-simulator JIT CLI is Step 1"
+        status: "completed"
+        completion_notes: "Verified: JIT CLI Bootstrap is first item in steps array (line 93). Contains 'agentic context bootstrap --role test-user-simulator'."
+        agent: "test-audit"
+        target_files:
+          - "modules/AgenticGuidance/agents/test/test-user-simulator/process.yml"
+        guidance: |
+          Verify JIT CLI bootstrap is the first step in process.yml.
+          Expected: Step 1 contains "agentic --test-user-simulator" or similar JIT CLI reference
+        acceptance_criteria:
+          - "JIT CLI is Step 1"
+          - "Step properly documented"
+
+      - id: "VAL-003"
+        name: "Verify planner-audit context under limit"
+        status: "completed"
+        completion_notes: "Verified: Combined context is 1354 words * 1.3 = ~1760 tokens (under 2000 limit). Reduced from 1545 words (~2009 tokens)."
+        agent: "test-audit"
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-audit/process.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-audit/inputs.yml"
+        guidance: |
+          Count approximate tokens in both files combined.
+          Expected: < 2000 tokens total
+
+          Token estimation: word_count * 1.3
+        acceptance_criteria:
+          - "Combined context < 2000 tokens"
+          - "Essential content preserved"
+
+# ========================================
+# SUCCESS CRITERIA
+# ========================================
+success_criteria:
+  - "orchestration-planning passes NAT-004 check"
+  - "test-user-simulator has JIT CLI as Step 1"
+  - "planner-audit context under 2000 tokens"
+  - "All three agents would pass self-review criteria"
+
+# ========================================
+# LOOP STRUCTURE
+# ========================================
+loop_structure:
+  type: "guidance-self-review-loop"
+  trigger: "Any fix fails validation"
+  exit_criteria:
+    success: "All 3 agents pass validation checks"
+    max_iterations: 3
+    escalation: "Present remaining issues to user"
+  participants:
+    - agent: "teacher-update-guidance"
+      role: "Apply fixes"
+    - agent: "test-audit"
+      role: "Verify fixes"
+
+estimated_effort: "30-60 minutes"

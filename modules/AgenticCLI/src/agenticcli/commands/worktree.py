@@ -9,6 +9,22 @@ from datetime import datetime
 from pathlib import Path
 
 
+# Template header for stub files - clearly marks them as requiring action
+STUB_TEMPLATE_HEADER = """# ============================================================================
+# TEMPLATE FILE - ACTION REQUIRED
+# ============================================================================
+# This is a scaffold template created by `agentic plan init`.
+#
+# OPTIONS:
+#   1. POPULATE: Replace TODO sections with actual plan content
+#   2. DELETE: Remove this file if not needed for your plan
+#
+# A file with _template_status: stub will trigger validation warnings.
+# Change to _template_status: active once populated.
+# ============================================================================
+"""
+
+
 def handle(args, ctx=None):
     """Route worktree subcommands.
 
@@ -92,59 +108,130 @@ def create_planning_folder(plan_path: Path):
     live_dir.mkdir(parents=True, exist_ok=True)
     completed_dir.mkdir(parents=True, exist_ok=True)
 
-    # Create placeholder files
+    # Create placeholder files with clear template markers
+    created_date = datetime.now().strftime("%Y-%m-%d")
+    current_worktree = str(Path.cwd())
+
     plan_files = {
-        "plan_live_teach.yml": f"""# Implementation Plan
-# Created: {datetime.now().strftime("%Y-%m-%d")}
+        "plan_live_teach.yml": f"""{STUB_TEMPLATE_HEADER}
+_template_status: stub  # Change to 'active' when populated
+
+# Teaching/Implementation Plan
+# Created: {created_date}
+# Purpose: Define implementation phases for feature development or guidance updates
 
 plan:
-  name: "Implementation Plan"
-  worktree: "{Path.cwd()}"
-  branch: ""
+  name: "TODO: Plan Name (e.g., 'Add User Authentication', 'Update Context Guidelines')"
+  worktree: "{current_worktree}"
+  branch: ""  # TODO: Set branch name
   status: planning
-  created: "{datetime.now().strftime("%Y-%m-%d")}"
+  created: "{created_date}"
 
   objective: |
-    TODO: Describe the objective
+    TODO: Describe what this plan aims to accomplish.
+    Example: "Implement user authentication with JWT tokens and session management."
 
   scope:
-    includes: []
-    excludes: []
+    includes:
+      # TODO: List files/modules in scope
+      # - "src/auth/"
+      # - "tests/auth/"
+    excludes:
+      # TODO: List files/modules explicitly out of scope
+      # - "src/legacy/"
 
-  phases: []
+  phases:
+    # TODO: Define implementation phases
+    # Example:
+    # - name: "Phase 1 - Database Schema"
+    #   id: "phase_01"
+    #   status: pending
+    #   tasks:
+    #     - id: "phase_01_001"
+    #       name: "Create user table migration"
+    #       status: pending
+    #       target_files:
+    #         - "migrations/001_users.sql"
+    []
 """,
-        "plan_live_test.yml": f"""# Test Plan
-# Created: {datetime.now().strftime("%Y-%m-%d")}
+        "plan_live_test.yml": f"""{STUB_TEMPLATE_HEADER}
+_template_status: stub  # Change to 'active' when populated
+
+# Test Plan
+# Created: {created_date}
+# Purpose: Define testing phases and validation strategy
 
 plan:
-  name: "Test Phases"
-  worktree: "{Path.cwd()}"
-  branch: ""
+  name: "TODO: Test Plan Name (e.g., 'Auth Module Tests', 'API Integration Tests')"
+  worktree: "{current_worktree}"
+  branch: ""  # TODO: Set branch name
   status: pending
 
-  phases: []
+  objective: |
+    TODO: Describe testing goals.
+    Example: "Validate authentication flow with unit and integration tests."
+
+  phases:
+    # TODO: Define test phases
+    # Example:
+    # - name: "Unit Tests"
+    #   id: "test_unit"
+    #   status: pending
+    #   tasks:
+    #     - id: "test_unit_001"
+    #       name: "Test login validation"
+    #       status: pending
+    []
 
   test_strategy:
     - type: "unit"
-      scope: "Individual functions"
+      scope: "TODO: Define unit test scope"
       location: "tests/unit/"
+      # TODO: Add specific test targets
 
     - type: "integration"
-      scope: "Command execution"
+      scope: "TODO: Define integration test scope"
       location: "tests/integration/"
+      # TODO: Add specific test targets
 """,
-        "plan_live_audit_clean.yml": """# Audit and Cleanup Plan
-# Created for cleanup phases
+        "plan_live_audit_clean.yml": f"""{STUB_TEMPLATE_HEADER}
+_template_status: stub  # Change to 'active' when populated
+
+# Audit and Cleanup Plan
+# Created: {created_date}
+# Purpose: Define audit checks and cleanup tasks for post-implementation
 
 plan:
-  name: "Audit and Cleanup"
+  name: "TODO: Audit Plan Name (e.g., 'Post-Auth Cleanup', 'Code Quality Audit')"
   status: pending
 
-  phases: []
+  objective: |
+    TODO: Describe audit/cleanup goals.
+    Example: "Remove deprecated auth code and verify no unused imports."
 
-  cleanup_targets: []
+  phases:
+    # TODO: Define audit/cleanup phases
+    # Example:
+    # - name: "Code Audit"
+    #   id: "audit_01"
+    #   status: pending
+    #   tasks:
+    #     - id: "audit_01_001"
+    #       name: "Check for unused imports"
+    #       status: pending
+    []
 
-  documentation: []
+  cleanup_targets:
+    # TODO: List files/code to be cleaned up
+    # - "src/old_auth.py"
+    # - "tests/deprecated/"
+    []
+
+  documentation:
+    # TODO: List documentation to update
+    # - "README.md"
+    # - "docs/auth.md"
+    []
 """,
     }
 

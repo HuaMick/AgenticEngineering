@@ -1,0 +1,229 @@
+# Spot-Check Checklist Definition
+# Focused checks for validating self-review PASS assessments
+# Source: Friction Analysis FF-003 (78% flag rate on spot-checks, 14+ iterations)
+#
+# PURPOSE:
+# Spot-checks prevent lenient initial assessments from propagating.
+# These checks focus on the most commonly missed issues based on historical data.
+#
+# Reference: modules/AgenticGuidance/assets/definitions/agent-loops.yml#agent-self-review.spot_check_phase
+
+# =============================================================================
+# HIGH-FREQUENCY ISSUES (ordered by historical frequency)
+# =============================================================================
+high_frequency_issues:
+  description: |
+    These checks target issues that were most frequently missed in FF-003.
+    Ordered by historical frequency of occurrence.
+
+  checks:
+    - id: "SC-001"
+      name: "Inline Definition Duplication"
+      frequency_percent: 35
+      description: |
+        Inline definitions in inputs.yml that duplicate content from shared assets.
+        This was the #1 cause of spot-check flags in FF-003.
+      check_procedure: |
+        1. Identify inline definitions in inputs.yml (look for multi-line content)
+        2. Estimate token count (words * 1.3)
+        3. Search for matching content in assets/definitions/ and assets/guidelines/
+        4. Flag if any definition >50 tokens matches asset content
+      validation_command: |
+        # Quick check for large inline blocks
+        grep -n '|$' {agent}/inputs.yml | while read line; do
+          linenum=$(echo "$line" | cut -d: -f1)
+          # Check if block is large (>5 lines typically = >50 tokens)
+          echo "Check line $linenum for inline definition size"
+        done
+      flag_if: "Any definition >50 tokens matches asset content"
+      remediation: "Replace inline definition with reference to canonical asset"
+
+    - id: "SC-002"
+      name: "Context Bloat"
+      frequency_percent: 25
+      description: |
+        inputs.yml files with excessive content that could be reduced by >30%.
+        Often caused by verbose inline definitions or redundant descriptions.
+      check_procedure: |
+        1. Estimate token count of inputs.yml (words * 1.3)
+        2. Identify content that could be externalized or reduced
+        3. Calculate reduction potential as percentage
+        4. Flag if reduction potential >30%
+      validation_command: |
+        # Estimate token count
+        wc -w {agent}/inputs.yml | awk '{print "Estimated tokens: " int($1 * 1.3)}'
+        # Warning threshold: 1500 tokens
+        # Max recommended: 2000 tokens
+      flag_if: "Reduction potential >30% OR tokens >2000"
+      remediation: "Extract inline definitions to shared assets, use layer references"
+
+    - id: "SC-003"
+      name: "Broken References"
+      frequency_percent: 20
+      description: |
+        File path references that don't resolve to existing files.
+        Often caused by file moves, renames, or typos.
+      check_procedure: |
+        1. Extract all path references from inputs.yml
+        2. Check each path resolves to existing file
+        3. Flag any path that doesn't resolve
+      validation_command: |
+        grep -oP 'path:\s*["'\'']?\K[^"'\''#\n]+' {agent}/inputs.yml | while read ref; do
+          [ -f "modules/AgenticGuidance/$ref" ] || [ -f "$ref" ] || echo "MISSING: $ref"
+        done
+      flag_if: "Any reference target does not exist"
+      remediation: "Update path to correct location or remove stale reference"
+
+    - id: "SC-004"
+      name: "Version Mismatch"
+      frequency_percent: 12
+      description: |
+        Version numbers differ between manifest.yml and inputs.yml.
+        Indicates files were updated independently without synchronization.
+      check_procedure: |
+        1. Extract version from manifest.yml
+        2. Extract version from inputs.yml
+        3. Compare versions
+        4. Flag if versions differ
+      validation_command: |
+        manifest_ver=$(grep -oP 'version:\s*["'\'']?\K[^"'\''\n]+' {agent}/manifest.yml | head -1)
+        inputs_ver=$(grep -oP 'version:\s*["'\'']?\K[^"'\''\n]+' {agent}/inputs.yml | head -1)
+        [ "$manifest_ver" = "$inputs_ver" ] && echo "MATCH" || echo "MISMATCH: manifest=$manifest_ver inputs=$inputs_ver"
+      flag_if: "Versions do not match"
+      remediation: "Align versions across all agent files"
+
+    - id: "SC-005"
+      name: "Deprecated Pattern Usage"
+      frequency_percent: 8
+      description: |
+        Usage of patterns marked deprecated in asset files without migration note.
+        Often happens when assets are updated but agent files aren't.
+      check_procedure: |
+        1. Search inputs.yml for references to deprecated files/patterns
+        2. Check for patterns in definitions/ that have been moved to guidelines/
+        3. Look for references to deleted or consolidated files
+        4. Flag if deprecated pattern found without migration TODO
+      deprecated_patterns:
+        - "definitions/strategy-*" -> "guidelines/strategy-*"
+        - "definitions/test-roles.yml" -> "definitions/test-builder-role.yml + test-runner-role.yml"
+        - "success-criteria-teacher.yml" -> "success-criteria.yml"
+        - "outputs.yml" -> "outputs defined in process.yml"
+      flag_if: "Any deprecated pattern found without migration note"
+      remediation: "Migrate to current pattern or add explicit migration TODO"
+
+    - id: "SC-006"
+      name: "Plan File Creation Validation"
+      frequency_percent: 100
+      description: |
+        Validates that NEEDS_ATTENTION results include a plan file.
+        This is a 100% check (not sampled) because missing plan files
+        completely break the loop iteration.
+        Source: SRLE-006 - Self-Review Loop Enforcement Plan
+      check_procedure: |
+        1. Get self-review result status
+        2. If NEEDS_ATTENTION, check plan_file_path field
+        3. If plan_file_path provided, verify file exists
+        4. Flag if NEEDS_ATTENTION but no plan file
+      validation_command: |
+        # Check if plan file exists for NEEDS_ATTENTION result
+        if [ "$status" = "NEEDS_ATTENTION" ]; then
+          if [ -z "$plan_file_path" ]; then
+            echo "MISSING PLAN FILE PATH: plan_file_path is null/empty"
+          elif [ ! -f "$plan_file_path" ]; then
+            echo "MISSING PLAN FILE: $plan_file_path does not exist"
+          else
+            echo "OK: Plan file exists at $plan_file_path"
+          fi
+        fi
+      flag_if: "status == NEEDS_ATTENTION AND (plan_file_path is null OR file does not exist)"
+      remediation: "Create plan file at {plan_folder}/live/plan_guidance_{agent_name}_{issue_type}.yml before marking self-review complete"
+      severity: "CRITICAL"
+      note: |
+        This check is ALWAYS performed (100% frequency) because:
+        - Missing plan files prevent loop iteration
+        - This is the root cause of FF-003 pattern where agents reported issues but loop stalled
+        - Reference: guidance-self-review-loop.fence_plan_creation
+
+# =============================================================================
+# SPOT-CHECK PROTOCOL
+# =============================================================================
+protocol:
+  sample_selection:
+    formula: "max(2, ceil(pass_count * 0.2))"
+    description: |
+      Select 20% of PASS agents for spot-check, minimum 2 agents.
+      Random selection to avoid bias.
+    example: |
+      15 agents pass initial review → sample 3 for spot-check
+      5 agents pass initial review → sample 2 for spot-check
+
+  execution:
+    per_agent: |
+      For each sampled agent, run ALL checks in high_frequency_issues.
+      Record findings for each check (PASS/FLAG with evidence).
+    aggregation: |
+      Calculate flag rate: (agents with ANY flag) / (total sampled)
+      If flag_rate > 50%: trigger re-review of ALL initial PASS agents
+
+  escalation:
+    threshold: 50
+    description: |
+      If >50% of sampled agents are flagged, the initial review was too lenient.
+      All PASS assessments must be re-reviewed with stricter criteria.
+    action: |
+      1. Mark all initial PASS as NEEDS_REVIEW
+      2. Apply self-review-criteria.yml with quantitative thresholds
+      3. Re-assess each agent focusing on high-frequency issues
+      4. Run spot-check again on new PASS set
+      5. If still >50% after 3 rounds, escalate to human
+
+  max_rounds: 3
+  on_max_rounds: "Escalate remaining issues to human reviewer with findings report"
+
+# =============================================================================
+# REPORTING FORMAT
+# =============================================================================
+reporting:
+  per_agent_format:
+    agent_name: "string"
+    spot_check_result: "PASS | FLAG"
+    checks_performed: 5
+    flags_raised:
+      - check_id: "SC-001"
+        evidence: "string - specific finding"
+        remediation: "string - recommended fix"
+    timestamp: "ISO datetime"
+
+  aggregate_format:
+    sample_size: "integer"
+    pass_count: "integer"
+    flag_count: "integer"
+    flag_rate_percent: "float"
+    threshold_exceeded: "boolean"
+    common_issues:
+      - check_id: "string"
+        occurrence_count: "integer"
+    recommendation: "PROCEED | RE_REVIEW | ESCALATE"
+
+# =============================================================================
+# HISTORICAL CONTEXT
+# =============================================================================
+historical_context:
+  source: "docs/plans/live/260104AE_agenticguidance/audit/260119_session_friction_analysis.yml"
+  finding_id: "FF-003"
+  summary: |
+    In the 260119 session, spot-checks revealed that 78% of initial PASS
+    assessments were too lenient:
+    - 9 agents passed initial review
+    - 7 were flagged on spot-check (78% flag rate)
+    - 14+ iterations required to achieve compliance
+    - Root cause: Imprecise criteria and subjective assessment
+
+    This checklist targets the specific issues that were most commonly missed:
+    - SC-001 (35%): Inline duplication
+    - SC-002 (25%): Context bloat
+    - SC-003 (20%): Broken references
+    - SC-004 (12%): Version mismatch
+    - SC-005 (8%): Deprecated patterns
+
+    Together these account for 100% of the issues found in FF-003.

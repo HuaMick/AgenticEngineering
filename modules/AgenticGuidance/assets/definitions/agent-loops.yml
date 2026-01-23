@@ -308,9 +308,10 @@ loop_types:
       - Guidance completeness needs validation via blind simulation
       - External perspective is needed (agent cannot validate itself)
       - High-confidence verification required before deployment
-    maximum_iterations: 2
+    maximum_iterations: 3
     core_pattern:
       - "Agent reads own guidance files (process.yml, inputs.yml, manifest.yml)"
+      - "Agent applies self-review-criteria.yml (PASS requires ALL criteria met)"
       - "Agent identifies issues, gaps, or inconsistencies"
       - "Agent reports findings with specific recommendations"
       - "Fix issues and repeat if needed"
@@ -319,12 +320,46 @@ loop_types:
     exit_conditions:
       - "All checklist items pass"
       - "No friction points identified"
+      - "Spot-check validation passes"
       - "Max iterations reached (escalate)"
+
+    # Spot-check phase (SSR-006) - prevents lenient assessments
+    # Reference: Friction Analysis FF-003 (78% flag rate on spot-checks)
+    spot_check_phase:
+      trigger: "After initial self-review completes"
+      purpose: "Catch lenient initial assessments before they propagate"
+      sample_size:
+        formula: "max(2, ceil(pass_count * 0.2))"
+        description: "Minimum 20% of PASS agents, at least 2"
+      flag_threshold_percent: 50
+      on_threshold_exceeded: |
+        If spot-check flags >50% of sampled PASS agents:
+        1. Mark all initial PASS as NEEDS_REVIEW
+        2. Apply stricter criteria from self-review-criteria.yml
+        3. Re-assess each agent with quantitative checks
+        4. Repeat spot-check on new PASS set
+      max_spot_check_rounds: 3
+      iteration_strategy: |
+        Round 1: Sample 20% of PASS agents (min 2), apply spot-check checklist
+        Round 2 (if >50% flagged): Re-review ALL PASS with stricter criteria
+        Round 3 (if still >50% flagged): Escalate to human reviewer
+      checklist_reference: "modules/AgenticGuidance/assets/definitions/spot-check-checklist.yml"
+      historical_context: |
+        This phase was added to address FF-003 finding:
+        - 78% flag rate on spot-checks (7 of 9 PASS agents flagged)
+        - 14+ iterations required before agents passed review
+        - Root cause: Lenient initial assessments not caught early
+
+    criteria_reference: "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml"
+
     note: |
       This is the simplest guidance validation loop. The agent reviews its own
       guidance without spawning external simulators or coordinating with other
       agents. Good for iterative development but limited by agent's self-bias.
       For objective validation, use guidance-test-loop with external simulator.
+
+      IMPORTANT: PASS requires ALL criteria met (conjunction rule).
+      Reference self-review-criteria.yml for thresholds and examples.
 
   guidance-self-review-loop:
     purpose: "Iterative guidance improvement through agent self-review"
@@ -357,15 +392,90 @@ loop_types:
       - "planner-guidance (remediation planning)"
       - "teacher-update-guidance (execution)"
     exit_conditions:
-      - "Multiple agents report no issues found"
-      - "All identified issues have remediation plans executed"
-      - "Max iterations reached (escalate)"
+      # NO_ISSUES_REMAINING defined precisely (SRLE-002)
+      no_issues_remaining:
+        description: "Loop exits when ALL of the following are true"
+        criteria:
+          - "Self-review status is PASS (not NEEDS_ATTENTION)"
+          - "Zero NEEDS_ATTENTION triggers (NAT-001 through NAT-006) detected"
+          - "Spot-check flag rate <50% (if spot-check phase applies)"
+          - "No pending plan files in live/ folder for this agent"
+        reference: "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml#needs_attention_triggers"
+      iteration_continues_when:
+        description: "Loop continues while ANY of the following are true"
+        conditions:
+          - "Any agent has NEEDS_ATTENTION status"
+          - "Any NAT-* trigger is active"
+          - "Plan files exist in live/ that haven't been executed"
+          - "Spot-check flag rate >= 50%"
+      legacy_conditions:
+        - "All identified issues have remediation plans executed"
+        - "Max iterations reached (escalate)"
     user_decision_gate: true
     visual_reference: "modules/AgenticGuidance/assets/examples/orchestration/phase_templates/guidance_self_review_loop.mmd"
+
+    # ==========================================================================
+    # Orchestrator Role and Enforcement (SRLE-003)
+    # ==========================================================================
+    orchestrator_role:
+      definition: |
+        The PRIMARY AGENT that spawns self-review subagents IS the orchestrator
+        for this loop. The orchestrator:
+        1. Spawns subagents for self-review
+        2. Collects self-review results
+        3. ENFORCES plan file creation check
+        4. Rejects incomplete self-reviews (NEEDS_ATTENTION without plan file)
+        5. Continues loop until NO_ISSUES_REMAINING
+      enforcement_checkpoint: |
+        After each self-review subagent returns:
+        IF status == NEEDS_ATTENTION:
+          CHECK: Does live/ contain plan_guidance_{agent_name}_*.yml?
+          IF NO: Reject result, require plan file creation
+          IF YES: Present plan to user for approval
+        IF status == PASS:
+          CHECK: Verify zero NAT-* triggers
+          IF ANY NAT-* active: Reject, status should be NEEDS_ATTENTION
+      rejection_response: |
+        When orchestrator rejects incomplete self-review:
+        1. Return to subagent with: "Self-review incomplete: NEEDS_ATTENTION status requires plan file"
+        2. Require subagent to create plan file at: {plan_folder}/live/plan_guidance_{agent_name}_*.yml
+        3. Block loop advancement until plan file exists
     note: |
       This loop includes a USER DECISION GATE between self-review and planning.
       Questions/ambiguities from self-reviews must be resolved before creating
       remediation plans. This ensures fixes align with user intent.
+
+    # ==========================================================================
+    # FENCE: Plan File Creation Requirement (SRLE-001)
+    # ==========================================================================
+    fence_plan_creation:
+      name: "Self-Review Plan Creation FENCE"
+      trigger: "NEEDS_ATTENTION status from any self-reviewing agent"
+      requirement: |
+        FENCE: When self-review returns NEEDS_ATTENTION:
+        1. Agent MUST create plan file at: {plan_folder}/live/plan_guidance_{agent_name}_{issue_type}.yml
+        2. Agent MUST NOT autonomously defer issues - present ALL findings to user
+        3. Plan file MUST include: objective, findings list, proposed tasks
+        4. Without plan file in live/, the loop CANNOT iterate
+      violation: |
+        If NEEDS_ATTENTION but no plan file created:
+        - Self-review is INCOMPLETE
+        - Loop iteration is BLOCKED
+        - Orchestrator MUST reject the self-review result
+      user_deferral_policy: |
+        FENCE: Agents DO NOT decide deferral.
+        - Agent presents findings with severity assessment
+        - User decides which findings to address now vs defer
+        - Only user can mark a finding as "deferred"
+        - Agent may RECOMMEND deferral but MUST NOT implement it unilaterally
+      plan_file_template:
+        location: "{plan_folder}/live/plan_guidance_{agent_name}_{issue_type}.yml"
+        required_fields:
+          - "name"
+          - "objective"
+          - "findings (list with id, severity, description)"
+          - "tasks (list of remediation tasks)"
+          - "status: pending"
 
 phase_ordering:
   description: |

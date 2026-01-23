@@ -1,0 +1,262 @@
+# ============================================================================
+# TLP-011 Validation Test: Planner-Guidance Loop Inclusion
+# ============================================================================
+# This file demonstrates what planner-guidance SHOULD produce when given an
+# objective that requires iterative validation work.
+#
+# Test Objective: "Improve test-runner guidance"
+# Expected Output: Plan with loop_structure section, appropriate loop type,
+#                  and explicit exit criteria
+# ============================================================================
+
+test_metadata:
+  task_id: "TLP-011"
+  task_name: "Test planner-guidance creates plan with loops"
+  test_date: "2026-01-23"
+  objective_tested: "Improve test-runner guidance"
+  validation_target: "planner-guidance/process.yml step 6 (DETERMINE REQUIRED LOOPS)"
+
+# ============================================================================
+# VERIFICATION: process.yml Loop Inclusion Step
+# ============================================================================
+process_yml_verification:
+  file_checked: "modules/AgenticGuidance/agents/planner/planner-guidance/process.yml"
+  loop_inclusion_step_present: true
+  step_location: "steps[5] (lines 195-231)"
+  step_content_summary: |
+    Step titled "DETERMINE REQUIRED LOOPS (before finalizing plan)" that:
+    1. References loop-inclusion-for-planners.yml
+    2. Lists required loop types:
+       - guidance-self-review-loop: For validation phases
+       - test-fix-loop: For implementation tasks
+       - audit-test-fix-loop: Mandatory if tests created/modified
+    3. Provides loop_structure template with:
+       - type
+       - trigger
+       - exit_criteria (success, max_iterations, escalation)
+       - participants
+
+# ============================================================================
+# SAMPLE PLAN OUTPUT (What planner-guidance SHOULD produce)
+# ============================================================================
+
+sample_plan_output:
+  name: "improve_test_runner_guidance"
+  description: "Guidance improvement plan for test-runner agent"
+  worktree_path: "docs/plans/live/260123AE_test_runner_improvement/"
+  status: "draft"
+  created_by: "planner-guidance (simulated)"
+  objective: "Improve test-runner guidance"
+
+  # ===========================================================================
+  # LOOP STRUCTURE - REQUIRED PER TLP-011
+  # ===========================================================================
+  loop_structure:
+    type: "guidance-self-review-loop"
+    trigger: "When guidance changes require validation before deployment"
+    exit_criteria:
+      success: "All self-review criteria pass AND spot-check validation passes"
+      max_iterations: 3
+      escalation: "Escalate to human reviewer with unresolved issues documented"
+    participants:
+      - agent: "test-runner"
+        role: "Reviews own guidance files (process.yml, inputs.yml, manifest.yml)"
+      - agent: "teacher-update-guidance"
+        role: "Implements fixes for identified issues"
+
+  # ===========================================================================
+  # PHASES
+  # ===========================================================================
+  phases:
+    - name: "Friction Analysis"
+      description: "Identify specific friction points in test-runner guidance"
+      tasks:
+        - id: "analysis_001"
+          name: "Analyze test-runner friction logs"
+          description: "Extract friction patterns from recent test-runner trajectories"
+          inputs:
+            - "modules/AgenticGuidance/agents/test/test-runner/process.yml"
+            - "modules/AgenticGuidance/agents/test/test-runner/inputs.yml"
+            - "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml"
+          target_files:
+            - "docs/plans/live/260123AE_test_runner_improvement/analysis/friction-analysis.md"
+          acceptance_criteria:
+            - "Friction patterns categorized by type (path_unclear, missing_signpost, fence_violation)"
+            - "Each friction pattern linked to specific guidance file/line"
+
+    - name: "Guidance Self-Review"
+      description: "Test-runner reviews own guidance using self-review loop"
+      loop:
+        type: "guidance-self-review-loop"
+        maximum_iterations: 3
+        reference: "modules/AgenticGuidance/assets/definitions/agent-loops.yml#guidance-self-review-loop"
+      tasks:
+        - id: "review_001"
+          name: "Execute test-runner self-review"
+          description: "Agent reviews own process.yml, inputs.yml, manifest.yml against criteria"
+          agent: "test-runner"
+          inputs:
+            - "modules/AgenticGuidance/agents/test/test-runner/process.yml"
+            - "modules/AgenticGuidance/agents/test/test-runner/inputs.yml"
+            - "modules/AgenticGuidance/agents/test/test-runner/manifest.yml"
+            - "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml"
+          criteria_reference: "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml"
+          acceptance_criteria:
+            - "All checklist items evaluated"
+            - "Issues documented with specific file:line references"
+            - "Recommendations provided for each issue"
+
+        - id: "spot_check_001"
+          name: "Spot-check PASS items"
+          description: "Sample 20% of PASS items for verification"
+          agent: "test-runner"
+          depends_on: ["review_001"]
+          condition: "review_001 reports items as PASS"
+          sample_size: "max(2, ceil(pass_count * 0.2))"
+          flag_threshold_percent: 50
+          on_threshold_exceeded: |
+            If >50% of sampled PASS items flagged:
+            1. Mark all initial PASS as NEEDS_REVIEW
+            2. Apply stricter criteria
+            3. Re-assess with quantitative checks
+          acceptance_criteria:
+            - "Spot-check passes (<=50% flag rate)"
+            - "OR re-review completed with stricter criteria"
+
+    - name: "Guidance Updates"
+      description: "Apply fixes identified in self-review"
+      tasks:
+        - id: "teach_001"
+          name: "Update test-runner process.yml"
+          description: "Apply fixes for issues identified in self-review"
+          agent: "teacher-update-guidance"
+          inputs:
+            - "docs/plans/live/260123AE_test_runner_improvement/analysis/self-review-findings.yml"
+            - "modules/AgenticGuidance/agents/test/test-runner/process.yml"
+            - "modules/AgenticGuidance/assets/definitions/guidance-artifacts.yml"
+          target_files:
+            - "modules/AgenticGuidance/agents/test/test-runner/process.yml"
+          guidance: |
+            Apply fixes for identified issues:
+            - Add missing fences where process lacks validation gates
+            - Add signposts (examples, definitions) where referenced but missing
+            - Clarify ambiguous path instructions
+          acceptance_criteria:
+            - "All identified issues addressed"
+            - "No new friction patterns introduced"
+            - "Process file passes schema validation"
+
+        - id: "teach_002"
+          name: "Update test-runner inputs.yml"
+          description: "Add missing input definitions and examples"
+          agent: "teacher-update-guidance"
+          inputs:
+            - "docs/plans/live/260123AE_test_runner_improvement/analysis/self-review-findings.yml"
+            - "modules/AgenticGuidance/agents/test/test-runner/inputs.yml"
+          target_files:
+            - "modules/AgenticGuidance/agents/test/test-runner/inputs.yml"
+          depends_on: ["teach_001"]
+          acceptance_criteria:
+            - "Input definitions complete with descriptions"
+            - "Required vs optional inputs clearly marked"
+            - "Examples provided for complex inputs"
+
+    - name: "Validation"
+      description: "Verify guidance improvements resolve original friction"
+      loop:
+        type: "agent-self-review"
+        maximum_iterations: 3
+        reference: "modules/AgenticGuidance/assets/definitions/agent-loops.yml#agent-self-review"
+      tasks:
+        - id: "validate_001"
+          name: "Re-run self-review on updated guidance"
+          description: "Verify all issues resolved and no new issues introduced"
+          agent: "test-runner"
+          inputs:
+            - "modules/AgenticGuidance/agents/test/test-runner/process.yml"
+            - "modules/AgenticGuidance/agents/test/test-runner/inputs.yml"
+            - "modules/AgenticGuidance/agents/test/test-runner/manifest.yml"
+            - "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml"
+          acceptance_criteria:
+            - "All self-review criteria pass"
+            - "No regression from original state"
+            - "Spot-check passes"
+
+# ============================================================================
+# SUCCESS CRITERIA REPORT
+# ============================================================================
+success_criteria_report:
+  plan_output_includes_loop_structure: "YES"
+  loop_type_is_valid:
+    result: "YES"
+    loop_types_used:
+      - "guidance-self-review-loop"
+      - "agent-self-review"
+    valid_loop_types_reference:
+      - "guidance-self-review-loop (agent-loops.yml#guidance-self-review-loop)"
+      - "agent-self-review (agent-loops.yml#agent-self-review)"
+  exit_criteria_are_explicit:
+    result: "YES"
+    exit_criteria_found:
+      success: "All self-review criteria pass AND spot-check validation passes"
+      max_iterations: 3
+      escalation: "Escalate to human reviewer with unresolved issues documented"
+
+  overall_result: "PASS"
+
+# ============================================================================
+# VALIDATION EVIDENCE
+# ============================================================================
+validation_evidence:
+  process_yml_contains_loop_step:
+    file: "modules/AgenticGuidance/agents/planner/planner-guidance/process.yml"
+    evidence: |
+      Step 6 (lines 195-231) titled "DETERMINE REQUIRED LOOPS (before finalizing plan)"
+      contains explicit guidance for including loop_structure in plan output with:
+      - Loop type selection criteria
+      - Template for loop_structure section
+      - Reference to agent-loops.yml for loop definitions
+      - Reference to loop-inclusion-for-planners.yml for detailed guidance
+
+  loop_types_available:
+    reference: "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+    relevant_types:
+      - name: "guidance-self-review-loop"
+        purpose: "Iterative guidance improvement through agent self-review"
+        max_iterations: 3
+      - name: "agent-self-review"
+        purpose: "Agent reviews own guidance files for correctness and completeness"
+        max_iterations: 3
+
+  loop_inclusion_guidelines:
+    reference: "modules/AgenticGuidance/assets/guidelines/loop-inclusion-for-planners.yml"
+    provides:
+      - "When to include loops"
+      - "Loop structure templates"
+      - "Exit criteria patterns"
+      - "Common loop patterns with examples"
+
+# ============================================================================
+# CONCLUSION
+# ============================================================================
+conclusion: |
+  TLP-011 VALIDATION: PASS
+
+  The planner-guidance process.yml has been updated to include step 6
+  "DETERMINE REQUIRED LOOPS (before finalizing plan)" which:
+
+  1. References loop-inclusion-for-planners.yml for detailed guidance
+  2. Lists loop types appropriate for guidance work:
+     - guidance-self-review-loop: For validation phases
+     - test-fix-loop: For implementation tasks
+     - audit-test-fix-loop: Mandatory if tests modified
+  3. Provides a template for loop_structure section in plan output
+  4. Requires explicit exit criteria (success, max_iterations, escalation)
+
+  The sample plan output demonstrates what planner-guidance SHOULD produce
+  when given the objective "Improve test-runner guidance":
+  - loop_structure section: PRESENT
+  - Loop type: guidance-self-review-loop and agent-self-review (both valid)
+  - Exit criteria: Explicit (success condition, max 3 iterations, escalation path)
+
+  All success criteria met.

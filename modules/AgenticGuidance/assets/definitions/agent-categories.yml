@@ -13,11 +13,13 @@ description: |
 #
 # IMPLEMENTED: planner/*, orchestration/* (including orchestration-executor),
 #              deploy-cicd, deploy-worktree, test-guidance-simulator,
-#              test-final-output, test-audit, teacher-update-guidance,
-#              teacher-update-assets
-# NOT YET IMPLEMENTED: cleaner/*, explore/*, build/*, documentation/*,
-#                      deploy-packaging, test-flutter-*, test-builder,
-#                      test-runner, test-user-simulator, test-service, teacher-plan
+#              test-final-output, test-audit, test-service, test-builder,
+#              test-user-simulator, test-runner, build-flutter, build-python,
+#              teacher-update-guidance, teacher-update-assets
+# NOT YET IMPLEMENTED: cleaner/*, explore/*, documentation/*,
+#                      deploy-packaging, test-flutter-*, teacher-plan
+# NOTE: test-service, test-builder, test-user-simulator migrated 2026-01-09;
+#       test-runner, build-flutter, build-python have full guidance directories
 
 agent_categories:
   build:
@@ -137,3 +139,58 @@ usage: |
     - Understanding its scope boundaries
     - Knowing when to escalate vs. when to proceed
     - Identifying sibling agents within the same category
+
+# ==============================================
+# GUIDANCE FILE PATTERNS
+# ==============================================
+# Patterns for detecting guidance file modifications.
+# Used by planner-build to detect when teach process is required.
+# See: modules/AgenticGuidance/assets/definitions/guidance-process-requirements.yml
+# ==============================================
+guidance_file_patterns:
+  description: |
+    Glob patterns that identify guidance files. Any task modifying
+    files matching these patterns requires teach process validation.
+
+  agent_guidance:
+    description: "Core agent definition files"
+    patterns:
+      - "modules/AgenticGuidance/agents/**/process.yml"
+      - "modules/AgenticGuidance/agents/**/process.mmd"
+      - "modules/AgenticGuidance/agents/**/inputs.yml"
+      - "modules/AgenticGuidance/agents/**/manifest.yml"
+      - "modules/AgenticGuidance/agents/**/outputs.yml"
+    validation_required: "agent_self_review"
+
+  shared_definitions:
+    description: "Shared definitions affecting multiple agents"
+    patterns:
+      - "modules/AgenticGuidance/assets/definitions/*.yml"
+    validation_required: "definition_consistency_check"
+
+  guidelines:
+    description: "Guidelines affecting agent decision-making"
+    patterns:
+      - "modules/AgenticGuidance/assets/guidelines/*.yml"
+    validation_required: "guideline_impact_review"
+
+  entrypoints:
+    description: "Entry points affecting routing and flow"
+    patterns:
+      - "modules/AgenticGuidance/entrypoints/*.yml"
+    validation_required: "routing_validation"
+
+  specifications:
+    description: "Specifications defining contracts"
+    patterns:
+      - "modules/AgenticGuidance/assets/specifications/*.yml"
+    validation_required: "specification_review"
+
+  exclusions:
+    description: "Patterns that look like guidance but are not"
+    patterns:
+      - "modules/AgenticGuidance/assets/examples/**"
+      - "modules/AgenticGuidance/docs/**"
+      - "**/*.md"
+      - "modules/AgenticGuidance/tests/**"
+    note: "These do not require teach process validation"

@@ -1,0 +1,368 @@
+# Plan: Fix Missing File References
+# Created: 2026-01-23
+# Objective: Resolve missing file references found during agent self-reviews
+
+name: "fix-missing-references"
+worktree_path: "/home/code/AgenticEngineering"
+branch: "agenticguidance"
+status: "completed"
+completed_date: "2026-01-23"
+completion_notes: |
+  Assessment found that the issues described in this plan have already been resolved:
+  1. acceptable-skips.yml - EXISTS at modules/AgenticGuidance/assets/guidelines/acceptable-skips.yml
+  2. agent-role-scope-matrix.md - EXISTS at modules/AgenticGuidance/docs/agent-role-scope-matrix.md
+  3. strategy-documentation-validation.yml - NO REFERENCES found in active codebase
+  All files referenced exist and are accessible. No remediation needed.
+priority: "high"
+created: "2026-01-23"
+
+# ========================================
+# PLAN METADATA
+# ========================================
+plan_metadata:
+  name: "Fix Missing File References"
+  created: "2026-01-23"
+  status: "pending"
+  objective: |
+    Resolve missing file references discovered during agent self-reviews:
+    1. acceptable-skips.yml - referenced by test-audit but only in legacy folder
+    2. docs/agent-role-scope-matrix.md - referenced by orchestration-policy.yml but doesn't exist
+    3. strategy-documentation-validation.yml - referenced in legacy but removed without replacement
+
+    Either migrate missing files to correct locations or update references to remove dead links.
+
+# ========================================
+# CONTEXT & FRICTION ANALYSIS
+# ========================================
+context: |
+  Agent self-reviews identified three missing file references that create potential
+  friction when agents attempt to load guidance or validate their work:
+
+  MISSING REFERENCES IDENTIFIED:
+  1. acceptable-skips.yml
+     - Referenced by: test-audit agent inputs
+     - Current location: Only exists in legacy folder
+     - Impact: Test agents cannot find acceptable skip conditions
+
+  2. docs/agent-role-scope-matrix.md
+     - Referenced by: orchestration-policy.yml
+     - Current location: Does not exist
+     - Impact: Orchestration policy references non-existent documentation
+
+  3. strategy-documentation-validation.yml
+     - Referenced by: Legacy folder files
+     - Current location: Removed without replacement
+     - Impact: Validation strategy references are broken
+
+  ROOT CAUSE:
+  During previous cleanup and migration efforts, some file references were not
+  updated when source files were moved, consolidated, or deprecated. This creates
+  "dangling references" that cause agent confusion and potential failures.
+
+friction_analysis:
+  source: "agent-self-review"
+  summary: |
+    Missing file references cause agents to fail when attempting to load guidance
+    inputs or validate against referenced documentation. This creates friction
+    that interrupts agent workflows and may lead to incorrect behavior.
+
+  affected_components:
+    - file: "test-audit agent inputs"
+      issue: "References acceptable-skips.yml which only exists in legacy"
+      impact: "Test agents cannot determine acceptable skip conditions"
+
+    - file: "modules/AgenticGuidance/agents/orchestration/orchestration-policy.yml"
+      issue: "References docs/agent-role-scope-matrix.md which doesn't exist"
+      impact: "Orchestration policy has broken documentation reference"
+
+    - file: "Legacy folder references"
+      issue: "References strategy-documentation-validation.yml which was removed"
+      impact: "Validation references point to non-existent file"
+
+# ========================================
+# PHASES
+# ========================================
+phases:
+  # ========================================
+  # PHASE 1: Assessment
+  # ========================================
+  - name: "Phase 1 - Assess Missing Files"
+    description: "Determine if missing files should be migrated, recreated, or if references should be updated"
+    execution: sequential
+    tasks:
+      # ----------------------------------------
+      # Task 1.1: Assess acceptable-skips.yml
+      # ----------------------------------------
+      - id: "assess_001"
+        name: "Check if acceptable-skips.yml content is still needed"
+        status: "pending"
+        agent: "teacher-review-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/**/inputs.yml"
+          - "modules/AgenticGuidance/legacy/**/acceptable-skips.yml"
+        guidance: |
+          Determine the status of acceptable-skips.yml:
+
+          1. Locate the legacy version of acceptable-skips.yml
+          2. Review its content to understand what skip conditions it defines
+          3. Check if test-audit agent inputs reference this file
+          4. Determine if the skip conditions are still relevant:
+             - Are the test scenarios it references still active?
+             - Have the skip conditions been consolidated elsewhere?
+             - Is the file obsolete due to test framework changes?
+
+          DECISION CRITERIA:
+          - If content is still needed: Plan migration to active location
+          - If content is obsolete: Plan to remove references
+          - If content was consolidated: Update references to new location
+
+        acceptance_criteria:
+          - "Legacy acceptable-skips.yml location identified"
+          - "Content relevance assessed"
+          - "Decision made: migrate, remove, or update references"
+          - "Findings documented for Phase 2"
+
+      # ----------------------------------------
+      # Task 1.2: Assess agent-role-scope-matrix.md
+      # ----------------------------------------
+      - id: "assess_002"
+        name: "Check if agent-role-scope-matrix.md is duplicated in agent-categories.yml"
+        status: "pending"
+        agent: "teacher-review-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-policy.yml"
+          - "modules/AgenticGuidance/assets/guidelines/agent-categories.yml"
+        guidance: |
+          Determine if agent-role-scope-matrix.md content exists elsewhere:
+
+          1. Find the reference to docs/agent-role-scope-matrix.md in orchestration-policy.yml
+          2. Understand what content the reference expects (role/scope matrix for agents)
+          3. Check agent-categories.yml for similar content:
+             - Does it define agent roles and their scopes?
+             - Does it serve the same purpose as the missing matrix?
+          4. Search for any other files that might contain this information
+
+          DECISION CRITERIA:
+          - If agent-categories.yml has equivalent content: Update reference
+          - If content is truly missing: Plan to create the documentation
+          - If reference is obsolete: Remove from orchestration-policy.yml
+
+        acceptance_criteria:
+          - "Reference in orchestration-policy.yml located"
+          - "Checked agent-categories.yml for duplicate content"
+          - "Decision made: update reference, create file, or remove reference"
+          - "Findings documented for Phase 2"
+
+      # ----------------------------------------
+      # Task 1.3: Assess strategy-documentation-validation.yml
+      # ----------------------------------------
+      - id: "assess_003"
+        name: "Check if strategy-documentation-validation.yml was intentionally deprecated"
+        status: "pending"
+        agent: "teacher-review-guidance"
+        inputs:
+          - "modules/AgenticGuidance/legacy/**/*.yml"
+          - "modules/AgenticGuidance/assets/strategies/*.yml"
+        guidance: |
+          Determine the deprecation status of strategy-documentation-validation.yml:
+
+          1. Search legacy folder for references to strategy-documentation-validation.yml
+          2. Check git history if possible to understand when/why it was removed
+          3. Look for replacement files in assets/strategies/:
+             - Was the validation logic moved to another strategy?
+             - Was it consolidated into a different validation approach?
+          4. Check if any active agents or plans reference this file
+
+          DECISION CRITERIA:
+          - If intentionally deprecated: Clean up remaining references
+          - If accidentally removed: Determine if restoration is needed
+          - If consolidated elsewhere: Update references to new location
+
+        acceptance_criteria:
+          - "All references to strategy-documentation-validation.yml identified"
+          - "Deprecation intent determined (intentional vs accidental)"
+          - "Replacement file identified if applicable"
+          - "Decision made: cleanup references or restore content"
+
+  # ========================================
+  # PHASE 2: Migrate or Update References
+  # ========================================
+  - name: "Phase 2 - Migrate or Update References"
+    description: "Execute remediation based on Phase 1 assessment findings"
+    execution: sequential
+    depends_on: ["Phase 1 - Assess Missing Files"]
+    tasks:
+      # ----------------------------------------
+      # Task 2.1: Remediate acceptable-skips.yml
+      # ----------------------------------------
+      - id: "remediate_001"
+        name: "Migrate acceptable-skips.yml from legacy if needed, or update test-audit inputs"
+        status: "pending"
+        agent: "teacher-update-guidance"
+        depends_on: ["assess_001"]
+        inputs:
+          - "Phase 1 assessment findings for acceptable-skips.yml"
+        guidance: |
+          Execute remediation based on Phase 1 findings:
+
+          IF MIGRATION NEEDED:
+          1. Copy acceptable-skips.yml from legacy to appropriate active location
+          2. Update test-audit agent inputs to reference new location
+          3. Mark legacy version for deprecation
+
+          IF REFERENCE UPDATE NEEDED:
+          1. Identify the new location of equivalent content
+          2. Update test-audit agent inputs to reference correct file
+          3. Document the change in commit message
+
+          IF REMOVAL NEEDED:
+          1. Remove reference from test-audit agent inputs
+          2. Add comment explaining why skip conditions are no longer used
+          3. Document the deprecation
+
+        acceptance_criteria:
+          - "acceptable-skips.yml reference resolved"
+          - "Test-audit agent can load required inputs without error"
+          - "No dangling references remain"
+
+      # ----------------------------------------
+      # Task 2.2: Remediate agent-role-scope-matrix.md
+      # ----------------------------------------
+      - id: "remediate_002"
+        name: "Create agent-role-scope-matrix.md or update orchestration-policy.yml reference"
+        status: "pending"
+        agent: "teacher-update-guidance"
+        depends_on: ["assess_002"]
+        inputs:
+          - "Phase 1 assessment findings for agent-role-scope-matrix.md"
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-policy.yml"
+        guidance: |
+          Execute remediation based on Phase 1 findings:
+
+          IF REFERENCE UPDATE NEEDED (content exists in agent-categories.yml):
+          1. Update orchestration-policy.yml to reference agent-categories.yml
+          2. Add comment explaining the consolidation
+          3. Verify the referenced content matches the expected information
+
+          IF CREATION NEEDED:
+          1. Create docs/agent-role-scope-matrix.md with required content
+          2. Use agent-categories.yml as source material
+          3. Ensure orchestration-policy.yml reference is correct
+
+          IF REMOVAL NEEDED:
+          1. Remove the reference from orchestration-policy.yml
+          2. Document why the reference is no longer needed
+
+        acceptance_criteria:
+          - "orchestration-policy.yml reference resolved"
+          - "Referenced documentation exists and is accessible"
+          - "No broken documentation links remain"
+
+      # ----------------------------------------
+      # Task 2.3: Remediate strategy-documentation-validation.yml
+      # ----------------------------------------
+      - id: "remediate_003"
+        name: "Remove or update strategy-documentation-validation.yml references"
+        status: "pending"
+        agent: "teacher-update-guidance"
+        depends_on: ["assess_003"]
+        inputs:
+          - "Phase 1 assessment findings for strategy-documentation-validation.yml"
+          - "modules/AgenticGuidance/legacy/**/*.yml"
+        guidance: |
+          Execute remediation based on Phase 1 findings:
+
+          IF INTENTIONALLY DEPRECATED:
+          1. Remove all remaining references from legacy files
+          2. Add deprecation note if needed
+          3. Document the cleanup in commit message
+
+          IF CONSOLIDATED ELSEWHERE:
+          1. Update references to point to replacement file
+          2. Verify the replacement provides equivalent functionality
+          3. Document the consolidation
+
+          IF RESTORATION NEEDED:
+          1. Restore from git history or recreate content
+          2. Place in appropriate active location
+          3. Update references to new location
+
+        acceptance_criteria:
+          - "All strategy-documentation-validation.yml references resolved"
+          - "No broken references remain in legacy or active files"
+          - "Deprecation or migration properly documented"
+
+# ========================================
+# DELIVERABLES
+# ========================================
+deliverables:
+  - category: "Assessment Findings"
+    items:
+      - "Document status of acceptable-skips.yml (needed/obsolete/consolidated)"
+      - "Document status of agent-role-scope-matrix.md (exists/missing/replaced)"
+      - "Document status of strategy-documentation-validation.yml (deprecated/removed/consolidated)"
+
+  - category: "File Remediation"
+    items:
+      - "acceptable-skips.yml: migrated or references updated"
+      - "agent-role-scope-matrix.md: created or references updated"
+      - "strategy-documentation-validation.yml: references cleaned up"
+
+  - category: "Reference Updates"
+    items:
+      - "test-audit agent inputs updated if needed"
+      - "orchestration-policy.yml references corrected"
+      - "Legacy file references cleaned up"
+
+# ========================================
+# ACCEPTANCE CRITERIA
+# ========================================
+acceptance_criteria:
+  - "All three missing file references have been assessed and remediated"
+  - "No dangling references remain in agent inputs or guidance files"
+  - "Test-audit agent can load all required inputs without error"
+  - "orchestration-policy.yml has no broken documentation links"
+  - "Legacy folder references do not point to non-existent files"
+  - "All changes are documented with clear commit messages"
+  - "No YAML syntax errors in updated files"
+
+# ========================================
+# SUCCESS CRITERIA
+# ========================================
+success_criteria:
+  - "Agent self-review no longer reports missing file references"
+  - "Agents can successfully load guidance without 'file not found' errors"
+  - "All references point to existing, accessible files"
+  - "Documentation references in orchestration-policy.yml are valid"
+  - "Legacy cleanup is complete with no orphaned references"
+
+# ========================================
+# VALIDATION APPROACH
+# ========================================
+validation:
+  approach: "agent-self-review"
+  description: |
+    After remediation, validate by:
+    1. Run agent self-review to check for remaining missing references
+    2. Verify test-audit agent can load all inputs successfully
+    3. Verify orchestration-policy.yml references resolve correctly
+    4. Check legacy folder for any remaining broken references
+    5. Confirm no new issues were introduced by the changes
+
+# ========================================
+# NOTES
+# ========================================
+notes: |
+  This plan addresses technical debt from previous cleanup and migration efforts.
+  Missing file references create friction for agents and can lead to:
+  - Agent failures when loading inputs
+  - Incorrect behavior when guidance cannot be found
+  - Confusion about which files are authoritative
+
+  The two-phase approach ensures we understand the current state before making changes,
+  preventing accidental removal of needed content or creation of duplicate files.
+
+  Priority: High - Missing references block agent functionality and should be
+  resolved promptly to maintain guidance integrity.
+
+estimated_effort: "1-2 hours"

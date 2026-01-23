@@ -1,0 +1,500 @@
+# TEACH Plan: Stricter Self-Review Criteria
+# Plan: 260104AE_agenticguidance
+# Generated: 2026-01-23
+# Agent: planner-guidance
+#
+# CONTEXT:
+# From friction analysis (260119_session_friction_analysis.yml FF-003):
+# - Multiple self-review iterations (14+) required before agents passed review
+# - Original PASS assessments were "significantly too lenient" with 78% flag rate on spot-checks
+# - 9 original PASS agents spot-checked, 7 flagged for review
+# - Root cause: Imprecise criteria for PASS vs NEEDS_ATTENTION decisions
+
+name: "teach-stricter-selfreview-criteria"
+worktree_path: "/home/code/AgenticEngineering"
+branch: "main"
+status: "completed"
+completed_date: "2026-01-23"
+priority: "high"
+phase_type: "teach"
+created: "2026-01-23"
+
+objective: |
+  Prevent lenient self-review assessments by establishing stricter, more precise
+  criteria for PASS vs NEEDS_ATTENTION decisions. Add automated context-minimisation
+  checks and spot-check validation to catch issues earlier in the review cycle.
+
+inputs:
+  - location: "docs/plans/live/260104AE_agenticguidance/audit/260119_session_friction_analysis.yml"
+    description: "Friction analysis identifying FF-003 (lenient self-review) as HIGH severity"
+
+  - location: "modules/AgenticGuidance/agents/test/test-audit/process.yml"
+    description: "Current test-audit agent process with audit criteria"
+
+  - location: "modules/AgenticGuidance/agents/test/test-audit/inputs.yml"
+    description: "Current test-audit agent inputs with audit_checks definitions"
+
+  - location: "modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml"
+    description: "Current planner-reviewer agent process with approval criteria"
+
+  - location: "modules/AgenticGuidance/agents/planner/planner-reviewer/inputs.yml"
+    description: "Current planner-reviewer agent inputs"
+
+  - location: "modules/AgenticGuidance/assets/definitions/planner-reviewer-checklists.yml"
+    description: "Existing checklist structure for plan review validation"
+
+  - location: "modules/AgenticGuidance/assets/guidelines/context-minimisation.yml"
+    description: "Context minimisation principles for automated checks"
+
+  - location: "modules/AgenticGuidance/assets/definitions/agent-loops.yml#agent-self-review"
+    description: "Existing agent-self-review loop definition"
+
+context: |
+  The friction analysis FF-003 revealed a systemic problem: self-review assessments
+  were too lenient, requiring 14+ iterations to achieve agent compliance. The 78%
+  flag rate on spot-checks indicates that initial PASS criteria were not rigorous
+  enough to catch context-minimisation violations, redundant definitions, and
+  structural issues.
+
+  This plan addresses the root cause by:
+  1. Defining precise, measurable criteria for PASS vs NEEDS_ATTENTION
+  2. Adding automated checks that can be applied consistently
+  3. Introducing spot-check validation as a standard phase
+  4. Reducing subjectivity in self-review assessments
+
+phases:
+  # ========================================
+  # PHASE 1: DEFINE STRICTER CRITERIA
+  # Priority: CRITICAL
+  # Create precise definitions for review decisions
+  # ========================================
+  - name: "Define Stricter Self-Review Criteria"
+    priority: "critical"
+    execution: "sequential"
+    description: "Create precise, measurable criteria for PASS vs NEEDS_ATTENTION decisions"
+
+    tasks:
+      - id: "SSR-001"
+        name: "Create self-review-criteria.yml Definition File"
+        severity: "critical"
+        description: |
+          Create a new definition file that establishes precise criteria for
+          self-review decisions, replacing the current implicit/subjective approach.
+        agent_type: "teacher-update-assets"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml (create)"
+        instructions:
+          - "Create self-review-criteria.yml with structured decision criteria"
+          - "Define PASS criteria as ALL must be true (conjunction)"
+          - "Define NEEDS_ATTENTION as ANY one triggers (disjunction)"
+          - "Include quantitative thresholds where possible (e.g., token counts)"
+          - "Add examples of borderline cases with correct decisions"
+        content_requirements:
+          pass_criteria:
+            - "No duplicate definitions between inputs.yml and referenced assets"
+            - "All file references resolve to existing files"
+            - "No circular or self-referencing includes"
+            - "Context references follow path-resolution.yml semantics"
+            - "Version numbers aligned between manifest.yml and inputs.yml"
+            - "No inline definitions that duplicate asset content >50 tokens"
+            - "Layer references use transitive loading (not flat duplication)"
+          needs_attention_triggers:
+            - "ANY duplicate definition found (same content in 2+ locations)"
+            - "ANY broken file reference (target does not exist)"
+            - "ANY inline definition exceeding 100 tokens that exists in assets"
+            - "ANY version mismatch between manifest and inputs"
+            - "ANY deprecated pattern usage without migration path"
+            - "ANY context-minimisation violation (>30% reducible content)"
+        acceptance_criteria:
+          - "self-review-criteria.yml exists with PASS and NEEDS_ATTENTION sections"
+          - "Each criterion has measurable threshold or boolean condition"
+          - "At least 3 borderline examples included with explanations"
+          - "FENCE instruction: PASS requires ALL criteria met, not majority"
+        status: "pending"
+
+      - id: "SSR-002"
+        name: "Add Context-Minimisation Quantitative Thresholds"
+        severity: "critical"
+        description: |
+          Extend context-minimisation.yml with specific quantitative thresholds
+          that can be checked automatically during self-review.
+        agent_type: "teacher-update-assets"
+        target_files:
+          - "modules/AgenticGuidance/assets/guidelines/context-minimisation.yml"
+        instructions:
+          - "Add 'quantitative_thresholds' section to context-minimisation.yml"
+          - "Define token count thresholds for inline definitions"
+          - "Define redundancy detection rules (same content in N locations)"
+          - "Add measurable criteria for 'excessive context'"
+        content_requirements:
+          thresholds:
+            inline_definition_max_tokens: 100
+            redundancy_trigger_locations: 2
+            context_reduction_target_percent: 30
+            max_transitive_depth: 3
+          automated_check_commands:
+            - "Token count estimation: wc -w * 1.3 (words to tokens approximation)"
+            - "Duplicate detection: grep -r 'pattern' | sort | uniq -d"
+            - "Reference validation: find all .yml references, verify targets exist"
+        acceptance_criteria:
+          - "quantitative_thresholds section added with specific numbers"
+          - "At least 3 automated check command examples provided"
+          - "Thresholds are referenced by SSR-001 criteria"
+        status: "pending"
+
+  # ========================================
+  # PHASE 2: UPDATE AGENT REVIEW PROCESSES
+  # Priority: HIGH
+  # Integrate stricter criteria into agents
+  # ========================================
+  - name: "Update Agent Self-Review Processes"
+    priority: "high"
+    execution: "parallel"
+    description: "Update test-audit and planner-reviewer to use stricter criteria"
+
+    tasks:
+      - id: "SSR-003"
+        name: "Update test-audit Process with Stricter Criteria"
+        severity: "high"
+        description: |
+          Modify test-audit process to reference the new self-review-criteria.yml
+          and apply quantitative thresholds during audits.
+        agent_type: "teacher-update-guidance"
+        target_files:
+          - "modules/AgenticGuidance/agents/test/test-audit/process.yml"
+          - "modules/AgenticGuidance/agents/test/test-audit/inputs.yml"
+        instructions:
+          - "Add reference to self-review-criteria.yml in inputs.yml core_inputs"
+          - "Update audit_checks in inputs.yml to include quantitative thresholds"
+          - "Add FENCE: PASS requires ALL criteria met (explicit conjunction rule)"
+          - "Add self_review_criteria section to definitions in inputs.yml"
+        acceptance_criteria:
+          - "inputs.yml references self-review-criteria.yml"
+          - "audit_checks definition includes quantitative thresholds"
+          - "FENCE instruction explicitly states conjunction requirement"
+          - "self_review_criteria definition explains PASS vs NEEDS_ATTENTION"
+        status: "pending"
+
+      - id: "SSR-004"
+        name: "Update planner-reviewer Checklists with Stricter Criteria"
+        severity: "high"
+        description: |
+          Add context-minimisation checklist to planner-reviewer-checklists.yml
+          and make it a blocking fence for plan approval.
+        agent_type: "teacher-update-assets"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/planner-reviewer-checklists.yml"
+        instructions:
+          - "Add 'context_minimisation' checklist with quantitative items"
+          - "Add 'self_review_validation' fence that blocks approval"
+          - "Reference self-review-criteria.yml for threshold values"
+          - "Ensure fence is BLOCKING (not advisory)"
+        content_requirements:
+          context_minimisation_checklist:
+            - "No inline definitions >100 tokens that exist in shared assets"
+            - "No duplicate definitions across inputs.yml files"
+            - "Layer references use transitive loading"
+            - "File references resolve to existing targets"
+          self_review_validation_fence:
+            trigger: "All plan reviews"
+            blocking: true
+            items:
+              - "Plan inputs do not duplicate content from referenced assets"
+              - "Context reduction potential <30% (not bloated)"
+              - "All file references validated"
+        acceptance_criteria:
+          - "context_minimisation checklist added to checklists section"
+          - "self_review_validation fence added to fences section"
+          - "Fence is marked as BLOCKING"
+          - "Quantitative thresholds match self-review-criteria.yml"
+        status: "pending"
+
+      - id: "SSR-005"
+        name: "Update planner-reviewer Process to Enforce Stricter Review"
+        severity: "high"
+        description: |
+          Update planner-reviewer process.yml to apply the new context_minimisation
+          checklist and self_review_validation fence.
+        agent_type: "teacher-update-guidance"
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml"
+        instructions:
+          - "Add context_minimisation checklist to the verification step"
+          - "Add self_review_validation fence to the blocking fences list"
+          - "Update Decision step to reference stricter criteria"
+          - "Add note about 78% flag rate lesson learned"
+        acceptance_criteria:
+          - "Step 2 includes context_minimisation checklist application"
+          - "self_review_validation fence listed with other blocking fences"
+          - "Decision step references conjunction rule (ALL must pass)"
+          - "Historical context note added for future reviewers"
+        status: "pending"
+
+  # ========================================
+  # PHASE 3: ADD SPOT-CHECK VALIDATION
+  # Priority: HIGH
+  # Prevent lenient assessments from going undetected
+  # ========================================
+  - name: "Add Spot-Check Validation Phase"
+    priority: "high"
+    execution: "sequential"
+    description: "Introduce spot-check validation as a standard part of self-review"
+
+    tasks:
+      - id: "SSR-006"
+        name: "Define Spot-Check Protocol in agent-loops.yml"
+        severity: "high"
+        description: |
+          Add spot-check-validation as a sub-phase within agent-self-review loop
+          to catch lenient initial assessments before they propagate.
+        agent_type: "teacher-update-assets"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+        instructions:
+          - "Extend agent-self-review loop with spot_check_phase"
+          - "Define sample size (minimum 20% of PASS agents, at least 2)"
+          - "Define flag threshold (>50% flagged = review all PASS assessments)"
+          - "Document iteration strategy when spot-check fails"
+        content_requirements:
+          spot_check_phase:
+            trigger: "After initial self-review completes"
+            sample_size: "max(2, ceil(pass_count * 0.2))"
+            flag_threshold_percent: 50
+            on_threshold_exceeded: "Re-review all initial PASS assessments with stricter scrutiny"
+            iteration_strategy: |
+              If spot-check flags >50%:
+              1. Mark all initial PASS as NEEDS_REVIEW
+              2. Apply stricter criteria (SSR-001)
+              3. Re-assess each agent with quantitative checks
+              4. Repeat spot-check on new PASS set
+        acceptance_criteria:
+          - "spot_check_phase defined in agent-self-review loop"
+          - "Sample size formula specified (20% minimum 2)"
+          - "Flag threshold and escalation action documented"
+          - "Iteration strategy prevents infinite loops (max 3 spot-check rounds)"
+        status: "pending"
+
+      - id: "SSR-007"
+        name: "Create Spot-Check Checklist Definition"
+        severity: "high"
+        description: |
+          Create a dedicated checklist for spot-check validation that focuses
+          on the most commonly missed issues (based on 78% flag rate analysis).
+        agent_type: "teacher-update-assets"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/spot-check-checklist.yml (create)"
+        instructions:
+          - "Create spot-check-checklist.yml with high-frequency issue checks"
+          - "Focus on issues that caused 78% flag rate in FF-003"
+          - "Include quick validation commands for each check"
+          - "Weight checks by historical frequency"
+        content_requirements:
+          high_frequency_issues:
+            - id: "SC-001"
+              name: "Inline Definition Duplication"
+              frequency: "35%"
+              check: "Compare inline definitions against assets/* using diff"
+              flag_if: "Any definition >50 tokens matches asset content"
+
+            - id: "SC-002"
+              name: "Context Bloat"
+              frequency: "25%"
+              check: "Estimate token count of inputs.yml, compare to minimal version"
+              flag_if: "Reduction potential >30%"
+
+            - id: "SC-003"
+              name: "Broken References"
+              frequency: "20%"
+              check: "Validate all path references resolve to existing files"
+              flag_if: "Any reference target does not exist"
+
+            - id: "SC-004"
+              name: "Version Mismatch"
+              frequency: "12%"
+              check: "Compare manifest.yml version to inputs.yml version"
+              flag_if: "Versions do not match"
+
+            - id: "SC-005"
+              name: "Deprecated Pattern Usage"
+              frequency: "8%"
+              check: "Search for patterns marked deprecated in asset files"
+              flag_if: "Any deprecated pattern found without migration note"
+        acceptance_criteria:
+          - "spot-check-checklist.yml exists with 5+ checks"
+          - "Each check has frequency weight from historical data"
+          - "Each check has validation command or procedure"
+          - "Checks cover >90% of issues from FF-003 analysis"
+        status: "pending"
+
+  # ========================================
+  # PHASE 4: ADD AUTOMATED CONTEXT-MINIMISATION CHECKS
+  # Priority: MEDIUM
+  # Enable consistent, repeatable validation
+  # ========================================
+  - name: "Add Automated Context-Minimisation Checks"
+    priority: "medium"
+    execution: "parallel"
+    description: "Create automated checks that agents can run during self-review"
+
+    tasks:
+      - id: "SSR-008"
+        name: "Document Automated Check Procedures"
+        severity: "medium"
+        description: |
+          Add a procedures section to self-review-criteria.yml with specific
+          commands agents can run to validate context minimisation.
+        agent_type: "teacher-update-assets"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml"
+        instructions:
+          - "Add 'automated_checks' section with runnable procedures"
+          - "Include token estimation commands"
+          - "Include duplicate detection commands"
+          - "Include reference validation commands"
+          - "Each procedure must be executable in bash"
+        content_requirements:
+          automated_checks:
+            token_estimation:
+              command: "wc -w {file} | awk '{print int($1 * 1.3)}'"
+              description: "Estimate token count (words * 1.3 approximation)"
+              threshold: "inputs.yml should be <2000 tokens"
+
+            duplicate_detection:
+              command: |
+                # Find definitions that appear in both inputs.yml and assets/
+                grep -h 'description:' {agent}/inputs.yml | sort > /tmp/input_defs
+                grep -rh 'description:' assets/definitions/ | sort > /tmp/asset_defs
+                comm -12 /tmp/input_defs /tmp/asset_defs
+              description: "Detect definitions duplicated between inputs and assets"
+              threshold: "Zero duplicates expected"
+
+            reference_validation:
+              command: |
+                # Extract and validate all file references
+                grep -oP 'path:\s*"\K[^"]+' {agent}/inputs.yml | while read ref; do
+                  [ -f "$ref" ] || echo "MISSING: $ref"
+                done
+              description: "Validate all file references resolve"
+              threshold: "Zero missing references"
+        acceptance_criteria:
+          - "automated_checks section added with 3+ procedures"
+          - "Each procedure has runnable command template"
+          - "Each procedure has description and threshold"
+          - "Commands use standard bash tools (grep, awk, wc)"
+        status: "pending"
+        depends_on: ["SSR-001"]
+
+      - id: "SSR-009"
+        name: "Add Self-Review Examples with Pass/Fail Decisions"
+        severity: "medium"
+        description: |
+          Add concrete examples to self-review-criteria.yml showing borderline
+          cases and explaining the correct PASS or NEEDS_ATTENTION decision.
+        agent_type: "teacher-update-assets"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml"
+        instructions:
+          - "Add 'examples' section with 5+ borderline cases"
+          - "Each example shows agent state, decision, and rationale"
+          - "Include examples that would have been incorrectly PASSED in FF-003"
+          - "Include examples that correctly PASS to avoid over-strictness"
+        content_requirements:
+          examples:
+            - id: "EX-001"
+              title: "Inline Definition Duplication"
+              agent_state: "inputs.yml contains 150-token audit_checks definition that matches assets/definitions/audit-criteria.yml"
+              decision: "NEEDS_ATTENTION"
+              rationale: "Exceeds 100-token threshold AND duplicates asset content. Should reference asset instead."
+
+            - id: "EX-002"
+              title: "Small Inline Definition - Acceptable"
+              agent_state: "inputs.yml contains 40-token role description unique to this agent"
+              decision: "PASS"
+              rationale: "Below 100-token threshold AND content is agent-specific, not duplicated in assets."
+
+            - id: "EX-003"
+              title: "High Context Reduction Potential"
+              agent_state: "inputs.yml is 3000 tokens, could be reduced to 2000 by removing redundancy"
+              decision: "NEEDS_ATTENTION"
+              rationale: "33% reduction potential exceeds 30% threshold. Indicates context bloat."
+
+            - id: "EX-004"
+              title: "Acceptable Context Size"
+              agent_state: "inputs.yml is 1800 tokens with no identified redundancy"
+              decision: "PASS"
+              rationale: "Within reasonable bounds, no reduction opportunities identified."
+
+            - id: "EX-005"
+              title: "Broken Reference"
+              agent_state: "inputs.yml references 'assets/definitions/old-file.yml' which was renamed"
+              decision: "NEEDS_ATTENTION"
+              rationale: "ANY broken reference triggers NEEDS_ATTENTION regardless of other factors."
+        acceptance_criteria:
+          - "examples section added with 5+ cases"
+          - "Examples include both PASS and NEEDS_ATTENTION decisions"
+          - "Each example has clear rationale tied to specific criteria"
+          - "Examples reference FF-003 lessons learned"
+        status: "pending"
+        depends_on: ["SSR-001"]
+
+# ========================================
+# SUCCESS CRITERIA
+# ========================================
+success_criteria:
+  phase_1:
+    - "self-review-criteria.yml exists with precise PASS/NEEDS_ATTENTION definitions"
+    - "Context-minimisation.yml has quantitative thresholds section"
+    - "All criteria are measurable (boolean or numeric threshold)"
+
+  phase_2:
+    - "test-audit references self-review-criteria.yml"
+    - "planner-reviewer-checklists.yml has context_minimisation checklist"
+    - "planner-reviewer process applies new blocking fence"
+
+  phase_3:
+    - "agent-self-review loop includes spot_check_phase"
+    - "spot-check-checklist.yml exists with weighted checks"
+    - "Sample size and flag threshold documented"
+
+  phase_4:
+    - "automated_checks section in self-review-criteria.yml"
+    - "5+ borderline examples with correct decisions"
+    - "All automated checks use standard bash tools"
+
+  overall:
+    - "Future self-reviews should require <5 iterations (down from 14+)"
+    - "Spot-check flag rate should be <30% (down from 78%)"
+    - "PASS assessments consistently identify context-minimisation issues"
+
+# ========================================
+# VALIDATION APPROACH
+# ========================================
+validation:
+  method: "blind-test"
+  description: |
+    After implementation, conduct a self-review on 5 agents using the new criteria.
+    Track iteration count and spot-check flag rate. Success if:
+    - Iterations to full compliance <= 5
+    - Spot-check flag rate <= 30%
+  test_agents:
+    - "planner-build"
+    - "planner-test"
+    - "test-audit"
+    - "deploy-worktree"
+    - "teacher-update-guidance"
+
+# ========================================
+# REFERENCES
+# ========================================
+references:
+  - id: "FF-003"
+    source: "docs/plans/live/260104AE_agenticguidance/audit/260119_session_friction_analysis.yml"
+    description: "Original friction finding documenting 78% flag rate and 14+ iterations"
+
+  - id: "agent-self-review"
+    source: "modules/AgenticGuidance/assets/definitions/agent-loops.yml#agent-self-review"
+    description: "Existing agent self-review loop definition"
+
+  - id: "context-min"
+    source: "modules/AgenticGuidance/assets/guidelines/context-minimisation.yml"
+    description: "Existing context minimisation guidelines"

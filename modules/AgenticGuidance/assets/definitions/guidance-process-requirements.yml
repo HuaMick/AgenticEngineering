@@ -1,0 +1,152 @@
+# Guidance Process Requirements
+# Defines when _plan_teach.yml is REQUIRED vs when _plan_build.yml is sufficient
+# Created: 2026-01-23
+# Context: CCI (CLI Context Injection) incident revealed need for explicit routing rules
+
+name: guidance-process-requirements
+version: "1.0"
+description: |
+  Codifies the relationship between plan types and file modifications.
+  Determines which entrypoint (_plan_build.yml vs _plan_teach.yml) is
+  required based on the files being modified.
+
+# ==============================================
+# CORE RULE
+# ==============================================
+core_rule:
+  statement: |
+    Any task that modifies agent guidance files MUST go through the
+    _plan_teach.yml process to ensure guidance validation is performed.
+
+  rationale: |
+    Guidance files (process.yml, inputs.yml, manifest.yml) define agent
+    behavior. Changes to these files affect the entire agent system.
+    Without validation (agent self-review, guidance testing), errors
+    propagate silently until they cause execution failures.
+
+  enforcement: |
+    - FENCE in planner-build detects guidance file modifications
+    - orchestration-planning includes teach validation when detected
+    - Agent self-review validates modified guidance before completion
+
+  incident_reference: |
+    CCI Initiative (CLI Context Injection) (2025-11): Modified 26 agent bootstrap files
+    without validation. Issues discovered during execution included:
+    - Broken path references
+    - Missing file references
+    - Inconsistent placeholder naming
+    - 14+ remediation iterations required to fix
+
+# ==============================================
+# FILE CLASSIFICATION
+# ==============================================
+file_classification:
+  requires_teach_process:
+    description: "Files that REQUIRE _plan_teach.yml process"
+    patterns:
+      - pattern: "modules/AgenticGuidance/agents/**/process.yml"
+        reason: "Agent process definition - affects agent behavior"
+      - pattern: "modules/AgenticGuidance/agents/**/process.mmd"
+        reason: "Agent process flowchart - affects agent behavior"
+      - pattern: "modules/AgenticGuidance/agents/**/inputs.yml"
+        reason: "Agent inputs - affects context loading"
+      - pattern: "modules/AgenticGuidance/agents/**/manifest.yml"
+        reason: "Agent metadata - affects routing and spawning"
+      - pattern: "modules/AgenticGuidance/agents/**/outputs.yml"
+        reason: "Agent outputs - affects downstream consumers"
+      - pattern: "modules/AgenticGuidance/assets/definitions/*.yml"
+        reason: "Shared definitions - affects multiple agents"
+      - pattern: "modules/AgenticGuidance/assets/guidelines/*.yml"
+        reason: "Guidelines - affects agent decision-making"
+      - pattern: "modules/AgenticGuidance/entrypoints/*.yml"
+        reason: "Entrypoints - affects routing and flow"
+      - pattern: "modules/AgenticGuidance/assets/specifications/*.yml"
+        reason: "Specifications - defines contracts and schemas"
+
+  build_process_sufficient:
+    description: "Files where _plan_build.yml alone is sufficient"
+    patterns:
+      - pattern: "modules/AgenticGuidance/assets/examples/**"
+        reason: "Examples are informational, not behavioral"
+      - pattern: "modules/AgenticGuidance/docs/**"
+        reason: "Documentation does not affect agent behavior"
+      - pattern: "**/*.md"
+        reason: "Markdown documentation"
+      - pattern: "modules/AgenticGuidance/tests/**"
+        reason: "Test files do not affect production guidance"
+
+# ==============================================
+# DECISION TREE
+# ==============================================
+decision_tree:
+  description: "How to determine which process to use"
+  steps:
+    - step: 1
+      question: "Does the task modify any files matching requires_teach_process patterns?"
+      yes: "Use _plan_teach.yml (or ensure build plan includes teach validation)"
+      no: "Proceed to step 2"
+
+    - step: 2
+      question: "Does the task create new agent guidance files?"
+      yes: "Use _plan_teach.yml - new agents need validation"
+      no: "Proceed to step 3"
+
+    - step: 3
+      question: "Does the task modify agent behavior in any way?"
+      yes: "Use _plan_teach.yml - behavior changes need validation"
+      no: "_plan_build.yml is sufficient"
+
+  note: |
+    When in doubt, use _plan_teach.yml. The validation overhead is
+    minimal compared to the cost of discovering broken guidance during
+    execution.
+
+# ==============================================
+# FENCE INSTRUCTION
+# ==============================================
+fence: |
+  FENCE: GUIDANCE-PROCESS-REQUIREMENT
+  When planning ANY task, apply the decision_tree above.
+  Guidance-modifying tasks MUST NOT bypass teach process validation.
+  This fence exists because the CCI Initiative (CLI Context Injection) modified 26
+  agent files without validation, causing widespread friction.
+
+# ==============================================
+# VALIDATION REQUIREMENTS
+# ==============================================
+validation_requirements:
+  agent_self_review:
+    description: "Each modified agent must pass self-review"
+    trigger: "Any file in modules/AgenticGuidance/agents/**/ modified"
+    process: |
+      1. Spawn the modified agent with self-review task
+      2. Agent reviews its own process.yml, inputs.yml, manifest.yml
+      3. Agent validates path references resolve correctly
+      4. Agent confirms consistency between files
+      5. Must PASS before plan can complete
+
+  path_resolution:
+    description: "All paths in modified files must resolve"
+    trigger: "Any inputs.yml modified"
+    checks:
+      - "All file paths exist or are documented as optional"
+      - "All definition references resolve"
+      - "All guideline references resolve"
+
+  consistency_check:
+    description: "Modified files must be internally consistent"
+    trigger: "Multiple files modified in same agent folder"
+    checks:
+      - "process.yml references inputs defined in inputs.yml"
+      - "manifest.yml version matches inputs.yml version"
+      - "outputs declared match actual process outputs"
+
+# ==============================================
+# RELATED ARTIFACTS
+# ==============================================
+related_artifacts:
+  planner_build_fence: "modules/AgenticGuidance/agents/planner/planner-build/inputs.yml#guidance_modification_fence"
+  orchestration_routing: "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml#guidance_change_routing"
+  plan_teach_entrypoint: "modules/AgenticGuidance/entrypoints/_plan_teach.yml"
+  plan_build_entrypoint: "modules/AgenticGuidance/entrypoints/_plan_build.yml"
+  agent_categories: "modules/AgenticGuidance/assets/definitions/agent-categories.yml#guidance_file_patterns"

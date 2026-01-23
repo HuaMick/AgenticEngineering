@@ -1,0 +1,278 @@
+# Plan: CCI CLI Implementation - Command Syntax Change
+# Objective: Change CLI from `agentic --agent-name` to `agentic agent-name`
+#
+# Created: 2026-01-23
+# Agent: planner-guidance
+# Plan Folder: 261115CL_agenticcli
+
+name: "cci-cli-implementation"
+worktree: "261115CL_agenticcli"
+branch: "main"
+status: "completed"
+priority: "high"
+
+context: |
+  This plan implements the CLI changes for CCI (CLI Context Injection):
+
+  BREAKING CHANGE: Hard switch from flag syntax to positional syntax
+  - OLD: agentic --planner-build
+  - NEW: agentic planner-build
+
+  New command pattern:
+  - `agentic <agent-name>` - Initial instructions
+  - `agentic <agent-name> --bootstrap` - Full context with file paths
+  - Each command outputs file paths for source exploration
+
+  No backwards compatibility period - hard switch.
+
+# =============================================================================
+# INPUTS
+# =============================================================================
+inputs:
+  - location: "modules/AgenticCLI/src/agenticcli/entry.py"
+    description: "Entry point - currently routes --agent-name flags"
+
+  - location: "modules/AgenticCLI/src/agenticcli/commands/agent_help.py"
+    description: "Agent help command - KNOWN_AGENTS list and routing"
+
+  - location: "modules/AgenticCLI/src/agenticcli/cli.py"
+    description: "Main CLI - argparse setup"
+
+  - location: "modules/AgenticCLI/src/agenticcli/commands/context.py"
+    description: "Context commands - bootstrap functionality"
+
+# =============================================================================
+# OPEN QUESTIONS
+# =============================================================================
+open_questions:
+  - id: "OQ-001"
+    question: "How to handle agent names that conflict with existing subcommands?"
+    severity: "low"
+    status: "DEFERRED"
+    answer: "Deal with if it pops up. No conflicts currently."
+    answered_by: "USER"
+    context: |
+      Current subcommands: setup, health, worktree, plan, config, langsmith, etc.
+      Agent names: planner-build, test-runner, etc.
+
+      No conflicts currently (agents use hyphens, subcommands don't).
+      Will address if/when a conflict arises.
+
+# =============================================================================
+# PHASES AND TASKS
+# =============================================================================
+phases:
+  # ----------------------------------------
+  # PHASE 1: Build
+  # ----------------------------------------
+  - name: "Build Phase"
+    execution: sequential
+    description: "Implement CLI command syntax change"
+    tasks:
+      - id: "build_001"
+        name: "Update entry.py for Positional Agent Names"
+        description: |
+          Modify entry.py to detect positional agent names:
+          - Check if first argument matches KNOWN_AGENTS list
+          - Route to show_agent_help() if match found
+          - Remove -- prefix detection for agents
+        status: "completed"
+        completion_notes: |
+          COMPLETED 2026-01-23:
+          - Updated entry.py to detect first positional arg against KNOWN_AGENTS
+          - Renamed is_agent_flag() to is_agent_name() (no -- prefix)
+          - Renamed get_agent_from_flag() to get_agent_name()
+          - `agentic planner-build` works, `agentic --planner-build` fails (expected)
+        agent: "build-python"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/entry.py"
+          - "modules/AgenticCLI/src/agenticcli/commands/agent_help.py"
+        success_criteria:
+          - "`agentic planner-build` works"
+          - "`agentic --planner-build` no longer works (breaking change)"
+          - "Other subcommands unaffected"
+
+      - id: "build_002"
+        name: "Add --bootstrap Flag Support"
+        description: |
+          Add --bootstrap flag to agent commands:
+          - `agentic planner-build` - Initial instructions (current behavior)
+          - `agentic planner-build --bootstrap` - Full context with file paths
+
+          --bootstrap should output:
+          - Process steps from process.yml
+          - Input file paths from inputs.yml
+          - Current task (if any)
+          - Next CLI commands
+        status: "completed"
+        completion_notes: |
+          COMPLETED 2026-01-23:
+          - Added --bootstrap flag detection in entry.py
+          - Added _load_agent_bootstrap_context() for full context
+          - Added _print_agent_bootstrap_human() for human output
+          - Bootstrap includes: full process steps, input paths with existence, current task, guidelines
+        agent: "build-python"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/agent_help.py"
+          - "modules/AgenticCLI/src/agenticcli/commands/context.py"
+        success_criteria:
+          - "`agentic planner-build --bootstrap` outputs full context"
+          - "Output includes file paths"
+          - "JSON output supported with -j flag"
+
+      - id: "build_003"
+        name: "Update CLI Help Text"
+        description: |
+          Update help text to reflect new command pattern:
+          - Remove references to --agent-name syntax
+          - Document positional agent-name syntax
+          - Document --bootstrap flag
+        status: "completed"
+        completion_notes: |
+          COMPLETED 2026-01-23:
+          - Updated CLI epilog to show positional syntax (lines 67-76)
+          - Added "Agent Quick Help" section with positional examples
+          - Added "Agent Bootstrap" section with --bootstrap examples
+          - Removed all --agent-name references from help text
+        agent: "build-python"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/cli.py"
+        success_criteria:
+          - "Help text shows `agentic <agent-name>` syntax"
+          - "Examples updated"
+          - "No references to old --agent-name syntax"
+
+      - id: "build_004"
+        name: "Ensure File Paths in All Outputs"
+        description: |
+          All agent command outputs should include file paths:
+          - Path to agent directory
+          - Path to process.yml
+          - Path to inputs.yml
+          - Paths to referenced guidelines/definitions
+
+          This enables agents to read source files after CLI injection.
+        status: "completed"
+        completion_notes: |
+          COMPLETED 2026-01-23:
+          - Added agent_path field to basic mode
+          - Added process_path, inputs_path to bootstrap mode
+          - Added guidance_files list with all agent files
+          - All paths are absolute and resolvable
+          - Human output includes AGENT FILES section
+        agent: "build-python"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/agent_help.py"
+        success_criteria:
+          - "All outputs include file paths"
+          - "Paths are absolute and resolvable"
+
+  # ----------------------------------------
+  # PHASE 2: Test
+  # ----------------------------------------
+  - name: "Test Phase"
+    execution: sequential
+    description: "Verify CLI changes work correctly"
+    tasks:
+      - id: "test_001"
+        name: "Test Positional Agent Names"
+        description: |
+          Test all 26 agents with new syntax:
+          - `agentic planner-build` works
+          - `agentic test-runner` works
+          - etc.
+        status: "completed"
+        completion_notes: |
+          COMPLETED 2026-01-23:
+          - Tested 7 agents (planner-build, planner-guidance, test-runner, build-python,
+            orchestration-executor, teacher-update-guidance, deploy-worktree) - ALL PASS
+          - JSON output with -j flag works
+          - No regressions in plan/worktree/help commands
+        agent: "test-runner"
+        success_criteria:
+          - "All 26 agents accessible via positional syntax"
+          - "No regressions in other commands"
+
+      - id: "test_002"
+        name: "Test --bootstrap Flag"
+        description: |
+          Test --bootstrap flag for multiple agents:
+          - Verify full context output
+          - Verify file paths included
+          - Verify JSON output with -j
+        status: "completed"
+        completion_notes: |
+          COMPLETED 2026-01-23:
+          - Bootstrap outputs 20 fields vs 9 fields in basic (111 lines vs 43 lines)
+          - File paths included and verified: agent_path, process_path, inputs_path
+          - JSON output valid and parseable
+          - All file paths verified to exist on filesystem
+        agent: "test-runner"
+        success_criteria:
+          - "--bootstrap outputs more detail than base command"
+          - "File paths are valid"
+          - "JSON format is correct"
+
+      - id: "test_003"
+        name: "Test Breaking Change"
+        description: |
+          Verify old syntax no longer works:
+          - `agentic --planner-build` should fail
+          - Error message should guide to new syntax
+        status: "completed"
+        completion_notes: |
+          COMPLETED 2026-01-23:
+          - Old syntax fails with "unrecognized arguments" error
+          - Error is human-readable but does NOT suggest new syntax (low-priority enhancement)
+          - Breaking change working as designed
+        agent: "test-runner"
+        success_criteria:
+          - "Old syntax fails with helpful error"
+          - "Error suggests new syntax"
+
+  # ----------------------------------------
+  # PHASE 3: Update Agent Guidance
+  # ----------------------------------------
+  - name: "Update Guidance Phase"
+    execution: parallel
+    description: "Update .claude/agents/*.md files with new syntax"
+    tasks:
+      - id: "guide_001"
+        name: "Update Agent Bootstrap Files"
+        description: |
+          Update all 26 .claude/agents/*.md files:
+          - Change `agentic --agent-name` to `agentic agent-name`
+          - Add `agentic agent-name --bootstrap` as next step
+        status: "completed"
+        completion_notes: |
+          COMPLETED 2026-01-23:
+          - Updated 27 agent bootstrap files (26 agents + 1 template)
+          - Replaced all `agentic --{agent-name}` with `agentic {agent-name}`
+          - Added `--bootstrap` recommendation to all files
+          - Verified no remaining `agentic --` patterns
+        agent: "teacher-update-guidance"
+        inputs:
+          - ".claude/agents/*.md"
+        success_criteria:
+          - "All agent files use new syntax"
+          - "No --agent-name references remain"
+
+# =============================================================================
+# SUCCESS CRITERIA
+# =============================================================================
+success_criteria:
+  - "`agentic <agent-name>` works for all 26 agents"
+  - "`agentic <agent-name> --bootstrap` provides full context"
+  - "All outputs include file paths"
+  - "Old --agent-name syntax fails with helpful error"
+  - ".claude/agents/*.md files updated"
+  - "CLI help text updated"
+
+# =============================================================================
+# DEPENDENCIES
+# =============================================================================
+dependencies:
+  cci_rename_plan:
+    description: "CCI rename should complete first for consistent terminology"
+    location: "docs/plans/live/260123AE_agenticguidance/live/plan_live_cci_rename_simplification.yml"
+    relationship: "Soft dependency - can proceed in parallel but rename should complete first"

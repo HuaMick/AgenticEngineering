@@ -27,6 +27,42 @@ process:
     - location: "modules/AgenticGuidance/agents/test/test-guidance-simulator/inputs.yml"
       description: "Core test guidance simulator agent inputs and guidelines"
 
+  # =============================================================================
+  # SELF-REVIEW MODE
+  # =============================================================================
+  # When invoked for self-review, the simulator spawns the target agent with
+  # only its own guidance files and instructs it to validate them.
+  # Reference: modules/AgenticGuidance/assets/guidelines/agent-self-review.yml
+  # =============================================================================
+  self_review_mode:
+    description: |
+      When invoked for self-review, the simulator spawns the target agent
+      with only its own guidance files and instructs it to validate them.
+      Self-review is the FIRST test scenario to execute - it catches basic
+      errors before running more complex validation scenarios.
+
+    invocation_pattern: |
+      Target agent is spawned with prompt:
+      "You are agent: {agent_name}. Your guidance files are at:
+      - process.yml: {path}
+      - inputs.yml: {path}
+      TASK: Review your own guidance for correctness. Report:
+      1. Any file paths that don't exist
+      2. Any missing referenced files
+      3. Any unclear or ambiguous instructions
+      4. Any missing prerequisites
+      5. Any inconsistencies between files"
+
+    output_collection: |
+      Collect structured output from spawned agent:
+      - self_review_passed: boolean
+      - issues_found: list of categorized issues
+      - severity_breakdown: count by CRITICAL/HIGH/MEDIUM/LOW
+
+    execution_order: "FIRST - before all other test scenarios"
+
+    guideline_reference: "modules/AgenticGuidance/assets/guidelines/agent-self-review.yml"
+
   outputs:
     - name: "test_results"
       description: "Structured test results for orchestration consumption"
@@ -46,7 +82,70 @@ process:
         - Route failures to teacher agents for guidance refinement
         - Track friction patterns across multiple test runs
 
+    - name: "self_review_report"
+      description: "Structured self-review validation results"
+      format:
+        agent_name: "string - name of agent that performed self-review"
+        agent_path: "string - path to agent directory"
+        review_timestamp: "ISO datetime"
+        self_review_passed: "boolean - overall pass/fail"
+
+        path_validation:
+          total_paths_checked: "integer"
+          paths_resolved: "integer"
+          broken_paths:
+            - path: "string - the path that failed"
+              referenced_in: "string - file where reference exists"
+              error: "string - reason for failure"
+
+        file_validation:
+          required_files_present: "list of files that exist"
+          missing_files: "list of files that should exist but don't"
+
+        consistency_check:
+          passed: "boolean"
+          inconsistencies:
+            - type: "string - type of inconsistency"
+              location: "string - file and section"
+              issue: "string - description of inconsistency"
+              suggested_fix: "string - how to resolve"
+
+        clarity_check:
+          ambiguities:
+            - location: "string - file and section"
+              issue: "string - what is unclear"
+              severity: "CRITICAL | HIGH | MEDIUM | LOW"
+              suggested_fix: "string - how to clarify"
+
+        summary:
+          total_issues: "integer"
+          by_severity:
+            CRITICAL: "integer"
+            HIGH: "integer"
+            MEDIUM: "integer"
+            LOW: "integer"
+          recommended_action: "PASS | FIX_REQUIRED | ESCALATE"
+      usage: |
+        - Orchestration consumes to determine if guidance is ready for use
+        - Teacher agents consume to prioritize guidance improvements
+        - Audit trails consume for tracking guidance quality over time
+
   steps:
+    - |
+      CCI BOOTSTRAP (CLI Context Injection) - Run FIRST before any file exploration:
+      Execute these commands to get structured context efficiently:
+
+      ```bash
+      # Get seed context (objective, process summary, inputs)
+      agentic context bootstrap --role test-guidance-simulator -j
+
+      # Get current task if working from a plan
+      agentic plan task current -j
+      ```
+
+      CLI output provides your objective, process summary, input file paths.
+      ONLY use Glob/Grep/Read if CLI output indicates specific files to examine.
+
     - |
       VALIDATE CONTEXT per guidance_blind_test definition in inputs.yml:
       - ONLY allowed inputs: target agent's process.yml, inputs.yml
@@ -64,10 +163,20 @@ process:
       - Use ONLY these guidance files for task understanding
     - |
       Determine which walkthrough scenarios to execute from guidance-test-scenarios.yml:
+      - FIRST: Execute self_review_test (basic validation before other scenarios)
       - ALWAYS include: task_completion_test, reference_resolution_test, friction_detection_test
       - CONDITIONALLY include loop_context_test if agent participates in loops
       - CONDITIONALLY include subagent_spawning_test if agent is an orchestrator
       - Review test_scenario_application_rules to ensure correct scenario selection
+
+      EXECUTION ORDER:
+      1. self_review_test (FIRST - catches basic errors)
+         - If self_review_test fails with CRITICAL severity: STOP and report
+         - If self_review_test passes: continue with other scenarios
+      2. task_completion_test
+      3. reference_resolution_test
+      4. friction_detection_test
+      5. Conditional scenarios (loop_context_test, subagent_spawning_test)
     - |
       For each applicable walkthrough scenario, spawn the target agent:
       - Provide target agent with its own guidance files (process.yml, inputs.yml)

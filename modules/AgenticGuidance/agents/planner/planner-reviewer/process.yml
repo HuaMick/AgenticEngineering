@@ -12,6 +12,26 @@ process:
       description: "Core reviewer planner agent inputs and guidelines"
 
   steps:
+    - |
+      CCI BOOTSTRAP (CLI Context Injection) - Run FIRST before any file exploration:
+      Execute these commands to get structured context efficiently:
+
+      ```bash
+      # Get seed context (objective, process summary, inputs)
+      agentic context bootstrap --role planner-reviewer -j
+
+      # Get current task if working from a plan
+      agentic plan task current -j
+      ```
+
+      CLI output provides:
+      - Your objective and process summary
+      - Input file paths to read
+      - Current task details (if plan exists)
+
+      ONLY use Glob/Grep/Read if CLI output indicates specific files to examine.
+      DO NOT explore the codebase before running these commands.
+
     - "Review all inputs. Locate the plan files in the provided live plan folder (`live/`)."
     - |
       Verify plan structure using checklists from:
@@ -24,15 +44,28 @@ process:
       4. checklists.task_structure - Validate task definitions
       5. checklists.pattern_alignment - Validate established patterns
 
+      Apply checklists.context_minimisation:
+      - Validate inputs follow context minimisation principles
+      - Check for inline definitions >100 tokens that exist in assets
+      - Verify no duplicate definitions across files
+      - Confirm layer references use transitive loading
+
       Apply fences (BLOCKING):
       - fences.rlm_usage - Only if plan references RLM patterns
       - fences.mmd_presence - For orchestrated plans
       - fences.file_placement - All plans
       - fences.codebase_verification - Spawn explore agents to verify
+      - fences.self_review_validation - ALL plans (new SSR-004)
     - |
       Decision:
-      - APPROVE: All checklist items pass, plan ready for execution.
-      - REJECT: Any checklist items fail. Cite failed items with specific feedback.
+      - APPROVE: All checklist items pass AND all fences pass, plan ready for execution.
+      - REJECT: Any checklist item fails OR any fence fails. Cite failed items with specific feedback.
+
+      FENCE: PASS requires ALL criteria met (conjunction rule).
+      Reference: modules/AgenticGuidance/assets/definitions/self-review-criteria.yml
+
+      Historical note: 78% flag rate in FF-003 was caused by lenient assessment.
+      When ANY item fails, the decision MUST be REJECT, not conditional APPROVE.
     - "Report decision and feedback."
     - |
       POST-APPROVAL CLEANUP (on APPROVE only):

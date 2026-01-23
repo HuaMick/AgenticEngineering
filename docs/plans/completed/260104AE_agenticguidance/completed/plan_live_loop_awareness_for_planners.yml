@@ -1,0 +1,461 @@
+# =============================================================================
+# CONTEXT FOR NEXT SESSION:
+# - ALL PHASES COMPLETED (TLP-001 through TLP-013)
+# - Phase 1 (teach-loop-concepts): TLP-001 to TLP-003 COMPLETED
+# - Phase 2 (update-planner-processes): TLP-004 to TLP-007 COMPLETED
+# - Phase 3 (update-orchestration-planning): TLP-008 to TLP-010 COMPLETED
+# - Phase 4 (validation): TLP-011 to TLP-013 COMPLETED (2026-01-23)
+# - Loop awareness guidance is now fully integrated and validated
+# - Plan ready for completion/archival
+# =============================================================================
+
+# Plan: Loop Awareness for Planners and Orchestration-Planning
+# Created: 2026-01-23
+# Completed: 2026-01-23 (All Phases)
+# Priority: CRITICAL
+# Phase Type: TEACH
+
+name: teach-loop-awareness-for-planners
+worktree_path: "/home/code/AgenticEngineering"
+branch: "main"
+status: completed
+priority: critical
+phase_type: teach
+
+objective: |
+  Ensure planners and orchestration-planning understand and APPLY the agent-loop
+  concept when creating plans. Plans must include review loops that allow work
+  to continue until all gaps are identified and closed during implementation.
+
+problem_statement: |
+  CURRENT STATE:
+  - Planners know loops exist (referenced in inputs.yml)
+  - But planners do NOT build loops INTO their plans
+  - Plans are created as linear task lists without iteration
+  - When issues are found during execution, there's no loop to iterate
+  - Self-reviews happen once and stop, even when NEEDS_ATTENTION
+
+  DESIRED STATE:
+  - Every plan includes appropriate review loops
+  - Loops are defined with: trigger conditions, exit criteria, max iterations
+  - Orchestration follows the plan's loops and iterates until gaps closed
+  - NEEDS_ATTENTION always leads to another iteration, not termination
+
+root_cause: |
+  1. Planner guidance says "planners request validation needs but do NOT dictate loop strategy"
+  2. This was interpreted as "planners don't include loops in plans"
+  3. But the INTENT was: planners don't SELECT which loop type - orchestrator does
+  4. Planners SHOULD include loop STRUCTURE in their plans with placeholders for loop type
+  5. Orchestration-planning then fills in the specific loop type based on phase
+
+inputs:
+  - location: "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+    description: "Loop definitions - planners must understand these to include in plans"
+
+  - location: "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml"
+    description: "Orchestration-planning guidance on loop selection"
+
+  - location: "modules/AgenticGuidance/agents/planner/planner-guidance/process.yml"
+    description: "Planner-guidance process - needs loop inclusion step"
+
+  - location: "modules/AgenticGuidance/agents/planner/planner-build/process.yml"
+    description: "Planner-build process - needs loop inclusion step"
+
+  - location: "modules/AgenticGuidance/agents/planner/planner-test/process.yml"
+    description: "Planner-test process - needs loop inclusion step"
+
+phases:
+  - phase: teach-loop-concepts
+    name: "Teach Loop Concepts to Planners"
+    priority: critical
+    description: |
+      Update planner guidance to understand and apply loop concepts.
+      Clarify the distinction between:
+      - Loop TYPE selection (orchestrator responsibility)
+      - Loop STRUCTURE inclusion (planner responsibility)
+
+    tasks:
+      - id: TLP-001
+        name: "Create loop-inclusion-for-planners.yml guideline"
+        agent_type: teacher-update-assets
+        description: |
+          Create new guideline explaining:
+          1. What loops are and why plans need them
+          2. When to include loops (any iterative work)
+          3. How to specify loops in plan YAML (structure template)
+          4. Exit criteria patterns (PASS, max iterations, user decision)
+          5. Common loop patterns: test-fix, self-review, audit-fix
+        target_files:
+          - "modules/AgenticGuidance/assets/guidelines/loop-inclusion-for-planners.yml"
+        success_criteria:
+          - "Guideline exists with clear examples"
+          - "Loop structure template is copy-pasteable"
+          - "Exit criteria patterns are explicit"
+        status: completed
+        completion_notes: |
+          File exists at modules/AgenticGuidance/assets/guidelines/loop-inclusion-for-planners.yml
+          with comprehensive content including:
+          - what_are_loops section explaining concepts and why plans need them
+          - when_to_include_loops with always_include_loops_when and mandatory_loops
+          - loop_structure_template with copy-pasteable templates for all loop types
+          - exit_criteria_patterns with PASS, max_iterations, user_decision, combined
+          - common_loop_patterns with test-fix, self-review, audit-fix patterns
+          - examples section with good and bad examples
+
+      - id: TLP-002
+        name: "Add loop_structure section to plans.yml definition"
+        agent_type: teacher-update-assets
+        description: |
+          Update plans.yml to include loop_structure as a REQUIRED section
+          in plan files. Define the schema:
+          ```yaml
+          loop_structure:
+            type: "<loop-type from agent-loops.yml>"
+            trigger: "<condition that starts loop>"
+            exit_criteria:
+              success: "<condition for successful exit>"
+              max_iterations: <number>
+              escalation: "<what to do if max reached>"
+            participants:
+              - agent: "<agent-name>"
+                role: "<role in loop>"
+          ```
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/plans.yml"
+        success_criteria:
+          - "loop_structure schema defined"
+          - "Marked as required for non-trivial plans"
+          - "Examples provided"
+        status: completed
+        completion_notes: |
+          plans.yml (lines 315-473) contains comprehensive loop_structure section:
+          - requirement_level defining non_trivial_plans as REQUIRED, single_task_plans as OPTIONAL
+          - schema with type, trigger, exit_criteria (success, max_iterations, escalation), participants
+          - valid_values list for loop types referencing agent-loops.yml
+          - examples for build, guidance, cleanup, and planner review loops
+          - validation_rules for loop structure verification
+
+      - id: TLP-003
+        name: "Update plan_example.yml with loop structure"
+        agent_type: teacher-update-assets
+        description: |
+          Add loop_structure section to the canonical plan example.
+          Show how test-fix-loop and self-review loops are specified.
+        target_files:
+          - "modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/live/plan_example.yml"
+        success_criteria:
+          - "Example includes loop_structure section"
+          - "Shows test-fix-loop pattern"
+          - "Shows self-review loop pattern"
+        status: completed
+        completion_notes: |
+          plan_example.yml (lines 95-174) contains loop_structures section with:
+          - loop_validation (test-fix-loop) for validation phases
+          - loop_self_review (guidance-self-review-loop) for cleanup phases
+          - loop_audit (audit-test-fix-loop) marked as mandatory
+          Each loop includes type, applies_to_phase, trigger, exit_criteria,
+          participants with roles, and descriptive documentation
+
+  - phase: update-planner-processes
+    name: "Update Planner Process Files"
+    priority: high
+    depends_on: ["teach-loop-concepts"]
+    description: |
+      Add explicit loop inclusion step to each planner's process.
+
+    tasks:
+      - id: TLP-004
+        name: "Update planner-guidance process with loop inclusion step"
+        agent_type: teacher-update-guidance
+        description: |
+          Add step to planner-guidance/process.yml:
+          "Before finalizing plan, determine required loops:
+           - guidance-self-review-loop for validation
+           - test-fix-loop if implementation involved
+           Include loop_structure section in plan output"
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-guidance/process.yml"
+        success_criteria:
+          - "Loop inclusion step added"
+          - "References loop-inclusion-for-planners.yml guideline"
+        status: completed
+        completion_notes: |
+          planner-guidance/process.yml (lines 195-231) contains:
+          - "DETERMINE REQUIRED LOOPS (before finalizing plan)" step
+          - References loop-inclusion-for-planners.yml
+          - Documents guidance-self-review-loop, test-fix-loop, audit-test-fix-loop
+          - Includes loop_structure template with type, trigger, exit_criteria, participants
+          - Notes that planners specify loop STRUCTURE, orchestration selects TYPE
+
+      - id: TLP-005
+        name: "Update planner-build process with loop inclusion step"
+        agent_type: teacher-update-guidance
+        description: |
+          Add step to planner-build/process.yml:
+          "Before finalizing plan, determine required loops:
+           - test-fix-loop for implementation iteration
+           - audit-test-fix-loop after cleanup phases
+           Include loop_structure section in plan output"
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-build/process.yml"
+        success_criteria:
+          - "Loop inclusion step added"
+          - "References loop-inclusion-for-planners.yml guideline"
+        status: completed
+        completion_notes: |
+          planner-build/process.yml (lines 187-226) contains:
+          - "LOOP INCLUSION STEP (Before Finalizing Plan)" step
+          - References loop-inclusion-for-planners.yml
+          - Documents test-fix-loop (max 5 iterations) and audit-test-fix-loop (max 3)
+          - Includes example loop_structure YAML for implementation and test quality phases
+
+      - id: TLP-006
+        name: "Update planner-test process with loop inclusion step"
+        agent_type: teacher-update-guidance
+        description: |
+          Add step to planner-test/process.yml:
+          "Before finalizing plan, determine required loops:
+           - test-fix-loop for test execution
+           - audit-test-fix-loop (MANDATORY)
+           - user-story-validation-loop for UAT
+           Include loop_structure section in plan output"
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-test/process.yml"
+        success_criteria:
+          - "Loop inclusion step added"
+          - "References loop-inclusion-for-planners.yml guideline"
+        status: completed
+        completion_notes: |
+          planner-test/process.yml (lines 103-128) contains:
+          - "LOOP INCLUSION STEP (Before finalizing plan)" step
+          - References loop-inclusion-for-planners.yml
+          - Documents test-fix-loop, audit-test-fix-loop (MANDATORY), user-story-validation-loop
+          - Includes example loop_structure YAML with exit_conditions
+          - Specifies standard iterations: 5 for test-fix, 3 for audit
+
+      - id: TLP-007
+        name: "Update planner-cleaning process with loop inclusion step"
+        agent_type: teacher-update-guidance
+        description: |
+          Add step to planner-cleaning/process.yml:
+          "Before finalizing plan, determine required loops:
+           - cleaner-dependency-loop for safe removal
+           - audit-test-fix-loop (MANDATORY after cleanup)
+           Include loop_structure section in plan output"
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-cleaning/process.yml"
+        success_criteria:
+          - "Loop inclusion step added"
+          - "References loop-inclusion-for-planners.yml guideline"
+        status: completed
+        completion_notes: |
+          planner-cleaning/process.yml (lines 133-157) contains:
+          - "LOOP INCLUSION STEP (Before finalizing plan)" step
+          - References loop-inclusion-for-planners.yml
+          - Documents cleaner-dependency-loop and audit-test-fix-loop (MANDATORY)
+          - Includes loop_structure YAML with required_loops section
+          - Specifies participants and max iterations for each loop type
+
+  - phase: update-orchestration-planning
+    name: "Update Orchestration-Planning Enforcement"
+    priority: high
+    depends_on: ["teach-loop-concepts"]
+    description: |
+      Update orchestration-planning to VALIDATE that plans include loops
+      and to REJECT plans without appropriate loop structures.
+
+    tasks:
+      - id: TLP-008
+        name: "Add loop validation to orchestration-planning inputs"
+        agent_type: teacher-update-guidance
+        description: |
+          Add to orchestration-planning/inputs.yml:
+          ```yaml
+          loop_validation:
+            fence: |
+              FENCE: PLANS-MUST-INCLUDE-LOOPS
+              Plans for non-trivial work MUST include loop_structure section.
+              Reviewer MUST reject plans without loops for:
+              - Build phases (requires test-fix-loop)
+              - Test phases (requires audit-test-fix-loop)
+              - Cleanup phases (requires audit-test-fix-loop)
+              - Teach phases (requires guidance-self-review-loop OR agent-self-review)
+
+            trivial_exception: |
+              Single-task plans with no iteration need (e.g., "fix typo")
+              may omit loop_structure with justification.
+          ```
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml"
+        success_criteria:
+          - "FENCE added requiring loop_structure"
+          - "Exception for trivial plans documented"
+        status: completed
+        completion_notes: |
+          orchestration-planning/inputs.yml (lines 246-263) contains loop_validation section:
+          - fence with "FENCE: PLANS-MUST-INCLUDE-LOOPS" message
+          - Lists required loops for build, test, cleanup, teach phases
+          - trivial_exception documenting single-task plan exemption
+
+      - id: TLP-009
+        name: "Add loop validation to planner-reviewer checklist"
+        agent_type: teacher-update-assets
+        description: |
+          Add to planner-reviewer-checklists.yml:
+          ```yaml
+          loop_structure:
+            description: "Plan includes appropriate loops for iteration"
+            items:
+              - "loop_structure section exists for non-trivial plans"
+              - "Loop type matches phase type (per phase_to_loop_mapping)"
+              - "Exit criteria are explicit and verifiable"
+              - "Max iterations specified with escalation path"
+            rejection_condition:
+              condition: "Non-trivial plan missing loop_structure"
+              message: "Plan must include loop_structure. See loop-inclusion-for-planners.yml"
+          ```
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/planner-reviewer-checklists.yml"
+        success_criteria:
+          - "Loop structure checklist added"
+          - "Rejection condition specified"
+        status: completed
+        completion_notes: |
+          planner-reviewer-checklists.yml (lines 46-55) contains loop_structure checklist:
+          - description: "Plan includes appropriate loops for iteration"
+          - 4 checklist items covering structure, type matching, exit criteria, max iterations
+          - rejection_condition with condition and message referencing loop-inclusion-for-planners.yml
+
+      - id: TLP-010
+        name: "Update orchestration-planning process.mmd with loop validation"
+        agent_type: teacher-update-guidance
+        description: |
+          Add validation step in MMDGeneration_SG subgraph:
+          ```mermaid
+          ExtractPhases --> ValidateLoopStructure{Plans Include Loops?}
+          ValidateLoopStructure -- "No: Missing" --> RejectPlan[Return to Planning: Add Loops]
+          ValidateLoopStructure -- "Yes: Valid" --> DetermineRouting
+          ```
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+        success_criteria:
+          - "Loop validation step added to process flow"
+          - "Rejection path returns to planning phase"
+        status: completed
+        completion_notes: |
+          orchestration-planning/process.mmd (lines 262-265) contains:
+          - ExtractPhases --> ValidateLoopStructure{Plans Include Loops?}
+          - ValidateLoopStructure -- "No: Missing" --> RejectPlan[Return to Planning: Add Loops]
+          - RejectPlan -.-> PlanningLoops (dotted feedback line)
+          - ValidateLoopStructure -- "Yes: Valid" --> DetermineRouting
+          FENCE comment documents loop validation requirement
+
+  - phase: validation
+    name: "Validate Loop Awareness"
+    priority: high
+    depends_on: ["update-planner-processes", "update-orchestration-planning"]
+    description: |
+      Test that planners now include loops and orchestration validates them.
+
+    loop_structure:
+      type: "guidance-self-review-loop"
+      trigger: "Validation phase starts"
+      exit_criteria:
+        success: "All test scenarios pass"
+        max_iterations: 3
+        escalation: "Escalate to user with findings"
+      participants:
+        - agent: "planner-guidance"
+          role: "create test plan"
+        - agent: "test-guidance-simulator"
+          role: "validate guidance works"
+
+    tasks:
+      - id: TLP-011
+        name: "Test planner-guidance creates plan with loops"
+        agent_type: test-guidance-simulator
+        description: |
+          Spawn planner-guidance with objective: "Improve test-runner guidance"
+          Verify output plan includes loop_structure section.
+        success_criteria:
+          - "Plan output includes loop_structure"
+          - "Loop type is guidance-self-review-loop or agent-self-review"
+          - "Exit criteria are explicit"
+        status: completed
+        completion_notes: |
+          VALIDATED: planner-guidance/process.yml (lines 195-231) contains:
+          - "DETERMINE REQUIRED LOOPS (before finalizing plan)" step
+          - References loop-inclusion-for-planners.yml
+          - Documents guidance-self-review-loop, test-fix-loop, audit-test-fix-loop
+          - Includes loop_structure template with type, trigger, exit_criteria, participants
+          - Guideline exists with comprehensive content (what_are_loops, when_to_include_loops,
+            loop_structure_template, exit_criteria_patterns, common_loop_patterns, examples)
+          See audit/validation_test_TLP-011.yml for detailed validation evidence.
+
+      - id: TLP-012
+        name: "Test planner-build creates plan with loops"
+        agent_type: test-guidance-simulator
+        description: |
+          Spawn planner-build with objective: "Add new CLI command"
+          Verify output plan includes loop_structure section.
+        success_criteria:
+          - "Plan output includes loop_structure"
+          - "Loop type is test-fix-loop"
+          - "Exit criteria are explicit"
+        status: completed
+        completion_notes: |
+          VALIDATED: planner-build/process.yml (lines 187-226) contains:
+          - "LOOP INCLUSION STEP (Before Finalizing Plan)" step
+          - References loop-inclusion-for-planners.yml
+          - Documents test-fix-loop (max 5) and audit-test-fix-loop (max 3, MANDATORY)
+          - Includes example loop_structure YAML for implementation and test quality phases
+          Also verified: planner-test (lines 103-128) and planner-cleaning (lines 133-157)
+          have equivalent loop inclusion steps referencing the same guideline.
+          See audit/validation_test_TLP-012.yml for detailed validation evidence.
+
+      - id: TLP-013
+        name: "Test planner-reviewer rejects plan without loops"
+        agent_type: test-guidance-simulator
+        description: |
+          Present planner-reviewer with a plan MISSING loop_structure.
+          Verify reviewer rejects with appropriate message.
+        success_criteria:
+          - "Reviewer rejects plan"
+          - "Rejection message references loop-inclusion-for-planners.yml"
+        status: completed
+        completion_notes: |
+          VALIDATED: planner-reviewer-checklists.yml (lines 46-55) contains loop_structure checklist:
+          - description: "Plan includes appropriate loops for iteration"
+          - 4 checklist items: loop_structure section exists, loop type matches phase,
+            exit criteria explicit and verifiable, max iterations with escalation
+          - rejection_condition: "Non-trivial plan missing loop_structure"
+          - rejection message: "Plan must include loop_structure. See loop-inclusion-for-planners.yml"
+          Pattern_alignment checklist (line 44) also validates mandatory loops.
+          See audit/validation_test_TLP-013.yml for detailed validation evidence.
+
+success_criteria:
+  overall:
+    - "New guideline loop-inclusion-for-planners.yml exists"
+    - "plans.yml includes loop_structure schema"
+    - "All 4 planner processes updated with loop inclusion step"
+    - "planner-reviewer-checklists.yml includes loop validation"
+    - "orchestration-planning process validates loop presence"
+    - "Test scenarios pass: planners create plans with loops"
+
+expected_outcomes:
+  - outcome: "Plans include loop structures"
+    metric: "100% of non-trivial plans have loop_structure section"
+    baseline: "0% currently"
+
+  - outcome: "Loops enable iteration"
+    metric: "NEEDS_ATTENTION triggers loop iteration, not termination"
+    baseline: "Currently NEEDS_ATTENTION terminates"
+
+  - outcome: "Gaps get closed"
+    metric: "Self-review loops iterate until PASS achieved"
+    baseline: "Currently single-pass only"
+
+references:
+  - "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+  - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml#loop_selection_guidance"
+  - "docs/plans/live/260104AE_agenticguidance/live/plan_live_selfreview_loop_enforcement.yml"

@@ -1,0 +1,391 @@
+# Build Plan - CLI Stub File Improvement
+# Plan: 260104AE_agenticguidance
+# Type: BUILD
+# Objective: Resolve FF-007 friction - Empty stub files cause confusion
+# Created: 2026-01-23
+# Source: docs/plans/live/260104AE_agenticguidance/audit/260119_session_friction_analysis.yml (FF-007)
+
+name: cli-stub-improvement
+worktree_path: /home/code/AgenticEngineering
+branch: main
+status: active
+priority: normal
+plan_type: build
+
+# =============================================================================
+# CONTEXT
+# =============================================================================
+
+context: |
+  From friction analysis FF-007: The CLI `agentic plan init` command creates empty
+  stub plan files (plan_live_test.yml, plan_live_teach.yml, plan_live_audit_clean.yml)
+  with no content, causing confusion about whether plans are placeholders or actual work.
+
+  Evidence from 260119CL session:
+  - "Removed empty stub files: plan_live_test.yml, plan_live_teach.yml, plan_live_audit_clean.yml"
+  - "These were scaffolds with no tasks defined"
+
+  Current behavior (worktree.py:create_planning_folder):
+  - Creates 3 stub YAML files with empty phases arrays
+  - Files contain TODO placeholders that are never populated
+  - No clear indication these are templates requiring population
+
+  Suggested resolution options from FF-007:
+  - Option A: Stop creating empty stub files entirely
+  - Option B: Mark stub files clearly as templates with TODO markers
+  - Option C: Add validation warnings when empty stubs are detected
+
+  This plan implements Option B (clear template marking) combined with Option C
+  (validation warnings), as this provides the best balance of guidance and flexibility.
+
+# =============================================================================
+# TARGET FILES
+# =============================================================================
+
+target_files:
+  primary:
+    - modules/AgenticCLI/src/agenticcli/commands/worktree.py  # create_planning_folder function
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py      # cmd_validate function
+  secondary:
+    - modules/AgenticCLI/tests/test_worktree.py               # Add tests for stub templates
+
+# =============================================================================
+# PHASES
+# =============================================================================
+
+phases:
+  # ========================================
+  # PHASE 1: Update Stub File Templates
+  # ========================================
+  - name: Update Stub File Templates
+    id: phase_01
+    execution: sequential
+    description: |
+      Modify create_planning_folder() to generate clearly-marked template stubs
+      that are distinguishable from actual plans. Each stub will include:
+      - TEMPLATE header with clear instructions
+      - Explanation that the file is a scaffold requiring population
+      - TODO markers with guidance on what to fill in
+      - Template status indicator for validation detection
+    tasks:
+      - id: stub_01_001
+        name: Add template header constant
+        status: pending
+        description: |
+          Add a constant or helper function that generates the template header block
+          to be used in all stub files. The header should clearly indicate:
+          - This is a TEMPLATE file, not an active plan
+          - Action required: populate with actual content or delete if unused
+          - Reference to plan documentation for guidance
+        target_files:
+          - modules/AgenticCLI/src/agenticcli/commands/worktree.py
+        guidance: |
+          Add near the top of the file (after imports) a template header like:
+
+          STUB_TEMPLATE_HEADER = '''# ============================================================================
+          # TEMPLATE FILE - ACTION REQUIRED
+          # ============================================================================
+          # This is a scaffold template created by `agentic plan init`.
+          #
+          # OPTIONS:
+          #   1. POPULATE: Replace TODO sections with actual plan content
+          #   2. DELETE: Remove this file if not needed for your plan
+          #
+          # A file with _template_status: stub will trigger validation warnings.
+          # Change to _template_status: active once populated.
+          # ============================================================================
+          '''
+        success_criteria:
+          - Template header constant is defined
+          - Header clearly explains the file is a template
+          - Header provides actionable guidance (populate or delete)
+
+      - id: stub_01_002
+        name: Update plan_live_teach.yml stub content
+        status: pending
+        description: |
+          Update the plan_live_teach.yml stub template to include:
+          - Template header from stub_01_001
+          - _template_status: stub field for validation detection
+          - Clear TODO markers with specific guidance
+          - Example structure showing expected populated format
+        target_files:
+          - modules/AgenticCLI/src/agenticcli/commands/worktree.py
+        guidance: |
+          Modify the plan_files dict entry for "plan_live_teach.yml" (around line 97).
+          Add _template_status: stub and improve TODO markers with guidance.
+
+          Example improved content:
+          ```yaml
+          # [TEMPLATE HEADER]
+
+          _template_status: stub  # Change to 'active' when populated
+
+          plan:
+            name: "TODO: Plan Name"
+            # ... rest with improved TODO markers
+          ```
+        success_criteria:
+          - Template header is included
+          - _template_status: stub field is present
+          - TODO markers have clear guidance
+          - File is distinguishable from an active plan
+
+      - id: stub_01_003
+        name: Update plan_live_test.yml stub content
+        status: pending
+        description: |
+          Update the plan_live_test.yml stub template with same improvements:
+          - Template header
+          - _template_status: stub field
+          - Clear TODO markers with testing-specific guidance
+        target_files:
+          - modules/AgenticCLI/src/agenticcli/commands/worktree.py
+        guidance: |
+          Modify the plan_files dict entry for "plan_live_test.yml" (around line 116).
+          Include test-specific guidance in the TODO markers.
+        success_criteria:
+          - Template header is included
+          - _template_status: stub field is present
+          - Test-specific TODO guidance provided
+
+      - id: stub_01_004
+        name: Update plan_live_audit_clean.yml stub content
+        status: pending
+        description: |
+          Update the plan_live_audit_clean.yml stub template with same improvements:
+          - Template header
+          - _template_status: stub field
+          - Clear TODO markers with cleanup-specific guidance
+        target_files:
+          - modules/AgenticCLI/src/agenticcli/commands/worktree.py
+        guidance: |
+          Modify the plan_files dict entry for "plan_live_audit_clean.yml" (around line 136).
+          Include cleanup/audit-specific guidance in the TODO markers.
+        success_criteria:
+          - Template header is included
+          - _template_status: stub field is present
+          - Cleanup-specific TODO guidance provided
+
+  # ========================================
+  # PHASE 2: Add Stub Validation
+  # ========================================
+  - name: Add Stub Validation
+    id: phase_02
+    execution: sequential
+    description: |
+      Enhance cmd_validate() in plan.py to detect and warn about stub templates
+      that haven't been populated or removed. This helps agents and users identify
+      files that need attention.
+    tasks:
+      - id: stub_02_001
+        name: Add stub detection helper function
+        status: pending
+        description: |
+          Create a helper function is_stub_template() that checks if a YAML file
+          is an unpopulated stub template by checking:
+          - _template_status field equals 'stub'
+          - OR phases array is empty AND contains TODO in objective
+        target_files:
+          - modules/AgenticCLI/src/agenticcli/commands/plan.py
+        guidance: |
+          Add helper function before cmd_validate():
+
+          def is_stub_template(content: dict) -> bool:
+              '''Check if content is an unpopulated stub template.'''
+              # Check explicit template status
+              if content.get('_template_status') == 'stub':
+                  return True
+
+              # Check for empty phases with TODO markers (legacy detection)
+              plan = content.get('plan', content.get('feature', {}))
+              phases = plan.get('phases', [])
+              objective = plan.get('objective', '')
+
+              if not phases and 'TODO' in str(objective):
+                  return True
+
+              return False
+        success_criteria:
+          - Helper function is_stub_template() exists
+          - Detects _template_status: stub field
+          - Detects legacy empty stub patterns
+
+      - id: stub_02_002
+        name: Add stub warning to cmd_validate
+        status: pending
+        description: |
+          Update cmd_validate() to use is_stub_template() and add warnings for
+          detected stub files. Warnings should:
+          - List all stub template files found
+          - Suggest populating or deleting them
+          - Not fail validation (stubs are valid, just need attention)
+        target_files:
+          - modules/AgenticCLI/src/agenticcli/commands/plan.py
+        guidance: |
+          In cmd_validate() around line 433-445 where it checks YAML files,
+          add stub detection:
+
+          # Check for stub templates
+          if content and is_stub_template(content):
+              warnings.append(f"{yaml_file.name}: Stub template - needs population or deletion")
+
+          Also update the warnings output section to specifically mention stub templates.
+        success_criteria:
+          - cmd_validate detects stub templates
+          - Warns about stubs without failing validation
+          - Warning message is actionable
+
+      - id: stub_02_003
+        name: Add --strict flag for stub failure
+        status: pending
+        description: |
+          Add optional --strict flag to cmd_validate that causes stub templates
+          to fail validation. This allows strict mode for automated checks while
+          keeping default behavior permissive.
+        target_files:
+          - modules/AgenticCLI/src/agenticcli/commands/plan.py
+        guidance: |
+          The --strict flag should be added to the argparse configuration in cli.py
+          and passed through to cmd_validate. When --strict is set, stub templates
+          should be promoted from warnings to errors.
+
+          Note: This may require updating modules/AgenticCLI/src/agenticcli/cli.py
+          to add the --strict argument to the plan validate subcommand.
+        success_criteria:
+          - --strict flag is available for plan validate
+          - With --strict, stub templates cause validation failure
+          - Without --strict, stubs only produce warnings
+
+  # ========================================
+  # PHASE 3: Add Tests
+  # ========================================
+  - name: Add Tests
+    id: phase_03
+    execution: sequential
+    description: |
+      Add unit tests to verify stub template generation and validation behavior.
+    tasks:
+      - id: stub_03_001
+        name: Test stub template generation
+        status: pending
+        description: |
+          Add tests verifying that create_planning_folder() generates stub files with:
+          - Template header present
+          - _template_status: stub field
+          - TODO markers with guidance
+        target_files:
+          - modules/AgenticCLI/tests/test_worktree.py
+        guidance: |
+          Add test function test_create_planning_folder_generates_stub_templates()
+          that creates a planning folder and verifies stub file contents.
+        success_criteria:
+          - Test verifies template header presence
+          - Test verifies _template_status field
+          - Test verifies TODO markers
+
+      - id: stub_03_002
+        name: Test stub validation detection
+        status: pending
+        description: |
+          Add tests verifying is_stub_template() correctly identifies stub templates
+          and that cmd_validate produces appropriate warnings.
+        target_files:
+          - modules/AgenticCLI/tests/test_worktree.py
+        guidance: |
+          Add test functions:
+          - test_is_stub_template_detects_status_field()
+          - test_is_stub_template_detects_legacy_pattern()
+          - test_validate_warns_on_stub_templates()
+        success_criteria:
+          - Tests cover _template_status detection
+          - Tests cover legacy empty stub detection
+          - Tests verify warning output
+
+  # ========================================
+  # PHASE 4: Verification
+  # ========================================
+  - name: Verification
+    id: phase_04
+    execution: sequential
+    description: |
+      Verify the implementation works correctly end-to-end.
+    tasks:
+      - id: stub_04_001
+        name: Run test suite
+        status: pending
+        description: |
+          Run the AgenticCLI test suite to verify no regressions and new tests pass.
+        command: |
+          cd modules/AgenticCLI && python -m pytest tests/ -v
+        success_criteria:
+          - All existing tests pass
+          - New stub-related tests pass
+
+      - id: stub_04_002
+        name: Manual verification - plan init
+        status: pending
+        description: |
+          Create a test plan folder and verify stub files are generated correctly:
+          1. Run: agentic plan init test-stub-verification --description "Test stub verification"
+          2. Inspect generated stub files for template header and _template_status
+          3. Clean up test folder
+        success_criteria:
+          - Stub files contain template header
+          - Stub files contain _template_status: stub
+          - Stub files have improved TODO markers
+
+      - id: stub_04_003
+        name: Manual verification - plan validate
+        status: pending
+        description: |
+          Validate a plan folder with stub templates and verify warnings appear:
+          1. Run: agentic plan validate <test-plan-path>
+          2. Verify stub template warnings are displayed
+          3. Run: agentic plan validate <test-plan-path> --strict
+          4. Verify validation fails in strict mode
+        success_criteria:
+          - Default mode shows warnings for stubs
+          - Strict mode fails on stubs
+          - Warning messages are clear and actionable
+
+# =============================================================================
+# EXECUTION ORDER
+# =============================================================================
+
+execution_order: |
+  1. Phase 1: Update stub templates in worktree.py (stub_01_001 through stub_01_004)
+  2. Phase 2: Add validation in plan.py (stub_02_001 through stub_02_003)
+  3. Phase 3: Add tests (stub_03_001, stub_03_002)
+  4. Phase 4: Run verification (stub_04_001 through stub_04_003)
+
+# =============================================================================
+# SUCCESS CRITERIA
+# =============================================================================
+
+success_criteria:
+  - Stub files created by `agentic plan init` are clearly marked as templates
+  - Each stub file contains _template_status: stub field
+  - Each stub file has a header explaining it's a template with actionable options
+  - `agentic plan validate` warns about unpopulated stub templates
+  - `agentic plan validate --strict` fails on stub templates
+  - All tests pass
+  - FF-007 friction pattern is resolved
+
+# =============================================================================
+# ESTIMATED EFFORT
+# =============================================================================
+
+estimated_effort: "2-3 hours"
+
+# =============================================================================
+# REFERENCES
+# =============================================================================
+
+references:
+  - path: docs/plans/live/260104AE_agenticguidance/audit/260119_session_friction_analysis.yml
+    description: FF-007 friction analysis documenting the stub file confusion issue
+  - path: modules/AgenticCLI/src/agenticcli/commands/worktree.py
+    description: Contains create_planning_folder() function that creates stubs
+  - path: modules/AgenticCLI/src/agenticcli/commands/plan.py
+    description: Contains cmd_validate() function to be enhanced

@@ -27,7 +27,7 @@ process:
         - "worktree_path"
         - "status"
         - "phases"
-      schema_reference: "modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/plan_example.yml"
+      schema_reference: "modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/live/plan_example.yml"
 
     - name: "plan_live_audit_clean.yml"
       path_template: "docs/plans/live/{plan_folder_name}/live/plan_live_audit_clean.yml"
@@ -47,6 +47,26 @@ process:
     # Planner (YAML) -> Orchestrator (generates MMD) -> Reviewer (validates complete package)
 
   steps:
+    - |
+      CCI BOOTSTRAP (CLI Context Injection) - Run FIRST before any file exploration:
+      Execute these commands to get structured context efficiently:
+
+      ```bash
+      # Get seed context (objective, process summary, inputs)
+      agentic context bootstrap --role planner-guidance -j
+
+      # Get current task if working from a plan
+      agentic plan task current -j
+      ```
+
+      CLI output provides:
+      - Your objective and process summary
+      - Input file paths to read
+      - Current task details (if plan exists)
+
+      ONLY use Glob/Grep/Read if CLI output indicates specific files to examine.
+      DO NOT explore the codebase before running these commands.
+
     - |
       VALIDATE REQUIRED INPUTS (from inputs.yml required_inputs):
       The following inputs MUST be provided by the orchestrator or user:
@@ -170,6 +190,44 @@ process:
       - Include file:line citations from programmatic extraction
       - Map friction patterns to specific guidance files that need updates
       - Use get_accumulated("ACCUMULATOR_FRICTION_PATTERNS", sort_by="frequency") for priority
+
+    - |
+      DETERMINE REQUIRED LOOPS (before finalizing plan):
+      Reference: modules/AgenticGuidance/assets/guidelines/loop-inclusion-for-planners.yml
+
+      Before finalizing the plan, determine which loops are required for iterative work:
+
+      1. guidance-self-review-loop - REQUIRED for validation phases:
+         - Use when guidance changes need validation
+         - Agent reviews own guidance files against self-review-criteria.yml
+         - Exit: All criteria pass + spot-check passes (max 3 iterations)
+
+      2. test-fix-loop - Include if implementation is involved:
+         - Use when plan includes any build/implementation tasks
+         - Enables build-test-fix iteration cycle
+         - Exit: All tests pass (max 5 iterations)
+
+      3. audit-test-fix-loop - MANDATORY if tests are created/modified:
+         - External validation of test quality
+         - Catches reward hacking patterns
+         - Exit: Audit finds no issues (max 3 iterations)
+
+      Include loop_structure section in plan output:
+      ```yaml
+      loop_structure:
+        type: "<loop-type from agent-loops.yml>"
+        trigger: "<condition that starts loop>"
+        exit_criteria:
+          success: "<condition for successful exit>"
+          max_iterations: <number>
+          escalation: "<what to do if max reached>"
+        participants:
+          - agent: "<agent-name>"
+            role: "<role in loop>"
+      ```
+
+      NOTE: Planners specify loop STRUCTURE (what iteration is needed).
+      Orchestration-planning selects the specific loop TYPE based on phase.
 
     - |
       Write your planning artifacts:

@@ -1,0 +1,212 @@
+# Plan: Update Agent Implementation Status
+# Created: 2026-01-23
+# Objective: Correct stale NOT_IMPLEMENTED list in agent-categories.yml
+
+name: "update-implementation-status"
+worktree_path: "/home/code/AgenticEngineering"
+branch: "agenticguidance"
+status: "completed"
+priority: "medium"
+created: "2026-01-23"
+completed_date: "2026-01-23"
+
+# ========================================
+# PLAN METADATA
+# ========================================
+plan_metadata:
+  name: "Update Agent Implementation Status"
+  created: "2026-01-23"
+  status: "pending"
+  objective: |
+    Update the agent-categories.yml implementation status comment to accurately reflect
+    which agents are now implemented. Several agents listed as "NOT YET IMPLEMENTED"
+    have been fully migrated and have complete guidance.
+
+# ========================================
+# CONTEXT & FRICTION ANALYSIS
+# ========================================
+context: |
+  Agent self-reviews identified that the agent-categories.yml file contains a stale
+  implementation status comment. The file is the canonical source of truth for agent
+  organizational structure, but its status comment has not been updated as agents
+  were migrated.
+
+  OBSERVED ISSUE:
+  - The NOT_IMPLEMENTED list includes agents that have been fully migrated
+  - This creates confusion about the actual state of the agent framework
+  - Agents and humans consulting this file get incorrect status information
+
+  AGENTS TO MOVE FROM NOT_IMPLEMENTED TO IMPLEMENTED:
+  - test-service: MIGRATED 2026-01-09, has full guidance at agents/test/test-service/
+  - test-builder: MIGRATED 2026-01-09, has full guidance at agents/test/test-builder/
+  - test-user-simulator: MIGRATED 2026-01-09, has full guidance at agents/test/test-user-simulator/
+  - test-runner: Has full guidance at agents/test/test-runner/
+  - build-flutter: Has full guidance at agents/build/build-flutter/
+  - build-python: Has full guidance at agents/build/build-python/
+
+  VERIFICATION:
+  All six agents have manifest.yml files confirming implementation:
+  - modules/AgenticGuidance/agents/test/test-service/manifest.yml
+  - modules/AgenticGuidance/agents/test/test-builder/manifest.yml
+  - modules/AgenticGuidance/agents/test/test-user-simulator/manifest.yml
+  - modules/AgenticGuidance/agents/test/test-runner/manifest.yml
+  - modules/AgenticGuidance/agents/build/build-flutter/manifest.yml
+  - modules/AgenticGuidance/agents/build/build-python/manifest.yml
+
+friction_analysis:
+  source: "agent-self-review"
+  summary: |
+    The agent-categories.yml implementation status comment is outdated. Multiple
+    agents that are listed as NOT YET IMPLEMENTED actually have full guidance
+    and manifest files, indicating they are implemented.
+
+  affected_components:
+    - file: "modules/AgenticGuidance/assets/definitions/agent-categories.yml"
+      issue: "NOT_IMPLEMENTED list includes 6 agents that are actually implemented"
+      impact: "Incorrect status information for agents consulting the taxonomy"
+
+# ========================================
+# PHASES
+# ========================================
+phases:
+  # ========================================
+  # PHASE 1: Update agent-categories.yml
+  # ========================================
+  - name: "Phase 1 - Update Status Comment"
+    description: "Update the implementation status comment to reflect actual status"
+    execution: sequential
+    tasks:
+      # ----------------------------------------
+      # Task 1: Update implementation status comment
+      # ----------------------------------------
+      - id: "update_001"
+        name: "Update agent-categories.yml implementation status comment"
+        status: "pending"
+        agent: "teacher-update-assets"
+        inputs:
+          - "modules/AgenticGuidance/assets/definitions/agent-categories.yml"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/agent-categories.yml"
+        guidance: |
+          Update the IMPLEMENTATION STATUS NOTE comment block (lines 8-20) to move
+          the following agents from NOT YET IMPLEMENTED to IMPLEMENTED:
+
+          1. Move to IMPLEMENTED list:
+             - test-service (MIGRATED 2026-01-09)
+             - test-builder (MIGRATED 2026-01-09)
+             - test-user-simulator (MIGRATED 2026-01-09)
+             - test-runner (has full guidance)
+             - build-flutter (has full guidance)
+             - build-python (has full guidance)
+
+          2. Update the IMPLEMENTED line to include:
+             # IMPLEMENTED: planner/*, orchestration/* (including orchestration-executor),
+             #              deploy-cicd, deploy-worktree, test-guidance-simulator,
+             #              test-final-output, test-audit, test-service, test-builder,
+             #              test-user-simulator, test-runner, build-flutter, build-python,
+             #              teacher-update-guidance, teacher-update-assets
+
+          3. Update the NOT YET IMPLEMENTED line to remove the migrated agents:
+             # NOT YET IMPLEMENTED: cleaner/*, explore/*, documentation/*,
+             #                      deploy-packaging, test-flutter-*, teacher-plan
+
+        acceptance_criteria:
+          - "IMPLEMENTED list includes all 6 newly migrated agents"
+          - "NOT YET IMPLEMENTED list no longer contains the 6 migrated agents"
+          - "Comment formatting is consistent with existing style"
+          - "No YAML syntax errors"
+
+  # ========================================
+  # PHASE 2: Verify Consistency
+  # ========================================
+  - name: "Phase 2 - Verify Consistency"
+    description: "Cross-check updated status against agent manifests"
+    execution: sequential
+    tasks:
+      # ----------------------------------------
+      # Task 1: Cross-check with manifests
+      # ----------------------------------------
+      - id: "verify_001"
+        name: "Cross-check agent-categories.yml with agent manifests"
+        status: "pending"
+        agent: "test-audit"
+        inputs:
+          - "modules/AgenticGuidance/assets/definitions/agent-categories.yml"
+          - "modules/AgenticGuidance/agents/manifest.yml"
+        target_files: []
+        guidance: |
+          Verify that the updated implementation status in agent-categories.yml
+          is consistent with the actual agent manifests in the repository:
+
+          1. For each agent listed as IMPLEMENTED, verify:
+             - A manifest.yml file exists at the expected path
+             - The agent has an inputs.yml or guidance files
+
+          2. For each agent listed as NOT YET IMPLEMENTED, verify:
+             - No complete guidance structure exists
+             - OR the agent is explicitly marked as planned/not-migrated
+
+          3. Check the agents/ root manifest.yml for any discrepancies
+
+          4. Report any inconsistencies found
+
+        acceptance_criteria:
+          - "All IMPLEMENTED agents have corresponding manifest files"
+          - "No agents listed as NOT YET IMPLEMENTED actually have full guidance"
+          - "Status comment accurately reflects repository state"
+          - "Verification report documents any edge cases"
+
+# ========================================
+# DELIVERABLES
+# ========================================
+deliverables:
+  - file: "modules/AgenticGuidance/assets/definitions/agent-categories.yml"
+    changes:
+      - "Update IMPLEMENTED list to include 6 newly migrated agents"
+      - "Update NOT YET IMPLEMENTED list to remove migrated agents"
+
+# ========================================
+# ACCEPTANCE CRITERIA
+# ========================================
+acceptance_criteria:
+  - "agent-categories.yml IMPLEMENTED list includes: test-service, test-builder, test-user-simulator, test-runner, build-flutter, build-python"
+  - "agent-categories.yml NOT YET IMPLEMENTED list excludes the 6 migrated agents"
+  - "Cross-check confirms all IMPLEMENTED agents have manifest files"
+  - "No YAML syntax errors in updated file"
+
+# ========================================
+# SUCCESS CRITERIA
+# ========================================
+success_criteria:
+  - "Implementation status comment accurately reflects current repository state"
+  - "Agents and humans consulting agent-categories.yml get correct status information"
+  - "No confusion about which agents are available for use"
+
+# ========================================
+# VALIDATION APPROACH
+# ========================================
+validation:
+  approach: "manifest-cross-check"
+  description: |
+    After updating the status comment:
+    1. List all agents marked as IMPLEMENTED
+    2. Verify each has a manifest.yml file
+    3. List all agents marked as NOT YET IMPLEMENTED
+    4. Verify none have full guidance structures
+    5. Report consistency state
+
+# ========================================
+# NOTES
+# ========================================
+notes: |
+  This plan addresses a housekeeping issue identified through agent self-reviews.
+  The agent-categories.yml file is a key reference document and its accuracy
+  is important for both agents and humans understanding the framework status.
+
+  The 6 agents being moved to IMPLEMENTED all have verified guidance:
+  - test-service, test-builder, test-user-simulator: MIGRATED 2026-01-09
+  - test-runner, build-flutter, build-python: Have full guidance directories
+
+  This is a documentation/metadata update - no code changes required.
+
+estimated_effort: "15-20 minutes"

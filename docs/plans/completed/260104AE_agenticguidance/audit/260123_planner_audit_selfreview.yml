@@ -1,0 +1,493 @@
+# Self-Review: planner-audit Agent Guidance
+# Generated: 2026-01-23T13:00:00Z
+# Reviewer: planner-audit (self-review)
+# Scope: manifest.yml, inputs.yml, process.yml
+# Method: Applied self-review-criteria.yml and spot-check-checklist.yml
+
+review_metadata:
+  agent_name: "planner-audit"
+  agent_category: "planner"
+  review_type: "self-review"
+  review_date: "2026-01-23"
+  reviewer_role: "planner-audit"
+  criteria_used: "self-review-criteria.yml + spot-check-checklist.yml"
+  result: "NEEDS_ATTENTION"
+  overall_severity: "MEDIUM"
+
+# =============================================================================
+# PASS CRITERIA ASSESSMENT (PC-001 through PC-007)
+# =============================================================================
+
+pass_criteria_assessment:
+
+  pc_001_no_duplicate_definitions:
+    name: "No Duplicate Definitions"
+    status: "PASS"
+    evidence: |
+      Cross-reference between inputs.yml definitions section and:
+      - modules/AgenticGuidance/assets/definitions/plans.yml ✓
+      - modules/AgenticGuidance/assets/guidelines/plan-completion.yml ✓
+      - modules/AgenticGuidance/assets/guidelines/decommissioning-over-deprecation.yml ✓
+      No duplicate definitions >50 tokens detected.
+      The inline definitions in inputs.yml (compliance_question, file_placement_rules, etc.)
+      are agent-specific audit queries, not duplicates of shared content.
+    score: "9/10"
+
+  pc_002_all_references_resolve:
+    name: "All References Resolve"
+    status: "PASS"
+    evidence: |
+      Validated all file path references:
+      ✓ modules/AgenticGuidance/assets/inputs/planner-core-system.yml
+      ✓ modules/AgenticGuidance/assets/inputs/planner-core-guidelines.yml
+      ✓ modules/AgenticGuidance/assets/inputs/planner-shared.yml
+      ✓ modules/AgenticGuidance/assets/definitions/plans.yml
+      ✓ modules/AgenticGuidance/assets/guidelines/plan-completion.yml
+      ✓ modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/live/plan_example.yml
+      ✓ modules/AgenticGuidance/assets/guidelines/decommissioning-over-deprecation.yml
+      All 7 references resolve to existing files.
+    score: "10/10"
+
+  pc_003_no_circular_references:
+    name: "No Circular References"
+    status: "PASS"
+    evidence: |
+      Reference graph analysis:
+      planner-audit/inputs.yml → planner-core-{system,guidelines}.yml, planner-shared.yml
+      planner-shared.yml → planner-core-guidelines.yml
+      No cycles detected. Linear dependency chain.
+    score: "10/10"
+
+  pc_004_path_resolution_semantics:
+    name: "Path Resolution Semantics"
+    status: "PASS"
+    evidence: |
+      All paths follow documented semantics:
+      - Repository-root-relative: modules/AgenticGuidance/assets/* ✓
+      - Runtime paths: docs/plans/live/YYMMDDXX_description/ (marked as runtime) ✓
+      - EXCEPTION documented in inputs.yml header ✓
+    score: "10/10"
+
+  pc_005_version_alignment:
+    name: "Version Alignment"
+    status: "PASS"
+    evidence: |
+      manifest.yml version: "2.0"
+      inputs.yml version: "2.0"
+      Versions match. Reference layer architecture (v2.0) correctly applied.
+    score: "10/10"
+
+  pc_006_no_large_inline_duplicates:
+    name: "No Large Inline Duplicates"
+    status: "PASS"
+    evidence: |
+      Inline definitions in inputs.yml:
+      - compliance_question (~30 words, ~40 tokens): Agent-specific, not duplicated
+      - file_placement_rules (~25 words, ~33 tokens): Pointers to authoritative source
+      - misleading_content_patterns (~20 words, ~26 tokens): Agent-specific examples
+      - execution_tracking (~18 words, ~24 tokens): Agent-specific guidance
+      All inline content <50 tokens. None match asset content.
+    score: "10/10"
+
+  pc_007_transitive_layer_loading:
+    name: "Transitive Layer Loading"
+    status: "PASS"
+    evidence: |
+      inputs.yml correctly uses layer references:
+      - planner-core-system.yml (transitive)
+      - planner-core-guidelines.yml (transitive)
+      - planner-shared.yml (transitive)
+      No copy-pasted shared content. All shared definitions accessed via layers.
+    score: "10/10"
+
+pass_criteria_summary:
+  total_criteria: 7
+  pass_count: 7
+  fail_count: 0
+  average_score: "9.7/10"
+  pass_decision_criteria: "ALL criteria must be PASS"
+  result: "PASS - All individual criteria met"
+
+# =============================================================================
+# NEEDS_ATTENTION TRIGGERS (NAT-001 through NAT-006)
+# =============================================================================
+
+needs_attention_triggers:
+
+  nat_001_duplicate_definition_found:
+    name: "Duplicate Definition Found"
+    triggered: false
+    evidence: "No duplicate definitions >50 tokens detected"
+
+  nat_002_broken_file_reference:
+    name: "Broken File Reference"
+    triggered: false
+    evidence: "All 7 file references resolve to existing files"
+
+  nat_003_large_inline_definition:
+    name: "Large Inline Definition"
+    triggered: false
+    evidence: "All inline definitions <50 tokens. None exceed threshold."
+
+  nat_004_version_mismatch:
+    name: "Version Mismatch"
+    triggered: false
+    evidence: "manifest.yml (2.0) matches inputs.yml (2.0)"
+
+  nat_005_deprecated_pattern_usage:
+    name: "Deprecated Pattern Usage"
+    triggered: false
+    evidence: "No references to definitions/strategy-*, success-criteria-teacher.yml, or deprecated patterns"
+
+  nat_006_context_bloat:
+    name: "Context Bloat"
+    triggered: true
+    severity: "MEDIUM"
+    evidence: |
+      Token count analysis:
+      - inputs.yml: 1056 words ≈ 1373 tokens
+      - process.yml: 489 words ≈ 636 tokens
+      - Total: 1545 words ≈ 2008 tokens
+
+      THRESHOLD ANALYSIS:
+      - Recommended max: 2000 tokens ✓ (just above threshold)
+      - Warning threshold: 1500 tokens ✗ (exceeded by 8 tokens)
+      - Total is 2008 tokens (0.4% over max)
+
+      This is a BORDERLINE case:
+      - Total is minimally over recommended max (0.4%)
+      - inputs.yml alone (1373 tokens) is well within limit
+      - process.yml (636 tokens) is lean with no redundancy detected
+
+      REDUCTION OPPORTUNITY ANALYSIS:
+      1. Process file has 11 unnumbered steps with verbose introductions (steps 1-2)
+         - Step 1: JIT CLI bootstrap explanation (100+ tokens)
+         - Step 2: Required inputs validation (80+ tokens)
+         These could be condensed by referencing context-minimisation guideline
+         Estimated reduction: 40-50 tokens (~3-4%)
+
+      2. No identified redundancy in inline definitions
+      3. No excessive duplication in layer loading
+
+      Estimated reduction potential: 3-4% (not exceeding 30% threshold)
+    action_required: true
+    remediation: |
+      The context bloat trigger is marginal (0.4% over max, 3-4% reduction potential).
+      Recommend:
+      1. Condense Step 1 (JIT CLI bootstrap) with reference to guidelines
+      2. Condense Step 2 (required inputs) to bullet points
+      3. This should bring total to ~1900 tokens, well within recommended limits
+
+  needs_attention_triggers_summary:
+    total_triggers: 6
+    triggered_count: 1
+    trigger_severity: "MEDIUM"
+    conclusion: "NAT-006 triggered due to marginal context bloat (0.4% over max)"
+
+# =============================================================================
+# SPOT-CHECK VALIDATION (High-Frequency Issues)
+# =============================================================================
+
+spot_check_validation:
+  performed: true
+  date: "2026-01-23"
+
+  sc_001_inline_definition_duplication:
+    check_id: "SC-001"
+    frequency_percent: 35
+    status: "PASS"
+    evidence: |
+      All inline definitions in inputs.yml are agent-specific audit queries:
+      - compliance_question: Unique to audit logic
+      - file_placement_rules: Points to canonical source
+      - misleading_content_patterns: Audit-specific patterns
+      - execution_tracking: Audit-specific verification rules
+      None match content in assets/definitions/ or assets/guidelines/
+
+  sc_002_context_bloat:
+    check_id: "SC-002"
+    frequency_percent: 25
+    status: "FLAG"
+    severity: "LOW"
+    evidence: |
+      Total agent files: 2008 tokens (0.4% over 2000 token recommended max)
+      Reduction potential: 3-4% (below 30% threshold)
+      This is minimal bloat but still exceeds recommended max.
+
+  sc_003_broken_references:
+    check_id: "SC-003"
+    frequency_percent: 20
+    status: "PASS"
+    evidence: "All 7 file references resolve successfully"
+
+  sc_004_version_mismatch:
+    check_id: "SC-004"
+    frequency_percent: 12
+    status: "PASS"
+    evidence: "manifest.yml (2.0) = inputs.yml (2.0)"
+
+  sc_005_deprecated_pattern_usage:
+    check_id: "SC-005"
+    frequency_percent: 8
+    status: "PASS"
+    evidence: "No deprecated patterns found"
+
+  spot_check_summary:
+    sample_agent: "planner-audit (self)"
+    checks_performed: 5
+    pass_count: 4
+    flag_count: 1
+    flag_rate: "20%"
+    common_issues:
+      - check_id: "SC-002"
+        severity: "LOW"
+        issue: "Minimal context bloat (2008 tokens vs 2000 recommended)"
+
+# =============================================================================
+# CRITICAL FINDINGS
+# =============================================================================
+
+critical_findings: []
+
+high_findings:
+  - id: "HF-001"
+    name: "NAT-006 Context Bloat Triggered"
+    severity: "MEDIUM"
+    category: "Context Management"
+    description: |
+      The planner-audit guidance exceeds the 2000-token recommended maximum
+      by 8 tokens (2008 total). This is technically a violation of NAT-006
+      (context bloat trigger).
+    evidence: |
+      - inputs.yml: 1373 tokens
+      - process.yml: 636 tokens
+      - Total: 2008 tokens
+      - Threshold: 2000 tokens
+      - Over by: 8 tokens (0.4%)
+    impact: |
+      MINIMAL: This is a marginal violation. Estimated reduction potential
+      is only 3-4%, well below the 30% threshold that would indicate real bloat.
+      The agent should still function effectively.
+    recommendation: |
+      Condense Step 1 (JIT CLI bootstrap) and Step 2 (required inputs validation)
+      to reference shared guidelines instead of repeating verbose introductions.
+      This should bring total to ~1900 tokens.
+
+medium_findings:
+  - id: "MF-001"
+    name: "Minimal Context Bloat"
+    severity: "MEDIUM"
+    category: "Optimization Opportunity"
+    description: |
+      The process.yml file has two verbose steps at the beginning that
+      could be condensed.
+    details: |
+      Step 1: JIT CLI BOOTSTRAP
+      - Currently ~100+ tokens explaining CLI bootstrap protocol
+      - Could reference context-minimisation.yml guideline
+      - Reduction: ~30-40 tokens
+
+      Step 2: VALIDATE REQUIRED INPUTS
+      - Currently ~80+ tokens with explanation and examples
+      - Could use checklist format instead of verbose prose
+      - Reduction: ~20-30 tokens
+
+      Combined reduction: 50-70 tokens (target: bring total to <1950)
+    impact: "Low - guidance is still effective but uses more tokens than necessary"
+    recommendation: |
+      1. Condense Step 1 with reference to context-minimisation guidelines
+      2. Convert Step 2 to structured checklist format
+      3. Target final size: 1900-1950 tokens
+
+low_findings: []
+
+# =============================================================================
+# SUMMARY
+# =============================================================================
+
+summary:
+  decision: "NEEDS_ATTENTION"
+  severity: "MEDIUM"
+
+  reasons_for_decision: |
+    1. NAT-006 (Context Bloat) triggered: 2008 tokens vs 2000 recommended max
+       - Marginal violation (0.4% over)
+       - Reduction potential: 3-4%
+       - Still functional, but violates quantitative threshold
+
+    2. Per self-review-criteria.yml: ANY NEEDS_ATTENTION trigger disqualifies PASS
+       - "If ANY criterion fails, the result must be NEEDS_ATTENTION"
+       - NAT-006 is a clear trigger for context bloat
+
+    3. Spot-check SC-002 also flagged marginal bloat
+
+    HOWEVER: This is a LOW-SEVERITY violation because:
+    - Only 0.4% over threshold (8 tokens)
+    - No broken references, duplicates, or circular dependencies
+    - No deprecated patterns
+    - All 7 PASS criteria individually met
+    - Reduction potential is minimal (3-4%, not 30%+)
+
+  overall_assessment: |
+    The planner-audit guidance is FUNCTIONALLY SOUND with NO CRITICAL ISSUES.
+    All reference validation, duplication checks, and compliance criteria pass individually.
+
+    The only issue is a marginal context bloat that exceeds the 2000-token recommended
+    maximum by 0.4%. This is a quantitative threshold violation that triggers NAT-006,
+    requiring NEEDS_ATTENTION per the strict conjunction rule.
+
+    Recommendation: Fix in next iteration by condensing process.yml steps 1-2.
+    Expected result: ~1900 tokens, well within limits, PASS verdict.
+
+# =============================================================================
+# REMEDIATION PLAN
+# =============================================================================
+
+remediation_plan:
+  priority: "MEDIUM"
+  effort_estimate: "15-20 minutes"
+  complexity: "LOW"
+
+  actions:
+    - id: "REM-001"
+      title: "Condense JIT CLI Bootstrap Step"
+      target: "process.yml Step 1"
+      current_size: "~100 tokens"
+      action: |
+        Replace verbose JIT CLI explanation with reference to context-minimisation guideline.
+        Current: Full explanation of CLI bootstrap protocol with code blocks
+        Proposed: "Run JIT CLI bootstrap (see context-minimisation.yml#jit_cli_section)"
+      expected_reduction: "30-40 tokens"
+
+    - id: "REM-002"
+      title: "Restructure Required Inputs Validation"
+      target: "process.yml Step 2"
+      current_size: "~80 tokens"
+      action: |
+        Convert verbose validation explanation to structured checklist.
+        Current: Multi-line prose explanation with ERROR examples
+        Proposed: Structured YAML checklist format
+      expected_reduction: "20-30 tokens"
+
+    - id: "REM-003"
+      title: "Verify Final Token Count"
+      target: "Full agent files"
+      action: "Re-measure token count after condensing steps 1-2"
+      expected_final_size: "1900-1950 tokens"
+      success_criteria: "Final size <1950 tokens"
+
+  implementation_priority: "After more critical work is complete"
+  can_defer: true
+  defer_reason: "Marginal violation. Agent functions effectively despite bloat."
+
+# =============================================================================
+# DETAILED ASSESSMENT BY CRITERIA
+# =============================================================================
+
+detailed_criteria_breakdown:
+
+  pass_criteria_detail:
+    pc_001:
+      criterion: "No Duplicate Definitions"
+      result: "PASS"
+      details: "Zero duplicates detected. Inline definitions are audit-specific."
+
+    pc_002:
+      criterion: "All References Resolve"
+      result: "PASS"
+      details: "100% of references (7/7) resolve to existing files."
+
+    pc_003:
+      criterion: "No Circular References"
+      result: "PASS"
+      details: "Linear dependency chain detected. No cycles."
+
+    pc_004:
+      criterion: "Path Resolution Semantics"
+      result: "PASS"
+      details: "All paths follow documented repository-root-relative convention."
+
+    pc_005:
+      criterion: "Version Alignment"
+      result: "PASS"
+      details: "manifest.yml and inputs.yml versions both 2.0."
+
+    pc_006:
+      criterion: "No Large Inline Duplicates"
+      result: "PASS"
+      details: "All inline content <50 tokens. None match asset files."
+
+    pc_007:
+      criterion: "Transitive Layer Loading"
+      result: "PASS"
+      details: "All shared content accessed via layer references, not copy-pasted."
+
+  guidance_quality_assessment:
+    clarity: "9/10"
+    completeness: "9/10"
+    consistency: "9/10"
+    overall_quality: "EXCELLENT"
+
+    strengths:
+      - Clear, step-by-step process definition
+      - Well-documented audit categories and compliance rules
+      - Excellent reference layer architecture
+      - All path references valid and resolvable
+      - Good example patterns in manifest.yml outputs section
+
+    weaknesses:
+      - Minimal: context slightly over recommended token max
+      - Steps 1-2 could be more concise
+
+    notes: |
+      This is a WELL-MAINTAINED piece of guidance with proper architecture,
+      valid references, and clear intent. The context bloat issue is marginal
+      and should be deferred to batch optimization when other agents also
+      have similar issues.
+
+# =============================================================================
+# RECOMMENDATIONS FOR NEXT SESSION
+# =============================================================================
+
+next_session_recommendations:
+
+  priority_high:
+    - id: "PRIORITY-001"
+      action: "None identified - no critical issues"
+      explanation: "All critical criteria pass"
+
+  priority_medium:
+    - id: "PRIORITY-002"
+      action: "Condense process.yml steps 1-2 to reduce context bloat by 50-70 tokens"
+      effort: "15-20 minutes"
+      batch_optimization: "Group with other agents that exceed 1500 token warning threshold"
+
+  priority_low:
+    - id: "PRIORITY-003"
+      action: "Consider adding real-world audit examples to clarify expected findings"
+      effort: "1 hour"
+      benefit: "Would improve clarity but not critical"
+
+# =============================================================================
+# PROCESS NOTES
+# =============================================================================
+
+review_process:
+  step_1: "Read manifest.yml, inputs.yml, process.yml"
+  step_2: "Applied PC-001 through PC-007 criteria (all PASS individually)"
+  step_3: "Checked NAT-001 through NAT-006 triggers (NAT-006 triggered)"
+  step_4: "Performed spot-check on high-frequency issues (SC-001..SC-005)"
+  step_5: "Validated all file references (7/7 resolve)"
+  step_6: "Analyzed token count and context bloat potential"
+  step_7: "Generated remediation plan"
+  step_8: "Documented findings in this report"
+
+conclusion: |
+  The planner-audit agent guidance is HIGH-QUALITY and FUNCTIONALLY SOUND.
+  It passes all individual criteria but triggers NAT-006 (context bloat)
+  due to a marginal violation (0.4% over 2000-token max).
+
+  Per self-review-criteria.yml: ANY NEEDS_ATTENTION trigger = NEEDS_ATTENTION result.
+
+  Remediation is straightforward and low-effort (15-20 minutes).
+  Agent should continue operating effectively despite this marginal issue.

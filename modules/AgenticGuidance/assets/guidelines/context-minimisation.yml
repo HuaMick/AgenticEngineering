@@ -36,6 +36,23 @@ guideline:
         - "Pass only the specific error logs relevant to the failure"
         - "Use just-in-time loading for secondary context"
 
+    - rule: "Prefer CCI over file exploration"
+      description: |
+        Use CCI (CLI Context Injection) commands (agentic context *) as the FIRST choice for
+        gathering context. Fall back to file exploration (Glob/Grep/Read)
+        only when CCI commands don't provide the specific information needed.
+      justification: |
+        CCI commands return structured, pre-curated context at minimal
+        token cost. File exploration requires multiple tool calls, reads
+        entire files, and forces the agent to parse and filter raw content.
+        CCI provides 75-90% token reduction compared to ad-hoc exploration.
+      characteristics:
+        - "Run `agentic context bootstrap` at session start for seed context"
+        - "Use `agentic context role <role-id>` for role-specific guidance"
+        - "Use `agentic context task` to get active plan task details"
+        - "Use `agentic context inputs` for CCI manifest of relevant files"
+        - "Only use Glob/Grep/Read when exploring unknown or unstructured content"
+
     - rule: "Precise file targeting"
       description: |
         Reference specific files directly. Avoid directory-level references.
@@ -74,6 +91,95 @@ guideline:
     - "Including historical project context for a routine task"
     - "Directory-level routing where file-level targeting is possible"
     - "Meta-files that merely list other files (noise without value)"
+    - "Inline definitions >100 tokens that duplicate shared asset content"
+    - "Flat content duplication instead of transitive layer loading"
+    - "Using Glob/Grep/Read for task details when CCI `agentic context task` available"
+    - "Reading plan files directly when CCI `agentic context bootstrap` provides summary"
+    - "Multiple file reads to assemble role context when CCI `agentic context role` consolidates it"
+
+  # =============================================================================
+  # QUANTITATIVE THRESHOLDS (for self-review validation)
+  # =============================================================================
+  # These thresholds enable automated and consistent context minimisation checks.
+  # Reference: modules/AgenticGuidance/assets/definitions/self-review-criteria.yml
+  quantitative_thresholds:
+    description: |
+      Measurable thresholds for validating context minimisation compliance.
+      Used during agent self-review to detect context bloat objectively.
+
+    inline_definitions:
+      max_tokens_before_extraction: 100
+      max_tokens_duplicate_check: 50
+      description: |
+        Inline definitions >100 tokens should be extracted to shared assets.
+        Definitions >50 tokens that match asset content are duplicates.
+        Token estimation: word_count * 1.3
+
+    context_reduction:
+      target_percent: 30
+      description: |
+        If inputs.yml can be reduced by >30%, the agent has context bloat.
+        This threshold identifies files with excessive inline content,
+        redundant descriptions, or missing layer references.
+
+    redundancy_detection:
+      trigger_locations: 2
+      description: |
+        Same content in 2+ locations indicates redundancy.
+        Canonical content should exist once with references elsewhere.
+
+    file_size_limits:
+      inputs_yml_max_tokens: 2000
+      inputs_yml_warning_tokens: 1500
+      description: |
+        inputs.yml should typically be <2000 tokens.
+        Files >1500 tokens warrant review for extraction opportunities.
+
+    transitive_depth:
+      max_layers: 3
+      description: |
+        Layer references should not exceed 3 levels of indirection.
+        Deeper nesting indicates over-complicated structure.
+
+  automated_check_commands:
+    description: |
+      Commands agents can run during self-review to validate thresholds.
+
+    token_estimation:
+      command: "wc -w {file} | awk '{print int($1 * 1.3)}'"
+      example: "wc -w inputs.yml | awk '{print int($1 * 1.3)}'"
+      description: "Estimate token count (words * 1.3 approximation)"
+
+    duplicate_detection:
+      command: |
+        # Compare inline keys to asset keys
+        grep -h '^  [a-z_]*:$' {agent}/inputs.yml | sort > /tmp/input_keys
+        grep -rh '^  [a-z_]*:$' assets/definitions/ | sort | uniq > /tmp/asset_keys
+        comm -12 /tmp/input_keys /tmp/asset_keys
+      description: "Find definition keys that exist in both inputs and assets"
+
+    reference_validation:
+      command: |
+        grep -oP 'location:\s*"\K[^"]+' {file} | while read ref; do
+          [ -f "$ref" ] || echo "MISSING: $ref"
+        done
+      description: "Validate all file path references resolve"
+
+  cci_preference:
+    description: |
+      PREFER CCI (CLI Context Injection) COMMANDS over file exploration for context retrieval.
+      CCI provides structured context more efficiently.
+
+    recommended_approach:
+      first: "Run agentic context bootstrap --role <role-id> -j"
+      second: "Run agentic plan task current -j"
+      third: "ONLY use Glob/Grep/Read if CLI indicates specific files to examine"
+
+    justification: |
+      CCI provides 75-90% token reduction compared to file exploration.
+      CLI output is structured and task-relevant, avoiding context bloat.
+
+    reference: "docs/CCI_CONTEXT_ARCHITECTURE.md"
 
   rlm_alternative:
     description: |
@@ -120,6 +226,108 @@ guideline:
       sufficient context reduction (contexts > 500 lines), add RLM
       for programmatic selective access.
 
+  # =============================================================================
+  # CCI (CLI Context Injection) EXAMPLES
+  # =============================================================================
+  cci_examples:
+    description: |
+      Examples demonstrating when to use CCI (CLI Context Injection) commands vs file exploration,
+      with approximate token cost comparisons.
+
+    examples:
+      - scenario: "Getting active task details"
+        cci_approach:
+          command: "agentic context task"
+          tokens: "~200-500 tokens"
+          description: "Returns structured task object with id, description, status, inputs"
+        file_exploration_approach:
+          steps:
+            - "Glob: **/plan_live*.yml (find plan files)"
+            - "Read: plan file (~500-2000 tokens)"
+            - "Parse: extract current task from phases"
+          tokens: "~1000-3000 tokens"
+          description: "Multiple tool calls, reads entire plan, manual parsing"
+        recommendation: "Use CCI - 5-10x more efficient"
+
+      - scenario: "Getting role process and guidelines"
+        cci_approach:
+          command: "agentic context role build-python"
+          tokens: "~300-800 tokens"
+          description: "Returns role process.yml content and relevant guidelines"
+        file_exploration_approach:
+          steps:
+            - "Glob: **/build-python/process.yml"
+            - "Read: process.yml (~200-500 tokens)"
+            - "Read: inputs.yml for guideline references"
+            - "Read: Each referenced guideline file"
+          tokens: "~1500-4000 tokens"
+          description: "Multiple reads, manual reference resolution"
+        recommendation: "Use CCI - consolidated output, fewer tool calls"
+
+      - scenario: "Bootstrap context for new session"
+        cci_approach:
+          command: "agentic context bootstrap --role orchestration-build"
+          tokens: "~500-1500 tokens"
+          description: "Returns seed context: task, role, key guidelines, active plan summary"
+        file_exploration_approach:
+          steps:
+            - "Read: CLAUDE.md or README for orientation (~500 tokens)"
+            - "Glob: Find plan folders, agent folders"
+            - "Read: Multiple files to understand context"
+          tokens: "~2000-5000+ tokens"
+          description: "Ad-hoc exploration, inconsistent results"
+        recommendation: "Use CCI - structured bootstrap, consistent context"
+
+      - scenario: "Finding specific implementation details"
+        cci_approach:
+          command: "Not applicable - use file exploration"
+          description: "CCI provides curated context, not arbitrary code search"
+        file_exploration_approach:
+          steps:
+            - "Grep: Search for function/class name"
+            - "Read: Relevant source files"
+          tokens: "Variable based on search scope"
+          description: "File exploration appropriate for unstructured search"
+        recommendation: "Use file exploration - CCI not designed for arbitrary code search"
+
+  # =============================================================================
+  # FENCES (Guardrails)
+  # =============================================================================
+  fences:
+    description: |
+      Guardrails that prevent incorrect context gathering patterns.
+      Reference: modules/AgenticGuidance/assets/definitions/guidance-artifacts.yml#fence
+
+    items:
+      - name: "File exploration when CCI available"
+        trigger: |
+          Agent uses Glob/Grep/Read to gather standard context that CCI
+          commands could provide (task details, role context, plan information).
+        risk: |
+          - Token waste: File exploration typically costs 3-10x more tokens
+          - Inconsistency: Ad-hoc exploration produces variable results
+          - Noise: Raw file content includes irrelevant details
+        guard: |
+          BEFORE using file exploration for context gathering, check if a CCI
+          command provides the needed information:
+
+          Context Type           | CCI Command
+          -----------------------|--------------------------------
+          Active task details    | agentic context task
+          Role process/guidance  | agentic context role <role-id>
+          Plan task inputs       | agentic context inputs
+          Session bootstrap      | agentic context bootstrap
+
+          Use file exploration ONLY when:
+          - Searching for arbitrary code patterns (Grep)
+          - Exploring unknown file structures (Glob)
+          - Reading specific implementation files not covered by CCI
+        validation: |
+          After completing context gathering, verify:
+          - Did I check CCI first for standard context types?
+          - Is file exploration justified for this specific need?
+          - Would a CCI command have been more efficient?
+
   related_guidelines:
     - location: "modules/AgenticGuidance/assets/guidelines/less-is-more.yml"
       description: "Minimal change principles"
@@ -129,3 +337,5 @@ guideline:
       description: "RLM integration guidelines for programmatic context access"
     - location: "modules/AgenticGuidance/assets/definitions/rlm-patterns.yml"
       description: "RLM pattern definitions for large context handling"
+    - location: "docs/CCI_CONTEXT_ARCHITECTURE.md"
+      description: "CCI (CLI Context Injection) architecture and usage documentation"

@@ -1,0 +1,191 @@
+# Validation Test: TLP-013
+# Test: Planner-reviewer rejects plan without loops
+# Date: 2026-01-23
+# Status: COMPLETED
+
+test_metadata:
+  task_id: "TLP-013"
+  task_name: "Test planner-reviewer rejects plan without loops"
+  validation_target: "planner-reviewer-checklists.yml"
+  checklist_under_test: "loop_structure"
+  date_executed: "2026-01-23"
+
+# ==============================================================================
+# STEP 1: VERIFICATION OF CHECKLIST UPDATE
+# ==============================================================================
+
+checklist_verification:
+  file: "modules/AgenticGuidance/assets/definitions/planner-reviewer-checklists.yml"
+  loop_structure_checklist_present: true
+  rejection_condition_present: true
+  checklist_content:
+    description: "Plan includes appropriate loops for iteration"
+    items:
+      - "loop_structure section exists for non-trivial plans"
+      - "Loop type matches phase type (per phase_to_loop_mapping)"
+      - "Exit criteria are explicit and verifiable"
+      - "Max iterations specified with escalation path"
+    rejection_condition:
+      condition: "Non-trivial plan missing loop_structure"
+      message: "Plan must include loop_structure. See loop-inclusion-for-planners.yml"
+
+# ==============================================================================
+# STEP 2: MOCK PLAN WITHOUT LOOP_STRUCTURE
+# ==============================================================================
+
+test_input:
+  description: "Non-trivial plan WITHOUT loop_structure section"
+  mock_plan:
+    plan_name: "test-plan-no-loops"
+    worktree: "/home/code/AgenticEngineering"
+    objective: "Implement a new feature with testing"
+
+    inputs:
+      - location: "src/feature.ts"
+        description: "Target file for implementation"
+
+    phases:
+      - name: "Implementation"
+        description: "Build the feature"
+        tasks:
+          - id: "task-001"
+            description: "Implement feature code"
+            agent: "builder"
+            target_files:
+              - "src/feature.ts"
+
+          - id: "task-002"
+            description: "Write unit tests"
+            agent: "test-builder"
+            target_files:
+              - "tests/feature.test.ts"
+
+          - id: "task-003"
+            description: "Run tests"
+            agent: "test-runner"
+            depends_on: ["task-001", "task-002"]
+
+    success_criteria:
+      - "Feature implementation complete"
+      - "Tests pass"
+
+    # INTENTIONALLY MISSING: loop_structure section
+    # This is a non-trivial plan (3 tasks, build-test pattern) that should have loops
+
+  is_non_trivial_plan: true
+  reasons_non_trivial:
+    - "Contains 3 tasks requiring coordination"
+    - "Involves build-test cycle (iterative work pattern)"
+    - "Multiple agents involved (builder, test-builder, test-runner)"
+    - "Test phase without iteration mechanism"
+
+# ==============================================================================
+# STEP 3: REVIEWER CHECKLIST EVALUATION
+# ==============================================================================
+
+checklist_evaluation:
+  checklist_name: "loop_structure"
+
+  item_evaluations:
+    - item: "loop_structure section exists for non-trivial plans"
+      expected: "PRESENT"
+      actual: "MISSING"
+      result: "FAIL"
+
+    - item: "Loop type matches phase type (per phase_to_loop_mapping)"
+      expected: "test-fix-loop for Implementation phase"
+      actual: "N/A - no loop_structure to evaluate"
+      result: "FAIL"
+
+    - item: "Exit criteria are explicit and verifiable"
+      expected: "PASS/max_iterations conditions defined"
+      actual: "N/A - no loop_structure to evaluate"
+      result: "FAIL"
+
+    - item: "Max iterations specified with escalation path"
+      expected: "max_iterations: 5 with escalate action"
+      actual: "N/A - no loop_structure to evaluate"
+      result: "FAIL"
+
+  overall_result: "FAIL"
+
+  rejection_condition_triggered:
+    condition_met: true
+    condition_evaluated: "Non-trivial plan missing loop_structure"
+    rejection_message_applied: "Plan must include loop_structure. See loop-inclusion-for-planners.yml"
+
+# ==============================================================================
+# STEP 4: VERIFICATION OF REJECTION
+# ==============================================================================
+
+test_verification:
+  expected_outcome: "Reviewer rejects plan"
+  actual_outcome: "Plan rejected - loop_structure checklist FAIL triggers rejection_condition"
+
+  rejection_message:
+    expected: "Plan must include loop_structure. See loop-inclusion-for-planners.yml"
+    actual: "Plan must include loop_structure. See loop-inclusion-for-planners.yml"
+    match: true
+
+  references_loop_inclusion_guideline:
+    expected: true
+    actual: true
+    file_referenced: "loop-inclusion-for-planners.yml"
+    full_path: "modules/AgenticGuidance/assets/guidelines/loop-inclusion-for-planners.yml"
+
+# ==============================================================================
+# SUCCESS CRITERIA EVALUATION
+# ==============================================================================
+
+success_criteria:
+  reviewer_rejects_plan:
+    expected: "YES"
+    actual: "YES"
+    result: "PASS"
+
+  rejection_message_references_loop_inclusion:
+    expected: "YES"
+    actual: "YES"
+    result: "PASS"
+    evidence: "Message contains 'See loop-inclusion-for-planners.yml'"
+
+# ==============================================================================
+# TEST SUMMARY
+# ==============================================================================
+
+test_summary:
+  test_id: "TLP-013"
+  test_name: "Planner-reviewer rejects plan without loops"
+
+  overall_result: "PASS"
+
+  findings:
+    - "planner-reviewer-checklists.yml contains loop_structure checklist"
+    - "rejection_condition is properly configured"
+    - "Non-trivial plan without loop_structure triggers rejection"
+    - "Rejection message correctly references loop-inclusion-for-planners.yml"
+
+  success_criteria_results:
+    - criterion: "Reviewer rejects plan"
+      result: "YES"
+    - criterion: "Rejection message references loop-inclusion-for-planners.yml"
+      result: "YES"
+
+  conclusion: |
+    The planner-reviewer checklist correctly identifies non-trivial plans
+    that are missing loop_structure and rejects them with the appropriate
+    message referencing the loop-inclusion-for-planners.yml guideline.
+
+    This ensures that planners receive clear guidance on how to fix the
+    rejection by consulting the loop inclusion guideline.
+
+# ==============================================================================
+# REPORT FOR TLP-013
+# ==============================================================================
+
+report:
+  success_criteria_summary:
+    - "Reviewer rejects plan: YES"
+    - "Rejection message references loop-inclusion-for-planners.yml: YES"
+
+  test_status: "PASSED"

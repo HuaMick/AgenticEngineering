@@ -16,6 +16,62 @@
 # modules/AgenticGuidance/assets/examples/planner/components/guidance_blind_test.mmd
 
 test_scenarios:
+  self_review_test:
+    id: "self_review_test"
+    purpose: "Can agent validate its own guidance for basic correctness?"
+    description: |
+      Validates that an agent can review its own guidance files and identify
+      basic issues like broken paths, missing files, and inconsistencies.
+      This is the most fundamental form of guidance validation and should be
+      executed FIRST before any other test scenarios.
+
+    inputs:
+      target_agent: "Path to agent directory containing guidance files"
+      guidance_files:
+        - "process.yml"
+        - "inputs.yml"
+        - "outputs.yml (if present)"
+
+    constraints:
+      - "Agent receives ONLY its own guidance files"
+      - "Agent must identify issues without external hints"
+      - "Agent cannot explore beyond referenced paths"
+      - "No access to implementation code or broader codebase"
+
+    expected_outputs:
+      success_criteria:
+        - "All file path references resolve to existing files"
+        - "No circular or broken references"
+        - "Process steps are internally consistent"
+        - "Prerequisites are documented"
+        - "No contradictions between guidance files"
+
+      failure_indicators:
+        - "Referenced files do not exist"
+        - "Ambiguous paths without clear base directory"
+        - "Contradictory instructions in process steps"
+        - "Missing prerequisite documentation"
+        - "Loop context missing for loop participant"
+
+      report_structure:
+        - "self_review_passed: boolean"
+        - "broken_paths: list of paths that don't resolve"
+        - "missing_files: list of referenced but missing files"
+        - "inconsistencies: list of contradictions found"
+        - "ambiguities: list of unclear instructions"
+        - "suggested_fixes: specific improvements needed"
+
+    validation_checklist:
+      - "Do all paths in inputs.yml resolve?"
+      - "Do all asset references exist?"
+      - "Are process steps internally consistent?"
+      - "Are prerequisites explicitly documented?"
+      - "Is loop_context present if agent participates in loops?"
+
+    execution_priority: "FIRST - execute before all other scenarios"
+
+    guideline_reference: "modules/AgenticGuidance/assets/guidelines/agent-self-review.yml"
+
   task_completion_test:
     id: "task_completion_test"
     purpose: "Can agent complete task with guidance only?"
@@ -284,12 +340,167 @@ test_scenarios:
       - "Are configuration prerequisites clear?"
       - "Can agent execute in fresh environment?"
 
+# =============================================================================
+# SELF-REVIEW LOOP ENFORCEMENT TEST SCENARIOS (SRLE-007, SRLE-008, SRLE-009)
+# =============================================================================
+
+  selfreview_no_plan_rejection:
+    id: "selfreview_no_plan_rejection"
+    purpose: "Verify FENCE rejects NEEDS_ATTENTION without plan file"
+    description: |
+      Tests that the orchestrator correctly rejects self-review results that have
+      NEEDS_ATTENTION status but do not include a plan file. This ensures the
+      fence_plan_creation enforcement is working correctly.
+      Source: SRLE-007 - Self-Review Loop Enforcement Plan
+
+    setup: |
+      1. Configure test agent to return NEEDS_ATTENTION status
+      2. Do NOT create plan file
+      3. Provide plan_file_path as null
+
+    inputs:
+      test_agent_status: "NEEDS_ATTENTION"
+      test_findings:
+        - id: "NAT-002"
+          severity: "CRITICAL"
+          description: "Test finding - broken reference"
+          recommendation: "Fix the reference"
+      plan_file_path: null
+
+    constraints:
+      - "Orchestrator must detect missing plan file"
+      - "Self-review must not be accepted as complete"
+      - "Loop must not advance to next iteration"
+
+    expected_behavior: |
+      Orchestrator should:
+      1. Detect missing plan file
+      2. Reject self-review result
+      3. Require plan file creation
+      4. NOT advance loop iteration
+
+    expected_outputs:
+      rejection_message: "Self-review incomplete: NEEDS_ATTENTION status requires plan file"
+      loop_state: "BLOCKED"
+      next_action: "Create plan file at {plan_folder}/live/plan_guidance_{agent_name}_{issue_type}.yml"
+
+    failure_indicators:
+      - "Orchestrator accepts result without plan file"
+      - "Loop advances to next iteration"
+      - "Self-review marked as complete"
+
+    pass_criteria: "Loop does not advance without plan file; rejection message returned"
+
+    reference: "modules/AgenticGuidance/assets/definitions/agent-loops.yml#guidance-self-review-loop.fence_plan_creation"
+
+  selfreview_pass_exits_loop:
+    id: "selfreview_pass_exits_loop"
+    purpose: "Verify PASS with zero NAT-* triggers exits loop"
+    description: |
+      Tests that a PASS status with empty findings and zero NAT-* triggers correctly
+      causes the loop to exit for that agent. Confirms that plan file is NOT required
+      for PASS status.
+      Source: SRLE-008 - Self-Review Loop Enforcement Plan
+
+    setup: |
+      1. Configure test agent to return PASS status
+      2. Set findings to empty list
+      3. Set plan_file_path to null
+
+    inputs:
+      test_agent_status: "PASS"
+      test_findings: []
+      plan_file_path: null
+
+    constraints:
+      - "No NAT-* triggers should be active"
+      - "Findings list must be empty"
+      - "Plan file should NOT be required"
+
+    expected_behavior: |
+      Orchestrator should:
+      1. Accept PASS result
+      2. Verify zero NAT-* triggers
+      3. Exit loop for this agent
+      4. NOT require plan file
+
+    expected_outputs:
+      loop_state: "EXITED"
+      plan_file_required: false
+      nat_trigger_count: 0
+
+    failure_indicators:
+      - "Orchestrator requires plan file for PASS"
+      - "Loop continues despite PASS status"
+      - "NAT-* triggers incorrectly detected"
+
+    pass_criteria: "Loop exits cleanly with PASS status and no plan file required"
+
+    reference: "modules/AgenticGuidance/assets/definitions/agent-loops.yml#guidance-self-review-loop.exit_conditions.no_issues_remaining"
+
+  selfreview_user_deferral:
+    id: "selfreview_user_deferral"
+    purpose: "Verify agents present findings rather than auto-deferring"
+    description: |
+      Tests that agents present ALL findings to the user regardless of severity,
+      rather than autonomously deferring low-severity issues. Agents may RECOMMEND
+      deferral but must NOT implement it unilaterally.
+      Source: SRLE-009 - Self-Review Loop Enforcement Plan
+
+    setup: |
+      1. Configure test agent to find LOW severity issue
+      2. Issue could reasonably be deferred (e.g., minor version mismatch)
+
+    inputs:
+      test_agent_status: "NEEDS_ATTENTION"
+      test_findings:
+        - id: "NAT-004"
+          severity: "LOW"
+          description: "Minor version mismatch between manifest.yml and inputs.yml"
+          recommendation: "Align versions across agent files"
+
+    constraints:
+      - "Agent must include ALL findings in output"
+      - "Agent must create plan file even for LOW severity issues"
+      - "Agent must NOT autonomously decide to skip issues"
+
+    expected_behavior: |
+      Agent should:
+      1. Include issue in findings list
+      2. Include issue in plan file
+      3. Mark as severity: LOW
+      4. NOT automatically defer
+      5. Present to user with: "Recommend deferral: [reason]. User decision required."
+
+    expected_outputs:
+      status: "NEEDS_ATTENTION"
+      findings_include_low_severity: true
+      plan_file_created: true
+      deferral_decided_by: "user"
+
+    anti_pattern: |
+      Agent should NOT:
+      - Remove low-severity issues from findings
+      - Mark plan as "deferred" without user input
+      - Decide not to create plan file because "issues are minor"
+      - Filter findings based on severity before presenting to user
+
+    failure_indicators:
+      - "LOW severity issues missing from findings"
+      - "No plan file created for LOW severity issues"
+      - "Agent auto-deferred without user input"
+
+    pass_criteria: "LOW severity issues appear in findings and plan file; user decides deferral"
+
+    reference: "modules/AgenticGuidance/assets/definitions/agent-loops.yml#guidance-self-review-loop.fence_plan_creation.user_deferral_policy"
+
 test_scenario_application_rules:
   description: |
     Rules for selecting which test scenarios apply to different agent types.
     Not all scenarios are relevant for all agents.
 
   always_include:
+    - self_review_test  # Execute FIRST - basic validation before other scenarios
     - task_completion_test
     - reference_resolution_test
     - friction_detection_test

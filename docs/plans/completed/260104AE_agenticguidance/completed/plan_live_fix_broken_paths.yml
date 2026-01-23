@@ -1,0 +1,148 @@
+# Live Plan - Fix Broken Paths
+# Plan: 260104AE_agenticguidance
+# Objective: Fix broken file path references in planner agent inputs
+# Created: 2026-01-23 after agent self-review found broken paths
+
+name: fix-broken-paths
+worktree_path: /home/code/AgenticEngineering
+branch: main
+status: completed
+priority: normal
+completed_date: "2026-01-23"
+
+context: |
+  Agent self-reviews found broken file path references across multiple planner agents.
+  The `plan_example.yml` path is missing the `/live/` subdirectory.
+
+  Incorrect path: YYMMDDXX_description/plan_example.yml
+  Correct path:   YYMMDDXX_description/live/plan_example.yml
+
+  This affects 6 agent input files that reference the plan example template.
+
+phases:
+  # ========================================
+  # PHASE 1: Fix Broken Paths
+  # ========================================
+  - name: Fix Broken Paths
+    execution: sequential
+    description: "Update all broken path references to include /live/ subdirectory"
+    tasks:
+      - id: "path_001"
+        name: "Fix planner-build inputs.yml path"
+        status: pending
+        description: |
+          Update path reference from:
+            modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/plan_example.yml
+          To:
+            modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/live/plan_example.yml
+        target_files:
+          - modules/AgenticGuidance/agents/planner/planner-build/inputs.yml
+        line: 73
+
+      - id: "path_002"
+        name: "Fix planner-test inputs.yml path"
+        status: pending
+        description: |
+          Update path reference from:
+            modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/plan_example.yml
+          To:
+            modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/live/plan_example.yml
+        target_files:
+          - modules/AgenticGuidance/agents/planner/planner-test/inputs.yml
+        line: 103
+
+      - id: "path_003"
+        name: "Fix planner-cleaning inputs.yml path"
+        status: pending
+        description: |
+          Update path reference from:
+            modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/plan_example.yml
+          To:
+            modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/live/plan_example.yml
+        target_files:
+          - modules/AgenticGuidance/agents/planner/planner-cleaning/inputs.yml
+        line: 82
+
+      - id: "path_004"
+        name: "Fix planner-guidance inputs.yml path"
+        status: pending
+        description: |
+          Update path reference from:
+            modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/plan_example.yml
+          To:
+            modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/live/plan_example.yml
+        target_files:
+          - modules/AgenticGuidance/agents/planner/planner-guidance/inputs.yml
+        line: 214
+
+      - id: "path_005"
+        name: "Fix planner-audit inputs.yml path"
+        status: pending
+        description: |
+          Update path reference from:
+            modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/plan_example.yml
+          To:
+            modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/live/plan_example.yml
+        target_files:
+          - modules/AgenticGuidance/agents/planner/planner-audit/inputs.yml
+        line: 94
+
+      - id: "path_006"
+        name: "Fix orchestration-planning inputs.yml paths"
+        status: pending
+        description: |
+          Update path references (lines 341-344) from:
+            modules/AgenticGuidance/assets/examples/planner/YYMMDDWorktree_Description/plan_example.yml
+            modules/AgenticGuidance/assets/examples/planner/YYMMDDWorktree_Description/README.md
+          To:
+            modules/AgenticGuidance/assets/examples/planner/YYMMDDWorktree_Description/live/plan_example.yml
+            modules/AgenticGuidance/assets/examples/planner/YYMMDDWorktree_Description/README.md
+
+          Note: README.md exists at root level, only plan_example.yml needs /live/ prefix.
+          Also note: This file uses 'YYMMDDWorktree_Description' vs 'YYMMDDXX_description' naming -
+          verify correct path pattern or consolidate to standard naming.
+        target_files:
+          - modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml
+        lines: [341, 342, 343, 344]
+
+  # ========================================
+  # PHASE 2: Verification
+  # ========================================
+  - name: Verification
+    execution: sequential
+    description: "Verify all broken paths have been fixed"
+    tasks:
+      - id: "verify_001"
+        name: "Grep for remaining broken paths"
+        status: pending
+        description: |
+          Run grep to confirm no broken path patterns remain:
+          - Search for 'YYMMDDXX_description/plan_example.yml' (missing /live/)
+          - Search for 'YYMMDDWorktree_Description/plan_example.yml' (missing /live/)
+
+          Expected result: No matches found (all paths should include /live/)
+        command: |
+          grep -r "YYMMDDXX_description/plan_example.yml" modules/AgenticGuidance/agents/ || echo "No matches - PASS"
+          grep -r "YYMMDDWorktree_Description/plan_example.yml" modules/AgenticGuidance/agents/ || echo "No matches - PASS"
+        success_criteria:
+          - "Zero matches for broken path patterns"
+          - "All paths include /live/ subdirectory"
+
+      - id: "verify_002"
+        name: "Verify corrected paths exist"
+        status: pending
+        description: |
+          Confirm the target file exists at the corrected path:
+            modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/live/plan_example.yml
+        command: |
+          ls -la modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/live/plan_example.yml
+        success_criteria:
+          - "File exists at corrected path"
+
+execution_order: |
+  1. Execute Phase 1 tasks path_001 through path_006 (Fix Broken Paths)
+  2. Execute Phase 2 tasks verify_001 and verify_002 (Verification)
+  3. If verification passes, plan is complete
+  4. If verification fails, investigate and add remediation tasks
+
+estimated_effort: "15 minutes"

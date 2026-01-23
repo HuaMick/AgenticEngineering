@@ -1,13 +1,13 @@
 """Context retrieval commands.
 
-JIT (Just-In-Time) context commands for agents to fetch exactly what they need
+CCI (CLI Context Injection) context commands for agents to fetch exactly what they need
 via CLI instead of loading large static files.
 
 Commands:
     bootstrap: Primary entrypoint for Seed Context (role + task + inputs)
     role: Get role-specific process/guidelines
     task: Get active task from Main-First plan
-    inputs: Get JIT manifest of relevant project files
+    inputs: Get CCI manifest of relevant project files
 """
 
 import json
@@ -61,7 +61,7 @@ def cmd_bootstrap(args, ctx=None):
     )
 
     role_id = getattr(args, "role", None)
-    json_output = is_json_output(args)
+    json_output = is_json_output()
 
     resolver = MainFirstPlanResolver()
 
@@ -148,7 +148,7 @@ def cmd_role(args, ctx=None):
     from agenticcli.workflows.context_workflow import get_role_process
 
     role_id = args.role_id
-    json_output = is_json_output(args)
+    json_output = is_json_output()
     output_format = getattr(args, "format", "yaml")
 
     role_process = get_role_process(role_id)
@@ -182,7 +182,7 @@ def cmd_task(args, ctx=None):
 
     from agenticcli.workflows.context_workflow import MainFirstPlanResolver
 
-    json_output = is_json_output(args)
+    json_output = is_json_output()
     show_all = getattr(args, "all", False)
 
     resolver = MainFirstPlanResolver()
@@ -280,7 +280,7 @@ def _print_single_task(task: dict, plan_folder: str):
 
 
 def cmd_inputs(args, ctx=None):
-    """Get JIT manifest of relevant project files.
+    """Get CCI manifest of relevant project files.
 
     Replaces static inputs.yml references with dynamic discovery
     and path resolution.
@@ -295,7 +295,7 @@ def cmd_inputs(args, ctx=None):
 
     role_id = getattr(args, "role", None)
     resolve_layers = getattr(args, "resolve", False)
-    json_output = is_json_output(args)
+    json_output = is_json_output()
 
     if not role_id:
         print_error("--role is required for inputs command")

@@ -6,9 +6,20 @@ inputs:
   version: "1.1"
 
   # ========================================
-  # FRICTION PATTERNS DEFINITION
+  # FRICTION PATTERNS REFERENCE (SINGLE SOURCE OF TRUTH)
   # ========================================
-  # Pattern definitions externalized to shared definition file
+  # All friction patterns, resolution types, and severity classifications are
+  # defined in the canonical definition file. This prevents duplication and
+  # ensures single source of truth.
+  #
+  # Contents of friction-patterns.yml:
+  #   - patterns: FP-001 through FP-006 (Excessive Retries, Exploration Drift, etc.)
+  #   - resolution_types: GUIDANCE_UPDATE, CLI_OFFLOAD, ASSET_UPDATE
+  #   - severity_classification: high, medium, low thresholds and actions
+  #
+  # To access these definitions in workflow:
+  #   1. Read friction_patterns_definition path to get full definitions
+  #   2. Or use CCI CLI: agentic context inputs for dynamic loading
   friction_patterns_definition: "modules/AgenticGuidance/assets/definitions/friction-patterns.yml"
 
   # ========================================
@@ -70,114 +81,6 @@ inputs:
       exceptions:
         - "Critical severity patterns are always reported"
         - "Patterns with explicit user feedback are always reported"
-
-  # ========================================
-  # FRICTION PATTERNS (inline for quick reference)
-  # ========================================
-  # Full definitions: modules/AgenticGuidance/assets/definitions/friction-patterns.yml
-  # Inline patterns below are kept for context during workflow execution
-  friction_patterns:
-    - id: FP-001
-      name: "Excessive Retries"
-      description: "Agent retries same operation multiple times"
-      detection_signals:
-        - "Multiple consecutive runs with same name pattern"
-        - "Error -> Retry -> Error -> Retry sequences"
-      default_resolution: GUIDANCE_UPDATE
-      resolution_hint: "Add clearer error handling guidance or retry limits"
-
-    - id: FP-002
-      name: "Exploration Drift"
-      description: "Agent explores codebase extensively before finding target"
-      detection_signals:
-        - "Many Glob/Grep/Read tool calls before task execution"
-        - "High tool-to-llm ratio in early run phases"
-      default_resolution: GUIDANCE_UPDATE
-      resolution_hint: "Add path hints or signposts to process files"
-
-    - id: FP-003
-      name: "Missing Context Requests"
-      description: "Agent asks user for information that should be in guidance"
-      detection_signals:
-        - "AskUserQuestion calls for routine decisions"
-        - "Questions about standard patterns/conventions"
-      default_resolution: GUIDANCE_UPDATE
-      resolution_hint: "Add missing context to process files"
-
-    - id: FP-004
-      name: "Output Schema Violations"
-      description: "Agent produces output that doesn't match expected schema"
-      detection_signals:
-        - "Validation errors in tool calls"
-        - "Reviewer rejections citing format issues"
-      default_resolution: GUIDANCE_UPDATE
-      resolution_hint: "Add examples or output schema documentation"
-
-    - id: FP-005
-      name: "Convention Violations"
-      description: "Agent doesn't follow naming/structure conventions"
-      detection_signals:
-        - "File/folder names not matching patterns"
-        - "Post-creation renames or corrections"
-      default_resolution: CLI_OFFLOAD
-      resolution_hint: "Enforce via agentic CLI commands"
-
-    - id: FP-006
-      name: "Automatable Patterns"
-      description: "Agent performs same multi-step sequence repeatedly"
-      detection_signals:
-        - "Identical tool call sequences across sessions"
-        - "Boilerplate generation patterns"
-      default_resolution: CLI_OFFLOAD
-      resolution_hint: "Create new agentic command for the pattern"
-
-  # ========================================
-  # RESOLUTION TYPES
-  # ========================================
-  resolution_types:
-    - type: GUIDANCE_UPDATE
-      description: "Update process files, add signposts, clarify fences"
-      target_locations:
-        - "modules/AgenticGuidance/agents/*/process.yml"
-        - "modules/AgenticGuidance/agents/*/inputs.yml"
-        - "modules/AgenticGuidance/assets/guidelines/"
-
-    - type: CLI_OFFLOAD
-      description: "Move deterministic operations to agentic CLI commands"
-      target_locations:
-        - "modules/AgenticCLI/src/agenticcli/commands/"
-
-    - type: ASSET_UPDATE
-      description: "Add examples, definitions, or specifications"
-      target_locations:
-        - "modules/AgenticGuidance/assets/definitions/"
-        - "modules/AgenticGuidance/assets/examples/"
-        - "modules/AgenticGuidance/assets/specifications/"
-
-  # ========================================
-  # SEVERITY CLASSIFICATION
-  # ========================================
-  severity_classification:
-    high:
-      criteria:
-        - "Pattern occurs in >50% of analyzed sessions"
-        - "Pattern causes visible user impact (delays, errors)"
-        - "Pattern indicates missing critical guidance"
-      action: "Prioritize for immediate resolution"
-
-    medium:
-      criteria:
-        - "Pattern occurs in 20-50% of analyzed sessions"
-        - "Pattern causes inefficiency but no errors"
-        - "Pattern indicates optimization opportunity"
-      action: "Queue for next improvement cycle"
-
-    low:
-      criteria:
-        - "Pattern occurs in <20% of analyzed sessions"
-        - "Pattern is minor inconvenience"
-        - "Pattern is edge case behavior"
-      action: "Document and defer"
 
   # ========================================
   # DEPENDENCIES

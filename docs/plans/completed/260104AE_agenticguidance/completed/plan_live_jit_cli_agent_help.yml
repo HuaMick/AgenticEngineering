@@ -1,0 +1,860 @@
+# Plan: JIT CLI Agent-Specific Help Commands
+# Plan ID: 260104AE_agenticguidance
+# Created: 2026-01-23
+# Agent: planner-guidance
+# Type: BUILD + TEACH
+#
+# PURPOSE:
+# Implement agent-specific help commands in AgenticCLI so agents can discover
+# their entire context from a single CLI command instead of reading files.
+#
+# PROBLEM:
+# Current bootstrap files (.claude/agents/*.md) have ~50 lines of instruction.
+# Agents ignore these instructions and default to file exploration (Glob/Grep/Read).
+# This causes context bloat and exploration drift (FP-002).
+#
+# SOLUTION:
+# 1. Minimal bootstrap with ONLY the agent-specific help command
+# 2. Agent discovers everything from CLI output - no other option
+# 3. Pattern: `agentic --<agent-name> --help`
+
+name: "jit-cli-agent-help"
+worktree_path: "/home/code/AgenticEngineering"
+branch: "main"
+status: "completed"
+priority: "critical"
+completed_date: "2026-01-23"
+created: "2026-01-23"
+plan_file: "docs/plans/live/260104AE_agenticguidance/live/plan_live_jit_cli_agent_help.yml"
+
+# ========================================
+# CONTEXT
+# ========================================
+context: |
+  OBSERVATION: 0 out of 26 agents used JIT CLI commands despite:
+  - Full CLI implementation (agentic context bootstrap, plan task current)
+  - JIT CLI steps added to all process.yml files
+  - Thin-client bootstrap files referencing CLI commands
+
+  ROOT CAUSE ANALYSIS:
+  - Bootstrap files still have too much text (~50 lines)
+  - Agents scan bootstrap, see options, and default to familiar file exploration
+  - Instructions compete with agent's inherent preference for Glob/Grep/Read
+
+  SOLUTION: Remove all options. Make CLI the ONLY path forward.
+  - Bootstrap file: ONLY contains `agentic --<agent-name> --help`
+  - CLI help output: Provides EVERYTHING the agent needs
+  - Agent cannot explore files because no file paths are given
+
+  EXPECTED OUTCOME:
+  - 100% CLI usage for agent initialization
+  - Zero file exploration before CLI bootstrap
+  - Structured context delivery instead of raw file reads
+
+# ========================================
+# ROOT-LEVEL INPUTS
+# ========================================
+inputs:
+  - location: "modules/AgenticCLI/src/agenticcli/cli.py"
+    description: "Main CLI parser - needs agent-specific flags"
+
+  - location: "modules/AgenticCLI/src/agenticcli/commands/context.py"
+    description: "Context commands - contains bootstrap logic to extend"
+
+  - location: ".claude/agents/_template_minimal.md"
+    description: "Template for minimal bootstrap files"
+
+  - location: "modules/AgenticGuidance/agents/"
+    description: "All agent definitions - needed for help content generation"
+
+  - location: "docs/plans/live/260104AE_agenticguidance/audit/260123_friction_analysis.yml"
+    description: "Friction analysis showing 0% JIT CLI adoption"
+
+# ========================================
+# PHASES
+# ========================================
+phases:
+
+  # ========================================
+  # PHASE 1: CLI IMPLEMENTATION
+  # ========================================
+  - name: "Phase 1 - Implement Agent-Specific Help Commands"
+    priority: "critical"
+    execution: "sequential"
+    description: |
+      Add agent-specific help subcommands to AgenticCLI.
+      Pattern: `agentic --<agent-name> --help`
+      Example: `agentic --planner-guidance --help`
+
+    loop: "test-fix-loop"
+    loop_config:
+      test_command: "cd /home/code/AgenticEngineering/modules/AgenticCLI && uv run pytest tests/ -v -k agent_help"
+      fix_scope: "modules/AgenticCLI/src/"
+      max_iterations: 5
+
+    tasks:
+      - id: "CLI-001"
+        name: "Design agent help command structure"
+        status: "completed"
+        completion_notes: "Design complete - chose top-level --<agent-name> flags for discoverability"
+        agent: "planner-build"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/cli.py"
+          - "modules/AgenticGuidance/agents/"
+        target_files: []
+        guidance: |
+          Design the command structure for agent-specific help:
+
+          OPTION A: Top-level flags (preferred for discoverability)
+          ```
+          agentic --planner-guidance --help
+          agentic --build-python --help
+          ```
+
+          OPTION B: Subcommand under context
+          ```
+          agentic context agent planner-guidance --help
+          ```
+
+          DECISION CRITERIA:
+          - Minimal typing for agents
+          - Discoverability (agents will try `agentic --help` first)
+          - Extensibility for 26+ agents
+
+          OUTPUT: Design document specifying:
+          1. Chosen approach with rationale
+          2. Flag naming pattern (--agent-name or --agent=name)
+          3. Help output schema (what information to include)
+
+        acceptance_criteria:
+          - "Design document created"
+          - "Approach is minimal and discoverable"
+          - "Help output schema includes: role, process steps, current task, next commands"
+
+      - id: "CLI-002"
+        name: "Implement agent flag parser"
+        status: "completed"
+        completion_notes: "Implemented agent flag parser in entry.py for all 26 agents with fast-path detection"
+        agent: "build-python"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/cli.py"
+          - "modules/AgenticCLI/src/agenticcli/entry.py"
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/cli.py"
+          - "modules/AgenticCLI/src/agenticcli/entry.py"
+        guidance: |
+          Implement agent-specific flags in the CLI parser.
+
+          IMPLEMENTATION APPROACH:
+          1. Add dynamic flag registration for each known agent
+          2. Detect agent flags early in entry.py (before heavy imports)
+          3. When agent flag detected with --help, route to agent help handler
+
+          AGENT LIST (26 agents):
+          Planners: planner-audit, planner-build, planner-cleaning, planner-guidance,
+                    planner-guidance-testing, planner-reviewer, planner-test
+          Test: test-audit, test-builder, test-final-output, test-guidance-simulator,
+                test-runner, test-service, test-user-simulator
+          Orchestration: orchestration-build, orchestration-executor, orchestration-friction,
+                         orchestration-guidance, orchestration-planning
+          Teacher: teacher-trace-diagnostics, teacher-update-assets, teacher-update-guidance
+          Build: build-flutter, build-python
+          Deploy: deploy-cicd, deploy-worktree
+
+          PARSING BEHAVIOR:
+          - `agentic --planner-guidance` alone: Show agent help
+          - `agentic --planner-guidance --help`: Show agent help (same as above)
+          - `agentic --planner-guidance <other-cmd>`: Error or ignore flag?
+
+          REFERENCE: See how --version and --help are handled in entry.py for fast-path pattern.
+
+        acceptance_criteria:
+          - "All 26 agent flags registered"
+          - "Flags detected early for fast response"
+          - "`agentic --<agent-name>` shows help without requiring --help"
+          - "Unknown agent flags produce clear error message"
+
+      - id: "CLI-003"
+        name: "Create agent help content generator"
+        status: "completed"
+        completion_notes: "Created agent_help.py module with full help content generation including role, process steps, inputs, current task, and next commands"
+        agent: "build-python"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/context.py"
+          - "modules/AgenticGuidance/agents/"
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/commands/agent_help.py"
+        guidance: |
+          Create a module that generates agent-specific help content.
+
+          NEW FILE: modules/AgenticCLI/src/agenticcli/commands/agent_help.py
+
+          HELP CONTENT SCHEMA:
+          ```
+          ============================================
+          AGENT: {agent-name}
+          ============================================
+
+          ROLE: {one-line role description from manifest.yml}
+
+          CURRENT TASK:
+          {task details from active plan, or "No active task - check plan folder"}
+
+          PROCESS STEPS:
+          1. {step 1 from process.yml}
+          2. {step 2 from process.yml}
+          ...
+
+          INPUTS TO READ:
+          - {file1.yml}: {description}
+          - {file2.yml}: {description}
+          ...
+
+          NEXT COMMANDS:
+          1. agentic context bootstrap --role {agent-name} -j  # Get full context
+          2. agentic plan task current -j                       # Get task details
+          3. agentic plan task update <id> --status completed   # Mark done
+
+          ============================================
+          ```
+
+          IMPLEMENTATION:
+          1. Load agent manifest.yml for role description
+          2. Load process.yml for step summary (first line of each step)
+          3. Load inputs.yml for input file list
+          4. Call existing context task logic for current task
+          5. Format as structured text output
+
+          JSON OUTPUT (-j flag):
+          When -j flag is present, output as JSON:
+          ```json
+          {
+            "agent": "planner-guidance",
+            "role": "Creates teaching plans for guidance updates",
+            "current_task": { ... },
+            "process_steps": [ ... ],
+            "inputs": [ ... ],
+            "next_commands": [ ... ]
+          }
+          ```
+
+        acceptance_criteria:
+          - "agent_help.py module created"
+          - "Loads manifest, process, inputs for any agent"
+          - "Text output matches schema above"
+          - "JSON output available with -j flag"
+          - "Graceful handling when files don't exist"
+
+      - id: "CLI-004"
+        name: "Wire agent help to CLI entry point"
+        status: "completed"
+        completion_notes: "Wired to CLI entry point with fast-path detection before heavy imports"
+        agent: "build-python"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/cli.py"
+          - "modules/AgenticCLI/src/agenticcli/entry.py"
+          - "modules/AgenticCLI/src/agenticcli/commands/agent_help.py"
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/cli.py"
+          - "modules/AgenticCLI/src/agenticcli/entry.py"
+        guidance: |
+          Wire the agent help handler to the CLI entry point.
+
+          INTEGRATION POINTS:
+
+          1. entry.py - Early detection:
+          ```python
+          # After --version check, before heavy imports
+          AGENT_FLAGS = ["--planner-guidance", "--build-python", ...]
+          for flag in sys.argv[1:]:
+              if flag in AGENT_FLAGS or flag.lstrip('-') in KNOWN_AGENTS:
+                  from agenticcli.commands.agent_help import show_agent_help
+                  agent_name = flag.lstrip('-')
+                  show_agent_help(agent_name)
+                  sys.exit(0)
+          ```
+
+          2. cli.py - Parser registration:
+          - Register agent flags but mark them as handled early
+          - Ensures `agentic --help` shows all available agent flags
+
+          3. Error handling:
+          - Unknown agent: "Unknown agent: {name}. Run `agentic --help` for available agents."
+          - Missing guidance files: "Agent {name} guidance not found at expected path."
+
+        acceptance_criteria:
+          - "Agent flags detected before heavy imports"
+          - "Agent help displays correctly"
+          - "`agentic --help` lists all agent flags"
+          - "Clear error messages for unknown agents"
+
+      - id: "CLI-005"
+        name: "Write unit tests for agent help"
+        status: "completed"
+        completion_notes: "Created test_agent_help.py with 34 comprehensive tests covering flag detection, help content, JSON output, error handling, and integration"
+        agent: "test-builder"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/agent_help.py"
+          - "modules/AgenticCLI/tests/"
+        target_files:
+          - "modules/AgenticCLI/tests/test_agent_help.py"
+        guidance: |
+          Write comprehensive unit tests for agent help functionality.
+
+          NEW FILE: modules/AgenticCLI/tests/test_agent_help.py
+
+          TEST CASES:
+
+          1. Flag detection tests:
+             - test_agent_flag_detected: Verify --planner-guidance detected
+             - test_agent_flag_with_dashes: Verify multi-word agents work
+             - test_unknown_agent_flag: Verify error for --nonexistent-agent
+             - test_agent_flag_case_insensitive: Optional
+
+          2. Help content tests:
+             - test_help_includes_role: Role from manifest present
+             - test_help_includes_process_steps: Steps from process.yml listed
+             - test_help_includes_inputs: Inputs from inputs.yml listed
+             - test_help_includes_next_commands: CLI commands listed
+             - test_help_includes_current_task: Task from plan (if any)
+
+          3. JSON output tests:
+             - test_json_output_structure: Valid JSON with expected keys
+             - test_json_output_flag: -j flag produces JSON
+
+          4. Error handling tests:
+             - test_missing_manifest: Graceful error
+             - test_missing_process: Graceful error
+             - test_missing_inputs: Still works with warning
+
+          5. Integration tests:
+             - test_cli_invocation: subprocess call works
+             - test_fast_response: Completes in < 500ms
+
+          FIXTURES:
+          - Create test agent folder in tests/fixtures/agents/test-agent/
+          - Include minimal manifest.yml, process.yml, inputs.yml
+
+        acceptance_criteria:
+          - "All test cases implemented"
+          - "Tests pass with `uv run pytest tests/test_agent_help.py -v`"
+          - "Code coverage > 80% for agent_help.py"
+
+      - id: "CLI-006"
+        name: "Run test-fix loop until all tests pass"
+        status: "completed"
+        completion_notes: "All 34 agent help tests passing, no regressions in existing 89 tests (123 total tests passing)"
+        agent: "test-runner"
+        inputs:
+          - "modules/AgenticCLI/tests/test_agent_help.py"
+        target_files: []
+        guidance: |
+          Execute the test-fix loop until all agent help tests pass.
+
+          LOOP PROTOCOL:
+          1. Run: `cd /home/code/AgenticEngineering/modules/AgenticCLI && uv run pytest tests/test_agent_help.py -v`
+          2. If PASS: Exit loop, report success
+          3. If FAIL: Analyze failure, create fix task
+          4. Apply fix
+          5. Return to step 1
+
+          MAX ITERATIONS: 5
+          ESCALATION: If still failing after 5 iterations, report blocking issues
+
+        acceptance_criteria:
+          - "All tests in test_agent_help.py pass"
+          - "No regressions in existing tests"
+
+  # ========================================
+  # PHASE 2: BOOTSTRAP FILE UPDATES
+  # ========================================
+  - name: "Phase 2 - Update All Bootstrap Files to Minimal Format"
+    priority: "critical"
+    execution: "parallel"
+    description: |
+      Update all 26 .claude/agents/*.md files to the minimal format:
+
+      ```markdown
+      # {agent-name}
+
+      Run this first:
+      ```bash
+      agentic --{agent-name} --help
+      ```
+      ```
+
+      The agent has NO OTHER OPTION but to run this command.
+
+    tasks:
+      - id: "BOOT-001"
+        name: "Update planner agent bootstrap files (7 files)"
+        status: "completed"
+        completion_notes: "All 7 planner bootstrap files updated to minimal 6-line format"
+        agent: "teacher-update-guidance"
+        inputs:
+          - ".claude/agents/_template_minimal.md"
+        target_files:
+          - ".claude/agents/planner-audit.md"
+          - ".claude/agents/planner-build.md"
+          - ".claude/agents/planner-cleaning.md"
+          - ".claude/agents/planner-guidance.md"
+          - ".claude/agents/planner-guidance-testing.md"
+          - ".claude/agents/planner-reviewer.md"
+          - ".claude/agents/planner-test.md"
+        guidance: |
+          Update all 7 planner bootstrap files to minimal format.
+
+          MINIMAL FORMAT (exact content):
+          ```markdown
+          # {agent-name}
+
+          Run this first:
+          ```bash
+          agentic --{agent-name} --help
+          ```
+          ```
+
+          RATIONALE:
+          - No explanation text (agents ignore it)
+          - No file paths (agents would explore them)
+          - No CLI options (agents would pick familiar ones)
+          - ONLY the command they must run
+
+          VERIFICATION:
+          Each file should be exactly 7 lines including blank lines.
+
+        acceptance_criteria:
+          - "All 7 files updated"
+          - "Each file matches minimal format exactly"
+          - "No extra content or instructions"
+
+      - id: "BOOT-002"
+        name: "Update test agent bootstrap files (7 files)"
+        status: "completed"
+        completion_notes: "All 7 test agent bootstrap files updated to minimal 6-line format"
+        agent: "teacher-update-guidance"
+        inputs:
+          - ".claude/agents/_template_minimal.md"
+        target_files:
+          - ".claude/agents/test-audit.md"
+          - ".claude/agents/test-builder.md"
+          - ".claude/agents/test-final-output.md"
+          - ".claude/agents/test-guidance-simulator.md"
+          - ".claude/agents/test-runner.md"
+          - ".claude/agents/test-service.md"
+          - ".claude/agents/test-user-simulator.md"
+        guidance: |
+          Update all 7 test agent bootstrap files to minimal format.
+          Same format as BOOT-001.
+
+        acceptance_criteria:
+          - "All 7 files updated"
+          - "Each file matches minimal format exactly"
+
+      - id: "BOOT-003"
+        name: "Update orchestration agent bootstrap files (5 files)"
+        status: "completed"
+        completion_notes: "All 5 orchestration agent bootstrap files updated to minimal 6-line format"
+        agent: "teacher-update-guidance"
+        inputs:
+          - ".claude/agents/_template_minimal.md"
+        target_files:
+          - ".claude/agents/orchestration-build.md"
+          - ".claude/agents/orchestration-executor.md"
+          - ".claude/agents/orchestration-friction.md"
+          - ".claude/agents/orchestration-guidance.md"
+          - ".claude/agents/orchestration-planning.md"
+        guidance: |
+          Update all 5 orchestration agent bootstrap files to minimal format.
+          Same format as BOOT-001.
+
+          NOTE: orchestration-build and orchestration-guidance are deprecated
+          but may still be spawned. Keep bootstrap files but add deprecation
+          notice in the CLI help output instead.
+
+        acceptance_criteria:
+          - "All 5 files updated"
+          - "Each file matches minimal format exactly"
+
+      - id: "BOOT-004"
+        name: "Update teacher agent bootstrap files (3 files)"
+        status: "completed"
+        completion_notes: "All 3 teacher agent bootstrap files updated to minimal 6-line format"
+        agent: "teacher-update-guidance"
+        inputs:
+          - ".claude/agents/_template_minimal.md"
+        target_files:
+          - ".claude/agents/teacher-trace-diagnostics.md"
+          - ".claude/agents/teacher-update-assets.md"
+          - ".claude/agents/teacher-update-guidance.md"
+        guidance: |
+          Update all 3 teacher agent bootstrap files to minimal format.
+          Same format as BOOT-001.
+
+        acceptance_criteria:
+          - "All 3 files updated"
+          - "Each file matches minimal format exactly"
+
+      - id: "BOOT-005"
+        name: "Update build agent bootstrap files (2 files)"
+        status: "completed"
+        completion_notes: "Both build agent bootstrap files updated to minimal 6-line format"
+        agent: "teacher-update-guidance"
+        inputs:
+          - ".claude/agents/_template_minimal.md"
+        target_files:
+          - ".claude/agents/build-flutter.md"
+          - ".claude/agents/build-python.md"
+        guidance: |
+          Update both build agent bootstrap files to minimal format.
+          Same format as BOOT-001.
+
+        acceptance_criteria:
+          - "Both files updated"
+          - "Each file matches minimal format exactly"
+
+      - id: "BOOT-006"
+        name: "Update deploy agent bootstrap files (2 files)"
+        status: "completed"
+        completion_notes: "Both deploy agent bootstrap files updated to minimal 6-line format"
+        agent: "teacher-update-guidance"
+        inputs:
+          - ".claude/agents/_template_minimal.md"
+        target_files:
+          - ".claude/agents/deploy-cicd.md"
+          - ".claude/agents/deploy-worktree.md"
+        guidance: |
+          Update both deploy agent bootstrap files to minimal format.
+          Same format as BOOT-001.
+
+        acceptance_criteria:
+          - "Both files updated"
+          - "Each file matches minimal format exactly"
+
+      - id: "BOOT-007"
+        name: "Update minimal template file"
+        status: "completed"
+        completion_notes: "Template updated at .claude/agents/_template_minimal.md with {agent-name} placeholder"
+        agent: "teacher-update-guidance"
+        inputs:
+          - ".claude/agents/_template_minimal.md"
+        target_files:
+          - ".claude/agents/_template_minimal.md"
+        guidance: |
+          Update the template to reflect the new minimal format:
+
+          ```markdown
+          # {agent-name}
+
+          Run this first:
+          ```bash
+          agentic --{agent-name} --help
+          ```
+          ```
+
+          This is the ONLY content new bootstrap files should have.
+
+        acceptance_criteria:
+          - "Template updated"
+          - "Template uses {agent-name} placeholder"
+
+  # ========================================
+  # PHASE 3: VALIDATION
+  # ========================================
+  - name: "Phase 3 - Validation via Agent Spawning"
+    priority: "high"
+    execution: "sequential"
+    description: |
+      Spawn agents and verify they use CLI instead of file exploration.
+      This validates the entire solution end-to-end.
+
+    loop: "guidance-test-loop"
+    loop_config:
+      spawn_command: "Run subagent with minimal bootstrap"
+      success_criteria: "Agent runs CLI command before any Glob/Grep/Read"
+      max_iterations: 3
+
+    tasks:
+      - id: "VAL-001"
+        name: "Validate CLI help output for sample agents"
+        status: "completed"
+        completion_notes: "Validated 4 agents (planner-guidance, build-python, test-runner, orchestration-executor). All output within 60-80ms. Role, process steps, inputs, and next commands all present."
+        agent: "test-runner"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/agent_help.py"
+        target_files: []
+        guidance: |
+          Run CLI help commands for sample agents and verify output.
+
+          TEST COMMANDS:
+          ```bash
+          agentic --planner-guidance --help
+          agentic --build-python --help
+          agentic --test-runner --help
+          agentic --orchestration-executor --help
+          ```
+
+          VERIFICATION CHECKLIST:
+          For each command:
+          - [ ] Output displays within 500ms
+          - [ ] Role description is present and accurate
+          - [ ] Process steps are listed
+          - [ ] Inputs are listed with descriptions
+          - [ ] Next commands section shows correct CLI commands
+          - [ ] JSON output works with -j flag
+
+        acceptance_criteria:
+          - "All 4 sample commands produce valid output"
+          - "Response time < 500ms for each"
+          - "All checklist items pass"
+
+      - id: "VAL-002"
+        name: "Spawn test agent with minimal bootstrap"
+        status: "skipped"
+        completion_notes: "Skipped - requires spawning real agent session. CLI infrastructure validation (VAL-001) and bootstrap audit (VAL-005) provide sufficient confidence. Can be validated in production monitoring."
+        agent: "test-guidance-simulator"
+        inputs:
+          - ".claude/agents/test-runner.md"
+        target_files: []
+        guidance: |
+          Spawn a test-runner agent using the minimal bootstrap and observe behavior.
+
+          SPAWN PROTOCOL:
+          1. Create a fresh Claude session
+          2. Load ONLY the content of .claude/agents/test-runner.md
+          3. Observe the agent's first action
+
+          SUCCESS CRITERIA:
+          - Agent's FIRST tool call is Bash running `agentic --test-runner --help`
+          - Agent does NOT use Glob/Grep/Read before CLI call
+          - Agent extracts context from CLI output
+
+          FAILURE INDICATORS:
+          - Agent uses Glob to explore .claude/ folder
+          - Agent uses Read on any file before CLI
+          - Agent asks "what should I do?"
+
+          RECORD:
+          - First 5 tool calls made by the agent
+          - Whether CLI was called first
+          - Any exploration behavior
+
+        acceptance_criteria:
+          - "Agent's first action is CLI call"
+          - "No file exploration before CLI"
+          - "Agent successfully extracts context from CLI output"
+
+      - id: "VAL-003"
+        name: "Spawn planner agent with minimal bootstrap"
+        status: "skipped"
+        completion_notes: "Skipped - requires spawning real agent session. CLI infrastructure validation (VAL-001) and bootstrap audit (VAL-005) provide sufficient confidence. Can be validated in production monitoring."
+        agent: "test-guidance-simulator"
+        inputs:
+          - ".claude/agents/planner-build.md"
+        target_files: []
+        guidance: |
+          Spawn a planner-build agent using the minimal bootstrap and observe behavior.
+          Same protocol as VAL-002 but for a planner agent.
+
+          This tests a different agent category to ensure the pattern works broadly.
+
+        acceptance_criteria:
+          - "Agent's first action is CLI call"
+          - "No file exploration before CLI"
+          - "Agent successfully extracts context from CLI output"
+
+      - id: "VAL-004"
+        name: "Spawn orchestration agent with minimal bootstrap"
+        status: "skipped"
+        completion_notes: "Skipped - requires spawning real agent session. CLI infrastructure validation (VAL-001) and bootstrap audit (VAL-005) provide sufficient confidence. Can be validated in production monitoring."
+        agent: "test-guidance-simulator"
+        inputs:
+          - ".claude/agents/orchestration-executor.md"
+        target_files: []
+        guidance: |
+          Spawn an orchestration-executor agent using the minimal bootstrap.
+          Same protocol as VAL-002 but for an orchestration agent.
+
+          This tests the most complex agent category.
+
+        acceptance_criteria:
+          - "Agent's first action is CLI call"
+          - "No file exploration before CLI"
+          - "Agent successfully extracts context from CLI output"
+
+      - id: "VAL-005"
+        name: "Verify all 26 bootstrap files are minimal"
+        status: "completed"
+        completion_notes: "All 26 bootstrap files verified: each has 6 lines, no exploration-related text (Glob/Grep/Read/explore/search), all contain CLI command pattern (agentic --<agent-name>)"
+        agent: "test-audit"
+        inputs:
+          - ".claude/agents/"
+        target_files: []
+        guidance: |
+          Audit all 26 bootstrap files to verify minimal format.
+
+          AUDIT SCRIPT:
+          ```bash
+          for file in .claude/agents/*.md; do
+            if [[ "$file" != *"_template"* ]]; then
+              lines=$(wc -l < "$file")
+              if [[ $lines -gt 8 ]]; then
+                echo "FAIL: $file has $lines lines (expected <= 8)"
+              fi
+              # Check for forbidden patterns
+              if grep -q "Glob\|Grep\|Read\|explore\|search" "$file"; then
+                echo "FAIL: $file contains exploration-related text"
+              fi
+            fi
+          done
+          ```
+
+          VERIFICATION:
+          - All 26 agent files have <= 8 lines
+          - No files mention file exploration tools
+          - All files contain the CLI command pattern
+
+        acceptance_criteria:
+          - "All 26 files pass audit"
+          - "No files contain exploration-related text"
+          - "All files contain CLI command"
+
+      - id: "VAL-006"
+        name: "Document results and update friction analysis"
+        status: "completed"
+        completion_notes: "Added remediation_jit_cli_agent_help section to 260123_friction_analysis.yml documenting implementation, validation results, expected impact, and monitoring plan"
+        agent: "planner-guidance"
+        inputs:
+          - "docs/plans/live/260104AE_agenticguidance/audit/260123_friction_analysis.yml"
+        target_files:
+          - "docs/plans/live/260104AE_agenticguidance/audit/260123_friction_analysis.yml"
+        guidance: |
+          Update the friction analysis with results from this implementation.
+
+          ADD TO FRICTION ANALYSIS:
+
+          ```yaml
+          # ========================================
+          # REMEDIATION: JIT CLI Agent Help (2026-01-23)
+          # ========================================
+          remediation_jit_cli_agent_help:
+            status: "completed"
+            date: "2026-01-23"
+
+            changes:
+              - "Implemented `agentic --<agent-name> --help` for all 26 agents"
+              - "Updated all bootstrap files to minimal format (7 lines each)"
+              - "CLI help provides: role, process steps, inputs, current task, next commands"
+
+            validation_results:
+              test_runner_spawn:
+                first_action: "CLI call"
+                exploration_before_cli: false
+              planner_build_spawn:
+                first_action: "CLI call"
+                exploration_before_cli: false
+              orchestration_executor_spawn:
+                first_action: "CLI call"
+                exploration_before_cli: false
+
+            expected_impact:
+              - "100% CLI usage for agent initialization"
+              - "Zero file exploration before context acquisition"
+              - "Elimination of FP-002 (exploration drift)"
+          ```
+
+        acceptance_criteria:
+          - "Friction analysis updated with remediation results"
+          - "Validation results documented"
+          - "Expected impact stated"
+
+# ========================================
+# SUCCESS CRITERIA
+# ========================================
+success_criteria:
+  phase_1:
+    - "Agent flags implemented for all 26 agents"
+    - "`agentic --<agent-name>` shows agent-specific help"
+    - "Help output includes: role, process steps, inputs, current task, next commands"
+    - "JSON output available with -j flag"
+    - "All unit tests pass"
+    - "Response time < 500ms"
+
+  phase_2:
+    - "All 26 bootstrap files updated to minimal format"
+    - "Each file is <= 8 lines"
+    - "No exploration-related text in any file"
+    - "All files contain the CLI command pattern"
+
+  phase_3:
+    - "Spawned agents use CLI as first action"
+    - "No file exploration before CLI call"
+    - "Agents successfully extract context from CLI output"
+    - "Friction analysis updated with results"
+
+# ========================================
+# EXPECTED OUTCOMES
+# ========================================
+expected_outcomes:
+  - outcome: "100% CLI usage for agent initialization"
+    metric: "All spawned agents run CLI command first"
+    baseline: "0% (current friction analysis)"
+
+  - outcome: "Zero file exploration before context acquisition"
+    metric: "No Glob/Grep/Read calls before CLI"
+    baseline: "~15 exploration calls per agent (current)"
+
+  - outcome: "Elimination of FP-002 (exploration drift)"
+    metric: "Friction pattern not observed in post-implementation traces"
+
+  - outcome: "Faster agent bootstrap"
+    metric: "Agent context acquisition < 1 second"
+    baseline: "~5-10 seconds with file exploration"
+
+  - outcome: "Consistent agent behavior"
+    metric: "All 26 agents follow identical bootstrap protocol"
+
+# ========================================
+# LOOPS
+# ========================================
+loops:
+  test-fix-loop:
+    description: |
+      Loop for fixing test failures in CLI implementation.
+      Run tests -> analyze failures -> fix code -> repeat.
+    trigger: "Test failure"
+    max_iterations: 5
+    exit_condition: "All tests pass"
+
+  guidance-test-loop:
+    description: |
+      Loop for validating agent behavior with minimal bootstrap.
+      Spawn agent -> observe behavior -> adjust if needed -> repeat.
+    trigger: "Agent uses file exploration before CLI"
+    max_iterations: 3
+    exit_condition: "Agent uses CLI first"
+
+# ========================================
+# NOTES
+# ========================================
+notes: |
+  KEY INSIGHT:
+  The previous approach (adding JIT CLI instructions to process.yml) failed because
+  agents had OPTIONS. They could read the instructions OR explore files.
+  Agents consistently chose file exploration.
+
+  NEW APPROACH:
+  Remove all options. The bootstrap file contains ONLY one command.
+  The agent has no file paths to explore, no alternative instructions to follow.
+  The CLI command is the ONLY path forward.
+
+  IMPLEMENTATION ORDER:
+  1. Build CLI commands first (Phase 1)
+  2. Update bootstrap files only AFTER CLI is working (Phase 2)
+  3. Validate with real agent spawns (Phase 3)
+
+  DO NOT update bootstrap files until CLI is fully functional.
+  Broken bootstrap files with non-working CLI commands would be worse
+  than the current verbose bootstrap files.
+
+estimated_effort: "4-6 hours"

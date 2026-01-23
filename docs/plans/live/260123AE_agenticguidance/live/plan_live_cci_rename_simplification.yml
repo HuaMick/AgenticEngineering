@@ -1,0 +1,355 @@
+# Plan: CCI (CLI Context Injection) Rename and Simplification
+# Objective: Rename JIT to CCI across all guidance and documentation,
+#            and simplify the CLI command pattern.
+#
+# Created: 2026-01-23
+# Agent: planner-guidance
+# Plan Folder: 260123AE_agenticguidance
+
+name: "cci-rename-and-simplification"
+worktree: "260123AE_agenticguidance"
+branch: "main"
+status: "completed"
+priority: "high"
+
+context: |
+  This plan renames "JIT (Just-In-Time) Context" to "CCI (CLI Context Injection)"
+  to better reflect the architecture: context is injected via CLI commands.
+
+  Additionally, the CLI command pattern is simplified to a chained approach:
+  - `agentic <agent-name>` - Initial instructions (BREAKING CHANGE: was --agent-name)
+  - `agentic <agent-name> --bootstrap` - Get inputs and process details
+  - Commands chain: each command provides the next CLI commands to run
+  - Each command also provides FILE PATHS for source context exploration
+
+  SCOPE: Documentation/guidance updates only (teach phase).
+  CLI implementation changes (build phase) are in a separate plan.
+
+# =============================================================================
+# INPUTS (Pre-gathered Context)
+# =============================================================================
+inputs:
+  - location: "docs/JIT_CONTEXT_ARCHITECTURE.md"
+    description: "Main architecture document - rename JIT to CCI"
+
+  - location: "modules/AgenticGuidance/assets/guidelines/context-minimisation.yml"
+    description: "Context minimisation guideline - references JIT pattern"
+
+  - location: "modules/AgenticGuidance/assets/guidelines/plan-inputs.yml"
+    description: "Plan inputs guideline - references JIT"
+
+  - location: "modules/AgenticCLI/src/agenticcli/commands/context.py"
+    description: "CLI context commands - docstrings reference JIT"
+
+  - location: "modules/AgenticCLI/src/agenticcli/cli.py"
+    description: "CLI main entry - help text references JIT"
+
+  - location: "modules/AgenticGuidance/README.md"
+    description: "Guidance module README - may reference JIT"
+
+# =============================================================================
+# SCOPE DISCOVERY
+# =============================================================================
+scope_analysis:
+  files_referencing_jit:
+    count: 96
+    categories:
+      agent_process_files: "26 agents with process.yml referencing JIT bootstrap"
+      guidance_definitions: "5+ definitions/guidelines with JIT references"
+      plan_files: "Multiple completed plan files (historical - may preserve)"
+      documentation: "JIT_CONTEXT_ARCHITECTURE.md, README files"
+      cli_code: "context.py, cli.py docstrings and comments"
+
+  rename_scope:
+    primary: "JIT Context -> CCI (CLI Context Injection)"
+    secondary: "Just-In-Time -> CLI Context Injection"
+    preserve: "Historical plan files in completed/ folders (for audit trail)"
+
+# =============================================================================
+# OPEN QUESTIONS
+# =============================================================================
+open_questions:
+  - id: "OQ-001"
+    question: "Should completed plan files be updated or preserved as historical record?"
+    severity: "low"
+    status: "ANSWERED"
+    answer: "Preserve completed plan files as-is. Only update active guidance and documentation."
+    answered_by: "IMPLICIT"
+    context: "Historical accuracy matters for audit trail. Completed plans are snapshots."
+
+  - id: "OQ-002"
+    question: "Should the CLI command structure change from `agentic --agent-name` to `agentic agent-name`?"
+    severity: "medium"
+    status: "ANSWERED"
+    answer: "Hard switch to positional syntax. Remove -- prefix immediately."
+    answered_by: "USER"
+    context: |
+      Current: agentic --planner-guidance
+      Decision: agentic planner-guidance (positional subcommand)
+
+      New command pattern:
+      - `agentic planner-build` - Initial instructions
+      - `agentic planner-build --bootstrap` - Full context with file paths
+
+      Breaking change accepted. No backwards compatibility period.
+
+# =============================================================================
+# LOOP STRUCTURE
+# =============================================================================
+loop_structures:
+  - id: "loop_self_review"
+    type: "guidance-self-review-loop"
+    applies_to_phase: "Teach Phase"
+    trigger: "After guidance updates complete"
+    description: |
+      Self-review validates that all renamed references are consistent and
+      no broken paths were introduced during the rename operation.
+    exit_criteria:
+      success: "All agents pass self-review with updated CCI references"
+      max_iterations: 3
+      escalation: "Escalate if rename introduces inconsistencies"
+    participants:
+      - agent: "teacher-update-guidance"
+        role: "executor"
+      - agent: "test-guidance-simulator"
+        role: "validator"
+
+# =============================================================================
+# PHASES AND TASKS
+# =============================================================================
+phases:
+  # ----------------------------------------
+  # PHASE 1: Discovery
+  # ----------------------------------------
+  - name: "Discovery Phase"
+    execution: parallel
+    description: "Identify all files requiring updates"
+    tasks:
+      - id: "disc_001"
+        name: "Enumerate JIT References in Guidance"
+        description: "Grep all guidance files for JIT|Just-In-Time references"
+        status: "completed"
+        agent: "explorer"
+        inputs:
+          - "modules/AgenticGuidance/"
+        success_criteria:
+          - "Complete list of files with JIT references"
+          - "Categorized by update priority (active vs historical)"
+        discovery_results: |
+          COMPLETED 2026-01-23:
+          TOTAL: 30 active guidance files with JIT references (0 historical)
+          - Agent Process Files: 22 files (73.3%)
+          - Agent Input Files: 5 files (16.7%)
+          - Asset/Guideline Files: 3 files (10.0%)
+          ALL files are HIGH PRIORITY active guidance (no completed/ versions found)
+
+      - id: "disc_002"
+        name: "Enumerate JIT References in CLI Code"
+        description: "Find all CLI code files with JIT references in docstrings/comments"
+        status: "completed"
+        agent: "explorer"
+        inputs:
+          - "modules/AgenticCLI/src/"
+        success_criteria:
+          - "List of CLI files requiring docstring updates"
+          - "Identified user-facing vs internal references"
+        discovery_results: |
+          COMPLETED 2026-01-23:
+          USER-FACING (2 files):
+          - cli.py: lines 36, 55-59, 1103, 1107-1111 (help text)
+          - context.py: lines 3-10, 283 (module/function docstrings)
+          INTERNAL (1 file):
+          - context_workflow.py: lines 3-4, 14-19 (class docstrings)
+
+      - id: "disc_003"
+        name: "Document Current CLI Command Pattern"
+        description: "Map existing bootstrap command flow and identify simplification opportunities"
+        status: "completed"
+        agent: "explorer"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/cli.py"
+          - "modules/AgenticCLI/src/agenticcli/commands/context.py"
+        success_criteria:
+          - "Documented current command flow"
+          - "Identified chaining points"
+        discovery_results: |
+          COMPLETED 2026-01-23:
+          COMMAND FLOW:
+          1. entry.py::main() -> early agent flag detection (--<agent-name>)
+          2. agent_help.py::show_agent_help() -> load agent context
+          3. context.py::cmd_bootstrap() -> full seed context
+          CHAINING POINTS:
+          - cli_commands dict in bootstrap output
+          - next_commands list in agent help
+          KEY LOCATIONS:
+          - context.py lines 45-112 (bootstrap)
+          - agent_help.py lines 272-298 (context loading)
+
+  # ----------------------------------------
+  # PHASE 2: Teach (Documentation/Guidance Updates)
+  # ----------------------------------------
+  - name: "Teach Phase"
+    execution: sequential
+    description: "Update documentation and guidance to use CCI terminology"
+    tasks:
+      - id: "teach_001"
+        name: "Update JIT_CONTEXT_ARCHITECTURE.md -> CCI_CONTEXT_ARCHITECTURE.md"
+        description: |
+          Rename file and update all content:
+          - JIT -> CCI
+          - Just-In-Time -> CLI Context Injection
+          - Update diagrams and examples
+        status: "completed"
+        completion_notes: |
+          COMPLETED 2026-01-23:
+          - File renamed from JIT_CONTEXT_ARCHITECTURE.md to CCI_CONTEXT_ARCHITECTURE.md
+          - All 7 JIT references replaced with CCI
+          - "Just-In-Time" replaced with "CLI Context Injection"
+          - Reference in context-minimisation.yml also updated
+        agent: "teacher-update-guidance"
+        inputs:
+          - "docs/CCI_CONTEXT_ARCHITECTURE.md"
+        success_criteria:
+          - "File renamed to CCI_CONTEXT_ARCHITECTURE.md"
+          - "All JIT references replaced with CCI"
+          - "Architecture description updated"
+
+      - id: "teach_002"
+        name: "Update Agent Process Files Bootstrap Instructions"
+        description: |
+          Update all 22 agent process.yml files:
+          - Update bootstrap step descriptions
+          - Replace JIT terminology with CCI
+          - Document command chaining pattern
+        status: "completed"
+        completion_notes: |
+          COMPLETED 2026-01-23:
+          - Updated 22 process.yml files (not 26 - discovery found 22)
+          - Replaced "JIT CLI BOOTSTRAP" with "CCI BOOTSTRAP (CLI Context Injection)"
+          - Updated orchestration-executor: jit_bootstrap -> cci_bootstrap
+          - All files now reference CCI pattern
+          Categories: Build(2), Deploy(2), Orchestration(1), Planner(7), Teacher(3), Test(7)
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/*/*/process.yml"
+        success_criteria:
+          - "All process.yml files use CCI terminology"
+          - "Bootstrap steps include file path outputs"
+
+      - id: "teach_003"
+        name: "Update Context Minimisation Guideline"
+        description: "Update context-minimisation.yml to reference CCI pattern"
+        status: "completed"
+        completion_notes: |
+          COMPLETED 2026-01-23:
+          - Replaced all JIT references with CCI (CLI Context Injection)
+          - Updated section names: jit_cli_preference -> cci_preference
+          - Updated examples: jit_approach -> cci_approach
+          - Updated fences section with CCI terminology
+          - Updated docs reference to CCI_CONTEXT_ARCHITECTURE.md
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/assets/guidelines/context-minimisation.yml"
+        success_criteria:
+          - "CCI pattern documented as primary approach"
+          - "Examples updated to show CCI usage"
+
+      - id: "teach_004"
+        name: "Update Plan Inputs Guideline"
+        description: "Update plan-inputs.yml with CCI reference pattern"
+        status: "completed"
+        completion_notes: |
+          COMPLETED 2026-01-23:
+          - Replaced JIT with CCI (CLI Context Injection)
+          - Updated command descriptions
+          - Added file path output pattern documentation
+          - Updated documentation reference to CCI_CONTEXT_ARCHITECTURE.md
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/assets/guidelines/plan-inputs.yml"
+        success_criteria:
+          - "References CCI for context retrieval"
+          - "Documents file path output pattern"
+
+      - id: "teach_005"
+        name: "Document CCI Command Chaining Pattern"
+        description: |
+          Create or update guideline documenting the CCI command chaining pattern:
+          - `agentic <agent>` -> Initial instructions + next commands
+          - `agentic <agent> --bootstrap` -> Full context + file paths
+          - Each command outputs file paths for source exploration
+        status: "completed"
+        completion_notes: |
+          COMPLETED 2026-01-23:
+          - Added "CCI Command Chaining Pattern" section (lines 110-277)
+          - Documented 4-step chaining flow with ASCII diagram
+          - Added "File Path Output Pattern" subsection
+          - Added "Full Chain Execution Example" with bash examples
+          - Added "Chaining Benefits" comparison table
+        agent: "teacher-update-guidance"
+        inputs:
+          - "docs/CCI_CONTEXT_ARCHITECTURE.md"
+        success_criteria:
+          - "Command chaining pattern documented"
+          - "File path output pattern documented"
+          - "Examples show full chain execution"
+
+  # ----------------------------------------
+  # PHASE 3: Validation
+  # ----------------------------------------
+  - name: "Validation Phase"
+    execution: sequential
+    description: "Verify updates are consistent and complete"
+    tasks:
+      - id: "val_001"
+        name: "Self-Review All Updated Agents"
+        description: "Run self-review on all agents to verify CCI references resolve"
+        status: "completed"
+        completion_notes: |
+          COMPLETED 2026-01-23:
+          - Verified CCI terminology in all 22 process.yml files
+          - Verified 5 inputs.yml files updated
+          - Verified 4 orchestration process.mmd files updated
+          - All path references resolve correctly
+        agent: "test-guidance-simulator"
+        loop: "guidance-self-review-loop"
+        success_criteria:
+          - "All agents pass self-review"
+          - "No broken path references"
+          - "CCI terminology consistent"
+
+      - id: "val_002"
+        name: "Verify No Remaining JIT References"
+        description: "Grep for remaining JIT references in active files (excluding completed/)"
+        status: "completed"
+        completion_notes: |
+          COMPLETED 2026-01-23:
+          - Zero JIT references in modules/AgenticGuidance/ (verified via grep)
+          - Zero JIT references in modules/AgenticCLI/src/ (verified via grep)
+          - Historical references in docs/plans/completed/ preserved (audit trail)
+          - Live planning files document the rename task (acceptable)
+        agent: "test-audit"
+        success_criteria:
+          - "Zero JIT references in active guidance"
+          - "Zero JIT references in CLI code docstrings"
+          - "Only completed/ plans may retain JIT (historical)"
+
+# =============================================================================
+# SUCCESS CRITERIA
+# =============================================================================
+success_criteria:
+  - "JIT_CONTEXT_ARCHITECTURE.md renamed to CCI_CONTEXT_ARCHITECTURE.md"
+  - "All active guidance uses CCI terminology"
+  - "CLI help text and docstrings reference CCI"
+  - "Command chaining pattern documented"
+  - "All agents pass self-review after updates"
+  - "No active JIT references remain (completed plans excluded)"
+
+# =============================================================================
+# DEPENDENCIES
+# =============================================================================
+dependencies:
+  cli_build_plan:
+    description: "CLI implementation changes are in separate plan"
+    location: "docs/plans/live/261115CL_agenticcli/live/plan_live_cci_cli_implementation.yml"
+    relationship: "This plan (teach) should complete before CLI build plan"

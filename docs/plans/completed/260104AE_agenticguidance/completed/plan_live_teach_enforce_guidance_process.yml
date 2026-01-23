@@ -1,0 +1,622 @@
+# Live Plan - Teach: Enforce Guidance Process for All Guidance Changes
+# Plan: 260104AE_agenticguidance
+# Objective: Ensure all guidance changes go through _plan_teach.yml process with validation
+# Created: 2026-01-23
+
+name: enforce_guidance_process
+worktree_path: /home/code/AgenticEngineering
+branch: main
+status: completed
+plan_type: teach
+completed_date: "2026-01-23"
+
+objective: |
+  Enforce that any modifications to agent guidance files (process.yml, inputs.yml, manifest.yml)
+  MUST go through the _plan_teach.yml process, not just _plan_build.yml. This ensures that
+  guidance validation (including agent self-review) is always performed when guidance changes.
+
+rationale: |
+  The JIT Context initiative modified 26 agent bootstrap files but only followed the
+  _plan_build.yml process, skipping _plan_teach.yml entirely. This meant:
+
+  - No guidance validation was performed on the changed guidance files
+  - No agent self-review caught broken paths or missing references
+  - Issues only surfaced during execution, causing friction
+
+  Build plans CAN include guidance file paths in their scope, but if those paths modify
+  agent process.yml, inputs.yml, or manifest.yml, the changes MUST also have a
+  corresponding teach plan with validation.
+
+  KEY INSIGHT: The problem is not that build plans touched guidance files (sometimes
+  necessary for infrastructure work). The problem is that guidance changes bypassed
+  the teach process validation loop entirely.
+
+context: |
+  Current State:
+  - _plan_build.yml routes to orchestration-planning with build intent
+  - _plan_teach.yml routes to orchestration-planning with teach intent
+  - orchestration-planning determines phases based on intent
+  - planner-build creates implementation plans
+  - planner-guidance creates teaching/guidance improvement plans
+
+  Gap:
+  - No detection mechanism when build plans modify guidance files
+  - No FENCE to enforce teach process for guidance-modifying tasks
+  - No documentation of the rule that guidance changes require teach process
+
+  Desired State:
+  - FENCE in planner-build inputs.yml detects guidance file modifications
+  - orchestration-planning recognizes guidance changes and routes appropriately
+  - Clear documentation of when _plan_teach.yml is REQUIRED
+  - Detection patterns for identifying guidance-modifying tasks
+
+success_criteria:
+  - FENCE added to planner-build that detects guidance file modifications in task target_files
+  - orchestration-planning updated to check for guidance file modifications in build plans
+  - Rule documented that modules/AgenticGuidance/agents/** changes require _plan_teach.yml
+  - Detection patterns defined for guidance file types (process.yml, inputs.yml, manifest.yml)
+  - Validation loop triggered when build plan includes guidance modifications
+
+related_artifacts:
+  planner_build_inputs: "modules/AgenticGuidance/agents/planner/planner-build/inputs.yml"
+  orchestration_planning_inputs: "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml"
+  orchestration_planning_process: "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+  plan_teach_entrypoint: "modules/AgenticGuidance/entrypoints/_plan_teach.yml"
+  plan_build_entrypoint: "modules/AgenticGuidance/entrypoints/_plan_build.yml"
+
+phases:
+  # ========================================
+  # PHASE 1: Add Detection FENCE to planner-build
+  # ========================================
+  - name: "Phase 1: Add Guidance Detection FENCE to planner-build"
+    description: |
+      Add a FENCE instruction to planner-build that detects when planned tasks modify
+      agent guidance files. When detected, the FENCE instructs the agent to flag this
+      for teach process routing rather than silently proceeding with build-only execution.
+
+    success_criteria:
+      - "FENCE added to planner-build/inputs.yml detecting guidance file modifications"
+      - "Detection patterns cover process.yml, inputs.yml, manifest.yml, outputs.yml"
+      - "FENCE instructs to flag guidance changes for teach process validation"
+
+    tasks:
+      - id: "enforce_001"
+        name: "Add guidance_modification_fence to planner-build inputs.yml"
+        description: |
+          Update modules/AgenticGuidance/agents/planner/planner-build/inputs.yml to add
+          a guidance_modification_fence section that defines:
+
+          1. DETECTION PATTERNS
+             - File patterns that indicate guidance modifications:
+               - modules/AgenticGuidance/agents/**/process.yml
+               - modules/AgenticGuidance/agents/**/inputs.yml
+               - modules/AgenticGuidance/agents/**/manifest.yml
+               - modules/AgenticGuidance/agents/**/outputs.yml
+               - modules/AgenticGuidance/assets/definitions/*.yml
+               - modules/AgenticGuidance/assets/guidelines/*.yml
+
+          2. FENCE INSTRUCTION
+             ```yaml
+             guidance_modification_fence:
+               description: |
+                 Detect when build plan tasks modify agent guidance files.
+                 Guidance changes require teach process validation.
+
+               detection_patterns:
+                 critical_guidance_files:
+                   - "modules/AgenticGuidance/agents/**/process.yml"
+                   - "modules/AgenticGuidance/agents/**/inputs.yml"
+                   - "modules/AgenticGuidance/agents/**/manifest.yml"
+                   - "modules/AgenticGuidance/agents/**/outputs.yml"
+                 definition_files:
+                   - "modules/AgenticGuidance/assets/definitions/*.yml"
+                 guideline_files:
+                   - "modules/AgenticGuidance/assets/guidelines/*.yml"
+
+               fence: |
+                 FENCE: GUIDANCE-MODIFICATION-DETECTION
+                 Before finalizing any build plan, check if ANY task target_files
+                 match the detection_patterns above.
+
+                 IF MATCH FOUND:
+                 1. DO NOT proceed with build-only execution
+                 2. FLAG the plan as requiring teach process validation
+                 3. ADD to plan output: requires_teach_validation: true
+                 4. LIST the specific guidance files being modified
+                 5. RECOMMEND running _plan_teach.yml for these changes
+
+                 RATIONALE: Guidance changes affect agent behavior across the entire
+                 system. They MUST go through validation (agent self-review, guidance
+                 testing) before deployment. Build-only execution skips this validation.
+
+               output_flag:
+                 name: "requires_teach_validation"
+                 type: "boolean"
+                 triggered_when: "Any target_file matches detection_patterns"
+                 action: "Set to true and list matched files in guidance_files_modified"
+             ```
+
+          3. INTEGRATION WITH PLAN OUTPUT
+             - Add requires_teach_validation field to plan output schema
+             - Add guidance_files_modified list for matched files
+             - Document that orchestration should check this flag
+
+        status: pending
+        priority: critical
+        inputs:
+          - "modules/AgenticGuidance/agents/planner/planner-build/inputs.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-build/process.yml"
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-build/inputs.yml"
+        acceptance_criteria:
+          - "guidance_modification_fence section added to inputs.yml"
+          - "Detection patterns cover all critical guidance file types"
+          - "FENCE instruction clearly states the detection logic"
+          - "Output flag schema defined for requires_teach_validation"
+          - "Rationale explains why guidance changes need teach process"
+
+  # ========================================
+  # PHASE 2: Update orchestration-planning Routing
+  # ========================================
+  - name: "Phase 2: Update orchestration-planning to Route Guidance Changes"
+    description: |
+      Update orchestration-planning to recognize when a build plan includes guidance
+      modifications and automatically include teach phase validation in the orchestration.
+      This ensures guidance changes get validated even when initially requested through
+      _plan_build.yml.
+
+    success_criteria:
+      - "orchestration-planning checks for requires_teach_validation flag"
+      - "When flag is true, teach phase is added to orchestration sequence"
+      - "Documentation added explaining automatic teach phase inclusion"
+
+    tasks:
+      - id: "enforce_002"
+        name: "Add guidance_change_routing to orchestration-planning inputs.yml"
+        description: |
+          Update modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml
+          to add a guidance_change_routing section that defines how to handle build plans
+          that include guidance modifications.
+
+          Add section:
+          ```yaml
+          # ==============================================
+          # GUIDANCE CHANGE ROUTING
+          # ==============================================
+          # When a build plan includes guidance file modifications, the orchestration
+          # MUST include teach phase validation to ensure guidance quality.
+          # ==============================================
+          guidance_change_routing:
+            description: |
+              Build plans may legitimately include guidance file paths (e.g., infrastructure
+              work that updates agent inputs). However, any modifications to agent guidance
+              MUST be validated through the teach process before deployment.
+
+            detection_trigger: |
+              If planner-build sets requires_teach_validation: true in plan output,
+              this indicates the plan modifies guidance files.
+
+            routing_action: |
+              When requires_teach_validation is true:
+              1. INCLUDE teach phase in orchestration sequence
+              2. Position teach phase AFTER build tasks that modify guidance
+              3. Include agent self-review for each modified agent
+              4. Teach phase MUST complete successfully before plan completion
+
+            fence: |
+              FENCE: GUIDANCE-CHANGES-REQUIRE-TEACH
+              A build plan with requires_teach_validation: true MUST NOT be marked
+              complete until teach phase validation passes. This is NON-NEGOTIABLE.
+
+              The following validation is REQUIRED:
+              - Agent self-review for each agent whose guidance was modified
+              - Path resolution validation for all modified inputs.yml files
+              - Consistency check between process.yml and inputs.yml
+
+            phase_insertion_pattern: |
+              Original: [Build Phase] -> [Test Phase] -> [Complete]
+              Modified: [Build Phase] -> [Teach Validation Phase] -> [Test Phase] -> [Complete]
+
+              The Teach Validation Phase includes:
+              - SpawnPlannerGuidance for validation task creation
+              - SpawnSelfReview for each modified agent
+              - SpawnReviewer to approve guidance changes
+          ```
+
+        status: pending
+        priority: critical
+        inputs:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml"
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+          - "modules/AgenticGuidance/agents/planner/planner-build/inputs.yml"
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml"
+        acceptance_criteria:
+          - "guidance_change_routing section added to inputs.yml"
+          - "Detection trigger references requires_teach_validation flag"
+          - "Routing action specifies teach phase inclusion"
+          - "FENCE instruction is clear and NON-NEGOTIABLE"
+          - "Phase insertion pattern shows before/after orchestration"
+
+      - id: "enforce_003"
+        name: "Update orchestration-planning process.mmd with guidance detection"
+        description: |
+          Update modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd
+          to add a decision node and subgraph for guidance change detection and routing.
+
+          Add to the Phase Determination section:
+
+          ```mermaid
+          %% After AnalyzeObjective, before proceeding to phase execution:
+
+          CheckGuidanceModifications{Guidance Files Modified?}
+          AnalyzeObjective --> CheckGuidanceModifications
+
+          CheckGuidanceModifications -->|Yes| IncludeTeachValidation[Include Teach Validation Phase]
+          CheckGuidanceModifications -->|No| ContinueNormalFlow[Continue to Selected Phase]
+
+          subgraph TeachValidationInsertion_SG ["Teach Validation Insertion"]
+              %% When guidance modifications detected, insert validation
+              IncludeTeachValidation --> InsertAfterBuild[Insert After Build Tasks]
+              InsertAfterBuild --> AddSelfReview[Add Agent Self-Review Tasks]
+              AddSelfReview --> AddGuidanceReview[Add Guidance Review Gate]
+              AddGuidanceReview --> TeachValidationConfigured((Teach Validation Configured))
+          end
+
+          TeachValidationConfigured --> ContinueNormalFlow
+          ```
+
+          Also add comment block explaining the rationale:
+          ```
+          %% GUIDANCE CHANGE ROUTING
+          %% Build plans may include guidance file modifications. When detected,
+          %% the orchestration MUST include teach validation phase to ensure
+          %% guidance quality. This prevents the JIT Context issue where 26
+          %% agents were modified without validation.
+          %%
+          %% Detection: requires_teach_validation flag from planner-build
+          %% Action: Insert teach validation phase after build tasks
+          ```
+
+        status: pending
+        priority: high
+        depends_on: ["enforce_002"]
+        inputs:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml"
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+        acceptance_criteria:
+          - "CheckGuidanceModifications decision node added"
+          - "TeachValidationInsertion_SG subgraph defined"
+          - "Comment block explains rationale referencing JIT Context issue"
+          - "Flow correctly routes to teach validation when guidance modified"
+          - "Normal flow continues unchanged when no guidance modifications"
+
+  # ========================================
+  # PHASE 3: Document the Rule
+  # ========================================
+  - name: "Phase 3: Document Guidance Process Rule"
+    description: |
+      Create clear documentation that any changes to modules/AgenticGuidance/agents/**
+      MUST use _plan_teach.yml process. This rule should be discoverable by both
+      humans reading documentation and agents processing guidelines.
+
+    success_criteria:
+      - "Rule documented in guidance-process-requirements.yml definition"
+      - "Entrypoint files updated with cross-references"
+      - "Detection patterns listed for programmatic checking"
+
+    tasks:
+      - id: "enforce_004"
+        name: "Create guidance-process-requirements.yml definition"
+        description: |
+          Create a new definition file at:
+          modules/AgenticGuidance/assets/definitions/guidance-process-requirements.yml
+
+          This file should codify the rule that guidance changes require teach process:
+
+          ```yaml
+          # Guidance Process Requirements
+          # Defines when _plan_teach.yml is REQUIRED vs when _plan_build.yml is sufficient
+
+          name: guidance-process-requirements
+          version: "1.0"
+          description: |
+            Codifies the relationship between plan types and file modifications.
+            Determines which entrypoint (_plan_build.yml vs _plan_teach.yml) is
+            required based on the files being modified.
+
+          # ==============================================
+          # CORE RULE
+          # ==============================================
+          core_rule:
+            statement: |
+              Any task that modifies agent guidance files MUST go through the
+              _plan_teach.yml process to ensure guidance validation is performed.
+
+            rationale: |
+              Guidance files (process.yml, inputs.yml, manifest.yml) define agent
+              behavior. Changes to these files affect the entire agent system.
+              Without validation (agent self-review, guidance testing), errors
+              propagate silently until they cause execution failures.
+
+            enforcement: |
+              - FENCE in planner-build detects guidance file modifications
+              - orchestration-planning includes teach validation when detected
+              - Agent self-review validates modified guidance before completion
+
+          # ==============================================
+          # FILE CLASSIFICATION
+          # ==============================================
+          file_classification:
+            requires_teach_process:
+              description: "Files that REQUIRE _plan_teach.yml process"
+              patterns:
+                - pattern: "modules/AgenticGuidance/agents/**/process.yml"
+                  reason: "Agent process definition - affects agent behavior"
+                - pattern: "modules/AgenticGuidance/agents/**/inputs.yml"
+                  reason: "Agent inputs - affects context loading"
+                - pattern: "modules/AgenticGuidance/agents/**/manifest.yml"
+                  reason: "Agent metadata - affects routing and spawning"
+                - pattern: "modules/AgenticGuidance/agents/**/outputs.yml"
+                  reason: "Agent outputs - affects downstream consumers"
+                - pattern: "modules/AgenticGuidance/assets/definitions/*.yml"
+                  reason: "Shared definitions - affects multiple agents"
+                - pattern: "modules/AgenticGuidance/assets/guidelines/*.yml"
+                  reason: "Guidelines - affects agent decision-making"
+                - pattern: "modules/AgenticGuidance/entrypoints/*.yml"
+                  reason: "Entrypoints - affects routing and flow"
+
+            build_process_sufficient:
+              description: "Files where _plan_build.yml alone is sufficient"
+              patterns:
+                - pattern: "modules/AgenticGuidance/assets/examples/**"
+                  reason: "Examples are informational, not behavioral"
+                - pattern: "modules/AgenticGuidance/docs/**"
+                  reason: "Documentation does not affect agent behavior"
+                - pattern: "**/*.md"
+                  reason: "Markdown documentation"
+                - pattern: "**/*.mmd"
+                  exception: "EXCEPT orchestration process.mmd files"
+                  reason: "Visual diagrams (except process definitions)"
+
+          # ==============================================
+          # DECISION TREE
+          # ==============================================
+          decision_tree:
+            description: "How to determine which process to use"
+            steps:
+              - step: 1
+                question: "Does the task modify any files matching requires_teach_process patterns?"
+                yes: "Use _plan_teach.yml (or ensure build plan includes teach validation)"
+                no: "Proceed to step 2"
+
+              - step: 2
+                question: "Does the task create new agent guidance files?"
+                yes: "Use _plan_teach.yml - new agents need validation"
+                no: "Proceed to step 3"
+
+              - step: 3
+                question: "Does the task modify agent behavior in any way?"
+                yes: "Use _plan_teach.yml - behavior changes need validation"
+                no: "_plan_build.yml is sufficient"
+
+          # ==============================================
+          # FENCE INSTRUCTION
+          # ==============================================
+          fence: |
+            FENCE: GUIDANCE-PROCESS-REQUIREMENT
+            When planning ANY task, apply the decision_tree above.
+            Guidance-modifying tasks MUST NOT bypass teach process validation.
+            This fence exists because the JIT Context initiative modified 26
+            agent files without validation, causing widespread friction.
+
+          # ==============================================
+          # RELATED ARTIFACTS
+          # ==============================================
+          related_artifacts:
+            planner_build_fence: "modules/AgenticGuidance/agents/planner/planner-build/inputs.yml#guidance_modification_fence"
+            orchestration_routing: "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml#guidance_change_routing"
+            plan_teach_entrypoint: "modules/AgenticGuidance/entrypoints/_plan_teach.yml"
+            plan_build_entrypoint: "modules/AgenticGuidance/entrypoints/_plan_build.yml"
+          ```
+
+        status: pending
+        priority: high
+        inputs:
+          - "modules/AgenticGuidance/assets/definitions/"
+          - "modules/AgenticGuidance/entrypoints/_plan_teach.yml"
+          - "modules/AgenticGuidance/entrypoints/_plan_build.yml"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/guidance-process-requirements.yml"
+        acceptance_criteria:
+          - "File created at modules/AgenticGuidance/assets/definitions/guidance-process-requirements.yml"
+          - "Core rule clearly states the requirement"
+          - "File classification covers all guidance file types"
+          - "Decision tree provides clear routing logic"
+          - "FENCE instruction references JIT Context issue"
+          - "Related artifacts link to implementation locations"
+
+      - id: "enforce_005"
+        name: "Update entrypoint files with cross-references"
+        description: |
+          Update both _plan_build.yml and _plan_teach.yml entrypoints to cross-reference
+          the guidance-process-requirements.yml definition and clarify when each should
+          be used.
+
+          For _plan_build.yml, add:
+          ```yaml
+          # ==============================================
+          # GUIDANCE MODIFICATION WARNING
+          # ==============================================
+          # If your build objective includes modifications to agent guidance files
+          # (process.yml, inputs.yml, manifest.yml), you may need _plan_teach.yml instead.
+          # See: modules/AgenticGuidance/assets/definitions/guidance-process-requirements.yml
+          #
+          # The planner-build agent will detect guidance modifications and flag them
+          # for teach process validation. Do not bypass this validation.
+          # ==============================================
+          ```
+
+          For _plan_teach.yml, add:
+          ```yaml
+          # ==============================================
+          # REQUIRED FOR GUIDANCE CHANGES
+          # ==============================================
+          # This entrypoint MUST be used when modifying agent guidance files.
+          # Guidance changes require validation (agent self-review, guidance testing)
+          # that is NOT performed in the build-only process.
+          # See: modules/AgenticGuidance/assets/definitions/guidance-process-requirements.yml
+          # ==============================================
+          ```
+
+        status: pending
+        priority: medium
+        depends_on: ["enforce_004"]
+        inputs:
+          - "modules/AgenticGuidance/entrypoints/_plan_build.yml"
+          - "modules/AgenticGuidance/entrypoints/_plan_teach.yml"
+          - "modules/AgenticGuidance/assets/definitions/guidance-process-requirements.yml"
+        target_files:
+          - "modules/AgenticGuidance/entrypoints/_plan_build.yml"
+          - "modules/AgenticGuidance/entrypoints/_plan_teach.yml"
+        acceptance_criteria:
+          - "_plan_build.yml has GUIDANCE MODIFICATION WARNING section"
+          - "_plan_teach.yml has REQUIRED FOR GUIDANCE CHANGES section"
+          - "Both files reference guidance-process-requirements.yml"
+          - "Cross-references use correct relative paths"
+
+  # ========================================
+  # PHASE 4: Add Detection Patterns
+  # ========================================
+  - name: "Phase 4: Add Detection Patterns to Definitions"
+    description: |
+      Consolidate and formalize the detection patterns for identifying guidance-modifying
+      tasks. These patterns should be usable by both human reviewers and automated tooling.
+
+    success_criteria:
+      - "Detection patterns added to agent-categories.yml or dedicated file"
+      - "Patterns are glob-compatible for programmatic matching"
+      - "Patterns cover all guidance file types with clear rationale"
+
+    tasks:
+      - id: "enforce_006"
+        name: "Add guidance_file_patterns to agent-categories.yml"
+        description: |
+          Update modules/AgenticGuidance/assets/definitions/agent-categories.yml to add
+          a guidance_file_patterns section that defines the glob patterns for detecting
+          guidance file modifications.
+
+          Add section:
+          ```yaml
+          # ==============================================
+          # GUIDANCE FILE PATTERNS
+          # ==============================================
+          # Patterns for detecting guidance file modifications.
+          # Used by planner-build to detect when teach process is required.
+          # ==============================================
+          guidance_file_patterns:
+            description: |
+              Glob patterns that identify guidance files. Any task modifying
+              files matching these patterns requires teach process validation.
+
+            agent_guidance:
+              description: "Core agent definition files"
+              patterns:
+                - "modules/AgenticGuidance/agents/**/process.yml"
+                - "modules/AgenticGuidance/agents/**/process.mmd"
+                - "modules/AgenticGuidance/agents/**/inputs.yml"
+                - "modules/AgenticGuidance/agents/**/manifest.yml"
+                - "modules/AgenticGuidance/agents/**/outputs.yml"
+              validation_required: "agent_self_review"
+
+            shared_definitions:
+              description: "Shared definitions affecting multiple agents"
+              patterns:
+                - "modules/AgenticGuidance/assets/definitions/*.yml"
+              validation_required: "definition_consistency_check"
+
+            guidelines:
+              description: "Guidelines affecting agent decision-making"
+              patterns:
+                - "modules/AgenticGuidance/assets/guidelines/*.yml"
+              validation_required: "guideline_impact_review"
+
+            entrypoints:
+              description: "Entry points affecting routing and flow"
+              patterns:
+                - "modules/AgenticGuidance/entrypoints/*.yml"
+              validation_required: "routing_validation"
+
+            specifications:
+              description: "Specifications defining contracts"
+              patterns:
+                - "modules/AgenticGuidance/assets/specifications/*.yml"
+              validation_required: "specification_review"
+
+            exclusions:
+              description: "Patterns that look like guidance but are not"
+              patterns:
+                - "modules/AgenticGuidance/assets/examples/**"
+                - "modules/AgenticGuidance/docs/**"
+                - "**/*.md"
+              note: "These do not require teach process validation"
+          ```
+
+        status: pending
+        priority: medium
+        inputs:
+          - "modules/AgenticGuidance/assets/definitions/agent-categories.yml"
+          - "modules/AgenticGuidance/assets/definitions/guidance-process-requirements.yml"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/agent-categories.yml"
+        acceptance_criteria:
+          - "guidance_file_patterns section added to agent-categories.yml"
+          - "Patterns cover agent_guidance, shared_definitions, guidelines, entrypoints, specifications"
+          - "Each pattern category has validation_required field"
+          - "Exclusions section clarifies what does NOT require teach process"
+          - "Patterns are valid glob syntax"
+
+# ========================================
+# Implementation Notes
+# ========================================
+implementation_notes:
+  jit_context_incident: |
+    The JIT Context initiative (November 2025) modified 26 agent bootstrap files to
+    implement just-in-time context loading. The changes were executed through
+    _plan_build.yml only, which meant:
+
+    1. No agent self-review was performed on the modified guidance
+    2. No guidance testing validated the changes
+    3. Broken paths and missing references were introduced
+    4. Issues were only discovered during subsequent execution sessions
+    5. Multiple friction analysis cycles were needed to identify root causes
+
+    This plan prevents recurrence by:
+    - Adding detection for guidance modifications in build plans
+    - Automatically routing guidance changes through teach validation
+    - Documenting the requirement clearly for future reference
+
+  validation_approach: |
+    After implementing this plan, the enforcement should be validated by:
+
+    1. Creating a test build plan that includes a guidance file in target_files
+    2. Verifying planner-build sets requires_teach_validation: true
+    3. Verifying orchestration-planning includes teach validation phase
+    4. Confirming agent self-review runs for the modified agent
+    5. Testing that normal build plans (without guidance files) are unchanged
+
+  related_friction_analysis: |
+    This plan addresses issues identified in:
+    - docs/plans/live/260104AE_agenticguidance/audit/260122_friction_analysis.yml
+    - docs/plans/live/260104AE_agenticguidance/audit/260123_friction_analysis.yml
+
+    Specifically: "JIT Context modifications bypassed teach process validation"
+
+next_steps:
+  - "Execute Phase 1 to add FENCE to planner-build"
+  - "Execute Phase 2 to update orchestration-planning routing"
+  - "Execute Phase 3 to document the rule formally"
+  - "Execute Phase 4 to add detection patterns"
+  - "Validate enforcement by testing with a guidance-modifying build plan"

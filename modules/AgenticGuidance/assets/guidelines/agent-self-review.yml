@@ -1,0 +1,460 @@
+# Agent Self-Review Guideline
+# Defines the protocol for agents to validate their own guidance files.
+#
+# PURPOSE:
+# Self-review is the most fundamental form of guidance validation. An agent reviewing
+# its own guidance can immediately identify basic issues before they propagate into
+# production workflows.
+#
+# USAGE:
+# - test-guidance-simulator invokes self-review mode on target agents
+# - Agents use this protocol when asked to review their own guidance
+# - Teacher agents use self-review reports to prioritize guidance improvements
+#
+# INTEGRATION:
+# This guideline integrates with guidance-test-scenarios.yml (self_review_test scenario)
+# and is executed within the guidance-test-loop.
+
+# =============================================================================
+# 1. PURPOSE
+# =============================================================================
+purpose:
+  why_essential: |
+    Self-review is the most basic form of guidance validation. Before an agent can
+    successfully execute tasks, it must be able to understand its own guidance.
+    If an agent cannot make sense of its own guidance files, it certainly cannot
+    complete the tasks described within them.
+
+  issues_detected:
+    - "Broken file paths that don't resolve to existing files"
+    - "Missing referenced assets, definitions, or guidelines"
+    - "Ambiguous instructions requiring interpretation or assumptions"
+    - "Inconsistencies between process.yml, inputs.yml, and outputs.yml"
+    - "Prerequisites that aren't documented"
+    - "Loop context missing for loop participants"
+    - "Output specifications that don't match declared schema"
+
+  when_to_trigger:
+    - "After any modification to agent guidance files"
+    - "Before committing guidance changes"
+    - "As first step in guidance-test-loop"
+    - "When validating a newly created agent"
+    - "During guidance quality audits"
+
+# =============================================================================
+# 2. CCI (CLI CONTEXT INJECTION) PATTERN
+# =============================================================================
+# CCI enables agents to bootstrap self-review with minimal initial context.
+# The CLI provides file paths and agent metadata; the agent then reads files directly.
+
+cci_pattern:
+  description: |
+    CCI (CLI Context Injection) is a pattern where agents receive minimal bootstrap
+    context via CLI, then load additional context by reading files directly. This
+    replaces the need for large pre-loaded context in the initial prompt.
+
+  benefits:
+    - "Minimal initial context - only what's needed to start"
+    - "Agent loads context on-demand via file reads"
+    - "Consistent file paths from CLI output"
+    - "Reduced token usage in initial prompt"
+    - "Agent controls which files to read based on task"
+
+  cli_command: |
+    agentic <agent-name>
+
+    Example: agentic test-audit
+
+  cli_output_format:
+    description: |
+      The CLI outputs structured information including file paths that the agent
+      can use to load context for self-review. The output follows the CCI pattern
+      where minimal context is provided upfront, with file paths for exploration.
+
+    fields:
+      agent_name:
+        type: "string"
+        description: "Name of the target agent"
+        example: "test-audit"
+
+      agent_path:
+        type: "string"
+        description: "Directory path to agent guidance files"
+        example: "modules/AgenticGuidance/agents/test/test-audit/"
+
+      agent_files:
+        type: "list"
+        description: "List of agent guidance files to review"
+        items:
+          - "process.yml: The agent's process definition"
+          - "inputs.yml: The agent's input specifications"
+          - "outputs.yml: Output schema (if present)"
+          - "manifest.yml: Agent metadata"
+
+      criteria_files:
+        type: "list"
+        description: "List of file paths to self-review criteria and protocol"
+        items:
+          - "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml"
+          - "modules/AgenticGuidance/assets/guidelines/agent-self-review.yml"
+
+      output_schema_path:
+        type: "string"
+        description: "Path to expected output format specification"
+        value: "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml#output_requirements"
+
+      related_assets:
+        type: "list"
+        description: "Paths to relevant definitions and guidelines for context"
+        items:
+          - "modules/AgenticGuidance/assets/definitions/guidance-test-scenarios.yml"
+          - "modules/AgenticGuidance/assets/definitions/friction.yml"
+          - "modules/AgenticGuidance/assets/definitions/spot-check-checklist.yml"
+          - "modules/AgenticGuidance/assets/definitions/agent-categories.yml"
+
+    example_output: |
+      Agent: test-audit
+      Path: modules/AgenticGuidance/agents/test/test-audit/
+
+      Agent Files:
+        - process.yml: modules/AgenticGuidance/agents/test/test-audit/process.yml
+        - inputs.yml: modules/AgenticGuidance/agents/test/test-audit/inputs.yml
+        - manifest.yml: modules/AgenticGuidance/agents/test/test-audit/manifest.yml
+
+      Criteria Files (for self-review):
+        - modules/AgenticGuidance/assets/definitions/self-review-criteria.yml
+        - modules/AgenticGuidance/assets/guidelines/agent-self-review.yml
+
+      Output Schema:
+        - modules/AgenticGuidance/assets/definitions/self-review-criteria.yml#output_requirements
+
+      Related Assets:
+        - modules/AgenticGuidance/assets/definitions/guidance-test-scenarios.yml
+        - modules/AgenticGuidance/assets/definitions/friction.yml
+
+    self_review_output_example:
+      description: |
+        After performing self-review, agents must produce output conforming to
+        self-review-criteria.yml#output_requirements. Here are complete examples:
+
+      pass_example:
+        status: "PASS"
+        findings: []
+        plan_file_path: null
+        spot_check_eligible: true
+        summary: "All criteria met. No duplicates, broken references, or context bloat detected."
+
+      needs_attention_example:
+        status: "NEEDS_ATTENTION"
+        findings:
+          - id: "NAT-002"
+            severity: "CRITICAL"
+            description: "Reference to assets/definitions/old-criteria.yml does not resolve"
+            recommendation: "Update path to assets/definitions/self-review-criteria.yml"
+          - id: "NAT-006"
+            severity: "HIGH"
+            description: "Context bloat detected: 35% reduction potential in inputs.yml"
+            recommendation: "Extract repeated definitions to shared assets"
+        plan_file_path: "docs/plans/live/260123AE_agenticguidance/live/plan_guidance_test_audit_fixes.yml"
+        spot_check_eligible: true
+        summary: "2 issues found requiring remediation. Plan file created."
+
+  cci_self_review_workflow:
+    description: |
+      The 6-step CCI-based self-review workflow. This workflow uses the CLI to
+      bootstrap context, then reads files directly to perform the review.
+
+    steps:
+      - step: 1
+        action: "Run CLI for initial context"
+        command: "agentic <agent-name>"
+        purpose: "Get file paths and agent metadata"
+        output_used: "agent_path, guidance file paths"
+
+      - step: 2
+        action: "Read self-review-criteria.yml"
+        path: "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml"
+        purpose: "Load PASS/NEEDS_ATTENTION criteria and output requirements"
+
+      - step: 3
+        action: "Read agent-self-review.yml (this file)"
+        path: "modules/AgenticGuidance/assets/guidelines/agent-self-review.yml"
+        purpose: "Load the self-review protocol and validation checklist"
+
+      - step: 4
+        action: "Read agent guidance files"
+        files:
+          - "{agent_path}/process.yml - The agent's process definition"
+          - "{agent_path}/inputs.yml - The agent's input specifications"
+          - "{agent_path}/outputs.yml - Output schema (if present)"
+        purpose: "Load the actual guidance files to review"
+
+      - step: 5
+        action: "Apply self-review protocol"
+        procedure: |
+          Execute the review_steps defined in protocol section below:
+          - Validate paths resolve to existing files
+          - Check cross-file consistency
+          - Apply pass_criteria from self-review-criteria.yml
+          - Check for needs_attention_triggers
+
+      - step: 6
+        action: "Generate output conforming to self-review-criteria.yml#output_requirements"
+        reference: "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml#output_requirements"
+        required_fields:
+          - "status: PASS | NEEDS_ATTENTION"
+          - "findings: list of issues with id, severity, description, recommendation"
+          - "plan_file_path: path to plan file (required if NEEDS_ATTENTION)"
+          - "spot_check_eligible: boolean"
+
+  known_file_paths:
+    description: |
+      These paths are stable and can be read directly without CLI lookup.
+      Use these for loading self-review protocol and criteria.
+
+    paths:
+      self_review_criteria: "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml"
+      self_review_guideline: "modules/AgenticGuidance/assets/guidelines/agent-self-review.yml"
+      spot_check_checklist: "modules/AgenticGuidance/assets/definitions/spot-check-checklist.yml"
+      agent_categories: "modules/AgenticGuidance/assets/definitions/agent-categories.yml"
+
+# =============================================================================
+# 3. SELF-REVIEW PROTOCOL
+# =============================================================================
+protocol:
+  context_constraint: |
+    Agent receives ONLY its own guidance files:
+    - process.yml
+    - inputs.yml
+    - outputs.yml (if present)
+
+    Agent MUST NOT access:
+    - Implementation code
+    - Other agents' guidance
+    - Broader codebase
+    - External context beyond referenced files
+
+  review_steps:
+    - step: 1
+      action: "Invoke CLI for agent context (CCI bootstrap)"
+      command: "agentic <agent-name>"
+      validate:
+        - "CLI returns file paths for the target agent"
+        - "agent_path is valid directory"
+        - "guidance files are listed"
+      note: |
+        This is the CCI bootstrap step. The CLI provides the minimal context
+        needed to begin the self-review: file paths to the agent's guidance.
+
+    - step: 2
+      action: "Read process.yml"
+      validate:
+        - "Goal is clearly defined and actionable"
+        - "Steps are logically ordered and complete"
+        - "Loop context is present if agent participates in loops"
+        - "Guidelines reference existing files"
+
+    - step: 3
+      action: "Read inputs.yml"
+      validate:
+        - "All input file paths are specified"
+        - "All paths resolve to existing files"
+        - "Each input has a clear description"
+        - "Required vs optional inputs are distinguished"
+
+    - step: 4
+      action: "Read outputs.yml (if present)"
+      validate:
+        - "Output schema is fully specified"
+        - "Output location is documented"
+        - "Output format matches expected type"
+
+    - step: 5
+      action: "Check cross-file consistency"
+      validate:
+        - "Inputs referenced in process.yml are in inputs.yml"
+        - "Outputs mentioned in process.yml match outputs.yml"
+        - "No contradictory instructions across files"
+
+    - step: 6
+      action: "Attempt minimal task understanding"
+      validate:
+        - "Can determine what task this agent performs"
+        - "Can identify the first concrete action to take"
+        - "Can locate all files needed to begin"
+
+    - step: 7
+      action: "Create Plan File (if NEEDS_ATTENTION)"
+      description: |
+        FENCE: This step is NOT optional. NEEDS_ATTENTION without plan file = incomplete.
+      procedure: |
+        IF status == NEEDS_ATTENTION:
+          1. Create plan file at: {plan_folder}/live/plan_guidance_{agent_name}_{issue_type}.yml
+          2. Include: objective, findings list (from step 1-5), proposed remediation tasks
+          3. Set plan status: pending
+          4. Return plan_file_path in output
+        IF status == PASS:
+          1. Set plan_file_path to null
+          2. Proceed to output generation
+
+    - step: 8
+      action: "Generate Output"
+      description: "Produce structured output conforming to self-review-criteria.yml#output_requirements"
+      output_reference: "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml#output_requirements"
+      required_fields:
+        - "status: PASS | NEEDS_ATTENTION"
+        - "findings: list of issues found"
+        - "plan_file_path: path to plan file (required if NEEDS_ATTENTION)"
+        - "spot_check_eligible: boolean"
+
+# =============================================================================
+# 4. VALIDATION CHECKLIST
+# =============================================================================
+validation_checklist:
+  path_validation:
+    - id: "PV-001"
+      check: "All input paths in inputs.yml exist?"
+      severity: CRITICAL
+
+    - id: "PV-002"
+      check: "All asset/definition/guideline references exist?"
+      severity: CRITICAL
+
+    - id: "PV-003"
+      check: "Paths are absolute or have clear base directory?"
+      severity: HIGH
+
+  process_validation:
+    - id: "PR-001"
+      check: "Process steps are clear and actionable?"
+      severity: HIGH
+
+    - id: "PR-002"
+      check: "Prerequisites are explicitly documented?"
+      severity: HIGH
+
+    - id: "PR-003"
+      check: "Steps reference files that exist?"
+      severity: CRITICAL
+
+  loop_validation:
+    - id: "LP-001"
+      check: "Loop context defined if agent participates in loops?"
+      severity: HIGH
+      applies_when: "Agent is loop participant"
+
+    - id: "LP-002"
+      check: "participates_in lists correct loops?"
+      severity: MEDIUM
+      applies_when: "Agent has loop_context"
+
+  output_validation:
+    - id: "OT-001"
+      check: "Outputs are clearly specified?"
+      severity: MEDIUM
+
+    - id: "OT-002"
+      check: "Output schema matches declared format?"
+      severity: MEDIUM
+
+  consistency_validation:
+    - id: "CN-001"
+      check: "No contradictions between files?"
+      severity: HIGH
+
+    - id: "CN-002"
+      check: "Referenced items exist where mentioned?"
+      severity: CRITICAL
+
+# =============================================================================
+# 5. REPORTING FORMAT
+# =============================================================================
+reporting:
+  output_schema:
+    agent_name: "string - name of agent that performed self-review"
+    agent_path: "string - path to agent directory"
+    review_timestamp: "ISO datetime"
+    self_review_passed: "boolean - overall pass/fail"
+
+    path_validation:
+      total_paths_checked: "integer"
+      paths_resolved: "integer"
+      broken_paths:
+        - path: "string - the path that failed"
+          referenced_in: "string - file where reference exists"
+          error: "string - reason for failure"
+
+    file_validation:
+      required_files_present: "list of files that exist"
+      missing_files: "list of files that should exist but don't"
+
+    consistency_check:
+      passed: "boolean"
+      inconsistencies:
+        - type: "string - type of inconsistency"
+          location: "string - file and section"
+          issue: "string - description of inconsistency"
+          suggested_fix: "string - how to resolve"
+
+    clarity_check:
+      ambiguities:
+        - location: "string - file and section"
+          issue: "string - what is unclear"
+          severity: "CRITICAL | HIGH | MEDIUM | LOW"
+          suggested_fix: "string - how to clarify"
+
+    summary:
+      total_issues: "integer"
+      by_severity:
+        CRITICAL: "integer"
+        HIGH: "integer"
+        MEDIUM: "integer"
+        LOW: "integer"
+      recommended_action: "PASS | FIX_REQUIRED | ESCALATE"
+
+  severity_rules:
+    PASS: "total_issues == 0 OR only LOW severity issues"
+    FIX_REQUIRED: "Any HIGH or MEDIUM issues (no CRITICAL)"
+    ESCALATE: "Any CRITICAL issues that block task understanding"
+
+# =============================================================================
+# 6. INTEGRATION
+# =============================================================================
+integration:
+  guidance_test_loop: |
+    Self-review is executed as the FIRST test scenario in guidance-test-loop.
+    This catches basic errors before running more complex validation scenarios.
+
+    Flow:
+    1. test-guidance-simulator receives target agent
+    2. Execute self_review_test FIRST
+    3. If self-review fails with CRITICAL: STOP, report gaps
+    4. If self-review passes: continue with other test scenarios
+    5. Aggregate all findings for teacher agents
+
+  test_guidance_simulator: |
+    test-guidance-simulator invokes self-review by spawning the target agent
+    with only its own guidance files and the self-review prompt.
+
+    Invocation pattern:
+    "You are agent: {agent_name}. Your guidance files are at:
+    - process.yml: {path}
+    - inputs.yml: {path}
+    TASK: Review your own guidance for correctness. Report any issues found."
+
+  escalation_triggers:
+    - "Any CRITICAL severity issue"
+    - "More than 3 HIGH severity issues"
+    - "Self-review cannot complete (missing core files)"
+
+  relationship_to_other_tests: |
+    Self-review is PREREQUISITE for other test scenarios:
+    - task_completion_test requires self-review to pass first
+    - reference_resolution_test overlaps but goes deeper
+    - friction_detection_test uses self-review findings
+
+related_artifacts:
+  test_scenarios: "modules/AgenticGuidance/assets/definitions/guidance-test-scenarios.yml"
+  test_simulator: "modules/AgenticGuidance/agents/test/test-guidance-simulator/process.yml"
+  friction_definition: "modules/AgenticGuidance/assets/definitions/friction.yml"
+  loop_definition: "modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.guidance-test-loop"

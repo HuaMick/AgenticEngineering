@@ -43,6 +43,26 @@ process:
 
   steps:
     - |
+      CCI BOOTSTRAP (CLI Context Injection) - Run FIRST before any file exploration:
+      Execute these commands to get structured context efficiently:
+
+      ```bash
+      # Get seed context (objective, process summary, inputs)
+      agentic context bootstrap --role planner-cleaning -j
+
+      # Get current task if working from a plan
+      agentic plan task current -j
+      ```
+
+      CLI output provides:
+      - Your objective and process summary
+      - Input file paths to read
+      - Current task details (if plan exists)
+
+      ONLY use Glob/Grep/Read if CLI output indicates specific files to examine.
+      DO NOT explore the codebase before running these commands.
+
+    - |
       Review all inputs if an input cannot be found do not proceed.
       If an input is found in a different location, update the path and flag
       the discrepancy in your output.
@@ -110,6 +130,32 @@ process:
 
       DUMPING GROUND: Use additional subfolders (e.g., audit-results/, analysis/) to store agent artifacts.
     - |
+      LOOP INCLUSION STEP (Before finalizing plan):
+      Reference: modules/AgenticGuidance/assets/guidelines/loop-inclusion-for-planners.yml
+
+      Before finalizing plan, determine required loops:
+      - cleaner-dependency-loop for safe removal
+        Ensures cleanup operations are verified by Explorer agent before execution.
+        Pattern: Cleaner identifies -> Explorer checks deps -> Decision (safe/defer)
+      - audit-test-fix-loop (MANDATORY after cleanup)
+        Required to validate that cleanup did not break existing functionality.
+        Catches reward hacking and validates test quality post-cleanup.
+
+      Include loop_structure section in plan output:
+        loop_structure:
+          required_loops:
+            - type: "cleaner-dependency-loop"
+              when: "cleanup tasks identified"
+              participants: ["cleaner", "explorer"]
+              maximum_iterations: 3
+            - type: "audit-test-fix-loop"
+              when: "after any cleanup execution"
+              mandatory: true
+              participants: ["auditor", "test-builder"]
+              maximum_iterations: 3
+          exit_conditions:
+            reference: "loop-inclusion-for-planners.yml#exit_criteria_patterns"
+    - |
       Determine folder lifecycle action based on plan completion status.
       See modules/AgenticGuidance/assets/definitions/plans.yml for authoritative patterns:
       - plan_lifecycle: Four stages (planning, active, partially_completed, fully_completed)
@@ -122,6 +168,7 @@ process:
     # Core guidelines: See modules/AgenticGuidance/assets/guidelines/ (less-is-more.yml, iteration.yml, fix-the-source.yml, experiment-first.yml, context-minimisation.yml, worktree-and-branching.yml, response-audit.yml)
     # Core definitions: See modules/AgenticGuidance/assets/definitions/ (plans.yml, guidance.yml, friction.yml, architecture-pattern.yml)
     # Phase ordering and definitions: See manifest.yml (authoritative source for phase_creation_rules and definitions)
+    # Loop inclusion: See modules/AgenticGuidance/assets/guidelines/loop-inclusion-for-planners.yml (when and how to include loops in plans)
     - |
       REFERENCE STRUCTURE:
       - Use manifest.yml for phase definitions and ordering guidance

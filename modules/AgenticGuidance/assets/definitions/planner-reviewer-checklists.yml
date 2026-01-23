@@ -43,6 +43,34 @@ checklists:
       - "Phase dependencies are explicitly declared"
       - "All mandatory loops included (audit-test-fix after cleanup, etc.)"
 
+  loop_structure:
+    description: "Plan includes appropriate loops for iteration"
+    items:
+      - "loop_structure section exists for non-trivial plans"
+      - "Loop type matches phase type (per phase_to_loop_mapping)"
+      - "Exit criteria are explicit and verifiable"
+      - "Max iterations specified with escalation path"
+    rejection_condition:
+      condition: "Non-trivial plan missing loop_structure"
+      message: "Plan must include loop_structure. See loop-inclusion-for-planners.yml"
+
+  # Context minimisation checklist (SSR-004)
+  # Reference: self-review-criteria.yml for thresholds
+  context_minimisation:
+    description: "Plan inputs follow context minimisation principles"
+    items:
+      - "No inline definitions >100 tokens that exist in shared assets"
+      - "No duplicate definitions across inputs.yml files"
+      - "Layer references use transitive loading (not flat duplication)"
+      - "File references resolve to existing targets"
+      - "inputs.yml size <2000 tokens (warning >1500)"
+    quantitative_thresholds:
+      inline_max_tokens: 100
+      duplicate_threshold_tokens: 50
+      context_reduction_trigger_percent: 30
+      inputs_max_tokens: 2000
+    reference: "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml"
+
 fences:
   rlm_usage:
     description: "RLM usage validation (only when plan references RLM patterns)"
@@ -108,3 +136,23 @@ fences:
       - "Variable naming follows documented conventions"
       - "Accumulator schemas are valid JSON Schema"
       - "RLM phases have bounded iteration counts"
+
+  # Self-review validation fence (SSR-004)
+  # BLOCKING: Must pass before plan approval
+  self_review_validation:
+    description: "Validate plan inputs against self-review criteria (BLOCKING)"
+    trigger: "All plan reviews"
+    blocking: true
+    items:
+      - "Plan inputs do not duplicate content from referenced assets"
+      - "Context reduction potential <30% (not bloated)"
+      - "All file references validated and resolve to existing files"
+      - "Version numbers aligned across agent files"
+      - "No deprecated patterns without migration notes"
+    rejection_condition:
+      condition: "ANY item fails validation"
+      message: "Self-review validation failed. Fix issues before approval."
+    historical_note: |
+      This fence addresses FF-003 (78% flag rate on spot-checks, 14+ iterations).
+      Lenient assessments caused by imprecise criteria. PASS requires ALL items met.
+    reference: "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml"

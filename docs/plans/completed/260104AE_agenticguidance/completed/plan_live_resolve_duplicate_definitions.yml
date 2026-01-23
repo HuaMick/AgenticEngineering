@@ -1,0 +1,296 @@
+# Plan: Resolve Duplicate Definitions in Friction Analysis
+# Created: 2026-01-23
+# Objective: Consolidate friction pattern definitions into single source of truth
+
+name: "resolve-duplicate-definitions"
+worktree_path: "/home/code/AgenticEngineering"
+branch: "agenticguidance"
+status: "pending"
+priority: "medium"
+created: "2026-01-23"
+
+# ========================================
+# PLAN METADATA
+# ========================================
+plan_metadata:
+  name: "Resolve Duplicate Friction Pattern Definitions"
+  created: "2026-01-23"
+  status: "pending"
+  objective: |
+    Consolidate duplicate friction pattern definitions into a single source of truth.
+    Remove inline definitions from inputs.yml and ensure proper references to the
+    canonical friction-patterns.yml definition file.
+
+# ========================================
+# CONTEXT & FRICTION ANALYSIS
+# ========================================
+context: |
+  Agent self-reviews (orchestration-friction) identified duplicate definitions that
+  violate DRY principle and create maintenance burden with drift risk.
+
+  CURRENT STATE:
+  Friction patterns (FP-001 through FP-006) are defined in BOTH:
+  1. modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml
+     - Lines 79-132: friction_patterns inline definitions
+     - Lines 137-155: resolution_types inline definitions
+     - Lines 160-180: severity_classification inline definitions
+
+  2. modules/AgenticGuidance/assets/definitions/friction-patterns.yml
+     - Lines 17-70: patterns (canonical definitions)
+     - Lines 75-93: resolution_types (canonical definitions)
+     - Lines 98-118: severity_classification (canonical definitions)
+
+  PROBLEM:
+  - Violates DRY (Don't Repeat Yourself) principle
+  - Creates maintenance burden - updates must be made in two places
+  - Risk of definitions drifting out of sync over time
+  - inputs.yml already has reference to friction-patterns.yml (line 12)
+  - Comment on line 77-78 acknowledges duplication but doesn't resolve it
+
+  DESIRED STATE:
+  - friction-patterns.yml is the single source of truth
+  - inputs.yml references friction-patterns.yml without inline duplicates
+  - No maintenance burden or drift risk
+
+friction_analysis:
+  source: "orchestration-friction agent self-review"
+  summary: |
+    Duplicate definitions detected during agent self-review. The same friction
+    patterns, resolution types, and severity classifications are maintained in
+    two locations, creating DRY violations and drift risk.
+
+  affected_components:
+    - file: "modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml"
+      issue: "Contains inline duplicate definitions of friction_patterns, resolution_types, severity_classification"
+      lines: "79-180"
+      impact: "Maintenance burden, drift risk, DRY violation"
+
+    - file: "modules/AgenticGuidance/assets/definitions/friction-patterns.yml"
+      issue: "Canonical source that should be the single source of truth"
+      status: "Correct - no changes needed"
+
+# ========================================
+# PHASES
+# ========================================
+phases:
+  # ----------------------------------------
+  # Phase 1: Remove duplicates from inputs.yml
+  # ----------------------------------------
+  - name: "Phase 1 - Remove Duplicates"
+    description: "Remove inline duplicate definitions from inputs.yml, keep only references"
+    execution: sequential
+    tasks:
+      - id: "clean_001"
+        name: "Remove inline friction_patterns from inputs.yml"
+        status: "pending"
+        agent: "planner-cleaning"
+        inputs:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml"
+          - "modules/AgenticGuidance/assets/definitions/friction-patterns.yml"
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml"
+        guidance: |
+          Remove the friction_patterns section from inputs.yml (lines 75-132):
+
+          1. Delete the entire "FRICTION PATTERNS (inline for quick reference)" section
+          2. This includes the comment block at lines 75-78
+          3. This includes the friction_patterns list (FP-001 through FP-006) at lines 79-132
+          4. Keep the reference at line 12: friction_patterns_definition
+
+          The reference already exists:
+            friction_patterns_definition: "modules/AgenticGuidance/assets/definitions/friction-patterns.yml"
+
+        acceptance_criteria:
+          - "friction_patterns inline section is removed from inputs.yml"
+          - "friction_patterns_definition reference is preserved (line 12)"
+          - "No YAML syntax errors after edit"
+
+      - id: "clean_002"
+        name: "Remove inline resolution_types from inputs.yml"
+        status: "pending"
+        agent: "planner-cleaning"
+        inputs:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml"
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml"
+        guidance: |
+          Remove the resolution_types section from inputs.yml (lines 134-155):
+
+          1. Delete the "RESOLUTION TYPES" comment header (lines 134-136)
+          2. Delete the resolution_types list (lines 137-155)
+          3. These definitions exist in friction-patterns.yml (lines 75-93)
+
+        acceptance_criteria:
+          - "resolution_types inline section is removed from inputs.yml"
+          - "No YAML syntax errors after edit"
+
+      - id: "clean_003"
+        name: "Remove inline severity_classification from inputs.yml"
+        status: "pending"
+        agent: "planner-cleaning"
+        inputs:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml"
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml"
+        guidance: |
+          Remove the severity_classification section from inputs.yml (lines 157-180):
+
+          1. Delete the "SEVERITY CLASSIFICATION" comment header (lines 157-159)
+          2. Delete the severity_classification map (lines 160-180)
+          3. These definitions exist in friction-patterns.yml (lines 98-118)
+
+        acceptance_criteria:
+          - "severity_classification inline section is removed from inputs.yml"
+          - "No YAML syntax errors after edit"
+
+      - id: "clean_004"
+        name: "Ensure inputs.yml has clear reference to friction-patterns.yml"
+        status: "pending"
+        agent: "planner-cleaning"
+        inputs:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml"
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml"
+        guidance: |
+          Verify and enhance the reference to friction-patterns.yml:
+
+          1. Confirm the reference exists at line 12:
+             friction_patterns_definition: "modules/AgenticGuidance/assets/definitions/friction-patterns.yml"
+
+          2. Add a clear comment block (if not already present) explaining what the reference contains:
+             # ========================================
+             # FRICTION PATTERNS REFERENCE
+             # ========================================
+             # All friction patterns (FP-001 to FP-006), resolution types, and
+             # severity classifications are defined in the canonical definition file.
+             # This prevents duplication and ensures single source of truth.
+             friction_patterns_definition: "modules/AgenticGuidance/assets/definitions/friction-patterns.yml"
+
+          3. Optionally add a note about what is included:
+             # Contents of friction-patterns.yml:
+             #   - patterns: FP-001 through FP-006
+             #   - resolution_types: GUIDANCE_UPDATE, CLI_OFFLOAD, ASSET_UPDATE
+             #   - severity_classification: high, medium, low
+
+        acceptance_criteria:
+          - "Reference to friction-patterns.yml is clear and well-documented"
+          - "Comment explains what the external file contains"
+          - "No inline duplicates remain in inputs.yml"
+
+  # ----------------------------------------
+  # Phase 2: Verify references work
+  # ----------------------------------------
+  - name: "Phase 2 - Verify References"
+    description: "Ensure inputs.yml properly references friction-patterns.yml and definitions are loadable"
+    execution: sequential
+    tasks:
+      - id: "verify_001"
+        name: "Ensure inputs.yml properly references friction-patterns.yml"
+        status: "pending"
+        agent: "reviewer"
+        inputs:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml"
+          - "modules/AgenticGuidance/assets/definitions/friction-patterns.yml"
+        target_files: []
+        guidance: |
+          Verify the reference is correct and complete:
+
+          1. Read inputs.yml and confirm friction_patterns_definition points to correct path
+          2. Verify the referenced file exists at the specified path
+          3. Confirm no orphaned references to removed inline definitions
+          4. Check that YAML is valid after all edits
+
+        acceptance_criteria:
+          - "friction_patterns_definition path is correct"
+          - "Referenced file exists and is valid YAML"
+          - "No broken references in inputs.yml"
+          - "inputs.yml passes YAML syntax validation"
+
+      - id: "verify_002"
+        name: "Test that orchestration-friction can load definitions"
+        status: "pending"
+        agent: "reviewer"
+        inputs:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml"
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-friction/process.yml"
+        target_files: []
+        guidance: |
+          Verify the orchestration-friction workflow can access definitions:
+
+          1. Check that process.yml or other workflow files can resolve the reference
+          2. Verify the friction_patterns_definition path is accessible from the agent context
+          3. Confirm all friction pattern IDs (FP-001 to FP-006) are available via the reference
+          4. Validate that resolution_types and severity_classification are accessible
+
+          Note: This may be a manual verification step if no automated test exists.
+
+        acceptance_criteria:
+          - "friction-patterns.yml is loadable from orchestration-friction context"
+          - "All pattern definitions are accessible"
+          - "No runtime errors when referencing external definitions"
+
+# ========================================
+# DELIVERABLES
+# ========================================
+deliverables:
+  - file: "modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml"
+    changes:
+      - "Remove inline friction_patterns section (lines 75-132)"
+      - "Remove inline resolution_types section (lines 134-155)"
+      - "Remove inline severity_classification section (lines 157-180)"
+      - "Enhance friction_patterns_definition reference with clear documentation"
+
+# ========================================
+# ACCEPTANCE CRITERIA
+# ========================================
+acceptance_criteria:
+  - "No duplicate friction pattern definitions exist"
+  - "friction-patterns.yml is the single source of truth"
+  - "inputs.yml contains only reference, no inline definitions"
+  - "Reference documentation is clear and complete"
+  - "No YAML syntax errors in modified files"
+  - "orchestration-friction workflow can load definitions"
+
+# ========================================
+# SUCCESS CRITERIA
+# ========================================
+success_criteria:
+  - "DRY principle is satisfied - definitions exist in one place only"
+  - "Maintenance burden eliminated - updates only needed in friction-patterns.yml"
+  - "Drift risk eliminated - no duplicate definitions to fall out of sync"
+  - "inputs.yml file size reduced by approximately 100 lines"
+
+# ========================================
+# VALIDATION APPROACH
+# ========================================
+validation:
+  approach: "manual-review"
+  description: |
+    After edits are complete:
+    1. Verify inputs.yml no longer contains friction_patterns, resolution_types, severity_classification inline
+    2. Verify friction_patterns_definition reference points to correct file
+    3. Verify friction-patterns.yml contains all required definitions
+    4. Run YAML lint on both files to ensure no syntax errors
+    5. Optionally run orchestration-friction workflow to confirm it loads definitions
+
+# ========================================
+# NOTES
+# ========================================
+notes: |
+  This plan addresses a DRY violation identified through agent self-review.
+  The fix is straightforward: remove inline definitions that already exist
+  in the canonical friction-patterns.yml file.
+
+  The inputs.yml file already has a reference to friction-patterns.yml (line 12),
+  and even includes a comment acknowledging the duplication (lines 77-78):
+    "# Full definitions: modules/AgenticGuidance/assets/definitions/friction-patterns.yml"
+    "# Inline patterns below are kept for context during workflow execution"
+
+  The "kept for context" reasoning is not sufficient justification for DRY violation.
+  If context is needed, agents can read the referenced file.
+
+  Files involved:
+  - Source of truth: modules/AgenticGuidance/assets/definitions/friction-patterns.yml
+  - File with duplicates: modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml
+
+estimated_effort: "15-20 minutes"
