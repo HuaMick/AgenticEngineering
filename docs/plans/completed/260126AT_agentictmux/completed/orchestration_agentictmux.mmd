@@ -1,0 +1,103 @@
+%% =============================================================================
+%% ORCHESTRATION: AgenticTmux Module Build
+%% =============================================================================
+%% GOAL: Build AgenticTmux as a thin presentation layer over SessionService
+%% PROFILE: Orchestrator-Build
+%% INPUT_PATH: docs/plans/completed/260126AT_agentictmux/plan_live_build.yml
+%%
+%% PHASES: ModuleStructure, SessionService, CLICommands, ConfigSchema
+%% AGENT_ROUTING: ModuleStructure -> build-module, SessionService -> build-service, CLICommands -> build-cli
+%% FEEDBACK_TRIGGER: TEST_FAILURE -> FixLoop, BUILD_ERROR -> build-fix
+%%
+%% STATUS: ModuleStructure=completed, SessionService=completed, CLICommands=completed, ConfigSchema=completed
+%% DEFERRED: WorktreeIntegration, PlanIntegration, TUIDashboard (require services not yet implemented)
+%%
+%% DELIVERABLES:
+%% - modules/AgenticGuidance/src/agenticguidance/services/session.py (SessionService)
+%% - modules/AgenticGuidance/src/agenticguidance/services/session_config.py (Config, Naming)
+%% - modules/AgenticTmux/src/agentictmux/commands/session.py (CLI commands)
+%% - 46 tests for session functionality
+%% =============================================================================
+
+flowchart TD
+    Start((Start)) --> LoadPlan[Load plan_live_build.yml]
+
+    %% ========================================
+    %% INPUT VALIDATION
+    %% ========================================
+    LoadPlan --> CheckBlocker{Blocker 260123AE Complete?}
+    CheckBlocker -- "No" --> WaitBlocker((Wait: Blocker Pending))
+    CheckBlocker -- "Yes" --> Phase1
+
+    %% ========================================
+    %% PHASE 1: MODULE STRUCTURE (AT-001, AT-002)
+    %% ========================================
+    subgraph Phase1_SG ["Phase 1: Module Structure"]
+        Phase1[Enter Module Structure Phase] --> CreateModule[Create AgenticTmux module]
+        CreateModule --> CreatePyproject[Create pyproject.toml]
+        CreatePyproject --> CreateInit[Create __init__.py]
+        CreateInit --> CreateSessionService[Create SessionService in AgenticGuidance]
+        CreateSessionService --> Phase1Tests{Tests Pass?}
+        Phase1Tests -- "Fail" --> Phase1Fix[Fix Issues]
+        Phase1Fix --> Phase1Tests
+        Phase1Tests -- "Pass" --> Phase1Complete[Phase 1 Complete]
+    end
+
+    Phase1Complete --> Phase2
+
+    %% ========================================
+    %% PHASE 2: SESSION COMMANDS (AT-005 to AT-009)
+    %% ========================================
+    subgraph Phase2_SG ["Phase 2: Session Commands"]
+        Phase2[Enter CLI Commands Phase] --> CreateCmd[Create session.py commands]
+        CreateCmd --> ImplementCreate[Implement create command]
+        ImplementCreate --> ImplementAttach[Implement attach command]
+        ImplementAttach --> ImplementList[Implement list command]
+        ImplementList --> ImplementKill[Implement kill command]
+        ImplementKill --> ImplementStatus[Implement status command]
+        ImplementStatus --> Phase2Tests{Tests Pass?}
+        Phase2Tests -- "Fail" --> Phase2Fix[Fix Issues]
+        Phase2Fix --> Phase2Tests
+        Phase2Tests -- "Pass" --> Phase2Complete[Phase 2 Complete]
+    end
+
+    Phase2Complete --> ConfigPhase
+
+    %% ========================================
+    %% CONFIG SCHEMA (AT-003, AT-004)
+    %% ========================================
+    subgraph Config_SG ["Config Schema Phase"]
+        ConfigPhase[Enter Config Phase] --> CreateConfig[Create SessionConfig]
+        CreateConfig --> CreateNaming[Create SessionNamingConvention]
+        CreateNaming --> CreateLoader[Create SessionConfigLoader]
+        CreateLoader --> CreateLifecycle[Create lifecycle_create helper]
+        CreateLifecycle --> ConfigTests{Tests Pass?}
+        ConfigTests -- "Fail" --> ConfigFix[Fix Issues]
+        ConfigFix --> ConfigTests
+        ConfigTests -- "Pass" --> ConfigComplete[Config Complete]
+    end
+
+    ConfigComplete --> FinalValidation
+
+    %% ========================================
+    %% FINAL VALIDATION
+    %% ========================================
+    subgraph Validation_SG ["Final Validation"]
+        FinalValidation[Run Full Test Suite] --> AllTests{124 Tests Pass?}
+        AllTests -- "Fail" --> FixTests[Fix Failing Tests]
+        FixTests --> AllTests
+        AllTests -- "Pass" --> Archive[Archive to Completed]
+    end
+
+    Archive --> DeferredNote
+
+    %% ========================================
+    %% DEFERRED PHASES
+    %% ========================================
+    subgraph Deferred_SG ["Deferred Phases"]
+        DeferredNote[Note Deferred Work] --> Phase3Deferred[Phase 3: Worktree/Plan Integration]
+        Phase3Deferred --> Phase4Deferred[Phase 4: TUI Dashboard]
+        Phase4Deferred --> DeferReason[Reason: Requires WorktreeService, PlanService]
+    end
+
+    DeferReason --> Complete((Complete: Phase 1 & 2 Delivered))
