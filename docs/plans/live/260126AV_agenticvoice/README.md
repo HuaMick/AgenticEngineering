@@ -6,7 +6,38 @@ Create AgenticVoice module for voice-based planning and phone control.
 
 ## Dependency
 
-**BLOCKED**: This plan is blocked until AgenticGuidance services refactor is complete (260123AE).
+**BLOCKED**: This plan is blocked until AgenticGuidance services refactor is complete (260123AE_agenticguidance).
+
+## Architecture
+
+AgenticVoice is a thin presentation layer that routes voice commands to AgenticGuidance services:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  AgenticVoice (Presentation Layer)                          │
+│  - WebSocket server for real-time voice communication       │
+│  - STT/TTS integration                                      │
+│  - Voice command parsing                                    │
+└─────────────────────┬───────────────────────────────────────┘
+                      │ imports from agenticguidance.services
+                      ▼
+┌─────────────────────────────────────────────────────────────┐
+│  AgenticGuidance/services/ (Business Logic Layer)           │
+│  - PlanService        (plan management)                     │
+│  - ContextService     (context resolution)                  │
+│  - TaskService        (task operations)                     │
+│  - ConfigService      (configuration)                       │
+│  - StateService       (state management)                    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Import Pattern
+
+```python
+from agenticguidance.services.plan import PlanService
+from agenticguidance.services.context import ContextService
+from agenticguidance.services.task import TaskService
+```
 
 ## Phases
 
@@ -22,7 +53,7 @@ Create AgenticVoice module for voice-based planning and phone control.
 
 ### Phase 3: Voice Command Routing to AgenticGuidance Services
 - Parse voice commands into structured intents
-- Route commands to appropriate AgenticGuidance services
+- Route commands to AgenticGuidance/services/*
 - Handle responses and convert to voice output
 
 ### Phase 4: PersonaPlex Integration (Optional)
@@ -33,4 +64,4 @@ Create AgenticVoice module for voice-based planning and phone control.
 ## Status
 
 - Created: 2026-01-26
-- Status: Pending (blocked)
+- Status: Pending (blocked on 260123AE_agenticguidance)

@@ -1,9 +1,9 @@
-# AgenticCore Architecture - 3-Layer Model
+# AgenticGuidance Services Architecture - 3-Layer Model
 
 ## Objective
 
 Refactor the AgenticEngineering module structure to support multiple interfaces (CLI, tmux, voice, web) by:
-1. Extracting business logic from AgenticCLI into a new AgenticCore module
+1. Extracting business logic from AgenticCLI into AgenticGuidance/services/
 2. Making AgenticCLI a thin presentation layer
 3. Creating AgenticTmux for terminal session management
 4. Creating AgenticVoice for voice-based planning and control
@@ -21,7 +21,9 @@ Refactor the AgenticEngineering module structure to support multiple interfaces 
 |----------|---------|
 | Separate AgenticTmux module | Rejected (creates duplication) |
 | Keep in AgenticCLI | Rejected (creates monolith) |
-| Thin CLI + AgenticCore | **SELECTED** (enables reuse) |
+| Thin CLI + AgenticGuidance services | **SELECTED** (enables reuse) |
+
+**Key Decision**: Business logic belongs in AgenticGuidance/services/ because these services interpret guidance. "Core" was rejected as a meaningless name - the services naturally belong with the guidance they interpret.
 
 ### Target Architecture
 
@@ -34,44 +36,68 @@ Refactor the AgenticEngineering module structure to support multiple interfaces 
 └─────────────────────┬───────────────────────────────────────┘
                       │
 ┌─────────────────────▼───────────────────────────────────────┐
-│  BUSINESS LOGIC LAYER (AgenticCore) - NEW MODULE            │
+│  BUSINESS LOGIC LAYER (AgenticGuidance/services/)           │
 │  Services:                                                   │
-│    - PlanService        (from plan_workflow.py)            │
-│    - ContextService     (from context_workflow.py)         │
-│    - ConfigService      (from config_workflow.py)          │
-│    - TaskService        (from task_workflow.py)            │
-│    - StateService       (from state_workflow.py)           │
-│    - TemplateService    (from template_workflow.py)        │
-│    - EnvironmentService (from environment_workflow.py)     │
-│    - SessionService     (NEW - tmux/remote management)     │
+│    - plan.py          (from plan_workflow.py)               │
+│    - context.py       (from context_workflow.py)            │
+│    - config.py        (from config_workflow.py)             │
+│    - task.py          (from task_workflow.py)               │
+│    - state.py         (from state_workflow.py)              │
+│    - template.py      (from template_workflow.py)           │
+│    - environment.py   (from environment_workflow.py)        │
+│    - session.py       (NEW - tmux/remote management)        │
 └─────────────────────┬───────────────────────────────────────┘
                       │
 ┌─────────────────────▼───────────────────────────────────────┐
-│  DATA LAYER (AgenticGuidance - unchanged)                   │
+│  DATA LAYER (AgenticGuidance assets - unchanged)            │
 │  - Agent definitions (YAML)                                 │
 │  - Guidelines, definitions, examples                        │
 └─────────────────────────────────────────────────────────────┘
+```
+
+### Target Directory Structure
+
+```
+AgenticGuidance/
+├── agents/              # Existing YAML definitions
+├── assets/              # Existing guidelines, definitions
+├── services/            # NEW - Python business logic (moved from CLI)
+│   ├── __init__.py
+│   ├── context.py       # MainFirstPlanResolver, role loading
+│   ├── plan.py          # Plan scaffolding, validation
+│   ├── task.py          # Task CRUD
+│   ├── config.py        # Configuration management
+│   ├── state.py         # Process registry
+│   ├── template.py      # Template rendering
+│   ├── session.py       # NEW - tmux/remote sessions
+│   └── environment.py   # Environment loading
+├── models/              # NEW - Data models
+│   ├── __init__.py
+│   ├── plan.py          # Plan data models
+│   ├── task.py          # Task data models
+│   └── context.py       # Context data models
+└── pyproject.toml       # NEW - Make it a Python package
 ```
 
 ## User Goals Addressed
 
 | Goal | Implementation |
 |------|----------------|
-| Code from phone | AgenticVoice WebSocket server calls AgenticCore |
+| Code from phone | AgenticVoice WebSocket server calls AgenticGuidance services |
 | tmux integration | AgenticTmux calls SessionService + PlanService |
 | Voice planning | AgenticVoice calls PlanService for voice-driven planning |
 | Thin CLI wrapper | CLI becomes ~2k lines (down from ~12.7k) |
 
 ## Phases
 
-### Phase 1: Create AgenticCore Module
-- Create `modules/AgenticCore/` structure
-- Move workflows from AgenticCLI to AgenticCore services
+### Phase 1: Create AgenticGuidance Services Layer
+- Create `modules/AgenticGuidance/services/` structure
+- Move workflows from AgenticCLI to AgenticGuidance services
 - Extract shared utilities and models
 - Setup pyproject.toml and tests
 
 ### Phase 2: Refactor AgenticCLI
-- Update CLI to call AgenticCore services
+- Update CLI to call AgenticGuidance services
 - Remove workflows/ directory
 - Keep only presentation logic (commands/, cli.py, console.py)
 
@@ -83,11 +109,11 @@ Refactor the AgenticEngineering module structure to support multiple interfaces 
 ### Phase 4: Build AgenticVoice
 - Create voice interface with STT/TTS
 - WebSocket server for phone connection
-- Integrate with AgenticCore services for voice commands
+- Integrate with AgenticGuidance services for voice commands
 
 ## Files Affected
 
-### To Move (AgenticCLI → AgenticCore)
+### To Move (AgenticCLI → AgenticGuidance/services/)
 - `workflows/plan_workflow.py` → `services/plan.py`
 - `workflows/context_workflow.py` → `services/context.py`
 - `workflows/config_workflow.py` → `services/config.py`
@@ -96,8 +122,9 @@ Refactor the AgenticEngineering module structure to support multiple interfaces 
 - `workflows/template_workflow.py` → `services/template.py`
 - `workflows/environment_workflow.py` → `services/environment.py`
 
-### To Create (New Modules)
-- `modules/AgenticCore/` - Business logic layer
+### To Create
+- `modules/AgenticGuidance/services/` - Business logic layer
+- `modules/AgenticGuidance/models/` - Data models
 - `modules/AgenticTmux/` - Terminal session management
 - `modules/AgenticVoice/` - Voice interface
 
@@ -106,7 +133,7 @@ Refactor the AgenticEngineering module structure to support multiple interfaces 
 | Before | After |
 |--------|-------|
 | AgenticCLI: ~12,700 lines | AgenticCLI: ~2,000 lines |
-| Business logic in CLI | Business logic in AgenticCore |
+| Business logic in CLI | Business logic in AgenticGuidance/services/ |
 | 1 interface (CLI) | 4 interfaces (CLI, tmux, voice, web) |
 | Code duplication for new interfaces | Shared services, no duplication |
 
