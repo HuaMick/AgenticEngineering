@@ -1,0 +1,891 @@
+# CLI Regression Test Plan - Post CCI Updates
+# Objective: Verify no regressions from CLI Context Injection (CCI) updates
+#
+# Created: 2026-01-26
+# Agent: planner-build
+# Plan Folder: 261115CL_agenticcli
+
+name: "cli-regression-test-post-cci"
+worktree: "261115CL_agenticcli"
+worktree_path: "/home/code/AgenticEngineering"
+branch: "main"
+status: "pending"
+priority: "high"
+created_date: "2026-01-26"
+
+# =============================================================================
+# CONTEXT
+# =============================================================================
+context: |
+  This regression test plan validates that all CLI functionality continues to work
+  correctly after the CCI (CLI Context Injection) updates, which included:
+
+  BREAKING CHANGES IMPLEMENTED:
+  - Syntax change from `agentic --agent-name` to `agentic agent-name` (positional)
+  - Added `--bootstrap` flag for full context retrieval
+  - Updated all 27 agent bootstrap files in .claude/agents/
+
+  FEATURES TO VERIFY:
+  - All 26 registered agents bootstrap correctly via positional syntax
+  - Folder creation automation (`agentic plan init`) still works
+  - CLI help documentation is accurate and up-to-date
+  - JSON output mode (-j flag) works across all commands
+  - Task management commands (prefill, list, status, add) function correctly
+  - Context commands (bootstrap, role, task, inputs) work as expected
+
+  REGRESSION RISK AREAS:
+  - Entry point routing (entry.py) - Agent name detection
+  - Argument parsing (cli.py) - Positional vs flag handling
+  - Agent help output (agent_help.py) - KNOWN_AGENTS list accuracy
+  - Plan commands (plan.py) - Folder creation and task management
+
+# =============================================================================
+# ROOT-LEVEL INPUTS
+# =============================================================================
+inputs:
+  # CCI Implementation Reference
+  - location: "docs/plans/live/261115CL_agenticcli/completed/plan_completed_cci_cli_implementation.yml"
+    description: "Completed CCI implementation plan - defines what was changed"
+
+  # Folder Creation Automation Reference
+  - location: "docs/plans/live/261115CL_agenticcli/completed/plan_completed_folder_creation_automation.yml"
+    description: "Completed folder creation plan - defines plan init command"
+
+  # CLI Source Files
+  - location: "modules/AgenticCLI/src/agenticcli/entry.py"
+    description: "Entry point - positional agent name routing"
+
+  - location: "modules/AgenticCLI/src/agenticcli/cli.py"
+    description: "Main CLI - argparse setup and help text"
+
+  - location: "modules/AgenticCLI/src/agenticcli/commands/agent_help.py"
+    description: "Agent help - KNOWN_AGENTS list and bootstrap context"
+
+  - location: "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+    description: "Plan commands - init, task subcommands"
+
+  - location: "modules/AgenticCLI/src/agenticcli/commands/context.py"
+    description: "Context commands - bootstrap, role, task, inputs"
+
+  # Agent Bootstrap Files
+  - location: ".claude/agents/"
+    description: "Thin-client agent bootstrap files (27 files)"
+
+  # Agent Definitions
+  - location: "modules/AgenticGuidance/agents/"
+    description: "Agent process.yml, inputs.yml, manifest.yml files"
+
+# =============================================================================
+# SUCCESS CRITERIA
+# =============================================================================
+success_criteria:
+  - "All 26 registered agents accessible via positional syntax (`agentic <agent-name>`)"
+  - "All 26 agents bootstrap successfully with `--bootstrap` flag"
+  - "Old --agent-name syntax correctly fails with error"
+  - "Folder creation automation (`agentic plan init`) works correctly"
+  - "All task management commands (prefill, list, status, add) work"
+  - "CLI help text accurately reflects current command syntax"
+  - "JSON output (-j flag) produces valid JSON for all commands"
+  - "No regressions in existing plan/worktree/config commands"
+  - "Agent bootstrap files in .claude/agents/ match KNOWN_AGENTS list"
+
+# =============================================================================
+# PHASES AND TASKS
+# =============================================================================
+phases:
+
+  # ============================================================================
+  # PHASE 1: Environment Verification
+  # ============================================================================
+  - phase_id: "verify_01"
+    name: "Environment Verification"
+    description: "Verify CLI installation and baseline functionality"
+    status: "pending"
+    execution: sequential
+    estimated_effort: "low"
+
+    tasks:
+      - task_id: "verify_01_001"
+        name: "Verify CLI Installation"
+        description: |
+          Confirm the latest CLI version is installed and accessible.
+        status: "pending"
+        agent: "test-runner"
+        inputs:
+          - "modules/AgenticCLI/pyproject.toml"
+        guidance: |
+          1. Run: `agentic --version`
+          2. Compare version with pyproject.toml
+          3. Run: `agentic --help`
+          4. Verify help output displays without errors
+        success_criteria:
+          - "agentic --version returns expected version"
+          - "agentic --help displays without errors"
+          - "No import or dependency errors"
+
+      - task_id: "verify_01_002"
+        name: "Verify KNOWN_AGENTS List Accuracy"
+        description: |
+          Verify the KNOWN_AGENTS list in agent_help.py matches actual agent directories.
+        status: "pending"
+        agent: "test-audit"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/agent_help.py"
+          - "modules/AgenticGuidance/agents/"
+        guidance: |
+          1. Extract KNOWN_AGENTS list from agent_help.py
+          2. List all agent directories in modules/AgenticGuidance/agents/*/
+          3. Compare lists - identify any:
+             - Missing agents (in directory but not in KNOWN_AGENTS)
+             - Orphaned entries (in KNOWN_AGENTS but no directory)
+             - Verify category mappings are correct
+          4. Document any discrepancies
+        success_criteria:
+          - "KNOWN_AGENTS matches actual agent directories"
+          - "No orphaned entries in KNOWN_AGENTS"
+          - "Category mappings accurate"
+
+      - task_id: "verify_01_003"
+        name: "Verify Bootstrap Files Match Agents"
+        description: |
+          Verify .claude/agents/*.md files exist for all registered agents.
+        status: "pending"
+        agent: "test-audit"
+        inputs:
+          - ".claude/agents/"
+          - "modules/AgenticCLI/src/agenticcli/commands/agent_help.py"
+        guidance: |
+          1. List all .md files in .claude/agents/
+          2. Compare with KNOWN_AGENTS list
+          3. Verify each agent has a corresponding bootstrap file
+          4. Check bootstrap files use new positional syntax (not --agent-name)
+        success_criteria:
+          - "Bootstrap file exists for each KNOWN_AGENT"
+          - "All bootstrap files use positional syntax"
+          - "No references to deprecated --agent-name syntax"
+
+  # ============================================================================
+  # PHASE 2: Positional Syntax Regression Tests
+  # ============================================================================
+  - phase_id: "test_02"
+    name: "Positional Syntax Regression Tests"
+    description: "Verify the new positional agent syntax works for all agents"
+    status: "pending"
+    execution: sequential
+    estimated_effort: "high"
+    depends_on: ["verify_01"]
+
+    tasks:
+      - task_id: "test_02_001"
+        name: "Test All Planner Agents (7)"
+        description: |
+          Test positional syntax for all planner agents.
+        status: "pending"
+        agent: "test-runner"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/agent_help.py"
+        guidance: |
+          Test each planner agent with positional syntax:
+
+          ```bash
+          agentic planner-audit
+          agentic planner-build
+          agentic planner-cleaning
+          agentic planner-guidance
+          agentic planner-guidance-testing
+          agentic planner-reviewer
+          agentic planner-test
+          ```
+
+          For each agent:
+          1. Run command and verify output (not error)
+          2. Run with -j flag and verify valid JSON
+          3. Run with --bootstrap flag and verify extended output
+          4. Document any failures
+        success_criteria:
+          - "All 7 planner agents respond to positional syntax"
+          - "JSON output valid for all agents"
+          - "--bootstrap provides extended context"
+
+      - task_id: "test_02_002"
+        name: "Test All Test Agents (7)"
+        description: |
+          Test positional syntax for all test agents.
+        status: "pending"
+        agent: "test-runner"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/agent_help.py"
+        guidance: |
+          Test each test agent:
+
+          ```bash
+          agentic test-audit
+          agentic test-builder
+          agentic test-final-output
+          agentic test-guidance-simulator
+          agentic test-runner
+          agentic test-service
+          agentic test-user-simulator
+          ```
+
+          Same verification as test_02_001.
+        success_criteria:
+          - "All 7 test agents respond to positional syntax"
+          - "JSON output valid for all agents"
+          - "--bootstrap provides extended context"
+
+      - task_id: "test_02_003"
+        name: "Test Orchestration Agents"
+        description: |
+          Test positional syntax for orchestration agents.
+          NOTE: Some orchestration agents may be deprecated.
+        status: "pending"
+        agent: "test-runner"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/agent_help.py"
+          - "modules/AgenticGuidance/agents/orchestration/"
+        guidance: |
+          Test existing orchestration agents:
+
+          ```bash
+          agentic orchestration-executor
+          agentic orchestration-friction
+          agentic orchestration-planning
+          ```
+
+          Also test potentially deprecated agents:
+          ```bash
+          agentic orchestration-build
+          agentic orchestration-guidance
+          ```
+
+          Document which agents work vs which are missing directories.
+        success_criteria:
+          - "Active orchestration agents respond correctly"
+          - "Deprecated agents clearly identified"
+          - "No unexpected errors for valid agents"
+
+      - task_id: "test_02_004"
+        name: "Test Teacher, Build, Deploy Agents"
+        description: |
+          Test remaining agent categories.
+        status: "pending"
+        agent: "test-runner"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/agent_help.py"
+        guidance: |
+          Test teacher agents (3):
+          ```bash
+          agentic teacher-trace-diagnostics
+          agentic teacher-update-assets
+          agentic teacher-update-guidance
+          ```
+
+          Test build agents (2):
+          ```bash
+          agentic build-flutter
+          agentic build-python
+          ```
+
+          Test deploy agents (2):
+          ```bash
+          agentic deploy-cicd
+          agentic deploy-worktree
+          ```
+        success_criteria:
+          - "All teacher agents work (3)"
+          - "All build agents work (2)"
+          - "All deploy agents work (2)"
+
+      - task_id: "test_02_005"
+        name: "Test Breaking Change - Old Syntax Fails"
+        description: |
+          Verify the old --agent-name syntax no longer works.
+        status: "pending"
+        agent: "test-runner"
+        guidance: |
+          Test that old syntax fails:
+
+          ```bash
+          agentic --planner-build 2>&1 || echo "Expected failure"
+          agentic --test-runner 2>&1 || echo "Expected failure"
+          agentic --build-python 2>&1 || echo "Expected failure"
+          ```
+
+          Verify:
+          1. Commands exit with non-zero status
+          2. Error message is human-readable
+          3. (Nice to have) Error suggests new syntax
+        success_criteria:
+          - "Old --agent-name syntax fails"
+          - "Error message is clear"
+          - "Exit code is non-zero"
+
+  # ============================================================================
+  # PHASE 3: Bootstrap Flag Regression Tests
+  # ============================================================================
+  - phase_id: "test_03"
+    name: "Bootstrap Flag Regression Tests"
+    description: "Verify --bootstrap flag provides full context for all agents"
+    status: "pending"
+    execution: sequential
+    estimated_effort: "medium"
+    depends_on: ["test_02"]
+
+    tasks:
+      - task_id: "test_03_001"
+        name: "Test Bootstrap Output Content"
+        description: |
+          Verify --bootstrap flag includes all required context fields.
+        status: "pending"
+        agent: "test-runner"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/agent_help.py"
+        guidance: |
+          For representative agents (planner-build, test-runner, build-python):
+
+          ```bash
+          agentic planner-build --bootstrap -j | jq '.'
+          ```
+
+          Verify JSON output includes:
+          - agent_name
+          - agent_path (absolute path, exists)
+          - process_path (absolute path, exists)
+          - inputs_path (absolute path, exists)
+          - process (full process steps)
+          - inputs (input file list)
+          - guidance_files (list of all agent files)
+
+          Compare output length: --bootstrap should be significantly larger than base.
+        success_criteria:
+          - "All required fields present in bootstrap output"
+          - "All file paths are absolute and exist"
+          - "Bootstrap output larger than base output"
+
+      - task_id: "test_03_002"
+        name: "Test Bootstrap File Paths Valid"
+        description: |
+          Verify all file paths in bootstrap output actually exist.
+        status: "pending"
+        agent: "test-runner"
+        guidance: |
+          For multiple agents, extract file paths and verify existence:
+
+          ```bash
+          agentic planner-build --bootstrap -j | jq -r '.agent_path, .process_path, .inputs_path'
+          ```
+
+          Then verify each path exists:
+          ```bash
+          test -d "$agent_path" && echo "OK" || echo "MISSING: $agent_path"
+          test -f "$process_path" && echo "OK" || echo "MISSING: $process_path"
+          ```
+        success_criteria:
+          - "All agent_path directories exist"
+          - "All process_path files exist"
+          - "All inputs_path files exist (if declared)"
+
+  # ============================================================================
+  # PHASE 4: Folder Creation Automation Tests
+  # ============================================================================
+  - phase_id: "test_04"
+    name: "Folder Creation Automation Tests"
+    description: "Verify `agentic plan init` still works correctly"
+    status: "pending"
+    execution: sequential
+    estimated_effort: "medium"
+    depends_on: ["verify_01"]
+
+    tasks:
+      - task_id: "test_04_001"
+        name: "Test Plan Init Help"
+        description: |
+          Verify plan init help text is accurate.
+        status: "pending"
+        agent: "test-runner"
+        guidance: |
+          ```bash
+          agentic plan init --help
+          ```
+
+          Verify help shows:
+          - branch argument
+          - --description flag
+          - --base flag
+          - Exit code documentation
+        success_criteria:
+          - "Help text displays without errors"
+          - "All documented flags present"
+
+      - task_id: "test_04_002"
+        name: "Test Plan Init Dry Run"
+        description: |
+          Test plan init without creating actual folders.
+        status: "pending"
+        agent: "test-runner"
+        guidance: |
+          Use a test branch name to verify naming convention:
+
+          ```bash
+          # Get expected folder name pattern
+          agentic plan init test-regression --description cli_regression_test --dry-run
+          ```
+
+          If no --dry-run flag, verify the naming algorithm manually:
+          - Date prefix: YYMMDD (today)
+          - Worktree ID: XX (from branch suffix)
+          - Description: sanitized description
+          - Pattern: YYMMDDXX_description
+        success_criteria:
+          - "Naming convention correct: YYMMDDXX_description"
+          - "No errors in plan init execution"
+
+      - task_id: "test_04_003"
+        name: "Test Plan Init Error Handling"
+        description: |
+          Verify plan init handles errors gracefully.
+        status: "pending"
+        agent: "test-runner"
+        guidance: |
+          Test error cases:
+
+          1. Missing required argument:
+          ```bash
+          agentic plan init 2>&1 || echo "Expected error"
+          ```
+
+          2. Invalid branch name (if validation exists):
+          ```bash
+          agentic plan init "invalid/branch/name" 2>&1
+          ```
+
+          Document exit codes and error messages.
+        success_criteria:
+          - "Missing argument produces helpful error"
+          - "Exit codes match documentation"
+
+  # ============================================================================
+  # PHASE 5: Task Management Commands Tests
+  # ============================================================================
+  - phase_id: "test_05"
+    name: "Task Management Commands Tests"
+    description: "Verify task subcommands work correctly"
+    status: "pending"
+    execution: sequential
+    estimated_effort: "medium"
+    depends_on: ["verify_01"]
+
+    tasks:
+      - task_id: "test_05_001"
+        name: "Test Task Command Help"
+        description: |
+          Verify task subcommand help is accurate.
+        status: "pending"
+        agent: "test-runner"
+        guidance: |
+          ```bash
+          agentic plan task --help
+          agentic plan task prefill --help
+          agentic plan task list --help
+          agentic plan task status --help
+          agentic plan task add --help
+          ```
+
+          Verify each shows correct usage and options.
+        success_criteria:
+          - "All task subcommands have help text"
+          - "Help text matches implementation"
+
+      - task_id: "test_05_002"
+        name: "Test Task List Command"
+        description: |
+          Verify task list command works in plan context.
+        status: "pending"
+        agent: "test-runner"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+        guidance: |
+          From a directory with plan files:
+
+          ```bash
+          cd /home/code/AgenticEngineering
+          agentic plan task list
+          agentic plan task list -j
+          agentic plan task list --status pending
+          ```
+
+          Verify:
+          1. Command executes without error
+          2. JSON output is valid
+          3. Status filter works
+        success_criteria:
+          - "Task list executes without errors"
+          - "JSON output valid"
+          - "Filters work correctly"
+
+      - task_id: "test_05_003"
+        name: "Test Task Start/Complete Commands"
+        description: |
+          Verify task start and complete commands work.
+        status: "pending"
+        agent: "test-runner"
+        guidance: |
+          ```bash
+          agentic plan task start --help
+          agentic plan task complete --help
+          ```
+
+          If a test plan is available, test actual status transitions
+          (use with caution - may modify plan files).
+        success_criteria:
+          - "Start command help available"
+          - "Complete command help available"
+          - "Commands execute without syntax errors"
+
+  # ============================================================================
+  # PHASE 6: CLI Help and Documentation Accuracy
+  # ============================================================================
+  - phase_id: "test_06"
+    name: "CLI Help and Documentation Accuracy"
+    description: "Verify CLI help text matches implementation"
+    status: "pending"
+    execution: sequential
+    estimated_effort: "low"
+    depends_on: ["verify_01"]
+
+    tasks:
+      - task_id: "test_06_001"
+        name: "Verify Main Help Text"
+        description: |
+          Verify main CLI help shows correct commands and syntax.
+        status: "pending"
+        agent: "test-audit"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/cli.py"
+        guidance: |
+          ```bash
+          agentic --help
+          ```
+
+          Verify:
+          1. Shows positional agent syntax (not --agent-name)
+          2. Lists all available subcommands
+          3. Examples use correct syntax
+          4. No references to deprecated syntax
+        success_criteria:
+          - "Help shows positional agent syntax"
+          - "No deprecated --agent-name references"
+          - "Examples are correct"
+
+      - task_id: "test_06_002"
+        name: "Verify Subcommand Help Text"
+        description: |
+          Verify all subcommand help text is accurate.
+        status: "pending"
+        agent: "test-audit"
+        guidance: |
+          Test all major subcommands:
+
+          ```bash
+          agentic plan --help
+          agentic worktree --help
+          agentic config --help
+          agentic context --help
+          ```
+
+          Verify each shows accurate usage and options.
+        success_criteria:
+          - "All subcommand help is accurate"
+          - "No errors in help output"
+
+      - task_id: "test_06_003"
+        name: "Verify Agent Quick Help Section"
+        description: |
+          Verify the Agent Quick Help section in main help is accurate.
+        status: "pending"
+        agent: "test-audit"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/cli.py"
+        guidance: |
+          Check that main help includes:
+          - "Agent Quick Help" section
+          - Positional syntax examples: `agentic planner-build`
+          - Bootstrap examples: `agentic planner-build --bootstrap`
+
+          Verify examples are valid and work when executed.
+        success_criteria:
+          - "Agent Quick Help section present"
+          - "Examples use positional syntax"
+          - "Examples execute successfully"
+
+  # ============================================================================
+  # PHASE 7: Backward Compatibility Tests
+  # ============================================================================
+  - phase_id: "test_07"
+    name: "Backward Compatibility Tests"
+    description: "Verify existing commands not affected by CCI changes"
+    status: "pending"
+    execution: sequential
+    estimated_effort: "medium"
+    depends_on: ["verify_01"]
+
+    tasks:
+      - task_id: "test_07_001"
+        name: "Test Plan Commands Unchanged"
+        description: |
+          Verify plan commands work as before.
+        status: "pending"
+        agent: "test-runner"
+        guidance: |
+          ```bash
+          agentic plan --help
+          agentic plan status
+          agentic plan list
+          ```
+
+          Verify no regressions in existing plan functionality.
+        success_criteria:
+          - "Plan commands work as documented"
+          - "No errors from CCI changes"
+
+      - task_id: "test_07_002"
+        name: "Test Worktree Commands Unchanged"
+        description: |
+          Verify worktree commands work as before.
+        status: "pending"
+        agent: "test-runner"
+        guidance: |
+          ```bash
+          agentic worktree --help
+          agentic worktree list
+          ```
+
+          Verify no regressions.
+        success_criteria:
+          - "Worktree commands work as documented"
+          - "No errors from CCI changes"
+
+      - task_id: "test_07_003"
+        name: "Test Config Commands Unchanged"
+        description: |
+          Verify config commands work as before.
+        status: "pending"
+        agent: "test-runner"
+        guidance: |
+          ```bash
+          agentic config --help
+          agentic config show
+          ```
+
+          Verify no regressions.
+        success_criteria:
+          - "Config commands work as documented"
+          - "No errors from CCI changes"
+
+      - task_id: "test_07_004"
+        name: "Test JSON Output Mode"
+        description: |
+          Verify -j flag works across all commands.
+        status: "pending"
+        agent: "test-runner"
+        guidance: |
+          Test JSON output for various commands:
+
+          ```bash
+          agentic -j plan status | jq '.'
+          agentic -j worktree list | jq '.'
+          agentic -j planner-build | jq '.'
+          agentic -j planner-build --bootstrap | jq '.'
+          ```
+
+          Verify all produce valid JSON.
+        success_criteria:
+          - "All commands with -j produce valid JSON"
+          - "No partial or malformed JSON output"
+
+  # ============================================================================
+  # PHASE 8: Integration and End-to-End Tests
+  # ============================================================================
+  - phase_id: "test_08"
+    name: "Integration and End-to-End Tests"
+    description: "Verify complete workflows still function"
+    status: "pending"
+    execution: sequential
+    estimated_effort: "high"
+    depends_on: ["test_02", "test_03", "test_04", "test_05"]
+
+    tasks:
+      - task_id: "test_08_001"
+        name: "Test Agent Bootstrap Workflow"
+        description: |
+          Test complete agent bootstrap workflow end-to-end.
+        status: "pending"
+        agent: "test-runner"
+        guidance: |
+          Simulate agent bootstrap workflow:
+
+          1. Read thin-client file:
+          ```bash
+          cat .claude/agents/planner-build.md
+          ```
+
+          2. Get initial context:
+          ```bash
+          agentic planner-build
+          ```
+
+          3. Get full bootstrap context:
+          ```bash
+          agentic planner-build --bootstrap -j
+          ```
+
+          4. Verify workflow completes without errors.
+        success_criteria:
+          - "Thin-client file readable"
+          - "Initial context returned"
+          - "Bootstrap context returned"
+          - "Workflow completes end-to-end"
+
+      - task_id: "test_08_002"
+        name: "Test Plan Init to Task Workflow"
+        description: |
+          Test workflow from plan init to task management.
+        status: "pending"
+        agent: "test-runner"
+        guidance: |
+          Verify plan commands work together:
+
+          1. View plan status:
+          ```bash
+          agentic plan status
+          ```
+
+          2. List tasks:
+          ```bash
+          agentic plan task list
+          ```
+
+          3. Get current task:
+          ```bash
+          agentic plan task status <task-id>
+          ```
+
+          Verify workflow coherence.
+        success_criteria:
+          - "Plan status shows current plan"
+          - "Task list shows tasks"
+          - "Task status shows task details"
+
+  # ============================================================================
+  # PHASE 9: Test Audit
+  # ============================================================================
+  - phase_id: "audit_09"
+    name: "Test Audit"
+    description: "Review test results and identify any gaps or issues"
+    status: "pending"
+    execution: sequential
+    estimated_effort: "low"
+    depends_on: ["test_08"]
+
+    tasks:
+      - task_id: "audit_09_001"
+        name: "Audit Test Results"
+        description: |
+          Review all test phase results and document findings.
+        status: "pending"
+        agent: "test-audit"
+        guidance: |
+          Review all completed test tasks:
+
+          1. Count passed vs failed tests
+          2. Identify any regressions found
+          3. Document severity of any issues
+          4. Create remediation tasks if needed
+
+          Produce audit summary report.
+        success_criteria:
+          - "All test results reviewed"
+          - "Regressions documented"
+          - "Remediation tasks created if needed"
+
+      - task_id: "audit_09_002"
+        name: "Document Known Issues"
+        description: |
+          Document any known issues or limitations discovered during testing.
+        status: "pending"
+        agent: "test-audit"
+        guidance: |
+          Create known issues document covering:
+
+          1. Any deprecated agents (orchestration-build, orchestration-guidance)
+          2. Any edge cases not fully covered
+          3. Any documentation gaps found
+          4. Recommendations for future improvements
+        success_criteria:
+          - "Known issues documented"
+          - "Recommendations provided"
+
+# =============================================================================
+# AGENT ASSIGNMENTS
+# =============================================================================
+agent_assignments:
+  test-runner:
+    - "verify_01_001"
+    - "test_02_001"
+    - "test_02_002"
+    - "test_02_003"
+    - "test_02_004"
+    - "test_02_005"
+    - "test_03_001"
+    - "test_03_002"
+    - "test_04_001"
+    - "test_04_002"
+    - "test_04_003"
+    - "test_05_001"
+    - "test_05_002"
+    - "test_05_003"
+    - "test_07_001"
+    - "test_07_002"
+    - "test_07_003"
+    - "test_07_004"
+    - "test_08_001"
+    - "test_08_002"
+
+  test-audit:
+    - "verify_01_002"
+    - "verify_01_003"
+    - "test_06_001"
+    - "test_06_002"
+    - "test_06_003"
+    - "audit_09_001"
+    - "audit_09_002"
+
+# =============================================================================
+# NOTES
+# =============================================================================
+notes: |
+  TEST EXECUTION STRATEGY:
+  - Phase 1 (Verification) should run first to establish baseline
+  - Phases 2-7 can run in parallel for efficiency
+  - Phase 8 (Integration) should run after unit tests complete
+  - Phase 9 (Audit) must run last
+
+  KNOWN CAVEATS:
+  - KNOWN_AGENTS list includes orchestration-build and orchestration-guidance
+    which may not have directories (deprecated agents)
+  - Total agent count: 26 in KNOWN_AGENTS, 24 actual directories
+  - Some tests may require being in a specific directory context
+
+  REGRESSION INDICATORS:
+  - Any command returning unexpected errors
+  - JSON output that is malformed or missing fields
+  - Help text that references old --agent-name syntax
+  - Bootstrap files using deprecated syntax
+
+  REMEDIATION PROCESS:
+  If regressions are found:
+  1. Document the specific failure
+  2. Create a remediation task
+  3. Assign to build-python for fixes
+  4. Re-run affected tests after fix

@@ -1,0 +1,691 @@
+# Test Plan: Loop Context Validation in Agent Guidance
+# Created by: planner-guidance-testing
+# Date: 2026-01-26
+# Plan Folder: 260123AE_agenticguidance
+#
+# PURPOSE:
+# Validate that loop_context sections in loop participant agents are complete,
+# consistent, and enable proper loop execution. This plan tests the three primary
+# loop patterns used in guidance validation workflows:
+# - guidance-test-loop: Agent guidance validation through simulation
+# - documentation-loop: Documentation completeness through blind testing
+# - test-fix-loop: Iterative development with user simulation testing
+
+plan_metadata:
+  plan_name: "loop_context_validation_guidance"
+  plan_type: "guidance-test"
+  created_date: "2026-01-26"
+  target_context: "Validate loop_context completeness across loop participant agents"
+  worktree: "/home/code/AgenticEngineering"
+  branch: "main"
+  plan_file: "docs/plans/live/260123AE_agenticguidance/live/plan_live_test_loop_context.yml"
+  status: "pending"
+  priority: "high"
+
+# =============================================================================
+# TEST CONTEXT
+# =============================================================================
+test_context:
+  loop_type: "guidance-test-loop"
+  loop_reference: "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+  strategy: "loop_context_test"
+  test_scenarios_reference: "modules/AgenticGuidance/assets/definitions/guidance-test-scenarios.yml"
+  maximum_iterations: 3
+
+  focus_areas:
+    - description: "Validate loop_context sections in loop participant agents"
+      validation_type: "structural"
+    - description: "Test guidance-test-loop pattern execution"
+      validation_type: "functional"
+    - description: "Test documentation-loop pattern execution"
+      validation_type: "functional"
+    - description: "Test test-fix-loop pattern execution"
+      validation_type: "functional"
+    - description: "Verify loop exit conditions are properly defined"
+      validation_type: "completeness"
+    - description: "Test loop participant role clarity"
+      validation_type: "clarity"
+
+# =============================================================================
+# LOOP PATTERNS UNDER TEST
+# =============================================================================
+# Reference: modules/AgenticGuidance/assets/definitions/agent-loops.yml
+loop_patterns_under_test:
+  guidance-test-loop:
+    purpose: "Validate guidance completeness through agent simulation"
+    maximum_iterations: 3
+    core_pattern: "Define test task -> Spawn simulator -> Execute minimal context -> Report gaps -> Fix -> Repeat"
+    participants:
+      - agent: "test-guidance-simulator"
+        role: "executor"
+        path: "modules/AgenticGuidance/agents/test/test-guidance-simulator/"
+      - agent: "planner-guidance-testing"
+        role: "planner"
+        path: "modules/AgenticGuidance/agents/planner/planner-guidance-testing/"
+      - agent: "teacher-update-guidance"
+        role: "fixer"
+        path: "modules/AgenticGuidance/agents/teacher/teacher-update-guidance/"
+    exit_conditions:
+      - "All test scenarios pass"
+      - "No guidance gaps identified"
+      - "Max iterations reached (escalate)"
+
+  documentation-loop:
+    purpose: "Validate documentation through blind testing"
+    maximum_iterations: 3
+    core_pattern: "Attempt journey -> Report gaps -> Fix -> Repeat"
+    participants:
+      - agent: "teacher-update-guidance"
+        role: "fixer"
+        path: "modules/AgenticGuidance/agents/teacher/teacher-update-guidance/"
+      - agent: "test-guidance-simulator"
+        role: "validator"
+        path: "modules/AgenticGuidance/agents/test/test-guidance-simulator/"
+    exit_conditions:
+      - "Documentation journey completes without friction"
+      - "All gap fixes validated"
+      - "Max iterations reached (escalate)"
+
+  test-fix-loop:
+    purpose: "Iterative development with user simulation testing"
+    maximum_iterations: 5
+    core_pattern: "Build -> Test -> Fix -> Repeat"
+    participants:
+      - agent: "test-runner"
+        role: "executor"
+        path: "modules/AgenticGuidance/agents/test/test-runner/"
+      - agent: "test-user-simulator"
+        role: "validator"
+        path: "modules/AgenticGuidance/agents/test/test-user-simulator/"
+      - agent: "test-builder"
+        role: "builder"
+        path: "modules/AgenticGuidance/agents/test/test-builder/"
+    exit_conditions:
+      - "All tests pass"
+      - "User simulation succeeds"
+      - "Max iterations reached (escalate)"
+
+# =============================================================================
+# TEST TARGETS
+# =============================================================================
+# Agents that participate in loops and require loop_context validation.
+# Prioritized by loop participation and role criticality.
+test_targets:
+  guidance_test_loop_participants:
+    description: "Agents participating in guidance-test-loop"
+    agents:
+      - path: "modules/AgenticGuidance/agents/test/test-guidance-simulator/"
+        reason: "Primary executor - validates guidance through simulation"
+        expected_loop_context:
+          participates_in: ["guidance-test-loop"]
+          role: "executor"
+
+      - path: "modules/AgenticGuidance/agents/planner/planner-guidance-testing/"
+        reason: "Plans guidance tests - coordinates loop execution"
+        expected_loop_context:
+          participates_in: ["guidance-test-loop"]
+          role: "planner"
+
+      - path: "modules/AgenticGuidance/agents/teacher/teacher-update-guidance/"
+        reason: "Fixes guidance gaps - completes the loop"
+        expected_loop_context:
+          participates_in: ["guidance-test-loop"]
+          role: "fixer"
+
+  documentation_loop_participants:
+    description: "Agents participating in documentation-loop"
+    agents:
+      - path: "modules/AgenticGuidance/agents/teacher/teacher-update-guidance/"
+        reason: "Documentation fixer - updates guidance based on feedback"
+        expected_loop_context:
+          participates_in: ["documentation-loop"]
+          role: "fixer"
+
+  test_fix_loop_participants:
+    description: "Agents participating in test-fix-loop"
+    agents:
+      - path: "modules/AgenticGuidance/agents/test/test-runner/"
+        reason: "Test executor - runs tests and reports results"
+        expected_loop_context:
+          participates_in: ["test-fix-loop"]
+          role: "executor"
+
+      - path: "modules/AgenticGuidance/agents/test/test-user-simulator/"
+        reason: "User simulation - validates from user perspective"
+        expected_loop_context:
+          participates_in: ["test-fix-loop", "user-story-validation-loop"]
+          role: "validator"
+
+      - path: "modules/AgenticGuidance/agents/test/test-builder/"
+        reason: "Test builder - creates test infrastructure"
+        expected_loop_context:
+          participates_in: ["test-fix-loop"]
+          role: "builder"
+
+# =============================================================================
+# PHASES
+# =============================================================================
+phases:
+  # =========================================================================
+  # PHASE 1: Loop Context Structure Validation
+  # =========================================================================
+  - phase_id: "1"
+    phase_name: "Loop Context Structure Validation"
+    status: "pending"
+    description: |
+      Validate that all loop participant agents have complete and correct
+      loop_context sections in their process.yml files. Check structural
+      completeness and consistency with agent-loops.yml definitions.
+
+    tasks:
+      # -----------------------------------------------------------------------
+      # 1.1: Validate guidance-test-loop participants
+      # -----------------------------------------------------------------------
+      - id: "1.1"
+        description: "Validate loop_context in test-guidance-simulator"
+        agent_type: "test-guidance-simulator"
+        operation: "VALIDATE"
+        status: "pending"
+        context:
+          target_agent: "modules/AgenticGuidance/agents/test/test-guidance-simulator/"
+          validation_mode: "loop_context_test"
+          guidance_files_to_review:
+            - "process.yml"
+            - "inputs.yml"
+          loop_context_checks:
+            - "participates_in contains 'guidance-test-loop'"
+            - "loop_definition references agent-loops.yml"
+            - "max_iterations defined and matches loop definition"
+            - "role clearly describes agent function in loop"
+            - "iteration_strategy explains per-iteration behavior"
+            - "exit_conditions align with loop definition"
+          constraints: "Use only guidance files - no code inspection"
+        acceptance_criteria:
+          - "loop_context section exists in process.yml"
+          - "All required fields present (participates_in, role, exit_conditions)"
+          - "Loop definition reference resolves correctly"
+          - "Exit conditions match agent-loops.yml definition"
+        files:
+          - "modules/AgenticGuidance/agents/test/test-guidance-simulator/process.yml"
+
+      - id: "1.2"
+        description: "Validate loop_context in planner-guidance-testing"
+        agent_type: "test-guidance-simulator"
+        operation: "VALIDATE"
+        status: "pending"
+        context:
+          target_agent: "modules/AgenticGuidance/agents/planner/planner-guidance-testing/"
+          validation_mode: "loop_context_test"
+          guidance_files_to_review:
+            - "process.yml"
+            - "inputs.yml"
+            - "manifest.yml"
+          loop_context_checks:
+            - "participates_in contains 'guidance-test-loop'"
+            - "role describes planning function"
+            - "iteration_strategy explains test selection per iteration"
+        acceptance_criteria:
+          - "loop_context section exists"
+          - "Role as planner clearly defined"
+          - "Relationship to simulator and fixer agents documented"
+        files:
+          - "modules/AgenticGuidance/agents/planner/planner-guidance-testing/process.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-guidance-testing/manifest.yml"
+
+      - id: "1.3"
+        description: "Validate loop_context in teacher-update-guidance"
+        agent_type: "test-guidance-simulator"
+        operation: "VALIDATE"
+        status: "pending"
+        context:
+          target_agent: "modules/AgenticGuidance/agents/teacher/teacher-update-guidance/"
+          validation_mode: "loop_context_test"
+          guidance_files_to_review:
+            - "process.yml"
+            - "inputs.yml"
+          loop_context_checks:
+            - "participates_in contains 'guidance-test-loop'"
+            - "Role as fixer clearly defined"
+            - "Multi-loop participation documented if applicable"
+        acceptance_criteria:
+          - "loop_context section exists"
+          - "Fixer role clearly defined"
+          - "Handles input from test-guidance-simulator"
+        files:
+          - "modules/AgenticGuidance/agents/teacher/teacher-update-guidance/process.yml"
+
+      # -----------------------------------------------------------------------
+      # 1.4-1.6: Validate test-fix-loop participants
+      # -----------------------------------------------------------------------
+      - id: "1.4"
+        description: "Validate loop_context in test-runner"
+        agent_type: "test-guidance-simulator"
+        operation: "VALIDATE"
+        status: "pending"
+        context:
+          target_agent: "modules/AgenticGuidance/agents/test/test-runner/"
+          validation_mode: "loop_context_test"
+          loop_context_checks:
+            - "participates_in contains 'test-fix-loop'"
+            - "Role as executor clearly defined"
+            - "Exit conditions include test pass/fail criteria"
+        acceptance_criteria:
+          - "loop_context section exists"
+          - "Test execution role documented"
+          - "Result reporting format defined"
+        files:
+          - "modules/AgenticGuidance/agents/test/test-runner/process.yml"
+
+      - id: "1.5"
+        description: "Validate loop_context in test-user-simulator"
+        agent_type: "test-guidance-simulator"
+        operation: "VALIDATE"
+        status: "pending"
+        context:
+          target_agent: "modules/AgenticGuidance/agents/test/test-user-simulator/"
+          validation_mode: "loop_context_test"
+          loop_context_checks:
+            - "participates_in contains 'test-fix-loop' or 'user-story-validation-loop'"
+            - "Role as validator clearly defined"
+            - "User perspective simulation documented"
+        acceptance_criteria:
+          - "loop_context section exists"
+          - "Validator role documented"
+          - "User simulation approach described"
+        files:
+          - "modules/AgenticGuidance/agents/test/test-user-simulator/process.yml"
+
+      - id: "1.6"
+        description: "Validate loop_context in test-builder"
+        agent_type: "test-guidance-simulator"
+        operation: "VALIDATE"
+        status: "pending"
+        context:
+          target_agent: "modules/AgenticGuidance/agents/test/test-builder/"
+          validation_mode: "loop_context_test"
+          loop_context_checks:
+            - "participates_in contains 'test-fix-loop'"
+            - "Builder role clearly defined"
+            - "Test creation responsibilities documented"
+        acceptance_criteria:
+          - "loop_context section exists"
+          - "Builder role documented"
+          - "Test artifact creation described"
+        files:
+          - "modules/AgenticGuidance/agents/test/test-builder/process.yml"
+
+  # =========================================================================
+  # PHASE 2: Loop Pattern Execution Tests
+  # =========================================================================
+  - phase_id: "2"
+    phase_name: "Loop Pattern Execution Tests"
+    status: "pending"
+    description: |
+      Test that loop patterns can be executed correctly by validating
+      that agents understand their roles, iteration strategies, and
+      exit conditions when executing within each loop type.
+
+    loop_pattern:
+      type: "guidance-test-loop"
+      participants:
+        - "test-guidance-simulator (executor)"
+        - "teacher-update-guidance (fixer, if gaps found)"
+      exit_conditions:
+        - "All loop execution scenarios pass"
+        - "Agents demonstrate correct loop behavior"
+        - "Maximum iterations (3) reached - escalate"
+
+    tasks:
+      - id: "2.1"
+        description: "Test guidance-test-loop execution flow"
+        agent_type: "test-guidance-simulator"
+        operation: "EXECUTE"
+        status: "pending"
+        context:
+          test_scenario: "guidance_test_loop_execution"
+          loop_type: "guidance-test-loop"
+          validation_points:
+            - "Simulator spawns with target agent context"
+            - "Simulator executes minimal context validation"
+            - "Gap findings reported in correct format"
+            - "Fixer receives and processes findings"
+            - "Re-test confirms gap resolution"
+          walkthrough_task: |
+            Execute a minimal guidance-test-loop iteration:
+            1. Spawn test-guidance-simulator with a sample target agent
+            2. Verify simulator uses only guidance files (no code inspection)
+            3. Collect friction points in FRICTION_POINT format
+            4. Verify teacher-update-guidance can consume friction report
+            5. Confirm loop would iterate or exit based on findings
+        acceptance_criteria:
+          - "Simulator executes with correct constraints"
+          - "Friction report format matches specification"
+          - "Loop exit condition evaluation works correctly"
+        files:
+          - "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+          - "modules/AgenticGuidance/assets/definitions/guidance-test-scenarios.yml"
+
+      - id: "2.2"
+        description: "Test documentation-loop execution flow"
+        agent_type: "test-guidance-simulator"
+        operation: "EXECUTE"
+        status: "pending"
+        context:
+          test_scenario: "documentation_loop_execution"
+          loop_type: "documentation-loop"
+          validation_points:
+            - "Blind journey attempt executed"
+            - "Gaps reported with specific locations"
+            - "Fixer updates documentation"
+            - "Re-attempt validates fixes"
+          walkthrough_task: |
+            Execute a minimal documentation-loop iteration:
+            1. Simulate a blind documentation journey
+            2. Report gaps encountered during journey
+            3. Verify gap report format for fixer consumption
+            4. Confirm iteration/exit logic works correctly
+        acceptance_criteria:
+          - "Journey attempt uses documentation only"
+          - "Gap report includes actionable fix locations"
+          - "Loop continues until journey succeeds or max iterations"
+        files:
+          - "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+
+      - id: "2.3"
+        description: "Test test-fix-loop execution flow"
+        agent_type: "test-guidance-simulator"
+        operation: "EXECUTE"
+        status: "pending"
+        context:
+          test_scenario: "test_fix_loop_execution"
+          loop_type: "test-fix-loop"
+          validation_points:
+            - "Test runner executes tests"
+            - "Failures reported with fix guidance"
+            - "Builder creates or updates tests"
+            - "Re-run validates fixes"
+          walkthrough_task: |
+            Execute a minimal test-fix-loop iteration:
+            1. Simulate test runner execution
+            2. Report test failures with context
+            3. Verify failure format for builder/fixer consumption
+            4. Confirm iteration continues until tests pass
+        acceptance_criteria:
+          - "Test execution follows defined pattern"
+          - "Failure reports actionable for fixes"
+          - "Loop exit on all tests passing"
+        files:
+          - "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+
+  # =========================================================================
+  # PHASE 3: Exit Condition Validation
+  # =========================================================================
+  - phase_id: "3"
+    phase_name: "Exit Condition Validation"
+    status: "pending"
+    description: |
+      Verify that exit conditions are properly defined and consistently
+      documented across loop participants. Ensure agents understand when
+      loops should terminate (success) vs continue (iteration needed).
+
+    tasks:
+      - id: "3.1"
+        description: "Validate exit condition consistency across guidance-test-loop participants"
+        agent_type: "test-guidance-simulator"
+        operation: "VALIDATE"
+        status: "pending"
+        context:
+          loop_type: "guidance-test-loop"
+          validation_checks:
+            - "Exit conditions in simulator match loop definition"
+            - "Exit conditions in fixer match loop definition"
+            - "Max iteration handling consistent"
+            - "Escalation path clearly defined"
+          participants_to_check:
+            - "test-guidance-simulator"
+            - "planner-guidance-testing"
+            - "teacher-update-guidance"
+        acceptance_criteria:
+          - "All participants reference same exit conditions"
+          - "Max iterations (3) consistently defined"
+          - "Escalation to human documented"
+
+      - id: "3.2"
+        description: "Validate exit condition consistency across test-fix-loop participants"
+        agent_type: "test-guidance-simulator"
+        operation: "VALIDATE"
+        status: "pending"
+        context:
+          loop_type: "test-fix-loop"
+          validation_checks:
+            - "Exit conditions in runner match loop definition"
+            - "Exit conditions in simulator match loop definition"
+            - "Max iteration handling consistent"
+          participants_to_check:
+            - "test-runner"
+            - "test-user-simulator"
+            - "test-builder"
+        acceptance_criteria:
+          - "All participants reference same exit conditions"
+          - "Max iterations (5) consistently defined"
+          - "Test pass criteria aligned"
+
+      - id: "3.3"
+        description: "Validate max iteration escalation behavior"
+        agent_type: "test-guidance-simulator"
+        operation: "VALIDATE"
+        status: "pending"
+        context:
+          validation_focus: "max_iteration_escalation"
+          validation_checks:
+            - "All loop participants document escalation behavior"
+            - "Escalation includes context accumulation"
+            - "Human decision point clearly defined"
+        acceptance_criteria:
+          - "Escalation behavior documented in all participants"
+          - "Context preservation on escalation"
+          - "Clear handoff to human reviewer"
+
+  # =========================================================================
+  # PHASE 4: Role Clarity and Participant Interaction
+  # =========================================================================
+  - phase_id: "4"
+    phase_name: "Role Clarity and Participant Interaction"
+    status: "pending"
+    description: |
+      Validate that loop participant roles are clearly defined and
+      that interaction patterns between participants are documented.
+      Agents should understand who they receive input from and
+      who consumes their output.
+
+    tasks:
+      - id: "4.1"
+        description: "Validate role clarity in guidance-test-loop"
+        agent_type: "test-guidance-simulator"
+        operation: "VALIDATE"
+        status: "pending"
+        context:
+          loop_type: "guidance-test-loop"
+          role_validation:
+            executor:
+              agent: "test-guidance-simulator"
+              expected_inputs: "target agent path, test scenarios"
+              expected_outputs: "friction report, gap analysis"
+            planner:
+              agent: "planner-guidance-testing"
+              expected_inputs: "guidance to test, test scope"
+              expected_outputs: "test plan, scenario selection"
+            fixer:
+              agent: "teacher-update-guidance"
+              expected_inputs: "friction report from executor"
+              expected_outputs: "updated guidance files"
+        acceptance_criteria:
+          - "Each participant's role clearly documented"
+          - "Input/output handoffs defined"
+          - "No ambiguity in role boundaries"
+
+      - id: "4.2"
+        description: "Validate role clarity in test-fix-loop"
+        agent_type: "test-guidance-simulator"
+        operation: "VALIDATE"
+        status: "pending"
+        context:
+          loop_type: "test-fix-loop"
+          role_validation:
+            executor:
+              agent: "test-runner"
+              expected_inputs: "test paths, execution context"
+              expected_outputs: "test results, failure details"
+            validator:
+              agent: "test-user-simulator"
+              expected_inputs: "user story, system under test"
+              expected_outputs: "user perspective validation"
+            builder:
+              agent: "test-builder"
+              expected_inputs: "test requirements, coverage gaps"
+              expected_outputs: "test files, test infrastructure"
+        acceptance_criteria:
+          - "Each participant's role clearly documented"
+          - "Input/output handoffs defined"
+          - "Build-test-fix cycle clear"
+
+  # =========================================================================
+  # PHASE 5: Gap Remediation
+  # =========================================================================
+  - phase_id: "5"
+    phase_name: "Gap Remediation"
+    status: "pending"
+    description: |
+      Fix loop_context gaps identified in previous phases using
+      teacher-update-guidance agents. Re-validate after fixes.
+
+    loop_pattern:
+      type: "documentation-loop"
+      participants:
+        - "teacher-update-guidance (fixer)"
+        - "test-guidance-simulator (validator)"
+      exit_conditions:
+        - "All identified gaps fixed"
+        - "Re-validation passes"
+        - "Maximum iterations (3) reached - escalate"
+
+    tasks:
+      - id: "5.1"
+        description: "Fix loop_context gaps in identified agents"
+        agent_type: "teacher-update-guidance"
+        operation: "FIX"
+        status: "pending"
+        context:
+          gaps_to_fix: "From Phase 1-4 validation results"
+          fix_patterns:
+            - "Add missing loop_context sections"
+            - "Complete participates_in lists"
+            - "Add missing exit_conditions"
+            - "Clarify role descriptions"
+            - "Add iteration_strategy where missing"
+            - "Ensure loop_definition references resolve"
+        acceptance_criteria:
+          - "All CRITICAL gaps fixed"
+          - "All HIGH gaps fixed"
+          - "No new gaps introduced"
+        files:
+          - "modules/AgenticGuidance/agents/*/process.yml (as identified)"
+
+      - id: "5.2"
+        description: "Re-validate after fixes"
+        agent_type: "test-guidance-simulator"
+        operation: "VALIDATE"
+        status: "pending"
+        context:
+          iteration_number: 2
+          focus: "Re-validate agents that had gaps in Phase 1-4"
+        acceptance_criteria:
+          - "Previously reported gaps resolved"
+          - "No new gaps introduced"
+          - "loop_context sections complete"
+
+# =============================================================================
+# SUCCESS CRITERIA
+# =============================================================================
+success_criteria:
+  phase_1:
+    - "All loop participant agents have loop_context sections"
+    - "Required fields present: participates_in, role, exit_conditions"
+    - "Loop definition references resolve correctly"
+
+  phase_2:
+    - "guidance-test-loop execution flow validated"
+    - "documentation-loop execution flow validated"
+    - "test-fix-loop execution flow validated"
+    - "Agents demonstrate correct loop behavior"
+
+  phase_3:
+    - "Exit conditions consistent across loop participants"
+    - "Max iterations correctly defined per loop type"
+    - "Escalation behavior documented"
+
+  phase_4:
+    - "All participant roles clearly documented"
+    - "Input/output handoffs defined"
+    - "No role boundary ambiguity"
+
+  phase_5:
+    - "All identified gaps fixed"
+    - "Re-validation passes"
+    - "Loop_context sections complete across all participants"
+
+  overall:
+    - "Zero CRITICAL loop_context gaps remain"
+    - "All loop participants have complete loop_context sections"
+    - "Exit conditions properly defined and consistent"
+    - "Role clarity achieved for all participants"
+    - "Loop patterns executable end-to-end"
+
+# =============================================================================
+# AGENT ASSIGNMENTS
+# =============================================================================
+agent_assignments:
+  test-guidance-simulator:
+    role: "Primary executor for validation tasks"
+    tasks: ["1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "2.1", "2.2", "2.3", "3.1", "3.2", "3.3", "4.1", "4.2", "5.2"]
+    location: "modules/AgenticGuidance/agents/test/test-guidance-simulator/"
+
+  teacher-update-guidance:
+    role: "Fixer for identified loop_context gaps"
+    tasks: ["5.1"]
+    location: "modules/AgenticGuidance/agents/teacher/teacher-update-guidance/"
+
+# =============================================================================
+# FILE ORGANIZATION
+# =============================================================================
+file_organization:
+  plan_folder: "docs/plans/live/260123AE_agenticguidance/"
+  this_plan: "live/plan_live_test_loop_context.yml"
+  related_plans:
+    - "completed/plan_live_test_guidance.yml"
+    - "completed/plan_live_agent_selfreview_cci.yml"
+  test_results:
+    - "test-results/loop-context/phase1_structure_validation/"
+    - "test-results/loop-context/phase2_execution_tests/"
+    - "test-results/loop-context/phase3_exit_conditions/"
+    - "test-results/loop-context/phase4_role_clarity/"
+
+# =============================================================================
+# REFERENCES
+# =============================================================================
+references:
+  loop_definitions: "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+  test_scenarios: "modules/AgenticGuidance/assets/definitions/guidance-test-scenarios.yml"
+  friction_definitions: "modules/AgenticGuidance/assets/definitions/friction.yml"
+  self_review_criteria: "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml"
+
+# =============================================================================
+# NOTES
+# =============================================================================
+notes:
+  - "This plan validates loop_context completeness introduced in agent guidance updates"
+  - "Focus is on structural validation (presence) and functional validation (execution)"
+  - "Exit condition consistency is critical for proper loop termination"
+  - "Role clarity ensures agents understand their function within each loop"
+  - "Gap remediation uses documentation-loop pattern for iterative improvement"
+  - "All validation uses guidance files only - no code inspection"

@@ -1,0 +1,574 @@
+# Reference Integrity Test Plan
+# Created by: planner-guidance-testing
+# Date: 2026-01-26
+# Plan Folder: 260123AE_agenticguidance
+#
+# PURPOSE:
+# Validate that all file path references in guidance files resolve correctly.
+# Detect broken references, orphaned assets, and cross-reference inconsistencies
+# to ensure guidance integrity across the AgenticGuidance module.
+
+plan_metadata:
+  plan_name: "reference_integrity_validation"
+  plan_type: "guidance-test"
+  created_date: "2026-01-26"
+  target_context: "Validate file path references resolve correctly across all guidance files"
+  worktree: "/home/code/AgenticEngineering"
+  branch: "main"
+  plan_file: "docs/plans/live/260123AE_agenticguidance/live/plan_live_test_reference_integrity.yml"
+  status: "pending"
+  priority: "high"
+
+test_context:
+  loop_type: "guidance-test-loop"
+  loop_reference: "modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.guidance-test-loop"
+  strategy: "reference-resolution-validation"
+  maximum_iterations: 3
+  scope: |
+    This plan covers reference integrity validation for:
+    - All inputs.yml files in modules/AgenticGuidance/agents/
+    - All process.yml files in modules/AgenticGuidance/agents/
+    - Asset definition files in modules/AgenticGuidance/assets/definitions/
+    - Asset guideline files in modules/AgenticGuidance/assets/guidelines/
+    - Asset input layer files in modules/AgenticGuidance/assets/inputs/
+
+# =============================================================================
+# REFERENCE PATTERNS TO VALIDATE
+# =============================================================================
+# The guidance system uses several reference patterns that must resolve correctly:
+# =============================================================================
+
+reference_patterns:
+  layer_references:
+    description: "References to shared input layer files (transitive loading)"
+    pattern: "layers[].path"
+    examples:
+      - "modules/AgenticGuidance/assets/inputs/core-system.yml"
+      - "modules/AgenticGuidance/assets/inputs/core-guidelines.yml"
+      - "modules/AgenticGuidance/assets/inputs/test-shared.yml"
+    validation: "Path must exist as a file"
+
+  core_input_references:
+    description: "Direct file references in core_inputs sections"
+    pattern: "core_inputs[].path"
+    examples:
+      - "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml"
+      - "modules/AgenticGuidance/assets/guidelines/strategy-multi-layer.yml"
+    validation: "Path must exist as a file"
+
+  fragment_references:
+    description: "References to specific sections within files using # notation"
+    pattern: "path#section.subsection"
+    examples:
+      - "modules/AgenticGuidance/assets/definitions/agent-categories.yml#agent_categories.test"
+      - "modules/AgenticGuidance/assets/definitions/plans.yml#required_fields"
+      - "modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.guidance-test-loop"
+    validation: "Base file must exist; section validation optional"
+
+  process_to_inputs_references:
+    description: "Cross-references from process.yml to inputs.yml"
+    pattern: "inputs: [{location}] or inputs.yml#section"
+    examples:
+      - "modules/AgenticGuidance/agents/test/test-audit/inputs.yml"
+      - "inputs.yml#audit_role"
+      - "inputs.yml#audit_checks"
+    validation: "Target file must exist in same agent directory or absolute path must resolve"
+
+  loop_definition_references:
+    description: "References to loop definitions in agent-loops.yml"
+    pattern: "loop_definitions.reference or loop_context.participates_in"
+    examples:
+      - "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+    validation: "File must exist and contain referenced loop type"
+
+  asset_layer_references:
+    description: "References within layer files to actual asset files"
+    pattern: "references[].path"
+    examples:
+      - "modules/AgenticGuidance/assets/guidelines/fix-the-source.yml"
+      - "modules/AgenticGuidance/assets/definitions/reward-hacking.yml"
+    validation: "Path must exist as a file"
+
+# =============================================================================
+# PHASES
+# =============================================================================
+
+phases:
+  # =========================================================================
+  # PHASE 1: Inputs.yml Reference Resolution
+  # =========================================================================
+  - phase_id: "1"
+    phase_name: "Inputs.yml Reference Resolution"
+    status: "pending"
+    description: |
+      Validate all file path references in inputs.yml files across all agent categories.
+      This includes layer references, core_inputs references, and fragment references.
+
+    tasks:
+      # -----------------------------------------------------------------------
+      # 1.1: Validate Layer References
+      # -----------------------------------------------------------------------
+      - id: "1.1"
+        description: "Validate all layer references in inputs.yml files resolve"
+        agent_type: "test-audit"
+        operation: "EXECUTE"
+        status: "pending"
+        context:
+          test_scenario: "reference_resolution_test"
+          target_files:
+            - "modules/AgenticGuidance/agents/**/inputs.yml"
+          reference_type: "layers"
+          validation_rules:
+            - "Each layers[].path must resolve to an existing file"
+            - "Layer files must be YAML with valid structure"
+            - "Required layers (required: true) must exist"
+          expected_layer_paths:
+            - "modules/AgenticGuidance/assets/inputs/core-system.yml"
+            - "modules/AgenticGuidance/assets/inputs/core-guidelines.yml"
+            - "modules/AgenticGuidance/assets/inputs/test-shared.yml"
+            - "modules/AgenticGuidance/assets/inputs/planner-shared.yml"
+            - "modules/AgenticGuidance/assets/inputs/planner-core-system.yml"
+            - "modules/AgenticGuidance/assets/inputs/planner-core-guidelines.yml"
+            - "modules/AgenticGuidance/assets/inputs/reviewer-core-guidelines.yml"
+            - "modules/AgenticGuidance/assets/inputs/deploy-shared.yml"
+            - "modules/AgenticGuidance/assets/inputs/cleaner-shared.yml"
+        acceptance_criteria:
+          - "All layer paths resolve to existing files"
+          - "No broken layer references found"
+          - "Required layers exist for all agents that reference them"
+        files:
+          - "modules/AgenticGuidance/agents/test/test-audit/inputs.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-reviewer/inputs.yml"
+          - "modules/AgenticGuidance/agents/build/build-python/inputs.yml"
+
+      # -----------------------------------------------------------------------
+      # 1.2: Validate Core Input References
+      # -----------------------------------------------------------------------
+      - id: "1.2"
+        description: "Validate all core_inputs references in inputs.yml files resolve"
+        agent_type: "test-audit"
+        operation: "EXECUTE"
+        status: "pending"
+        context:
+          test_scenario: "reference_resolution_test"
+          target_files:
+            - "modules/AgenticGuidance/agents/**/inputs.yml"
+          reference_type: "core_inputs"
+          validation_rules:
+            - "Each core_inputs[].path must resolve to an existing file"
+            - "Definition files must exist in assets/definitions/"
+            - "Guideline files must exist in assets/guidelines/"
+            - "Required inputs (required: true) must exist"
+          common_definition_paths:
+            - "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml"
+            - "modules/AgenticGuidance/assets/definitions/signal-and-noise.yml"
+            - "modules/AgenticGuidance/assets/definitions/rlm-patterns.yml"
+            - "modules/AgenticGuidance/assets/definitions/plans.yml"
+            - "modules/AgenticGuidance/assets/definitions/success-criteria.yml"
+            - "modules/AgenticGuidance/assets/definitions/planner-reviewer-checklists.yml"
+          common_guideline_paths:
+            - "modules/AgenticGuidance/assets/guidelines/strategy-multi-layer.yml"
+            - "modules/AgenticGuidance/assets/guidelines/rlm-integration.yml"
+        acceptance_criteria:
+          - "All core_inputs paths resolve to existing files"
+          - "No broken definition or guideline references"
+          - "Required inputs exist for all agents that reference them"
+
+      # -----------------------------------------------------------------------
+      # 1.3: Validate Fragment References
+      # -----------------------------------------------------------------------
+      - id: "1.3"
+        description: "Validate fragment references (path#section) resolve to existing files"
+        agent_type: "test-audit"
+        operation: "EXECUTE"
+        status: "pending"
+        context:
+          test_scenario: "reference_resolution_test"
+          target_files:
+            - "modules/AgenticGuidance/agents/**/inputs.yml"
+          reference_type: "fragment_references"
+          validation_rules:
+            - "Base file path (before #) must exist"
+            - "Fragment reference pattern: path#section.subsection"
+            - "Common fragments: agent_categories.*, loop_types.*, required_fields"
+          common_fragment_patterns:
+            - "modules/AgenticGuidance/assets/definitions/agent-categories.yml#agent_categories.*"
+            - "modules/AgenticGuidance/assets/definitions/plans.yml#required_fields"
+            - "modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.*"
+            - "modules/AgenticGuidance/assets/definitions/friction.yml#FRICTION_POINT"
+        acceptance_criteria:
+          - "All base file paths in fragment references exist"
+          - "Fragment references follow consistent pattern"
+          - "No broken fragment base paths"
+
+  # =========================================================================
+  # PHASE 2: Process.yml Cross-Reference Validation
+  # =========================================================================
+  - phase_id: "2"
+    phase_name: "Process.yml Cross-Reference Validation"
+    status: "pending"
+    description: |
+      Validate cross-references between process.yml and inputs.yml files.
+      Ensure process files correctly reference their companion inputs files
+      and external asset definitions.
+
+    tasks:
+      # -----------------------------------------------------------------------
+      # 2.1: Validate Process-to-Inputs References
+      # -----------------------------------------------------------------------
+      - id: "2.1"
+        description: "Validate process.yml references to inputs.yml resolve"
+        agent_type: "test-audit"
+        operation: "EXECUTE"
+        status: "pending"
+        context:
+          test_scenario: "reference_resolution_test"
+          target_files:
+            - "modules/AgenticGuidance/agents/**/process.yml"
+          reference_type: "inputs_references"
+          validation_rules:
+            - "inputs: [{location}] must resolve to existing file"
+            - "Relative references (inputs.yml) must have companion file"
+            - "Absolute references must resolve"
+            - "inputs.yml#section references imply inputs.yml exists"
+          common_patterns:
+            - "inputs: [location: modules/AgenticGuidance/agents/*/inputs.yml]"
+            - "inputs.yml#audit_role"
+            - "inputs.yml#audit_checks"
+            - "inputs.yml#skip_pattern_audit"
+        acceptance_criteria:
+          - "All process.yml files have companion inputs.yml"
+          - "Internal references (inputs.yml#section) valid"
+          - "External input references resolve"
+
+      # -----------------------------------------------------------------------
+      # 2.2: Validate Loop Definition References
+      # -----------------------------------------------------------------------
+      - id: "2.2"
+        description: "Validate loop_definitions and loop_context references"
+        agent_type: "test-audit"
+        operation: "EXECUTE"
+        status: "pending"
+        context:
+          test_scenario: "reference_resolution_test"
+          target_files:
+            - "modules/AgenticGuidance/agents/**/process.yml"
+          reference_type: "loop_references"
+          validation_rules:
+            - "loop_definitions.reference must resolve to agent-loops.yml"
+            - "loop_context.participates_in loops must be defined"
+            - "rlm_reference.definition_file must exist"
+          expected_loop_file: "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+          valid_loop_types:
+            - "test-fix-loop"
+            - "audit-test-fix-loop"
+            - "cleaner-dependency-loop"
+            - "documentation-loop"
+            - "user-story-validation-loop"
+            - "exploration-loop"
+            - "rlm-decomposition-loop"
+            - "rlm-context-refinement-loop"
+            - "planner-loop"
+            - "guidance-test-loop"
+            - "agent-self-review"
+            - "guidance-self-review-loop"
+        acceptance_criteria:
+          - "agent-loops.yml file exists"
+          - "All referenced loop types defined in agent-loops.yml"
+          - "Loop participants correctly reference valid loops"
+
+      # -----------------------------------------------------------------------
+      # 2.3: Validate RLM Reference Consistency
+      # -----------------------------------------------------------------------
+      - id: "2.3"
+        description: "Validate RLM pattern references in process.yml files"
+        agent_type: "test-audit"
+        operation: "EXECUTE"
+        status: "pending"
+        context:
+          test_scenario: "reference_resolution_test"
+          target_files:
+            - "modules/AgenticGuidance/agents/**/process.yml"
+          reference_type: "rlm_references"
+          validation_rules:
+            - "rlm_reference.definition_file must exist"
+            - "RLM patterns referenced must be defined"
+          expected_rlm_files:
+            - "modules/AgenticGuidance/assets/definitions/rlm-patterns.yml"
+            - "modules/AgenticGuidance/assets/specifications/rlm-context-accessor.yml"
+            - "modules/AgenticGuidance/assets/guidelines/rlm-integration.yml"
+        acceptance_criteria:
+          - "All RLM definition files exist"
+          - "RLM references consistent across agents"
+
+  # =========================================================================
+  # PHASE 3: Asset Layer Reference Validation
+  # =========================================================================
+  - phase_id: "3"
+    phase_name: "Asset Layer Reference Validation"
+    status: "pending"
+    description: |
+      Validate references within asset layer files (inputs/*.yml) to ensure
+      all definition and guideline files they reference actually exist.
+
+    tasks:
+      # -----------------------------------------------------------------------
+      # 3.1: Validate Core Guidelines Layer
+      # -----------------------------------------------------------------------
+      - id: "3.1"
+        description: "Validate core-guidelines.yml layer references"
+        agent_type: "test-audit"
+        operation: "EXECUTE"
+        status: "pending"
+        context:
+          test_scenario: "reference_resolution_test"
+          target_file: "modules/AgenticGuidance/assets/inputs/core-guidelines.yml"
+          validation_rules:
+            - "All references[].path must resolve to existing files"
+            - "Guideline files must be valid YAML"
+          expected_guideline_files:
+            - "modules/AgenticGuidance/assets/guidelines/fix-the-source.yml"
+            - "modules/AgenticGuidance/assets/guidelines/context-minimisation.yml"
+            - "modules/AgenticGuidance/assets/guidelines/experiment-first.yml"
+            - "modules/AgenticGuidance/assets/guidelines/less-is-more.yml"
+            - "modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml"
+            - "modules/AgenticGuidance/assets/guidelines/testing.yml"
+            - "modules/AgenticGuidance/assets/guidelines/response-audit.yml"
+            - "modules/AgenticGuidance/assets/guidelines/safety.yml"
+        acceptance_criteria:
+          - "All guideline files referenced in core-guidelines.yml exist"
+          - "No orphaned references"
+        files:
+          - "modules/AgenticGuidance/assets/inputs/core-guidelines.yml"
+
+      # -----------------------------------------------------------------------
+      # 3.2: Validate Test Shared Layer
+      # -----------------------------------------------------------------------
+      - id: "3.2"
+        description: "Validate test-shared.yml layer references"
+        agent_type: "test-audit"
+        operation: "EXECUTE"
+        status: "pending"
+        context:
+          test_scenario: "reference_resolution_test"
+          target_file: "modules/AgenticGuidance/assets/inputs/test-shared.yml"
+          validation_rules:
+            - "All references[].path must resolve to existing files"
+            - "Definition and guideline files must exist"
+          expected_files:
+            - "modules/AgenticGuidance/assets/definitions/reward-hacking.yml"
+            - "modules/AgenticGuidance/assets/definitions/test-builder-role.yml"
+            - "modules/AgenticGuidance/assets/guidelines/test-creation-principles.yml"
+            - "modules/AgenticGuidance/assets/guidelines/test-organization.yml"
+            - "modules/AgenticGuidance/assets/definitions/testing-types.yml"
+        acceptance_criteria:
+          - "All test-shared.yml references resolve"
+          - "Test definition files exist"
+        files:
+          - "modules/AgenticGuidance/assets/inputs/test-shared.yml"
+
+      # -----------------------------------------------------------------------
+      # 3.3: Validate All Input Layer Files
+      # -----------------------------------------------------------------------
+      - id: "3.3"
+        description: "Validate all input layer files in assets/inputs/"
+        agent_type: "explorer"
+        operation: "EXECUTE"
+        status: "pending"
+        context:
+          test_scenario: "reference_resolution_test"
+          target_directory: "modules/AgenticGuidance/assets/inputs/"
+          validation_rules:
+            - "Each layer file must be valid YAML"
+            - "All references[].path must resolve"
+            - "No circular layer references"
+          layer_files:
+            - "core-system.yml"
+            - "core-guidelines.yml"
+            - "test-shared.yml"
+            - "planner-shared.yml"
+            - "planner-core-system.yml"
+            - "planner-core-guidelines.yml"
+            - "reviewer-core-guidelines.yml"
+            - "reviewer-agent-loops.yml"
+            - "deploy-shared.yml"
+            - "deploy-minimal.yml"
+            - "cleaner-shared.yml"
+        acceptance_criteria:
+          - "All layer files exist and are valid YAML"
+          - "All internal references resolve"
+          - "No circular dependencies detected"
+        files:
+          - "modules/AgenticGuidance/assets/inputs/"
+
+  # =========================================================================
+  # PHASE 4: Orphaned and Broken Reference Detection
+  # =========================================================================
+  - phase_id: "4"
+    phase_name: "Orphaned and Broken Reference Detection"
+    status: "pending"
+    description: |
+      Identify orphaned assets (files that exist but are never referenced) and
+      detect any broken references that slipped through earlier phases.
+
+    tasks:
+      # -----------------------------------------------------------------------
+      # 4.1: Detect Orphaned Asset Files
+      # -----------------------------------------------------------------------
+      - id: "4.1"
+        description: "Identify asset files not referenced by any inputs.yml"
+        agent_type: "explorer"
+        operation: "ANALYZE"
+        status: "pending"
+        context:
+          test_scenario: "orphan_detection_test"
+          target_directories:
+            - "modules/AgenticGuidance/assets/definitions/"
+            - "modules/AgenticGuidance/assets/guidelines/"
+          validation_rules:
+            - "List all .yml files in target directories"
+            - "Search for references to each file in inputs.yml files"
+            - "Flag files with zero references as potentially orphaned"
+          exclusions:
+            - "manifest.yml files (index files, not referenced)"
+            - "example files in assets/examples/"
+        acceptance_criteria:
+          - "All referenced files catalogued"
+          - "Orphaned files identified and listed"
+          - "False positives (legitimately standalone files) documented"
+
+      # -----------------------------------------------------------------------
+      # 4.2: Comprehensive Broken Reference Scan
+      # -----------------------------------------------------------------------
+      - id: "4.2"
+        description: "Full scan for any broken file references"
+        agent_type: "test-audit"
+        operation: "EXECUTE"
+        status: "pending"
+        context:
+          test_scenario: "reference_resolution_test"
+          scan_scope: "all_guidance_files"
+          target_patterns:
+            - "modules/AgenticGuidance/agents/**/*.yml"
+            - "modules/AgenticGuidance/assets/**/*.yml"
+          validation_rules:
+            - "Extract all path-like strings from YAML files"
+            - "Filter for AgenticGuidance paths"
+            - "Verify each path resolves"
+          path_extraction_patterns:
+            - "path: \"...\""
+            - "location: \"...\""
+            - "reference: \"...\""
+            - "definition_file: \"...\""
+        acceptance_criteria:
+          - "All extractable paths validated"
+          - "Zero broken references"
+          - "Broken paths documented with file:line location"
+
+      # -----------------------------------------------------------------------
+      # 4.3: Agent Directory Completeness
+      # -----------------------------------------------------------------------
+      - id: "4.3"
+        description: "Verify each agent directory has required guidance files"
+        agent_type: "explorer"
+        operation: "ANALYZE"
+        status: "pending"
+        context:
+          test_scenario: "structural_completeness_test"
+          target_directory: "modules/AgenticGuidance/agents/"
+          required_files:
+            - "manifest.yml"
+            - "inputs.yml"
+            - "process.yml"
+          validation_rules:
+            - "Each agent directory should have all required files"
+            - "Process.yml should reference its inputs.yml"
+            - "Manifest.yml should have valid agent metadata"
+        acceptance_criteria:
+          - "All agent directories have required files"
+          - "No incomplete agent definitions"
+          - "Missing files documented"
+
+# =============================================================================
+# SUCCESS CRITERIA
+# =============================================================================
+success_criteria:
+  phase_1:
+    - "All layer references in inputs.yml files resolve"
+    - "All core_inputs references resolve"
+    - "All fragment reference base paths exist"
+    - "Zero broken references in inputs.yml files"
+
+  phase_2:
+    - "All process.yml files have companion inputs.yml"
+    - "All loop definitions reference valid loops"
+    - "RLM references consistent and valid"
+    - "Cross-references between process and inputs validated"
+
+  phase_3:
+    - "All asset layer files valid YAML"
+    - "All layer internal references resolve"
+    - "No circular dependencies in layers"
+
+  phase_4:
+    - "Orphaned assets identified and documented"
+    - "Zero broken references in full scan"
+    - "All agent directories structurally complete"
+
+  overall:
+    - "Zero CRITICAL broken references (required files missing)"
+    - "Orphaned assets catalogued for cleanup consideration"
+    - "Reference integrity validated across entire guidance module"
+    - "Cross-reference consistency confirmed"
+
+# =============================================================================
+# AGENT ASSIGNMENTS
+# =============================================================================
+agent_assignments:
+  test-audit:
+    tasks:
+      - "1.1 - Validate layer references"
+      - "1.2 - Validate core_inputs references"
+      - "1.3 - Validate fragment references"
+      - "2.1 - Validate process-to-inputs references"
+      - "2.2 - Validate loop definition references"
+      - "2.3 - Validate RLM reference consistency"
+      - "3.1 - Validate core-guidelines layer"
+      - "3.2 - Validate test-shared layer"
+      - "4.2 - Comprehensive broken reference scan"
+    role: "Primary reference validation and integrity checking"
+    guidance_path: "modules/AgenticGuidance/agents/test/test-audit/"
+
+  explorer:
+    tasks:
+      - "3.3 - Validate all input layer files"
+      - "4.1 - Detect orphaned asset files"
+      - "4.3 - Agent directory completeness"
+    role: "File discovery, orphan detection, and structural analysis"
+    note: "Explorer agent performs codebase navigation and discovery tasks"
+
+# =============================================================================
+# FILE ORGANIZATION
+# =============================================================================
+file_organization:
+  plan_folder: "docs/plans/live/260123AE_agenticguidance/"
+  live_plans:
+    - "live/plan_live_test_reference_integrity.yml (this file)"
+  test_results:
+    - "test-results/reference-integrity/phase1_inputs_validation.yml"
+    - "test-results/reference-integrity/phase2_process_validation.yml"
+    - "test-results/reference-integrity/phase3_layer_validation.yml"
+    - "test-results/reference-integrity/phase4_orphan_detection.yml"
+  completed:
+    - "completed/plan_completed.yml (tasks moved here when done)"
+
+# =============================================================================
+# NOTES
+# =============================================================================
+notes:
+  - "This plan focuses on reference integrity - validating paths resolve, not content quality"
+  - "Fragment validation (#section) checks base file exists; section validation is optional"
+  - "Orphaned files may be legitimate (standalone documentation, unused but retained)"
+  - "Priority: CRITICAL for required files, HIGH for optional files, MEDIUM for orphan detection"
+  - "Reference patterns documented in modules/AgenticGuidance/assets/definitions/fragment-references.yml"
+  - "Use test-audit for validation tasks, explorer for discovery and analysis tasks"

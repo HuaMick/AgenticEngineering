@@ -1,0 +1,947 @@
+# Test Plan: CLI Plan Management Commands
+# Status: pending
+# Priority: high
+# Created: 2026-01-26
+# Agent: planner-build
+
+# ========================================
+# ROOT-LEVEL PLAN METADATA (Required)
+# ========================================
+name: "cli-plan-management-commands-test"
+worktree_path: "/home/code/AgenticEngineering"
+branch: "main"
+status: "pending"
+priority: "high"
+created_date: "2026-01-26"
+
+# ========================================
+# CONTEXT
+# ========================================
+context: |
+  Comprehensive test plan for validating CLI plan management commands.
+  These commands enable agents to initialize plan folders, track tasks,
+  and query plan state without manually parsing YAML files.
+
+  KEY COMMANDS UNDER TEST:
+  1. `agentic plan init` - Initialize worktree and plan folder with YYMMDDXX naming
+  2. `agentic plan task status` - Show detailed status for a specific task
+  3. `agentic plan task update` - Update task status in plan YAML
+  4. `agentic plan task current` - Get next actionable task
+  5. Plan folder discovery logic - Auto-detect plan from cwd
+  6. Worktree integration - Main-First planning patterns
+
+  TEST STRATEGY:
+  - Unit: Individual command handlers with mocked filesystem
+  - Integration: Full command execution with real git worktrees
+  - Edge Cases: Error handling, invalid inputs, boundary conditions
+
+  REFERENCE IMPLEMENTATIONS:
+  - plan_completed_folder_creation_automation.yml (plan init spec)
+  - plan_completed_cci_cli_implementation.yml (CLI patterns)
+
+# ========================================
+# ROOT-LEVEL INPUTS (Pre-gathered Context)
+# ========================================
+inputs:
+  # CLI Implementation Files
+  - location: "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+    description: "Plan command handlers (init, task status, task update, task current)"
+
+  - location: "modules/AgenticCLI/src/agenticcli/utils/naming.py"
+    description: "YYMMDDXX naming algorithm implementation"
+
+  - location: "modules/AgenticCLI/src/agenticcli/workflows/plan_workflow.py"
+    description: "Plan movement workflow (task archival)"
+
+  - location: "modules/AgenticCLI/src/agenticcli/workflows/task_workflow.py"
+    description: "Task preset loading workflow"
+
+  # Existing Tests
+  - location: "modules/AgenticCLI/tests/test_plan_init.py"
+    description: "Existing plan init integration tests"
+
+  - location: "modules/AgenticCLI/tests/test_plan.py"
+    description: "Existing plan command unit tests"
+
+  - location: "modules/AgenticCLI/tests/test_naming.py"
+    description: "Naming algorithm unit tests"
+
+  # Test Infrastructure
+  - location: "modules/AgenticCLI/tests/conftest.py"
+    description: "Test fixtures (cli_runner, temp_repo, mock_cwd)"
+
+# ========================================
+# SUCCESS CRITERIA
+# ========================================
+success_criteria:
+  - "All plan init tests pass with correct YYMMDDXX naming"
+  - "Task status command displays accurate task information"
+  - "Task update command persists changes to YAML correctly"
+  - "Task current command returns correct next actionable task"
+  - "Plan folder discovery works from various working directories"
+  - "Worktree integration handles Main-First planning correctly"
+  - "JSON output mode works for all commands"
+  - "Error cases handled gracefully with clear messages"
+  - "No test regressions in existing test suites"
+
+# ========================================
+# PHASES AND TASKS
+# ========================================
+phases:
+
+  # ----------------------------------------
+  # PHASE 1: Test Infrastructure Setup
+  # ----------------------------------------
+  - name: "Test Infrastructure Setup"
+    id: "phase_01"
+    execution: sequential
+    status: "pending"
+    description: "Prepare test environment and verify existing test suites pass"
+    tasks:
+
+      - id: "01_001"
+        task_id: "01_001"
+        name: "Verify existing test suites pass"
+        description: |
+          Run existing plan-related test suites to establish baseline.
+          All existing tests must pass before adding new tests.
+        status: "pending"
+        agent_type: "test-runner"
+        inputs:
+          - "modules/AgenticCLI/tests/test_plan.py"
+          - "modules/AgenticCLI/tests/test_plan_init.py"
+          - "modules/AgenticCLI/tests/test_naming.py"
+        target_files:
+          - "modules/AgenticCLI/tests/"
+        guidance: |
+          1. Navigate to modules/AgenticCLI/
+          2. Run existing tests: `pytest tests/test_plan.py tests/test_plan_init.py tests/test_naming.py -v`
+          3. Document any failures (should be 0 failures)
+          4. Verify test fixtures are working (cli_runner, temp_repo)
+        success_criteria:
+          - "All existing plan tests pass"
+          - "Test fixtures work correctly"
+          - "No import errors or missing dependencies"
+
+      - id: "01_002"
+        task_id: "01_002"
+        name: "Verify test infrastructure supports worktree testing"
+        description: |
+          Confirm test fixtures can create and manage git worktrees
+          for integration testing of Main-First planning patterns.
+        status: "pending"
+        agent_type: "test-runner"
+        inputs:
+          - "modules/AgenticCLI/tests/conftest.py"
+          - "modules/AgenticCLI/tests/test_plan_init.py"
+        target_files:
+          - "modules/AgenticCLI/tests/conftest.py"
+        guidance: |
+          1. Review conftest.py for temp_repo fixture implementation
+          2. Verify temp_repo creates proper git repository
+          3. Verify worktree operations work in test environment
+          4. If missing, document needed fixture enhancements
+        success_criteria:
+          - "temp_repo fixture creates valid git repository"
+          - "Worktree operations (add, list, remove) work in tests"
+          - "Test cleanup removes worktrees properly"
+
+  # ----------------------------------------
+  # PHASE 2: Plan Init Command Tests
+  # ----------------------------------------
+  - name: "Plan Init Command Tests"
+    id: "phase_02"
+    execution: sequential
+    status: "pending"
+    description: "Tests for `agentic plan init` command with YYMMDDXX naming"
+    tasks:
+
+      - id: "02_001"
+        task_id: "02_001"
+        name: "Test plan init YYMMDDXX naming convention"
+        description: |
+          Verify the plan init command generates folder names matching
+          the YYMMDDXX_description pattern correctly.
+        status: "pending"
+        agent_type: "test-builder"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+          - "modules/AgenticCLI/src/agenticcli/utils/naming.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_plan_init.py"
+        guidance: |
+          1. Add/verify test cases for naming convention:
+             - test_init_generates_correct_date_prefix: YYMMDD format
+             - test_init_generates_worktree_id: XX from branch suffix
+             - test_init_sanitizes_description: Special chars removed
+             - test_init_truncates_long_description: Max 50 chars
+          2. Use fixed date mocking for reproducible tests
+          3. Verify pattern: ^\d{6}[A-Z]{2}_[a-z0-9_]+$
+        success_criteria:
+          - "Date prefix is YYMMDD format"
+          - "Worktree ID is 2 uppercase letters"
+          - "Description is sanitized lowercase with underscores"
+          - "Pattern validation passes"
+
+      - id: "02_002"
+        task_id: "02_002"
+        name: "Test plan init worktree creation"
+        description: |
+          Verify plan init creates new worktrees when they don't exist
+          and reuses existing worktrees when they do.
+        status: "pending"
+        agent_type: "test-builder"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_plan_init.py"
+        guidance: |
+          1. Add/verify test cases for worktree handling:
+             - test_init_creates_new_worktree: Branch doesn't exist
+             - test_init_uses_existing_worktree: Branch already has worktree
+             - test_init_respects_base_branch: --base flag works
+             - test_init_worktree_path_pattern: Correct path format
+          2. Verify worktree path: ../<repo>-<branch>
+          3. Verify git worktree list shows new worktree
+        success_criteria:
+          - "New worktree created when branch doesn't exist"
+          - "Existing worktree detected and reused"
+          - "--base flag creates from correct base"
+          - "Worktree path follows naming convention"
+
+      - id: "02_003"
+        task_id: "02_003"
+        name: "Test plan init folder structure"
+        description: |
+          Verify plan init creates the complete folder structure
+          with live/ and completed/ subdirectories.
+        status: "pending"
+        agent_type: "test-builder"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+          - "modules/AgenticCLI/src/agenticcli/commands/worktree.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_plan_init.py"
+        guidance: |
+          1. Add/verify test cases for folder structure:
+             - test_init_creates_live_directory: live/ exists
+             - test_init_creates_completed_directory: completed/ exists
+             - test_init_creates_plan_folder_in_main: Main-First planning
+             - test_init_fails_if_folder_exists: Exit code 2
+          2. Verify Main-First: plan in main worktree, not feature
+          3. Verify exit codes: 0=success, 1=worktree fail, 2=exists, 3=invalid
+        success_criteria:
+          - "live/ and completed/ directories created"
+          - "Plan folder in main worktree (Main-First)"
+          - "Duplicate folder creation returns exit code 2"
+          - "All exit codes behave per specification"
+
+      - id: "02_004"
+        task_id: "02_004"
+        name: "Test plan init JSON output"
+        description: |
+          Verify plan init JSON output includes all required fields
+          for agent automation.
+        status: "pending"
+        agent_type: "test-builder"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_plan_init.py"
+        guidance: |
+          1. Add/verify test cases for JSON output:
+             - test_init_json_includes_worktree_path: worktree field
+             - test_init_json_includes_plan_folder: plan_folder field
+             - test_init_json_includes_worktree_created: Boolean flag
+             - test_init_json_includes_main_worktree: main_worktree field
+             - test_init_json_is_valid: Parseable JSON
+          2. Use `agentic -j plan init ...` syntax
+          3. Verify all fields present and correctly typed
+        success_criteria:
+          - "JSON output is valid and parseable"
+          - "worktree, plan_folder, plan_folder_name fields present"
+          - "worktree_created is boolean"
+          - "main_worktree shows Main-First location"
+
+  # ----------------------------------------
+  # PHASE 3: Task Status Command Tests
+  # ----------------------------------------
+  - name: "Task Status Command Tests"
+    id: "phase_03"
+    execution: sequential
+    status: "pending"
+    description: "Tests for `agentic plan task status` command"
+    tasks:
+
+      - id: "03_001"
+        task_id: "03_001"
+        name: "Test task status displays task details"
+        description: |
+          Verify task status command shows complete task information
+          including description, phase, inputs, and guidance.
+        status: "pending"
+        agent_type: "test-builder"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_plan_task_commands.py"
+        guidance: |
+          1. Create test_plan_task_commands.py if needed
+          2. Add test cases for task status:
+             - test_task_status_shows_description: Description displayed
+             - test_task_status_shows_phase: Phase info included
+             - test_task_status_shows_inputs: Input files listed
+             - test_task_status_shows_guidance: Guidance text shown
+             - test_task_status_shows_success_criteria: Criteria listed
+          3. Create mock plan with rich task data
+          4. Verify all fields appear in output
+        success_criteria:
+          - "Task description displayed correctly"
+          - "Phase ID and name shown"
+          - "Input files listed"
+          - "Guidance text included"
+          - "Success criteria enumerated"
+
+      - id: "03_002"
+        task_id: "03_002"
+        name: "Test task status JSON output"
+        description: |
+          Verify task status JSON output includes full task context
+          and phase information for agent consumption.
+        status: "pending"
+        agent_type: "test-builder"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_plan_task_commands.py"
+        guidance: |
+          1. Add test cases for JSON output:
+             - test_task_status_json_structure: Valid JSON with task key
+             - test_task_status_json_includes_phase: phase object present
+             - test_task_status_json_includes_source: source_file field
+             - test_task_status_json_parseable: No parse errors
+          2. Use `agentic -j plan task status <id>` syntax
+          3. Verify nested objects properly formed
+        success_criteria:
+          - "JSON output valid and parseable"
+          - "task object contains all fields"
+          - "phase object included with phase_id, name, status"
+          - "source_file indicates which YAML file"
+
+      - id: "03_003"
+        task_id: "03_003"
+        name: "Test task status error handling"
+        description: |
+          Verify task status handles error cases gracefully
+          with clear error messages.
+        status: "pending"
+        agent_type: "test-builder"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_plan_task_commands.py"
+        guidance: |
+          1. Add error handling test cases:
+             - test_task_status_not_found: Non-existent task ID
+             - test_task_status_no_live_dir: Missing live/ directory
+             - test_task_status_invalid_yaml: Malformed YAML file
+             - test_task_status_empty_plan: Plan with no tasks
+          2. Verify exit code 1 for errors
+          3. Verify error message is helpful
+        success_criteria:
+          - "Non-existent task returns clear error"
+          - "Missing live/ directory handled gracefully"
+          - "Invalid YAML doesn't crash"
+          - "Exit codes are consistent"
+
+  # ----------------------------------------
+  # PHASE 4: Task Update Command Tests
+  # ----------------------------------------
+  - name: "Task Update Command Tests"
+    id: "phase_04"
+    execution: sequential
+    status: "pending"
+    description: "Tests for `agentic plan task update` command"
+    tasks:
+
+      - id: "04_001"
+        task_id: "04_001"
+        name: "Test task update status transitions"
+        description: |
+          Verify task update command correctly handles valid
+          status transitions (pending -> in_progress -> completed).
+        status: "pending"
+        agent_type: "test-builder"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_plan_task_commands.py"
+        guidance: |
+          1. Add status transition test cases:
+             - test_task_update_pending_to_in_progress: Valid transition
+             - test_task_update_in_progress_to_completed: Valid transition
+             - test_task_update_pending_to_blocked: Valid transition
+             - test_task_update_completed_to_pending: Rollback allowed
+             - test_task_update_invalid_transition: Warning shown
+          2. Use temporary YAML file to avoid modifying real plans
+          3. Verify file is valid YAML after update
+        success_criteria:
+          - "Valid transitions succeed"
+          - "Invalid transitions show warning but proceed"
+          - "YAML file remains valid after update"
+          - "Status value correctly persisted"
+
+      - id: "04_002"
+        task_id: "04_002"
+        name: "Test task update completion notes"
+        description: |
+          Verify task update adds completion notes and timestamps
+          when tasks are marked completed.
+        status: "pending"
+        agent_type: "test-builder"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_plan_task_commands.py"
+        guidance: |
+          1. Add completion note test cases:
+             - test_task_update_adds_note: --note flag persists
+             - test_task_update_adds_timestamp: completed_at field added
+             - test_task_update_preserves_existing_fields: No data loss
+             - test_task_update_multiple_updates: Successive updates work
+          2. Verify note appears in YAML after update
+          3. Verify timestamp is ISO format
+        success_criteria:
+          - "--note flag adds completion_note field"
+          - "completed_at timestamp added for completed status"
+          - "Existing task fields preserved"
+          - "Multiple updates accumulate correctly"
+
+      - id: "04_003"
+        task_id: "04_003"
+        name: "Test task update YAML preservation"
+        description: |
+          Verify task update preserves YAML structure, formatting,
+          and other plan content when modifying tasks.
+        status: "pending"
+        agent_type: "test-builder"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_plan_task_commands.py"
+        guidance: |
+          1. Add YAML preservation test cases:
+             - test_task_update_preserves_phases: Other phases intact
+             - test_task_update_preserves_context: Plan context unchanged
+             - test_task_update_preserves_inputs: Inputs section intact
+             - test_task_update_valid_yaml: File parses after update
+          2. Compare before/after YAML structure
+          3. Verify only target task modified
+        success_criteria:
+          - "Other phases unchanged after update"
+          - "Plan metadata preserved"
+          - "Inputs and success_criteria unchanged"
+          - "YAML remains valid and parseable"
+
+      - id: "04_004"
+        task_id: "04_004"
+        name: "Test task update JSON output"
+        description: |
+          Verify task update JSON output confirms the operation
+          with all relevant details.
+        status: "pending"
+        agent_type: "test-builder"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_plan_task_commands.py"
+        guidance: |
+          1. Add JSON output test cases:
+             - test_task_update_json_includes_task_id: task_id confirmed
+             - test_task_update_json_includes_new_status: Status value
+             - test_task_update_json_includes_file: Source file name
+             - test_task_update_json_includes_note: Note if provided
+          2. Use `agentic -j plan task update ...` syntax
+          3. Verify successful operation reflected in JSON
+        success_criteria:
+          - "task_id in JSON matches requested ID"
+          - "new_status matches requested status"
+          - "file indicates modified YAML file"
+          - "note included when --note provided"
+
+  # ----------------------------------------
+  # PHASE 5: Task Current Command Tests
+  # ----------------------------------------
+  - name: "Task Current Command Tests"
+    id: "phase_05"
+    execution: sequential
+    status: "pending"
+    description: "Tests for `agentic plan task current` command"
+    tasks:
+
+      - id: "05_001"
+        task_id: "05_001"
+        name: "Test task current priority logic"
+        description: |
+          Verify task current returns tasks in correct priority:
+          in_progress first, then first pending task.
+        status: "pending"
+        agent_type: "test-builder"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_plan_task_commands.py"
+        guidance: |
+          1. Add priority logic test cases:
+             - test_task_current_returns_in_progress: Priority 1
+             - test_task_current_returns_first_pending: When no in_progress
+             - test_task_current_all_completed: Completion message
+             - test_task_current_phase_ordering: Respects phase order
+          2. Create mock plans with various task state combinations
+          3. Verify correct task selected in each scenario
+        success_criteria:
+          - "in_progress task returned if any exists"
+          - "First pending task returned if none in_progress"
+          - "Completion message when all tasks done"
+          - "Phase ordering respected"
+
+      - id: "05_002"
+        task_id: "05_002"
+        name: "Test task current output details"
+        description: |
+          Verify task current includes all relevant task context
+          (guidance, inputs, success criteria) for agent work.
+        status: "pending"
+        agent_type: "test-builder"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_plan_task_commands.py"
+        guidance: |
+          1. Add output detail test cases:
+             - test_task_current_includes_id: Task ID shown
+             - test_task_current_includes_name: Task name shown
+             - test_task_current_includes_guidance: Guidance text
+             - test_task_current_includes_inputs: Input file list
+             - test_task_current_includes_target_files: Target file list
+          2. Verify all fields appear in output
+          3. Test both human and JSON output modes
+        success_criteria:
+          - "Task ID and name clearly displayed"
+          - "Guidance text included for agent reference"
+          - "Input files listed for context loading"
+          - "Target files listed for modification"
+
+      - id: "05_003"
+        task_id: "05_003"
+        name: "Test task current JSON output"
+        description: |
+          Verify task current JSON output provides complete task
+          context for agent automation.
+        status: "pending"
+        agent_type: "test-builder"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_plan_task_commands.py"
+        guidance: |
+          1. Add JSON output test cases:
+             - test_task_current_json_task_object: task key present
+             - test_task_current_json_plan_folder: plan_folder included
+             - test_task_current_json_all_complete: all_complete boolean
+             - test_task_current_json_null_when_done: task=null if done
+          2. Use `agentic -j plan task current` syntax
+          3. Verify both task-present and all-done scenarios
+        success_criteria:
+          - "task object contains full task details"
+          - "plan_folder indicates context"
+          - "all_complete=true when all tasks done"
+          - "task=null with all_complete=true at end"
+
+  # ----------------------------------------
+  # PHASE 6: Plan Folder Discovery Tests
+  # ----------------------------------------
+  - name: "Plan Folder Discovery Tests"
+    id: "phase_06"
+    execution: sequential
+    status: "pending"
+    description: "Tests for automatic plan folder discovery logic"
+    tasks:
+
+      - id: "06_001"
+        task_id: "06_001"
+        name: "Test plan folder auto-detection"
+        description: |
+          Verify find_plan_folder() correctly auto-detects plan folders
+          from various working directory positions.
+        status: "pending"
+        agent_type: "test-builder"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_plan_discovery.py"
+        guidance: |
+          1. Create test_plan_discovery.py
+          2. Add auto-detection test cases:
+             - test_find_from_plan_folder: In docs/plans/live/PLAN/
+             - test_find_from_repo_root: In repository root
+             - test_find_from_nested_directory: In src/ subdirectory
+             - test_find_from_worktree_root: In feature worktree
+          3. Mock Path.cwd() for each scenario
+          4. Verify correct plan folder returned
+        success_criteria:
+          - "Detection works from plan folder itself"
+          - "Detection works from repo root"
+          - "Detection works from subdirectories"
+          - "Detection works from worktree roots"
+
+      - id: "06_002"
+        task_id: "06_002"
+        name: "Test plan folder explicit path"
+        description: |
+          Verify explicit path argument overrides auto-detection
+          and validates the provided path.
+        status: "pending"
+        agent_type: "test-builder"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_plan_discovery.py"
+        guidance: |
+          1. Add explicit path test cases:
+             - test_find_with_explicit_path: Path returned directly
+             - test_find_explicit_overrides_auto: Auto-detect skipped
+             - test_find_explicit_validates_exists: Invalid path fails
+             - test_find_explicit_relative_path: Relative paths work
+          2. Verify --plan flag behavior
+          3. Test both absolute and relative paths
+        success_criteria:
+          - "Explicit path used when provided"
+          - "Auto-detection skipped with explicit path"
+          - "Invalid paths return appropriate error"
+          - "Both absolute and relative paths work"
+
+      - id: "06_003"
+        task_id: "06_003"
+        name: "Test plan folder discovery errors"
+        description: |
+          Verify appropriate errors when plan folder cannot be found
+          or is invalid.
+        status: "pending"
+        agent_type: "test-builder"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_plan_discovery.py"
+        guidance: |
+          1. Add error scenario test cases:
+             - test_find_no_plans_dir: No docs/plans/live/
+             - test_find_empty_plans_dir: Empty live/ directory
+             - test_find_no_live_subdir: Plan folder missing live/
+             - test_find_permission_denied: Access error handling
+          2. Verify error messages are clear and helpful
+          3. Verify exit codes are consistent
+        success_criteria:
+          - "Clear error when no plans directory"
+          - "Clear error when empty plans directory"
+          - "Validates plan folder has live/ subdirectory"
+          - "Error messages guide user to solution"
+
+  # ----------------------------------------
+  # PHASE 7: Worktree Integration Tests
+  # ----------------------------------------
+  - name: "Worktree Integration Tests"
+    id: "phase_07"
+    execution: sequential
+    status: "pending"
+    description: "Integration tests for Main-First planning with worktrees"
+    tasks:
+
+      - id: "07_001"
+        task_id: "07_001"
+        name: "Test Main-First worktree detection"
+        description: |
+          Verify find_main_worktree() correctly identifies the main
+          worktree from any worktree in the repository.
+        status: "pending"
+        agent_type: "test-builder"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_worktree_integration.py"
+        guidance: |
+          1. Create test_worktree_integration.py
+          2. Add main worktree detection tests:
+             - test_find_main_from_main: Returns same path
+             - test_find_main_from_feature: Returns main path
+             - test_find_main_branch_main: Handles 'main' branch
+             - test_find_main_branch_master: Handles 'master' branch
+          3. Create real worktrees in temp directory
+          4. Verify git worktree list parsing
+        success_criteria:
+          - "Main worktree found from main branch"
+          - "Main worktree found from feature branches"
+          - "Both 'main' and 'master' branch names handled"
+          - "Returns None when main worktree not found"
+
+      - id: "07_002"
+        task_id: "07_002"
+        name: "Test plan init Main-First planning"
+        description: |
+          Verify plan init creates plan folder in main worktree
+          when invoked from feature worktree (Main-First planning).
+        status: "pending"
+        agent_type: "test-builder"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_worktree_integration.py"
+        guidance: |
+          1. Add Main-First planning tests:
+             - test_init_creates_plan_in_main: Plan in main worktree
+             - test_init_from_feature_worktree: Works from feature
+             - test_init_worktree_in_feature: Worktree in feature path
+             - test_init_json_shows_main: main_worktree in JSON
+          2. Create feature worktree before test
+          3. Run plan init from feature worktree
+          4. Verify plan folder in main worktree path
+        success_criteria:
+          - "Plan folder created in main worktree"
+          - "Execution worktree created for feature branch"
+          - "JSON output shows both paths correctly"
+          - "Main-First message displayed to user"
+
+      - id: "07_003"
+        task_id: "07_003"
+        name: "Test task commands from feature worktree"
+        description: |
+          Verify task commands work correctly when invoked from
+          feature worktree, finding plans in main worktree.
+        status: "pending"
+        agent_type: "test-builder"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_worktree_integration.py"
+        guidance: |
+          1. Add cross-worktree task command tests:
+             - test_task_status_from_feature: Finds plan in main
+             - test_task_update_from_feature: Updates main worktree plan
+             - test_task_current_from_feature: Returns task from main
+             - test_task_list_from_feature: Lists tasks from main
+          2. Create plan in main worktree
+          3. Run commands from feature worktree
+          4. Verify operations affect main worktree plan
+        success_criteria:
+          - "Task status finds plan in main worktree"
+          - "Task update modifies main worktree plan file"
+          - "Task current returns tasks from main plan"
+          - "Task list shows tasks from main plan"
+
+  # ----------------------------------------
+  # PHASE 8: Edge Cases and Error Handling
+  # ----------------------------------------
+  - name: "Edge Cases and Error Handling"
+    id: "phase_08"
+    execution: sequential
+    status: "pending"
+    description: "Test edge cases, error handling, and boundary conditions"
+    tasks:
+
+      - id: "08_001"
+        task_id: "08_001"
+        name: "Test naming algorithm edge cases"
+        description: |
+          Verify naming algorithm handles edge cases like special
+          characters, empty inputs, and unusual path formats.
+        status: "pending"
+        agent_type: "test-builder"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/utils/naming.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_naming.py"
+        guidance: |
+          1. Add edge case tests to test_naming.py:
+             - test_sanitize_empty_description: Returns valid string
+             - test_sanitize_all_special_chars: Handles gracefully
+             - test_worktree_id_no_hyphen: Falls back to dir name
+             - test_worktree_id_single_char: Pads with X
+             - test_description_exactly_50_chars: No truncation
+             - test_description_51_chars: Truncates correctly
+          2. Verify no crashes on unusual inputs
+          3. Verify pattern validation still passes
+        success_criteria:
+          - "Empty description handled"
+          - "All special characters stripped"
+          - "Worktree ID fallbacks work"
+          - "50 char limit enforced correctly"
+
+      - id: "08_002"
+        task_id: "08_002"
+        name: "Test concurrent update handling"
+        description: |
+          Verify task update handles concurrent modifications
+          without data corruption.
+        status: "pending"
+        agent_type: "test-builder"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_plan_task_commands.py"
+        guidance: |
+          1. Add concurrency test cases:
+             - test_task_update_rapid_succession: Multiple quick updates
+             - test_task_update_preserves_on_read_error: File lock handling
+             - test_task_update_different_tasks: Parallel updates work
+          2. Use threading or multiprocessing for concurrent tests
+          3. Verify file remains valid after concurrent updates
+        success_criteria:
+          - "Rapid succession updates all persist"
+          - "File remains valid YAML"
+          - "No data loss from concurrent updates"
+
+      - id: "08_003"
+        task_id: "08_003"
+        name: "Test malformed YAML handling"
+        description: |
+          Verify commands handle malformed YAML files gracefully
+          without crashing or corrupting data.
+        status: "pending"
+        agent_type: "test-builder"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_plan_task_commands.py"
+        guidance: |
+          1. Add malformed YAML test cases:
+             - test_status_with_malformed_yaml: Skips bad files
+             - test_update_with_malformed_yaml: Reports error
+             - test_current_with_malformed_yaml: Handles gracefully
+             - test_mixed_valid_invalid_files: Processes valid ones
+          2. Create intentionally malformed YAML files
+          3. Verify other valid files still processed
+          4. Verify appropriate error messages
+        success_criteria:
+          - "Malformed files skipped without crash"
+          - "Valid files in same directory processed"
+          - "Error messages identify problem files"
+          - "No partial updates on error"
+
+  # ----------------------------------------
+  # PHASE 9: Test Audit (MANDATORY)
+  # ----------------------------------------
+  - name: "Test Audit"
+    id: "phase_09"
+    execution: sequential
+    status: "pending"
+    description: "Mandatory audit to verify test quality and completeness"
+    tasks:
+
+      - id: "09_001"
+        task_id: "09_001"
+        name: "Audit test coverage"
+        description: |
+          Review all test files to verify adequate coverage of
+          plan command functionality.
+        status: "pending"
+        agent_type: "test-audit"
+        inputs:
+          - "modules/AgenticCLI/tests/test_plan_init.py"
+          - "modules/AgenticCLI/tests/test_plan.py"
+          - "modules/AgenticCLI/tests/test_plan_task_commands.py"
+        target_files:
+          - "docs/plans/live/261115CL_agenticcli/audit/test_coverage_audit.yml"
+        guidance: |
+          AUDIT CHECKLIST:
+          1. All public functions have tests
+          2. All code paths exercised
+          3. Error handling paths tested
+          4. Edge cases covered
+          5. No tests always passing (reward hacking)
+          6. Assertions are meaningful
+          7. Mocks appropriate (not hiding bugs)
+        success_criteria:
+          - "All plan command functions tested"
+          - "Error paths have coverage"
+          - "No reward hacking patterns"
+          - "Coverage meets threshold"
+
+      - id: "09_002"
+        task_id: "09_002"
+        name: "Run full test suite"
+        description: |
+          Execute complete test suite and verify all tests pass
+          before marking test plan complete.
+        status: "pending"
+        agent_type: "test-runner"
+        inputs:
+          - "modules/AgenticCLI/tests/"
+        target_files:
+          - "docs/plans/live/261115CL_agenticcli/audit/test_results.yml"
+        guidance: |
+          1. Run full test suite: `pytest modules/AgenticCLI/tests/ -v`
+          2. Document any failures
+          3. Verify no regressions from existing tests
+          4. Generate coverage report if available
+          5. Record pass/fail counts
+        success_criteria:
+          - "All tests pass"
+          - "No regressions from existing tests"
+          - "Test execution time reasonable"
+          - "Results documented in audit file"
+
+# ========================================
+# AGENT ASSIGNMENTS
+# ========================================
+agent_assignments:
+  test-runner:
+    phases: ["phase_01", "phase_09"]
+    tasks: ["01_001", "01_002", "09_002"]
+    description: "Execute tests and verify infrastructure"
+
+  test-builder:
+    phases: ["phase_02", "phase_03", "phase_04", "phase_05", "phase_06", "phase_07", "phase_08"]
+    tasks:
+      - "02_001" - "02_004"  # Plan init tests
+      - "03_001" - "03_003"  # Task status tests
+      - "04_001" - "04_004"  # Task update tests
+      - "05_001" - "05_003"  # Task current tests
+      - "06_001" - "06_003"  # Discovery tests
+      - "07_001" - "07_003"  # Worktree tests
+      - "08_001" - "08_003"  # Edge case tests
+    description: "Build new test cases for plan commands"
+
+  test-audit:
+    phases: ["phase_09"]
+    tasks: ["09_001"]
+    description: "Audit test quality and coverage"
+
+# ========================================
+# NOTES
+# ========================================
+notes: |
+  TEST FILE ORGANIZATION:
+  - test_plan_init.py: Plan initialization command tests (existing + new)
+  - test_plan.py: General plan command tests (existing)
+  - test_plan_task_commands.py: Task subcommand tests (new)
+  - test_plan_discovery.py: Plan folder discovery tests (new)
+  - test_worktree_integration.py: Main-First worktree tests (new)
+  - test_naming.py: Naming algorithm unit tests (existing + new)
+
+  MOCK STRATEGY:
+  - Unit tests: Mock filesystem and git operations
+  - Integration tests: Use real temp directories and git repos
+  - Worktree tests: Create actual worktrees in temp directories
+
+  MAIN-FIRST PLANNING:
+  - Plans created in main worktree for visibility
+  - Execution happens in feature worktrees
+  - Commands from feature worktrees resolve to main plans
+
+  TEST EXECUTION ORDER:
+  1. Infrastructure setup (existing tests pass)
+  2. Plan init tests (YYMMDDXX naming)
+  3. Task command tests (status, update, current)
+  4. Discovery and worktree tests
+  5. Edge cases and error handling
+  6. Final audit and full suite execution

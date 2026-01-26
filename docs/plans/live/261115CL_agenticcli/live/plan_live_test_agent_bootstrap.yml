@@ -1,0 +1,900 @@
+# Plan: CLI Agent Bootstrap Functionality Test Plan
+# Objective: Comprehensive testing of thin-client agent bootstrap pattern
+#
+# Created: 2026-01-26
+# Agent: planner-build
+# Plan Folder: 261115CL_agenticcli
+
+name: "cli-agent-bootstrap-test-plan"
+worktree: "261115CL_agenticcli"
+branch: "main"
+status: "pending"
+priority: "high"
+created_date: "2026-01-26"
+
+context: |
+  This test plan validates the CLI agent bootstrap functionality implemented
+  in the CCI CLI Implementation plan. The bootstrap system enables thin-client
+  agents to retrieve context via CLI commands rather than loading static files.
+
+  KEY COMPONENTS TO TEST:
+  1. Thin-client agent bootstrap pattern (.claude/agents/*.md -> CLI -> context)
+  2. Positional argument syntax: `agentic <agent-name>`
+  3. Agent discovery from AgenticGuidance module (KNOWN_AGENTS list)
+  4. Bootstrap context injection (`agentic <agent-name> --bootstrap`)
+  5. Agent manifest resolution (manifest.yml, process.yml, inputs.yml)
+  6. 27 agent bootstrap file updates in .claude/agents/
+
+  IMPLEMENTATION REFERENCE:
+  - Entry point: modules/AgenticCLI/src/agenticcli/entry.py
+  - Agent help: modules/AgenticCLI/src/agenticcli/commands/agent_help.py
+  - Bootstrap files: .claude/agents/*.md (27 files)
+
+# =============================================================================
+# INPUTS
+# =============================================================================
+inputs:
+  # Implementation files
+  - location: "modules/AgenticCLI/src/agenticcli/entry.py"
+    description: "Entry point handling positional agent names and --bootstrap flag"
+
+  - location: "modules/AgenticCLI/src/agenticcli/commands/agent_help.py"
+    description: "Agent help command with KNOWN_AGENTS list, bootstrap context loading"
+
+  - location: "modules/AgenticGuidance/agents/manifest.yml"
+    description: "Master agent manifest listing all agents by category"
+
+  # Bootstrap template and files
+  - location: ".claude/agents/"
+    description: "Thin-client agent bootstrap files (27 total)"
+
+  # Completed implementation plan
+  - location: "docs/plans/live/261115CL_agenticcli/completed/plan_completed_cci_cli_implementation.yml"
+    description: "Reference plan for what was implemented"
+
+  # Existing test infrastructure
+  - location: "modules/AgenticCLI/tests/conftest.py"
+    description: "Test fixtures including cli_runner"
+
+  - location: "modules/AgenticCLI/tests/test_cli.py"
+    description: "Existing CLI test patterns to follow"
+
+# =============================================================================
+# SUCCESS CRITERIA
+# =============================================================================
+success_criteria:
+  - "All 26 agents accessible via positional syntax"
+  - "Bootstrap flag provides expanded context for all agents"
+  - "JSON output valid and parseable for all commands"
+  - "Agent discovery correctly maps agents to categories"
+  - "File path resolution works (absolute paths, existence checks)"
+  - "Unknown agent errors provide helpful suggestions"
+  - "All 27 bootstrap files (.claude/agents/*.md) use correct syntax"
+  - "No regressions in existing CLI commands"
+
+# =============================================================================
+# PHASES AND TASKS
+# =============================================================================
+phases:
+
+  # ----------------------------------------
+  # PHASE 1: Unit Tests - Positional Argument Syntax
+  # ----------------------------------------
+  - name: "Unit Tests - Positional Argument Syntax"
+    id: "phase_01"
+    execution: sequential
+    description: "Test `agentic <agent-name>` positional argument detection and routing"
+    tasks:
+
+      - id: "01.1"
+        name: "Test is_agent_name() function"
+        description: |
+          Unit tests for the is_agent_name() function that determines
+          if a positional argument is a known agent.
+
+          Test cases:
+          - Valid agent names return True
+          - Unknown names return False
+          - Subcommand names (plan, config, etc.) return False
+          - Names with typos return False
+        status: "pending"
+        agent_type: "test-builder"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/agent_help.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_agent_bootstrap.py"
+        guidance: |
+          1. Create test_agent_bootstrap.py with TestIsAgentName class
+          2. Test KNOWN_AGENTS list contains expected 26 agents
+          3. Test each category has correct agent count
+          4. Test is_agent_name() returns True for valid agents
+          5. Test is_agent_name() returns False for subcommands
+          6. Test is_agent_name() returns False for typos
+        success_criteria:
+          - "is_agent_name() correctly identifies all 26 agents"
+          - "Returns False for non-agent names"
+          - "No false positives for subcommands"
+
+      - id: "01.2"
+        name: "Test get_agent_name() function"
+        description: |
+          Unit tests for get_agent_name() that extracts agent name
+          from positional argument.
+
+          Test cases:
+          - Valid agent returns agent name
+          - Invalid agent returns None
+          - Empty string returns None
+        status: "pending"
+        agent_type: "test-builder"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/agent_help.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_agent_bootstrap.py"
+        guidance: |
+          1. Add TestGetAgentName class to test file
+          2. Test returns agent name for valid agents
+          3. Test returns None for invalid names
+          4. Test edge cases: empty string, None, special chars
+        success_criteria:
+          - "get_agent_name() returns correct agent for valid input"
+          - "Returns None for invalid input"
+
+      - id: "01.3"
+        name: "Test entry.py routing for agent names"
+        description: |
+          Integration tests for entry point routing of positional
+          agent arguments.
+
+          Test cases:
+          - `agentic planner-build` routes to show_agent_help
+          - `agentic plan` routes to normal CLI (not agent help)
+          - `agentic --help` shows main help
+        status: "pending"
+        agent_type: "test-builder"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/entry.py"
+          - "modules/AgenticCLI/tests/conftest.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_agent_bootstrap.py"
+        guidance: |
+          1. Add TestEntryRouting class
+          2. Use cli_runner fixture for subprocess testing
+          3. Test agent name routes to agent help output
+          4. Test subcommands still work normally
+          5. Test --help still shows main help
+        success_criteria:
+          - "Agent names route to agent help"
+          - "Subcommands route normally"
+          - "No routing conflicts"
+
+  # ----------------------------------------
+  # PHASE 2: Unit Tests - Agent Discovery
+  # ----------------------------------------
+  - name: "Unit Tests - Agent Discovery"
+    id: "phase_02"
+    execution: sequential
+    description: "Test agent discovery from AgenticGuidance module"
+    tasks:
+
+      - id: "02.1"
+        name: "Test KNOWN_AGENTS list completeness"
+        description: |
+          Verify KNOWN_AGENTS list matches actual agents in
+          AgenticGuidance module.
+
+          Test cases:
+          - Count matches (26 agents expected)
+          - All categories represented
+          - No duplicate entries
+          - Names match directory structure
+        status: "pending"
+        agent_type: "test-builder"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/agent_help.py"
+          - "modules/AgenticGuidance/agents/manifest.yml"
+        target_files:
+          - "modules/AgenticCLI/tests/test_agent_bootstrap.py"
+        guidance: |
+          1. Add TestKnownAgentsList class
+          2. Count total agents (expected: 26)
+          3. Verify no duplicates
+          4. Cross-reference with AgenticGuidance manifest.yml
+          5. Verify category mapping is complete
+        success_criteria:
+          - "KNOWN_AGENTS contains exactly 26 agents"
+          - "No duplicate entries"
+          - "All agents exist in AgenticGuidance"
+
+      - id: "02.2"
+        name: "Test AGENT_CATEGORIES mapping"
+        description: |
+          Verify category mapping for all agents is correct.
+
+          Expected categories:
+          - planner: 7 agents
+          - test: 7 agents
+          - orchestration: 5 agents
+          - teacher: 3 agents
+          - build: 2 agents
+          - deploy: 2 agents
+        status: "pending"
+        agent_type: "test-builder"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/agent_help.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_agent_bootstrap.py"
+        guidance: |
+          1. Add TestAgentCategories class
+          2. Verify all KNOWN_AGENTS have category mapping
+          3. Verify category counts match expected
+          4. Verify category names are valid
+        success_criteria:
+          - "All agents have category mapping"
+          - "Category counts are correct"
+          - "No orphan agents without category"
+
+      - id: "02.3"
+        name: "Test _find_agent_directory() function"
+        description: |
+          Unit tests for agent directory resolution.
+
+          Test cases:
+          - Valid agent finds correct directory
+          - Returns None for unknown agent
+          - Works from different working directories
+          - Handles git root detection failure
+        status: "pending"
+        agent_type: "test-builder"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/agent_help.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_agent_bootstrap.py"
+        guidance: |
+          1. Add TestFindAgentDirectory class
+          2. Test finds directory for valid agents
+          3. Test returns None for invalid agents
+          4. Mock git subprocess for isolated testing
+          5. Test fallback paths work
+        success_criteria:
+          - "Finds correct directory for all valid agents"
+          - "Returns None for invalid agents"
+          - "Handles git detection failures gracefully"
+
+  # ----------------------------------------
+  # PHASE 3: Unit Tests - Bootstrap Context Loading
+  # ----------------------------------------
+  - name: "Unit Tests - Bootstrap Context Loading"
+    id: "phase_03"
+    execution: sequential
+    description: "Test bootstrap context injection with --bootstrap flag"
+    tasks:
+
+      - id: "03.1"
+        name: "Test _load_agent_context() basic mode"
+        description: |
+          Unit tests for basic agent context loading (without --bootstrap).
+
+          Expected fields:
+          - agent, category, role, agent_path
+          - current_task, process_steps, inputs
+          - next_commands, deprecation_notice
+        status: "pending"
+        agent_type: "test-builder"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/agent_help.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_agent_bootstrap.py"
+        guidance: |
+          1. Add TestLoadAgentContext class
+          2. Test returns dict with expected keys
+          3. Test role extracted from manifest.yml
+          4. Test process_steps extracted (limit 10)
+          5. Test inputs extracted (limit 8)
+          6. Test next_commands populated
+        success_criteria:
+          - "Returns complete context dict"
+          - "All expected fields populated"
+          - "Limits respected (10 steps, 8 inputs)"
+
+      - id: "03.2"
+        name: "Test _load_agent_bootstrap_context() expanded mode"
+        description: |
+          Unit tests for full bootstrap context loading (with --bootstrap).
+
+          Expected additional fields:
+          - objective, process_path, inputs_path
+          - plan_folder, plan_path
+          - process_goal, layers, guidelines
+          - definitions, guidance_files, related_files
+        status: "pending"
+        agent_type: "test-builder"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/agent_help.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_agent_bootstrap.py"
+        guidance: |
+          1. Add TestLoadAgentBootstrapContext class
+          2. Test returns more fields than basic mode
+          3. Test guidance_files list populated
+          4. Test related_files includes guidelines and definitions
+          5. Test inputs include existence checks
+          6. Compare field count: bootstrap > basic
+        success_criteria:
+          - "Bootstrap returns more context than basic"
+          - "File existence checks included"
+          - "Related files populated"
+
+      - id: "03.3"
+        name: "Test path resolution in context"
+        description: |
+          Unit tests for _resolve_path() function and path handling.
+
+          Test cases:
+          - Absolute paths preserved
+          - Relative paths resolved against git root
+          - Empty paths return None
+          - Existence checks accurate
+        status: "pending"
+        agent_type: "test-builder"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/agent_help.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_agent_bootstrap.py"
+        guidance: |
+          1. Add TestPathResolution class
+          2. Test absolute paths unchanged
+          3. Test relative paths joined with git root
+          4. Test None returned for empty paths
+          5. Test existence checks match filesystem
+        success_criteria:
+          - "Absolute paths preserved"
+          - "Relative paths resolved correctly"
+          - "Existence checks accurate"
+
+      - id: "03.4"
+        name: "Test manifest.yml parsing"
+        description: |
+          Unit tests for agent manifest parsing.
+
+          Test cases:
+          - Role extracted from agent.description
+          - Deprecated flag detected
+          - Deprecation message extracted
+          - Handles missing manifest gracefully
+        status: "pending"
+        agent_type: "test-builder"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/agent_help.py"
+          - "modules/AgenticGuidance/agents/planner/planner-build/manifest.yml"
+        target_files:
+          - "modules/AgenticCLI/tests/test_agent_bootstrap.py"
+        guidance: |
+          1. Add TestManifestParsing class
+          2. Test role extraction from manifest
+          3. Test deprecation notice extraction
+          4. Test graceful handling of missing manifest
+          5. Test graceful handling of invalid YAML
+        success_criteria:
+          - "Role correctly extracted"
+          - "Deprecation flags detected"
+          - "Graceful error handling"
+
+      - id: "03.5"
+        name: "Test process.yml parsing"
+        description: |
+          Unit tests for process.yml step extraction.
+
+          Test cases:
+          - Steps extracted from process.steps
+          - Goal extracted from process.goal
+          - Step dict format handled
+          - Step string format handled
+          - Guidelines extracted
+        status: "pending"
+        agent_type: "test-builder"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/agent_help.py"
+          - "modules/AgenticGuidance/agents/planner/planner-build/process.yml"
+        target_files:
+          - "modules/AgenticCLI/tests/test_agent_bootstrap.py"
+        guidance: |
+          1. Add TestProcessParsing class
+          2. Test step extraction from dict format
+          3. Test step extraction from string format
+          4. Test goal extraction
+          5. Test guidelines extraction
+          6. Test bootstrap mode includes full step details
+        success_criteria:
+          - "Steps correctly extracted"
+          - "Both dict and string formats handled"
+          - "Bootstrap includes full details"
+
+      - id: "03.6"
+        name: "Test inputs.yml parsing"
+        description: |
+          Unit tests for inputs.yml parsing with layers and core_inputs.
+
+          Test cases:
+          - Layers extracted with paths
+          - Core inputs extracted
+          - Direct list format handled
+          - Existence checks included in bootstrap
+          - Required flag extracted
+        status: "pending"
+        agent_type: "test-builder"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/agent_help.py"
+          - "modules/AgenticGuidance/agents/planner/planner-build/inputs.yml"
+        target_files:
+          - "modules/AgenticCLI/tests/test_agent_bootstrap.py"
+        guidance: |
+          1. Add TestInputsParsing class
+          2. Test layer extraction
+          3. Test core_inputs extraction
+          4. Test direct list format
+          5. Test existence checks in bootstrap mode
+          6. Test required flag extraction
+        success_criteria:
+          - "Layers correctly extracted"
+          - "Multiple input formats handled"
+          - "Existence checks accurate"
+
+  # ----------------------------------------
+  # PHASE 4: Integration Tests - CLI Output
+  # ----------------------------------------
+  - name: "Integration Tests - CLI Output"
+    id: "phase_04"
+    execution: sequential
+    description: "Test CLI command output for all agents"
+    tasks:
+
+      - id: "04.1"
+        name: "Test basic agent help for all 26 agents"
+        description: |
+          Integration tests running `agentic <agent-name>` for all agents.
+
+          Verify for each agent:
+          - Exit code 0
+          - Output contains agent name
+          - Output contains ROLE section
+          - Output contains NEXT COMMANDS section
+        status: "pending"
+        agent_type: "test-runner"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/agent_help.py"
+          - "modules/AgenticCLI/tests/conftest.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_agent_bootstrap.py"
+        guidance: |
+          1. Add TestAllAgentsBasicHelp class
+          2. Parameterize test with all 26 agents
+          3. Use cli_runner to invoke each agent
+          4. Assert exit code 0
+          5. Assert output contains expected sections
+        success_criteria:
+          - "All 26 agents return exit code 0"
+          - "All outputs contain required sections"
+          - "No error messages in stderr"
+
+      - id: "04.2"
+        name: "Test bootstrap mode for all 26 agents"
+        description: |
+          Integration tests running `agentic <agent-name> --bootstrap`
+          for all agents.
+
+          Verify for each agent:
+          - Exit code 0
+          - More output than basic mode
+          - AGENT FILES section present
+          - PROCESS STEPS section present
+        status: "pending"
+        agent_type: "test-runner"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/agent_help.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_agent_bootstrap.py"
+        guidance: |
+          1. Add TestAllAgentsBootstrap class
+          2. Parameterize test with all 26 agents
+          3. Compare output length: bootstrap > basic
+          4. Assert AGENT FILES section present
+          5. Assert expanded content visible
+        success_criteria:
+          - "All 26 agents support --bootstrap"
+          - "Bootstrap output more detailed than basic"
+          - "File paths included in output"
+
+      - id: "04.3"
+        name: "Test JSON output for all agents"
+        description: |
+          Integration tests for JSON output mode (-j flag).
+
+          Test cases:
+          - Basic mode JSON valid and parseable
+          - Bootstrap mode JSON valid and parseable
+          - JSON contains expected keys
+          - No extraneous text in JSON mode
+        status: "pending"
+        agent_type: "test-runner"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/agent_help.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_agent_bootstrap.py"
+        guidance: |
+          1. Add TestJSONOutput class
+          2. Test `agentic <agent> -j` produces valid JSON
+          3. Test `agentic <agent> --bootstrap -j` produces valid JSON
+          4. Parse JSON and verify keys present
+          5. Test no text before/after JSON
+        success_criteria:
+          - "JSON output is valid for all agents"
+          - "JSON contains expected keys"
+          - "No formatting issues"
+
+      - id: "04.4"
+        name: "Test unknown agent error handling"
+        description: |
+          Integration tests for error handling with unknown agents.
+
+          Test cases:
+          - Unknown agent exits with code 1
+          - Error message includes unknown name
+          - Available agents listed in error
+          - Grouped by category
+        status: "pending"
+        agent_type: "test-runner"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/agent_help.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_agent_bootstrap.py"
+        guidance: |
+          1. Add TestUnknownAgentError class
+          2. Test with invalid agent name
+          3. Assert exit code 1
+          4. Assert error message helpful
+          5. Assert available agents shown
+        success_criteria:
+          - "Unknown agents return exit code 1"
+          - "Error message is helpful"
+          - "Suggests valid agents"
+
+  # ----------------------------------------
+  # PHASE 5: Integration Tests - Bootstrap File Verification
+  # ----------------------------------------
+  - name: "Integration Tests - Bootstrap File Verification"
+    id: "phase_05"
+    execution: sequential
+    description: "Verify all 27 .claude/agents/*.md files are correctly formatted"
+    tasks:
+
+      - id: "05.1"
+        name: "Test all bootstrap files exist"
+        description: |
+          Verify all expected bootstrap files exist in .claude/agents/.
+
+          Expected files:
+          - 26 agent files (one per agent)
+          - 1 template file (_template_minimal.md)
+        status: "pending"
+        agent_type: "test-runner"
+        loop: "test-fix-loop"
+        inputs:
+          - ".claude/agents/"
+          - "modules/AgenticCLI/src/agenticcli/commands/agent_help.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_agent_bootstrap.py"
+        guidance: |
+          1. Add TestBootstrapFilesExist class
+          2. List all files in .claude/agents/
+          3. Verify count is 27 (26 agents + 1 template)
+          4. Verify each KNOWN_AGENT has corresponding file
+        success_criteria:
+          - "27 bootstrap files exist"
+          - "Each agent has bootstrap file"
+          - "Template file exists"
+
+      - id: "05.2"
+        name: "Test bootstrap files use correct syntax"
+        description: |
+          Verify all bootstrap files use new positional syntax:
+          - Contains `agentic <agent-name>` (not `agentic --<agent-name>`)
+          - Contains `--bootstrap` recommendation
+          - No old flag syntax remaining
+        status: "pending"
+        agent_type: "test-runner"
+        loop: "test-fix-loop"
+        inputs:
+          - ".claude/agents/"
+        target_files:
+          - "modules/AgenticCLI/tests/test_agent_bootstrap.py"
+        guidance: |
+          1. Add TestBootstrapFileSyntax class
+          2. Read each .md file in .claude/agents/
+          3. Assert contains `agentic <agent-name>` (positional)
+          4. Assert contains `--bootstrap`
+          5. Assert does NOT contain `agentic --<agent-name>` (old syntax)
+        success_criteria:
+          - "All files use positional syntax"
+          - "All files recommend --bootstrap"
+          - "No old flag syntax remaining"
+
+      - id: "05.3"
+        name: "Test bootstrap files are minimal (under 500 tokens)"
+        description: |
+          Verify bootstrap files are thin-client style:
+          - Under 500 tokens (approximately)
+          - Contains only CLI commands, not full context
+          - Directs to `agentic` commands for context
+        status: "pending"
+        agent_type: "test-runner"
+        loop: "test-fix-loop"
+        inputs:
+          - ".claude/agents/"
+        target_files:
+          - "modules/AgenticCLI/tests/test_agent_bootstrap.py"
+        guidance: |
+          1. Add TestBootstrapFileSize class
+          2. Read each .md file
+          3. Count characters (proxy for tokens)
+          4. Assert under 2000 characters (~500 tokens)
+          5. Assert contains `agentic` command
+        success_criteria:
+          - "All files under ~500 tokens"
+          - "All files contain CLI commands"
+          - "Files are truly thin-client"
+
+  # ----------------------------------------
+  # PHASE 6: UAT - End-to-End Bootstrap Flow
+  # ----------------------------------------
+  - name: "UAT - End-to-End Bootstrap Flow"
+    id: "phase_06"
+    execution: sequential
+    description: "User acceptance testing for complete bootstrap journey"
+    tasks:
+
+      - id: "06.1"
+        name: "UAT: Agent bootstrap from thin-client file"
+        description: |
+          Validate the complete agent bootstrap journey:
+          1. Agent reads thin-client .md file
+          2. Runs `agentic <agent-name>` for quick context
+          3. Runs `agentic <agent-name> --bootstrap` for full context
+          4. Uses context to work on task
+
+          This is the PRIMARY success criteria for the bootstrap system.
+        status: "pending"
+        agent_type: "test-user-simulator"
+        loop: "user-story-validation-loop"
+        strategy: "simulator"
+        inputs:
+          - ".claude/agents/planner-build.md"
+          - "modules/AgenticCLI/src/agenticcli/commands/agent_help.py"
+        target_files:
+          - "docs/plans/live/261115CL_agenticcli/audit/uat_bootstrap_journey.yml"
+        guidance: |
+          USER STORY: As an AI agent, I want to bootstrap my context via
+          CLI commands so that I can work with minimal initial token usage.
+
+          ACCEPTANCE CRITERIA:
+          1. Read .claude/agents/planner-build.md (under 500 tokens)
+          2. Run `agentic planner-build` and receive quick summary
+          3. Run `agentic planner-build --bootstrap` for full context
+          4. Context includes: role, process steps, inputs, current task
+          5. Context includes file paths for source exploration
+
+          VALIDATION STEPS:
+          1. Measure token count of bootstrap file
+          2. Run basic command and verify output
+          3. Run bootstrap command and verify expanded output
+          4. Verify all file paths resolve correctly
+          5. Document any friction or missing information
+        success_criteria:
+          - "Bootstrap file under 500 tokens"
+          - "Basic command provides useful summary"
+          - "Bootstrap command provides full context"
+          - "File paths all valid"
+
+      - id: "06.2"
+        name: "UAT: Multiple agent bootstrap comparison"
+        description: |
+          Compare bootstrap experience across different agent categories:
+          - Planner agent (planner-build)
+          - Test agent (test-runner)
+          - Build agent (build-python)
+          - Orchestration agent (orchestration-executor)
+
+          Ensure consistent experience across categories.
+        status: "pending"
+        agent_type: "test-user-simulator"
+        loop: "user-story-validation-loop"
+        strategy: "simulator"
+        inputs:
+          - ".claude/agents/planner-build.md"
+          - ".claude/agents/test-runner.md"
+          - ".claude/agents/build-python.md"
+          - ".claude/agents/orchestration-executor.md"
+        target_files:
+          - "docs/plans/live/261115CL_agenticcli/audit/uat_multi_agent_comparison.yml"
+        guidance: |
+          USER STORY: As a developer, I want consistent bootstrap experience
+          across all agent categories.
+
+          VALIDATION STEPS:
+          1. Run bootstrap for each agent category
+          2. Compare output structure consistency
+          3. Verify all have: role, steps, inputs, next_commands
+          4. Document any category-specific differences
+          5. Verify no missing or broken agents
+        success_criteria:
+          - "Consistent structure across categories"
+          - "All categories provide useful context"
+          - "No broken or missing agents"
+
+  # ----------------------------------------
+  # PHASE 7: Test Audit
+  # ----------------------------------------
+  - name: "Test Audit"
+    id: "phase_07"
+    execution: sequential
+    description: "Audit test quality and detect potential issues"
+    tasks:
+
+      - id: "07.1"
+        name: "Audit test coverage completeness"
+        description: |
+          Review test coverage for bootstrap functionality:
+          - All functions in agent_help.py tested
+          - All 26 agents tested
+          - All code paths covered
+          - Edge cases identified
+        status: "pending"
+        agent_type: "test-audit"
+        loop: "audit-test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/tests/test_agent_bootstrap.py"
+          - "modules/AgenticCLI/src/agenticcli/commands/agent_help.py"
+        target_files:
+          - "docs/plans/live/261115CL_agenticcli/audit/test_coverage_audit.yml"
+        guidance: |
+          AUDIT CHECKLIST:
+          1. Count functions in agent_help.py
+          2. Verify each function has corresponding tests
+          3. Check for untested code paths
+          4. Identify missing edge case tests
+          5. Review test assertions for strength
+          6. Check for reward hacking (tests that always pass)
+        success_criteria:
+          - "All functions have tests"
+          - "Edge cases covered"
+          - "No reward hacking detected"
+
+      - id: "07.2"
+        name: "Audit bootstrap file maintenance"
+        description: |
+          Review maintenance strategy for bootstrap files:
+          - Files stay in sync with KNOWN_AGENTS
+          - Template file kept updated
+          - No stale files for removed agents
+          - Syntax consistent across all files
+        status: "pending"
+        agent_type: "test-audit"
+        loop: "audit-test-fix-loop"
+        inputs:
+          - ".claude/agents/"
+          - "modules/AgenticCLI/src/agenticcli/commands/agent_help.py"
+        target_files:
+          - "docs/plans/live/261115CL_agenticcli/audit/bootstrap_maintenance_audit.yml"
+        guidance: |
+          AUDIT CHECKLIST:
+          1. Compare .claude/agents/ files to KNOWN_AGENTS
+          2. Identify any orphan files (agent removed but file remains)
+          3. Identify any missing files (agent exists but no file)
+          4. Review template file currency
+          5. Check for syntax inconsistencies
+        success_criteria:
+          - "Files match KNOWN_AGENTS list"
+          - "No orphan files"
+          - "No missing files"
+          - "Consistent syntax"
+
+# =============================================================================
+# AGENT ASSIGNMENTS
+# =============================================================================
+agent_assignments:
+  test-builder:
+    tasks:
+      - "01.1"
+      - "01.2"
+      - "01.3"
+      - "02.1"
+      - "02.2"
+      - "02.3"
+      - "03.1"
+      - "03.2"
+      - "03.3"
+      - "03.4"
+      - "03.5"
+      - "03.6"
+    description: "Creates unit test code for bootstrap functions"
+
+  test-runner:
+    tasks:
+      - "04.1"
+      - "04.2"
+      - "04.3"
+      - "04.4"
+      - "05.1"
+      - "05.2"
+      - "05.3"
+    description: "Executes integration tests and reports results"
+
+  test-user-simulator:
+    tasks:
+      - "06.1"
+      - "06.2"
+    description: "Simulates user journey for UAT validation"
+
+  test-audit:
+    tasks:
+      - "07.1"
+      - "07.2"
+    description: "Audits test quality and coverage"
+
+# =============================================================================
+# DEPENDENCIES
+# =============================================================================
+dependencies:
+  cci_implementation:
+    description: "CCI CLI Implementation must be complete"
+    location: "docs/plans/live/261115CL_agenticcli/completed/plan_completed_cci_cli_implementation.yml"
+    status: "completed"
+
+# =============================================================================
+# NOTES
+# =============================================================================
+notes: |
+  TEST STRATEGY:
+  - Unit tests cover individual functions in isolation
+  - Integration tests cover CLI invocation and output
+  - UAT tests validate the complete user journey
+  - Audit phase ensures quality and completeness
+
+  KEY FILES:
+  - entry.py: Handles positional argument routing
+  - agent_help.py: Contains KNOWN_AGENTS, context loading, output formatting
+  - .claude/agents/*.md: Thin-client bootstrap files (27 total)
+
+  EXPECTED AGENT COUNTS:
+  - Planners: 7 (planner-audit, planner-build, planner-cleaning,
+    planner-guidance, planner-guidance-testing, planner-reviewer, planner-test)
+  - Test: 7 (test-audit, test-builder, test-final-output,
+    test-guidance-simulator, test-runner, test-service, test-user-simulator)
+  - Orchestration: 5 (orchestration-build, orchestration-executor,
+    orchestration-friction, orchestration-guidance, orchestration-planning)
+  - Teacher: 3 (teacher-trace-diagnostics, teacher-update-assets,
+    teacher-update-guidance)
+  - Build: 2 (build-flutter, build-python)
+  - Deploy: 2 (deploy-cicd, deploy-worktree)
+  - Total: 26 agents + 1 template = 27 bootstrap files
+
+  NOTE ON ORCHESTRATION AGENTS:
+  The KNOWN_AGENTS list includes 5 orchestration agents but the manifest.yml
+  only shows 3 active ones. Some may be deprecated. Tests should verify
+  actual state matches expectations.

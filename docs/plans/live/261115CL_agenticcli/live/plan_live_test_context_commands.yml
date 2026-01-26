@@ -1,0 +1,947 @@
+# Test Plan: CLI Context Commands Comprehensive Testing
+# Created: 2026-01-26
+# Agent: planner-build
+# Plan Folder: 261115CL_agenticcli
+
+# =============================================================================
+# ROOT-LEVEL PLAN METADATA
+# =============================================================================
+name: "test-context-commands"
+worktree_path: "/home/code/AgenticEngineering"
+branch: "main"
+status: "pending"
+priority: "high"
+created_date: "2026-01-26"
+
+# =============================================================================
+# OBJECTIVE
+# =============================================================================
+objective: |
+  Comprehensive testing of CLI context commands to validate JIT (Just-In-Time)
+  Pull-based context architecture. These commands are critical for agents to
+  self-initialize via CLI instead of loading large static markdown files.
+
+# =============================================================================
+# CONTEXT
+# =============================================================================
+context: |
+  This test plan validates the CLI context commands implemented as part of the
+  JIT Context Entrypoints initiative. The commands enable agents to fetch exactly
+  what they need via CLI, replacing the Push model of pre-loading large static files.
+
+  COMMANDS UNDER TEST:
+  1. `agentic context bootstrap` - Primary Seed Context entrypoint
+  2. `agentic context role <role-id>` - Role-specific process/guidelines
+  3. `agentic context task` - Active task from Main-First plan
+  4. `agentic context inputs` - JIT manifest of relevant project files
+
+  KEY FEATURES TO VALIDATE:
+  - JSON output format (-j flag) for machine-readable output
+  - Main-First plan resolution from feature worktrees
+  - Human-readable output formatting (Rich panels/tables)
+  - Error handling for missing plans, invalid roles, etc.
+
+  EXISTING TEST COVERAGE:
+  - modules/AgenticCLI/tests/test_context_commands.py (14 tests)
+  - modules/AgenticCLI/tests/test_task_list_commands.py (16 tests)
+
+  GAPS TO ADDRESS:
+  - Edge case coverage for Main-First resolution
+  - Worktree-specific testing scenarios
+  - Error message validation
+  - Integration with plan task commands
+
+# =============================================================================
+# INPUTS
+# =============================================================================
+inputs:
+  - location: "modules/AgenticCLI/src/agenticcli/commands/context.py"
+    description: "CLI context command implementation (372 lines)"
+
+  - location: "modules/AgenticCLI/src/agenticcli/workflows/context_workflow.py"
+    description: "Main-First plan resolution and role context loading (595 lines)"
+
+  - location: "modules/AgenticCLI/tests/test_context_commands.py"
+    description: "Existing context command tests (321 lines, 14 tests)"
+
+  - location: "modules/AgenticCLI/tests/conftest.py"
+    description: "Test fixtures including cli_runner and temp_dir"
+
+  - location: "docs/plans/live/261115CL_agenticcli/completed/plan_completed_jit_context_build.yml"
+    description: "Completed build plan documenting implemented features"
+
+  - location: "docs/plans/live/261115CL_agenticcli/completed/plan_completed_cci_cli_implementation.yml"
+    description: "CCI CLI implementation details including --bootstrap flag"
+
+# =============================================================================
+# SUCCESS CRITERIA
+# =============================================================================
+success_criteria:
+  - "All existing 14 context command tests continue to pass"
+  - "`agentic context bootstrap` returns valid JSON with -j flag"
+  - "`agentic context bootstrap` correctly infers role from active task"
+  - "`agentic context role <role-id>` returns process.yml content for valid roles"
+  - "`agentic context role <role-id>` returns clear error for invalid roles"
+  - "`agentic context task` returns in_progress task with priority over pending"
+  - "`agentic context task --all` returns all tasks from active plan"
+  - "`agentic context inputs --role <role-id>` resolves paths to absolute"
+  - "Main-First plan resolution works from both main and feature worktrees"
+  - "JSON output format is consistent across all commands"
+  - "Error messages are actionable with hints for resolution"
+  - "No regressions in existing functionality"
+
+# =============================================================================
+# PHASES AND TASKS
+# =============================================================================
+phases:
+
+  # ---------------------------------------------------------------------------
+  # PHASE 1: Test Infrastructure Validation
+  # ---------------------------------------------------------------------------
+  - name: "Test Infrastructure Validation"
+    id: "phase_01"
+    execution: sequential
+    description: "Verify test environment and existing coverage"
+    tasks:
+
+      - id: "01.1"
+        name: "Verify existing tests pass"
+        description: |
+          Run the existing test_context_commands.py test suite to establish
+          baseline. All 14 tests should pass before adding new coverage.
+        status: "pending"
+        agent: "test-runner"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/tests/test_context_commands.py"
+        guidance: |
+          1. Navigate to modules/AgenticCLI/
+          2. Run: `uv run pytest tests/test_context_commands.py -v`
+          3. Verify all 14 tests pass
+          4. Document any failures for investigation
+        success_criteria:
+          - "All 14 existing tests pass"
+          - "No deprecation warnings related to context commands"
+
+      - id: "01.2"
+        name: "Verify CLI installation"
+        description: |
+          Confirm the CLI is installed and context commands are accessible.
+        status: "pending"
+        agent: "test-runner"
+        loop: "test-fix-loop"
+        guidance: |
+          1. Run: `agentic context --help`
+          2. Verify subcommands listed: bootstrap, role, task, inputs, generate-agent
+          3. Run: `agentic context bootstrap --help`
+          4. Verify --role and -j flags documented
+        success_criteria:
+          - "`agentic context --help` shows all subcommands"
+          - "Each subcommand has appropriate --help documentation"
+
+  # ---------------------------------------------------------------------------
+  # PHASE 2: Context Bootstrap Command Tests
+  # ---------------------------------------------------------------------------
+  - name: "Context Bootstrap Command Tests"
+    id: "phase_02"
+    execution: sequential
+    description: "Comprehensive testing of `agentic context bootstrap` command"
+    tasks:
+
+      - id: "02.1"
+        name: "Test bootstrap JSON output structure"
+        description: |
+          Validate the JSON output structure from `agentic context bootstrap -j`.
+          The output must include all required fields for agent initialization.
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/context.py"
+          - "modules/AgenticCLI/tests/test_context_commands.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_context_commands.py"
+        guidance: |
+          Add test case: test_bootstrap_json_structure_complete
+
+          Expected JSON structure:
+          {
+            "role": "string",
+            "objective": "string|null",
+            "plan_folder": "string|null",
+            "plan_path": "string|null",
+            "main_worktree": "string|null",
+            "current_task": "object|null",
+            "process": "object|null",
+            "essential_inputs": "array",
+            "cli_commands": {
+              "task_prefill": "string",
+              "task_status": "string",
+              "task_update": "string",
+              "task_current": "string"
+            }
+          }
+
+          Validate each field is present and has correct type.
+        success_criteria:
+          - "Test validates all 9 top-level fields present"
+          - "Test validates cli_commands has 4 command hints"
+          - "Test validates types are correct (string, object, array)"
+
+      - id: "02.2"
+        name: "Test bootstrap role inference"
+        description: |
+          Test that bootstrap correctly infers role from active task's agent_type
+          when --role flag is not provided.
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/context.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_context_commands.py"
+        guidance: |
+          Add test case: test_bootstrap_infers_role_from_task
+
+          1. Create mock plan with task having agent_type: "planner-build"
+          2. Run bootstrap without --role flag
+          3. Verify returned role matches task's agent_type
+
+          Add test case: test_bootstrap_defaults_to_build_role
+
+          1. Create mock plan with no active task
+          2. Run bootstrap without --role flag
+          3. Verify returned role defaults to "build"
+        success_criteria:
+          - "Role correctly inferred from active task"
+          - "Default role is 'build' when no task available"
+
+      - id: "02.3"
+        name: "Test bootstrap with explicit role flag"
+        description: |
+          Test that --role flag overrides inferred role.
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+        target_files:
+          - "modules/AgenticCLI/tests/test_context_commands.py"
+        guidance: |
+          Add test case: test_bootstrap_role_flag_overrides_inference
+
+          1. Create mock plan with task having agent_type: "build-python"
+          2. Run: `agentic context bootstrap --role planner-build -j`
+          3. Verify returned role is "planner-build" (explicit flag value)
+        success_criteria:
+          - "Explicit --role flag takes precedence over inference"
+
+      - id: "02.4"
+        name: "Test bootstrap human-readable output"
+        description: |
+          Verify human-readable output contains expected sections when -j flag
+          is not provided.
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+        target_files:
+          - "modules/AgenticCLI/tests/test_context_commands.py"
+        guidance: |
+          Add test case: test_bootstrap_human_readable_sections
+
+          Run without -j flag and verify output contains:
+          1. "Bootstrap Context" panel header
+          2. Role displayed
+          3. CLI Commands section with command examples
+          4. Current Task section (if task exists)
+        success_criteria:
+          - "Human output has Bootstrap Context panel"
+          - "Human output shows role and CLI commands"
+
+      - id: "02.5"
+        name: "Test bootstrap with no active plan"
+        description: |
+          Validate graceful handling when no plan is found for current branch.
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+        target_files:
+          - "modules/AgenticCLI/tests/test_context_commands.py"
+        guidance: |
+          Add test case: test_bootstrap_no_plan_graceful
+
+          1. Run in directory with no matching plan
+          2. Verify JSON output has null for plan-related fields
+          3. Verify no crash or error exit code
+          4. Verify cli_commands still populated (commands are available even without plan)
+        success_criteria:
+          - "Command exits with code 0 even without plan"
+          - "plan_folder, objective are null"
+          - "cli_commands still present"
+
+  # ---------------------------------------------------------------------------
+  # PHASE 3: Context Role Command Tests
+  # ---------------------------------------------------------------------------
+  - name: "Context Role Command Tests"
+    id: "phase_03"
+    execution: sequential
+    description: "Comprehensive testing of `agentic context role` command"
+    tasks:
+
+      - id: "03.1"
+        name: "Test role command with valid role"
+        description: |
+          Test that role command returns process.yml content for valid roles.
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticGuidance/agents/planner/planner-build/process.yml"
+        target_files:
+          - "modules/AgenticCLI/tests/test_context_commands.py"
+        guidance: |
+          Add test case: test_role_returns_process_content
+
+          1. Run: `agentic context role planner-build -j`
+          2. Verify JSON contains 'process' field
+          3. Verify 'role_id' matches requested role
+          4. Verify 'category' is correct (planner)
+        success_criteria:
+          - "Returns process.yml content for valid role"
+          - "role_id and category fields correct"
+
+      - id: "03.2"
+        name: "Test role command with invalid role"
+        description: |
+          Test that role command returns clear error for non-existent roles.
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+        target_files:
+          - "modules/AgenticCLI/tests/test_context_commands.py"
+        guidance: |
+          Add test case: test_role_invalid_role_error
+
+          1. Run: `agentic context role nonexistent-role`
+          2. Verify exit code is 1
+          3. Verify error message contains "Role not found"
+          4. Verify hint about agent location is provided
+        success_criteria:
+          - "Exit code 1 for invalid role"
+          - "Error message is actionable"
+          - "Hint provided about where agents should exist"
+
+      - id: "03.3"
+        name: "Test role command YAML vs JSON output"
+        description: |
+          Test that role command supports both YAML (default) and JSON output.
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+        target_files:
+          - "modules/AgenticCLI/tests/test_context_commands.py"
+        guidance: |
+          Add test case: test_role_yaml_output_default
+
+          1. Run: `agentic context role planner-build`
+          2. Verify output is valid YAML (not JSON)
+
+          Add test case: test_role_json_output_with_flag
+
+          1. Run: `agentic context role planner-build -j`
+          2. Verify output is valid JSON
+        success_criteria:
+          - "Default output is YAML"
+          - "-j flag produces JSON"
+
+      - id: "03.4"
+        name: "Test role command includes manifest data"
+        description: |
+          Test that role output includes manifest.yml data when available.
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+        target_files:
+          - "modules/AgenticCLI/tests/test_context_commands.py"
+        guidance: |
+          Add test case: test_role_includes_manifest
+
+          1. Run: `agentic context role planner-build -j`
+          2. Verify 'manifest' field present in output
+          3. Verify 'invocation_context' extracted from manifest if present
+        success_criteria:
+          - "manifest field present when manifest.yml exists"
+          - "invocation_context extracted correctly"
+
+  # ---------------------------------------------------------------------------
+  # PHASE 4: Context Task Command Tests
+  # ---------------------------------------------------------------------------
+  - name: "Context Task Command Tests"
+    id: "phase_04"
+    execution: sequential
+    description: "Comprehensive testing of `agentic context task` command"
+    tasks:
+
+      - id: "04.1"
+        name: "Test task command returns current task"
+        description: |
+          Test that task command prioritizes in_progress tasks over pending.
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/workflows/context_workflow.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_context_commands.py"
+        guidance: |
+          Add test case: test_task_prioritizes_in_progress
+
+          1. Create mock plan with:
+             - Task 1: status "pending"
+             - Task 2: status "in_progress"
+             - Task 3: status "pending"
+          2. Run: `agentic context task -j`
+          3. Verify returned task is Task 2 (in_progress)
+        success_criteria:
+          - "in_progress task returned over pending tasks"
+
+      - id: "04.2"
+        name: "Test task command returns first pending when no in_progress"
+        description: |
+          Test that task command returns first pending task when none are in_progress.
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+        target_files:
+          - "modules/AgenticCLI/tests/test_context_commands.py"
+        guidance: |
+          Add test case: test_task_returns_first_pending
+
+          1. Create mock plan with all tasks status "pending"
+          2. Run: `agentic context task -j`
+          3. Verify returned task is first pending task
+        success_criteria:
+          - "First pending task returned when no in_progress"
+
+      - id: "04.3"
+        name: "Test task command with --all flag"
+        description: |
+          Test that --all flag returns all tasks from the plan.
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+        target_files:
+          - "modules/AgenticCLI/tests/test_context_commands.py"
+        guidance: |
+          Add test case: test_task_all_flag_returns_list
+
+          1. Create mock plan with 5 tasks
+          2. Run: `agentic context task --all -j`
+          3. Verify returned data has 'tasks' array with 5 elements
+          4. Verify 'task_count' field equals 5
+        success_criteria:
+          - "--all returns all tasks as array"
+          - "task_count matches actual count"
+
+      - id: "04.4"
+        name: "Test task command with no active plan"
+        description: |
+          Test graceful handling when no plan is found.
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+        target_files:
+          - "modules/AgenticCLI/tests/test_context_commands.py"
+        guidance: |
+          Add test case: test_task_no_plan_warning
+
+          1. Run in directory with no matching plan
+          2. Verify JSON output has error field
+          3. Verify warning message suggests using 'agentic plan init'
+          4. Verify exit code is 0 (not an error, just no data)
+        success_criteria:
+          - "Warning message is helpful"
+          - "Exit code is 0 (graceful handling)"
+
+      - id: "04.5"
+        name: "Test task JSON structure completeness"
+        description: |
+          Verify task JSON includes all required fields for agent execution.
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+        target_files:
+          - "modules/AgenticCLI/tests/test_context_commands.py"
+        guidance: |
+          Add test case: test_task_json_structure_complete
+
+          Verify task object includes:
+          - id, name, description, status
+          - phase, phase_id
+          - agent_type
+          - inputs (array)
+          - target_files (array)
+          - guidance (string)
+          - success_criteria (array)
+          - source_file (string)
+        success_criteria:
+          - "All 12 task fields present"
+          - "Arrays are arrays, strings are strings"
+
+  # ---------------------------------------------------------------------------
+  # PHASE 5: Context Inputs Command Tests
+  # ---------------------------------------------------------------------------
+  - name: "Context Inputs Command Tests"
+    id: "phase_05"
+    execution: sequential
+    description: "Comprehensive testing of `agentic context inputs` command"
+    tasks:
+
+      - id: "05.1"
+        name: "Test inputs command with valid role"
+        description: |
+          Test that inputs command returns manifest for valid role.
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticGuidance/agents/planner/planner-build/inputs.yml"
+        target_files:
+          - "modules/AgenticCLI/tests/test_context_commands.py"
+        guidance: |
+          Add test case: test_inputs_returns_manifest
+
+          1. Run: `agentic context inputs --role planner-build -j`
+          2. Verify JSON has 'role', 'inputs', 'missing', 'layers' fields
+          3. Verify inputs is an array
+        success_criteria:
+          - "Manifest structure correct"
+          - "role field matches requested role"
+
+      - id: "05.2"
+        name: "Test inputs path resolution to absolute"
+        description: |
+          Test that relative paths in inputs.yml are resolved to absolute paths.
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+        target_files:
+          - "modules/AgenticCLI/tests/test_context_commands.py"
+        guidance: |
+          Add test case: test_inputs_resolves_absolute_paths
+
+          1. Run: `agentic context inputs --role planner-build -j`
+          2. For each input in the manifest:
+             - Verify 'path' field starts with '/' (absolute)
+             - Verify 'relative_path' is original from inputs.yml
+        success_criteria:
+          - "All paths are absolute (start with /)"
+          - "relative_path preserved for reference"
+
+      - id: "05.3"
+        name: "Test inputs validates file existence"
+        description: |
+          Test that inputs command checks and reports file existence.
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+        target_files:
+          - "modules/AgenticCLI/tests/test_context_commands.py"
+        guidance: |
+          Add test case: test_inputs_validates_existence
+
+          1. Run: `agentic context inputs --role planner-build -j`
+          2. Verify each input has 'exists' boolean field
+          3. Verify 'missing' array contains non-existent files
+        success_criteria:
+          - "exists field is boolean"
+          - "missing array populated correctly"
+
+      - id: "05.4"
+        name: "Test inputs requires --role flag"
+        description: |
+          Test that inputs command fails gracefully without --role.
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+        target_files:
+          - "modules/AgenticCLI/tests/test_context_commands.py"
+        guidance: |
+          Add test case: test_inputs_requires_role
+
+          1. Run: `agentic context inputs`
+          2. Verify exit code is 1
+          3. Verify error message indicates --role is required
+          4. Verify usage hint provided
+        success_criteria:
+          - "Exit code 1 without --role"
+          - "Error message is clear"
+
+  # ---------------------------------------------------------------------------
+  # PHASE 6: Main-First Plan Resolution Tests
+  # ---------------------------------------------------------------------------
+  - name: "Main-First Plan Resolution Tests"
+    id: "phase_06"
+    execution: sequential
+    description: "Testing Main-First plan resolution in feature worktrees"
+    tasks:
+
+      - id: "06.1"
+        name: "Test plan resolution from main worktree"
+        description: |
+          Test that plan resolution works when running directly in main worktree.
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/workflows/context_workflow.py"
+        target_files:
+          - "modules/AgenticCLI/tests/test_context_commands.py"
+        guidance: |
+          Add test case: test_plan_resolution_from_main
+
+          1. Create mock main worktree structure
+          2. Initialize MainFirstPlanResolver
+          3. Call resolve_active_plan()
+          4. Verify plan_folder matches expected location
+          5. Verify main_worktree path is correct
+        success_criteria:
+          - "Plan found from main worktree"
+          - "Paths resolve correctly"
+
+      - id: "06.2"
+        name: "Test plan resolution by branch name matching"
+        description: |
+          Test that plan folders are matched by branch name pattern.
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+        target_files:
+          - "modules/AgenticCLI/tests/test_context_commands.py"
+        guidance: |
+          Add test case: test_plan_resolution_branch_matching
+
+          1. Create plan folder: 261115CL_agenticcli
+          2. Set current branch to match (e.g., feature/agenticcli-updates)
+          3. Verify resolver finds the matching plan folder
+          4. Test normalization: hyphens, underscores stripped for matching
+        success_criteria:
+          - "Branch name matches plan folder description"
+          - "Normalization handles hyphens/underscores"
+
+      - id: "06.3"
+        name: "Test plan resolution defaults on main branch"
+        description: |
+          Test that when on main/master branch, most recent active plan returned.
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+        target_files:
+          - "modules/AgenticCLI/tests/test_context_commands.py"
+        guidance: |
+          Add test case: test_plan_resolution_main_branch_default
+
+          1. Set current branch to "main"
+          2. Create multiple plan folders with live/ content
+          3. Verify most recent (by folder name sort) is returned
+        success_criteria:
+          - "Most recent active plan returned on main"
+          - "Sorted by YYMMDDXX prefix correctly"
+
+      - id: "06.4"
+        name: "Test plan resolution returns None gracefully"
+        description: |
+          Test graceful handling when no matching plan is found.
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+        target_files:
+          - "modules/AgenticCLI/tests/test_context_commands.py"
+        guidance: |
+          Add test case: test_plan_resolution_no_match
+
+          1. Set current branch to "random-unmatched-branch"
+          2. Verify resolve_active_plan() returns None
+          3. Verify no exception raised
+        success_criteria:
+          - "Returns None, not exception"
+          - "No error output"
+
+      - id: "06.5"
+        name: "Test worktree list parsing"
+        description: |
+          Test parsing of `git worktree list --porcelain` output.
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+        target_files:
+          - "modules/AgenticCLI/tests/test_context_commands.py"
+        guidance: |
+          Add test case: test_worktree_list_parsing
+
+          Mock git worktree list output:
+          ```
+          worktree /home/code/AgenticEngineering
+          HEAD abc123
+          branch refs/heads/main
+
+          worktree /home/code/AgenticEngineering-feature
+          HEAD def456
+          branch refs/heads/feature/test
+          ```
+
+          Verify find_main_worktree() correctly identifies main.
+        success_criteria:
+          - "Correctly identifies main/master worktree"
+          - "Handles multiple worktree entries"
+
+  # ---------------------------------------------------------------------------
+  # PHASE 7: JSON Output Format Tests
+  # ---------------------------------------------------------------------------
+  - name: "JSON Output Format Tests"
+    id: "phase_07"
+    execution: sequential
+    description: "Testing JSON output consistency across all context commands"
+    tasks:
+
+      - id: "07.1"
+        name: "Test -j flag consistency across commands"
+        description: |
+          Verify -j flag produces valid JSON for all context commands.
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+        target_files:
+          - "modules/AgenticCLI/tests/test_context_commands.py"
+        guidance: |
+          Add test case: test_json_flag_consistency
+
+          Test each command with -j:
+          1. agentic context bootstrap -j
+          2. agentic context role planner-build -j
+          3. agentic context task -j
+          4. agentic context inputs --role planner-build -j
+
+          Verify each returns valid, parseable JSON.
+        success_criteria:
+          - "All commands produce valid JSON with -j"
+          - "No mixed output (no human text in JSON mode)"
+
+      - id: "07.2"
+        name: "Test JSON output contains no ANSI codes"
+        description: |
+          Verify JSON output does not contain Rich formatting/ANSI escape codes.
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+        target_files:
+          - "modules/AgenticCLI/tests/test_context_commands.py"
+        guidance: |
+          Add test case: test_json_no_ansi_codes
+
+          1. Run commands with -j flag
+          2. Check output does not contain '\x1b[' (ANSI escape start)
+          3. Check output is pure JSON
+        success_criteria:
+          - "No ANSI escape codes in JSON output"
+          - "JSON is machine-readable"
+
+      - id: "07.3"
+        name: "Test JSON error responses"
+        description: |
+          Verify error cases also return valid JSON when -j flag is used.
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+        target_files:
+          - "modules/AgenticCLI/tests/test_context_commands.py"
+        guidance: |
+          Add test case: test_json_error_format
+
+          1. Run: agentic context task -j (with no plan)
+          2. Verify output is valid JSON
+          3. Verify JSON contains 'error' field when applicable
+        success_criteria:
+          - "Error cases return valid JSON"
+          - "Error field present in error responses"
+
+  # ---------------------------------------------------------------------------
+  # PHASE 8: Integration Tests
+  # ---------------------------------------------------------------------------
+  - name: "Integration Tests"
+    id: "phase_08"
+    execution: sequential
+    description: "End-to-end integration tests for context commands"
+    tasks:
+
+      - id: "08.1"
+        name: "Test bootstrap then task consistency"
+        description: |
+          Verify bootstrap and task commands return consistent data.
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+        target_files:
+          - "modules/AgenticCLI/tests/test_context_commands.py"
+        guidance: |
+          Add/verify test case: test_bootstrap_then_task_consistent
+
+          1. Run: agentic context bootstrap -j
+          2. Run: agentic context task -j
+          3. Verify bootstrap's current_task matches task output
+          4. Verify plan_folder is same in both
+        success_criteria:
+          - "current_task in bootstrap matches task output"
+          - "plan_folder consistent across commands"
+
+      - id: "08.2"
+        name: "Test full agent bootstrap flow"
+        description: |
+          Simulate complete agent bootstrap sequence.
+        status: "pending"
+        agent: "test-runner"
+        loop: "test-fix-loop"
+        target_files:
+          - "modules/AgenticCLI/tests/integration/test_context_flow.py"
+        guidance: |
+          Create integration test file: test_context_flow.py
+
+          Test sequence:
+          1. agentic context bootstrap --role planner-build -j
+          2. Parse JSON, extract current_task
+          3. agentic plan task current -j
+          4. Verify task IDs match
+          5. agentic context role planner-build -j
+          6. Verify process content available
+          7. agentic context inputs --role planner-build -j
+          8. Verify inputs resolved
+        success_criteria:
+          - "Full bootstrap flow completes without error"
+          - "All data is consistent across commands"
+
+      - id: "08.3"
+        name: "Test CLI commands referenced in bootstrap"
+        description: |
+          Verify CLI commands in bootstrap output are valid and work.
+        status: "pending"
+        agent: "test-runner"
+        loop: "test-fix-loop"
+        guidance: |
+          1. Run: agentic context bootstrap -j
+          2. Extract cli_commands field
+          3. Execute each command (with --help to verify syntax)
+          4. Verify all commands exist and are valid
+        success_criteria:
+          - "All cli_commands references are valid CLI commands"
+          - "Commands execute without error"
+
+  # ---------------------------------------------------------------------------
+  # PHASE 9: Test Execution and Validation
+  # ---------------------------------------------------------------------------
+  - name: "Test Execution and Validation"
+    id: "phase_09"
+    execution: sequential
+    description: "Run all tests and validate coverage"
+    tasks:
+
+      - id: "09.1"
+        name: "Run full test suite"
+        description: |
+          Execute all context command tests and verify pass rate.
+        status: "pending"
+        agent: "test-runner"
+        loop: "test-fix-loop"
+        guidance: |
+          1. Run: `uv run pytest tests/test_context_commands.py -v --tb=short`
+          2. Document pass/fail for each test
+          3. Run: `uv run pytest tests/integration/test_context_flow.py -v` (if created)
+          4. Calculate pass rate
+        success_criteria:
+          - "All tests pass (100% pass rate)"
+          - "No flaky tests"
+
+      - id: "09.2"
+        name: "Generate test coverage report"
+        description: |
+          Generate coverage report for context commands.
+        status: "pending"
+        agent: "test-runner"
+        loop: "test-fix-loop"
+        guidance: |
+          1. Run: `uv run pytest tests/test_context_commands.py --cov=agenticcli.commands.context --cov-report=term-missing`
+          2. Document coverage percentage
+          3. Identify uncovered lines
+        success_criteria:
+          - "Coverage >= 80% for context.py"
+          - "Critical paths covered"
+
+      - id: "09.3"
+        name: "Final validation and documentation"
+        description: |
+          Document test results and any issues discovered.
+        status: "pending"
+        agent: "test-runner"
+        loop: "test-fix-loop"
+        target_files:
+          - "docs/plans/live/261115CL_agenticcli/audit/test_context_commands_results.yml"
+        guidance: |
+          Create audit file documenting:
+          1. Total tests: count
+          2. Passed: count
+          3. Failed: count (with reasons)
+          4. Coverage: percentage
+          5. Issues discovered
+          6. Recommendations
+        success_criteria:
+          - "Audit file created with complete results"
+          - "All issues documented"
+
+# =============================================================================
+# TEST EXECUTION COMMANDS
+# =============================================================================
+test_commands:
+  run_all: "cd modules/AgenticCLI && uv run pytest tests/test_context_commands.py -v"
+  run_with_coverage: "cd modules/AgenticCLI && uv run pytest tests/test_context_commands.py --cov=agenticcli.commands.context --cov-report=term-missing"
+  run_single_class: "cd modules/AgenticCLI && uv run pytest tests/test_context_commands.py::TestContextBootstrap -v"
+  run_integration: "cd modules/AgenticCLI && uv run pytest tests/integration/ -v"
+
+# =============================================================================
+# AGENT ASSIGNMENTS
+# =============================================================================
+agent_assignments:
+  test-runner:
+    phases: ["phase_01", "phase_09"]
+    responsibilities:
+      - "Execute tests and verify results"
+      - "Generate coverage reports"
+      - "Document test outcomes"
+
+  test-builder:
+    phases: ["phase_02", "phase_03", "phase_04", "phase_05", "phase_06", "phase_07", "phase_08"]
+    responsibilities:
+      - "Write new test cases"
+      - "Update existing test file"
+      - "Create integration test files"
+
+# =============================================================================
+# NOTES
+# =============================================================================
+notes: |
+  TEST FILE LOCATIONS:
+  - Main tests: modules/AgenticCLI/tests/test_context_commands.py
+  - Integration: modules/AgenticCLI/tests/integration/test_context_flow.py (to be created)
+  - Audit results: docs/plans/live/261115CL_agenticcli/audit/test_context_commands_results.yml
+
+  EXISTING COVERAGE:
+  The existing test_context_commands.py has 14 tests covering basic functionality.
+  This plan adds comprehensive edge case and integration coverage.
+
+  MAIN-FIRST TESTING:
+  Main-First plan resolution is critical for feature worktree workflows.
+  Tests must validate both main worktree and feature worktree scenarios.
+
+  JSON OUTPUT PRIORITY:
+  JSON output (-j flag) is the primary interface for agent consumption.
+  Human-readable output is secondary but should still be tested.
+
+  DEPENDENCIES:
+  - JIT Context Build (completed): plan_completed_jit_context_build.yml
+  - CCI CLI Implementation (completed): plan_completed_cci_cli_implementation.yml

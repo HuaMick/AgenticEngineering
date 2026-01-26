@@ -1,0 +1,1140 @@
+# Plan: CLI Integration Test Plan
+# Status: pending
+# Priority: high
+# Created: 2026-01-26
+# Agent: planner-build
+
+# ========================================
+# ROOT-LEVEL PLAN METADATA (Required)
+# ========================================
+name: "cli-integration-test-plan"
+worktree_path: "/home/code/AgenticEngineering"
+branch: "main"
+status: "pending"
+priority: "high"
+created_date: "2026-01-26"
+
+# ========================================
+# OBJECTIVE
+# ========================================
+objective: |
+  Create a comprehensive integration test suite for the AgenticCLI that validates
+  end-to-end workflows, command chaining, cross-worktree functionality, error handling,
+  output consistency, and performance characteristics.
+
+  This test plan ensures the CLI functions correctly as the central tool for agentic
+  workflows, supporting both human operators and AI agents in managing planning,
+  context retrieval, and task execution.
+
+# ========================================
+# CONTEXT
+# ========================================
+context: |
+  The AgenticCLI has grown to include:
+  - 15+ command groups (worktree, plan, context, config, langsmith, etc.)
+  - CCI (CLI Context Injection) for agent initialization
+  - Main-First plan resolution for cross-worktree operations
+  - Task list management and status tracking
+  - Multiple output modes (human-readable, JSON, YAML)
+
+  Current test coverage focuses on unit tests for individual commands. This plan
+  addresses the gap in integration testing where commands interact in realistic
+  workflows.
+
+  KEY TESTING GAPS:
+  1. Command chaining (context bootstrap -> plan task -> agent execution)
+  2. Cross-worktree data consistency
+  3. Error recovery and graceful degradation
+  4. Output format consistency across command groups
+  5. Performance under realistic load
+
+# ========================================
+# INPUTS
+# ========================================
+inputs:
+  # Existing test infrastructure
+  - location: "modules/AgenticCLI/tests/integration/test_workflow_sequences.py"
+    description: "Existing integration test patterns and fixtures"
+
+  # CLI implementation
+  - location: "modules/AgenticCLI/src/agenticcli/cli.py"
+    description: "Main CLI parser and command routing"
+
+  - location: "modules/AgenticCLI/src/agenticcli/commands/"
+    description: "Command handler implementations"
+
+  - location: "modules/AgenticCLI/src/agenticcli/workflows/"
+    description: "Business logic workflows"
+
+  # Completed build plans (what was built)
+  - location: "docs/plans/live/261115CL_agenticcli/completed/plan_completed_cci_cli_implementation.yml"
+    description: "CCI command implementation details"
+
+  - location: "docs/plans/live/261115CL_agenticcli/completed/plan_live_build.yml"
+    description: "CLI task lists implementation"
+
+  - location: "docs/plans/live/261115CL_agenticcli/completed/plan_live_test.yml"
+    description: "JIT context test plan for reference"
+
+# ========================================
+# SUCCESS CRITERIA
+# ========================================
+success_criteria:
+  - "All integration tests pass in CI environment"
+  - "Command chains complete without state corruption"
+  - "Cross-worktree operations maintain data consistency"
+  - "Error scenarios handled gracefully with actionable messages"
+  - "JSON output valid and parseable for all commands supporting -j flag"
+  - "Response time under 2 seconds for common operations"
+  - "Test coverage report shows >80% for integration paths"
+
+# ========================================
+# PHASES AND TASKS
+# ========================================
+phases:
+
+  # ============================================================================
+  # PHASE 1: End-to-End Workflow Testing
+  # ============================================================================
+  - phase_id: "test_01"
+    name: "End-to-End Workflow Testing"
+    description: |
+      Test complete workflows that span multiple commands, simulating real-world
+      usage patterns from initial setup through task completion.
+    status: "pending"
+    execution: "sequential"
+    estimated_effort: "high"
+
+    tasks:
+      # ------------------------------------------------------------------------
+      # Task 1.1: Agent Bootstrap to Task Completion Workflow
+      # ------------------------------------------------------------------------
+      - task_id: "test_01_001"
+        description: "Test complete agent bootstrap to task completion workflow"
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+
+        inputs:
+          - path: "modules/AgenticCLI/tests/integration/test_workflow_sequences.py"
+            reason: "Reference for integration test patterns"
+
+        target_files:
+          - "modules/AgenticCLI/tests/integration/test_e2e_workflows.py"
+
+        guidance: |
+          Implement end-to-end test for the primary agent workflow:
+
+          1. Create test fixture with:
+             - Git repo with plan folder structure
+             - Plan file with multiple phases and tasks
+             - Agent definition (planner-build style)
+
+          2. Test workflow sequence:
+             a. `agentic planner-build` - Agent quick help
+             b. `agentic planner-build --bootstrap` - Full context retrieval
+             c. `agentic context bootstrap --role planner-build -j` - JSON context
+             d. `agentic plan task current` - Get active task
+             e. `agentic plan task update <task_id> --status in_progress`
+             f. `agentic plan task update <task_id> --status completed --note "Done"`
+             g. `agentic plan task current` - Verify next task returned
+
+          3. Assertions:
+             - Each command returns exit code 0
+             - Bootstrap context includes expected fields
+             - Task status persists across commands
+             - JSON output is valid at each step
+
+        success_criteria:
+          - "Full workflow completes without errors"
+          - "Task state transitions persist correctly"
+          - "Context data consistent between commands"
+          - "JSON output parseable at each step"
+
+      # ------------------------------------------------------------------------
+      # Task 1.2: Plan Creation to Archive Workflow
+      # ------------------------------------------------------------------------
+      - task_id: "test_01_002"
+        description: "Test plan lifecycle from creation through archive"
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+
+        target_files:
+          - "modules/AgenticCLI/tests/integration/test_e2e_workflows.py"
+
+        guidance: |
+          Test the complete plan lifecycle:
+
+          1. `agentic plan init feature-test --description "Test feature"`
+          2. `agentic plan status` - Verify empty/new plan
+          3. `agentic plan task add "First task" --phase build_01`
+          4. `agentic plan task add "Second task" --phase build_01`
+          5. `agentic plan task list` - Verify both tasks pending
+          6. `agentic plan task start <task_id>`
+          7. `agentic plan task complete <task_id>`
+          8. `agentic plan move task <task_id>` - Move to completed
+          9. `agentic plan status` - Verify task counts updated
+          10. `agentic plan move folder` - Archive entire plan
+
+          Verify at each step that file system state matches expected.
+
+        success_criteria:
+          - "Plan folder created with correct structure"
+          - "Tasks added to correct phase"
+          - "Task status transitions valid"
+          - "Completed tasks movable to plan_completed.yml"
+          - "Archive operation preserves all data"
+
+      # ------------------------------------------------------------------------
+      # Task 1.3: Multi-Agent Handoff Workflow
+      # ------------------------------------------------------------------------
+      - task_id: "test_01_003"
+        description: "Test workflow handoff between different agent types"
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+
+        target_files:
+          - "modules/AgenticCLI/tests/integration/test_e2e_workflows.py"
+
+        guidance: |
+          Simulate orchestration handoff between agents:
+
+          1. Setup: Plan with planner task followed by build task
+
+          2. Planner agent workflow:
+             a. `agentic planner-build --bootstrap`
+             b. `agentic plan task current` - Get planner task
+             c. `agentic plan task update <task_id> --status completed`
+
+          3. Builder agent workflow:
+             a. `agentic build-python --bootstrap`
+             b. `agentic plan task current` - Should get build task (not planner task)
+             c. `agentic context inputs --role build-python`
+             d. `agentic plan task update <task_id> --status completed`
+
+          4. Verify:
+             - Each agent sees correct task for their role
+             - Task completion by one agent visible to next
+             - No task skipped or duplicated
+
+        success_criteria:
+          - "Agents see role-appropriate tasks"
+          - "Completed tasks not returned by task current"
+          - "State consistent across agent boundaries"
+
+  # ============================================================================
+  # PHASE 2: CLI Command Chaining
+  # ============================================================================
+  - phase_id: "test_02"
+    name: "CLI Command Chaining"
+    description: |
+      Test command sequences that build on each other's output,
+      particularly the context -> plan -> agent chain.
+    status: "pending"
+    execution: "sequential"
+    estimated_effort: "medium"
+
+    tasks:
+      # ------------------------------------------------------------------------
+      # Task 2.1: Context to Plan Command Chain
+      # ------------------------------------------------------------------------
+      - task_id: "test_02_001"
+        description: "Test context commands feeding into plan commands"
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+
+        target_files:
+          - "modules/AgenticCLI/tests/integration/test_command_chaining.py"
+
+        guidance: |
+          Test the CCI context retrieval chain:
+
+          1. `agentic context bootstrap -j` -> Extract active_task.id
+          2. `agentic plan task status <task_id>` - Verify task exists
+          3. `agentic context task -j` -> Extract task details
+          4. `agentic plan task update <task_id> --status in_progress`
+          5. `agentic context bootstrap -j` -> Verify task now shows in_progress
+
+          Test JSON parsing and field extraction between commands.
+
+        success_criteria:
+          - "Task ID from context matches plan"
+          - "Status updates reflected in context"
+          - "JSON structure consistent across commands"
+
+      # ------------------------------------------------------------------------
+      # Task 2.2: Config to Worktree Command Chain
+      # ------------------------------------------------------------------------
+      - task_id: "test_02_002"
+        description: "Test config commands affecting worktree behavior"
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+
+        target_files:
+          - "modules/AgenticCLI/tests/integration/test_command_chaining.py"
+
+        guidance: |
+          Test configuration affecting subsequent commands:
+
+          1. `agentic config init` - Initialize config
+          2. `agentic preferences set worktree.default_base develop`
+          3. `agentic worktree create test-branch` - Should use develop as base
+          4. `agentic worktree status` - Verify base branch
+          5. `agentic preferences delete worktree.default_base`
+          6. `agentic worktree create test-branch-2` - Should use main as base
+
+          Verify preference changes affect command behavior.
+
+        success_criteria:
+          - "Preferences applied to subsequent commands"
+          - "Preference deletion resets to defaults"
+          - "No stale preference values"
+
+      # ------------------------------------------------------------------------
+      # Task 2.3: Template to Plan Command Chain
+      # ------------------------------------------------------------------------
+      - task_id: "test_02_003"
+        description: "Test template generation feeding into plan commands"
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+
+        target_files:
+          - "modules/AgenticCLI/tests/integration/test_command_chaining.py"
+
+        guidance: |
+          Test template -> plan workflow:
+
+          1. `agentic template generate build --output /tmp/plan.yml`
+          2. Copy plan.yml to plan folder live/ directory
+          3. `agentic plan validate <path>` - Should pass
+          4. `agentic plan status` - Should show tasks from template
+          5. `agentic plan task list` - Should list template tasks
+
+          Verify generated templates are valid and usable.
+
+        success_criteria:
+          - "Generated template is valid YAML"
+          - "Template passes plan validation"
+          - "Tasks from template visible in status"
+
+      # ------------------------------------------------------------------------
+      # Task 2.4: LangSmith to Context Command Chain
+      # ------------------------------------------------------------------------
+      - task_id: "test_02_004"
+        description: "Test LangSmith data informing context commands"
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+
+        target_files:
+          - "modules/AgenticCLI/tests/integration/test_command_chaining.py"
+
+        guidance: |
+          Test LangSmith integration (when API available):
+
+          1. `agentic langsmith projects` - List projects
+          2. `agentic langsmith sessions --project <name>` - Get recent sessions
+          3. `agentic langsmith friction --project <name>` - Get friction patterns
+          4. Verify friction patterns can inform context bootstrap guidance
+
+          Note: This test may require mocked LangSmith responses if no API key.
+
+        success_criteria:
+          - "LangSmith commands execute without error"
+          - "Project/session data retrievable"
+          - "Graceful degradation without API key"
+
+  # ============================================================================
+  # PHASE 3: Cross-Worktree Functionality
+  # ============================================================================
+  - phase_id: "test_03"
+    name: "Cross-Worktree Functionality"
+    description: |
+      Test Main-First plan resolution and data consistency across
+      multiple git worktrees.
+    status: "pending"
+    execution: "sequential"
+    estimated_effort: "high"
+
+    tasks:
+      # ------------------------------------------------------------------------
+      # Task 3.1: Main-First Plan Resolution
+      # ------------------------------------------------------------------------
+      - task_id: "test_03_001"
+        description: "Test plan resolution from feature worktree to main"
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+
+        target_files:
+          - "modules/AgenticCLI/tests/integration/test_cross_worktree.py"
+
+        guidance: |
+          Test Main-First resolution:
+
+          1. Create main worktree with plan folder (e.g., 260126AE_feature)
+          2. Create feature worktree linked to plan branch
+          3. From feature worktree:
+             a. `agentic context bootstrap -j` - Should find plan in main
+             b. `agentic plan task current` - Should resolve to main plan
+             c. `agentic plan task update <task_id> --status completed`
+          4. From main worktree:
+             a. `agentic plan task list` - Should show updated status
+
+          Verify cross-worktree state synchronization.
+
+        success_criteria:
+          - "Feature worktree resolves plan from main"
+          - "Updates from feature visible in main"
+          - "Branch-to-folder matching works correctly"
+          - "No data loss across worktree boundary"
+
+      # ------------------------------------------------------------------------
+      # Task 3.2: Worktree Creation with Plan Scaffolding
+      # ------------------------------------------------------------------------
+      - task_id: "test_03_002"
+        description: "Test worktree creation auto-scaffolds plan folder"
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+
+        target_files:
+          - "modules/AgenticCLI/tests/integration/test_cross_worktree.py"
+
+        guidance: |
+          Test automatic plan scaffolding:
+
+          1. `agentic worktree create feature-new --base main`
+          2. Verify plan folder created in main worktree: docs/plans/live/YYMMDDXX_feature-new/
+          3. Verify folder structure: live/, completed/, audit/
+          4. `agentic plan status` from new worktree - Should find plan
+          5. `agentic worktree remove feature-new` - Verify cleanup behavior
+
+        success_criteria:
+          - "Plan folder auto-created with correct naming"
+          - "Folder structure matches convention"
+          - "Plan accessible from new worktree"
+          - "Removal handles plan folder appropriately"
+
+      # ------------------------------------------------------------------------
+      # Task 3.3: Concurrent Worktree Operations
+      # ------------------------------------------------------------------------
+      - task_id: "test_03_003"
+        description: "Test concurrent operations across multiple worktrees"
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+
+        target_files:
+          - "modules/AgenticCLI/tests/integration/test_cross_worktree.py"
+
+        guidance: |
+          Test concurrent access patterns:
+
+          1. Create shared plan with multiple tasks
+          2. Simulate concurrent updates from different worktrees:
+             - Worktree A updates task 1
+             - Worktree B updates task 2 (simultaneously)
+          3. Verify:
+             - Both updates persisted
+             - No file corruption
+             - No lost updates
+
+          Use threading or multiprocessing to simulate concurrency.
+
+        success_criteria:
+          - "Concurrent updates don't corrupt YAML"
+          - "All updates persisted correctly"
+          - "No race condition data loss"
+
+      # ------------------------------------------------------------------------
+      # Task 3.4: Worktree List with Plan Status
+      # ------------------------------------------------------------------------
+      - task_id: "test_03_004"
+        description: "Test worktree list shows associated plan status"
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+
+        target_files:
+          - "modules/AgenticCLI/tests/integration/test_cross_worktree.py"
+
+        guidance: |
+          Test worktree-plan association:
+
+          1. Create multiple worktrees with plans
+          2. `agentic worktree list` - Verify shows:
+             - Worktree path
+             - Branch name
+             - Associated plan folder
+             - Task completion percentage
+          3. `agentic worktree list -j` - Verify JSON includes plan data
+
+        success_criteria:
+          - "Worktree list shows plan association"
+          - "Task counts accurate per worktree"
+          - "JSON output includes full plan status"
+
+  # ============================================================================
+  # PHASE 4: Error Handling and Edge Cases
+  # ============================================================================
+  - phase_id: "test_04"
+    name: "Error Handling and Edge Cases"
+    description: |
+      Test error scenarios, graceful degradation, and edge case handling
+      to ensure robust CLI behavior under adverse conditions.
+    status: "pending"
+    execution: "sequential"
+    estimated_effort: "medium"
+
+    tasks:
+      # ------------------------------------------------------------------------
+      # Task 4.1: Missing Plan Folder Handling
+      # ------------------------------------------------------------------------
+      - task_id: "test_04_001"
+        description: "Test graceful handling when plan folder missing"
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+
+        target_files:
+          - "modules/AgenticCLI/tests/integration/test_error_handling.py"
+
+        guidance: |
+          Test error scenarios for missing plans:
+
+          1. `agentic plan status` in repo without plan folder
+             - Verify helpful error message
+             - Suggest `agentic plan scaffold`
+
+          2. `agentic plan task current` without active plan
+             - Verify explains no plan found
+             - Exit code non-zero but not crash
+
+          3. `agentic context bootstrap` without plan
+             - Verify partial context returned
+             - Role guidance still available
+
+        success_criteria:
+          - "Error messages actionable"
+          - "Suggest corrective actions"
+          - "Non-zero exit but no stack trace"
+          - "Partial functionality when possible"
+
+      # ------------------------------------------------------------------------
+      # Task 4.2: Invalid YAML Handling
+      # ------------------------------------------------------------------------
+      - task_id: "test_04_002"
+        description: "Test handling of malformed YAML in plan files"
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+
+        target_files:
+          - "modules/AgenticCLI/tests/integration/test_error_handling.py"
+
+        guidance: |
+          Test YAML parsing resilience:
+
+          1. Create plan file with invalid YAML (missing quotes, bad indentation)
+          2. `agentic plan status` - Should report parse error with line number
+          3. `agentic plan validate` - Should identify specific YAML issues
+          4. `agentic plan task list` - Should skip invalid file, report warning
+
+          Verify CLI doesn't crash on bad input.
+
+        success_criteria:
+          - "YAML errors include file and line number"
+          - "Validation reports specific issues"
+          - "Other valid files still processed"
+          - "No Python tracebacks to user"
+
+      # ------------------------------------------------------------------------
+      # Task 4.3: Permission Error Handling
+      # ------------------------------------------------------------------------
+      - task_id: "test_04_003"
+        description: "Test handling of file permission errors"
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+
+        target_files:
+          - "modules/AgenticCLI/tests/integration/test_error_handling.py"
+
+        guidance: |
+          Test permission error handling:
+
+          1. Create read-only plan file
+          2. `agentic plan task update <task_id> --status completed`
+             - Should report permission denied
+             - Suggest checking file permissions
+
+          3. Create unreadable plan folder
+          4. `agentic plan status` - Should handle gracefully
+
+          Note: Skip these tests on Windows if permissions work differently.
+
+        success_criteria:
+          - "Permission errors explained clearly"
+          - "Suggest corrective actions"
+          - "No data corruption on failed write"
+
+      # ------------------------------------------------------------------------
+      # Task 4.4: Invalid Task ID Handling
+      # ------------------------------------------------------------------------
+      - task_id: "test_04_004"
+        description: "Test handling of invalid or non-existent task IDs"
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+
+        target_files:
+          - "modules/AgenticCLI/tests/integration/test_error_handling.py"
+
+        guidance: |
+          Test invalid task references:
+
+          1. `agentic plan task start nonexistent_task`
+             - Error: Task ID not found
+             - Suggest: List available tasks
+
+          2. `agentic plan task update "" --status completed`
+             - Error: Task ID required
+
+          3. `agentic plan task status 01.1` (valid format, doesn't exist)
+             - Error: Task not found in plan
+             - Show similar task IDs if any
+
+        success_criteria:
+          - "Invalid IDs rejected with clear error"
+          - "Suggestions for valid alternatives"
+          - "Format validation helpful"
+
+      # ------------------------------------------------------------------------
+      # Task 4.5: Network Error Handling (LangSmith)
+      # ------------------------------------------------------------------------
+      - task_id: "test_04_005"
+        description: "Test graceful handling of network/API errors"
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+
+        target_files:
+          - "modules/AgenticCLI/tests/integration/test_error_handling.py"
+
+        guidance: |
+          Test network error scenarios:
+
+          1. Mock LangSmith API timeout
+          2. `agentic langsmith runs --project test`
+             - Timeout error with retry suggestion
+
+          3. Mock LangSmith API 401 Unauthorized
+          4. `agentic langsmith projects`
+             - Auth error with setup instructions
+
+          5. Mock network unreachable
+          6. `agentic langsmith stats --project test`
+             - Network error, suggest checking connection
+
+        success_criteria:
+          - "Timeout errors suggest retry"
+          - "Auth errors explain API key setup"
+          - "Network errors actionable"
+          - "Graceful degradation for offline use"
+
+      # ------------------------------------------------------------------------
+      # Task 4.6: Corrupted State Recovery
+      # ------------------------------------------------------------------------
+      - task_id: "test_04_006"
+        description: "Test recovery from corrupted CLI state"
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+
+        target_files:
+          - "modules/AgenticCLI/tests/integration/test_error_handling.py"
+
+        guidance: |
+          Test state corruption recovery:
+
+          1. Corrupt ~/.config/agenticcli/state.json
+          2. `agentic state list` - Should detect and offer repair
+
+          3. Corrupt preferences.json
+          4. `agentic preferences list` - Should recreate defaults
+
+          5. `agentic config init` after corruption - Should reset cleanly
+
+        success_criteria:
+          - "Corrupted state detected"
+          - "Automatic recovery when possible"
+          - "Manual repair instructions when needed"
+          - "No data loss beyond corrupted file"
+
+  # ============================================================================
+  # PHASE 5: CLI Output Format Consistency
+  # ============================================================================
+  - phase_id: "test_05"
+    name: "CLI Output Format Consistency"
+    description: |
+      Test that output formats (human-readable, JSON, YAML) are consistent
+      across all command groups and suitable for both human and machine consumption.
+    status: "pending"
+    execution: "parallel"
+    estimated_effort: "medium"
+
+    tasks:
+      # ------------------------------------------------------------------------
+      # Task 5.1: JSON Output Consistency
+      # ------------------------------------------------------------------------
+      - task_id: "test_05_001"
+        description: "Test JSON output valid and consistent across commands"
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+
+        target_files:
+          - "modules/AgenticCLI/tests/integration/test_output_formats.py"
+
+        guidance: |
+          Test JSON output for all commands supporting -j flag:
+
+          Commands to test:
+          - `agentic plan status -j`
+          - `agentic plan task list -j`
+          - `agentic plan task current -j`
+          - `agentic context bootstrap -j`
+          - `agentic context task -j`
+          - `agentic worktree list -j`
+          - `agentic worktree status -j`
+          - `agentic preferences list -j`
+          - `agentic state list -j`
+          - `agentic health -j`
+          - `agentic langsmith projects -j`
+          - `agentic manifest list -j`
+          - `agentic template list -j`
+
+          For each:
+          1. Verify output is valid JSON (json.loads)
+          2. Verify consistent key naming (snake_case)
+          3. Verify errors also return valid JSON
+          4. Verify no Rich formatting leaks into JSON
+
+        success_criteria:
+          - "All -j outputs parseable as JSON"
+          - "Consistent key naming convention"
+          - "Error cases return JSON with 'error' key"
+          - "No ANSI codes or Rich markup in JSON"
+
+      # ------------------------------------------------------------------------
+      # Task 5.2: Human Output Readability
+      # ------------------------------------------------------------------------
+      - task_id: "test_05_002"
+        description: "Test human-readable output formatting"
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+
+        target_files:
+          - "modules/AgenticCLI/tests/integration/test_output_formats.py"
+
+        guidance: |
+          Test human output characteristics:
+
+          1. Tables render correctly (Rich tables)
+          2. Colors applied appropriately (status indicators)
+          3. Long text wrapped reasonably
+          4. Headers/sections clearly delineated
+          5. No JSON structures in human output
+
+          Commands to verify:
+          - plan status (table format)
+          - plan task list (table with status colors)
+          - worktree list (table with paths)
+          - health (checkmarks/x marks)
+
+        success_criteria:
+          - "Tables aligned properly"
+          - "Status colors visible in terminal"
+          - "Long paths truncated or wrapped"
+          - "Clear visual hierarchy"
+
+      # ------------------------------------------------------------------------
+      # Task 5.3: Agent-Friendly Output
+      # ------------------------------------------------------------------------
+      - task_id: "test_05_003"
+        description: "Test output suitable for AI agent consumption"
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+
+        target_files:
+          - "modules/AgenticCLI/tests/integration/test_output_formats.py"
+
+        guidance: |
+          Test output for agent parsing:
+
+          1. `agentic planner-build --bootstrap` output:
+             - Clear section headers (OBJECTIVE, PROCESS, INPUTS)
+             - File paths absolute and resolvable
+             - No ambiguous formatting
+
+          2. `agentic context bootstrap -j` output:
+             - All paths absolute
+             - Task IDs consistent format
+             - Status values from defined enum
+
+          3. Agent file paths in output:
+             - All paths exist on filesystem
+             - Paths work from any working directory
+
+        success_criteria:
+          - "Output parseable by AI agents"
+          - "Paths resolvable without context"
+          - "Structured data consistently formatted"
+
+      # ------------------------------------------------------------------------
+      # Task 5.4: Error Message Consistency
+      # ------------------------------------------------------------------------
+      - task_id: "test_05_004"
+        description: "Test error message format consistency"
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+
+        target_files:
+          - "modules/AgenticCLI/tests/integration/test_output_formats.py"
+
+        guidance: |
+          Test error message standards:
+
+          1. Error messages follow pattern: "Error: <description>"
+          2. Suggestions follow: "Try: <action>" or "Hint: <info>"
+          3. Exit codes consistent:
+             - 0: Success
+             - 1: User error (bad input)
+             - 2: Configuration error
+             - 3: Network/external error
+
+          4. JSON errors include:
+             - "error": true
+             - "message": string
+             - "code": string identifier
+
+        success_criteria:
+          - "Error format consistent across commands"
+          - "Exit codes meaningful and documented"
+          - "JSON errors machine-parseable"
+
+  # ============================================================================
+  # PHASE 6: Performance and Response Time
+  # ============================================================================
+  - phase_id: "test_06"
+    name: "Performance and Response Time"
+    description: |
+      Test CLI performance characteristics to ensure responsive experience
+      for both interactive use and scripted automation.
+    status: "pending"
+    execution: "sequential"
+    estimated_effort: "medium"
+
+    tasks:
+      # ------------------------------------------------------------------------
+      # Task 6.1: Command Startup Time
+      # ------------------------------------------------------------------------
+      - task_id: "test_06_001"
+        description: "Test CLI startup and basic command response time"
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+
+        target_files:
+          - "modules/AgenticCLI/tests/integration/test_performance.py"
+
+        guidance: |
+          Test startup performance:
+
+          1. Measure `agentic --version` execution time
+             - Target: < 500ms
+
+          2. Measure `agentic --help` execution time
+             - Target: < 500ms
+
+          3. Measure `agentic plan status` (simple plan)
+             - Target: < 1 second
+
+          4. Measure `agentic context bootstrap -j`
+             - Target: < 2 seconds
+
+          Use subprocess with timing to measure real-world performance.
+
+        success_criteria:
+          - "Version/help under 500ms"
+          - "Simple commands under 1 second"
+          - "Complex commands under 2 seconds"
+          - "No import-time slowdowns"
+
+      # ------------------------------------------------------------------------
+      # Task 6.2: Large Plan File Performance
+      # ------------------------------------------------------------------------
+      - task_id: "test_06_002"
+        description: "Test performance with large plan files"
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+
+        target_files:
+          - "modules/AgenticCLI/tests/integration/test_performance.py"
+
+        guidance: |
+          Test with large data:
+
+          1. Create plan file with 100 tasks across 10 phases
+          2. Measure `agentic plan task list`
+             - Target: < 2 seconds
+
+          3. Create 10 plan files with 50 tasks each
+          4. Measure `agentic plan status`
+             - Target: < 3 seconds
+
+          5. Measure task update in large file
+             - Target: < 1 second
+
+        success_criteria:
+          - "Large file parsing efficient"
+          - "Task list pagination if needed"
+          - "No memory issues with large plans"
+
+      # ------------------------------------------------------------------------
+      # Task 6.3: Many Worktrees Performance
+      # ------------------------------------------------------------------------
+      - task_id: "test_06_003"
+        description: "Test performance with many worktrees"
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+
+        target_files:
+          - "modules/AgenticCLI/tests/integration/test_performance.py"
+
+        guidance: |
+          Test worktree scaling:
+
+          1. Create 10 worktrees with associated plans
+          2. Measure `agentic worktree list`
+             - Target: < 2 seconds
+
+          3. Measure Main-First resolution with many candidates
+             - Target: < 1 second
+
+          4. Measure `agentic worktree status` in deep worktree
+             - Target: < 1 second
+
+        success_criteria:
+          - "Worktree list scales linearly"
+          - "Resolution efficient with many worktrees"
+          - "Status command fast regardless of worktree count"
+
+      # ------------------------------------------------------------------------
+      # Task 6.4: Repeated Command Performance
+      # ------------------------------------------------------------------------
+      - task_id: "test_06_004"
+        description: "Test repeated command execution performance"
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+
+        target_files:
+          - "modules/AgenticCLI/tests/integration/test_performance.py"
+
+        guidance: |
+          Test repeated invocation patterns:
+
+          1. Run `agentic plan task list` 10 times sequentially
+             - Verify consistent timing
+             - No memory leaks
+
+          2. Run `agentic context bootstrap -j` in loop
+             - Verify no accumulating state
+
+          3. Run mixed commands in rapid succession
+             - Verify no file locking issues
+
+        success_criteria:
+          - "Consistent timing across runs"
+          - "No memory growth"
+          - "No file handle leaks"
+          - "No state accumulation"
+
+  # ============================================================================
+  # PHASE 7: Test Infrastructure and CI Integration
+  # ============================================================================
+  - phase_id: "test_07"
+    name: "Test Infrastructure and CI Integration"
+    description: |
+      Ensure test suite works in CI environment and provides useful
+      coverage and reporting.
+    status: "pending"
+    execution: "sequential"
+    estimated_effort: "low"
+
+    tasks:
+      # ------------------------------------------------------------------------
+      # Task 7.1: CI-Compatible Fixtures
+      # ------------------------------------------------------------------------
+      - task_id: "test_07_001"
+        description: "Create CI-compatible test fixtures"
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+
+        target_files:
+          - "modules/AgenticCLI/tests/integration/conftest.py"
+
+        guidance: |
+          Create fixtures for CI:
+
+          1. Temporary git repo fixture (no real git operations)
+          2. Isolated config directory fixture (XDG_CONFIG_HOME override)
+          3. Mock worktree fixture (no actual git worktree commands)
+          4. Plan file fixture with various states
+
+          All fixtures should:
+          - Use tempfile for isolation
+          - Clean up after test
+          - Work without network access
+          - Work without real git repo
+
+        success_criteria:
+          - "All tests pass in CI"
+          - "No real filesystem pollution"
+          - "No network dependencies"
+          - "Cleanup complete after test failure"
+
+      # ------------------------------------------------------------------------
+      # Task 7.2: Coverage Configuration
+      # ------------------------------------------------------------------------
+      - task_id: "test_07_002"
+        description: "Configure integration test coverage reporting"
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+
+        target_files:
+          - "modules/AgenticCLI/pyproject.toml"
+
+        guidance: |
+          Configure coverage for integration tests:
+
+          1. Add pytest-cov configuration
+          2. Set coverage thresholds for integration paths
+          3. Exclude test files from coverage
+          4. Generate XML and HTML reports
+
+          Target: 80% coverage for integration test paths.
+
+        success_criteria:
+          - "Coverage reports generated"
+          - "Threshold enforced in CI"
+          - "Reports accessible for review"
+
+      # ------------------------------------------------------------------------
+      # Task 7.3: Test Markers and Selection
+      # ------------------------------------------------------------------------
+      - task_id: "test_07_003"
+        description: "Add pytest markers for test categorization"
+        status: "pending"
+        agent: "test-builder"
+        loop: "test-fix-loop"
+
+        target_files:
+          - "modules/AgenticCLI/tests/integration/conftest.py"
+          - "modules/AgenticCLI/pyproject.toml"
+
+        guidance: |
+          Add markers for test selection:
+
+          1. @pytest.mark.integration - All integration tests
+          2. @pytest.mark.slow - Tests taking > 5 seconds
+          3. @pytest.mark.network - Tests requiring network
+          4. @pytest.mark.worktree - Tests requiring git worktrees
+
+          Configure in pyproject.toml and document usage.
+
+        success_criteria:
+          - "Tests selectable by marker"
+          - "CI can skip slow/network tests"
+          - "Markers documented"
+
+# ========================================
+# AGENT ASSIGNMENTS
+# ========================================
+agent_assignments:
+  - agent: "test-builder"
+    responsibilities:
+      - "Create integration test files"
+      - "Implement test fixtures and helpers"
+      - "Write test cases for each task"
+    phases: ["test_01", "test_02", "test_03", "test_04", "test_05", "test_06", "test_07"]
+
+  - agent: "test-runner"
+    responsibilities:
+      - "Execute integration tests"
+      - "Verify test pass/fail status"
+      - "Generate coverage reports"
+    phases: ["test_01", "test_02", "test_03", "test_04", "test_05", "test_06", "test_07"]
+
+# ========================================
+# TEST EXECUTION ORDER
+# ========================================
+execution_order: |
+  Recommended execution sequence:
+
+  1. Phase 7 (Infrastructure) - Set up fixtures and CI config first
+  2. Phase 1 (E2E Workflows) - Validate core workflows
+  3. Phase 2 (Command Chaining) - Test command interactions
+  4. Phase 3 (Cross-Worktree) - Test distributed scenarios
+  5. Phase 4 (Error Handling) - Validate robustness
+  6. Phase 5 (Output Formats) - Verify consistency
+  7. Phase 6 (Performance) - Measure and optimize
+
+  Dependencies:
+  - Phase 1-6 depend on Phase 7 fixtures
+  - Phase 3 depends on Phase 1 (workflow understanding)
+  - Phase 6 depends on Phase 1-5 (baseline functionality)
+
+# ========================================
+# NOTES
+# ========================================
+notes: |
+  TEST STRATEGY:
+  - Integration tests focus on realistic multi-command workflows
+  - Unit tests (existing) handle individual command logic
+  - Performance tests establish baselines for regression detection
+
+  FIXTURE STRATEGY:
+  - All tests use temporary directories
+  - Git operations mocked where possible
+  - Network calls mocked for reliability
+
+  CI CONSIDERATIONS:
+  - Tests must pass without network access
+  - Tests must pass without real git worktrees
+  - Tests must be idempotent and isolated
+
+  COVERAGE GOALS:
+  - Integration paths: 80%
+  - Error handling paths: 90%
+  - JSON output paths: 100%
+
+  PERFORMANCE TARGETS:
+  - Simple commands: < 500ms
+  - Standard operations: < 1 second
+  - Complex operations: < 2 seconds
+  - Large data operations: < 5 seconds
