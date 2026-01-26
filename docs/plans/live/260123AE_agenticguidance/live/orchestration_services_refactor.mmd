@@ -1,0 +1,50 @@
+%% =============================================================================
+%% ORCHESTRATION: AgenticGuidance Services Refactor
+%% =============================================================================
+%% GOAL: Refactor AgenticEngineering to 3-layer architecture
+%% PROFILE: Orchestration-Executor
+%%
+%% PLANS:
+%% - plan_services_refactor.yml: Extraction of services and CLI thinning
+%%
+%% AGENT_ROUTING:
+%%   phase_1 -> builder
+%%   phase_2 -> builder
+%%   validation -> tester
+%%
+%% PHASES: phase_1, phase_2, validation
+%%
+%% FEEDBACK_TRIGGERS:
+%%   TEST_FAILURE: loop_to=phase_1, max_iterations=3
+%%   BUILD_FAILURE: loop_to=phase_1, max_iterations=2
+%%
+%% STATUS:
+%%   phase_1=pending
+%%   phase_2=pending
+%%   validation=pending
+%% =============================================================================
+
+flowchart LR
+    Start((Start)) --> LoadPlans[Load Plan Files]
+    LoadPlans --> phase_1
+
+    subgraph Phase1_SG ["Phase 1: Services Layer"]
+        phase_1((Phase 1)) --> SpawnBuilder1[Spawn build-python: Extract Services]
+        SpawnBuilder1 --> Phase1Done{Phase 1 Done?}
+        Phase1Done -- "No" --> SpawnBuilder1
+        Phase1Done -- "Yes" --> phase_2
+    end
+
+    subgraph Phase2_SG ["Phase 2: Thin CLI"]
+        phase_2((Phase 2)) --> SpawnBuilder2[Spawn build-python: Refactor CLI]
+        SpawnBuilder2 --> Phase2Done{Phase 2 Done?}
+        Phase2Done -- "No" --> SpawnBuilder2
+        Phase2Done -- "Yes" --> ValidationPhase
+    end
+
+    subgraph Validation_SG ["Validation Phase"]
+        ValidationPhase((Validation)) --> SpawnValidator[Spawn test-runner: Full System Test]
+        SpawnValidator --> ValidationPassed{Tests Passed?}
+        ValidationPassed -- "No" --> phase_1
+        ValidationPassed -- "Yes" --> End((End))
+    end

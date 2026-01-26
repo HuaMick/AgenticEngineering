@@ -1,0 +1,192 @@
+# Ralph Loop Orchestration Compliance Investigation
+# Plan ID: 260127AG
+# Type: teach (guidance investigation and improvement)
+# Created: 2026-01-27
+
+plan_name: Ralph Loop Orchestration Compliance
+status: pending
+objective: |
+  Investigate why Ralph Loop orchestration failed to follow proper _plan_build.yml
+  and _orchestrate.yml entrypoint processes, and determine the correct approach
+  for either using the existing CLI system properly or building custom planning
+  and orchestration into the CLI.
+
+worktree: /home/code/AgenticEngineering  # Main worktree
+
+# =============================================================================
+# PROBLEM STATEMENT
+# =============================================================================
+# On 2026-01-27, the Ralph Loop stop hook invoked an agent as "orchestration agent"
+# with explicit instructions to:
+#   - "spawn subagents as per the _plan_build.yml process"
+#   - "spawn subagents as per _orchestrate.yml process"
+#
+# However, the agent:
+#   1. Did NOT follow orchestration-planning/process.mmd
+#   2. Did NOT generate orchestration MMD files
+#   3. Did NOT spawn planner-reviewer for validation
+#   4. Executed tasks directly instead of spawning builder subagents
+#   5. Archived plans without mmd_presence fence validation
+#
+# This resulted in 2 plans being marked "complete" without proper process compliance.
+
+# =============================================================================
+# POTENTIAL ROOT CAUSES TO INVESTIGATE
+# =============================================================================
+potential_causes:
+
+  cause_1_cci_system:
+    name: CLI Context Injection (CCI) System Interaction
+    description: |
+      The new CCI system may not be properly injecting the orchestration process
+      context when Ralph Loop invokes an agent. The CCI bootstrap command:
+        agentic context bootstrap --role orchestration-planning -j
+      may not be running, or its output may not be reaching the agent.
+    investigation_tasks:
+      - Check if CCI bootstrap is mentioned in Ralph Loop hook
+      - Verify CCI output includes orchestration-planning/process.mmd
+      - Test CCI bootstrap command output manually
+      - Check if agent receives CCI context in conversation
+
+  cause_2_ralph_loop_design:
+    name: Ralph Loop Design Gap
+    description: |
+      The Ralph Loop hook may be designed to work with a different orchestration
+      model than the _plan_build.yml/_orchestrate.yml entrypoint system. The hook
+      instructions say "spawn subagents" but the entrypoints say "The current
+      session is to take on the role of the orchestration agent."
+    investigation_tasks:
+      - Compare Ralph Loop hook expectations vs entrypoint design
+      - Identify if there's a mismatch in orchestration model
+      - Determine if Ralph Loop needs its own orchestration process
+      - Check if existing entrypoints can be adapted for Ralph Loop
+
+  cause_3_agent_interpretation:
+    name: Agent Interpretation Error
+    description: |
+      The agent may have misinterpreted the instructions due to:
+      - Lack of explicit MMD requirement in hook instructions
+      - Unclear subagent spawning expectations
+      - Missing enforcement mechanism for process compliance
+    investigation_tasks:
+      - Review hook instructions for ambiguity
+      - Add explicit process compliance requirements to hook
+      - Consider adding pre-execution validation steps
+
+  cause_4_missing_infrastructure:
+    name: Missing Planning Infrastructure
+    description: |
+      The CLI may be missing infrastructure to properly support Ralph Loop:
+      - No automatic MMD generation for existing plans
+      - No validation command for plan compliance
+      - No integration between Ralph Loop and planning entrypoints
+    investigation_tasks:
+      - Inventory existing CLI commands for planning
+      - Identify gaps in planning infrastructure
+      - Design new CLI commands if needed
+
+# =============================================================================
+# RESOLUTION OPTIONS
+# =============================================================================
+resolution_options:
+
+  option_a_use_cli_properly:
+    name: Learn to Use Existing CLI System Properly
+    description: |
+      Investigate and document the correct way to use the existing CLI
+      with Ralph Loop. This may involve:
+      - Running CCI bootstrap before each iteration
+      - Following orchestration-planning/process.mmd explicitly
+      - Using agentic CLI commands for plan validation
+    effort: Low
+    risk: May not be possible if systems are incompatible
+
+  option_b_build_into_cli:
+    name: Build Planning and Ralph Loop into CLI
+    description: |
+      Create new CLI commands that integrate Ralph Loop with proper
+      planning orchestration:
+      - agentic ralph-loop start (with proper orchestration setup)
+      - agentic plan validate --mmd-required
+      - agentic orchestrate --plan-folder <path>
+    effort: High
+    risk: Significant development work
+
+  option_c_hybrid_approach:
+    name: Hybrid - Minimal CLI Additions
+    description: |
+      Add minimal CLI commands to bridge the gap:
+      - agentic plan generate-mmd <plan-folder>
+      - agentic plan check-compliance <plan-folder>
+      Then update Ralph Loop hook to call these commands.
+    effort: Medium
+    risk: May not fully solve the problem
+
+# =============================================================================
+# TASKS
+# =============================================================================
+phases:
+  phase_1_investigation:
+    name: Investigation Phase
+    status: pending
+    tasks:
+      - id: AG-001
+        description: |
+          Investigate CCI system interaction with Ralph Loop.
+          - Run CCI bootstrap command manually and examine output
+          - Check if orchestration-planning context is included
+          - Verify conversation context includes CCI output
+        agent_type: explore
+        acceptance_criteria:
+          - CCI bootstrap behavior documented
+          - Context injection path traced
+          - Gap identified if present
+
+      - id: AG-002
+        description: |
+          Compare Ralph Loop hook design with entrypoint design.
+          - Read Ralph Loop hook instructions
+          - Read _plan_build.yml and _orchestrate.yml entrypoints
+          - Document model mismatch if present
+        agent_type: explore
+        acceptance_criteria:
+          - Design comparison documented
+          - Mismatch points identified
+          - Compatibility assessment completed
+
+      - id: AG-003
+        description: |
+          Inventory existing CLI planning commands and identify gaps.
+          - List all agentic CLI commands related to planning
+          - Check for MMD generation commands
+          - Check for plan validation commands
+        agent_type: explore
+        acceptance_criteria:
+          - CLI command inventory complete
+          - Gap analysis documented
+          - Missing commands identified
+
+  phase_2_resolution:
+    name: Resolution Phase
+    status: blocked_by_phase_1
+    tasks:
+      - id: AG-004
+        description: |
+          Based on investigation results, implement chosen resolution option.
+          This task will be refined after Phase 1 completes.
+        agent_type: TBD
+        acceptance_criteria:
+          - Resolution implemented
+          - Ralph Loop compliance verified
+          - Documentation updated
+
+success_criteria:
+  - Root cause of non-compliance identified
+  - Resolution option selected and documented
+  - Ralph Loop can properly orchestrate plans (when implemented)
+
+loop_structure:
+  type: planner-loop
+  max_iterations: 3
+  exit_criteria: Investigation complete and resolution path documented
+  escalation: Ask user if max iterations reached
