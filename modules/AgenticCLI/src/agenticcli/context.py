@@ -155,7 +155,7 @@ class CLIContext:
         Returns:
             TieredConfigLoader configured with global and project paths.
         """
-        from agenticcli.workflows.config_workflow import TieredConfigLoader
+        from agenticguidance.services import TieredConfigLoader
 
         return TieredConfigLoader(
             global_config_path=self.config_file,

@@ -191,7 +191,7 @@ def _try_jinja2_render(template_type: str, context: dict) -> str | None:
     Returns None if Jinja2 template not found.
     """
     try:
-        from agenticcli.workflows.template_workflow import TemplateContext, TemplateWorkflow
+        from agenticguidance.services import TemplateContext, TemplateWorkflow
 
         workflow = TemplateWorkflow()
         jinja_template = f"{template_type}_plan.yml.j2"

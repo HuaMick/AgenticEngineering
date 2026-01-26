@@ -54,7 +54,7 @@ def cmd_bootstrap(args, ctx=None):
     """
     from agenticcli.console import is_json_output, print_error, print_json
 
-    from agenticcli.workflows.context_workflow import (
+    from agenticguidance.services import (
         MainFirstPlanResolver,
         get_role_process,
         get_role_inputs_manifest,
@@ -145,7 +145,7 @@ def cmd_role(args, ctx=None):
     """
     from agenticcli.console import is_json_output, print_error, print_json
 
-    from agenticcli.workflows.context_workflow import get_role_process
+    from agenticguidance.services import get_role_process
 
     role_id = args.role_id
     json_output = is_json_output()
@@ -180,7 +180,7 @@ def cmd_task(args, ctx=None):
     """
     from agenticcli.console import is_json_output, print_error, print_json, print_warning
 
-    from agenticcli.workflows.context_workflow import MainFirstPlanResolver
+    from agenticguidance.services import MainFirstPlanResolver
 
     json_output = is_json_output()
     show_all = getattr(args, "all", False)
@@ -291,7 +291,7 @@ def cmd_inputs(args, ctx=None):
     """
     from agenticcli.console import is_json_output, print_error, print_json
 
-    from agenticcli.workflows.context_workflow import get_role_inputs_manifest
+    from agenticguidance.services import get_role_inputs_manifest
 
     role_id = getattr(args, "role", None)
     resolve_layers = getattr(args, "resolve", False)
@@ -352,7 +352,7 @@ def cmd_generate_agent(args, ctx=None):
     """
     from agenticcli.console import print_error, print_success
 
-    from agenticcli.workflows.context_workflow import generate_agent_bootstrap
+    from agenticguidance.services import generate_agent_bootstrap
 
     role_id = args.role_id
     output_path = getattr(args, "output", None)

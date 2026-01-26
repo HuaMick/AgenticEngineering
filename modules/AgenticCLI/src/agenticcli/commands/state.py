@@ -30,7 +30,7 @@ def handle(args, ctx=None):
 def cmd_list(args, ctx=None):
     """List all registered processes."""
     from agenticcli.console import console, is_json_output, print_header, print_info, print_json
-    from agenticcli.workflows.state_workflow import StateRegistry
+    from agenticguidance.services import StateRegistry
 
     if ctx:
         registry = StateRegistry(ctx.config_dir / "state.json")
@@ -96,7 +96,7 @@ def cmd_list(args, ctx=None):
 def cmd_show(args, ctx=None):
     """Show details of a specific process."""
     from agenticcli.console import console, is_json_output, print_error, print_header, print_json
-    from agenticcli.workflows.state_workflow import StateRegistry
+    from agenticguidance.services import StateRegistry
 
     if ctx:
         registry = StateRegistry(ctx.config_dir / "state.json")
@@ -146,7 +146,7 @@ def cmd_show(args, ctx=None):
 def cmd_clear(args, ctx=None):
     """Clear entries from the state registry."""
     from agenticcli.console import is_json_output, print_error, print_json, print_success
-    from agenticcli.workflows.state_workflow import StateRegistry
+    from agenticguidance.services import StateRegistry
 
     if ctx:
         registry = StateRegistry(ctx.config_dir / "state.json")
@@ -173,7 +173,7 @@ def cmd_clear(args, ctx=None):
 def cmd_cleanup(args, ctx=None):
     """Clean up stale processes (those no longer running)."""
     from agenticcli.console import is_json_output, print_json, print_success
-    from agenticcli.workflows.state_workflow import StateRegistry
+    from agenticguidance.services import StateRegistry
 
     if ctx:
         registry = StateRegistry(ctx.config_dir / "state.json")

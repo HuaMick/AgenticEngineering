@@ -15,7 +15,7 @@ def handle(args, ctx=None):
         ctx: Optional CLIContext for dependency injection.
     """
     from agenticcli.console import console, is_json_output, print_header, print_json, print_success
-    from agenticcli.workflows.config_workflow import ConfigWorkflow
+    from agenticguidance.services import ConfigWorkflow
 
     # Get config directory from context or default
     if ctx and ctx.config_dir:

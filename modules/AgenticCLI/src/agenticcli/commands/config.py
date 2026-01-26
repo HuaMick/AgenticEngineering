@@ -62,7 +62,7 @@ def handle(args, ctx=None):
 def cmd_show(args, ctx=None):
     """Display merged configuration with source attribution."""
     from agenticcli.console import console, is_json_output, print_header, print_json
-    from agenticcli.workflows.config_workflow import TieredConfigLoader
+    from agenticguidance.services import TieredConfigLoader
 
     # Create tiered config loader from context or defaults
     if ctx:
@@ -103,7 +103,7 @@ def _collect_sources(loader) -> dict:
         sources["project"] = str(loader.project_config_path)
 
     # Collect env vars
-    from agenticcli.workflows.config_workflow import ENV_VAR_MAPPING
+    from agenticguidance.services import ENV_VAR_MAPPING
     env_vars = [k for k in ENV_VAR_MAPPING if os.environ.get(k)]
     if env_vars:
         sources["env"] = env_vars

@@ -32,7 +32,7 @@ def _get_workflow(ctx):
     """Get ConfigWorkflow from context or default."""
     from pathlib import Path
 
-    from agenticcli.workflows.config_workflow import ConfigWorkflow
+    from agenticguidance.services import ConfigWorkflow
 
     if ctx and ctx.config_dir:
         return ConfigWorkflow(ctx.config_dir)

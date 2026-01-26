@@ -601,7 +601,7 @@ def cmd_task_prefill(args, ctx=None):
     # TaskPresetWorkflow will be created in Phase 3
     # For now, stub the import and show informative error
     try:
-        from agenticcli.workflows.task_workflow import TaskPresetWorkflow
+        from agenticguidance.services import TaskPresetWorkflow
     except ImportError:
         print_error("TaskPresetWorkflow not yet available")
         print_info("This feature will be available after Phase 3 implementation.")
@@ -1092,7 +1092,7 @@ def cmd_move(args, ctx=None):
         print_success,
         print_warning,
     )
-    from agenticcli.workflows.plan_workflow import MoveResult, PlanMovementWorkflow
+    from agenticguidance.services import MoveResult, PlanMovementWorkflow
 
     plan_path = find_plan_folder(getattr(args, "plan", None))
     workflow = PlanMovementWorkflow(plan_path)

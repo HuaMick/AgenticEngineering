@@ -121,7 +121,7 @@ def cmd_run(args, ctx=None):
 
 def _get_provider(ctx):
     """Get EnvironmentProvider from context or defaults."""
-    from agenticcli.workflows.environment_workflow import EnvironmentProvider
+    from agenticguidance.services import EnvironmentProvider
 
     if ctx:
         return EnvironmentProvider(

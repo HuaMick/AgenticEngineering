@@ -297,7 +297,7 @@ def _load_agent_context(agent_name: str) -> dict:
 
     # Get current task from Main-First plan (lazy import to avoid circular deps)
     try:
-        from agenticcli.workflows.context_workflow import MainFirstPlanResolver
+        from agenticguidance.services import MainFirstPlanResolver
         resolver = MainFirstPlanResolver()
         plan_info = resolver.resolve_active_plan()
         if plan_info:
@@ -559,7 +559,7 @@ def _load_agent_bootstrap_context(agent_name: str) -> dict:
 
     # Get current task from Main-First plan with FULL details
     try:
-        from agenticcli.workflows.context_workflow import MainFirstPlanResolver
+        from agenticguidance.services import MainFirstPlanResolver
         resolver = MainFirstPlanResolver()
         plan_info = resolver.resolve_active_plan()
         if plan_info:
