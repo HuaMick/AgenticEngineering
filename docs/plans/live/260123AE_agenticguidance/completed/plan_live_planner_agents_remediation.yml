@@ -1,0 +1,411 @@
+# Planner Agents Guidance Remediation Plan
+# Created: 2026-01-24
+# Purpose: Remediate gaps in planner agent guidance files (planner-build, planner-cleaning,
+#          planner-guidance, planner-guidance-testing, planner-reviewer)
+# Context: planner-audit and planner-test passed self-review with NO_GAPS
+#
+# This plan follows the _plan_teach.yml process for guidance changes.
+# Reference: modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd
+
+name: "planner-agents-guidance-remediation"
+status: "completed"
+priority: "high"
+completed_date: "2026-01-24"
+worktree_path: "/home/code/AgenticEngineering"
+plan_file: "docs/plans/live/260123AE_agenticguidance/live/plan_live_planner_agents_remediation.yml"
+
+# ========================================
+# CONTEXT (Gap Analysis Summary)
+# ========================================
+context: |
+  Five planner agents require guidance remediation based on self-review findings.
+
+  AGENTS PASSING SELF-REVIEW (NO_GAPS):
+  - planner-audit: Clean structure with required_inputs properly defined
+  - planner-test: Clean structure with loop_context and outputs properly defined
+
+  AGENTS REQUIRING REMEDIATION:
+  1. planner-build: Missing outputs section consistency, loop_context
+  2. planner-cleaning: Missing loop_context, inconsistent process inputs
+  3. planner-guidance: process.yml inputs don't reference all required_inputs
+  4. planner-guidance-testing: Inconsistent inputs between process.yml and inputs.yml
+  5. planner-reviewer: Missing outputs section, minimal structure
+
+  GAP PATTERNS IDENTIFIED:
+  - Missing loop_context section (defines loop participation metadata)
+  - Inconsistent inputs sections between process.yml and inputs.yml
+  - Missing or incomplete outputs sections with required_fields
+  - Missing agent_context sections in some process.yml files
+
+  REFERENCE PATTERNS (from passing agents):
+  - planner-audit: Clean inputs section referencing inputs.yml and plan folder
+  - planner-test: Has loop_context, outputs with required_fields, clear steps
+
+# ========================================
+# ROOT-LEVEL INPUTS
+# ========================================
+inputs:
+  - location: "modules/AgenticGuidance/agents/planner/planner-audit/process.yml"
+    description: "Reference pattern - passing agent with clean structure"
+
+  - location: "modules/AgenticGuidance/agents/planner/planner-test/process.yml"
+    description: "Reference pattern - passing agent with loop_context and outputs"
+
+  - location: "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+    description: "Loop definitions for loop_context sections"
+
+  - location: "modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/live/plan_example.yml"
+    description: "Unified plan structure example"
+
+# ========================================
+# LOOP STRUCTURES
+# ========================================
+# Reference: modules/AgenticGuidance/assets/guidelines/loop-inclusion-for-planners.yml
+loop_structures:
+  - id: "loop_guidance_self_review"
+    type: "guidance-self-review-loop"
+    applies_to_phase: "Test Phase"
+    trigger: "After guidance updates complete"
+    description: |
+      Target agents run self-review against their updated guidance files.
+      Each agent validates their own process.yml and inputs.yml for consistency.
+    exit_criteria:
+      success: "All 5 agents report NO_GAPS on self-review"
+      max_iterations: 3
+      escalation: "Escalate remaining gaps to human reviewer"
+    participants:
+      - agent: "target-planner-agent"
+        role: "Self-reviews own guidance for completeness"
+      - agent: "planner-reviewer"
+        role: "Spot-check validation of self-review results"
+
+# ========================================
+# PHASES
+# ========================================
+phases:
+  # ----------------------------------------
+  # TEACH PHASE: Guidance Updates
+  # ----------------------------------------
+  - name: "Teach Phase - Guidance Updates"
+    execution: sequential
+    description: "Update guidance files for the 5 planner agents to address identified gaps"
+    tasks:
+      # ========================================
+      # Task 1: planner-build remediation
+      # ========================================
+      - id: "teach_001"
+        name: "Add loop_context to planner-build process.yml"
+        description: |
+          Add loop_context section to planner-build/process.yml to define loop participation.
+          Pattern reference: planner-test/process.yml and planner-guidance/process.yml
+        status: "pending"
+        agent_type: "teacher-update-guidance"
+        inputs:
+          - modules/AgenticGuidance/agents/planner/planner-build/process.yml
+          - modules/AgenticGuidance/agents/planner/planner-test/process.yml
+          - modules/AgenticGuidance/assets/definitions/agent-loops.yml
+        target_files:
+          - modules/AgenticGuidance/agents/planner/planner-build/process.yml
+        guidance: |
+          ADD loop_context section after the goal section:
+          ```yaml
+          loop_context:
+            participates_in: ['planner-loop']
+            loop_definition: 'modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.planner-loop'
+            max_iterations: 5
+            note: "Participates in planner-loop with planner-reviewer feedback driving iterative refinement"
+          ```
+          This aligns with planner-guidance and planner-test patterns.
+        success_criteria:
+          - "loop_context section exists with participates_in, loop_definition, max_iterations"
+          - "References agent-loops.yml#loop_types.planner-loop"
+
+      # ========================================
+      # Task 2: planner-cleaning remediation
+      # ========================================
+      - id: "teach_002"
+        name: "Add loop_context to planner-cleaning process.yml"
+        description: |
+          Add loop_context section to planner-cleaning/process.yml.
+          Also verify inputs section references both inputs.yml and plan folder pattern.
+        status: "pending"
+        agent_type: "teacher-update-guidance"
+        inputs:
+          - modules/AgenticGuidance/agents/planner/planner-cleaning/process.yml
+          - modules/AgenticGuidance/agents/planner/planner-audit/process.yml
+          - modules/AgenticGuidance/assets/definitions/agent-loops.yml
+        target_files:
+          - modules/AgenticGuidance/agents/planner/planner-cleaning/process.yml
+        guidance: |
+          ADD loop_context section after goal section:
+          ```yaml
+          loop_context:
+            participates_in: ['planner-loop']
+            loop_definition: 'modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.planner-loop'
+            max_iterations: 5
+            note: "Participates in planner-loop with planner-reviewer feedback for finalization phases"
+          ```
+          VERIFY inputs section includes both:
+          - inputs.yml reference
+          - plan folder pattern (docs/plans/live/YYMMDDXX_description/)
+        success_criteria:
+          - "loop_context section exists with proper references"
+          - "inputs section references inputs.yml"
+          - "inputs section references plan folder pattern"
+
+      # ========================================
+      # Task 3: planner-guidance inputs alignment
+      # ========================================
+      - id: "teach_003"
+        name: "Align planner-guidance process.yml inputs with required_inputs"
+        description: |
+          Update planner-guidance/process.yml inputs section to explicitly reference
+          all three required_inputs from inputs.yml: friction_source, target_agent, target_project_path
+        status: "pending"
+        agent_type: "teacher-update-guidance"
+        inputs:
+          - modules/AgenticGuidance/agents/planner/planner-guidance/process.yml
+          - modules/AgenticGuidance/agents/planner/planner-guidance/inputs.yml
+        target_files:
+          - modules/AgenticGuidance/agents/planner/planner-guidance/process.yml
+        guidance: |
+          UPDATE inputs section to include required_inputs reference:
+          ```yaml
+          inputs:
+            - location: "modules/AgenticGuidance/agents/planner/planner-guidance/inputs.yml"
+              description: "Core planner-guidance agent inputs, definitions, and guidelines"
+              required_inputs:
+                - friction_source
+                - target_agent
+                - target_project_path
+            - location: "modules/AgenticGuidance/assets/definitions/agent-categories.yml"
+              description: "Canonical definitions of agent categories"
+            - location: "docs/plans/"
+              description: "Target directory for creating new planning folders (YYMMDDXX_description structure)"
+          ```
+          This makes the required_inputs explicit in the process.yml where agents read them.
+        success_criteria:
+          - "inputs section explicitly lists required_inputs names"
+          - "All three required inputs referenced: friction_source, target_agent, target_project_path"
+
+      # ========================================
+      # Task 4: planner-guidance-testing inputs alignment
+      # ========================================
+      - id: "teach_004"
+        name: "Align planner-guidance-testing process.yml inputs with required_inputs"
+        description: |
+          Update planner-guidance-testing/process.yml inputs section to reference
+          plan_folder_name from required_inputs in inputs.yml.
+        status: "pending"
+        agent_type: "teacher-update-guidance"
+        inputs:
+          - modules/AgenticGuidance/agents/planner/planner-guidance-testing/process.yml
+          - modules/AgenticGuidance/agents/planner/planner-guidance-testing/inputs.yml
+        target_files:
+          - modules/AgenticGuidance/agents/planner/planner-guidance-testing/process.yml
+        guidance: |
+          UPDATE inputs section to include required_inputs reference:
+          ```yaml
+          inputs:
+            - location: "modules/AgenticGuidance/agents/planner/planner-guidance-testing/inputs.yml"
+              description: "Core planner-guidance-testing agent inputs and guidelines"
+              required_inputs:
+                - agent_guidance_paths
+                - target_project_path
+                - plan_folder_name
+            - location: "modules/AgenticGuidance/assets/definitions/guidance-test-scenarios.yml"
+              description: "Walkthrough validation scenarios and test structure"
+            - location: "modules/AgenticGuidance/assets/examples/planner/components/guidance_blind_test.mmd"
+              description: "Guidance blind test component - reusable validation pattern"
+          ```
+        success_criteria:
+          - "inputs section explicitly lists required_inputs names"
+          - "All three required inputs referenced: agent_guidance_paths, target_project_path, plan_folder_name"
+
+      # ========================================
+      # Task 5: planner-reviewer structure enhancement
+      # ========================================
+      - id: "teach_005"
+        name: "Add outputs section to planner-reviewer process.yml"
+        description: |
+          Add outputs section to planner-reviewer/process.yml to match the pattern
+          from other planner agents. Also enhance inputs section.
+        status: "pending"
+        agent_type: "teacher-update-guidance"
+        inputs:
+          - modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml
+          - modules/AgenticGuidance/agents/planner/planner-reviewer/inputs.yml
+          - modules/AgenticGuidance/agents/planner/planner-build/process.yml
+        target_files:
+          - modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml
+        guidance: |
+          ADD outputs section after inputs section:
+          ```yaml
+          outputs:
+            - name: "review_decision"
+              description: "APPROVED, REJECTED, or NEEDS_REVISION decision with feedback"
+              required_fields:
+                - "decision"
+                - "feedback"
+                - "checklist_results"
+              note: "Output written to review_*.yml, moves to analysis/ after processing"
+          ```
+
+          UPDATE inputs section to include required_inputs reference:
+          ```yaml
+          inputs:
+            - location: "modules/AgenticGuidance/agents/planner/planner-reviewer/inputs.yml"
+              description: "Core reviewer planner agent inputs and guidelines"
+              required_inputs:
+                - plan_folder_path
+                - target_project_path
+          ```
+        success_criteria:
+          - "outputs section exists with decision, feedback, checklist_results fields"
+          - "inputs section explicitly lists required_inputs names"
+
+  # ----------------------------------------
+  # TEST PHASE: Agent Self-Review Validation
+  # ----------------------------------------
+  - name: "Test Phase - Self-Review Validation"
+    execution: sequential
+    description: "Validate guidance updates through agent self-review"
+    tasks:
+      - id: "test_001"
+        name: "planner-build self-review validation"
+        description: "Run planner-build agent self-review to validate guidance updates"
+        status: "pending"
+        agent_type: "planner-build"
+        operation: "self-review"
+        inputs:
+          - modules/AgenticGuidance/agents/planner/planner-build/process.yml
+          - modules/AgenticGuidance/agents/planner/planner-build/inputs.yml
+          - modules/AgenticGuidance/assets/definitions/self-review-criteria.yml
+        target_files:
+          - modules/AgenticGuidance/agents/planner/planner-build/process.yml
+        guidance: |
+          Execute agent self-review using guidance-self-review protocol:
+          1. Read process.yml and inputs.yml
+          2. Validate loop_context section exists and references agent-loops.yml
+          3. Verify inputs section lists required_inputs from inputs.yml
+          4. Check consistency between process.yml steps and inputs.yml required_inputs
+        success_criteria:
+          - "Self-review returns NO_GAPS"
+          - "loop_context section validated"
+          - "inputs consistency verified"
+
+      - id: "test_002"
+        name: "planner-cleaning self-review validation"
+        description: "Run planner-cleaning agent self-review to validate guidance updates"
+        status: "pending"
+        agent_type: "planner-cleaning"
+        operation: "self-review"
+        inputs:
+          - modules/AgenticGuidance/agents/planner/planner-cleaning/process.yml
+          - modules/AgenticGuidance/agents/planner/planner-cleaning/inputs.yml
+          - modules/AgenticGuidance/assets/definitions/self-review-criteria.yml
+        target_files:
+          - modules/AgenticGuidance/agents/planner/planner-cleaning/process.yml
+        guidance: |
+          Execute agent self-review:
+          1. Validate loop_context section exists
+          2. Verify inputs section references inputs.yml and plan folder pattern
+          3. Check required_inputs are validated in steps
+        success_criteria:
+          - "Self-review returns NO_GAPS"
+          - "loop_context section validated"
+
+      - id: "test_003"
+        name: "planner-guidance self-review validation"
+        description: "Run planner-guidance agent self-review to validate guidance updates"
+        status: "pending"
+        agent_type: "planner-guidance"
+        operation: "self-review"
+        inputs:
+          - modules/AgenticGuidance/agents/planner/planner-guidance/process.yml
+          - modules/AgenticGuidance/agents/planner/planner-guidance/inputs.yml
+          - modules/AgenticGuidance/assets/definitions/self-review-criteria.yml
+        target_files:
+          - modules/AgenticGuidance/agents/planner/planner-guidance/process.yml
+        guidance: |
+          Execute agent self-review:
+          1. Verify inputs section lists all required_inputs: friction_source, target_agent, target_project_path
+          2. Validate step 2 (VALIDATE REQUIRED INPUTS) references all required_inputs
+          3. Check consistency between inputs section and required_inputs in inputs.yml
+        success_criteria:
+          - "Self-review returns NO_GAPS"
+          - "All required_inputs explicitly referenced in inputs section"
+
+      - id: "test_004"
+        name: "planner-guidance-testing self-review validation"
+        description: "Run planner-guidance-testing agent self-review to validate guidance updates"
+        status: "pending"
+        agent_type: "planner-guidance-testing"
+        operation: "self-review"
+        inputs:
+          - modules/AgenticGuidance/agents/planner/planner-guidance-testing/process.yml
+          - modules/AgenticGuidance/agents/planner/planner-guidance-testing/inputs.yml
+          - modules/AgenticGuidance/assets/definitions/self-review-criteria.yml
+        target_files:
+          - modules/AgenticGuidance/agents/planner/planner-guidance-testing/process.yml
+        guidance: |
+          Execute agent self-review:
+          1. Verify inputs section lists all required_inputs: agent_guidance_paths, target_project_path, plan_folder_name
+          2. Validate consistency with inputs.yml required_inputs
+          3. Check step 2 references required inputs validation
+        success_criteria:
+          - "Self-review returns NO_GAPS"
+          - "plan_folder_name explicitly referenced"
+
+      - id: "test_005"
+        name: "planner-reviewer self-review validation"
+        description: "Run planner-reviewer agent self-review to validate guidance updates"
+        status: "pending"
+        agent_type: "planner-reviewer"
+        operation: "self-review"
+        inputs:
+          - modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml
+          - modules/AgenticGuidance/agents/planner/planner-reviewer/inputs.yml
+          - modules/AgenticGuidance/assets/definitions/self-review-criteria.yml
+        target_files:
+          - modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml
+        guidance: |
+          Execute agent self-review:
+          1. Verify outputs section exists with decision, feedback, checklist_results
+          2. Verify inputs section lists required_inputs: plan_folder_path, target_project_path
+          3. Validate consistency with inputs.yml
+        success_criteria:
+          - "Self-review returns NO_GAPS"
+          - "outputs section validated"
+          - "inputs consistency verified"
+
+# ========================================
+# SUCCESS CRITERIA (Overall Plan)
+# ========================================
+success_criteria:
+  - "All 5 planner agents (planner-build, planner-cleaning, planner-guidance, planner-guidance-testing, planner-reviewer) report NO_GAPS on self-review"
+  - "Each process.yml has consistent inputs section referencing required_inputs from inputs.yml"
+  - "Loop-participating agents have loop_context section (planner-build, planner-cleaning)"
+  - "planner-reviewer has outputs section with required_fields"
+  - "No broken references in updated guidance files"
+
+# ========================================
+# OUTPUT DEFINITIONS
+# ========================================
+outputs:
+  - name: "remediated_guidance_files"
+    description: "Updated process.yml files for all 5 planner agents"
+    files:
+      - modules/AgenticGuidance/agents/planner/planner-build/process.yml
+      - modules/AgenticGuidance/agents/planner/planner-cleaning/process.yml
+      - modules/AgenticGuidance/agents/planner/planner-guidance/process.yml
+      - modules/AgenticGuidance/agents/planner/planner-guidance-testing/process.yml
+      - modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml
+
+  - name: "self_review_results"
+    description: "Self-review validation results from each agent"
+    format: |
+      Each agent reports:
+      - decision: NO_GAPS | GAPS_FOUND
+      - gaps: [] (empty for passing)
+      - validation_timestamp

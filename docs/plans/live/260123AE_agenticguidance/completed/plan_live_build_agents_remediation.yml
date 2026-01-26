@@ -1,0 +1,404 @@
+# Plan: Build Agents Guidance Remediation
+# Purpose: Remediate guidance gaps in build-flutter and build-python agents
+#
+# Created: 2026-01-24
+# Process: _plan_teach.yml
+# Plan Folder: 260123AE_agenticguidance
+
+name: "build-agents-guidance-remediation"
+worktree: "260123AE_agenticguidance"
+branch: "main"
+status: "completed"
+priority: "high"
+completed_date: "2026-01-24"
+
+context: |
+  This plan addresses guidance gaps identified in the build-flutter and build-python agents.
+
+  GAPS IDENTIFIED:
+  1. CLI Commands not documented in cli-commands.yml:
+     - The build agents reference `agentic context bootstrap --role <agent>` commands
+     - These `context bootstrap` commands are NOT in cli-commands.yml
+     - cli-commands.yml only has `worktree` and `plan` sections, no `context` section
+
+  2. Missing input definitions or path references:
+     - build-python/inputs.yml line 96-101 has broken path in python_folder_conventions:
+       "src/mymodules/AgenticGuidance/agents/backend/services/" should be "src/<package>/backend/services/"
+     - Layers (core-system.yml, core-guidelines.yml) need path validation
+
+  3. Inconsistencies between process.yml and inputs.yml:
+     - Version mismatch: inputs.yml has "2.0-pilot" but manifest.yml has "2.0"
+     - process.yml references guidelines (worktree-and-branching.yml) that are loaded
+       transitively through layers but not explicitly documented in inputs.yml
+
+  REMEDIATION APPROACH:
+  - Teach phase: Fix guidance files with accurate information
+  - Test phase: Agent self-review to validate fixes
+  - Success criteria: Zero path resolution errors, consistent versions, documented CLI commands
+
+# =============================================================================
+# INPUTS
+# =============================================================================
+inputs:
+  - location: "modules/AgenticGuidance/agents/build/build-flutter/process.yml"
+    description: "Build-flutter process definition with CCI bootstrap"
+    purpose: "Verify CCI command references match documented commands"
+
+  - location: "modules/AgenticGuidance/agents/build/build-flutter/inputs.yml"
+    description: "Build-flutter inputs with reference layers"
+    purpose: "Validate layer paths resolve and version consistency"
+
+  - location: "modules/AgenticGuidance/agents/build/build-flutter/manifest.yml"
+    description: "Build-flutter manifest with version and structure"
+    purpose: "Check version consistency with inputs.yml"
+
+  - location: "modules/AgenticGuidance/agents/build/build-python/process.yml"
+    description: "Build-python process definition with CCI bootstrap"
+    purpose: "Verify CCI command references match documented commands"
+
+  - location: "modules/AgenticGuidance/agents/build/build-python/inputs.yml"
+    description: "Build-python inputs with broken path in python_folder_conventions"
+    purpose: "Fix broken path reference on lines 96-101"
+
+  - location: "modules/AgenticGuidance/agents/build/build-python/manifest.yml"
+    description: "Build-python manifest with version and structure"
+    purpose: "Check version consistency with inputs.yml"
+
+  - location: "modules/AgenticGuidance/assets/definitions/cli-commands.yml"
+    description: "CLI commands definition - missing context bootstrap commands"
+    purpose: "Add missing context command documentation"
+
+  - location: "modules/AgenticGuidance/assets/guidelines/agent-self-review.yml"
+    description: "Self-review protocol for validation"
+    purpose: "Reference for test phase validation approach"
+
+  - location: "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml"
+    description: "Self-review pass/fail criteria"
+    purpose: "Defines what constitutes successful self-review"
+
+  - location: "modules/AgenticGuidance/assets/definitions/guidance-process-requirements.yml"
+    description: "Requirements for guidance changes"
+    purpose: "Confirms _plan_teach usage is required for these changes"
+
+# =============================================================================
+# LOOP STRUCTURES
+# =============================================================================
+loop_structures:
+  - id: "loop_teach_review"
+    type: "guidance-self-review-loop"
+    applies_to_phase: "Teach Phase"
+    trigger: "After each guidance file update"
+    description: |
+      Each guidance update should be followed by a quick consistency check
+      to ensure the change didn't introduce new issues.
+    exit_criteria:
+      success: "Updated file passes path resolution check"
+      max_iterations: 2
+      escalation: "Report issues to user for resolution"
+    participants:
+      - agent: "teacher-update-guidance"
+        role: "Makes the guidance updates"
+      - agent: "explorer"
+        role: "Validates path references resolve"
+
+  - id: "loop_self_review"
+    type: "agent-self-review"
+    applies_to_phase: "Test Phase"
+    trigger: "After all teach tasks complete"
+    description: |
+      Full self-review of both build agents to validate all gaps are addressed.
+      Uses CCI pattern to bootstrap agent context, then validates against
+      self-review-criteria.yml.
+    exit_criteria:
+      success: "Both agents return PASS status from self-review"
+      max_iterations: 3
+      escalation: "Create detailed finding report for remaining issues"
+    participants:
+      - agent: "build-flutter"
+        role: "Self-reviews its own guidance files"
+      - agent: "build-python"
+        role: "Self-reviews its own guidance files"
+      - agent: "test-guidance-simulator"
+        role: "Coordinates self-review execution and aggregates results"
+
+# =============================================================================
+# PHASES AND TASKS
+# =============================================================================
+phases:
+  # ----------------------------------------
+  # PHASE 1: Teach - Guidance Updates
+  # ----------------------------------------
+  - name: "Teach Phase"
+    execution: sequential
+    description: "Update guidance files to address identified gaps"
+    loop: "guidance-self-review-loop"
+    tasks:
+      - id: "teach_001"
+        name: "Add context bootstrap commands to cli-commands.yml"
+        description: |
+          Add missing CLI command documentation for context bootstrap.
+          The build agents reference:
+            agentic context bootstrap --role build-flutter -j
+            agentic context bootstrap --role build-python -j
+
+          These commands are used for CCI (CLI Context Injection) pattern
+          but are NOT documented in cli-commands.yml.
+
+          Add new section for context commands including:
+            - context bootstrap: Bootstrap agent context with file paths
+            - Parameters: --role (required), -j for JSON output
+            - Example usage and output format
+        status: "pending"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/assets/definitions/cli-commands.yml"
+          - "modules/AgenticGuidance/agents/build/build-flutter/process.yml"
+        success_criteria:
+          - "cli-commands.yml has new 'context' section"
+          - "context.bootstrap command is documented with parameters"
+          - "Example matches actual usage in process.yml files"
+        files:
+          - "modules/AgenticGuidance/assets/definitions/cli-commands.yml"
+
+      - id: "teach_002"
+        name: "Fix broken path in build-python python_folder_conventions"
+        description: |
+          Fix the broken path in build-python/inputs.yml lines 96-101.
+
+          CURRENT (BROKEN):
+            python_folder_conventions: |
+              Python projects follow this structure:
+              - src/mymodules/AgenticGuidance/agents/backend/services/ - Service layer
+              - src/mymodules/AgenticGuidance/agents/backend/domains/ - Domain logic
+              - src/mymodules/AgenticGuidance/agents/backend/workflows/ - Workflow orchestration
+              - src/mymodules/AgenticGuidance/agents/frontend/cli/ - CLI entrypoints
+
+          SHOULD BE:
+            python_folder_conventions: |
+              Python projects follow this structure:
+              - src/<package>/backend/services/ - Service layer
+              - src/<package>/backend/domains/ - Domain logic
+              - src/<package>/backend/workflows/ - Workflow orchestration
+              - src/<package>/frontend/cli/ - CLI entrypoints
+
+          The "mymodules/AgenticGuidance/agents" text appears to be copy-paste error.
+        status: "pending"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/build/build-python/inputs.yml"
+          - "modules/AgenticGuidance/agents/build/build-python/manifest.yml"
+        success_criteria:
+          - "python_folder_conventions uses <package> placeholder"
+          - "Path structure matches manifest.yml target_project_structure"
+          - "No hardcoded module paths in folder conventions"
+        files:
+          - "modules/AgenticGuidance/agents/build/build-python/inputs.yml"
+
+      - id: "teach_003"
+        name: "Align version numbers between inputs.yml and manifest.yml"
+        description: |
+          Version mismatch between files in both agents:
+
+          build-flutter:
+            - inputs.yml: version: "2.0-pilot"
+            - manifest.yml: version: "2.0"
+
+          build-python:
+            - inputs.yml: version: "2.0-pilot"
+            - manifest.yml: version: "2.0"
+
+          Decision: Align to "2.0" since the pilot phase is complete
+          (reference layers are implemented and working).
+
+          Update both inputs.yml files:
+            - Change version: "2.0-pilot" to version: "2.0"
+            - Update PILOT NOTES comment to reflect completion
+        status: "pending"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/build/build-flutter/inputs.yml"
+          - "modules/AgenticGuidance/agents/build/build-flutter/manifest.yml"
+          - "modules/AgenticGuidance/agents/build/build-python/inputs.yml"
+          - "modules/AgenticGuidance/agents/build/build-python/manifest.yml"
+        success_criteria:
+          - "build-flutter/inputs.yml version matches manifest.yml (2.0)"
+          - "build-python/inputs.yml version matches manifest.yml (2.0)"
+          - "PILOT NOTES updated or removed to reflect stable status"
+        files:
+          - "modules/AgenticGuidance/agents/build/build-flutter/inputs.yml"
+          - "modules/AgenticGuidance/agents/build/build-python/inputs.yml"
+
+      - id: "teach_004"
+        name: "Document layer-loaded guidelines in inputs.yml comments"
+        description: |
+          Both agents' process.yml files reference guidelines like
+          worktree-and-branching.yml, but these are loaded transitively
+          through the core-guidelines.yml layer. This is not obvious.
+
+          Add clarifying comments in inputs.yml files to document which
+          guidelines are loaded via layers vs explicitly listed.
+
+          Add to inputs.yml after layers section:
+            # Guidelines loaded via core-guidelines.yml layer:
+            #   - fix-the-source.yml, experiment-first.yml, less-is-more.yml
+            #   - worktree-and-branching.yml, testing.yml, response-audit.yml
+            #   - safety.yml, context-minimisation.yml
+            # These are available to the agent but not explicitly listed below.
+        status: "pending"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/build/build-flutter/inputs.yml"
+          - "modules/AgenticGuidance/agents/build/build-python/inputs.yml"
+          - "modules/AgenticGuidance/assets/inputs/core-guidelines.yml"
+        success_criteria:
+          - "inputs.yml documents which guidelines come from layers"
+          - "Developer can understand full context loading without reading layer files"
+          - "Comment format is consistent between both agents"
+        files:
+          - "modules/AgenticGuidance/agents/build/build-flutter/inputs.yml"
+          - "modules/AgenticGuidance/agents/build/build-python/inputs.yml"
+
+  # ----------------------------------------
+  # PHASE 2: Test - Agent Self-Review Validation
+  # ----------------------------------------
+  - name: "Test Phase"
+    execution: sequential
+    description: "Validate fixes via agent self-review"
+    loop: "agent-self-review"
+    tasks:
+      - id: "test_001"
+        name: "Self-review build-flutter agent"
+        description: |
+          Execute full self-review of build-flutter agent using CCI pattern.
+
+          Steps:
+          1. Run: agentic build-flutter (CCI bootstrap)
+          2. Read self-review criteria and protocol
+          3. Read agent's process.yml, inputs.yml, manifest.yml
+          4. Validate:
+             - All paths resolve to existing files
+             - Version numbers consistent across files
+             - Layer references resolve
+             - Guidelines comments accurate
+          5. Generate self-review output per self-review-criteria.yml
+
+          Expected: PASS status with zero CRITICAL or HIGH findings
+        status: "pending"
+        agent: "build-flutter"
+        inputs:
+          - "modules/AgenticGuidance/agents/build/build-flutter/process.yml"
+          - "modules/AgenticGuidance/agents/build/build-flutter/inputs.yml"
+          - "modules/AgenticGuidance/agents/build/build-flutter/manifest.yml"
+          - "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml"
+          - "modules/AgenticGuidance/assets/guidelines/agent-self-review.yml"
+        success_criteria:
+          - "Self-review returns status: PASS"
+          - "Zero CRITICAL severity findings"
+          - "Zero HIGH severity findings"
+          - "All path validations pass"
+          - "Version consistency validated"
+        outputs:
+          - type: "self-review-report"
+            name: "build_flutter_self_review"
+            description: "Self-review output conforming to self-review-criteria.yml#output_requirements"
+
+      - id: "test_002"
+        name: "Self-review build-python agent"
+        description: |
+          Execute full self-review of build-python agent using CCI pattern.
+
+          Steps:
+          1. Run: agentic build-python (CCI bootstrap)
+          2. Read self-review criteria and protocol
+          3. Read agent's process.yml, inputs.yml, manifest.yml
+          4. Validate:
+             - All paths resolve to existing files
+             - python_folder_conventions has correct paths
+             - Version numbers consistent across files
+             - Layer references resolve
+          5. Generate self-review output per self-review-criteria.yml
+
+          Expected: PASS status with zero CRITICAL or HIGH findings
+        status: "pending"
+        agent: "build-python"
+        inputs:
+          - "modules/AgenticGuidance/agents/build/build-python/process.yml"
+          - "modules/AgenticGuidance/agents/build/build-python/inputs.yml"
+          - "modules/AgenticGuidance/agents/build/build-python/manifest.yml"
+          - "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml"
+          - "modules/AgenticGuidance/assets/guidelines/agent-self-review.yml"
+        success_criteria:
+          - "Self-review returns status: PASS"
+          - "Zero CRITICAL severity findings"
+          - "Zero HIGH severity findings"
+          - "python_folder_conventions paths validate"
+          - "Version consistency validated"
+        outputs:
+          - type: "self-review-report"
+            name: "build_python_self_review"
+            description: "Self-review output conforming to self-review-criteria.yml#output_requirements"
+
+      - id: "test_003"
+        name: "Validate cli-commands.yml completeness"
+        description: |
+          Verify the new context bootstrap command documentation is complete
+          and consistent with actual CLI behavior.
+
+          Checks:
+          1. context.bootstrap command exists in cli-commands.yml
+          2. Parameters match actual CLI implementation
+          3. Example output format matches what agents receive
+          4. Cross-reference to CCI pattern documentation exists
+
+          This is a path resolution and consistency check, not a full
+          self-review since cli-commands.yml is a shared asset.
+        status: "pending"
+        agent: "explorer"
+        inputs:
+          - "modules/AgenticGuidance/assets/definitions/cli-commands.yml"
+          - "modules/AgenticGuidance/agents/build/build-flutter/process.yml"
+          - "modules/AgenticGuidance/agents/build/build-python/process.yml"
+        success_criteria:
+          - "context.bootstrap command documented"
+          - "Parameters include --role and -j flag"
+          - "Example matches process.yml CCI bootstrap step"
+          - "Description references CCI pattern"
+
+# =============================================================================
+# SUCCESS CRITERIA
+# =============================================================================
+success_criteria:
+  - "CLI context bootstrap commands documented in cli-commands.yml"
+  - "build-python python_folder_conventions uses correct path format"
+  - "Version numbers aligned (2.0) between inputs.yml and manifest.yml"
+  - "Layer-loaded guidelines documented in inputs.yml comments"
+  - "build-flutter self-review returns PASS status"
+  - "build-python self-review returns PASS status"
+  - "Zero CRITICAL or HIGH findings from self-review validation"
+
+# =============================================================================
+# OUTPUT DEFINITIONS
+# =============================================================================
+outputs:
+  - name: "cli_commands_update"
+    description: "Updated cli-commands.yml with context bootstrap commands"
+    location: "modules/AgenticGuidance/assets/definitions/cli-commands.yml"
+    type: "guidance-file"
+
+  - name: "build_flutter_remediated"
+    description: "Updated build-flutter inputs.yml with version fix and comments"
+    location: "modules/AgenticGuidance/agents/build/build-flutter/inputs.yml"
+    type: "guidance-file"
+
+  - name: "build_python_remediated"
+    description: "Updated build-python inputs.yml with path fix, version fix, and comments"
+    location: "modules/AgenticGuidance/agents/build/build-python/inputs.yml"
+    type: "guidance-file"
+
+  - name: "self_review_reports"
+    description: "Self-review outputs from both agents"
+    location: "Returned to orchestrator"
+    schema:
+      build_flutter_status: "PASS | NEEDS_ATTENTION"
+      build_python_status: "PASS | NEEDS_ATTENTION"
+      combined_findings: "Array of any remaining issues"

@@ -1,0 +1,300 @@
+# Plan: Finalization Phases for CCI Guidance Updates
+# Purpose: Cleanup, Audit, and Documentation phases to complete CCI implementation
+#
+# Created: 2026-01-23
+# Agent: planner-cleaning
+# Plan Folder: 260123AE_agenticguidance
+
+name: "cci-guidance-finalization"
+worktree: "260123AE_agenticguidance"
+branch: "main"
+status: "completed"
+priority: "medium"
+completed_date: "2026-01-24"
+completion_note: "Zero JIT references in active guidance confirmed"
+
+context: |
+  This plan adds finalization phases for the CCI (CLI Context Injection) guidance updates.
+  The build/teach phases completed successfully:
+  - plan_live_agent_selfreview_cci.yml: Agent Self-Review with CCI Pattern (completed)
+  - plan_live_cci_rename_simplification.yml: CCI Rename and Simplification (completed)
+
+  Finalization phases ensure:
+  1. Cleanup: Verify all JIT references removed, no obsolete files
+  2. Audit: Validate guidance quality, detect reward hacking in self-review validation
+  3. Documentation: Ensure CCI architecture documentation is complete and accurate
+
+  Note: User Story Validation phase is not included because:
+  - This is guidance-focused work, not feature implementation
+  - The CCI pattern validation was done during the Validation Phase of the parent plans
+  - User stories in userstories/ are project-specific (MyAgents, RemoteAgents, MyAgentsFrontend)
+  - No user stories exist for AgenticGuidance module itself
+
+# =============================================================================
+# INPUTS
+# =============================================================================
+inputs:
+  - location: "docs/plans/live/260123AE_agenticguidance/live/plan_live_agent_selfreview_cci.yml"
+    description: "Completed plan for agent self-review CCI pattern"
+
+  - location: "docs/plans/live/260123AE_agenticguidance/live/plan_live_cci_rename_simplification.yml"
+    description: "Completed plan for JIT to CCI rename"
+
+  - location: "docs/CCI_CONTEXT_ARCHITECTURE.md"
+    description: "Primary CCI architecture documentation"
+
+  - location: "modules/AgenticGuidance/assets/guidelines/agent-self-review.yml"
+    description: "Updated self-review guideline with CCI pattern"
+
+  - location: "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml"
+    description: "Self-review criteria with cross-references"
+
+# =============================================================================
+# LOOP STRUCTURES
+# =============================================================================
+loop_structures:
+  - id: "loop_audit"
+    type: "audit-test-fix-loop"
+    applies_to_phase: "Audit Phase"
+    trigger: "After cleanup phase completes"
+    description: |
+      Mandatory audit loop to detect reward hacking in guidance validation.
+      Validates that CCI pattern was properly implemented and tested.
+    exit_criteria:
+      success: "Audit passes AND all guidance tests still pass after audit corrections"
+      max_iterations: 3
+      escalation: "Escalate audit failures to human for review"
+    participants:
+      - agent: "test-audit"
+        role: "Audits guidance quality and detects reward hacking"
+      - agent: "teacher-update-guidance"
+        role: "Fixes guidance issues identified by audit"
+
+  - id: "loop_cleanup"
+    type: "cleaner-dependency-loop"
+    applies_to_phase: "Cleanup Phase"
+    trigger: "Phase starts"
+    description: |
+      Verify JIT references are fully removed and no obsolete files remain.
+      Uses explorer to check for any remaining dependencies before cleanup.
+    exit_criteria:
+      success: "Zero JIT references in active guidance AND no obsolete files"
+      max_iterations: 2
+      escalation: "Report remaining files for user decision"
+    participants:
+      - agent: "explorer"
+        role: "Verify no JIT references or obsolete files"
+      - agent: "cleaner"
+        role: "Remove any identified obsolete files"
+
+# =============================================================================
+# PHASES AND TASKS
+# =============================================================================
+phases:
+  # ----------------------------------------
+  # PHASE 1: Cleanup
+  # ----------------------------------------
+  - name: "Cleanup Phase"
+    execution: sequential
+    description: "Verify all JIT references removed and handle file lifecycle"
+    loop: "cleaner-dependency-loop"
+    tasks:
+      - id: "clean_001"
+        name: "Verify Zero JIT References in Active Guidance"
+        description: |
+          Grep for remaining JIT or Just-In-Time references in:
+          - modules/AgenticGuidance/ (excluding completed/ folders)
+          - docs/*.md (excluding completed plans)
+
+          Expected result: Zero matches in active guidance files.
+          Historical references in completed/ are acceptable.
+        status: "pending"
+        agent: "explorer"
+        inputs:
+          - "modules/AgenticGuidance/"
+          - "docs/"
+        success_criteria:
+          - "Zero JIT references in active guidance"
+          - "Zero Just-In-Time references in active guidance"
+          - "Only completed/ folders may contain historical JIT references"
+
+      - id: "clean_002"
+        name: "Apply Copy-and-Sync Pattern to Completed Plans"
+        description: |
+          Create completed/ folder and sync completed plans:
+          1. Create docs/plans/live/260123AE_agenticguidance/completed/ folder
+          2. Copy plan_live_agent_selfreview_cci.yml to completed/
+          3. Copy plan_live_cci_rename_simplification.yml to completed/
+          4. Delete completed plans from live/ (all tasks are status: completed)
+          5. Create plan_completed.yml summary index in completed/
+        status: "pending"
+        agent: "orchestration-executor"
+        inputs:
+          - "docs/plans/live/260123AE_agenticguidance/live/"
+        success_criteria:
+          - "completed/ folder exists"
+          - "Completed plans copied to completed/"
+          - "Completed plans removed from live/"
+          - "plan_completed.yml index created"
+
+      - id: "clean_003"
+        name: "Archive Orchestration MMD File"
+        description: |
+          Move orchestration_cci_guidance.mmd to completed/ as it documents
+          the completed orchestration pattern. This reduces noise in live/
+          while preserving the orchestration reference.
+        status: "pending"
+        agent: "orchestration-executor"
+        inputs:
+          - "docs/plans/live/260123AE_agenticguidance/live/orchestration_cci_guidance.mmd"
+        success_criteria:
+          - "orchestration_cci_guidance.mmd moved to completed/"
+          - "No orphaned orchestration files in live/"
+
+  # ----------------------------------------
+  # PHASE 2: Audit
+  # ----------------------------------------
+  - name: "Audit Phase"
+    execution: sequential
+    description: "Validate guidance quality and detect reward hacking"
+    loop: "audit-test-fix-loop"
+    tasks:
+      - id: "audit_001"
+        name: "Audit CCI Guidance Quality"
+        description: |
+          Review the updated guidance files for:
+          - Completeness: Are all CCI patterns fully documented?
+          - Consistency: Do all files use CCI terminology consistently?
+          - Accuracy: Do file paths and cross-references resolve?
+          - Testability: Can the guidance be validated by agents?
+
+          Focus areas:
+          - agent-self-review.yml: CCI pattern section (lines 45-220)
+          - self-review-criteria.yml: Cross-references section
+          - CCI_CONTEXT_ARCHITECTURE.md: Self-review workflow section
+        status: "pending"
+        agent: "test-audit"
+        inputs:
+          - "modules/AgenticGuidance/assets/guidelines/agent-self-review.yml"
+          - "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml"
+          - "docs/CCI_CONTEXT_ARCHITECTURE.md"
+        success_criteria:
+          - "All CCI pattern documentation complete"
+          - "All file path references resolve"
+          - "No inconsistent terminology"
+          - "Guidance is testable by agent simulation"
+
+      - id: "audit_002"
+        name: "Detect Reward Hacking in Validation Phase"
+        description: |
+          Review the validation results from the parent plans to detect
+          reward hacking patterns:
+          - Did validation rely on hidden knowledge or pre-existing context?
+          - Were tests overly permissive in success criteria?
+          - Did agents validate against documentation or implementation?
+
+          Specific checks:
+          - val_001: Did CLI output verification actually read files?
+          - val_002: Did agent use blind-test approach?
+          - val_003: Were 3 agents actually tested or just documented?
+        status: "pending"
+        agent: "test-audit"
+        inputs:
+          - "docs/plans/live/260123AE_agenticguidance/live/plan_live_agent_selfreview_cci.yml"
+          - "docs/plans/live/260123AE_agenticguidance/live/plan_live_cci_rename_simplification.yml"
+        success_criteria:
+          - "Validation approach documented and traceable"
+          - "No reward hacking patterns detected"
+          - "Test evidence exists for each validation claim"
+
+  # ----------------------------------------
+  # PHASE 3: Documentation
+  # ----------------------------------------
+  - name: "Documentation Phase"
+    execution: sequential
+    description: "Ensure CCI documentation is complete and accurate"
+    tasks:
+      - id: "doc_001"
+        name: "Verify CCI Architecture Documentation Complete"
+        description: |
+          Ensure CCI_CONTEXT_ARCHITECTURE.md includes:
+          - CCI pattern overview and rationale
+          - Command chaining pattern (agentic <agent> -> --bootstrap)
+          - File path output pattern
+          - Self-review workflow with CCI
+          - Migration notes from JIT terminology
+        status: "pending"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "docs/CCI_CONTEXT_ARCHITECTURE.md"
+        success_criteria:
+          - "All CCI patterns documented"
+          - "Examples match actual CLI behavior"
+          - "Cross-references to related files work"
+
+      - id: "doc_002"
+        name: "Update Agent Process Files with CCI Bootstrap"
+        description: |
+          Verify all agent process.yml files have updated CCI bootstrap
+          instructions. This was part of the teach phase but documentation
+          phase should confirm it's complete across all 22+ agents.
+        status: "pending"
+        agent: "explorer"
+        inputs:
+          - "modules/AgenticGuidance/agents/*/*/process.yml"
+        success_criteria:
+          - "All process.yml files have CCI BOOTSTRAP section"
+          - "No JIT references remain in process.yml files"
+          - "Bootstrap instructions are consistent across agents"
+
+      - id: "doc_003"
+        name: "Create Plan Completion Summary"
+        description: |
+          Update or create plan_completed.yml in completed/ folder with:
+          - Summary of CCI guidance updates
+          - List of completed plans
+          - Key outcomes and deliverables
+          - References to updated files
+        status: "pending"
+        agent: "orchestration-executor"
+        inputs:
+          - "docs/plans/live/260123AE_agenticguidance/completed/"
+        success_criteria:
+          - "plan_completed.yml exists in completed/"
+          - "Summary includes all completed work"
+          - "References point to correct file locations"
+
+# =============================================================================
+# SUCCESS CRITERIA
+# =============================================================================
+success_criteria:
+  - "Zero JIT references in active guidance (cleanup verified)"
+  - "Completed plans archived using Copy-and-Sync pattern"
+  - "Guidance quality audit passes with no reward hacking detected"
+  - "CCI architecture documentation is complete and accurate"
+  - "All agent process.yml files have CCI bootstrap instructions"
+  - "Plan completion summary created in completed/"
+
+# =============================================================================
+# FILE LIFECYCLE NOTES
+# =============================================================================
+file_lifecycle:
+  description: |
+    This plan manages the transition from active to completed status.
+
+    FILES TO ARCHIVE (move to completed/):
+    - plan_live_agent_selfreview_cci.yml -> completed/
+    - plan_live_cci_rename_simplification.yml -> completed/
+    - orchestration_cci_guidance.mmd -> completed/
+
+    FILES TO CREATE:
+    - completed/plan_completed.yml (summary index)
+
+    FILES REMAINING IN live/:
+    - plan_live_finalization.yml (this file, until all phases complete)
+
+    FOLDER LIFECYCLE:
+    When all phases in this plan complete:
+    1. Move this file to completed/
+    2. Copy entire 260123AE_agenticguidance/ folder to docs/plans/completed/
+    3. Keep live/ folder in place for potential follow-on work

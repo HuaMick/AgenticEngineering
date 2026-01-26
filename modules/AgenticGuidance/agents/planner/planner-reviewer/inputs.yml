@@ -38,6 +38,25 @@ inputs:
 
   core_inputs:
     - type: file
+      path: "modules/AgenticGuidance/README.md"
+      description: "Module README with Implementation Status section - check before validating plans"
+      required: true
+      usage: |
+        Before approving any plan, check the Implementation Status section to verify:
+        - Agents referenced in the plan are listed under "Implemented"
+        - Infrastructure (like CICD) is not marked as "Not Migrated" or "Not Yet Implemented"
+        - Features/agents are not placeholder or deprecated
+
+    - type: file
+      path: "modules/AgenticGuidance/assets/definitions/agent-categories.yml"
+      description: "Agent taxonomy with implementation status notes"
+      required: true
+      usage: |
+        Cross-reference the IMPLEMENTATION STATUS NOTE section to verify:
+        - Agents are in the IMPLEMENTED list, not NOT YET IMPLEMENTED
+        - No references to deprecated agents without migration paths
+
+    - type: file
       path: "modules/AgenticGuidance/assets/definitions/plans.yml#required_fields"
       description: "Plan validation requirements"
       required: true
@@ -77,3 +96,25 @@ inputs:
   definitions:
     review_decision: "APPROVED | REJECTED | NEEDS_REVISION"
     review_output_format: "Output to review_*.yml, moves to analysis/ after processing"
+
+  infrastructure_validation:
+    description: "Validation rules for checking plan targets against implementation status"
+    rules:
+      - name: "verify_agent_implementation"
+        description: "Reject plans that target agents marked as NOT YET IMPLEMENTED"
+        check: "Cross-reference plan's agent references against agent-categories.yml IMPLEMENTATION STATUS NOTE"
+        reject_if: "Plan references agents in NOT YET IMPLEMENTED list"
+
+      - name: "verify_infrastructure_readiness"
+        description: "Reject plans that assume unimplemented infrastructure"
+        check: "Cross-reference plan's infrastructure needs against README.md Implementation Status"
+        reject_if: "Plan requires features marked as 'Not Migrated' or 'Not Yet Implemented'"
+        examples:
+          - "deploy-cicd tasks when CICD pipeline is not implemented"
+          - "deploy-packaging tasks when packaging infrastructure is missing"
+          - "explore-* agents when explore category is not migrated"
+
+      - name: "verify_no_placeholder_targets"
+        description: "Reject plans targeting placeholder or deprecated agents"
+        check: "Verify agents have actual guidance files, not just taxonomy entries"
+        reject_if: "Plan targets agents that exist only in taxonomy but lack process.yml/inputs.yml"

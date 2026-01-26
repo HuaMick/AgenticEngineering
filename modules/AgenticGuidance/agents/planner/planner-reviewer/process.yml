@@ -10,6 +10,19 @@ process:
   inputs:
     - location: "modules/AgenticGuidance/agents/planner/planner-reviewer/inputs.yml"
       description: "Core reviewer planner agent inputs and guidelines"
+      # Required runtime inputs (see inputs.yml#required_inputs):
+      #   - plan_folder_path: Path to plan folder to review
+      #   - target_project_path: Absolute path to target project root
+
+  outputs:
+    # FENCE: Output must match declared schema before marking complete
+    - name: "review_decision"
+      description: "APPROVED, REJECTED, or NEEDS_REVISION decision with feedback"
+      required_fields:
+        - "decision"
+        - "feedback"
+        - "checklist_results"
+      note: "Output written to review_*.yml, moves to analysis/ after processing"
 
   steps:
     - |
@@ -34,6 +47,29 @@ process:
 
     - "Review all inputs. Locate the plan files in the provided live plan folder (`live/`)."
     - |
+      INFRASTRUCTURE VERIFICATION (BLOCKING - must pass before structural review):
+
+      Read the Implementation Status sections in:
+      - modules/AgenticGuidance/README.md (Implementation Status section)
+      - modules/AgenticGuidance/assets/definitions/agent-categories.yml (IMPLEMENTATION STATUS NOTE)
+
+      For each agent/infrastructure referenced in the plan:
+      1. Verify the agent is listed as IMPLEMENTED (not "Not Migrated" or "NOT YET IMPLEMENTED")
+      2. Verify the infrastructure exists (e.g., don't approve CICD tasks if deploy-cicd is placeholder)
+      3. Verify referenced features are actually available
+
+      REJECT if plan includes:
+      - Tasks targeting `deploy-cicd` (CICD pipeline not yet implemented)
+      - Tasks targeting `deploy-packaging` (packaging infrastructure not implemented)
+      - Tasks targeting `cleaner/*` agents (cleaner category not migrated)
+      - Tasks targeting `explore/*` agents (explore category not migrated)
+      - Tasks targeting `documentation/*` agents (documentation category not migrated)
+      - Tasks targeting `test-flutter-*` agents (Flutter test agents not implemented)
+      - Any agent that lacks actual guidance files (process.yml, inputs.yml)
+
+      Flag plans that assume infrastructure marked as "Not Implemented" in the README.
+
+    - |
       Verify plan structure using checklists from:
       modules/AgenticGuidance/assets/definitions/planner-reviewer-checklists.yml
 
@@ -44,9 +80,9 @@ process:
       4. checklists.task_structure - Validate task definitions
       5. checklists.pattern_alignment - Validate established patterns
 
-      Apply checklists.context_minimisation:
-      - Validate inputs follow context minimisation principles
-      - Check for inline definitions >100 tokens that exist in assets
+      Apply checklists.context_quality:
+      - Validate inputs follow context quality principles
+      - Check for inline definitions that duplicate shared assets
       - Verify no duplicate definitions across files
       - Confirm layer references use transitive loading
 
@@ -56,6 +92,7 @@ process:
       - fences.file_placement - All plans
       - fences.codebase_verification - Spawn explore agents to verify
       - fences.self_review_validation - ALL plans (new SSR-004)
+      - fences.infrastructure_implementation - ALL plans (verify targets implemented infrastructure)
     - |
       Decision:
       - APPROVE: All checklist items pass AND all fences pass, plan ready for execution.
@@ -78,3 +115,6 @@ process:
     - "Reject plans with structural issues, missing critical information, OR misplaced files in live/."
     - "Ensure context routing is specific (file-level or directory-level references are both acceptable)."
     - "Validate that all mandatory loops (like audit-test-fix) are included where required."
+    - "Reject plans that reference unimplemented agents or infrastructure (check README Implementation Status)."
+    - "Reject plans that assume CICD infrastructure until deploy-cicd is fully implemented."
+    - "Flag plans targeting placeholder agents that exist only in taxonomy but lack guidance files."

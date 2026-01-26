@@ -163,24 +163,119 @@ AgenticGuidance uses two path resolution strategies:
 
 ## Implementation Status
 
-**Implemented**:
-- 6 agent categories with 23 active sub-agents (plus 2 deprecated)
-- 35 definition files
-- 44 guideline files
-- 11 shared input configurations
-- 4 entrypoints
-- Example templates for all major workflows
+This section is the **source of truth** for agent implementation status. Plan-reviewer agents should check this before planning work. Agents should not create tasks for unimplemented infrastructure.
 
-**Recent Additions**:
-- RLM integration for trajectory analysis (rlm-patterns.yml, rlm-integration.yml)
-- Friction detection via LangSmith traces (orchestration-friction, teacher-trace-diagnostics)
-- Plan folder compliance auditing (planner-audit)
-- Trace diagnostics definitions and examples
+### Status Legend
+- Implemented: Agent guidance complete AND functional infrastructure exists
+- Guidance Only: Agent guidance files exist but underlying infrastructure NOT yet built
+- In Progress: Currently being worked on
+- Not Implemented: No guidance or infrastructure
 
-**Not Migrated** (may be deprecated):
-- `cleaner` category (cleanup logic exists in planner-cleaning)
-- `explore` category
-- `documentation` category
+---
+
+### Orchestration Agents
+
+| Agent | Status | Notes |
+|-------|--------|-------|
+| orchestration-planning | Implemented | Human-in-the-loop plan creation, MMD generation |
+| orchestration-executor | Implemented | Dynamic agent routing from Plan-MMD metadata |
+| orchestration-friction | Implemented | LangSmith trace friction analysis workflow |
+| ~~orchestration-build~~ | Deprecated | Replaced by orchestration-executor |
+| ~~orchestration-guidance~~ | Deprecated | Replaced by orchestration-executor |
+
+### Planner Agents
+
+| Agent | Status | Notes |
+|-------|--------|-------|
+| planner-build | Implemented | Implementation planning for code changes |
+| planner-test | Implemented | Test planning with execution loops |
+| planner-cleaning | Implemented | Cleanup and audit planning |
+| planner-guidance | Implemented | Guidance improvement planning |
+| planner-guidance-testing | Implemented | Guidance completeness testing |
+| planner-reviewer | Implemented | Plan review and approval |
+| planner-audit | Implemented | Plan folder compliance auditing |
+
+### Test Agents
+
+| Agent | Status | Notes |
+|-------|--------|-------|
+| test-runner | Implemented | Execute Python tests and report results |
+| test-audit | Implemented | Review test quality and detect reward hacking |
+| test-final-output | Implemented | Validate final outputs and execution data |
+| test-guidance-simulator | Implemented | Execute walkthrough-based guidance validation |
+| test-builder | Implemented | Build test implementations |
+| test-service | Implemented | Service-level testing |
+| test-user-simulator | Implemented | User interaction simulation |
+
+### Teacher Agents
+
+| Agent | Status | Notes |
+|-------|--------|-------|
+| teacher-update-guidance | Implemented | Improve process.yml and inputs.yml files |
+| teacher-update-assets | Implemented | Create/update shared assets |
+| teacher-trace-diagnostics | Implemented | Analyze LangSmith traces for friction patterns |
+
+### Build Agents
+
+| Agent | Status | Notes |
+|-------|--------|-------|
+| build-python | Implemented | Python-specific build for backend/CLI |
+| build-flutter | Implemented | Flutter-specific build for mobile/web |
+
+### Deploy Agents
+
+| Agent | Status | Notes |
+|-------|--------|-------|
+| deploy-worktree | Implemented | Git worktree and VS Code workspace management |
+| deploy-cicd | **Guidance Only** | CI/CD pipeline NOT yet set up for this module. Agent guidance exists for validating CI/CD files, but no cloudbuild.yaml, Dockerfile.test, or GitHub Actions workflow exists for AgenticGuidance. CI/CD infrastructure only exists in legacy modules. |
+
+---
+
+### Infrastructure Status
+
+| Infrastructure | Status | Notes |
+|----------------|--------|-------|
+| Agent Guidance Files | Implemented | 24 active agents with manifest.yml, inputs.yml, process.yml |
+| Definition Files | Implemented | 35+ definition files in assets/definitions/ |
+| Guideline Files | Implemented | 44+ guideline files in assets/guidelines/ |
+| Shared Input Configs | Implemented | 11 shared input configurations |
+| Entrypoints | Implemented | 4 top-level workflow entrypoints |
+| Example Templates | Implemented | Reference implementations for all workflows |
+| CI/CD Pipeline | **Not Implemented** | No automated testing pipeline for AgenticGuidance module |
+| GitHub Actions | **Not Implemented** | No workflow files for this module |
+
+### Categories Not Migrated
+
+These categories have some infrastructure (definitions, guidelines) but no dedicated agent implementations. Current workarounds are sufficient:
+
+| Category | Status | Workaround |
+|----------|--------|------------|
+| cleaner | Not Migrated | `planner-cleaning` handles cleanup planning |
+| explore | Not Migrated | Planner agents handle ad-hoc discovery |
+| documentation | Not Migrated | `teacher-update-assets` handles doc updates |
+
+---
+
+## Progress Tracking
+
+This README serves as the **overall progress tracker** for the AgenticGuidance module:
+
+1. **Source of Truth**: This Implementation Status section documents what is implemented, in progress, and NOT yet implemented.
+
+2. **Planning Guidance**:
+   - Plan-reviewer agents MUST check this section before approving plans
+   - Do NOT create tasks that depend on unimplemented infrastructure (e.g., CI/CD validation tasks when no pipeline exists)
+   - Mark items as "In Progress" when work begins
+
+3. **Status Updates**:
+   - Update agent status when implementation completes
+   - Add notes explaining blockers or dependencies
+   - Move completed items from "In Progress" to "Implemented"
+
+4. **Key Gaps to Address**:
+   - `deploy-cicd`: Infrastructure needs to be built (cloudbuild.yaml, GitHub Actions)
+   - CI/CD Pipeline: No automated testing for guidance changes
+   - Integration testing for agent workflows
 
 ## Relationship to AgenticEngineering
 

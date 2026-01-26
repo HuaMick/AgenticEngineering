@@ -1,0 +1,357 @@
+# Orchestration Agents Guidance Remediation Plan
+# Purpose: Remediate guidance gaps in orchestration-executor, orchestration-friction, orchestration-planning
+# Created: 2026-01-24
+# Entrypoint: _plan_teach.yml
+
+name: "orchestration-agents-guidance-remediation"
+status: "completed"
+priority: "high"
+completed_date: "2026-01-24"
+
+worktree: "/home/code/AgenticEngineering"
+plan_folder: "docs/plans/live/260123AE_agenticguidance/"
+
+# ========================================
+# CONTEXT
+# ========================================
+context: |
+  Three orchestration agents have identified guidance gaps that need remediation:
+
+  1. orchestration-executor:
+     - Incomplete cci_cli_context input definition (missing formal input structure)
+     - Missing plan YAML schema reference (only has MMD schema)
+
+  2. orchestration-friction:
+     - Missing formal input definitions (required_inputs nested inconsistently)
+     - Input structure differs from sibling orchestration agents
+
+  3. orchestration-planning:
+     - Missing planner-audit in manifest spawns fence
+     - planner-audit is referenced in process.mmd but not declared in manifest.yml
+
+  These gaps were identified during the _plan_teach process for AgenticGuidance.
+  Remediation follows the guidance process requirements in:
+  modules/AgenticGuidance/assets/definitions/guidance-process-requirements.yml
+
+# ========================================
+# INPUTS
+# ========================================
+inputs:
+  - location: "modules/AgenticGuidance/agents/orchestration/orchestration-executor/manifest.yml"
+    description: "Executor manifest - needs verification of spawns"
+  - location: "modules/AgenticGuidance/agents/orchestration/orchestration-executor/inputs.yml"
+    description: "Executor inputs - needs cci_cli_context completion and plan YAML schema reference"
+  - location: "modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml"
+    description: "Executor process - reference for input requirements"
+  - location: "modules/AgenticGuidance/agents/orchestration/orchestration-friction/manifest.yml"
+    description: "Friction manifest - needs input location reference format check"
+  - location: "modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml"
+    description: "Friction inputs - needs formal required_inputs structure"
+  - location: "modules/AgenticGuidance/agents/orchestration/orchestration-planning/manifest.yml"
+    description: "Planning manifest - missing planner-audit in spawns fence"
+  - location: "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml"
+    description: "Planning inputs - reference for consistent structure"
+  - location: "modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/live/plan_example.yml"
+    description: "Plan YAML schema example for executor reference"
+
+# ========================================
+# LOOP STRUCTURES
+# ========================================
+loop_structures:
+  - id: "loop_teach_validation"
+    type: "guidance-self-review-loop"
+    applies_to_phase: "Teach Phase"
+    trigger: "After guidance updates complete"
+    description: |
+      Self-review loop for guidance changes. Each modified agent file
+      undergoes self-review to validate path resolution, consistency,
+      and completeness before approval.
+    exit_criteria:
+      success: "All guidance files pass self-review AND path resolution validation"
+      max_iterations: 3
+      escalation: "Escalate to human reviewer with specific gaps identified"
+    participants:
+      - agent: "teacher-update-guidance"
+        role: "Implements guidance updates"
+      - agent: "test-guidance-simulator"
+        role: "Validates guidance through agent self-review"
+
+# ========================================
+# PHASES AND TASKS
+# ========================================
+phases:
+  # ----------------------------------------
+  # PHASE 1: TEACH (Guidance Updates)
+  # ----------------------------------------
+  - name: "Teach Phase"
+    execution: sequential
+    description: "Update orchestration agent guidance files to address identified gaps"
+    agent_category: "teacher"
+    success_criteria:
+      - "orchestration-executor inputs.yml has complete cci_cli_context definition"
+      - "orchestration-executor inputs.yml references plan YAML schema example"
+      - "orchestration-friction inputs.yml has consistent required_inputs structure"
+      - "orchestration-planning manifest.yml includes planner-audit in spawns fence"
+
+    tasks:
+      # ----------------------------------------
+      # Task 1.1: Fix orchestration-executor cci_cli_context
+      # ----------------------------------------
+      - id: "teach_001"
+        name: "Complete orchestration-executor cci_cli_context input definition"
+        description: |
+          The cci_cli_context section in orchestration-executor/inputs.yml lacks formal
+          input definition structure. Add name, type, required, description fields to
+          make it consistent with other input definitions.
+        status: "pending"
+        priority: "high"
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        context:
+          target_file: "modules/AgenticGuidance/agents/orchestration/orchestration-executor/inputs.yml"
+          current_state: |
+            cci_cli_context has note, bootstrap_files_location, key_commands but lacks
+            formal input definition fields (name, type, required, description)
+          required_changes:
+            - "Add formal input definition structure for cci_cli_context reference"
+            - "Include description explaining CCI bootstrap purpose for spawned agents"
+            - "Ensure bootstrap_files_location and key_commands are properly documented"
+        acceptance_criteria:
+          - "cci_cli_context section follows input definition conventions"
+          - "Documentation explains purpose of CCI bootstrap for spawned agents"
+        files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-executor/inputs.yml"
+
+      # ----------------------------------------
+      # Task 1.2: Add plan YAML schema reference to orchestration-executor
+      # ----------------------------------------
+      - id: "teach_002"
+        name: "Add plan YAML schema reference to orchestration-executor inputs"
+        description: |
+          orchestration-executor has plan-mmd-schema.yml reference but lacks
+          plan YAML schema reference. Add reference to plan example for
+          understanding plan YAML structure during execution.
+        status: "pending"
+        priority: "high"
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        context:
+          target_file: "modules/AgenticGuidance/agents/orchestration/orchestration-executor/inputs.yml"
+          current_state: "Has MMD schema reference but no plan YAML schema/example reference"
+          required_changes:
+            - "Add reference to modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/live/plan_example.yml"
+            - "Include description: Plan YAML structure reference for phase and task parsing"
+        acceptance_criteria:
+          - "Plan YAML example is referenced in inputs"
+          - "Description explains usage for parsing plan structure"
+        files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-executor/inputs.yml"
+
+      # ----------------------------------------
+      # Task 1.3: Fix orchestration-friction required_inputs structure
+      # ----------------------------------------
+      - id: "teach_003"
+        name: "Restructure orchestration-friction required_inputs"
+        description: |
+          orchestration-friction/inputs.yml has required_inputs nested under inputs,
+          which is inconsistent with orchestration-executor and orchestration-planning
+          that have required_inputs at the top level. Restructure for consistency.
+        status: "pending"
+        priority: "high"
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        context:
+          target_file: "modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml"
+          current_state: |
+            required_inputs is nested under inputs block, inconsistent with
+            sibling orchestration agents (executor, planning)
+          required_changes:
+            - "Move required_inputs to top level (after version, before inputs)"
+            - "Ensure each required input has: name, type, description, required, example"
+            - "Keep session_analysis, dependencies, output_format under inputs section"
+        acceptance_criteria:
+          - "required_inputs is at top level, not nested under inputs"
+          - "Structure matches orchestration-executor and orchestration-planning"
+        files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml"
+
+      # ----------------------------------------
+      # Task 1.4: Add planner-audit to orchestration-planning spawns
+      # ----------------------------------------
+      - id: "teach_004"
+        name: "Add planner-audit to orchestration-planning manifest spawns fence"
+        description: |
+          orchestration-planning/process.mmd references planner-audit agent for
+          audit phase planning, but manifest.yml spawns fence does not include it.
+          This violates the spawns fence constraint.
+        status: "pending"
+        priority: "high"
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        context:
+          target_file: "modules/AgenticGuidance/agents/orchestration/orchestration-planning/manifest.yml"
+          current_state: |
+            spawns fence lists: deploy-worktree, planner-guidance, planner-build,
+            planner-test, planner-cleaning, planner-reviewer
+            Missing: planner-audit (referenced in process.mmd lines 157, 205, 207, 210, 256)
+          required_changes:
+            - "Add planner-audit to spawns list"
+            - "Include purpose: Create audit phase plans for plan folder compliance"
+            - "Include when: Audit phase required"
+        acceptance_criteria:
+          - "planner-audit appears in manifest.yml spawns fence"
+          - "Purpose and when fields are documented"
+          - "Spawns fence matches all agents referenced in process.mmd"
+        files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/manifest.yml"
+
+  # ----------------------------------------
+  # PHASE 2: TEST (Agent Self-Review Validation)
+  # ----------------------------------------
+  - name: "Test Phase"
+    execution: sequential
+    description: "Validate guidance updates through agent self-review"
+    agent_category: "test"
+    success_criteria:
+      - "All three orchestration agents pass self-review validation"
+      - "Path resolution validates for all input references"
+      - "Consistency checks pass between process and inputs files"
+    dependencies:
+      - "Teach Phase"
+
+    tasks:
+      # ----------------------------------------
+      # Task 2.1: Self-review orchestration-executor
+      # ----------------------------------------
+      - id: "test_001"
+        name: "Agent self-review: orchestration-executor"
+        description: |
+          Run agent self-review for orchestration-executor to validate:
+          - All input paths resolve correctly
+          - cci_cli_context definition is complete
+          - Plan YAML schema reference exists
+        status: "pending"
+        priority: "high"
+        agent_type: "test-guidance-simulator"
+        operation: "VALIDATE"
+        loop: "guidance-self-review-loop"
+        context:
+          target_agent: "orchestration-executor"
+          validation_scope:
+            - "Path resolution for all inputs"
+            - "cci_cli_context completeness"
+            - "Plan schema references (MMD and YAML)"
+            - "Spawns fence alignment with capabilities"
+        acceptance_criteria:
+          - "All input paths resolve to existing files"
+          - "cci_cli_context has formal definition structure"
+          - "Both MMD and YAML schema references present"
+        files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-executor/manifest.yml"
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-executor/inputs.yml"
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml"
+
+      # ----------------------------------------
+      # Task 2.2: Self-review orchestration-friction
+      # ----------------------------------------
+      - id: "test_002"
+        name: "Agent self-review: orchestration-friction"
+        description: |
+          Run agent self-review for orchestration-friction to validate:
+          - required_inputs structure matches sibling agents
+          - All input paths resolve correctly
+          - Friction patterns reference resolves
+        status: "pending"
+        priority: "high"
+        agent_type: "test-guidance-simulator"
+        operation: "VALIDATE"
+        loop: "guidance-self-review-loop"
+        context:
+          target_agent: "orchestration-friction"
+          validation_scope:
+            - "required_inputs at top level (not nested)"
+            - "Path resolution for friction_patterns_definition"
+            - "Structural consistency with orchestration-executor/planning"
+        acceptance_criteria:
+          - "required_inputs structure matches sibling orchestration agents"
+          - "All referenced paths exist"
+          - "No structural inconsistencies"
+        files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-friction/manifest.yml"
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml"
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-friction/process.mmd"
+
+      # ----------------------------------------
+      # Task 2.3: Self-review orchestration-planning
+      # ----------------------------------------
+      - id: "test_003"
+        name: "Agent self-review: orchestration-planning"
+        description: |
+          Run agent self-review for orchestration-planning to validate:
+          - planner-audit present in spawns fence
+          - Spawns fence matches process.mmd AGENT_MAPPING
+          - All planner agent references in manifest
+        status: "pending"
+        priority: "high"
+        agent_type: "test-guidance-simulator"
+        operation: "VALIDATE"
+        loop: "guidance-self-review-loop"
+        context:
+          target_agent: "orchestration-planning"
+          validation_scope:
+            - "planner-audit in spawns fence"
+            - "All AGENT_MAPPING targets in spawns"
+            - "Input path resolution"
+        acceptance_criteria:
+          - "planner-audit appears in spawns fence"
+          - "All agents in process.mmd AGENT_MAPPING are in spawns"
+          - "Spawns fence is complete for all referenced agents"
+        files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/manifest.yml"
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml"
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+
+# ========================================
+# SUCCESS CRITERIA
+# ========================================
+success_criteria:
+  user_validation:
+    - "Orchestration agents have consistent input definition structures"
+    - "All spawns fences accurately reflect referenced agents"
+    - "No broken path references in agent inputs"
+
+  technical_validation:
+    - "orchestration-executor cci_cli_context has formal input structure"
+    - "orchestration-executor references both MMD and YAML plan schemas"
+    - "orchestration-friction required_inputs at top level, not nested"
+    - "orchestration-planning spawns includes planner-audit"
+    - "All three agents pass self-review validation"
+
+# ========================================
+# OUTPUT DEFINITIONS
+# ========================================
+outputs:
+  - name: "Updated orchestration-executor inputs.yml"
+    path: "modules/AgenticGuidance/agents/orchestration/orchestration-executor/inputs.yml"
+    changes:
+      - "Complete cci_cli_context input definition"
+      - "Add plan YAML schema reference"
+
+  - name: "Updated orchestration-friction inputs.yml"
+    path: "modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml"
+    changes:
+      - "Restructured required_inputs to top level"
+
+  - name: "Updated orchestration-planning manifest.yml"
+    path: "modules/AgenticGuidance/agents/orchestration/orchestration-planning/manifest.yml"
+    changes:
+      - "Added planner-audit to spawns fence"
+
+# ========================================
+# NOTES
+# ========================================
+notes:
+  - "This remediation addresses structural consistency across orchestration agent family"
+  - "All changes are guidance updates (teacher agents), not code changes"
+  - "Self-review validation ensures changes don't introduce new gaps"
+  - "Pattern: Fix -> Validate -> Document (FVD)"

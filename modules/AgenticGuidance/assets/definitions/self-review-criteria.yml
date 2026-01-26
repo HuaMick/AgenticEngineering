@@ -122,11 +122,11 @@ needs_attention_triggers:
       detection: "Search for deprecated markers in referenced patterns"
       action: "Migrate to current pattern or add migration plan"
 
-    - id: "NAT-006"
-      name: "Context Bloat"
-      condition: ">30% content reduction potential identified"
-      detection: "Compare current vs minimal version token counts"
-      action: "Reduce context by removing redundancy, using references"
+    # NAT-006 (Context Bloat) REMOVED
+    # Rationale: Token limits are arbitrary and caused churning (0.4% over limit
+    # triggering full remediation cycles). Agents should not be tied to specific
+    # token numbers. Context quality is better measured by relevance and clarity
+    # rather than arbitrary size thresholds.
 
 # =============================================================================
 # QUANTITATIVE THRESHOLDS
@@ -139,11 +139,9 @@ quantitative_thresholds:
       Inline definitions >100 tokens should be extracted to shared assets.
       Definitions >50 tokens that match asset content are duplicates.
 
-  context_reduction:
-    target_percent: 30
-    description: |
-      If context can be reduced by >30%, the agent is bloated and needs attention.
-      This indicates redundant content, excessive inline definitions, or missing references.
+  # context_reduction REMOVED
+  # Rationale: Percentage-based reduction thresholds are arbitrary and caused
+  # churning when minor overages triggered full remediation cycles.
 
   redundancy_detection:
     trigger_locations: 2
@@ -157,12 +155,10 @@ quantitative_thresholds:
       Layer references should not exceed 3 levels of indirection.
       Deeper nesting indicates over-complicated structure.
 
-  inputs_yml_size:
-    max_recommended_tokens: 2000
-    warning_threshold_tokens: 1500
-    description: |
-      inputs.yml should typically be <2000 tokens. Files >1500 tokens
-      should be reviewed for potential extraction opportunities.
+  # inputs_yml_size REMOVED
+  # Rationale: Arbitrary token limits caused unnecessary churn when agents were
+  # 0.4% over threshold. Context quality should be evaluated based on relevance
+  # and clarity, not arbitrary token counts.
 
 # =============================================================================
 # AUTOMATED CHECK PROCEDURES
@@ -171,7 +167,7 @@ automated_checks:
   token_estimation:
     command: "wc -w {file} | awk '{print int($1 * 1.3)}'"
     description: "Estimate token count using words * 1.3 approximation"
-    threshold: "inputs.yml should be <2000 tokens"
+    threshold: "Estimate relative size for very large files"
     usage: |
       # Example: Estimate tokens in inputs.yml
       wc -w modules/AgenticGuidance/agents/test/test-audit/inputs.yml | awk '{print int($1 * 1.3)}'
@@ -242,27 +238,10 @@ examples:
         appropriate for extraction to shared assets.
       lesson: "Not all inline content is bad - agent-specific context belongs in inputs.yml."
 
-    - id: "EX-003"
-      title: "High Context Reduction Potential"
-      agent_state: |
-        inputs.yml is 3000 tokens. Analysis shows it could be reduced to 2000
-        tokens by removing redundant descriptions and using layer references.
-      decision: "NEEDS_ATTENTION"
-      rationale: |
-        33% reduction potential exceeds 30% threshold. This indicates context
-        bloat that consumes unnecessary tokens and may confuse the agent.
-      lesson: "Context bloat caused 25% of FF-003 flags."
-
-    - id: "EX-004"
-      title: "Acceptable Context Size"
-      agent_state: |
-        inputs.yml is 1800 tokens with no identified redundancy. All content
-        is either agent-specific or properly referenced from shared assets.
-      decision: "PASS"
-      rationale: |
-        Within 2000-token recommended limit. No reduction opportunities means
-        content is appropriately structured.
-      lesson: "Size alone doesn't determine bloat - reduction potential matters."
+    # EX-003 and EX-004 examples about token limits/context bloat REMOVED
+    # Rationale: Token-based thresholds are arbitrary and caused churning when
+    # agents were slightly over limit. Context quality should be measured by
+    # relevance and clarity, not token counts.
 
     - id: "EX-005"
       title: "Single Broken Reference"

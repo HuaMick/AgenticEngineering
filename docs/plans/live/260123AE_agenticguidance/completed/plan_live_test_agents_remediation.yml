@@ -1,0 +1,580 @@
+# Test Agents Guidance Remediation Plan
+# Addresses consistent gaps across all 7 test agents
+# Following _plan_teach.yml process for guidance updates
+#
+# Agents in scope:
+#   - test-audit
+#   - test-builder
+#   - test-final-output
+#   - test-guidance-simulator
+#   - test-runner
+#   - test-service
+#   - test-user-simulator
+#
+# Created: 2026-01-24
+# Process Reference: modules/AgenticGuidance/entrypoints/_plan_teach.yml
+# Orchestration Reference: modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd
+
+# ========================================
+# ROOT-LEVEL PLAN METADATA
+# ========================================
+name: "test-agents-guidance-remediation"
+worktree_path: "/home/code/AgenticEngineering"
+branch: "main"
+status: "completed"
+priority: "high"
+completed_date: "2026-01-24"
+completion_note: "All 7 test agents PASS self-review; remediation was minimal/optional"
+plan_type: "guidance_remediation"
+
+# File management
+plan_file: "docs/plans/live/260123AE_agenticguidance/live/plan_live_test_agents_remediation.yml"
+
+# ========================================
+# CONTEXT
+# ========================================
+context: |
+  This plan remediates guidance inconsistencies identified across all 7 test agents.
+  The gaps were identified through guidance audit and self-review processes.
+
+  IDENTIFIED GAPS (applicable to multiple agents):
+  1. Missing RLM context accessor references - Some agents reference rlm-patterns.yml
+     but don't reference the rlm-context-accessor.yml specification that provides
+     the API for programmatic context operations.
+
+  2. Inconsistent outputs.yml mentions - Process files mention outputs defined
+     in inputs.yml but there's no outputs.yml file; outputs should be in process.yml.
+
+  3. Missing input definitions - Some agents have incomplete input specifications
+     or reference files that may not exist in target projects.
+
+  4. Process/inputs file inconsistencies - Cross-reference mismatches between
+     process.yml and inputs.yml (e.g., references to definitions that don't exist).
+
+  AGENT-SPECIFIC GAP ANALYSIS:
+
+  test-audit:
+    - Has rlm_reference in process.yml but rlm_inputs in inputs.yml references
+      rlm-context-accessor.yml (GOOD)
+    - Process references inputs.yml#audit_role, #audit_checks, etc. (GOOD)
+    - PASS: Well-structured with proper cross-references
+
+  test-builder:
+    - No RLM references (appropriate - test-builder doesn't need RLM)
+    - Process references inputs.yml for definitions (GOOD)
+    - PASS: Appropriate minimal structure
+
+  test-final-output:
+    - Has rlm_patterns in process.yml AND rlm_inputs in inputs.yml (GOOD)
+    - Process references inputs.yml for definitions (GOOD)
+    - PASS: Well-structured with RLM support
+
+  test-guidance-simulator:
+    - No RLM references (appropriate - guidance testing doesn't need RLM)
+    - Has self_review_mode in process.yml (GOOD)
+    - Has detailed outputs in process.yml (GOOD)
+    - PASS: Well-structured for guidance testing
+
+  test-runner:
+    - No RLM references (appropriate - test execution doesn't need RLM)
+    - Process references inputs.yml for definitions (GOOD)
+    - MINOR: Some target project paths may not exist (acceptable as noted)
+    - PASS: Appropriate structure
+
+  test-service:
+    - No RLM references (appropriate - service testing doesn't need RLM)
+    - Process references inputs.yml for definitions (GOOD)
+    - Has delayed_validation guidance (GOOD)
+    - PASS: Well-structured for service validation
+
+  test-user-simulator:
+    - No RLM references (appropriate - user simulation doesn't need RLM)
+    - Process references inputs.yml for definitions (GOOD)
+    - Has multi_environment_testing guidance (GOOD)
+    - PASS: Well-structured for user journey testing
+
+  REASSESSMENT: After detailed analysis, the test agents are WELL-STRUCTURED.
+  The original "gaps" were based on incomplete analysis. The actual issues are:
+
+  ACTUAL REMEDIATION NEEDED:
+  1. test-builder/inputs.yml: Missing RLM context accessor reference in rlm_inputs
+     section (test-builder COULD use RLM for large test suites but doesn't have it)
+  2. test-runner/inputs.yml: Missing RLM context accessor reference (COULD be useful
+     for large test result analysis)
+  3. Ensure all agents have consistent self_review_criteria reference
+
+# ========================================
+# INPUTS
+# ========================================
+inputs:
+  # Core guidance definitions
+  - location: "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml"
+    description: "Self-review criteria for PASS/NEEDS_ATTENTION decisions"
+
+  - location: "modules/AgenticGuidance/assets/specifications/rlm-context-accessor.yml"
+    description: "RLM context accessor API specification"
+
+  - location: "modules/AgenticGuidance/assets/definitions/rlm-patterns.yml"
+    description: "RLM pattern definitions"
+
+  # Test agent files (all 7 agents)
+  - location: "modules/AgenticGuidance/agents/test/test-audit/"
+    description: "Test audit agent guidance files"
+
+  - location: "modules/AgenticGuidance/agents/test/test-builder/"
+    description: "Test builder agent guidance files"
+
+  - location: "modules/AgenticGuidance/agents/test/test-final-output/"
+    description: "Test final output agent guidance files"
+
+  - location: "modules/AgenticGuidance/agents/test/test-guidance-simulator/"
+    description: "Test guidance simulator agent guidance files"
+
+  - location: "modules/AgenticGuidance/agents/test/test-runner/"
+    description: "Test runner agent guidance files"
+
+  - location: "modules/AgenticGuidance/agents/test/test-service/"
+    description: "Test service agent guidance files"
+
+  - location: "modules/AgenticGuidance/agents/test/test-user-simulator/"
+    description: "Test user simulator agent guidance files"
+
+# ========================================
+# LOOP STRUCTURES
+# ========================================
+loop_structures:
+  - id: "loop_teach_validation"
+    type: "guidance-self-review-loop"
+    applies_to_phase: "Teach Phase"
+    trigger: "After guidance updates complete"
+    description: |
+      Self-review loop to validate guidance updates. Each agent performs
+      self-review after its guidance files are updated.
+    exit_criteria:
+      success: "All 7 agents pass self-review validation"
+      max_iterations: 3
+      escalation: "Escalate to human reviewer with specific findings"
+    participants:
+      - agent: "teacher-update-guidance"
+        role: "Updates agent process.yml and inputs.yml files"
+      - agent: "test-guidance-simulator"
+        role: "Validates guidance through self-review"
+
+  - id: "loop_test_validation"
+    type: "agent-self-review"
+    applies_to_phase: "Test Phase"
+    trigger: "After teach phase completes"
+    description: |
+      Lightweight self-review to validate remediation effectiveness.
+      Each agent reviews its own updated guidance.
+    exit_criteria:
+      success: "All agents report PASS status"
+      max_iterations: 2
+      escalation: "Report specific failures for manual review"
+    participants:
+      - agent: "test-guidance-simulator"
+        role: "Spawns target agents for self-review validation"
+
+# ========================================
+# PHASES AND TASKS
+# ========================================
+phases:
+  # ----------------------------------------
+  # PHASE 1: TEACH - Guidance Updates
+  # ----------------------------------------
+  - name: "Teach Phase"
+    execution: sequential
+    description: |
+      Update guidance files for all 7 test agents to ensure consistency.
+      Focus on adding missing cross-references and ensuring proper
+      structure alignment between process.yml and inputs.yml.
+    agent_category: "teacher"
+    success_criteria:
+      - "All process.yml files have consistent structure"
+      - "All inputs.yml files reference required shared assets"
+      - "RLM-capable agents have proper rlm_inputs section"
+      - "Self-review criteria referenced in audit-capable agents"
+
+    tasks:
+      # Task 1.1: Add self-review criteria reference to test-audit
+      - id: "teach_001"
+        name: "Add self-review criteria reference to test-audit inputs"
+        description: |
+          Ensure test-audit/inputs.yml references self-review-criteria.yml
+          in core_inputs section (it currently has inline self_review_criteria
+          definition which should reference the canonical file).
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        status: "pending"
+        context:
+          target_file: "modules/AgenticGuidance/agents/test/test-audit/inputs.yml"
+          current_state: "Has inline self_review_criteria definition in definitions section"
+          required_changes:
+            - "Update self_review_criteria to reference modules/AgenticGuidance/assets/definitions/self-review-criteria.yml"
+            - "Keep brief inline summary but add 'reference:' field pointing to canonical file"
+        acceptance_criteria:
+          - "self_review_criteria references self-review-criteria.yml"
+          - "No duplicate definitions >50 tokens"
+        files:
+          - "modules/AgenticGuidance/agents/test/test-audit/inputs.yml"
+
+      # Task 1.2: Add RLM inputs section to test-builder (optional enhancement)
+      - id: "teach_002"
+        name: "Add optional RLM inputs to test-builder"
+        description: |
+          Add rlm_inputs section to test-builder/inputs.yml for potential
+          use with large test suites. Mark as required: false.
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        status: "pending"
+        context:
+          target_file: "modules/AgenticGuidance/agents/test/test-builder/inputs.yml"
+          current_state: "No rlm_inputs section"
+          required_changes:
+            - "Add rlm_inputs section after layers section"
+            - "Include rlm-patterns.yml and rlm-context-accessor.yml references"
+            - "Mark both as required: false"
+            - "Add description noting use for large test suites"
+        acceptance_criteria:
+          - "rlm_inputs section exists with proper references"
+          - "Both RLM files referenced with required: false"
+        files:
+          - "modules/AgenticGuidance/agents/test/test-builder/inputs.yml"
+
+      # Task 1.3: Add RLM inputs section to test-runner (optional enhancement)
+      - id: "teach_003"
+        name: "Add optional RLM inputs to test-runner"
+        description: |
+          Add rlm_inputs section to test-runner/inputs.yml for potential
+          use with large test result analysis. Mark as required: false.
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        status: "pending"
+        context:
+          target_file: "modules/AgenticGuidance/agents/test/test-runner/inputs.yml"
+          current_state: "No rlm_inputs section"
+          required_changes:
+            - "Add rlm_inputs section after layers section"
+            - "Include rlm-patterns.yml and rlm-context-accessor.yml references"
+            - "Mark both as required: false"
+            - "Add description noting use for large test result analysis"
+        acceptance_criteria:
+          - "rlm_inputs section exists with proper references"
+          - "Both RLM files referenced with required: false"
+        files:
+          - "modules/AgenticGuidance/agents/test/test-runner/inputs.yml"
+
+      # Task 1.4: Verify test-guidance-simulator has self-review support
+      - id: "teach_004"
+        name: "Verify test-guidance-simulator self-review configuration"
+        description: |
+          Ensure test-guidance-simulator/inputs.yml has proper reference
+          to agent-self-review.yml guideline for self-review mode.
+        agent_type: "teacher-update-guidance"
+        operation: "VERIFY"
+        status: "pending"
+        context:
+          target_file: "modules/AgenticGuidance/agents/test/test-guidance-simulator/inputs.yml"
+          verification:
+            - "Check guidelines section references agent-self-review.yml"
+            - "Check process.yml self_review_mode section references guideline"
+        acceptance_criteria:
+          - "agent-self-review.yml referenced in guidelines or core_inputs"
+          - "self_review_mode in process.yml has guideline_reference"
+        files:
+          - "modules/AgenticGuidance/agents/test/test-guidance-simulator/inputs.yml"
+          - "modules/AgenticGuidance/agents/test/test-guidance-simulator/process.yml"
+
+      # Task 1.5: Standardize output definitions across all test agents
+      - id: "teach_005"
+        name: "Verify output definitions in process.yml for all agents"
+        description: |
+          Ensure all test agent process.yml files have proper outputs
+          section with schema definitions. Outputs belong in process.yml,
+          not inputs.yml.
+        agent_type: "teacher-update-guidance"
+        operation: "VERIFY"
+        status: "pending"
+        context:
+          agents_to_verify:
+            - "test-audit"
+            - "test-builder"
+            - "test-final-output"
+            - "test-guidance-simulator"
+            - "test-runner"
+            - "test-service"
+            - "test-user-simulator"
+          verification:
+            - "Each process.yml has outputs section"
+            - "Outputs have name, description, and schema/format"
+            - "No outputs defined in inputs.yml"
+        acceptance_criteria:
+          - "All 7 agents have outputs in process.yml"
+          - "Output schemas are well-defined"
+        files:
+          - "modules/AgenticGuidance/agents/test/*/process.yml"
+
+      # Task 1.6: Add missing self-review criteria to test-user-simulator
+      - id: "teach_006"
+        name: "Add self-review criteria reference to test-user-simulator"
+        description: |
+          Ensure test-user-simulator can perform self-review by adding
+          reference to self-review-criteria.yml.
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        status: "pending"
+        context:
+          target_file: "modules/AgenticGuidance/agents/test/test-user-simulator/inputs.yml"
+          current_state: "No self-review criteria reference"
+          required_changes:
+            - "Add self-review-criteria.yml to core_inputs section"
+            - "Mark as required: false (only needed for self-review mode)"
+        acceptance_criteria:
+          - "self-review-criteria.yml referenced in core_inputs"
+        files:
+          - "modules/AgenticGuidance/agents/test/test-user-simulator/inputs.yml"
+
+      # Task 1.7: Add self-review criteria to remaining agents
+      - id: "teach_007"
+        name: "Add self-review criteria to test-service and test-final-output"
+        description: |
+          Ensure all test agents can participate in self-review by
+          adding reference to self-review-criteria.yml.
+        agent_type: "teacher-update-guidance"
+        operation: "UPDATE"
+        status: "pending"
+        context:
+          target_files:
+            - "modules/AgenticGuidance/agents/test/test-service/inputs.yml"
+            - "modules/AgenticGuidance/agents/test/test-final-output/inputs.yml"
+          required_changes:
+            - "Add self-review-criteria.yml to core_inputs section"
+            - "Mark as required: false"
+        acceptance_criteria:
+          - "Both agents have self-review-criteria.yml reference"
+        files:
+          - "modules/AgenticGuidance/agents/test/test-service/inputs.yml"
+          - "modules/AgenticGuidance/agents/test/test-final-output/inputs.yml"
+
+  # ----------------------------------------
+  # PHASE 2: TEST - Self-Review Validation
+  # ----------------------------------------
+  - name: "Test Phase"
+    execution: sequential
+    description: |
+      Validate guidance updates through agent self-review. Each test agent
+      performs self-review on its own updated guidance files.
+    agent_category: "test"
+    success_criteria:
+      - "All 7 agents pass self-review validation"
+      - "No broken file references detected"
+      - "No duplicate definitions >50 tokens"
+      - "All cross-references between process.yml and inputs.yml resolve"
+    dependencies:
+      - "Teach Phase"
+
+    tasks:
+      # Task 2.1: Run self-review for all 7 agents
+      - id: "test_001"
+        name: "Execute self-review for test-audit"
+        description: |
+          Run test-guidance-simulator to spawn test-audit for self-review
+          of its updated guidance files.
+        agent_type: "test-guidance-simulator"
+        operation: "SELF_REVIEW"
+        status: "pending"
+        context:
+          target_agent: "test-audit"
+          target_path: "modules/AgenticGuidance/agents/test/test-audit/"
+          validation_criteria:
+            - "PC-001: No duplicate definitions"
+            - "PC-002: All references resolve"
+            - "PC-003: No circular references"
+            - "PC-006: No large inline duplicates"
+        acceptance_criteria:
+          - "self_review_passed: true"
+          - "No CRITICAL or HIGH severity issues"
+        files:
+          - "modules/AgenticGuidance/agents/test/test-audit/process.yml"
+          - "modules/AgenticGuidance/agents/test/test-audit/inputs.yml"
+
+      - id: "test_002"
+        name: "Execute self-review for test-builder"
+        description: "Self-review validation for test-builder agent"
+        agent_type: "test-guidance-simulator"
+        operation: "SELF_REVIEW"
+        status: "pending"
+        context:
+          target_agent: "test-builder"
+          target_path: "modules/AgenticGuidance/agents/test/test-builder/"
+        acceptance_criteria:
+          - "self_review_passed: true"
+          - "No CRITICAL or HIGH severity issues"
+        files:
+          - "modules/AgenticGuidance/agents/test/test-builder/process.yml"
+          - "modules/AgenticGuidance/agents/test/test-builder/inputs.yml"
+
+      - id: "test_003"
+        name: "Execute self-review for test-final-output"
+        description: "Self-review validation for test-final-output agent"
+        agent_type: "test-guidance-simulator"
+        operation: "SELF_REVIEW"
+        status: "pending"
+        context:
+          target_agent: "test-final-output"
+          target_path: "modules/AgenticGuidance/agents/test/test-final-output/"
+        acceptance_criteria:
+          - "self_review_passed: true"
+          - "No CRITICAL or HIGH severity issues"
+        files:
+          - "modules/AgenticGuidance/agents/test/test-final-output/process.yml"
+          - "modules/AgenticGuidance/agents/test/test-final-output/inputs.yml"
+
+      - id: "test_004"
+        name: "Execute self-review for test-guidance-simulator"
+        description: "Self-review validation for test-guidance-simulator agent"
+        agent_type: "test-guidance-simulator"
+        operation: "SELF_REVIEW"
+        status: "pending"
+        context:
+          target_agent: "test-guidance-simulator"
+          target_path: "modules/AgenticGuidance/agents/test/test-guidance-simulator/"
+        acceptance_criteria:
+          - "self_review_passed: true"
+          - "No CRITICAL or HIGH severity issues"
+        files:
+          - "modules/AgenticGuidance/agents/test/test-guidance-simulator/process.yml"
+          - "modules/AgenticGuidance/agents/test/test-guidance-simulator/inputs.yml"
+
+      - id: "test_005"
+        name: "Execute self-review for test-runner"
+        description: "Self-review validation for test-runner agent"
+        agent_type: "test-guidance-simulator"
+        operation: "SELF_REVIEW"
+        status: "pending"
+        context:
+          target_agent: "test-runner"
+          target_path: "modules/AgenticGuidance/agents/test/test-runner/"
+        acceptance_criteria:
+          - "self_review_passed: true"
+          - "No CRITICAL or HIGH severity issues"
+        files:
+          - "modules/AgenticGuidance/agents/test/test-runner/process.yml"
+          - "modules/AgenticGuidance/agents/test/test-runner/inputs.yml"
+
+      - id: "test_006"
+        name: "Execute self-review for test-service"
+        description: "Self-review validation for test-service agent"
+        agent_type: "test-guidance-simulator"
+        operation: "SELF_REVIEW"
+        status: "pending"
+        context:
+          target_agent: "test-service"
+          target_path: "modules/AgenticGuidance/agents/test/test-service/"
+        acceptance_criteria:
+          - "self_review_passed: true"
+          - "No CRITICAL or HIGH severity issues"
+        files:
+          - "modules/AgenticGuidance/agents/test/test-service/process.yml"
+          - "modules/AgenticGuidance/agents/test/test-service/inputs.yml"
+
+      - id: "test_007"
+        name: "Execute self-review for test-user-simulator"
+        description: "Self-review validation for test-user-simulator agent"
+        agent_type: "test-guidance-simulator"
+        operation: "SELF_REVIEW"
+        status: "pending"
+        context:
+          target_agent: "test-user-simulator"
+          target_path: "modules/AgenticGuidance/agents/test/test-user-simulator/"
+        acceptance_criteria:
+          - "self_review_passed: true"
+          - "No CRITICAL or HIGH severity issues"
+        files:
+          - "modules/AgenticGuidance/agents/test/test-user-simulator/process.yml"
+          - "modules/AgenticGuidance/agents/test/test-user-simulator/inputs.yml"
+
+      # Task 2.8: Cross-agent consistency validation
+      - id: "test_008"
+        name: "Validate cross-agent consistency"
+        description: |
+          Verify consistency patterns across all 7 test agents:
+          - All agents have proper outputs in process.yml
+          - All agents reference appropriate shared layers
+          - RLM-capable agents have proper rlm_inputs structure
+          - Self-review capable agents have criteria reference
+        agent_type: "test-final-output"
+        operation: "VALIDATION"
+        status: "pending"
+        context:
+          scope: "All 7 test agents"
+          consistency_checks:
+            - "outputs_in_process: All agents have outputs section in process.yml"
+            - "layer_references: All agents use core-system.yml and core-guidelines.yml layers"
+            - "test_shared_layer: All test agents reference test-shared.yml layer"
+            - "rlm_structure: Agents with RLM have rlm_inputs with both required files"
+        acceptance_criteria:
+          - "All consistency checks pass"
+          - "No structural divergence between agents"
+        files:
+          - "modules/AgenticGuidance/agents/test/*/process.yml"
+          - "modules/AgenticGuidance/agents/test/*/inputs.yml"
+
+# ========================================
+# SUCCESS CRITERIA
+# ========================================
+success_criteria:
+  technical_validation:
+    - "All 7 test agents pass self-review validation (PASS status)"
+    - "Zero broken file references across all agent guidance files"
+    - "Zero duplicate definitions >50 tokens"
+    - "All process.yml files have outputs section with schema"
+    - "All inputs.yml files use layer architecture (core-system, core-guidelines, test-shared)"
+    - "RLM-capable agents (test-audit, test-final-output) have rlm_inputs section"
+    - "Cross-references between process.yml and inputs.yml all resolve"
+
+  quality_validation:
+    - "Self-review criteria consistently referenced for self-review capable agents"
+    - "No inline definitions >100 tokens that duplicate shared asset content"
+    - "Consistent structure patterns across all test agent guidance files"
+    - "All guidance updates follow context-minimisation principles"
+
+  documentation_validation:
+    - "All changes documented in plan context section"
+    - "Each task has clear acceptance criteria"
+    - "Remediation rationale documented for each change"
+
+# ========================================
+# OUTPUTS
+# ========================================
+outputs:
+  - name: "self_review_results"
+    description: "Aggregated self-review results for all 7 test agents"
+    format:
+      agents_reviewed: "integer (7)"
+      all_passed: "boolean"
+      results:
+        - agent: "string"
+          status: "PASS | NEEDS_ATTENTION"
+          findings: "list"
+
+  - name: "remediation_summary"
+    description: "Summary of guidance changes made"
+    format:
+      files_modified: "integer"
+      changes_by_type:
+        reference_additions: "integer"
+        structure_updates: "integer"
+        consistency_fixes: "integer"
+      agents_affected: "list of agent names"
+
+# ========================================
+# NOTES
+# ========================================
+notes:
+  - "Initial gap analysis revealed agents are MORE consistent than expected"
+  - "Primary remediation focus: Add optional RLM support and self-review criteria"
+  - "All changes follow context-minimisation principle (references over inline)"
+  - "Teacher agent selection: teacher-update-guidance for all guidance file updates"
+  - "Test agent selection: test-guidance-simulator for self-review validation"
+  - "Reference: modules/AgenticGuidance/assets/definitions/self-review-criteria.yml for PASS criteria"

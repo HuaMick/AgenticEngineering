@@ -1,0 +1,421 @@
+# Plan: Teacher Agents Guidance Remediation
+# Purpose: Remediate gaps in teacher agent guidance files (input definitions, process instructions, consistency)
+#
+# Created: 2026-01-24
+# Agent: orchestration-planning (via _plan_teach entrypoint)
+# Plan Folder: 260123AE_agenticguidance
+# Target Agents:
+#   - teacher-trace-diagnostics
+#   - teacher-update-assets
+#   - teacher-update-guidance
+
+name: "teacher-agents-guidance-remediation"
+worktree: "260123AE_agenticguidance"
+branch: "main"
+status: "completed"
+priority: "high"
+completed_date: "2026-01-24"
+
+context: |
+  This plan addresses guidance gaps identified across three teacher agents:
+  - teacher-trace-diagnostics
+  - teacher-update-assets
+  - teacher-update-guidance
+
+  GAPS IDENTIFIED:
+
+  1. MISSING/INCOMPLETE INPUT DEFINITIONS
+     - teacher-trace-diagnostics: No explicit required_inputs validation section
+     - teacher-update-assets: Layers defined but no mandatory input gates
+     - teacher-update-guidance: RLM patterns duplicated between inputs.yml and process.yml
+
+  2. UNCLEAR PROCESS INSTRUCTIONS
+     - teacher-trace-diagnostics: Step 2 references trace source without input spec
+     - teacher-update-assets: Steps are general, lacking validation checkpoints
+     - teacher-update-guidance: Unclear which RLM definition is authoritative
+
+  3. INCONSISTENCIES BETWEEN process.yml AND inputs.yml
+     - teacher-trace-diagnostics: inputs.yml friction patterns vs process.yml step references
+     - teacher-update-assets: Version tracking across manifest/inputs/process
+     - teacher-update-guidance: rlm_trajectory_strategy vs rlm_patterns overlap
+
+  REMEDIATION APPROACH:
+  - Teach Phase: Update guidance files to resolve gaps
+  - Test Phase: Agent self-review to validate changes
+  - Loop strategy: guidance-self-review-loop (max 3 iterations)
+
+# =============================================================================
+# INPUTS
+# =============================================================================
+inputs:
+  # Target agent files
+  - location: "modules/AgenticGuidance/agents/teacher/teacher-trace-diagnostics/manifest.yml"
+    description: "teacher-trace-diagnostics manifest"
+  - location: "modules/AgenticGuidance/agents/teacher/teacher-trace-diagnostics/inputs.yml"
+    description: "teacher-trace-diagnostics inputs"
+  - location: "modules/AgenticGuidance/agents/teacher/teacher-trace-diagnostics/process.yml"
+    description: "teacher-trace-diagnostics process"
+
+  - location: "modules/AgenticGuidance/agents/teacher/teacher-update-assets/manifest.yml"
+    description: "teacher-update-assets manifest"
+  - location: "modules/AgenticGuidance/agents/teacher/teacher-update-assets/inputs.yml"
+    description: "teacher-update-assets inputs"
+  - location: "modules/AgenticGuidance/agents/teacher/teacher-update-assets/process.yml"
+    description: "teacher-update-assets process"
+
+  - location: "modules/AgenticGuidance/agents/teacher/teacher-update-guidance/manifest.yml"
+    description: "teacher-update-guidance manifest"
+  - location: "modules/AgenticGuidance/agents/teacher/teacher-update-guidance/inputs.yml"
+    description: "teacher-update-guidance inputs"
+  - location: "modules/AgenticGuidance/agents/teacher/teacher-update-guidance/process.yml"
+    description: "teacher-update-guidance process"
+
+  # Reference definitions
+  - location: "modules/AgenticGuidance/assets/definitions/agent-context-files.yml"
+    description: "Standard structure for agent context files"
+  - location: "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml"
+    description: "Self-review criteria for validation"
+  - location: "modules/AgenticGuidance/assets/definitions/rlm-patterns.yml"
+    description: "Canonical RLM pattern definitions"
+
+# =============================================================================
+# OPEN QUESTIONS
+# =============================================================================
+open_questions:
+  - id: "QUESTION-001"
+    question: "Should RLM patterns be centralized in a shared definition or remain in agent-specific process.yml?"
+    severity: "medium"
+    status: "OPEN"
+    context: |
+      teacher-update-guidance has RLM patterns in both inputs.yml (definitions.rlm_trajectory_strategy)
+      and process.yml (rlm_patterns section). Need to decide authoritative source.
+    options:
+      - "Centralize in modules/AgenticGuidance/assets/definitions/rlm-patterns.yml (recommended)"
+      - "Keep in process.yml as agent-specific implementation"
+      - "Keep in inputs.yml as configurable definition"
+
+  - id: "QUESTION-002"
+    question: "What validation should occur when required inputs are missing?"
+    severity: "high"
+    status: "OPEN"
+    context: |
+      Currently agents have varying approaches to missing inputs:
+      - teacher-trace-diagnostics: "STOP and report configuration error"
+      - teacher-update-assets: "do not proceed"
+      - teacher-update-guidance: "do not proceed, flag discrepancy"
+      Should behavior be standardized?
+    options:
+      - "Standardize: STOP with structured error output"
+      - "Standardize: Escalate to orchestrator with missing input list"
+      - "Allow agent-specific handling (current state)"
+
+# =============================================================================
+# LOOP STRUCTURES
+# =============================================================================
+loop_structures:
+  - id: "loop_self_review"
+    type: "guidance-self-review-loop"
+    applies_to_phase: "Test Phase"
+    trigger: "After teach phase tasks complete"
+    description: |
+      Each teacher agent performs self-review against updated guidance files.
+      Validates that input definitions, process instructions, and cross-file
+      consistency issues have been resolved.
+    exit_criteria:
+      success: "All 3 agents report PASS status with zero NAT-* triggers"
+      max_iterations: 3
+      escalation: "Escalate to human with specific remaining gaps"
+    participants:
+      - agent: "teacher-trace-diagnostics"
+        role: "Self-reviews own guidance files"
+      - agent: "teacher-update-assets"
+        role: "Self-reviews own guidance files"
+      - agent: "teacher-update-guidance"
+        role: "Self-reviews own guidance files"
+    user_decision_gate: true
+
+  - id: "loop_spot_check"
+    type: "agent-self-review"
+    applies_to_phase: "Test Phase"
+    trigger: "After initial self-review completes"
+    description: |
+      Spot-check validation to catch lenient initial assessments.
+      Sample 2 of 3 agents for deeper validation.
+    exit_criteria:
+      success: "Spot-check flag rate <50%"
+      max_iterations: 2
+      escalation: "Re-review all agents with stricter criteria"
+    spot_check_sample: 2
+    flag_threshold_percent: 50
+
+# =============================================================================
+# PHASES AND TASKS
+# =============================================================================
+phases:
+  # ----------------------------------------
+  # PHASE 1: Teach (Guidance Updates)
+  # ----------------------------------------
+  - name: "Teach Phase"
+    execution: sequential
+    description: "Update teacher agent guidance files to resolve identified gaps"
+    tasks:
+      # --- teacher-trace-diagnostics ---
+      - id: "teach_001"
+        name: "Add Required Inputs Validation to teacher-trace-diagnostics"
+        description: |
+          Update teacher-trace-diagnostics/inputs.yml:
+          1. Add explicit `required_inputs` section listing mandatory inputs
+          2. Add `validation_gates` section with pre-flight checks
+          3. Specify LANGSMITH_API_KEY as required environment variable
+
+          Update teacher-trace-diagnostics/process.yml:
+          1. Step 1 should reference inputs.yml required_inputs list
+          2. Add validation checkpoint before Step 2
+        status: "pending"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/teacher/teacher-trace-diagnostics/inputs.yml"
+          - "modules/AgenticGuidance/agents/teacher/teacher-trace-diagnostics/process.yml"
+        success_criteria:
+          - "inputs.yml has required_inputs section"
+          - "inputs.yml has validation_gates section"
+          - "process.yml Step 1 references required_inputs"
+          - "LANGSMITH_API_KEY documented as required"
+
+      - id: "teach_002"
+        name: "Align Friction Pattern References in teacher-trace-diagnostics"
+        description: |
+          Ensure process.yml step references align with inputs.yml definitions:
+          1. Step 3 (DETECT FRICTION PATTERNS) should reference inputs.yml#definitions.friction_patterns
+          2. Step 4 (MAP FRICTION TO GUIDANCE) should use inputs.yml#definitions.recommendation_templates
+          3. Add cross-references where process steps invoke definitions
+        status: "pending"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/teacher/teacher-trace-diagnostics/inputs.yml"
+          - "modules/AgenticGuidance/agents/teacher/teacher-trace-diagnostics/process.yml"
+        success_criteria:
+          - "process.yml steps reference specific inputs.yml sections"
+          - "No orphan definitions in inputs.yml (all referenced)"
+          - "Step 3-4 explicitly cite friction_patterns and recommendation_templates"
+
+      # --- teacher-update-assets ---
+      - id: "teach_003"
+        name: "Add Validation Checkpoints to teacher-update-assets"
+        description: |
+          Update teacher-update-assets/process.yml:
+          1. Add validation checkpoint after step 1 (review inputs)
+          2. Add explicit gate before writing assets (step 6)
+          3. Add manifest update verification checkpoint
+
+          Update teacher-update-assets/inputs.yml:
+          1. Add required_inputs section
+          2. Mark asset type definitions (definition.yml, guideline.yml, example.yml) as mandatory
+        status: "pending"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/teacher/teacher-update-assets/inputs.yml"
+          - "modules/AgenticGuidance/agents/teacher/teacher-update-assets/process.yml"
+        success_criteria:
+          - "process.yml has validation checkpoint after step 1"
+          - "process.yml has gate before writing assets"
+          - "inputs.yml has required_inputs section"
+          - "Asset type definitions marked as mandatory"
+
+      - id: "teach_004"
+        name: "Add Version Tracking to teacher-update-assets"
+        description: |
+          Ensure version consistency across files:
+          1. manifest.yml version field is source of truth
+          2. inputs.yml version should reference manifest
+          3. process.yml should include version check in validation
+        status: "pending"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/teacher/teacher-update-assets/manifest.yml"
+          - "modules/AgenticGuidance/agents/teacher/teacher-update-assets/inputs.yml"
+          - "modules/AgenticGuidance/agents/teacher/teacher-update-assets/process.yml"
+        success_criteria:
+          - "manifest.yml is documented as version source of truth"
+          - "inputs.yml references manifest version"
+          - "All three files have consistent version"
+
+      # --- teacher-update-guidance ---
+      - id: "teach_005"
+        name: "Consolidate RLM Pattern Definitions in teacher-update-guidance"
+        description: |
+          Resolve RLM pattern duplication:
+          1. Designate process.yml#rlm_patterns as implementation reference
+          2. Update inputs.yml#definitions.rlm_trajectory_strategy to reference shared definition
+          3. Add cross-reference to modules/AgenticGuidance/assets/definitions/rlm-patterns.yml
+          4. Remove duplicated content from inputs.yml
+        status: "pending"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/teacher/teacher-update-guidance/inputs.yml"
+          - "modules/AgenticGuidance/agents/teacher/teacher-update-guidance/process.yml"
+          - "modules/AgenticGuidance/assets/definitions/rlm-patterns.yml"
+        success_criteria:
+          - "Single authoritative RLM pattern source identified"
+          - "inputs.yml references shared rlm-patterns.yml definition"
+          - "process.yml rlm_patterns section is implementation-focused"
+          - "No content duplication between inputs.yml and process.yml"
+        depends_on_question: "QUESTION-001"
+
+      - id: "teach_006"
+        name: "Add Required Inputs Validation to teacher-update-guidance"
+        description: |
+          Update teacher-update-guidance/inputs.yml:
+          1. Add explicit required_inputs section
+          2. Mark core teaching framework files (path.yml, guidance-artifacts.yml) as mandatory
+          3. Mark RLM inputs as optional (loaded on demand)
+
+          Update teacher-update-guidance/process.yml:
+          1. Step 2 should validate required inputs exist
+          2. RLM patterns should have trigger condition (>500 actions)
+        status: "pending"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/teacher/teacher-update-guidance/inputs.yml"
+          - "modules/AgenticGuidance/agents/teacher/teacher-update-guidance/process.yml"
+        success_criteria:
+          - "inputs.yml has required_inputs section"
+          - "Core teaching framework files marked required"
+          - "RLM inputs marked as optional"
+          - "process.yml step 2 validates required inputs"
+
+  # ----------------------------------------
+  # PHASE 2: Test (Agent Self-Review Validation)
+  # ----------------------------------------
+  - name: "Test Phase"
+    execution: sequential
+    description: "Validate guidance changes via agent self-review"
+    loop: "guidance-self-review-loop"
+    tasks:
+      - id: "test_001"
+        name: "Self-Review: teacher-trace-diagnostics"
+        description: |
+          teacher-trace-diagnostics agent performs self-review:
+          1. Read updated inputs.yml, process.yml, manifest.yml
+          2. Apply self-review-criteria.yml checklist
+          3. Verify required_inputs section exists and is complete
+          4. Verify process steps reference inputs correctly
+          5. Report PASS or NEEDS_ATTENTION with specific findings
+        status: "pending"
+        agent: "teacher-trace-diagnostics"
+        inputs:
+          - "modules/AgenticGuidance/agents/teacher/teacher-trace-diagnostics/"
+          - "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml"
+        success_criteria:
+          - "Self-review checklist completed"
+          - "Zero NAT-* triggers"
+          - "PASS status achieved"
+
+      - id: "test_002"
+        name: "Self-Review: teacher-update-assets"
+        description: |
+          teacher-update-assets agent performs self-review:
+          1. Read updated inputs.yml, process.yml, manifest.yml
+          2. Apply self-review-criteria.yml checklist
+          3. Verify validation checkpoints added to process
+          4. Verify version consistency across files
+          5. Report PASS or NEEDS_ATTENTION with specific findings
+        status: "pending"
+        agent: "teacher-update-assets"
+        inputs:
+          - "modules/AgenticGuidance/agents/teacher/teacher-update-assets/"
+          - "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml"
+        success_criteria:
+          - "Self-review checklist completed"
+          - "Zero NAT-* triggers"
+          - "PASS status achieved"
+
+      - id: "test_003"
+        name: "Self-Review: teacher-update-guidance"
+        description: |
+          teacher-update-guidance agent performs self-review:
+          1. Read updated inputs.yml, process.yml, manifest.yml
+          2. Apply self-review-criteria.yml checklist
+          3. Verify RLM pattern consolidation complete
+          4. Verify no duplicate definitions between files
+          5. Report PASS or NEEDS_ATTENTION with specific findings
+        status: "pending"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/teacher/teacher-update-guidance/"
+          - "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml"
+        success_criteria:
+          - "Self-review checklist completed"
+          - "Zero NAT-* triggers"
+          - "PASS status achieved"
+
+      - id: "test_004"
+        name: "Spot-Check Validation"
+        description: |
+          Spot-check phase to catch lenient initial assessments:
+          1. Sample 2 of 3 agents that reported PASS
+          2. Apply stricter spot-check checklist
+          3. Verify quantitative criteria met (not just assertions)
+          4. If >50% flagged, trigger re-review
+        status: "pending"
+        agent: "test-audit"
+        inputs:
+          - "test_001 results"
+          - "test_002 results"
+          - "test_003 results"
+          - "modules/AgenticGuidance/assets/definitions/spot-check-checklist.yml"
+        success_criteria:
+          - "Spot-check sample selected"
+          - "Flag rate <50%"
+          - "All PASS statuses validated"
+
+# =============================================================================
+# SUCCESS CRITERIA
+# =============================================================================
+success_criteria:
+  # Teach Phase
+  - "All 3 teacher agents have required_inputs section in inputs.yml"
+  - "All 3 teacher agents have validation checkpoints in process.yml"
+  - "All 3 teacher agents have consistent version tracking"
+  - "No duplicate definitions between process.yml and inputs.yml"
+  - "All process step references to inputs.yml sections are valid"
+
+  # Test Phase
+  - "All 3 teacher agents achieve PASS status on self-review"
+  - "Zero NAT-* triggers across all agents"
+  - "Spot-check flag rate <50%"
+  - "No new inconsistencies introduced"
+
+# =============================================================================
+# OUTPUT DEFINITIONS
+# =============================================================================
+outputs:
+  - name: "guidance_files_modified"
+    description: "List of guidance files created or updated"
+    location: "modules/AgenticGuidance/agents/teacher/"
+    schema:
+      - file_path: "string - path to guidance file"
+        change_type: "enum(created, modified)"
+        summary: "string - description of changes"
+
+  - name: "self_review_results"
+    description: "Self-review results from each teacher agent"
+    location: "Returned to orchestrator"
+    schema:
+      - agent: "string - agent name"
+        status: "enum(PASS, NEEDS_ATTENTION)"
+        findings:
+          - id: "string - finding ID"
+            severity: "enum(CRITICAL, HIGH, MEDIUM, LOW)"
+            description: "string"
+        nat_triggers: "array - list of active NAT-* triggers (should be empty for PASS)"
+
+  - name: "spot_check_results"
+    description: "Spot-check validation results"
+    location: "Returned to orchestrator"
+    schema:
+      agents_sampled: "integer"
+      agents_flagged: "integer"
+      flag_rate_percent: "float"
+      status: "enum(PASS, RE_REVIEW_REQUIRED)"
+      findings: "array of specific flag reasons"

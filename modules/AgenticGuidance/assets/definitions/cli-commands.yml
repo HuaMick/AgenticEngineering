@@ -144,6 +144,59 @@ cli_commands:
       parameters:
         plan_folder: "Path to plan folder"
 
+  context:
+    # CCI (CLI Context Injection) pattern commands
+    # Used by agents to bootstrap their context via CLI rather than file exploration
+    # Reference: docs/CCI_CONTEXT_ARCHITECTURE.md
+    bootstrap:
+      command: "agentic context bootstrap --role <agent-role> [-j]"
+      description: |
+        Bootstrap agent context with structured file paths and role information.
+        Part of the CCI (CLI Context Injection) pattern where agents retrieve
+        context on-demand via CLI instead of pre-loading markdown files.
+
+        Returns:
+        - Agent role and category
+        - Process file path
+        - Inputs file path
+        - Manifest file path
+        - Key file paths for the agent's operation
+      parameters:
+        --role/-r: "Agent role identifier (e.g., build-python, orchestration-planning)"
+        -j: "Output in JSON format for machine parsing"
+      json_output:
+        role: "Agent role identifier"
+        category: "Agent category (build, test, orchestration, etc.)"
+        process_path: "Path to agent's process.yml file"
+        inputs_path: "Path to agent's inputs.yml file"
+        manifest_path: "Path to agent's manifest.yml file"
+        context_files: "Array of additional context file paths"
+      examples:
+        - "agentic context bootstrap --role build-python -j"
+        - "agentic context bootstrap --role orchestration-planning -j"
+        - "agentic context bootstrap -r test-runner"
+      note: "Primary entry point for CCI pattern - replaces file exploration with deterministic CLI"
+
+    role:
+      command: "agentic context role <role-id> [-j]"
+      description: "Get role-specific process and guidance for an agent"
+      parameters:
+        role-id: "Agent role identifier"
+        -j: "Output in JSON format"
+
+    task:
+      command: "agentic context task [-j]"
+      description: "Get current task from the main worktree plan"
+      parameters:
+        -j: "Output in JSON format"
+
+    inputs:
+      command: "agentic context inputs --role <agent-role> [-j]"
+      description: "Get manifest of input files for an agent role (CCI pattern)"
+      parameters:
+        --role/-r: "Agent role identifier"
+        -j: "Output in JSON format"
+
 usage_notes:
   - "CLI commands are executed by orchestration agents directly (tool-offloading pattern)"
   - "Prefer CLI over manual file operations for consistency"
@@ -151,3 +204,4 @@ usage_notes:
   - "Errors are returned with actionable messages and exit codes"
   - "Use 'agentic plan init' as primary entry point for new plans (replaces deploy-worktree spawn)"
   - "JSON output (-j flag) available for machine-parseable responses"
+  - "CCI context commands (context bootstrap, context role, etc.) provide deterministic context retrieval"

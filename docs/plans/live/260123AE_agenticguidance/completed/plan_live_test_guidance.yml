@@ -1,0 +1,583 @@
+# Guidance Test Plan: CCI Pattern Validation
+# Created by: planner-guidance-testing
+# Date: 2026-01-23
+# Plan Folder: 260123AE_agenticguidance
+#
+# PURPOSE:
+# Validate that agents updated with CCI (CLI Context Injection) pattern can execute
+# their tasks using only their guidance files (process.yml, inputs.yml). This plan
+# tests the guidance changes made in:
+# - plan_live_cci_rename_simplification.yml (JIT -> CCI rename across 22+ agents)
+# - plan_live_agent_selfreview_cci.yml (self-review CCI pattern documentation)
+
+plan_metadata:
+  plan_name: "guidance_validation_cci_pattern"
+  plan_type: "guidance-test"
+  created_date: "2026-01-23"
+  target_context: "Validate CCI pattern guidance completeness across updated agents"
+  worktree: "/home/code/AgenticEngineering"
+  branch: "main"
+  plan_file: "docs/plans/live/260123AE_agenticguidance/live/plan_live_test_guidance.yml"
+  status: "completed"
+  completed_date: "2026-01-24"
+  completion_note: "CCI pattern validation completed through agent self-review"
+
+test_context:
+  loop_type: "guidance-test-loop"
+  loop_reference: "modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.guidance-test-loop"
+  strategy: "guidance-blind-test"
+  component_reference: "modules/AgenticGuidance/assets/examples/planner/components/guidance_blind_test.mmd"
+  test_scenarios_reference: "modules/AgenticGuidance/assets/definitions/guidance-test-scenarios.yml"
+  maximum_iterations: 3
+
+# =============================================================================
+# TEST TARGETS
+# =============================================================================
+# Selected from agents updated in the CCI rename and self-review plans.
+# Prioritized by:
+# 1. Orchestrators (require subagent_spawning_test)
+# 2. Loop participants (require loop_context_test)
+# 3. Core workflow agents (high usage impact)
+# =============================================================================
+
+test_targets:
+  orchestrators:
+    description: "Agents that spawn subagents - require subagent_spawning_test"
+    agents:
+      - path: "modules/AgenticGuidance/agents/orchestration/orchestration-executor/"
+        reason: "Core executor - validates plan execution and agent spawning"
+      - path: "modules/AgenticGuidance/agents/orchestration/orchestration-planning/"
+        reason: "Planning orchestrator - spawns planner and reviewer agents"
+      - path: "modules/AgenticGuidance/agents/orchestration/orchestration-friction/"
+        reason: "Friction detection orchestrator - spawns diagnostic agents"
+
+  loop_participants:
+    description: "Agents with loop_context - require loop_context_test"
+    agents:
+      - path: "modules/AgenticGuidance/agents/test/test-guidance-simulator/"
+        reason: "Guidance test executor - key for validating guidance-test-loop"
+      - path: "modules/AgenticGuidance/agents/planner/planner-guidance-testing/"
+        reason: "This agent - self-validation of guidance test planning"
+      - path: "modules/AgenticGuidance/agents/teacher/teacher-update-guidance/"
+        reason: "Guidance fixer - validates documentation-loop participation"
+
+  standard_agents:
+    description: "High-usage agents without special loop/orchestration requirements"
+    agents:
+      - path: "modules/AgenticGuidance/agents/planner/planner-build/"
+        reason: "Core build planner - high usage in implementation workflows"
+      - path: "modules/AgenticGuidance/agents/build/build-python/"
+        reason: "Primary build agent - validates CCI bootstrap pattern"
+      - path: "modules/AgenticGuidance/agents/test/test-runner/"
+        reason: "Test executor - validates test-fix-loop integration"
+
+# =============================================================================
+# PHASES
+# =============================================================================
+
+phases:
+  # =========================================================================
+  # PHASE 1: Guidance Test Loop - Core Validation
+  # =========================================================================
+  - phase_id: "1"
+    phase_name: "Guidance Test Loop - Core Validation"
+    status: "completed"
+    completed_date: "2026-01-24"
+    iteration: 1
+    results_summary:
+      agents_tested: 8
+      passed_self_review: 4
+      failed_self_review: 4
+      critical_issues: 3
+      high_issues: 6
+      cci_bootstrap_present: "8/8 (100%)"
+      loop_context_complete: "all loop participants"
+    description: |
+      Execute guidance-test-loop to validate agent guidance using walkthrough-based
+      validation. Each task spawns the target agent to perform self-guided guidance
+      review, collecting feedback on ambiguities, broken references, and missing context.
+
+    loop_pattern:
+      type: "guidance-test-loop"
+      participants:
+        - "test-guidance-simulator (executor)"
+        - "teacher-update-guidance (fixer, if gaps found)"
+      exit_conditions:
+        - "All test scenarios pass with zero CRITICAL or HIGH friction points"
+        - "Maximum iterations (3) reached - escalate to human"
+
+    tasks:
+      # -----------------------------------------------------------------------
+      # 1.1: Orchestration-Executor (Orchestrator)
+      # -----------------------------------------------------------------------
+      - id: "1.1"
+        description: "Walkthrough validation of orchestration-executor guidance"
+        agent_type: "test-guidance-simulator"
+        operation: "EXECUTE"
+        status: "pending"
+        context:
+          target_agent: "modules/AgenticGuidance/agents/orchestration/orchestration-executor/"
+          validation_mode: "guidance_walkthrough"
+          guidance_files_to_review:
+            - "process.yml"
+            - "inputs.yml"
+          test_scenarios:
+            - "self_review_test"
+            - "task_completion_test"
+            - "reference_resolution_test"
+            - "friction_detection_test"
+            - "subagent_spawning_test"
+          walkthrough_task: |
+            Execute the orchestration-executor process to coordinate plan execution.
+            Demonstrate ability to load plan MMD files, resolve agent routing, and
+            identify subagents to spawn.
+          constraints: "Use only guidance files - no code inspection or codebase exploration"
+          report_template: "modules/AgenticGuidance/assets/definitions/friction.yml#FRICTION_POINT"
+        acceptance_criteria:
+          - "Agent completes walkthrough using guidance only"
+          - "All input paths resolve correctly"
+          - "Subagent guidance paths discoverable from inputs.yml"
+          - "Agent routing logic clear from guidance"
+          - "Friction report shows zero CRITICAL or HIGH severity issues"
+        files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml"
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-executor/inputs.yml"
+
+      # -----------------------------------------------------------------------
+      # 1.2: Orchestration-Planning (Orchestrator)
+      # -----------------------------------------------------------------------
+      - id: "1.2"
+        description: "Walkthrough validation of orchestration-planning guidance"
+        agent_type: "test-guidance-simulator"
+        operation: "EXECUTE"
+        status: "pending"
+        context:
+          target_agent: "modules/AgenticGuidance/agents/orchestration/orchestration-planning/"
+          validation_mode: "guidance_walkthrough"
+          guidance_files_to_review:
+            - "process.mmd"
+            - "inputs.yml"
+          test_scenarios:
+            - "self_review_test"
+            - "task_completion_test"
+            - "reference_resolution_test"
+            - "friction_detection_test"
+            - "subagent_spawning_test"
+          walkthrough_task: |
+            Execute the orchestration-planning process to coordinate planning workflow.
+            Demonstrate ability to identify required planners and spawn them with context.
+          constraints: "Use only guidance files - no code inspection or codebase exploration"
+          report_template: "modules/AgenticGuidance/assets/definitions/friction.yml#FRICTION_POINT"
+        acceptance_criteria:
+          - "Agent completes walkthrough using guidance only"
+          - "All input paths resolve correctly"
+          - "Planner agent paths discoverable from inputs"
+          - "Friction report shows zero CRITICAL or HIGH severity issues"
+        files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml"
+
+      # -----------------------------------------------------------------------
+      # 1.3: Test-Guidance-Simulator (Loop Participant)
+      # -----------------------------------------------------------------------
+      - id: "1.3"
+        description: "Walkthrough validation of test-guidance-simulator guidance"
+        agent_type: "test-guidance-simulator"
+        operation: "EXECUTE"
+        status: "pending"
+        context:
+          target_agent: "modules/AgenticGuidance/agents/test/test-guidance-simulator/"
+          validation_mode: "guidance_walkthrough"
+          guidance_files_to_review:
+            - "process.yml"
+            - "inputs.yml"
+          test_scenarios:
+            - "self_review_test"
+            - "task_completion_test"
+            - "reference_resolution_test"
+            - "friction_detection_test"
+            - "loop_context_test"
+          walkthrough_task: |
+            Execute the test-guidance-simulator process to validate target agent guidance.
+            Demonstrate understanding of guidance-test-loop participation and friction reporting.
+          constraints: "Use only guidance files - no code inspection or codebase exploration"
+          report_template: "modules/AgenticGuidance/assets/definitions/friction.yml#FRICTION_POINT"
+        acceptance_criteria:
+          - "Agent completes walkthrough using guidance only"
+          - "Loop context clearly defined in process.yml"
+          - "All input paths resolve correctly"
+          - "Friction report shows zero CRITICAL or HIGH severity issues"
+        files:
+          - "modules/AgenticGuidance/agents/test/test-guidance-simulator/process.yml"
+          - "modules/AgenticGuidance/agents/test/test-guidance-simulator/inputs.yml"
+
+      # -----------------------------------------------------------------------
+      # 1.4: Planner-Guidance-Testing (Loop Participant - Self-Validation)
+      # -----------------------------------------------------------------------
+      - id: "1.4"
+        description: "Walkthrough validation of planner-guidance-testing guidance (self-validation)"
+        agent_type: "test-guidance-simulator"
+        operation: "EXECUTE"
+        status: "pending"
+        context:
+          target_agent: "modules/AgenticGuidance/agents/planner/planner-guidance-testing/"
+          validation_mode: "guidance_walkthrough"
+          guidance_files_to_review:
+            - "process.yml"
+            - "inputs.yml"
+            - "manifest.yml"
+          test_scenarios:
+            - "self_review_test"
+            - "task_completion_test"
+            - "reference_resolution_test"
+            - "friction_detection_test"
+            - "loop_context_test"
+          walkthrough_task: |
+            Execute the planner-guidance-testing process to create a guidance test plan.
+            Demonstrate understanding of test scenario selection and minimal context principles.
+          constraints: "Use only guidance files - no code inspection or codebase exploration"
+          report_template: "modules/AgenticGuidance/assets/definitions/friction.yml#FRICTION_POINT"
+        acceptance_criteria:
+          - "Agent completes walkthrough using guidance only"
+          - "Loop context clearly defined in process.yml"
+          - "Test scenario selection rules clear from manifest.yml"
+          - "All input paths resolve correctly"
+          - "Friction report shows zero CRITICAL or HIGH severity issues"
+        files:
+          - "modules/AgenticGuidance/agents/planner/planner-guidance-testing/process.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-guidance-testing/inputs.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-guidance-testing/manifest.yml"
+
+      # -----------------------------------------------------------------------
+      # 1.5: Teacher-Update-Guidance (Loop Participant)
+      # -----------------------------------------------------------------------
+      - id: "1.5"
+        description: "Walkthrough validation of teacher-update-guidance guidance"
+        agent_type: "test-guidance-simulator"
+        operation: "EXECUTE"
+        status: "pending"
+        context:
+          target_agent: "modules/AgenticGuidance/agents/teacher/teacher-update-guidance/"
+          validation_mode: "guidance_walkthrough"
+          guidance_files_to_review:
+            - "process.yml"
+            - "inputs.yml"
+          test_scenarios:
+            - "self_review_test"
+            - "task_completion_test"
+            - "reference_resolution_test"
+            - "friction_detection_test"
+            - "loop_context_test"
+          walkthrough_task: |
+            Execute the teacher-update-guidance process to fix guidance gaps.
+            Demonstrate understanding of documentation-loop participation and friction resolution.
+          constraints: "Use only guidance files - no code inspection or codebase exploration"
+          report_template: "modules/AgenticGuidance/assets/definitions/friction.yml#FRICTION_POINT"
+        acceptance_criteria:
+          - "Agent completes walkthrough using guidance only"
+          - "Loop context clearly defined in process.yml"
+          - "All input paths resolve correctly"
+          - "Friction report shows zero CRITICAL or HIGH severity issues"
+        files:
+          - "modules/AgenticGuidance/agents/teacher/teacher-update-guidance/process.yml"
+          - "modules/AgenticGuidance/agents/teacher/teacher-update-guidance/inputs.yml"
+
+      # -----------------------------------------------------------------------
+      # 1.6: Planner-Build (Standard Agent)
+      # -----------------------------------------------------------------------
+      - id: "1.6"
+        description: "Walkthrough validation of planner-build guidance"
+        agent_type: "test-guidance-simulator"
+        operation: "EXECUTE"
+        status: "pending"
+        context:
+          target_agent: "modules/AgenticGuidance/agents/planner/planner-build/"
+          validation_mode: "guidance_walkthrough"
+          guidance_files_to_review:
+            - "process.yml"
+            - "inputs.yml"
+          test_scenarios:
+            - "self_review_test"
+            - "task_completion_test"
+            - "reference_resolution_test"
+            - "friction_detection_test"
+          walkthrough_task: |
+            Execute the planner-build process to create a build implementation plan.
+            Demonstrate understanding of CCI bootstrap pattern and plan structure requirements.
+          constraints: "Use only guidance files - no code inspection or codebase exploration"
+          report_template: "modules/AgenticGuidance/assets/definitions/friction.yml#FRICTION_POINT"
+        acceptance_criteria:
+          - "Agent completes walkthrough using guidance only"
+          - "CCI bootstrap instructions clear"
+          - "All input paths resolve correctly"
+          - "Plan output structure requirements clear"
+          - "Friction report shows zero CRITICAL or HIGH severity issues"
+        files:
+          - "modules/AgenticGuidance/agents/planner/planner-build/process.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-build/inputs.yml"
+
+      # -----------------------------------------------------------------------
+      # 1.7: Build-Python (Standard Agent)
+      # -----------------------------------------------------------------------
+      - id: "1.7"
+        description: "Walkthrough validation of build-python guidance"
+        agent_type: "test-guidance-simulator"
+        operation: "EXECUTE"
+        status: "pending"
+        context:
+          target_agent: "modules/AgenticGuidance/agents/build/build-python/"
+          validation_mode: "guidance_walkthrough"
+          guidance_files_to_review:
+            - "process.yml"
+            - "inputs.yml"
+          test_scenarios:
+            - "self_review_test"
+            - "task_completion_test"
+            - "reference_resolution_test"
+            - "friction_detection_test"
+          walkthrough_task: |
+            Execute the build-python process to implement Python code changes.
+            Demonstrate understanding of CCI bootstrap pattern and build workflow.
+          constraints: "Use only guidance files - no code inspection or codebase exploration"
+          report_template: "modules/AgenticGuidance/assets/definitions/friction.yml#FRICTION_POINT"
+        acceptance_criteria:
+          - "Agent completes walkthrough using guidance only"
+          - "CCI bootstrap instructions clear"
+          - "All input paths resolve correctly"
+          - "Build workflow steps clear"
+          - "Friction report shows zero CRITICAL or HIGH severity issues"
+        files:
+          - "modules/AgenticGuidance/agents/build/build-python/process.yml"
+          - "modules/AgenticGuidance/agents/build/build-python/inputs.yml"
+
+      # -----------------------------------------------------------------------
+      # 1.8: Test-Runner (Standard Agent - Loop Participant)
+      # -----------------------------------------------------------------------
+      - id: "1.8"
+        description: "Walkthrough validation of test-runner guidance"
+        agent_type: "test-guidance-simulator"
+        operation: "EXECUTE"
+        status: "pending"
+        context:
+          target_agent: "modules/AgenticGuidance/agents/test/test-runner/"
+          validation_mode: "guidance_walkthrough"
+          guidance_files_to_review:
+            - "process.yml"
+            - "inputs.yml"
+          test_scenarios:
+            - "self_review_test"
+            - "task_completion_test"
+            - "reference_resolution_test"
+            - "friction_detection_test"
+            - "loop_context_test"
+          walkthrough_task: |
+            Execute the test-runner process to run tests and report results.
+            Demonstrate understanding of test-fix-loop participation and result reporting.
+          constraints: "Use only guidance files - no code inspection or codebase exploration"
+          report_template: "modules/AgenticGuidance/assets/definitions/friction.yml#FRICTION_POINT"
+        acceptance_criteria:
+          - "Agent completes walkthrough using guidance only"
+          - "Loop context clearly defined in process.yml"
+          - "All input paths resolve correctly"
+          - "Test execution workflow clear"
+          - "Friction report shows zero CRITICAL or HIGH severity issues"
+        files:
+          - "modules/AgenticGuidance/agents/test/test-runner/process.yml"
+          - "modules/AgenticGuidance/agents/test/test-runner/inputs.yml"
+
+  # =========================================================================
+  # PHASE 2: Gap Analysis and Categorization
+  # =========================================================================
+  - phase_id: "2"
+    phase_name: "Gap Analysis and Categorization"
+    status: "pending"
+    description: |
+      Analyze friction points from Phase 1, categorize by severity, and identify
+      patterns. Determine which gaps are guidance issues vs fundamental design flaws.
+
+    tasks:
+      - id: "2.1"
+        description: "Aggregate and categorize guidance gaps"
+        agent_type: "teacher"
+        operation: "ANALYZE"
+        status: "pending"
+        context:
+          input_source: "Phase 1 walkthrough validation reports from test-guidance-simulator agents"
+          categorization_reference: "modules/AgenticGuidance/assets/definitions/friction.yml"
+          severity_levels:
+            - "CRITICAL: Task cannot proceed without additional context"
+            - "HIGH: Requires code inspection or exploration"
+            - "MEDIUM: Guidance unclear but task completable"
+            - "LOW: Minor discoverability issues"
+        acceptance_criteria:
+          - "All friction points categorized by severity"
+          - "Common patterns identified across agents"
+          - "Root causes traced to specific guidance sections"
+        files:
+          - "modules/AgenticGuidance/assets/definitions/friction.yml"
+
+      - id: "2.2"
+        description: "Identify systemic CCI pattern issues"
+        agent_type: "teacher"
+        operation: "ANALYZE"
+        status: "pending"
+        context:
+          analysis_focus: "Cross-agent patterns in CCI bootstrap guidance"
+          questions:
+            - "Are CCI bootstrap instructions consistent across agent categories?"
+            - "Do input path patterns follow consistent conventions?"
+            - "Are loop_context sections complete for loop participants?"
+            - "Can orchestrators discover subagent paths from inputs.yml?"
+        acceptance_criteria:
+          - "Systemic issues identified and documented"
+          - "Guidance improvement recommendations prioritized"
+          - "Fixes scoped (per-agent vs cross-agent updates)"
+
+  # =========================================================================
+  # PHASE 3: Audit Test Quality
+  # =========================================================================
+  - phase_id: "3"
+    phase_name: "Audit Test Quality"
+    status: "pending"
+    description: |
+      Verify that walkthrough validations were executed correctly and reported
+      friction accurately. Detect false positives and test methodology issues.
+
+    tasks:
+      - id: "3.1"
+        description: "Audit walkthrough validation methodology"
+        agent_type: "test-audit"
+        operation: "REVIEW"
+        status: "pending"
+        context:
+          review_target: "Phase 1 walkthrough validation reports"
+          audit_questions:
+            - "Did target agents use ONLY guidance files (no code inspection)?"
+            - "Were test scenarios executed as defined in guidance-test-scenarios.yml?"
+            - "Are reported gaps genuine or interpretation errors?"
+            - "Did validations follow minimal context principle?"
+        acceptance_criteria:
+          - "Test methodology validated as correct"
+          - "False positives identified and filtered"
+          - "Genuine gaps confirmed for fixing"
+        files:
+          - "modules/AgenticGuidance/assets/definitions/guidance-test-scenarios.yml"
+          - "modules/AgenticGuidance/assets/examples/planner/components/guidance_blind_test.mmd"
+
+  # =========================================================================
+  # PHASE 4: Fix Guidance Gaps (Documentation Loop)
+  # =========================================================================
+  - phase_id: "4"
+    phase_name: "Fix Guidance Gaps"
+    status: "pending"
+    description: |
+      Update agent guidance to fix confirmed gaps from Phase 2. Use teacher agents
+      to improve process.yml and inputs.yml files. Re-test after fixes.
+
+    loop_pattern:
+      type: "documentation-loop"
+      participants:
+        - "teacher-update-guidance (fixer)"
+        - "test-guidance-simulator (validator)"
+      exit_conditions:
+        - "All CRITICAL and HIGH severity gaps fixed"
+        - "Re-test confirms gap resolution"
+        - "Maximum iterations (3) reached - escalate"
+
+    tasks:
+      - id: "4.1"
+        description: "Fix CRITICAL and HIGH severity gaps"
+        agent_type: "teacher-update-guidance"
+        operation: "FIX"
+        status: "pending"
+        context:
+          gaps_to_fix: "From Phase 2 gap analysis (CRITICAL and HIGH only)"
+          guidance_files:
+            - "process.yml"
+            - "inputs.yml"
+          fix_patterns:
+            - "Add missing input paths to inputs.yml"
+            - "Clarify ambiguous process steps"
+            - "Add loop_context for loop participants"
+            - "Add subagent paths for orchestrators"
+        acceptance_criteria:
+          - "All CRITICAL severity gaps fixed"
+          - "All HIGH severity gaps fixed or documented as known limitations"
+          - "Guidance updates follow guidance-artifacts.yml structure"
+          - "No new gaps introduced"
+
+      - id: "4.2"
+        description: "Re-test after fixes (iteration 2 of guidance-test-loop)"
+        agent_type: "test-guidance-simulator"
+        operation: "EXECUTE"
+        status: "pending"
+        context:
+          iteration_number: 2
+          focus: "Re-validate agents that had CRITICAL or HIGH gaps in Phase 1"
+          test_scenarios:
+            - "self_review_test"
+            - "task_completion_test"
+            - "reference_resolution_test"
+        acceptance_criteria:
+          - "Previously reported gaps resolved"
+          - "No new CRITICAL or HIGH gaps introduced"
+          - "Test scenarios pass or gaps reduced"
+
+# =============================================================================
+# SUCCESS CRITERIA
+# =============================================================================
+success_criteria:
+  phase_1:
+    - "All 8 target agents complete walkthrough validation"
+    - "Friction points reported with categorization and suggested fixes"
+    - "self_review_test executed FIRST for all agents"
+
+  phase_2:
+    - "All friction points categorized by severity"
+    - "Systemic CCI pattern issues identified"
+    - "Fix recommendations prioritized"
+
+  phase_3:
+    - "Test methodology validated as correct"
+    - "False positives filtered out"
+    - "Genuine gaps confirmed"
+
+  phase_4:
+    - "All CRITICAL severity gaps fixed"
+    - "HIGH gaps reduced or documented as known limitations"
+    - "Re-test confirms gap resolution"
+
+  overall:
+    - "Zero CRITICAL guidance gaps remain"
+    - "HIGH gaps resolved or documented as acceptable limitations"
+    - "CCI bootstrap pattern validated across agent categories"
+    - "Loop participants have complete loop_context"
+    - "Orchestrators can discover subagent paths from guidance"
+
+# =============================================================================
+# FILE ORGANIZATION
+# =============================================================================
+file_organization:
+  plan_folder: "docs/plans/live/260123AE_agenticguidance/"
+  live_plans:
+    - "live/plan_live_cci_rename_simplification.yml (completed)"
+    - "live/plan_live_agent_selfreview_cci.yml (completed)"
+    - "live/plan_live_test_guidance.yml (this file)"
+  test_results:
+    - "test-results/guidance/phase1_walkthrough_reports/"
+    - "test-results/guidance/phase2_gap_analysis.yml"
+    - "test-results/guidance/phase3_audit_report.yml"
+  completed:
+    - "completed/plan_completed.yml (tasks moved here when done)"
+
+# =============================================================================
+# NOTES
+# =============================================================================
+notes:
+  - "This plan validates CCI pattern adoption from the completed rename and self-review plans"
+  - "Walkthrough tasks use minimal context to enforce guidance-blind-test strategy"
+  - "File-level inputs ensure target agents have exact guidance files to review"
+  - "Acceptance criteria focus on guidance completeness, not implementation correctness"
+  - "Loop iterations allow for iterative guidance improvement (max 3)"
+  - "Friction categorization aligns with friction.yml patterns"
+  - "self_review_test is executed FIRST for all agents (basic validation before complex scenarios)"

@@ -1,0 +1,263 @@
+# Plan: Deploy Agents Guidance Remediation
+# Objective: Fix guidance gaps in deploy-worktree agent.
+#
+# Created: 2026-01-24
+# Agent: orchestration-planning (via _plan_teach.yml)
+# Plan Folder: 260123AE_agenticguidance
+#
+# GAPS IDENTIFIED:
+# - deploy-worktree: Unclear worktree management instructions, output inconsistencies
+
+name: "deploy-agents-guidance-remediation"
+worktree: "260123AE_agenticguidance"
+branch: "main"
+status: "completed"
+priority: "high"
+completed_date: "2026-01-24"
+
+context: |
+  Deploy-worktree agent has guidance gaps that were identified during agent review:
+
+  deploy-worktree:
+     - required_inputs at root level (inconsistent with inputs.yml structure)
+     - Mixed CLI and manual instructions for worktree operations
+     - manifest.yml outputs don't align with process.yml outputs
+     - main_worktree_path output not in manifest.yml
+
+  REMEDIATION APPROACH:
+  - Teach Phase: Update guidance files to fix inconsistencies
+  - Test Phase: Agent self-review validation
+  - Success verified when deploy-worktree agent passes self-review
+
+# =============================================================================
+# INPUTS (Pre-gathered Context)
+# =============================================================================
+inputs:
+  # Deploy-Worktree Agent Files
+  - location: "modules/AgenticGuidance/agents/deploy/deploy-worktree/process.yml"
+    description: "Current deploy-worktree process - 129 lines"
+
+  - location: "modules/AgenticGuidance/agents/deploy/deploy-worktree/inputs.yml"
+    description: "Current deploy-worktree inputs with required_inputs at root - 167 lines"
+
+  - location: "modules/AgenticGuidance/agents/deploy/deploy-worktree/manifest.yml"
+    description: "Current deploy-worktree manifest - 50 lines"
+
+  # Reference Materials
+  - location: "modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml"
+    description: "Worktree policies including Centralized Plan Visibility"
+
+  - location: "modules/AgenticGuidance/assets/definitions/agent-loops.yml#agent-self-review"
+    description: "Self-review loop definition with criteria reference"
+
+  - location: "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml"
+    description: "Self-review criteria for validation"
+
+# =============================================================================
+# OPEN QUESTIONS
+# =============================================================================
+open_questions:
+  - id: "OQ-001"
+    question: "Should required_inputs be in inputs.yml or a separate section in process.yml?"
+    severity: "medium"
+    status: "ANSWERED"
+    answer: "Keep required_inputs in inputs.yml but add explicit reference in process.yml"
+    answered_by: "IMPLICIT"
+    context: |
+      The existing pattern uses inputs.yml for all input definitions.
+      Process.yml should reference inputs.yml#required_inputs explicitly.
+      This maintains separation of concerns while ensuring visibility.
+
+  - id: "OQ-002"
+    question: "Should deploy-worktree manifest.yml include main_worktree_path output?"
+    severity: "low"
+    status: "ANSWERED"
+    answer: "Yes - manifest.yml outputs should match process.yml outputs"
+    answered_by: "IMPLICIT"
+    context: |
+      Consistency between manifest.yml and process.yml is required.
+      Manifest.yml serves as the agent interface contract.
+
+# =============================================================================
+# LOOP STRUCTURE
+# =============================================================================
+loop_structures:
+  - id: "loop_guidance_validation"
+    type: "agent-self-review"
+    applies_to_phase: "Test Phase"
+    trigger: "After teach phase guidance updates complete"
+    description: |
+      Each deploy agent performs self-review of its updated guidance files.
+      Self-review validates consistency between process.yml, inputs.yml, manifest.yml.
+    exit_criteria:
+      success: "deploy-worktree returns PASS status"
+      max_iterations: 3
+      escalation: "Escalate if self-review identifies unfixable issues"
+    participants:
+      - agent: "deploy-worktree"
+        role: "Self-reviewer"
+        files_to_review:
+          - "process.yml"
+          - "inputs.yml"
+          - "manifest.yml"
+    criteria_reference: "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml"
+
+# =============================================================================
+# PHASES AND TASKS
+# =============================================================================
+phases:
+  # ----------------------------------------
+  # PHASE 1: Teach (Guidance Updates)
+  # ----------------------------------------
+  - name: "Teach Phase"
+    execution: sequential
+    description: "Update deploy agent guidance to fix identified gaps"
+    tasks:
+      # Deploy-Worktree Updates
+      - id: "teach_001"
+        name: "Restructure deploy-worktree inputs.yml"
+        description: |
+          Move required_inputs from root level to under inputs section:
+          - required_inputs should be under inputs key (like deploy-cicd)
+          - Maintain REPO_ROOT, branch_name, base_branch definitions
+          - Ensure path resolution signpost remains clear
+        status: "pending"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/deploy/deploy-worktree/inputs.yml"
+        success_criteria:
+          - "required_inputs nested under inputs section"
+          - "REPO_ROOT documentation preserved"
+          - "Structure matches deploy-cicd pattern"
+
+      - id: "teach_002"
+        name: "Clarify deploy-worktree process.yml instructions"
+        description: |
+          Update process.yml to clarify worktree management:
+          - Add explicit reference to required_inputs
+          - Consolidate CLI-first approach (agentic plan init)
+          - Clarify what remains manual (VS Code workspace updates)
+          - Reference Centralized Plan Visibility policy
+        status: "pending"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/deploy/deploy-worktree/process.yml"
+          - "modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml"
+        success_criteria:
+          - "Required inputs clearly referenced"
+          - "CLI vs manual steps clearly separated"
+          - "Centralized Plan Visibility referenced"
+
+      - id: "teach_003"
+        name: "Align deploy-worktree manifest.yml with process.yml outputs"
+        description: |
+          Update manifest.yml outputs to match process.yml:
+          - Add main_worktree_path output
+          - Ensure all process.yml outputs are in manifest.yml
+          - Maintain consistent field types and descriptions
+        status: "pending"
+        agent: "teacher-update-guidance"
+        inputs:
+          - "modules/AgenticGuidance/agents/deploy/deploy-worktree/manifest.yml"
+          - "modules/AgenticGuidance/agents/deploy/deploy-worktree/process.yml"
+        success_criteria:
+          - "main_worktree_path output added"
+          - "All outputs aligned between files"
+          - "Descriptions match"
+
+  # ----------------------------------------
+  # PHASE 2: Test (Agent Self-Review Validation)
+  # ----------------------------------------
+  - name: "Test Phase"
+    execution: sequential
+    description: "Validate guidance updates via agent self-review"
+    tasks:
+      - id: "test_001"
+        name: "deploy-worktree Agent Self-Review"
+        description: |
+          Execute self-review for deploy-worktree agent:
+          1. Run `agentic context bootstrap --role deploy-worktree -j`
+          2. Read self-review-criteria.yml
+          3. Review process.yml, inputs.yml, manifest.yml
+          4. Apply PASS criteria (all must be met)
+          5. Report status with specific findings
+        status: "pending"
+        agent: "deploy-worktree"
+        loop: "agent-self-review"
+        inputs:
+          - "modules/AgenticGuidance/agents/deploy/deploy-worktree/process.yml"
+          - "modules/AgenticGuidance/agents/deploy/deploy-worktree/inputs.yml"
+          - "modules/AgenticGuidance/agents/deploy/deploy-worktree/manifest.yml"
+          - "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml"
+        success_criteria:
+          - "Self-review returns PASS status"
+          - "No NEEDS_ATTENTION triggers (NAT-001 through NAT-005)"
+          - "Required inputs properly documented"
+          - "Process/inputs/manifest consistency verified"
+          - "Worktree management instructions clear"
+
+# =============================================================================
+# SUCCESS CRITERIA
+# =============================================================================
+success_criteria:
+  - "deploy-worktree agent passes self-review (PASS status, no NAT triggers)"
+  - "required_inputs documented in deploy-worktree"
+  - "process.yml explicitly references inputs.yml#required_inputs"
+  - "manifest.yml outputs align with process.yml outputs"
+  - "deploy-worktree worktree management instructions are clear (CLI-first)"
+
+# =============================================================================
+# OUTPUTS
+# =============================================================================
+outputs:
+  - name: "remediation_status"
+    type: "object"
+    description: "Status of guidance remediation for deploy-worktree agent"
+    required_fields:
+      - "deploy_worktree_status"  # PASS or NEEDS_ATTENTION
+      - "files_modified"          # List of modified files
+      - "remaining_issues"        # List of any unfixed issues
+
+  - name: "self_review_reports"
+    type: "array"
+    description: "Self-review reports from each agent"
+    items:
+      type: "object"
+      fields: ["agent_name", "status", "criteria_results", "findings"]
+
+# =============================================================================
+# DEPENDENCIES
+# =============================================================================
+dependencies:
+  self_review_criteria:
+    description: "Self-review criteria must be loaded for validation"
+    location: "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml"
+    required: true
+
+  agent_self_review_guideline:
+    description: "Self-review protocol guideline"
+    location: "modules/AgenticGuidance/assets/guidelines/agent-self-review.yml"
+    required: true
+
+# =============================================================================
+# REMEDIATION DETAILS
+# =============================================================================
+remediation_details:
+  deploy_worktree:
+    issues:
+      - id: "DW-001"
+        description: "required_inputs at root level instead of under inputs"
+        severity: "medium"
+        fix: "Move required_inputs under inputs section"
+      - id: "DW-002"
+        description: "main_worktree_path output missing from manifest.yml"
+        severity: "low"
+        fix: "Add main_worktree_path to manifest.yml outputs"
+      - id: "DW-003"
+        description: "Mixed CLI and manual instructions for worktree operations"
+        severity: "low"
+        fix: "Consolidate CLI-first approach, clearly separate manual VS Code steps"
+    files_to_modify:
+      - "modules/AgenticGuidance/agents/deploy/deploy-worktree/inputs.yml"
+      - "modules/AgenticGuidance/agents/deploy/deploy-worktree/manifest.yml"
+      - "modules/AgenticGuidance/agents/deploy/deploy-worktree/process.yml"
