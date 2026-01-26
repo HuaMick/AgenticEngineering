@@ -33,11 +33,9 @@ KNOWN_AGENTS = [
     "test-runner",
     "test-service",
     "test-user-simulator",
-    # Orchestration agents (5)
-    "orchestration-build",
+    # Orchestration agents (3)
     "orchestration-executor",
     "orchestration-friction",
-    "orchestration-guidance",
     "orchestration-planning",
     # Teacher agents (3)
     "teacher-trace-diagnostics",
@@ -67,10 +65,8 @@ AGENT_CATEGORIES = {
     "test-runner": "test",
     "test-service": "test",
     "test-user-simulator": "test",
-    "orchestration-build": "orchestration",
     "orchestration-executor": "orchestration",
     "orchestration-friction": "orchestration",
-    "orchestration-guidance": "orchestration",
     "orchestration-planning": "orchestration",
     "teacher-trace-diagnostics": "teacher",
     "teacher-update-assets": "teacher",

@@ -1,0 +1,142 @@
+%% =============================================================================
+%% ORCHESTRATION: AgenticGuidance Test Plans
+%% =============================================================================
+%% GOAL: Execute comprehensive CCI and guidance validation test plans across all agents.
+%% PROFILE: Orchestrator-Test
+%% INPUT_PATH: modules/AgenticGuidance/agents/orchestration/orchestration-executor/inputs.yml
+%%
+%% PHASES: CCI_Pattern_Validation, Loop_Context_Validation, Self_Review_Validation, Reference_Integrity, Guidance_Walkthrough
+%% AGENT_ROUTING: CCI_Pattern_Validation -> test-guidance-simulator, Loop_Context_Validation -> test-guidance-simulator, Self_Review_Validation -> test-guidance-simulator, Reference_Integrity -> test-guidance-simulator, Guidance_Walkthrough -> test-guidance-simulator
+%% FEEDBACK_TRIGGER: TEST_FAILURE -> FixLoop, GUIDANCE_GAP -> teacher-update-guidance
+%%
+%% STATUS: CCI_Pattern_Validation=completed, Loop_Context_Validation=completed, Self_Review_Validation=completed, Reference_Integrity=completed, Guidance_Walkthrough=completed
+%%
+%% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.guidance-test-loop
+%% MAX_ITERATIONS: 3 (per guidance-test-loop definition)
+%% ESCALATION: If max iterations reached without tests passing, stop and Ask User
+%%
+%% PLAN FILES:
+%% - plan_live_test_cci_pattern.yml
+%% - plan_live_test_loop_context.yml
+%% - plan_live_test_self_review.yml
+%% - plan_live_test_reference_integrity.yml
+%% - plan_live_test_guidance_walkthrough.yml
+%% =============================================================================
+
+flowchart TD
+    Start((Start)) --> LoadPlans[Load Test Plan Files]
+
+    %% ========================================
+    %% INPUT VALIDATION
+    %% ========================================
+    LoadPlans --> ValidateInputs{All Plans Found?}
+    ValidateInputs -- "No: Missing" --> ErrorExit((Error: Missing Plans))
+    ValidateInputs -- "Yes" --> Phase1
+
+    %% ========================================
+    %% PHASE 1: CCI PATTERN VALIDATION
+    %% ========================================
+    %% Plan: plan_live_test_cci_pattern.yml
+    %% Tests: 28 agents for CCI bootstrap pattern consistency
+
+    subgraph Phase1_SG ["Phase 1: CCI Pattern Validation"]
+        Phase1[Enter CCI Pattern Test Phase] --> SpawnCCITester[Spawn test-guidance-simulator]
+        SpawnCCITester --> CCITestResult{CCI Tests Pass?}
+        CCITestResult -- "Fail" --> CCIFixLoop{CCI Fix Loop}
+        CCIFixLoop --> SpawnTeacherCCI[Spawn teacher-update-guidance]
+        SpawnTeacherCCI --> CCIRetry{Retry < 3?}
+        CCIRetry -- "Yes" --> SpawnCCITester
+        CCIRetry -- "No" --> CCIEscalate((Escalate: CCI Fix Blocked))
+        CCITestResult -- "Pass" --> CCIComplete[CCI Validation Complete]
+    end
+
+    CCIComplete --> Phase2
+
+    %% ========================================
+    %% PHASE 2: LOOP CONTEXT VALIDATION
+    %% ========================================
+    %% Plan: plan_live_test_loop_context.yml
+    %% Tests: 9 loop participant agents across 3 loop types
+
+    subgraph Phase2_SG ["Phase 2: Loop Context Validation"]
+        Phase2[Enter Loop Context Test Phase] --> SpawnLoopTester[Spawn test-guidance-simulator]
+        SpawnLoopTester --> LoopTestResult{Loop Tests Pass?}
+        LoopTestResult -- "Fail" --> LoopFixLoop{Loop Fix Loop}
+        LoopFixLoop --> SpawnTeacherLoop[Spawn teacher-update-guidance]
+        SpawnTeacherLoop --> LoopRetry{Retry < 3?}
+        LoopRetry -- "Yes" --> SpawnLoopTester
+        LoopRetry -- "No" --> LoopEscalate((Escalate: Loop Fix Blocked))
+        LoopTestResult -- "Pass" --> LoopComplete[Loop Validation Complete]
+    end
+
+    LoopComplete --> Phase3
+
+    %% ========================================
+    %% PHASE 3: SELF-REVIEW VALIDATION
+    %% ========================================
+    %% Plan: plan_live_test_self_review.yml
+    %% Tests: 15 representative agents for CCI self-review workflow
+
+    subgraph Phase3_SG ["Phase 3: Self-Review Validation"]
+        Phase3[Enter Self-Review Test Phase] --> SpawnSRTester[Spawn test-guidance-simulator]
+        SpawnSRTester --> SRTestResult{Self-Review Tests Pass?}
+        SRTestResult -- "Fail" --> SRFixLoop{Self-Review Fix Loop}
+        SRFixLoop --> SpawnTeacherSR[Spawn teacher-update-guidance]
+        SpawnTeacherSR --> SRRetry{Retry < 3?}
+        SRRetry -- "Yes" --> SpawnSRTester
+        SRRetry -- "No" --> SREscalate((Escalate: Self-Review Fix Blocked))
+        SRTestResult -- "Pass" --> SRComplete[Self-Review Validation Complete]
+    end
+
+    SRComplete --> Phase4
+
+    %% ========================================
+    %% PHASE 4: REFERENCE INTEGRITY
+    %% ========================================
+    %% Plan: plan_live_test_reference_integrity.yml
+    %% Tests: File path resolution and broken reference detection
+
+    subgraph Phase4_SG ["Phase 4: Reference Integrity"]
+        Phase4[Enter Reference Integrity Test Phase] --> SpawnRefTester[Spawn test-guidance-simulator]
+        SpawnRefTester --> RefTestResult{Reference Tests Pass?}
+        RefTestResult -- "Fail" --> RefFixLoop{Reference Fix Loop}
+        RefFixLoop --> SpawnTeacherRef[Spawn teacher-update-guidance]
+        SpawnTeacherRef --> RefRetry{Retry < 3?}
+        RefRetry -- "Yes" --> SpawnRefTester
+        RefRetry -- "No" --> RefEscalate((Escalate: Reference Fix Blocked))
+        RefTestResult -- "Pass" --> RefComplete[Reference Validation Complete]
+    end
+
+    RefComplete --> Phase5
+
+    %% ========================================
+    %% PHASE 5: GUIDANCE WALKTHROUGH
+    %% ========================================
+    %% Plan: plan_live_test_guidance_walkthrough.yml
+    %% Tests: Comprehensive blind-test walkthrough for all 24 agents
+
+    subgraph Phase5_SG ["Phase 5: Guidance Walkthrough"]
+        Phase5[Enter Guidance Walkthrough Phase] --> SpawnWalkTester[Spawn test-guidance-simulator]
+        SpawnWalkTester --> WalkTestResult{Walkthrough Tests Pass?}
+        WalkTestResult -- "Fail" --> WalkFixLoop{Walkthrough Fix Loop}
+        WalkFixLoop --> SpawnTeacherWalk[Spawn teacher-update-guidance]
+        SpawnTeacherWalk --> WalkRetry{Retry < 3?}
+        WalkRetry -- "Yes" --> SpawnWalkTester
+        WalkRetry -- "No" --> WalkEscalate((Escalate: Walkthrough Fix Blocked))
+        WalkTestResult -- "Pass" --> WalkComplete[Walkthrough Validation Complete]
+    end
+
+    WalkComplete --> FinalAudit
+
+    %% ========================================
+    %% FINAL AUDIT
+    %% ========================================
+    subgraph Audit_SG ["Final Audit"]
+        FinalAudit[Enter Final Audit] --> SpawnAuditor[Spawn test-audit]
+        SpawnAuditor --> AuditResult{All Validations Pass?}
+        AuditResult -- "No: Issues Found" --> AuditReport[Generate Audit Report]
+        AuditReport --> AuditEscalate((Escalate: Audit Issues))
+        AuditResult -- "Yes: Clean" --> AuditComplete[Audit Complete]
+    end
+
+    AuditComplete --> Complete((Complete: All Tests Passed))
