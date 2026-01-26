@@ -58,6 +58,13 @@ from .session import (
     SessionService,
     SessionState,
 )
+from .session_config import (
+    SessionConfig,
+    SessionConfigLoader,
+    SessionNamingConvention,
+    SessionNamingResult,
+    session_lifecycle_create,
+)
 from .template import (
     TemplateContext,
     TemplateWorkflow,
@@ -98,10 +105,15 @@ __all__ = [
     "ProcessState",
     "StateRegistry",
     # Session services
+    "SessionConfig",
+    "SessionConfigLoader",
     "SessionInfo",
+    "SessionNamingConvention",
+    "SessionNamingResult",
     "SessionResult",
     "SessionService",
     "SessionState",
+    "session_lifecycle_create",
     # Template services
     "TemplateContext",
     "TemplateWorkflow",
