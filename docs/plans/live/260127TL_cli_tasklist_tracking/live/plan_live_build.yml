@@ -1,0 +1,494 @@
+# CLI Tasklist Tracking Implementation Plan
+# Plan ID: 260127TL (Build Phase)
+# Created: 2026-01-27
+# Module: AgenticGuidance + AgenticCLI
+
+name: "cli-tasklist-tracking"
+worktree_path: "/home/code/AgenticEngineering-agenticguidance"
+branch: "agenticguidance"
+status: "pending"
+priority: "high"
+
+context: |
+  This plan implements CLI commands that force agents to explicitly tick off
+  tasks during orchestration. The goal is compliance enforcement - agents
+  must run CLI commands to mark tasks done, creating an auditable trail.
+
+  Key insight: If an agent claims completion without running the tick command,
+  it's detectable deception. Combined with Ralph Loop, agents keep getting
+  spawned until the tasklist shows all items ticked.
+
+  WORKFLOW:
+  1. PLANNING PHASE: Planner creates orchestration.mmd with phases/tasks
+  2. REVIEW PHASE: Reviewer approves plan, reads MMD, extracts tasks, runs:
+       agentic tasklist init --tasks '<JSON>'
+     - Agent parses MMD, CLI stores the data
+     - Tasklist is ready BEFORE orchestration begins
+  3. ORCHESTRATION PHASE: Agents execute tasks, must run:
+       agentic tasklist update <task_id> in-progress  (when starting)
+       agentic tasklist update <task_id> completed    (when done)
+  4. RALPH LOOP: Checks tasklist.is_complete(), respawns until all completed
+
+  First target: orchestration.mmd files for orchestration agents.
+  Future expansion: all agent types.
+
+# ========================================
+# REVIEWER AGENT RESPONSIBILITY
+# ========================================
+# After approving a plan, the reviewer agent MUST:
+#   1. Read orchestration.mmd and extract task list
+#   2. Run: agentic tasklist init --tasks '{"tasks": [...]}'
+#
+# The agent does the parsing, CLI just stores the data.
+# This decouples the CLI from specific file formats.
+# GATE: orchestration cannot start without initialized tasklist.
+
+inputs:
+  - location: "modules/AgenticGuidance/agents/orchestration/"
+    description: "Existing orchestration agent patterns"
+
+  - location: "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+    description: "Existing plan task commands for reference"
+
+  - location: "modules/AgenticGuidance/assets/specifications/plan-mmd-schema.yml"
+    description: "MMD schema specification"
+
+# ========================================
+# PHASES AND TASKS
+# ========================================
+phases:
+  # ----------------------------------------
+  # PHASE 1: Tasklist Service Core
+  # ----------------------------------------
+  - phase_id: "TL_01"
+    name: "Phase 1: Tasklist Service"
+    execution: sequential
+    status: "pending"
+    description: "Core service for parsing orchestration.mmd and tracking task status"
+    tasks:
+      - id: "TL-001"
+        task_id: "TL-001"
+        name: "Create TasklistService"
+        description: |
+          Create modules/AgenticGuidance/src/agenticguidance/services/tasklist.py
+
+          Dataclasses:
+          - TaskItem(id, name, phase, status, updated_at)
+          - TasklistState(tasks, created_at, last_updated, source)
+          - UpdateResult(success, message, task_id, old_status, new_status)
+
+          Class: TasklistService
+          - __init__(plan_folder: Path)
+          - initialize(tasks: List[dict]) -> TasklistState
+            # Agent provides task data, CLI doesn't parse MMD
+        status: "pending"
+        agent_type: "builder"
+        target_files:
+          - "modules/AgenticGuidance/src/agenticguidance/services/tasklist.py"
+        success_criteria:
+          - "Service class created with dataclasses"
+          - "initialize() accepts task list from agent"
+
+      - id: "TL-002"
+        task_id: "TL-002"
+        name: "Implement state persistence"
+        description: |
+          Add state persistence to .tasklist/status.json in plan folder.
+
+          Methods:
+          - _load_state() -> TasklistState
+          - _save_state(state: TasklistState)
+          - _get_state_path() -> Path
+
+          State file format:
+          {
+            "tasks": [{"id": "...", "status": "pending|ticked", "ticked_at": "..."}],
+            "created_at": "ISO timestamp",
+            "last_updated": "ISO timestamp",
+            "source_mmd": "orchestration_*.mmd filename"
+          }
+        status: "pending"
+        agent_type: "builder"
+        depends_on: ["TL-001"]
+        success_criteria:
+          - "State persisted to .tasklist/status.json"
+          - "State survives process restart"
+
+      - id: "TL-003"
+        task_id: "TL-003"
+        name: "Implement status update operation"
+        description: |
+          Core status update operation for tasks.
+
+          Methods:
+          - update_status(task_id: str, status: str) -> UpdateResult
+          - get_tasks_by_status(status: str = None) -> List[TaskItem]
+          - get_completion_status() -> dict
+
+          Valid statuses: pending, in-progress, completed, blocked, deferred
+
+          Update operation must:
+          - Verify task exists
+          - Validate status value
+          - Update status with timestamp
+          - Persist state immediately
+        status: "pending"
+        agent_type: "builder"
+        depends_on: ["TL-002"]
+        success_criteria:
+          - "update_status() updates state and persists"
+          - "get_tasks_by_status() filters correctly"
+          - "get_completion_status() returns percentage"
+
+      - id: "TL-004"
+        task_id: "TL-004"
+        name: "Add completion check method"
+        description: |
+          Simple method to check if all tasks are completed.
+
+          Methods:
+          - is_complete() -> bool
+
+          Returns True only when ALL tasks have status == "completed"
+          blocked/deferred/pending/in-progress all return False
+
+          Agents use this via: agentic tasklist show --status pending
+          If empty result, all tasks are done.
+        status: "pending"
+        agent_type: "builder"
+        depends_on: ["TL-003"]
+        success_criteria:
+          - "is_complete() returns True only when all status=completed"
+
+  # ----------------------------------------
+  # PHASE 2: CLI Commands
+  # ----------------------------------------
+  - phase_id: "TL_02"
+    name: "Phase 2: CLI Commands"
+    execution: sequential
+    status: "pending"
+    description: "Add agentic tasklist commands"
+    tasks:
+      - id: "TL-005"
+        task_id: "TL-005"
+        name: "Add tasklist parser to cli.py"
+        description: |
+          Add _add_tasklist_parser() function to cli.py
+
+          Create command group: agentic tasklist
+
+          Subcommands:
+          - init [--plan PATH]: Initialize tasklist from task data (agent provides via stdin/--tasks JSON)
+          - show [--plan PATH] [--status STATUS] [--limit N]: Show tasks with filtering
+          - update <task_id> <status>: Update task status (completed/in-progress/blocked/deferred)
+
+          Status values: pending, in-progress, completed, blocked, deferred
+
+          Agents check completion by: agentic tasklist show --status pending
+          If result is empty, all tasks are done.
+
+          Add to PROJECT_COMMANDS (requires plan folder context)
+          Add routing in run_cli()
+        status: "pending"
+        agent_type: "builder"
+        depends_on: ["TL-004"]
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/cli.py"
+        success_criteria:
+          - "tasklist command group registered"
+          - "subcommands defined with arguments"
+
+      - id: "TL-006"
+        task_id: "TL-006"
+        name: "Create tasklist.py command module"
+        description: |
+          Create modules/AgenticCLI/src/agenticcli/commands/tasklist.py
+
+          Functions:
+          - handle(args, ctx) - main router
+          - cmd_init(args, ctx) - REVIEWER RUNS THIS (accepts task data from agent)
+          - cmd_show(args, ctx) - flexible filtering with --status, --limit
+          - cmd_update(args, ctx) - THE KEY COMMAND (status transitions)
+        status: "pending"
+        agent_type: "builder"
+        depends_on: ["TL-005"]
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/commands/tasklist.py"
+        success_criteria:
+          - "All command handlers implemented"
+          - "JSON output supported"
+
+      - id: "TL-006a"
+        task_id: "TL-006a"
+        name: "Implement cmd_init (REVIEWER GATE)"
+        description: |
+          THE PLANNING GATE COMMAND - reviewer runs this after approving plan.
+
+          Usage: agentic tasklist init [--plan PATH] [--tasks JSON | stdin]
+
+          Behavior:
+          - Agent reads orchestration.mmd and extracts tasks
+          - Agent provides task list to CLI via:
+            - --tasks '{"tasks": [{"id": "...", "name": "...", "phase": "..."}]}'
+            - Or pipe JSON to stdin
+          - CLI creates .tasklist/status.json with all tasks in "pending" state
+          - CLI does NOT parse MMD - agent does the parsing, CLI stores the data
+
+          This decouples MMD parsing from CLI, making the system more flexible.
+          Agent is responsible for understanding the orchestration file format.
+
+          Output includes:
+          - Number of tasks initialized
+          - Tasklist path created
+        status: "pending"
+        agent_type: "builder"
+        depends_on: ["TL-006"]
+        success_criteria:
+          - "init creates .tasklist/status.json from provided task data"
+          - "init accepts JSON via --tasks or stdin"
+          - "JSON output shows initialized tasks"
+
+      - id: "TL-006b"
+        task_id: "TL-006b"
+        name: "Implement cmd_show (FLEXIBLE QUERY)"
+        description: |
+          Show tasks with flexible filtering options.
+
+          Usage: agentic tasklist show [--plan PATH] [--status STATUS] [--limit N]
+
+          Options:
+          - --status: Filter by status (completed, in-progress, blocked, deferred, pending)
+          - --limit: Limit number of results (default: all)
+          - --plan: Explicit plan folder path
+
+          Default (no filters): Show all tasks
+          Example: agentic tasklist show --status pending --limit 1
+            → Returns next pending task (replaces old "pending" command)
+
+          Output includes task id, name, phase, status, updated_at
+        status: "pending"
+        agent_type: "builder"
+        depends_on: ["TL-006"]
+        success_criteria:
+          - "show lists all tasks by default"
+          - "show filters by --status correctly"
+          - "--limit 1 returns single next task"
+          - "JSON output supported"
+
+      - id: "TL-007"
+        task_id: "TL-007"
+        name: "Implement cmd_update (KEY ENFORCEMENT)"
+        description: |
+          THE CRITICAL COMMAND - agents must call this to update task status.
+
+          Usage: agentic tasklist update <task_id> <status> [--plan PATH]
+
+          Status values:
+          - in-progress: Task being worked on
+          - completed: Task finished successfully
+          - blocked: Task cannot proceed (dependency/issue)
+          - deferred: Task postponed for later
+
+          Behavior:
+          - Finds plan folder (auto-detect or --plan)
+          - Loads TasklistService
+          - Updates task status with timestamp
+          - Persists state immediately
+          - Prints success/failure with JSON support
+
+          This is the enforcement mechanism. Agents MUST run this command
+          to update task status. Claimed completion without update = deception.
+        status: "pending"
+        agent_type: "builder"
+        depends_on: ["TL-006"]
+        success_criteria:
+          - "update command persists state"
+          - "update command records timestamp"
+          - "update command outputs machine-readable result"
+          - "update command fails gracefully for unknown task"
+
+      - id: "TL-008"
+        task_id: "TL-008"
+        name: "Add TasklistError exception class"
+        description: |
+          Create TasklistError in exceptions.py (exit code 72)
+
+          Factory methods:
+          - task_not_found(task_id)
+          - invalid_status(status)
+          - not_initialized(plan_folder)
+          - validation_failed(incomplete_count)
+        status: "pending"
+        agent_type: "builder"
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/exceptions.py"
+        success_criteria:
+          - "TasklistError class with exit code 72"
+          - "Factory methods for common errors"
+
+  # ----------------------------------------
+  # PHASE 3: Ralph Loop Integration
+  # ----------------------------------------
+  - phase_id: "TL_03"
+    name: "Phase 3: Ralph Loop Integration"
+    execution: sequential
+    status: "pending"
+    description: "Integrate tasklist with Ralph Loop for compliance enforcement"
+    tasks:
+      - id: "TL-009"
+        task_id: "TL-009"
+        name: "Add completion check to loop iteration"
+        description: |
+          Modify AgentLoopService (from 260127AG plan) to check tasklist completion.
+
+          If AgentLoopService doesn't exist yet, create stub that:
+          - Checks if .tasklist/status.json shows all tasks ticked
+          - Returns completion status for loop decision
+
+          Integration point:
+          - check_completion() should call tasklist.is_complete()
+          - Loop continues until tasklist.is_complete() returns True
+        status: "pending"
+        agent_type: "builder"
+        depends_on: ["TL-007"]
+        success_criteria:
+          - "Loop completion checks tasklist status"
+          - "Loop continues if tasks remain unticked"
+
+      - id: "TL-010"
+        task_id: "TL-010"
+        name: "Add tasklist status to loop prompt"
+        description: |
+          When Ralph Loop spawns new iteration, include tasklist status in prompt.
+
+          Prompt injection:
+          - Current tasklist completion percentage
+          - List of unticked tasks
+          - Instruction to tick tasks upon completion
+
+          This ensures each fresh-context agent knows what remains.
+        status: "pending"
+        agent_type: "builder"
+        depends_on: ["TL-009"]
+        success_criteria:
+          - "Loop prompt includes tasklist status"
+          - "Unticked tasks visible to spawned agent"
+
+  # ----------------------------------------
+  # PHASE 4: Testing
+  # ----------------------------------------
+  - phase_id: "TL_04"
+    name: "Phase 4: Testing"
+    execution: sequential
+    status: "pending"
+    description: "Unit and integration tests"
+    tasks:
+      - id: "TL-011"
+        task_id: "TL-011"
+        name: "Tasklist service unit tests"
+        description: |
+          Create modules/AgenticGuidance/tests/test_services_tasklist.py
+
+          Tests:
+          - test_initialize_creates_state
+          - test_initialize_from_task_list
+          - test_update_status_valid_transitions
+          - test_update_status_invalid_status_fails
+          - test_get_tasks_by_status_filters
+          - test_is_complete_when_all_completed
+          - test_is_complete_false_when_blocked
+          - test_is_complete_false_when_pending
+          - test_state_persistence
+        status: "pending"
+        agent_type: "test-builder"
+        depends_on: ["TL-004"]
+        target_files:
+          - "modules/AgenticGuidance/tests/test_services_tasklist.py"
+
+      - id: "TL-012"
+        task_id: "TL-012"
+        name: "CLI command tests"
+        description: |
+          Create modules/AgenticCLI/tests/test_commands_tasklist.py
+
+          Tests:
+          - test_init_from_json_arg
+          - test_init_from_stdin
+          - test_init_requires_task_data
+          - test_show_all_tasks
+          - test_show_filter_by_status
+          - test_show_with_limit
+          - test_show_empty_when_all_completed
+          - test_update_to_completed
+          - test_update_to_in_progress
+          - test_update_to_blocked
+          - test_update_to_deferred
+          - test_update_unknown_task_fails
+          - test_update_invalid_status_fails
+          - test_update_requires_init_first
+          - test_json_output_all_commands
+        status: "pending"
+        agent_type: "test-builder"
+        depends_on: ["TL-007"]
+        target_files:
+          - "modules/AgenticCLI/tests/test_commands_tasklist.py"
+
+  # ----------------------------------------
+  # PHASE 5: Service Exports
+  # ----------------------------------------
+  - phase_id: "TL_05"
+    name: "Phase 5: Service Exports"
+    execution: sequential
+    status: "pending"
+    description: "Export services and finalize"
+    tasks:
+      - id: "TL-013"
+        task_id: "TL-013"
+        name: "Update services __init__.py"
+        description: |
+          Export OrchestrationTasklistService, TaskItem, TasklistState, TickResult
+          Update __all__ list
+        status: "pending"
+        agent_type: "builder"
+        depends_on: ["TL-012"]
+        target_files:
+          - "modules/AgenticGuidance/src/agenticguidance/services/__init__.py"
+
+      - id: "TL-014"
+        task_id: "TL-014"
+        name: "Integration verification"
+        description: |
+          Manual verification:
+          - Create test plan with orchestration.mmd
+          - Run agentic orchestrate task list
+          - Run agentic orchestrate task tick <id>
+          - Verify state persisted
+          - Run agentic orchestrate task validate
+        status: "pending"
+        agent_type: "test-builder"
+        depends_on: ["TL-013"]
+
+# ========================================
+# SUCCESS CRITERIA
+# ========================================
+success_criteria:
+  - "agentic tasklist init accepts task data via --tasks JSON or stdin"
+  - "agentic tasklist show supports --status and --limit filtering"
+  - "agentic tasklist show --status pending returns empty when all done"
+  - "agentic tasklist update <id> <status> persists state with timestamp"
+  - "agentic tasklist update fails if tasklist not initialized"
+  - "Ralph Loop uses 'show --status pending' to check completion"
+  - "All unit tests pass"
+  - "JSON output works for all commands"
+
+# ========================================
+# LOOP STRUCTURES
+# ========================================
+loop_structures:
+  - id: "loop_build_validation"
+    type: "test-fix-loop"
+    applies_to_phase: "Phase 4: Testing"
+    exit_criteria:
+      success: "All tests pass"
+      max_iterations: 5
+      escalation: "Escalate to user with test results"

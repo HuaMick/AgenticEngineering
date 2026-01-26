@@ -1,0 +1,164 @@
+%% =============================================================================
+%% GOAL: Implement CLI tasklist tracking for agent compliance enforcement
+%% =============================================================================
+%% PROFILE: Orchestration-TasklistTracking
+%% OUTPUT: TasklistService, CLI tasklist commands, Ralph Loop integration
+%% GUIDELINE: BUILD FOCUS policy - code implementation and testing
+%% GUIDELINE: modules/AgenticGuidance/assets/guidelines/testing.yml
+%% INPUT_PATH: docs/plans/live/260127TL_cli_tasklist_tracking/live/plan_live_build.yml
+%%
+%% PHASES:
+%%   1. TasklistService - Core service for storing tasks and tracking status
+%%   2. CLICommands - agentic tasklist commands (init, show, update)
+%%   3. RalphLoopIntegration - Completion check and prompt injection
+%%   4. Testing - Unit and integration tests
+%%   5. ServiceExports - Finalization and verification
+%%
+%% AGENT_ROUTING: TasklistService -> builder, CLICommands -> builder, RalphLoopIntegration -> builder, Testing -> test-builder, ServiceExports -> builder
+%% STATUS: TasklistService=pending, CLICommands=pending, RalphLoopIntegration=pending, Testing=pending, ServiceExports=pending
+%% FEEDBACK_TRIGGERS: TEST_FAILURE -> test-fix-loop, BUILD_FAILURE -> escalate
+%% =============================================================================
+
+flowchart LR
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    LoadInputs --> ReviewInputs[Review All Listed Inputs]
+    ReviewInputs --> CheckInputs{All Inputs Found?}
+
+    CheckInputs -- "No: Missing" --> SearchInputs[Search for Missing Inputs]
+    SearchInputs --> Found{Found?}
+    Found -- "Yes: Update paths" --> UpdateRefs[Update References]
+    UpdateRefs --> ReviewInputs
+    Found -- "No: Stop" --> AskUser((Ask User for Clarification))
+
+    CheckInputs -- "Yes: Verified" --> WorktreeSetup
+
+    %% ========================================
+    %% WORKTREE SETUP
+    %% ========================================
+    WorktreeSetup[Verify Worktree: agenticguidance] --> ValidateWorktree{Worktree Valid?}
+    ValidateWorktree -- "No" --> AskUser
+    ValidateWorktree -- "Yes" --> Phase1
+
+    %% ========================================
+    %% PHASE 1: TASKLIST SERVICE
+    %% ========================================
+    %% AGENT_ROUTING: builder agent implements OrchestrationTasklistService
+    %% Tasks: TL-001, TL-002, TL-003, TL-004
+
+    subgraph TasklistService_SG ["Phase 1: Tasklist Service Subgraph"]
+        Phase1[Enter Phase 1: Tasklist Service] --> SpawnBuilder1[Spawn builder Agent]
+        SpawnBuilder1 --> CreateService[Create TasklistService]
+        CreateService --> ImplementPersistence[Implement State Persistence]
+        ImplementPersistence --> ImplementStatusUpdate[Implement Status Update]
+        ImplementStatusUpdate --> AddCompletionCheck[Add Completion Check]
+        AddCompletionCheck --> Phase1Complete[Phase 1 Complete]
+    end
+
+    Phase1Complete --> Phase2
+
+    %% ========================================
+    %% PHASE 2: CLI COMMANDS
+    %% ========================================
+    %% AGENT_ROUTING: builder agent implements CLI commands
+    %% Tasks: TL-005, TL-006, TL-006a, TL-006b, TL-007, TL-008
+
+    subgraph CLICommands_SG ["Phase 2: CLI Commands Subgraph"]
+        Phase2[Enter Phase 2: CLI Commands] --> SpawnBuilder2[Spawn builder Agent]
+        SpawnBuilder2 --> AddParser[Add tasklist Parser]
+        AddParser --> CreateModule[Create tasklist.py Module]
+        CreateModule --> ImplementInitCmd[Implement init Command - REVIEWER GATE]
+        ImplementInitCmd --> ImplementShowCmd[Implement show Command - QUERY]
+        ImplementShowCmd --> ImplementUpdateCmd[Implement update Command - ENFORCEMENT]
+        ImplementUpdateCmd --> AddExceptions[Add TasklistError Exception]
+        AddExceptions --> Phase2Complete[Phase 2 Complete]
+    end
+
+    Phase2Complete --> Phase3
+
+    %% ========================================
+    %% PHASE 3: RALPH LOOP INTEGRATION
+    %% ========================================
+    %% AGENT_ROUTING: builder agent integrates with Ralph Loop
+    %% Tasks: TL-009, TL-010
+
+    subgraph RalphLoopIntegration_SG ["Phase 3: Ralph Loop Integration Subgraph"]
+        Phase3[Enter Phase 3: Ralph Loop Integration] --> SpawnBuilder3[Spawn builder Agent]
+        SpawnBuilder3 --> AddCompletionCheck[Add Completion Check to Loop]
+        AddCompletionCheck --> AddTasklistToPrompt[Add Tasklist Status to Prompt]
+        AddTasklistToPrompt --> Phase3Complete[Phase 3 Complete]
+    end
+
+    Phase3Complete --> Phase4
+
+    %% ========================================
+    %% PHASE 4: TESTING (TEST-FIX-LOOP)
+    %% ========================================
+    %% LOOP_DEFINITION: test-fix-loop
+    %% MAX_ITERATIONS: 5
+    %% FEEDBACK_TRIGGER: TEST_FAILURE -> retry or escalate
+
+    subgraph Testing_SG ["Phase 4: Testing Subgraph (Test-Fix-Loop)"]
+        Phase4[Enter Phase 4: Testing] --> SpawnTestBuilder[Spawn test-builder Agent]
+
+        SpawnTestBuilder --> ServiceTests[Tasklist Service Tests]
+        ServiceTests --> CLITests[CLI Command Tests]
+
+        CLITests --> RunTests[Run All Tests]
+        RunTests --> TestsPassed{Tests Passed?}
+
+        %% Test-Fix Loop: retry path
+        TestsPassed -- "No: Fix in Iteration" --> SpawnBuilderFix[Spawn builder Agent for Fixes]
+        SpawnBuilderFix --> ApplyFixes[Apply Implementation Fixes]
+        ApplyFixes --> RunTests
+
+        %% Success path
+        TestsPassed -- "Yes: All Pass" --> Phase4Complete[Phase 4 Complete]
+    end
+
+    %% Escalation path for persistent test failures
+    TestsPassed -- "No: Escalate" --> CheckIterations{Max Iterations Reached?}
+    CheckIterations -- "No" --> SpawnTestBuilder
+    CheckIterations -- "Yes" --> EscalateTests((Ask User: Test Failures Persist))
+
+    Phase4Complete --> Phase5
+
+    %% ========================================
+    %% PHASE 5: SERVICE EXPORTS
+    %% ========================================
+    %% AGENT_ROUTING: builder for exports, test-builder for verification
+    %% Tasks: TL-013, TL-014
+
+    subgraph ServiceExports_SG ["Phase 5: Service Exports Subgraph"]
+        Phase5[Enter Phase 5: Service Exports] --> SpawnBuilder5[Spawn builder Agent]
+        SpawnBuilder5 --> UpdateExports[Update services __init__.py]
+        UpdateExports --> IntegrationVerify[Integration Verification]
+        IntegrationVerify --> VerifyComplete{Verification Passed?}
+
+        VerifyComplete -- "No" --> IdentifyGaps[Identify Gaps]
+        IdentifyGaps -.->|Return to Testing| Phase4
+
+        VerifyComplete -- "Yes" --> Phase5Complete[Phase 5 Complete]
+    end
+
+    %% ========================================
+    %% FINALIZATION
+    %% ========================================
+    Phase5Complete --> UpdatePlanStatus[Update Plan Status: completed]
+    UpdatePlanStatus --> ArchivePlan[Archive to docs/plans/completed/]
+    ArchivePlan --> End((End: Implementation Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef entrypoint fill:#90EE90,stroke:#228B22
+    classDef exitpoint fill:#FFB6C1,stroke:#DC143C
+    classDef userpoint fill:#87CEEB,stroke:#4682B4
+    classDef keyaction fill:#FFD700,stroke:#DAA520
+    class Start entrypoint
+    class End exitpoint
+    class AskUser,EscalateTests userpoint
+    class ImplementInitCmd,ImplementUpdateCmd keyaction
