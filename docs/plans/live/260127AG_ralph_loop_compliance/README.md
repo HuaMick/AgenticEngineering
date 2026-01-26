@@ -25,9 +25,26 @@ This resulted in 2 plans (260126AT_agentictmux, 260126AV_agenticvoice) being pro
 - **Option B**: Build planning and Ralph Loop support into CLI (new commands)
 - **Option C**: Hybrid - minimal CLI additions to bridge the gap
 
+## Resolution Selected
+
+**Option B: Build planning and Agent Loop support into AgenticGuidance**
+
+Implementation approach: Geoffrey Huntley Ralph Loop with fresh context per iteration.
+- Each iteration gets fresh context (no `--resume`)
+- State persists via files (plan YAML, git history)
+- `claude -p --output-format json` for clean subprocess control
+
 ## Files
 
-- `live/plan_live_teach.yml` - Investigation and resolution plan
+- `live/plan_live_teach.yml` - Investigation and root cause analysis
+- `live/plan_live_build.yml` - Implementation plan for Agent Loop services
+- `live/orchestration_agent_loop.mmd` - Orchestration flowchart for execution
+
+## Deliverables (Planned)
+
+1. `agentic plan generate-mmd <folder>` - Generate orchestration MMD from plan YAML
+2. `agentic plan validate --require-mmd` - Validate plan has MMD file
+3. `agentic loop init|start|status|stop|run-once` - Agent loop commands
 
 ## Related Plans (Reopened for Revalidation)
 

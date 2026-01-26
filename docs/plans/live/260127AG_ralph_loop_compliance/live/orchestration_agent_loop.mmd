@@ -1,0 +1,188 @@
+%% =============================================================================
+%% GOAL: Orchestrate implementation of AgentLoopService and MMDGeneratorService
+%% =============================================================================
+%% PROFILE: Orchestration-AgentLoop
+%% OUTPUT: Implemented MMD generator service, Agent Loop service, CLI commands, and tests
+%% GUIDELINE: BUILD FOCUS policy - code implementation and testing
+%% GUIDELINE: Fresh context per iteration (Geoffrey Huntley Ralph Loop pattern)
+%% GUIDELINE: modules/AgenticGuidance/assets/guidelines/testing.yml
+%% INPUT_PATH: docs/plans/live/260127AG_ralph_loop_compliance/live/plan_live_build.yml
+%%
+%% PHASES:
+%%   1. MMDGenerator - MMDGeneratorService implementation
+%%   2. MMDCLI - CLI commands for MMD generation
+%%   3. AgentLoopService - Core loop orchestration service
+%%   4. AgentLoopCLI - CLI commands for loop control
+%%   5. Testing - Unit and integration tests (test-fix-loop)
+%%   6. ServiceExports - Finalization and verification
+%%
+%% AGENT_ROUTING: MMDGenerator -> builder, MMDCLI -> builder, AgentLoopService -> builder, AgentLoopCLI -> builder, Testing -> test-builder, ServiceExports -> builder
+%% STATUS: MMDGenerator=pending, MMDCLI=pending, AgentLoopService=pending, AgentLoopCLI=pending, Testing=pending, ServiceExports=pending
+%% =============================================================================
+
+flowchart LR
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    LoadInputs --> ReviewInputs[Review All Listed Inputs]
+    ReviewInputs --> CheckInputs{All Inputs Found?}
+
+    CheckInputs -- "No: Missing" --> SearchInputs[Search for Missing Inputs]
+    SearchInputs --> Found{Found?}
+    Found -- "Yes: Update paths" --> UpdateRefs[Update References]
+    UpdateRefs --> ReviewInputs
+    Found -- "No: Stop" --> AskUser((Ask User for Clarification))
+
+    CheckInputs -- "Yes: Verified" --> WorktreeSetup
+
+    %% ========================================
+    %% WORKTREE SETUP
+    %% ========================================
+    WorktreeSetup[Verify Worktree: agenticguidance] --> ValidateWorktree{Worktree Valid?}
+    ValidateWorktree -- "No" --> AskUser
+    ValidateWorktree -- "Yes" --> Phase1
+
+    %% ========================================
+    %% PHASE 1: MMD GENERATOR SERVICE
+    %% ========================================
+    %% AGENT_ROUTING: builder agent implements MMDGeneratorService
+    %% Tasks: AG-RL-001, AG-RL-002, AG-RL-003, AG-RL-004
+
+    subgraph MMDGenerator_SG ["Phase 1: MMD Generator Subgraph"]
+        Phase1[Enter Phase 1: MMD Generator] --> SpawnBuilder1[Spawn builder Agent]
+        SpawnBuilder1 --> Task001[AG-RL-001: Create MMDGeneratorService base]
+        Task001 --> Task002[AG-RL-002: Implement metadata extraction]
+        Task002 --> Task003[AG-RL-003: Implement MMD template generation]
+        Task003 --> Task004[AG-RL-004: Add file writing with conflict detection]
+        Task004 --> Phase1Complete[Phase 1 Complete]
+    end
+
+    Phase1Complete --> Phase2
+
+    %% ========================================
+    %% PHASE 2: MMD CLI COMMANDS
+    %% ========================================
+    %% AGENT_ROUTING: builder agent implements CLI commands
+    %% Tasks: AG-RL-005, AG-RL-006, AG-RL-007, AG-RL-008
+
+    subgraph MMDCLI_SG ["Phase 2: MMD CLI Commands Subgraph"]
+        Phase2[Enter Phase 2: MMD CLI] --> SpawnBuilder2[Spawn builder Agent]
+        SpawnBuilder2 --> Task005[AG-RL-005: Add generate-mmd parser]
+        Task005 --> Task006[AG-RL-006: Implement cmd_generate_mmd handler]
+        Task006 --> Task007[AG-RL-007: Extend validate --require-mmd]
+        Task007 --> Task008[AG-RL-008: Add MMDError exception class]
+        Task008 --> Phase2Complete[Phase 2 Complete]
+    end
+
+    Phase2Complete --> Phase3
+
+    %% ========================================
+    %% PHASE 3: AGENT LOOP SERVICE
+    %% ========================================
+    %% AGENT_ROUTING: builder agent implements AgentLoopService
+    %% Tasks: AG-RL-009, AG-RL-010, AG-RL-011, AG-RL-012, AG-RL-013, AG-RL-014
+
+    subgraph AgentLoopService_SG ["Phase 3: Agent Loop Service Subgraph"]
+        Phase3[Enter Phase 3: Agent Loop Service] --> SpawnBuilder3[Spawn builder Agent]
+        SpawnBuilder3 --> Task009[AG-RL-009: Create AgentLoopService base]
+        Task009 --> Task010[AG-RL-010: Implement state persistence]
+        Task010 --> Task011[AG-RL-011: Implement claude -p execution]
+        Task011 --> Task012[AG-RL-012: Implement completion detection]
+        Task012 --> Task013[AG-RL-013: Implement loop orchestration]
+        Task013 --> Task014[AG-RL-014: Add AgentLoopError exception]
+        Task014 --> Phase3Complete[Phase 3 Complete]
+    end
+
+    Phase3Complete --> Phase4
+
+    %% ========================================
+    %% PHASE 4: AGENT LOOP CLI
+    %% ========================================
+    %% AGENT_ROUTING: builder agent implements CLI commands
+    %% Tasks: AG-RL-015, AG-RL-016, AG-RL-017, AG-RL-018, AG-RL-019, AG-RL-020
+
+    subgraph AgentLoopCLI_SG ["Phase 4: Agent Loop CLI Subgraph"]
+        Phase4[Enter Phase 4: Agent Loop CLI] --> SpawnBuilder4[Spawn builder Agent]
+        SpawnBuilder4 --> Task015[AG-RL-015: Add loop parser to cli.py]
+        Task015 --> Task016[AG-RL-016: Create loop.py command module]
+        Task016 --> Task017[AG-RL-017: Implement cmd_init]
+        Task017 --> Task018[AG-RL-018: Implement cmd_start and cmd_stop]
+        Task018 --> Task019[AG-RL-019: Implement cmd_status]
+        Task019 --> Task020[AG-RL-020: Implement cmd_run_once]
+        Task020 --> Phase4Complete[Phase 4 Complete]
+    end
+
+    Phase4Complete --> Phase5
+
+    %% ========================================
+    %% PHASE 5: TESTING (TEST-FIX-LOOP)
+    %% ========================================
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.test-fix-loop
+    %% MAX_ITERATIONS: 5 (per test-fix-loop definition)
+    %% ESCALATION: If max iterations reached without tests passing, stop and Ask User
+    %% FEEDBACK_TRIGGER: TEST_FAILURE -> SpawnTestBuilder (retry) or AskUser (escalate)
+
+    subgraph Testing_SG ["Phase 5: Testing Subgraph (Test-Fix-Loop)"]
+        Phase5[Enter Phase 5: Testing] --> SpawnTestBuilder[Spawn test-builder Agent]
+
+        SpawnTestBuilder --> Task021[AG-RL-021: MMD Generator service tests]
+        Task021 --> Task022[AG-RL-022: Agent Loop service tests]
+        Task022 --> Task023[AG-RL-023: CLI command tests]
+
+        Task023 --> RunTests[Run All Tests]
+        RunTests --> TestsPassed{Tests Passed?}
+
+        %% Test-Fix Loop: retry path
+        TestsPassed -- "No: Fix in Iteration" --> SpawnBuilderFix[Spawn builder Agent for Fixes]
+        SpawnBuilderFix --> ApplyFixes[Apply Implementation Fixes]
+        ApplyFixes --> RunTests
+
+        %% Success path
+        TestsPassed -- "Yes: All Pass" --> Phase5Complete[Phase 5 Complete]
+    end
+
+    %% Escalation path for persistent test failures
+    TestsPassed -- "No: Escalate" --> CategorizeFailure[Categorize Test Failure]
+    CategorizeFailure --> CheckIterations{Max Iterations Reached?}
+    CheckIterations -- "No" --> SpawnTestBuilder
+    CheckIterations -- "Yes" --> EscalateTests((Ask User: Test Failures Persist))
+
+    Phase5Complete --> Phase6
+
+    %% ========================================
+    %% PHASE 6: SERVICE EXPORTS
+    %% ========================================
+    %% AGENT_ROUTING: builder for exports, test-builder for verification
+    %% Tasks: AG-RL-024, AG-RL-025, AG-RL-026
+
+    subgraph ServiceExports_SG ["Phase 6: Service Exports Subgraph"]
+        Phase6[Enter Phase 6: Service Exports] --> SpawnBuilder6[Spawn builder Agent]
+        SpawnBuilder6 --> Task024[AG-RL-024: Update services __init__.py]
+        Task024 --> Task025[AG-RL-025: Update CLI help text]
+        Task025 --> Task026[AG-RL-026: Integration verification]
+        Task026 --> VerifyIntegration{Integration Verified?}
+
+        VerifyIntegration -- "No" --> IdentifyGaps[Identify Integration Gaps]
+        IdentifyGaps -.->|Return to Testing| Phase5
+
+        VerifyIntegration -- "Yes" --> Phase6Complete[Phase 6 Complete]
+    end
+
+    %% ========================================
+    %% FINALIZATION
+    %% ========================================
+    Phase6Complete --> UpdatePlanStatus[Update Plan Status: completed]
+    UpdatePlanStatus --> ArchivePlan[Archive to docs/plans/completed/]
+    ArchivePlan --> End((End: Implementation Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef entrypoint fill:#90EE90,stroke:#228B22
+    classDef exitpoint fill:#FFB6C1,stroke:#DC143C
+    classDef userpoint fill:#87CEEB,stroke:#4682B4
+    class Start entrypoint
+    class End exitpoint
+    class AskUser,EscalateTests userpoint
