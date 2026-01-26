@@ -1,0 +1,117 @@
+flowchart LR
+    %% GOAL: Orchestrate AgenticGuidance services layer extraction from AgenticCLI workflows
+    %% PROFILE: Orchestration-Build-Services
+    %% PHASES: phase_1, phase_2, phase_3, phase_4
+    %% AGENT_ROUTING: phase_1 -> build-python, phase_2 -> build-python, phase_3 -> build-python, phase_4 -> build-python
+    %% FEEDBACK_TRIGGERS: TEST_FAILURE -> RetryBuild, BUILD_FAILURE -> Escalate
+    %% STATUS: phase_1=pending, phase_2=pending, phase_3=pending, phase_4=pending
+    %% LOOP_DEFINITION: test-fix-loop (max iterations: 5)
+    %% INPUT_PATH: docs/plans/live/260123AE_agenticguidance/live/plan_services_refactor.yml
+    %%
+    %% DEPENDENCIES:
+    %% - Phase 2 depends on Phase 1 (services layer must exist before CLI refactor)
+    %% - Phase 3 depends on Phase 1 (session.py service for Tmux)
+    %% - Phase 4 depends on Phase 1 (voice command routing to services)
+
+    Start((Start)) --> LoadPlan[Load plan_services_refactor.yml]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    LoadPlan --> ValidateInputs[Validate Plan Inputs]
+    ValidateInputs --> InputsValid{Inputs Valid?}
+    InputsValid -- "No: Missing" --> AskUser((Ask User for Clarification))
+    InputsValid -- "Yes" --> Phase1
+
+    %% ========================================
+    %% PHASE 1: Create AgenticGuidance Services Layer
+    %% ========================================
+    %% Tasks: AG-001 to AG-005
+    %% Extracts ~2800 lines from AgenticCLI workflows to AgenticGuidance services
+
+    subgraph Phase1_SG ["Phase 1: Create Services Layer"]
+        Phase1((Phase 1: Services)) --> SpawnBuilder1[Spawn build-python Agent]
+        SpawnBuilder1 --> Task_AG001[AG-001: Create services structure]
+        Task_AG001 --> Task_AG002[AG-002: Move context_workflow]
+        Task_AG002 --> Task_AG003[AG-003: Move plan_workflow]
+        Task_AG003 --> Task_AG004[AG-004: Move remaining workflows]
+        Task_AG004 --> Task_AG005[AG-005: Create test suite]
+        Task_AG005 --> RunTests1[Run pytest tests/]
+        RunTests1 --> Tests1Pass{Tests Pass?}
+        Tests1Pass -- "No: Fix" --> SpawnBuilderFix1[Spawn build-python Fix]
+        SpawnBuilderFix1 --> RunTests1
+        Tests1Pass -- "Yes" --> Phase1Complete((Phase 1 Complete))
+    end
+
+    Phase1Complete --> Phase2
+
+    %% ========================================
+    %% PHASE 2: Refactor AgenticCLI to Thin Wrapper
+    %% ========================================
+    %% Tasks: AG-006 to AG-008
+    %% Updates CLI to call AgenticGuidance services
+
+    subgraph Phase2_SG ["Phase 2: Thin CLI Wrapper"]
+        Phase2((Phase 2: CLI Refactor)) --> SpawnBuilder2[Spawn build-python Agent]
+        SpawnBuilder2 --> Task_AG006[AG-006: Update CLI dependencies]
+        Task_AG006 --> Task_AG007[AG-007: Refactor command handlers]
+        Task_AG007 --> Task_AG008[AG-008: Remove workflows directory]
+        Task_AG008 --> RunTests2[Run pytest -v]
+        RunTests2 --> Tests2Pass{Tests Pass?}
+        Tests2Pass -- "No: Fix" --> SpawnBuilderFix2[Spawn build-python Fix]
+        SpawnBuilderFix2 --> RunTests2
+        Tests2Pass -- "Yes" --> Phase2Complete((Phase 2 Complete))
+    end
+
+    Phase2Complete --> Phase3
+
+    %% ========================================
+    %% PHASE 3: Build AgenticTmux Module
+    %% ========================================
+    %% Tasks: AG-009 to AG-011
+    %% Creates tmux session management module
+
+    subgraph Phase3_SG ["Phase 3: AgenticTmux Module"]
+        Phase3((Phase 3: Tmux)) --> SpawnBuilder3[Spawn build-python Agent]
+        SpawnBuilder3 --> Task_AG009[AG-009: Create AgenticTmux structure]
+        Task_AG009 --> Task_AG010[AG-010: Implement session.py service]
+        Task_AG010 --> Task_AG011[AG-011: Build tmux commands]
+        Task_AG011 --> RunTests3[Run pytest -v]
+        RunTests3 --> Tests3Pass{Tests Pass?}
+        Tests3Pass -- "No: Fix" --> SpawnBuilderFix3[Spawn build-python Fix]
+        SpawnBuilderFix3 --> RunTests3
+        Tests3Pass -- "Yes" --> Phase3Complete((Phase 3 Complete))
+    end
+
+    Phase3Complete --> Phase4
+
+    %% ========================================
+    %% PHASE 4: Build AgenticVoice Module
+    %% ========================================
+    %% Tasks: AG-012 to AG-014
+    %% Creates voice interface module
+
+    subgraph Phase4_SG ["Phase 4: AgenticVoice Module"]
+        Phase4((Phase 4: Voice)) --> SpawnBuilder4[Spawn build-python Agent]
+        SpawnBuilder4 --> Task_AG012[AG-012: Create AgenticVoice structure]
+        Task_AG012 --> Task_AG013[AG-013: Implement voice command routing]
+        Task_AG013 --> Task_AG014[AG-014: Integrate PersonaPlex]
+        Task_AG014 --> RunTests4[Run pytest -v]
+        RunTests4 --> Tests4Pass{Tests Pass?}
+        Tests4Pass -- "No: Fix" --> SpawnBuilderFix4[Spawn build-python Fix]
+        SpawnBuilderFix4 --> RunTests4
+        Tests4Pass -- "Yes" --> Phase4Complete((Phase 4 Complete))
+    end
+
+    Phase4Complete --> Success((Success: Services Refactor Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef phase fill:#e1f5fe,stroke:#0288d1
+    classDef test fill:#fff3e0,stroke:#ff9800
+    classDef success fill:#e8f5e9,stroke:#4caf50
+
+    class Phase1,Phase2,Phase3,Phase4 phase
+    class RunTests1,RunTests2,RunTests3,RunTests4 test
+    class Success success
