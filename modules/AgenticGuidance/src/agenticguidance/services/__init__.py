@@ -11,6 +11,7 @@ Each module provides a specific domain of functionality:
 - environment: Environment variable management
 - template: Jinja2 template rendering
 - preset: Task preset loading
+- session: Tmux session lifecycle management
 """
 
 from .config import (
@@ -51,6 +52,12 @@ from .state import (
     ProcessState,
     StateRegistry,
 )
+from .session import (
+    SessionInfo,
+    SessionResult,
+    SessionService,
+    SessionState,
+)
 from .template import (
     TemplateContext,
     TemplateWorkflow,
@@ -90,6 +97,11 @@ __all__ = [
     "ProcessEntry",
     "ProcessState",
     "StateRegistry",
+    # Session services
+    "SessionInfo",
+    "SessionResult",
+    "SessionService",
+    "SessionState",
     # Template services
     "TemplateContext",
     "TemplateWorkflow",
