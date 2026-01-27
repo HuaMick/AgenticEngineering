@@ -132,6 +132,9 @@ Agent Bootstrap (full context with file paths):
     # State management
     _add_state_parser(subparsers)
 
+    # Session management (Claude Code sessions)
+    _add_session_parser(subparsers)
+
     # Environment management
     _add_env_parser(subparsers)
 
@@ -1055,6 +1058,83 @@ def _add_state_parser(subparsers):
     )
 
 
+def _add_session_parser(subparsers):
+    """Add session subcommand parser for Claude Code session management."""
+    session_parser = subparsers.add_parser(
+        "session",
+        help="Manage Claude Code sessions",
+        description="Spawn, list, stop, and monitor Claude Code sessions programmatically.",
+    )
+    session_subparsers = session_parser.add_subparsers(
+        dest="session_command", help="Session commands"
+    )
+
+    # session spawn
+    spawn_parser = session_subparsers.add_parser(
+        "spawn",
+        help="Start a new Claude Code session",
+        description="Spawn a new Claude Code session with a prompt.",
+    )
+    spawn_parser.add_argument(
+        "--prompt", "-p",
+        required=True,
+        help="The prompt to send to Claude Code",
+    )
+    spawn_parser.add_argument(
+        "--max-turns", "-m",
+        type=int,
+        help="Maximum number of turns for the session",
+    )
+    spawn_parser.add_argument(
+        "--background", "-b",
+        action="store_true",
+        help="Run the session in the background",
+    )
+    spawn_parser.add_argument(
+        "--directory", "-d",
+        help="Working directory for the session (default: current directory)",
+    )
+
+    # session list
+    list_parser = session_subparsers.add_parser(
+        "list",
+        help="List Claude Code sessions",
+        description="Display all Claude Code sessions with their status.",
+    )
+    list_parser.add_argument(
+        "--active", "-a",
+        action="store_true",
+        help="Show only active (running) sessions",
+    )
+
+    # session stop
+    stop_parser = session_subparsers.add_parser(
+        "stop",
+        help="Stop a running session",
+        description="Gracefully terminate a running Claude Code session.",
+    )
+    stop_parser.add_argument(
+        "session_id",
+        help="Session ID (or partial ID) to stop",
+    )
+    stop_parser.add_argument(
+        "--force", "-f",
+        action="store_true",
+        help="Force kill the session (SIGKILL instead of SIGTERM)",
+    )
+
+    # session status
+    status_parser = session_subparsers.add_parser(
+        "status",
+        help="Get session status",
+        description="Display detailed status of a specific session.",
+    )
+    status_parser.add_argument(
+        "session_id",
+        help="Session ID (or partial ID) to check",
+    )
+
+
 def _add_env_parser(subparsers):
     """Add env subcommand parser."""
     env_parser = subparsers.add_parser(
@@ -1210,6 +1290,7 @@ GLOBAL_COMMANDS = {
     "rebuild",
     "health",
     "state",
+    "session",
     "env",
     "langsmith",
     "ls",  # alias for langsmith
@@ -1343,6 +1424,10 @@ def run_cli():
         from agenticcli.commands import state
 
         state.handle(args, ctx=ctx)
+    elif args.command == "session":
+        from agenticcli.commands import session
+
+        session.handle(args, ctx=ctx)
     elif args.command == "env":
         from agenticcli.commands import env
 
