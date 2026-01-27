@@ -12,6 +12,7 @@ Each module provides a specific domain of functionality:
 - template: Jinja2 template rendering
 - preset: Task preset loading
 - session: Tmux session lifecycle management
+- claude_session: Claude Code session state management
 """
 
 from .config import (
@@ -51,6 +52,11 @@ from .state import (
     ProcessEntry,
     ProcessState,
     StateRegistry,
+)
+from .claude_session import (
+    ClaudeSessionStatus,
+    SessionEntry,
+    SessionStateService,
 )
 from .session import (
     SessionInfo,
@@ -104,6 +110,10 @@ __all__ = [
     "ProcessEntry",
     "ProcessState",
     "StateRegistry",
+    # Claude session services
+    "ClaudeSessionStatus",
+    "SessionEntry",
+    "SessionStateService",
     # Session services
     "SessionConfig",
     "SessionConfigLoader",
