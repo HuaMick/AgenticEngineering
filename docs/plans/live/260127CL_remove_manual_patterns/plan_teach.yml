@@ -46,6 +46,67 @@ plan:
   # PHASES
   # ========================================
   phases:
+    - name: "Phase 0 - Explore Loop: Find All Manual Patterns"
+      id: "phase_00"
+      description: |
+        ITERATIVE EXPLORATION LOOP using Explore agents.
+
+        Loop until no more manual patterns are found:
+        1. Spawn Explore agent to search for manual patterns
+        2. Explore agent searches guidance files for:
+           - Shell commands (rm, cp, mv, mkdir) in examples
+           - Manual file editing instructions
+           - "Edit tool" references for plan files
+           - Missing CLI command references where they should exist
+        3. If patterns found: Record findings, add new tasks if needed
+        4. Repeat exploration until Explore agent finds nothing new
+        5. Exit loop when: "No more manual patterns found in guidance"
+
+        MAX_ITERATIONS: 5
+        EXIT_CONDITION: Explore agent reports no findings
+      status: "pending"
+      loop_definition:
+        type: "explore-until-empty"
+        max_iterations: 5
+        exit_condition: "No more manual patterns found"
+        agent_type: "Explore"
+      tasks:
+        - id: "CL-000"
+          name: "Explore Loop: Search for manual patterns"
+          description: |
+            Spawn Explore agents iteratively to find ALL manual patterns.
+
+            Search patterns:
+            - `rm ` or `rm -` in guidance files (shell delete)
+            - `cp ` or `cp -r` in guidance files (shell copy)
+            - `mv ` in guidance files (shell move)
+            - `mkdir` in guidance files (shell create dir)
+            - "move to completed" without CLI reference
+            - "edit the plan" or "update the plan" (manual editing)
+            - "Edit tool" for plan_*.yml files
+            - Status changes without `agentic plan task` reference
+
+            Search locations:
+            - modules/AgenticGuidance/agents/**/process.yml
+            - modules/AgenticGuidance/agents/**/process.mmd
+            - modules/AgenticGuidance/assets/guidelines/*.yml
+            - modules/AgenticGuidance/assets/definitions/*.yml
+            - modules/AgenticGuidance/entrypoints/*.yml
+
+            For each finding, record:
+            - File path
+            - Line number
+            - Problematic pattern
+            - Suggested CLI replacement
+
+            Loop continues until explore agent returns empty results.
+          status: "pending"
+          loop_task: true
+          acceptance_criteria:
+            - "All guidance directories searched"
+            - "All findings recorded with file:line references"
+            - "Loop exits only when no new patterns found"
+
     - name: "Phase 1 - Update Authoritative Definitions"
       id: "phase_01"
       description: |

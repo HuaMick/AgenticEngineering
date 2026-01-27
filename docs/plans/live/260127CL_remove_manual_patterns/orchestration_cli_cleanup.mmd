@@ -7,14 +7,22 @@
 %% INPUT_PATH: docs/plans/live/260127CL_remove_manual_patterns/plan_teach.yml
 %%
 %% PHASES:
+%%   0. ExploreLoop - Iterative exploration until no patterns found (Explore agent loop)
 %%   1. UpdateDefinitions - Update plans.yml and plan-completion.yml
 %%   2. UpdatePlannerAgents - Update planner process files
 %%   3. UpdateOrchestration - Add CLI mandates to orchestration
 %%   4. Validation - YAML validation and self-review
 %%
-%% AGENT_ROUTING: UpdateDefinitions -> builder, UpdatePlannerAgents -> builder, UpdateOrchestration -> builder, Validation -> test-builder
-%% STATUS: UpdateDefinitions=pending, UpdatePlannerAgents=pending, UpdateOrchestration=pending, Validation=pending
-%% FEEDBACK_TRIGGERS: YAML_INVALID -> fix-loop, PATTERN_REMAINING -> fix-loop
+%% AGENT_ROUTING: ExploreLoop -> Explore, UpdateDefinitions -> builder, UpdatePlannerAgents -> builder, UpdateOrchestration -> builder, Validation -> test-builder
+%% STATUS: ExploreLoop=pending, UpdateDefinitions=pending, UpdatePlannerAgents=pending, UpdateOrchestration=pending, Validation=pending
+%% FEEDBACK_TRIGGERS: YAML_INVALID -> fix-loop, PATTERN_REMAINING -> ExploreLoop
+%%
+%% LOOP_DEFINITIONS:
+%%   ExploreLoop:
+%%     type: explore-until-empty
+%%     max_iterations: 5
+%%     exit_condition: "No more manual patterns found"
+%%     agent_type: Explore
 %% =============================================================================
 %%
 %% CLI TASK MANAGEMENT (MANDATORY):
@@ -36,7 +44,45 @@ flowchart LR
     GetCurrentTask --> CheckInputs{Inputs Valid?}
 
     CheckInputs -- "No" --> AskUser((Ask User for Clarification))
-    CheckInputs -- "Yes" --> Phase1
+    CheckInputs -- "Yes" --> Phase0
+
+    %% ========================================
+    %% PHASE 0: EXPLORE LOOP - FIND ALL PATTERNS
+    %% ========================================
+    %% LOOP_DEFINITION: explore-until-empty
+    %% MAX_ITERATIONS: 5
+    %% EXIT_CONDITION: No more manual patterns found
+    %% AGENT_ROUTING: Explore
+    %% Task: CL-000
+
+    subgraph ExploreLoop_SG ["Phase 0: Explore Loop (until empty)"]
+        Phase0[Enter Phase 0: Explore Loop] --> InitIteration[Initialize iteration_count = 0]
+        InitIteration --> StartExploreTask["agentic plan task start CL-000"]
+        StartExploreTask --> SpawnExplore[Spawn Explore Agent]
+
+        SpawnExplore --> SearchPatterns[Search for manual patterns in guidance]
+        SearchPatterns --> SearchShellCmds["Search: rm, cp, mv, mkdir in examples"]
+        SearchShellCmds --> SearchManualEdit["Search: 'edit the plan', 'move to completed'"]
+        SearchManualEdit --> SearchMissingCLI["Search: status changes without CLI ref"]
+        SearchMissingCLI --> CollectFindings[Collect all findings]
+
+        CollectFindings --> PatternsFound{Patterns Found?}
+
+        %% Loop path: patterns found, add tasks and continue
+        PatternsFound -- "Yes: Found N patterns" --> RecordFindings[Record findings to plan]
+        RecordFindings --> AddNewTasks["Add tasks for newly found patterns"]
+        AddNewTasks --> IncrementIteration[iteration_count++]
+        IncrementIteration --> CheckMaxIterations{iteration_count >= 5?}
+
+        CheckMaxIterations -- "No: Continue" --> SpawnExplore
+        CheckMaxIterations -- "Yes: Max reached" --> EscalateUser((User: Max iterations reached, manual review needed))
+
+        %% Exit path: no more patterns
+        PatternsFound -- "No: Clean" --> ExploreComplete[Explore Loop Complete]
+        ExploreComplete --> CompleteExploreTask["agentic plan task complete CL-000"]
+    end
+
+    CompleteExploreTask --> Phase1
 
     %% ========================================
     %% PHASE 1: UPDATE AUTHORITATIVE DEFINITIONS
@@ -113,8 +159,9 @@ flowchart LR
         StartTask9 --> SelfReview[Run grep to confirm no manual patterns]
         SelfReview --> ReviewPassed{All Checks Pass?}
 
+        %% If validation fails, go back to explore loop
         ReviewPassed -- "No: Patterns Found" --> IdentifyRemaining[Identify remaining patterns]
-        IdentifyRemaining -.-> Phase1
+        IdentifyRemaining -.->|"Return to Explore Loop"| Phase0
 
         ReviewPassed -- "Yes: Clean" --> CompleteTask9["agentic plan task complete CL-009"]
         CompleteTask9 --> Phase4Complete[Phase 4 Complete]
@@ -133,7 +180,9 @@ flowchart LR
     classDef exitpoint fill:#FFB6C1,stroke:#DC143C
     classDef userpoint fill:#87CEEB,stroke:#4682B4
     classDef cliaction fill:#FFD700,stroke:#DAA520
+    classDef exploreloop fill:#DDA0DD,stroke:#8B008B
     class Start entrypoint
     class End exitpoint
-    class AskUser userpoint
-    class RunBootstrap,GetCurrentTask,StartTask1,CompleteTask1,StartTask2,CompleteTask2,StartTask3,CompleteTask3,StartTask4,CompleteTask4,StartTask5,CompleteTask5,StartTask6,CompleteTask6,StartTask7,CompleteTask7,StartTask8,CompleteTask8,StartTask9,CompleteTask9,ArchivePlan cliaction
+    class AskUser,EscalateUser userpoint
+    class RunBootstrap,GetCurrentTask,StartExploreTask,CompleteExploreTask,StartTask1,CompleteTask1,StartTask2,CompleteTask2,StartTask3,CompleteTask3,StartTask4,CompleteTask4,StartTask5,CompleteTask5,StartTask6,CompleteTask6,StartTask7,CompleteTask7,StartTask8,CompleteTask8,StartTask9,CompleteTask9,ArchivePlan cliaction
+    class SpawnExplore,SearchPatterns,SearchShellCmds,SearchManualEdit,SearchMissingCLI,CollectFindings exploreloop
