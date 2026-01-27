@@ -1,0 +1,110 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#4a9eff', 'secondaryColor': '#f0f0f0'}}}%%
+---
+title: "CLI Phase Structure Fix - Orchestration Flow"
+status: COMPLETED
+plan_id: 260127FI
+created: 2026-01-27
+completed: 2026-01-27
+---
+
+%% Agent Routing Metadata
+%% P1 (Code Implementation): build-python agent
+%% P2 (Test): test-runner agent
+%% P3 (Validation): test-validation agent
+
+flowchart TD
+    subgraph metadata["Agent Routing"]
+        direction LR
+        P1_AGENT["P1: build-python"]
+        P2_AGENT["P2: test-runner"]
+        P3_AGENT["P3: test-validation"]
+    end
+
+    START([Plan Start]) --> P1
+
+    subgraph P1["P1: Build - Fix Phase Lookup (COMPLETED)"]
+        direction TB
+        CL001["CL-001: Fix cmd_task_list phase lookup ✓"]
+        CL002["CL-002: Fix cmd_task_status phase lookup ✓"]
+        CL003["CL-003: Fix cmd_task_current phase lookup ✓"]
+        CL004["CL-004: Fix cmd_task_update phase lookup ✓"]
+        CL005["CL-005: Extract helper function ✓"]
+
+        CL001 --> CL002
+        CL002 --> CL003
+        CL003 --> CL004
+        CL004 --> CL005
+    end
+
+    P1 --> P2
+
+    subgraph P2["P2: Test - Validate Both Structures (COMPLETED)"]
+        direction TB
+        CL006["CL-006: Add tests for plan.phases structure ✓"]
+        CL007["CL-007: Run full test suite ✓"]
+
+        CL006 --> CL007
+    end
+
+    P2 --> P3
+
+    subgraph P3["P3: Blind Test - Validate with Real Plans (COMPLETED)"]
+        direction TB
+        CL008["CL-008: Test against 260127DO plan ✓"]
+        CL009["CL-009: Test against 260127CO plan ✓"]
+
+        CL008 --> CL009
+    end
+
+    P3 --> |"All validations passed"| SUCCESS([Plan Complete ✓])
+
+    %% Loop on failure path (not taken - all passed)
+    P3 -.-> |"loop_on_failure"| P1
+
+    style P1 fill:#90EE90,stroke:#228B22
+    style P2 fill:#90EE90,stroke:#228B22
+    style P3 fill:#90EE90,stroke:#228B22
+    style START fill:#4a9eff,stroke:#1e5aa8
+    style SUCCESS fill:#32CD32,stroke:#228B22
+
+    style CL001 fill:#90EE90
+    style CL002 fill:#90EE90
+    style CL003 fill:#90EE90
+    style CL004 fill:#90EE90
+    style CL005 fill:#90EE90
+    style CL006 fill:#90EE90
+    style CL007 fill:#90EE90
+    style CL008 fill:#90EE90
+    style CL009 fill:#90EE90
+
+%% ============================================
+%% ORCHESTRATION SUMMARY
+%% ============================================
+%%
+%% Plan: fix-cli-plan-phases-structure (260127FI)
+%% Status: COMPLETED
+%%
+%% Problem Solved:
+%%   CLI task commands could not find tasks in plans using the
+%%   `plan.phases` structure (only root-level `phases` worked).
+%%   Also fixed inconsistent phase_id vs id field name handling.
+%%
+%% Agent Assignments:
+%%   - P1 (build-python): Code implementation for plan.py
+%%   - P2 (test-runner): Unit test execution
+%%   - P3 (test-validation): Real-world plan validation
+%%
+%% Phase Summary:
+%%   P1: 5 tasks - Fixed all cmd_task_* functions + helper
+%%   P2: 2 tasks - Added tests, ran test suite
+%%   P3: 2 tasks - Validated against real plan files
+%%
+%% Target Files Modified:
+%%   - modules/AgenticCLI/src/agenticcli/commands/plan.py
+%%   - modules/AgenticCLI/tests/test_plan_nested_tasks.py
+%%
+%% Validation Results:
+%%   ✓ task list works with plan.phases structure
+%%   ✓ task list works with root-level phases
+%%   ✓ All unit tests pass
+%% ============================================

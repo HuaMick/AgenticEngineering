@@ -1,0 +1,87 @@
+%% ORCHESTRATION: CLI Enforcement of Orchestration Patterns
+%% Plan ID: 260128EN
+%% Created: 2026-01-28
+%%
+%% AGENT_ROUTING:
+%% P1: build-python (CLI implementation - plan.py enhancements)
+%% P2: build-python (CLI implementation - plan.py enhancements)
+%% P3: build-python (CLI implementation - validation logic)
+%% P4: build-docs (Loop prompt updates - remove file references)
+%% P5: test-validation (Blind testing of CLI orchestration)
+%%
+%% VALIDATION_GATES:
+%% P1 -> P2: has_orchestration_mmd and action_required fields present in plan list
+%% P2 -> P3: plan status shows orchestration details and next_action guidance
+%% P3 -> P4: CLI validates MMD existence before task operations
+%% P4 -> P5: Loop prompts have zero file references
+%% P5 -> DONE: All test scenarios pass
+%%
+%% SUCCESS_CRITERIA:
+%% - `agentic plan list` shows orchestration status (has_mmd, has_tasks)
+%% - `agentic plan status` shows action_required field
+%% - loop2.txt has zero @ file references
+%% - Agent can determine all needed actions from CLI output alone
+%% - CLI validates plan has MMD before allowing task execution
+
+flowchart LR
+    subgraph "Phase 1: Plan List Enhancement"
+        P1[P1: Enhance plan list<br/>with orchestration status]
+        P1_T1[EN-001: Add has_orchestration_mmd]
+        P1_T2[EN-002: Add action_required field]
+        P1 --> P1_T1
+        P1 --> P1_T2
+    end
+
+    subgraph "Phase 2: Plan Status Enhancement"
+        P2[P2: Enhance plan status<br/>with orchestration details]
+        P2_T1[EN-003: Add orchestration_mmd field]
+        P2_T2[EN-004: Add deferred_reason]
+        P2_T3[EN-005: Add next_action guidance]
+        P2 --> P2_T1
+        P2 --> P2_T2
+        P2 --> P2_T3
+    end
+
+    subgraph "Phase 3: CLI Validation"
+        P3[P3: Add CLI validation<br/>for orchestration]
+        P3_T1[EN-006: Validate MMD before task start]
+        P3_T2[EN-007: Add plan validate command]
+        P3 --> P3_T1
+        P3 --> P3_T2
+    end
+
+    subgraph "Phase 4: Loop Prompt Updates"
+        P4[P4: Remove file references<br/>from loop prompts]
+        P4_T1[EN-008: Update loop2.txt]
+        P4_T2[EN-009: Update loop1.txt]
+        P4 --> P4_T1
+        P4 --> P4_T2
+    end
+
+    subgraph "Phase 5: Testing"
+        P5[P5: Blind test<br/>and validation]
+        P5_T1[EN-010: Test CLI orchestration]
+        P5 --> P5_T1
+    end
+
+    P1 --> P2
+    P2 --> P3
+    P3 --> P4
+    P4 --> P5
+    P5 --> DONE[Plan Complete:<br/>Archive to completed/]
+
+%% ACTION_REQUIRED LOGIC (implemented in P1):
+%% - status == "deferred"           -> action = "blocked"
+%% - has_orchestration_mmd == false -> action = "needs_planning"
+%% - has_tasks == false             -> action = "needs_planning"
+%% - pending > 0                    -> action = "execute"
+%% - all completed                  -> action = "archive"
+
+%% EXECUTION NOTES:
+%% 1. P1 and P2 are pure CLI enhancements (plan.py)
+%% 2. P3 adds enforcement - fails task start without MMD
+%% 3. P4 is documentation cleanup - no code changes
+%% 4. P5 validates the entire system works end-to-end
+%%
+%% KEY INSIGHT: After this plan, agents should NEVER read files
+%% to determine orchestration state. CLI tells them everything.
