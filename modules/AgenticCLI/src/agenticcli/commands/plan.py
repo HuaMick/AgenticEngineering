@@ -531,6 +531,10 @@ def cmd_task_complete(args):
 def _update_task_status(plan_path: Path, task_id: str, new_status: str):
     """Update a task's status in plan files.
 
+    Searches for tasks in multiple locations:
+    1. Nested within phases[].tasks[] (standard plan structure)
+    2. Directly in phases/implementation_steps (legacy structure)
+
     Args:
         plan_path: Path to plan folder (flattened structure)
         task_id: Task ID to update
@@ -544,13 +548,27 @@ def _update_task_status(plan_path: Path, task_id: str, new_status: str):
             continue
 
         # Look for the task in phases or implementation_steps
+        # Check both nested structure (data.plan.phases) and flat structure (data.phases)
         plan = data.get("plan", data.get("feature", {}))
         modified = False
 
         for key in ["phases", "implementation_steps"]:
-            items = plan.get(key, [])
+            # First check nested under plan/feature, then at top level
+            items = plan.get(key, []) or data.get(key, [])
             for item in items:
-                if item.get("id") == task_id:
+                # First check nested tasks within phases (standard structure)
+                nested_tasks = item.get("tasks", [])
+                for task in nested_tasks:
+                    # Check both "id" and "task_id" field names
+                    if task.get("id") == task_id or task.get("task_id") == task_id:
+                        task["status"] = new_status
+                        modified = True
+                        break
+                if modified:
+                    break
+
+                # Fallback: check if the phase/item itself is the task (legacy structure)
+                if item.get("id") == task_id or item.get("task_id") == task_id:
                     item["status"] = new_status
                     modified = True
                     break
@@ -681,7 +699,7 @@ def cmd_task_list(args, ctx=None):
                     continue
 
                 task_info = {
-                    "id": task.get("task_id", ""),
+                    "id": task.get("id") or task.get("task_id", ""),
                     "description": task.get("description", ""),
                     "status": task_status,
                     "phase_id": phase_id,
@@ -763,7 +781,8 @@ def cmd_task_status(args, ctx=None):
         for phase in phases:
             tasks = phase.get("tasks", [])
             for task in tasks:
-                if task.get("task_id") == task_id:
+                # Check both "id" and "task_id" field names
+                if task.get("id") == task_id or task.get("task_id") == task_id:
                     task_data = task
                     source_file = yaml_file.name
                     phase_info = {

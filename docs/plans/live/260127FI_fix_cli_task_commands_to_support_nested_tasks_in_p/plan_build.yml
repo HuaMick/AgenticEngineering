@@ -1,466 +1,502 @@
-# Fix CLI Task Commands to Support Nested Tasks in Phases
-# Plan ID: 260127FI
-# Created: 2026-01-27
-#
-# Goal: Fix CLI task commands to correctly find and update tasks nested within phases
-# Currently, _update_task_status() only searches at the phase level, not within phases[].tasks[]
-
-name: "fix-cli-task-commands-nested-tasks"
-status: "pending"
-priority: "high"
-created: "2026-01-27"
-
-# ========================================
-# PROBLEM STATEMENT
-# ========================================
-problem: |
-  Current CLI task commands (`agentic plan task start/complete/list/status/current`)
-  cannot find tasks that are nested within phases in plan YAML files:
-
-  ```yaml
-  plan:
-    phases:
-      - name: "Phase 1"
-        id: "phase_01"
-        tasks:           # <-- CLI can't find tasks nested here
-          - id: "CL-001"
-            name: "Task name"
-            status: "pending"
-  ```
-
-  The `_update_task_status()` function in `modules/AgenticCLI/src/agenticcli/commands/plan.py`
-  only searches at the phase level (checking `item.get("id")` on phases), not within `phases[].tasks[]`.
-
-  This breaks the standard plan structure where tasks are nested inside phases.
-
-# ========================================
-# ROOT CAUSE
-# ========================================
-root_cause: |
-  In `_update_task_status()` (lines 531-567), the code iterates over phases but treats
-  the phases themselves as tasks:
-
-  ```python
-  for key in ["phases", "implementation_steps"]:
-      items = plan.get(key, [])
-      for item in items:
-          if item.get("id") == task_id:  # <-- Checks phase ID, not nested task ID
-              item["status"] = new_status
-  ```
-
-  The function needs to:
-  1. Iterate over phases
-  2. For each phase, iterate over phase["tasks"]
-  3. Find the task within the nested tasks array
-
-# ========================================
-# PHASES
-# ========================================
+name: fix-cli-task-commands-nested-tasks
+status: pending
+priority: high
+created: '2026-01-27'
+problem: "Current CLI task commands (`agentic plan task start/complete/list/status/current`)\n\
+  cannot find tasks that are nested within phases in plan YAML files:\n\n```yaml\n\
+  plan:\n  phases:\n    - name: \"Phase 1\"\n      id: \"phase_01\"\n      tasks:\
+  \           # <-- CLI can't find tasks nested here\n        - id: \"CL-001\"\n \
+  \         name: \"Task name\"\n          status: \"pending\"\n```\n\nThe `_update_task_status()`\
+  \ function in `modules/AgenticCLI/src/agenticcli/commands/plan.py`\nonly searches\
+  \ at the phase level (checking `item.get(\"id\")` on phases), not within `phases[].tasks[]`.\n\
+  \nThis breaks the standard plan structure where tasks are nested inside phases.\n"
+root_cause: "In `_update_task_status()` (lines 531-567), the code iterates over phases\
+  \ but treats\nthe phases themselves as tasks:\n\n```python\nfor key in [\"phases\"\
+  , \"implementation_steps\"]:\n    items = plan.get(key, [])\n    for item in items:\n\
+  \        if item.get(\"id\") == task_id:  # <-- Checks phase ID, not nested task\
+  \ ID\n            item[\"status\"] = new_status\n```\n\nThe function needs to:\n\
+  1. Iterate over phases\n2. For each phase, iterate over phase[\"tasks\"]\n3. Find\
+  \ the task within the nested tasks array\n"
 phases:
-  - phase_id: "P1"
-    name: "Build - Fix CLI Task Parsing"
-    description: |
-      Update all task-related functions in plan.py to properly search for tasks
-      nested within the phases[].tasks[] structure.
-    status: "pending"
-    tasks:
-      - id: "FI-001"
-        name: "Update _update_task_status() for nested tasks"
-        description: |
-          Modify _update_task_status() to search for tasks within phases[].tasks[]:
-          1. Iterate over phases array
-          2. For each phase, iterate over phase.get("tasks", [])
-          3. Match task by id (checking both "id" and "task_id" fields)
-          4. Update the matched task's status
-          5. Preserve existing fallback for implementation_steps
-        status: "pending"
-        target_files:
-          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
-        acceptance_criteria:
-          - "_update_task_status() finds tasks in phases[].tasks[]"
-          - "Both 'id' and 'task_id' fields are checked"
-          - "Status update modifies the correct nested task"
-          - "Error message is shown if task not found"
+- phase_id: P1
+  name: Build - Fix CLI Task Parsing
+  description: 'Update all task-related functions in plan.py to properly search for
+    tasks
 
-      - id: "FI-002"
-        name: "Verify cmd_task_list() handles nested tasks"
-        description: |
-          Review cmd_task_list() (lines 630-722) - it appears to already handle
-          nested tasks correctly. Verify and fix if needed:
-          - Iterates over content.get("phases", [])
-          - For each phase, iterates over phase.get("tasks", [])
-          - Extracts task_id, description, status
-        status: "pending"
-        target_files:
-          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
-        acceptance_criteria:
-          - "cmd_task_list shows all nested tasks"
-          - "Status filter works with nested tasks"
-          - "Verbose mode shows full task details"
-        guidance: |
-          NOTE: cmd_task_list() appears to already search phases[].tasks[] correctly.
-          This task is to verify it works and add any missing functionality.
+    nested within the phases[].tasks[] structure.
 
-      - id: "FI-003"
-        name: "Verify cmd_task_current() handles nested tasks"
-        description: |
-          Review cmd_task_current() (lines 1285-1414) - it appears to already handle
-          nested tasks correctly. Verify and fix if needed:
-          - Iterates over content.get("phases", [])
-          - For each phase, iterates over phase.get("tasks", [])
-          - Returns first in_progress or pending task
-        status: "pending"
-        target_files:
-          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
-        acceptance_criteria:
-          - "cmd_task_current finds first in_progress task"
-          - "Falls back to first pending task"
-          - "Returns full task details including guidance"
-        guidance: |
-          NOTE: cmd_task_current() appears to already search phases[].tasks[] correctly.
-          This task is to verify it works end-to-end.
+    '
+  status: pending
+  tasks:
+  - id: FI-001
+    name: Update _update_task_status() for nested tasks
+    description: 'Modify _update_task_status() to search for tasks within phases[].tasks[]:
 
-      - id: "FI-004"
-        name: "Verify cmd_task_status() handles nested tasks"
-        description: |
-          Review cmd_task_status() (lines 725-818) - it appears to already handle
-          nested tasks correctly. Verify and fix if needed:
-          - Iterates over content.get("phases", [])
-          - For each phase, iterates over phase.get("tasks", [])
-          - Returns task details when found
-        status: "pending"
-        target_files:
-          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
-        acceptance_criteria:
-          - "cmd_task_status shows details for nested task"
-          - "Phase information is included in output"
-          - "Error shown if task not found"
-        guidance: |
-          NOTE: cmd_task_status() appears to already search phases[].tasks[] correctly.
-          This task is to verify it works end-to-end.
+      1. Iterate over phases array
 
-  - phase_id: "P2"
-    name: "Test - Unit Tests for Nested Tasks"
-    description: |
-      Create comprehensive unit tests for nested task parsing.
-      Tests should cover all task commands with the nested structure.
-    status: "pending"
-    tasks:
-      - id: "FI-005"
-        name: "Create unit tests for nested task parsing"
-        description: |
-          Create test file testing all task commands with nested structure:
-          1. Create test YAML with phases containing nested tasks
-          2. Test _update_task_status() finds nested tasks
-          3. Test cmd_task_list shows nested tasks
-          4. Test cmd_task_status shows nested task details
-          5. Test cmd_task_current finds nested task
-        status: "pending"
-        target_files:
-          - "modules/AgenticCLI/tests/test_plan_nested_tasks.py"
-        acceptance_criteria:
-          - "Test file created with at least 5 test cases"
-          - "Tests use realistic nested task YAML structure"
-          - "All tests pass"
+      2. For each phase, iterate over phase.get("tasks", [])
 
-      - id: "FI-006"
-        name: "Test task start with nested task ID"
-        description: |
-          Test that `agentic plan task start <id>` works with nested task IDs:
-          - Task ID from phases[0].tasks[0].id
-          - Verify status changes from pending to in_progress
-        status: "pending"
-        target_files:
-          - "modules/AgenticCLI/tests/test_plan_nested_tasks.py"
-        acceptance_criteria:
-          - "Task start finds nested task by ID"
-          - "Status is updated to in_progress"
-          - "YAML file is modified correctly"
+      3. Match task by id (checking both "id" and "task_id" fields)
 
-      - id: "FI-007"
-        name: "Test task complete with nested task ID"
-        description: |
-          Test that `agentic plan task complete <id>` works with nested task IDs:
-          - Task ID from phases[0].tasks[0].id
-          - Verify status changes to completed
-        status: "pending"
-        target_files:
-          - "modules/AgenticCLI/tests/test_plan_nested_tasks.py"
-        acceptance_criteria:
-          - "Task complete finds nested task by ID"
-          - "Status is updated to completed"
-          - "YAML file is modified correctly"
+      4. Update the matched task''s status
 
-      - id: "FI-008"
-        name: "Test task list shows nested tasks"
-        description: |
-          Test that `agentic plan task list` shows all nested tasks:
-          - Multiple phases with multiple tasks each
-          - All tasks appear in list output
-          - Status filter works correctly
-        status: "pending"
-        target_files:
-          - "modules/AgenticCLI/tests/test_plan_nested_tasks.py"
-        acceptance_criteria:
-          - "All nested tasks appear in list"
-          - "Phase information is included"
-          - "Status filter reduces results correctly"
+      5. Preserve existing fallback for implementation_steps
 
-  - phase_id: "P3"
-    name: "Agent Blind Test - CLI Command Validation"
-    description: |
-      CRITICAL VALIDATION PHASE. Spawn an agent with NO prior knowledge of the
-      codebase. The agent is given ONLY the CLI commands from guidance and must
-      successfully use each task-related CLI command.
+      '
+    status: completed
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    acceptance_criteria:
+    - _update_task_status() finds tasks in phases[].tasks[]
+    - Both 'id' and 'task_id' fields are checked
+    - Status update modifies the correct nested task
+    - Error message is shown if task not found
+  - id: FI-002
+    name: Verify cmd_task_list() handles nested tasks
+    description: 'Review cmd_task_list() (lines 630-722) - it appears to already handle
 
-      This validates that the fix actually works from an agent's perspective.
-    status: "pending"
-    agent_type: "blind-test"
-    loop_on_failure:
-      target_phase: "P1"
-      reason: "If any CLI command fails, the fix is incomplete"
-    tasks:
-      - id: "FI-009"
-        name: "Spawn blind test agent"
-        description: |
-          Spawn an agent that:
-          1. Has NO prior knowledge of the codebase
-          2. Is given ONLY the CLI commands from cli-commands.yml
-          3. Has access to a test plan with nested tasks
+      nested tasks correctly. Verify and fix if needed:
 
-          The agent should receive this context:
-          - Test plan path with nested task structure
-          - CLI commands documentation (from cli-commands.yml)
-          - Task IDs to test with
-        status: "pending"
-        agent_type: "blind-test"
-        inputs:
-          - "modules/AgenticGuidance/assets/definitions/cli-commands.yml"
-          - "docs/plans/live/260127FI_fix_cli_task_commands_to_support_nested_tasks_in_p/test_plan.yml"
-        acceptance_criteria:
-          - "Agent spawns successfully"
-          - "Agent receives only CLI documentation"
-          - "Agent can access test plan"
+      - Iterates over content.get("phases", [])
 
-      - id: "FI-010"
-        name: "Test agentic plan task list"
-        description: |
-          Agent executes: `agentic plan task list --plan <test_plan_path>`
-          Expected: Lists all nested tasks with correct IDs and statuses
-        status: "pending"
-        agent_type: "blind-test"
-        acceptance_criteria:
-          - "Command executes without error"
-          - "All nested tasks appear in output"
-          - "Task IDs match expected format"
+      - For each phase, iterates over phase.get("tasks", [])
 
-      - id: "FI-011"
-        name: "Test agentic plan task start"
-        description: |
-          Agent executes: `agentic plan task start <task_id> --plan <test_plan_path>`
-          Expected: Task status changes to in_progress
-        status: "pending"
-        agent_type: "blind-test"
-        acceptance_criteria:
-          - "Command executes without error"
-          - "No 'Task not found' error"
-          - "Task status changes to in_progress"
+      - Extracts task_id, description, status
 
-      - id: "FI-012"
-        name: "Test agentic plan task complete"
-        description: |
-          Agent executes: `agentic plan task complete <task_id> --plan <test_plan_path>`
-          Expected: Task status changes to completed
-        status: "pending"
-        agent_type: "blind-test"
-        acceptance_criteria:
-          - "Command executes without error"
-          - "No 'Task not found' error"
-          - "Task status changes to completed"
+      '
+    status: completed
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    acceptance_criteria:
+    - cmd_task_list shows all nested tasks
+    - Status filter works with nested tasks
+    - Verbose mode shows full task details
+    guidance: 'NOTE: cmd_task_list() appears to already search phases[].tasks[] correctly.
 
-      - id: "FI-013"
-        name: "Test agentic plan task current"
-        description: |
-          Agent executes: `agentic plan task current --plan <test_plan_path>`
-          Expected: Returns current task with full details
-        status: "pending"
-        agent_type: "blind-test"
-        acceptance_criteria:
-          - "Command executes without error"
-          - "Returns task with ID, name, description"
-          - "Phase information included"
+      This task is to verify it works and add any missing functionality.
 
-      - id: "FI-014"
-        name: "Test agentic plan task status"
-        description: |
-          Agent executes: `agentic plan task status <task_id> --plan <test_plan_path>`
-          Expected: Shows detailed status for nested task
-        status: "pending"
-        agent_type: "blind-test"
-        acceptance_criteria:
-          - "Command executes without error"
-          - "No 'Task not found' error"
-          - "Shows task details including guidance"
+      '
+  - id: FI-003
+    name: Verify cmd_task_current() handles nested tasks
+    description: 'Review cmd_task_current() (lines 1285-1414) - it appears to already
+      handle
 
-      - id: "FI-015"
-        name: "Validate full workflow"
-        description: |
-          Agent executes a complete workflow using only CLI commands:
-          1. List tasks to find first pending
-          2. Start the task
-          3. Check current task (should be the started one)
-          4. Complete the task
-          5. Check status (should be completed)
-          6. List tasks to verify update
-        status: "pending"
-        agent_type: "blind-test"
-        acceptance_criteria:
-          - "Full workflow completes without errors"
-          - "Task transitions: pending -> in_progress -> completed"
-          - "All commands work with nested task structure"
+      nested tasks correctly. Verify and fix if needed:
 
-  - phase_id: "P4"
-    name: "Agent Self-Review"
-    description: |
-      Spawn an agent to review the changes made to plan.py.
-      Verify edge case handling and consistency with existing patterns.
-    status: "pending"
-    agent_type: "review"
-    tasks:
-      - id: "FI-016"
-        name: "Review nested task logic"
-        description: |
-          Review agent verifies:
-          1. Nested task search logic is correct
-          2. Both "id" and "task_id" field names are handled
-          3. Code handles missing/empty phases gracefully
-        status: "pending"
-        agent_type: "review"
-        target_files:
-          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
-        acceptance_criteria:
-          - "Logic correctly iterates phases then tasks"
-          - "Both id field names supported"
-          - "Empty phases don't cause errors"
+      - Iterates over content.get("phases", [])
 
-      - id: "FI-017"
-        name: "Verify edge case handling"
-        description: |
-          Review agent verifies edge cases:
-          1. Empty phases array
-          2. Phases without tasks key
-          3. Multiple phases with same task ID prefix
-          4. Task IDs with special characters (dashes, underscores)
-        status: "pending"
-        agent_type: "review"
-        acceptance_criteria:
-          - "Empty phases don't cause crashes"
-          - "Missing tasks key handled gracefully"
-          - "Task ID matching is exact (no partial matches)"
-          - "Special characters in IDs work correctly"
+      - For each phase, iterates over phase.get("tasks", [])
 
-      - id: "FI-018"
-        name: "Check consistency with existing patterns"
-        description: |
-          Review agent verifies:
-          1. Code follows existing plan.py patterns
-          2. Error messages are helpful and consistent
-          3. YAML dump preserves structure correctly
-        status: "pending"
-        agent_type: "review"
-        acceptance_criteria:
-          - "Code style matches existing functions"
-          - "Error messages include task ID"
-          - "YAML structure preserved after updates"
+      - Returns first in_progress or pending task
 
-  - phase_id: "P5"
-    name: "Update Guidance"
-    description: |
-      Update CLI commands guidance to document the nested task structure
-      and ensure examples use correct format.
-    status: "pending"
-    tasks:
-      - id: "FI-019"
-        name: "Update cli-commands.yml task documentation"
-        description: |
-          Update cli-commands.yml to clarify that task commands work with
-          nested task structure (phases[].tasks[]):
-          1. Add note about nested structure support
-          2. Verify examples use correct task ID format
-          3. Document task ID field names (id, task_id)
-        status: "pending"
-        target_files:
-          - "modules/AgenticGuidance/assets/definitions/cli-commands.yml"
-        acceptance_criteria:
-          - "Documentation mentions nested task structure"
-          - "Examples show realistic task IDs"
-          - "Both field names documented"
+      '
+    status: completed
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    acceptance_criteria:
+    - cmd_task_current finds first in_progress task
+    - Falls back to first pending task
+    - Returns full task details including guidance
+    guidance: 'NOTE: cmd_task_current() appears to already search phases[].tasks[]
+      correctly.
 
-      - id: "FI-020"
-        name: "Add task_update and task_current to cli-commands.yml"
-        description: |
-          Add missing task commands to cli-commands.yml:
-          - task update: Update task status with optional note
-          - task current: Get current/next task to work on
-          These commands exist in plan.py but may not be fully documented.
-        status: "pending"
-        target_files:
-          - "modules/AgenticGuidance/assets/definitions/cli-commands.yml"
-        acceptance_criteria:
-          - "task update command documented"
-          - "task current command documented"
-          - "Parameters and JSON output documented"
+      This task is to verify it works end-to-end.
 
-# ========================================
-# VALIDATION CRITERIA
-# ========================================
+      '
+  - id: FI-004
+    name: Verify cmd_task_status() handles nested tasks
+    description: 'Review cmd_task_status() (lines 725-818) - it appears to already
+      handle
+
+      nested tasks correctly. Verify and fix if needed:
+
+      - Iterates over content.get("phases", [])
+
+      - For each phase, iterates over phase.get("tasks", [])
+
+      - Returns task details when found
+
+      '
+    status: completed
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    acceptance_criteria:
+    - cmd_task_status shows details for nested task
+    - Phase information is included in output
+    - Error shown if task not found
+    guidance: 'NOTE: cmd_task_status() appears to already search phases[].tasks[]
+      correctly.
+
+      This task is to verify it works end-to-end.
+
+      '
+- phase_id: P2
+  name: Test - Unit Tests for Nested Tasks
+  description: 'Create comprehensive unit tests for nested task parsing.
+
+    Tests should cover all task commands with the nested structure.
+
+    '
+  status: pending
+  tasks:
+  - id: FI-005
+    name: Create unit tests for nested task parsing
+    description: 'Create test file testing all task commands with nested structure:
+
+      1. Create test YAML with phases containing nested tasks
+
+      2. Test _update_task_status() finds nested tasks
+
+      3. Test cmd_task_list shows nested tasks
+
+      4. Test cmd_task_status shows nested task details
+
+      5. Test cmd_task_current finds nested task
+
+      '
+    status: completed
+    target_files:
+    - modules/AgenticCLI/tests/test_plan_nested_tasks.py
+    acceptance_criteria:
+    - Test file created with at least 5 test cases
+    - Tests use realistic nested task YAML structure
+    - All tests pass
+  - id: FI-006
+    name: Test task start with nested task ID
+    description: 'Test that `agentic plan task start <id>` works with nested task
+      IDs:
+
+      - Task ID from phases[0].tasks[0].id
+
+      - Verify status changes from pending to in_progress
+
+      '
+    status: completed
+    target_files:
+    - modules/AgenticCLI/tests/test_plan_nested_tasks.py
+    acceptance_criteria:
+    - Task start finds nested task by ID
+    - Status is updated to in_progress
+    - YAML file is modified correctly
+  - id: FI-007
+    name: Test task complete with nested task ID
+    description: 'Test that `agentic plan task complete <id>` works with nested task
+      IDs:
+
+      - Task ID from phases[0].tasks[0].id
+
+      - Verify status changes to completed
+
+      '
+    status: completed
+    target_files:
+    - modules/AgenticCLI/tests/test_plan_nested_tasks.py
+    acceptance_criteria:
+    - Task complete finds nested task by ID
+    - Status is updated to completed
+    - YAML file is modified correctly
+  - id: FI-008
+    name: Test task list shows nested tasks
+    description: 'Test that `agentic plan task list` shows all nested tasks:
+
+      - Multiple phases with multiple tasks each
+
+      - All tasks appear in list output
+
+      - Status filter works correctly
+
+      '
+    status: completed
+    target_files:
+    - modules/AgenticCLI/tests/test_plan_nested_tasks.py
+    acceptance_criteria:
+    - All nested tasks appear in list
+    - Phase information is included
+    - Status filter reduces results correctly
+- phase_id: P3
+  name: Agent Blind Test - CLI Command Validation
+  description: 'CRITICAL VALIDATION PHASE. Spawn an agent with NO prior knowledge
+    of the
+
+    codebase. The agent is given ONLY the CLI commands from guidance and must
+
+    successfully use each task-related CLI command.
+
+
+    This validates that the fix actually works from an agent''s perspective.
+
+    '
+  status: pending
+  agent_type: blind-test
+  loop_on_failure:
+    target_phase: P1
+    reason: If any CLI command fails, the fix is incomplete
+  tasks:
+  - id: FI-009
+    name: Spawn blind test agent
+    description: 'Spawn an agent that:
+
+      1. Has NO prior knowledge of the codebase
+
+      2. Is given ONLY the CLI commands from cli-commands.yml
+
+      3. Has access to a test plan with nested tasks
+
+
+      The agent should receive this context:
+
+      - Test plan path with nested task structure
+
+      - CLI commands documentation (from cli-commands.yml)
+
+      - Task IDs to test with
+
+      '
+    status: completed
+    agent_type: blind-test
+    inputs:
+    - modules/AgenticGuidance/assets/definitions/cli-commands.yml
+    - docs/plans/live/260127FI_fix_cli_task_commands_to_support_nested_tasks_in_p/test_plan.yml
+    acceptance_criteria:
+    - Agent spawns successfully
+    - Agent receives only CLI documentation
+    - Agent can access test plan
+  - id: FI-010
+    name: Test agentic plan task list
+    description: 'Agent executes: `agentic plan task list --plan <test_plan_path>`
+
+      Expected: Lists all nested tasks with correct IDs and statuses
+
+      '
+    status: completed
+    agent_type: blind-test
+    acceptance_criteria:
+    - Command executes without error
+    - All nested tasks appear in output
+    - Task IDs match expected format
+  - id: FI-011
+    name: Test agentic plan task start
+    description: 'Agent executes: `agentic plan task start <task_id> --plan <test_plan_path>`
+
+      Expected: Task status changes to in_progress
+
+      '
+    status: completed
+    agent_type: blind-test
+    acceptance_criteria:
+    - Command executes without error
+    - No 'Task not found' error
+    - Task status changes to in_progress
+  - id: FI-012
+    name: Test agentic plan task complete
+    description: 'Agent executes: `agentic plan task complete <task_id> --plan <test_plan_path>`
+
+      Expected: Task status changes to completed
+
+      '
+    status: completed
+    agent_type: blind-test
+    acceptance_criteria:
+    - Command executes without error
+    - No 'Task not found' error
+    - Task status changes to completed
+  - id: FI-013
+    name: Test agentic plan task current
+    description: 'Agent executes: `agentic plan task current --plan <test_plan_path>`
+
+      Expected: Returns current task with full details
+
+      '
+    status: completed
+    agent_type: blind-test
+    acceptance_criteria:
+    - Command executes without error
+    - Returns task with ID, name, description
+    - Phase information included
+  - id: FI-014
+    name: Test agentic plan task status
+    description: 'Agent executes: `agentic plan task status <task_id> --plan <test_plan_path>`
+
+      Expected: Shows detailed status for nested task
+
+      '
+    status: completed
+    agent_type: blind-test
+    acceptance_criteria:
+    - Command executes without error
+    - No 'Task not found' error
+    - Shows task details including guidance
+  - id: FI-015
+    name: Validate full workflow
+    description: 'Agent executes a complete workflow using only CLI commands:
+
+      1. List tasks to find first pending
+
+      2. Start the task
+
+      3. Check current task (should be the started one)
+
+      4. Complete the task
+
+      5. Check status (should be completed)
+
+      6. List tasks to verify update
+
+      '
+    status: completed
+    agent_type: blind-test
+    acceptance_criteria:
+    - Full workflow completes without errors
+    - 'Task transitions: pending -> in_progress -> completed'
+    - All commands work with nested task structure
+- phase_id: P4
+  name: Agent Self-Review
+  description: 'Spawn an agent to review the changes made to plan.py.
+
+    Verify edge case handling and consistency with existing patterns.
+
+    '
+  status: pending
+  agent_type: review
+  tasks:
+  - id: FI-016
+    name: Review nested task logic
+    description: 'Review agent verifies:
+
+      1. Nested task search logic is correct
+
+      2. Both "id" and "task_id" field names are handled
+
+      3. Code handles missing/empty phases gracefully
+
+      '
+    status: completed
+    agent_type: review
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    acceptance_criteria:
+    - Logic correctly iterates phases then tasks
+    - Both id field names supported
+    - Empty phases don't cause errors
+  - id: FI-017
+    name: Verify edge case handling
+    description: 'Review agent verifies edge cases:
+
+      1. Empty phases array
+
+      2. Phases without tasks key
+
+      3. Multiple phases with same task ID prefix
+
+      4. Task IDs with special characters (dashes, underscores)
+
+      '
+    status: completed
+    agent_type: review
+    acceptance_criteria:
+    - Empty phases don't cause crashes
+    - Missing tasks key handled gracefully
+    - Task ID matching is exact (no partial matches)
+    - Special characters in IDs work correctly
+  - id: FI-018
+    name: Check consistency with existing patterns
+    description: 'Review agent verifies:
+
+      1. Code follows existing plan.py patterns
+
+      2. Error messages are helpful and consistent
+
+      3. YAML dump preserves structure correctly
+
+      '
+    status: completed
+    agent_type: review
+    acceptance_criteria:
+    - Code style matches existing functions
+    - Error messages include task ID
+    - YAML structure preserved after updates
+- phase_id: P5
+  name: Update Guidance
+  description: 'Update CLI commands guidance to document the nested task structure
+
+    and ensure examples use correct format.
+
+    '
+  status: pending
+  tasks:
+  - id: FI-019
+    name: Update cli-commands.yml task documentation
+    description: 'Update cli-commands.yml to clarify that task commands work with
+
+      nested task structure (phases[].tasks[]):
+
+      1. Add note about nested structure support
+
+      2. Verify examples use correct task ID format
+
+      3. Document task ID field names (id, task_id)
+
+      '
+    status: completed
+    target_files:
+    - modules/AgenticGuidance/assets/definitions/cli-commands.yml
+    acceptance_criteria:
+    - Documentation mentions nested task structure
+    - Examples show realistic task IDs
+    - Both field names documented
+  - id: FI-020
+    name: Add task_update and task_current to cli-commands.yml
+    description: 'Add missing task commands to cli-commands.yml:
+
+      - task update: Update task status with optional note
+
+      - task current: Get current/next task to work on
+
+      These commands exist in plan.py but may not be fully documented.
+
+      '
+    status: completed
+    target_files:
+    - modules/AgenticGuidance/assets/definitions/cli-commands.yml
+    acceptance_criteria:
+    - task update command documented
+    - task current command documented
+    - Parameters and JSON output documented
 validation:
-  - criterion: "Task start works with nested tasks"
-    command: "agentic plan task start FI-001 --plan docs/plans/live/260127FI_fix_cli_task_commands_to_support_nested_tasks_in_p"
-    expected: "Task marked as in_progress without 'Task not found' error"
-
-  - criterion: "Task complete works with nested tasks"
-    command: "agentic plan task complete FI-001 --plan docs/plans/live/260127FI_fix_cli_task_commands_to_support_nested_tasks_in_p"
-    expected: "Task marked as completed without 'Task not found' error"
-
-  - criterion: "Task list shows all nested tasks"
-    command: "agentic plan task list --plan docs/plans/live/260127FI_fix_cli_task_commands_to_support_nested_tasks_in_p -j"
-    expected: "JSON output contains all FI-XXX task IDs"
-
-  - criterion: "Task current finds nested task"
-    command: "agentic plan task current --plan docs/plans/live/260127FI_fix_cli_task_commands_to_support_nested_tasks_in_p"
-    expected: "Returns task with full details"
-
-  - criterion: "All unit tests pass"
-    command: "pytest modules/AgenticCLI/tests/test_plan_nested_tasks.py -v"
-    expected: "All tests pass"
-
-# ========================================
-# FEEDBACK LOOP
-# ========================================
+- criterion: Task start works with nested tasks
+  command: agentic plan task start FI-001 --plan docs/plans/live/260127FI_fix_cli_task_commands_to_support_nested_tasks_in_p
+  expected: Task marked as in_progress without 'Task not found' error
+- criterion: Task complete works with nested tasks
+  command: agentic plan task complete FI-001 --plan docs/plans/live/260127FI_fix_cli_task_commands_to_support_nested_tasks_in_p
+  expected: Task marked as completed without 'Task not found' error
+- criterion: Task list shows all nested tasks
+  command: agentic plan task list --plan docs/plans/live/260127FI_fix_cli_task_commands_to_support_nested_tasks_in_p
+    -j
+  expected: JSON output contains all FI-XXX task IDs
+- criterion: Task current finds nested task
+  command: agentic plan task current --plan docs/plans/live/260127FI_fix_cli_task_commands_to_support_nested_tasks_in_p
+  expected: Returns task with full details
+- criterion: All unit tests pass
+  command: pytest modules/AgenticCLI/tests/test_plan_nested_tasks.py -v
+  expected: All tests pass
 feedback_loop:
-  trigger: "Phase P3 (Blind Test) fails any command"
-  action: "Return to Phase P1 (Build)"
-  reason: |
-    If the blind test agent cannot use CLI commands successfully,
-    the fix is incomplete. The loop ensures we don't proceed until
-    the commands actually work from an agent's perspective.
+  trigger: Phase P3 (Blind Test) fails any command
+  action: Return to Phase P1 (Build)
+  reason: 'If the blind test agent cannot use CLI commands successfully,
 
-# ========================================
-# DEPENDENCIES
-# ========================================
+    the fix is incomplete. The loop ensures we don''t proceed until
+
+    the commands actually work from an agent''s perspective.
+
+    '
 dependencies:
-  - "AgenticCLI module must be installed"
-  - "Plan folder must exist with plan_build.yml"
-  - "Claude CLI for blind test agent spawning"
-
-# ========================================
-# TARGET FILE SUMMARY
-# ========================================
+- AgenticCLI module must be installed
+- Plan folder must exist with plan_build.yml
+- Claude CLI for blind test agent spawning
 target_files:
   primary:
-    - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+  - modules/AgenticCLI/src/agenticcli/commands/plan.py
   tests:
-    - "modules/AgenticCLI/tests/test_plan_nested_tasks.py"
+  - modules/AgenticCLI/tests/test_plan_nested_tasks.py
   guidance:
-    - "modules/AgenticGuidance/assets/definitions/cli-commands.yml"
+  - modules/AgenticGuidance/assets/definitions/cli-commands.yml

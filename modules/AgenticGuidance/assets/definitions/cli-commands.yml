@@ -113,17 +113,80 @@ cli_commands:
 
     task_start:
       command: "agentic plan task start <task_id> --plan <plan_folder>"
-      description: "Mark task as in_progress"
+      description: |
+        Mark task as in_progress. Supports nested task structure (phases[].tasks[]).
+        Searches both 'id' and 'task_id' field names.
       parameters:
-        task_id: "Task ID from plan file"
+        task_id: "Task ID from plan file (e.g., FI-001, CL-002)"
         plan_folder: "Path to plan folder"
+      nested_structure: |
+        Works with tasks nested under phases:
+          phases:
+            - phase_id: "P1"
+              tasks:
+                - id: "FI-001"  # Can use 'id' or 'task_id'
+                  status: "pending"
+      example: "agentic plan task start FI-001 --plan docs/plans/live/260127FI_feature"
 
     task_complete:
       command: "agentic plan task complete <task_id> --plan <plan_folder>"
-      description: "Mark task as completed"
+      description: |
+        Mark task as completed. Supports nested task structure (phases[].tasks[]).
+        Searches both 'id' and 'task_id' field names.
       parameters:
-        task_id: "Task ID from plan file"
+        task_id: "Task ID from plan file (e.g., FI-001, CL-002)"
         plan_folder: "Path to plan folder"
+      example: "agentic plan task complete FI-001 --plan docs/plans/live/260127FI_feature"
+
+    task_list:
+      command: "agentic plan task list --plan <plan_folder> [--status <filter>] [--verbose]"
+      description: |
+        List all tasks in plan folder. Supports nested task structure (phases[].tasks[]).
+        Shows task ID, description, status, and phase information.
+      parameters:
+        plan_folder: "Path to plan folder"
+        --status/-s: "Filter by status: all, pending, in_progress, completed (default: all)"
+        --verbose/-v: "Show full task details including guidance"
+      examples:
+        - "agentic plan task list --plan docs/plans/live/260127FI_feature"
+        - "agentic plan task list --plan docs/plans/live/260127FI_feature --status pending"
+        - "agentic plan task list -p docs/plans/live/260127FI_feature -v"
+
+    task_current:
+      command: "agentic plan task current --plan <plan_folder>"
+      description: |
+        Get current/next task to work on. Returns first in_progress task,
+        or first pending if none in progress. Supports nested task structure.
+        This is the primary "what should I do next?" query for agents.
+      parameters:
+        plan_folder: "Path to plan folder"
+      json_output:
+        plan_folder: "Plan folder name"
+        task: "Full task object with id, name, description, status, phase, guidance, inputs, target_files"
+        all_complete: "Boolean - true if all tasks are completed"
+      example: "agentic plan task current --plan docs/plans/live/260127FI_feature"
+
+    task_status:
+      command: "agentic plan task status <task_id> --plan <plan_folder>"
+      description: |
+        Show detailed status for a specific task. Includes guidance, inputs,
+        target files, and phase information. Supports nested task structure.
+      parameters:
+        task_id: "Task ID to query"
+        plan_folder: "Path to plan folder"
+      example: "agentic plan task status FI-001 --plan docs/plans/live/260127FI_feature"
+
+    task_update:
+      command: "agentic plan task update <task_id> --status <new_status> --plan <plan_folder> [--note <note>]"
+      description: |
+        Update task status with optional note. Supports nested task structure.
+        More flexible than start/complete for arbitrary status changes.
+      parameters:
+        task_id: "Task ID to update"
+        --status/-s: "New status value"
+        plan_folder: "Path to plan folder"
+        --note/-n: "Optional note to add to task"
+      example: "agentic plan task update FI-001 --status blocked --plan docs/plans/live/260127FI_feature"
 
     move_task:
       command: "agentic plan move task <task_id> --plan <plan_folder>"
