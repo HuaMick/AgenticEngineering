@@ -1,0 +1,162 @@
+%% =============================================================================
+%% GOAL: Add entrypoint CLI command for CLI-first agent bootstrap
+%% =============================================================================
+%% PROFILE: Orchestration-Builder
+%% OUTPUT: New entrypoint CLI command module and integration
+%% GUIDELINE: CLI_OFFLOAD policy - all operations via CLI commands
+%% INPUT_PATH: docs/plans/live/260127EX_add_entrypoint_cli/plan_build.yml
+%%
+%% PHASES:
+%%   1. EntrypointModule - Create entrypoint.py command module
+%%   2. CLIRegistration - Register in cli.py and add help
+%%   3. Integration - Integrate with loop and session commands
+%%   4. GuidanceUpdates - Update guidance to reference new command
+%%   5. Testing - Unit and integration tests
+%%
+%% AGENT_ROUTING: EntrypointModule -> builder, CLIRegistration -> builder, Integration -> builder, GuidanceUpdates -> builder, Testing -> test-builder
+%% STATUS: EntrypointModule=pending, CLIRegistration=pending, Integration=pending, GuidanceUpdates=pending, Testing=pending
+%% =============================================================================
+%%
+%% CLI TASK MANAGEMENT (MANDATORY):
+%%   - Use `agentic plan task start <id>` before starting a task
+%%   - Use `agentic plan task complete <id>` after completing a task
+%%   - NEVER use Edit tool to change task status in plan files
+%%   - Use `agentic plan move folder` to archive when complete
+%% =============================================================================
+
+flowchart LR
+    Start((Start)) --> LoadInputs[Load plan_build.yml]
+
+    %% ========================================
+    %% CCI BOOTSTRAP (MANDATORY FIRST STEP)
+    %% ========================================
+    LoadInputs --> CCIBootstrap[Run CCI Bootstrap]
+    CCIBootstrap --> RunBootstrap["agentic context bootstrap --role orchestration-executor -j"]
+    RunBootstrap --> GetCurrentTask["agentic plan task current -j"]
+    GetCurrentTask --> CheckInputs{Inputs Valid?}
+
+    CheckInputs -- "No" --> AskUser((Ask User for Clarification))
+    CheckInputs -- "Yes" --> Phase1
+
+    %% ========================================
+    %% PHASE 1: ENTRYPOINT MODULE
+    %% ========================================
+    %% Tasks: EX-001, EX-002, EX-003, EX-004
+    %% AGENT_ROUTING: builder
+
+    subgraph EntrypointModule_SG ["Phase 1: Entrypoint Module"]
+        Phase1[Enter Phase 1] --> StartTask1["agentic plan task start EX-001"]
+        StartTask1 --> SpawnBuilder1[Spawn builder Agent]
+        SpawnBuilder1 --> CreateModule[Create entrypoint.py structure]
+        CreateModule --> CompleteTask1["agentic plan task complete EX-001"]
+        CompleteTask1 --> StartTask2["agentic plan task start EX-002"]
+        StartTask2 --> ImplList[Implement list subcommand]
+        ImplList --> CompleteTask2["agentic plan task complete EX-002"]
+        CompleteTask2 --> StartTask3["agentic plan task start EX-003"]
+        StartTask3 --> ImplShow[Implement show subcommand]
+        ImplShow --> CompleteTask3["agentic plan task complete EX-003"]
+        CompleteTask3 --> StartTask4["agentic plan task start EX-004"]
+        StartTask4 --> ImplExecute[Implement execute subcommand]
+        ImplExecute --> CompleteTask4["agentic plan task complete EX-004"]
+        CompleteTask4 --> Phase1Complete[Phase 1 Complete]
+    end
+
+    Phase1Complete --> Phase2
+
+    %% ========================================
+    %% PHASE 2: CLI REGISTRATION
+    %% ========================================
+    %% Tasks: EX-005, EX-006
+    %% AGENT_ROUTING: builder
+
+    subgraph CLIRegistration_SG ["Phase 2: CLI Registration"]
+        Phase2[Enter Phase 2] --> StartTask5["agentic plan task start EX-005"]
+        StartTask5 --> SpawnBuilder2[Spawn builder Agent]
+        SpawnBuilder2 --> RegisterCLI[Register in cli.py]
+        RegisterCLI --> CompleteTask5["agentic plan task complete EX-005"]
+        CompleteTask5 --> StartTask6["agentic plan task start EX-006"]
+        StartTask6 --> AddAgentHelp[Add to agent help]
+        AddAgentHelp --> CompleteTask6["agentic plan task complete EX-006"]
+        CompleteTask6 --> Phase2Complete[Phase 2 Complete]
+    end
+
+    Phase2Complete --> Phase3
+
+    %% ========================================
+    %% PHASE 3: INTEGRATION
+    %% ========================================
+    %% Tasks: EX-007, EX-008
+    %% AGENT_ROUTING: builder
+
+    subgraph Integration_SG ["Phase 3: Integration"]
+        Phase3[Enter Phase 3] --> StartTask7["agentic plan task start EX-007"]
+        StartTask7 --> SpawnBuilder3[Spawn builder Agent]
+        SpawnBuilder3 --> UpdateLoop[Update loop.py entrypoint handling]
+        UpdateLoop --> CompleteTask7["agentic plan task complete EX-007"]
+        CompleteTask7 --> StartTask8["agentic plan task start EX-008"]
+        StartTask8 --> UpdateSession[Update session.py entrypoint handling]
+        UpdateSession --> CompleteTask8["agentic plan task complete EX-008"]
+        CompleteTask8 --> Phase3Complete[Phase 3 Complete]
+    end
+
+    Phase3Complete --> Phase4
+
+    %% ========================================
+    %% PHASE 4: GUIDANCE UPDATES
+    %% ========================================
+    %% Tasks: EX-009, EX-010
+    %% AGENT_ROUTING: builder
+
+    subgraph GuidanceUpdates_SG ["Phase 4: Guidance Updates"]
+        Phase4[Enter Phase 4] --> StartTask9["agentic plan task start EX-009"]
+        StartTask9 --> SpawnBuilder4[Spawn builder Agent]
+        SpawnBuilder4 --> UpdateCLIDefs[Update cli-commands.yml]
+        UpdateCLIDefs --> CompleteTask9["agentic plan task complete EX-009"]
+        CompleteTask9 --> StartTask10["agentic plan task start EX-010"]
+        StartTask10 --> UpdateOrchProcess[Update orchestration process]
+        UpdateOrchProcess --> CompleteTask10["agentic plan task complete EX-010"]
+        CompleteTask10 --> Phase4Complete[Phase 4 Complete]
+    end
+
+    Phase4Complete --> Phase5
+
+    %% ========================================
+    %% PHASE 5: TESTING
+    %% ========================================
+    %% Tasks: EX-011, EX-012
+    %% AGENT_ROUTING: test-builder
+
+    subgraph Testing_SG ["Phase 5: Testing"]
+        Phase5[Enter Phase 5] --> StartTask11["agentic plan task start EX-011"]
+        StartTask11 --> SpawnTestBuilder[Spawn test-builder Agent]
+        SpawnTestBuilder --> UnitTests[Create unit tests]
+        UnitTests --> CompleteTask11["agentic plan task complete EX-011"]
+        CompleteTask11 --> StartTask12["agentic plan task start EX-012"]
+        StartTask12 --> IntegrationTests[Create integration tests]
+        IntegrationTests --> RunAllTests[Run all tests]
+        RunAllTests --> TestsPassed{Tests Pass?}
+
+        TestsPassed -- "No" --> FixIssues[Fix Issues]
+        FixIssues -.->|"Return to relevant phase"| Phase1
+
+        TestsPassed -- "Yes" --> CompleteTask12["agentic plan task complete EX-012"]
+        CompleteTask12 --> Phase5Complete[Phase 5 Complete]
+    end
+
+    %% ========================================
+    %% FINALIZATION
+    %% ========================================
+    Phase5Complete --> ArchivePlan["agentic plan move folder --plan <plan_folder>"]
+    ArchivePlan --> End((End: Entrypoint CLI Implemented))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef entrypoint fill:#90EE90,stroke:#228B22
+    classDef exitpoint fill:#FFB6C1,stroke:#DC143C
+    classDef userpoint fill:#87CEEB,stroke:#4682B4
+    classDef cliaction fill:#FFD700,stroke:#DAA520
+    class Start entrypoint
+    class End exitpoint
+    class AskUser userpoint
+    class RunBootstrap,GetCurrentTask,StartTask1,CompleteTask1,StartTask2,CompleteTask2,StartTask3,CompleteTask3,StartTask4,CompleteTask4,StartTask5,CompleteTask5,StartTask6,CompleteTask6,StartTask7,CompleteTask7,StartTask8,CompleteTask8,StartTask9,CompleteTask9,StartTask10,CompleteTask10,StartTask11,CompleteTask11,StartTask12,CompleteTask12,ArchivePlan cliaction
