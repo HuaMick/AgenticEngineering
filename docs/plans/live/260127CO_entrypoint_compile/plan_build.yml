@@ -276,7 +276,80 @@ phases:
           - "modules/AgenticCLI/tests/commands/test_entrypoint.py"
 
   # ----------------------------------------
-  # PHASE 3: Cleanup
+  # PHASE 3: Update Entrypoints to Use CLI
+  # ----------------------------------------
+  - name: "Update Entrypoints Phase"
+    execution: sequential
+    description: "Update entrypoint files to reference CLI commands instead of manual file reading"
+    tasks:
+      - id: "entry_001"
+        name: "Update _plan_teach.yml to use CLI"
+        description: |
+          Update modules/AgenticGuidance/entrypoints/_plan_teach.yml:
+
+          Replace manual file references with CLI commands:
+          - Instead of: "Load orchestration process from modules/.../process.mmd"
+          - Use: "Run: agentic entrypoint execute _plan_teach --compile"
+
+          Update steps to use CLI-first approach:
+          ```yaml
+          steps:
+            - "Run: agentic entrypoint execute _plan_teach --compile"
+            - "Run: agentic plan init <branch> --description <desc>"
+            - "Run: agentic plan task current"
+            - "Follow the orchestration process from compiled output"
+          ```
+        status: "pending"
+        target_files:
+          - "modules/AgenticGuidance/entrypoints/_plan_teach.yml"
+
+      - id: "entry_002"
+        name: "Update _plan_build.yml to use CLI"
+        description: |
+          Update modules/AgenticGuidance/entrypoints/_plan_build.yml:
+          Same pattern as _plan_teach.yml - CLI commands instead of file paths.
+        status: "pending"
+        target_files:
+          - "modules/AgenticGuidance/entrypoints/_plan_build.yml"
+
+      - id: "entry_003"
+        name: "Update _orchestrate.yml to use CLI"
+        description: |
+          Update modules/AgenticGuidance/entrypoints/_orchestrate.yml:
+          Reference CLI commands for execution workflow.
+        status: "pending"
+        target_files:
+          - "modules/AgenticGuidance/entrypoints/_orchestrate.yml"
+
+      - id: "entry_004"
+        name: "Audit all entrypoints for manual file references"
+        description: |
+          Search all entrypoint files for patterns that should use CLI:
+          - "Read:" or "Load:" followed by file paths
+          - "modules/AgenticGuidance/..." file references
+          - Any instruction to manually read files
+
+          Replace with equivalent CLI commands:
+          - agentic entrypoint execute <name> --compile
+          - agentic context bootstrap --role <role>
+          - agentic plan task current/list/status
+        status: "pending"
+        target_files:
+          - "modules/AgenticGuidance/entrypoints/*.yml"
+
+      - id: "entry_005"
+        name: "Update loop1.txt prompt to remove file references"
+        description: |
+          Update docs/prompts/loop1.txt:
+          - Remove PLANNING ENTRYPOINTS section with @ file references
+          - Replace with CLI commands: agentic entrypoint execute <name> --compile
+          - Ensure all context comes from CLI, not manual file reads
+        status: "pending"
+        target_files:
+          - "docs/prompts/loop1.txt"
+
+  # ----------------------------------------
+  # PHASE 4: Cleanup
   # ----------------------------------------
   - name: "Cleanup Phase"
     execution: sequential
