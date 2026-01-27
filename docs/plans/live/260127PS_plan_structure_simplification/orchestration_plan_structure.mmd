@@ -1,0 +1,177 @@
+%% =============================================================================
+%% GOAL: Simplify plan folder structure by removing redundant nested subfolders
+%% =============================================================================
+%% PROFILE: Orchestration-PlanStructureSimplification
+%% OUTPUT: Flattened plan folders, renamed files, updated code references
+%% GUIDELINE: BUILD/CLEANUP FOCUS policy - file operations and code updates
+%% GUIDELINE: modules/AgenticGuidance/assets/guidelines/testing.yml
+%% INPUT_PATH: docs/plans/live/260127PS_plan_structure_simplification/plan_build.yml
+%%
+%% PHASES:
+%%   1. FlattenLive - Move files from nested live/completed subfolders in docs/plans/live/
+%%   2. FlattenCompleted - Move files from nested subfolders in docs/plans/completed/
+%%   3. RenameFiles - Remove _live/_completed from filenames
+%%   4. UpdateCode - Update Python code glob patterns and references
+%%   5. UpdateDocs - Update documentation references
+%%
+%% AGENT_ROUTING: FlattenLive -> builder, FlattenCompleted -> builder, RenameFiles -> builder, UpdateCode -> builder, UpdateDocs -> builder
+%% STATUS: FlattenLive=pending, FlattenCompleted=pending, RenameFiles=pending, UpdateCode=pending, UpdateDocs=pending
+%% FEEDBACK_TRIGGERS: TEST_FAILURE -> test-fix-loop, BUILD_FAILURE -> escalate
+%% =============================================================================
+
+flowchart LR
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    LoadInputs --> ReviewInputs[Review All Listed Inputs]
+    ReviewInputs --> CheckInputs{All Inputs Found?}
+
+    CheckInputs -- "No: Missing" --> SearchInputs[Search for Missing Inputs]
+    SearchInputs --> Found{Found?}
+    Found -- "Yes: Update paths" --> UpdateRefs[Update References]
+    UpdateRefs --> ReviewInputs
+    Found -- "No: Stop" --> AskUser((Ask User for Clarification))
+
+    CheckInputs -- "Yes: Verified" --> WorktreeSetup
+
+    %% ========================================
+    %% WORKTREE SETUP
+    %% ========================================
+    WorktreeSetup[Verify Worktree: agenticguidance] --> ValidateWorktree{Worktree Valid?}
+    ValidateWorktree -- "No" --> AskUser
+    ValidateWorktree -- "Yes" --> Phase1
+
+    %% ========================================
+    %% PHASE 1: FLATTEN LIVE PLANS
+    %% ========================================
+    %% AGENT_ROUTING: builder agent moves files from nested subfolders
+    %% Tasks: P1-T1 (260126AT_agentictmux), P1-T2 (260126AV_agenticvoice)
+
+    subgraph FlattenLive_SG ["Phase 1: Flatten Live Plans Subgraph"]
+        Phase1[Enter Phase 1: Flatten Live Plans] --> SpawnBuilder1[Spawn builder Agent]
+        SpawnBuilder1 --> FlattenAT[Flatten 260126AT_agentictmux]
+        FlattenAT --> FlattenAV[Flatten 260126AV_agenticvoice]
+        FlattenAV --> DeleteEmptyLive[Delete empty live/completed subfolders]
+        DeleteEmptyLive --> Phase1Complete[Phase 1 Complete]
+    end
+
+    Phase1Complete --> Phase2
+
+    %% ========================================
+    %% PHASE 2: FLATTEN COMPLETED PLANS
+    %% ========================================
+    %% AGENT_ROUTING: builder agent moves files from nested subfolders
+    %% Tasks: P2-T1 through P2-T5 (multiple completed plan folders)
+
+    subgraph FlattenCompleted_SG ["Phase 2: Flatten Completed Plans Subgraph"]
+        Phase2[Enter Phase 2: Flatten Completed Plans] --> SpawnBuilder2[Spawn builder Agent]
+        SpawnBuilder2 --> FlattenCompletedFolders[Flatten All Completed Plan Folders]
+        FlattenCompletedFolders --> PreserveAnalysis[Preserve analysis/audit subfolders]
+        PreserveAnalysis --> DeleteEmptyCompleted[Delete empty live/completed subfolders]
+        DeleteEmptyCompleted --> Phase2Complete[Phase 2 Complete]
+    end
+
+    Phase2Complete --> Phase3
+
+    %% ========================================
+    %% PHASE 3: RENAME PLAN FILES
+    %% ========================================
+    %% AGENT_ROUTING: builder agent renames files
+    %% Tasks: P3-T1 (live plan files), P3-T2 (completed plan files)
+
+    subgraph RenameFiles_SG ["Phase 3: Rename Plan Files Subgraph"]
+        Phase3[Enter Phase 3: Rename Plan Files] --> SpawnBuilder3[Spawn builder Agent]
+        SpawnBuilder3 --> RenameLiveFiles[Rename plan_live_*.yml -> plan_*.yml]
+        RenameLiveFiles --> RenameCompletedFiles[Rename files in completed plans]
+        RenameCompletedFiles --> Phase3Complete[Phase 3 Complete]
+    end
+
+    Phase3Complete --> Phase4
+
+    %% ========================================
+    %% PHASE 4: UPDATE CODE (BUILD-TEST-FIX-LOOP)
+    %% ========================================
+    %% LOOP_DEFINITION: test-fix-loop
+    %% MAX_ITERATIONS: 5
+    %% FEEDBACK_TRIGGER: TEST_FAILURE -> retry or escalate
+    %% Tasks: P4-T1 (plan service), P4-T2 (CLI plan commands), P4-T3 (CLI tests), P4-T4 (Guidance tests)
+
+    subgraph UpdateCode_SG ["Phase 4: Update Code Subgraph (Test-Fix-Loop)"]
+        Phase4[Enter Phase 4: Update Code] --> SpawnBuilder4[Spawn builder Agent]
+
+        SpawnBuilder4 --> UpdatePlanService[Update AgenticGuidance plan.py]
+        UpdatePlanService --> UpdateCLIPlan[Update AgenticCLI plan.py]
+        UpdateCLIPlan --> UpdateCLITests[Update CLI test fixtures]
+        UpdateCLITests --> UpdateGuidanceTests[Update Guidance test fixtures]
+
+        UpdateGuidanceTests --> RunTests[Run All Tests]
+        RunTests --> TestsPassed{Tests Passed?}
+
+        %% Test-Fix Loop: retry path
+        TestsPassed -- "No: Fix in Iteration" --> SpawnBuilderFix[Spawn builder Agent for Fixes]
+        SpawnBuilderFix --> ApplyFixes[Apply Implementation Fixes]
+        ApplyFixes --> RunTests
+
+        %% Success path
+        TestsPassed -- "Yes: All Pass" --> Phase4Complete[Phase 4 Complete]
+    end
+
+    %% Escalation path for persistent test failures
+    TestsPassed -- "No: Escalate" --> CheckIterations{Max Iterations Reached?}
+    CheckIterations -- "No" --> SpawnBuilder4
+    CheckIterations -- "Yes" --> EscalateTests((Ask User: Test Failures Persist))
+
+    Phase4Complete --> Phase5
+
+    %% ========================================
+    %% PHASE 5: UPDATE DOCUMENTATION
+    %% ========================================
+    %% AGENT_ROUTING: builder agent updates documentation
+    %% Tasks: P5-T1 (core docs), P5-T2 (plan READMEs), P5-T3 (legacy docs)
+
+    subgraph UpdateDocs_SG ["Phase 5: Update Documentation Subgraph"]
+        Phase5[Enter Phase 5: Update Documentation] --> SpawnBuilder5[Spawn builder Agent]
+        SpawnBuilder5 --> UpdateCoreDocs[Update Core Documentation]
+        UpdateCoreDocs --> UpdatePlanREADMEs[Update Plan Folder READMEs]
+        UpdatePlanREADMEs --> UpdateLegacyDocs[Update Legacy Documentation]
+        UpdateLegacyDocs --> Phase5Complete[Phase 5 Complete]
+    end
+
+    %% ========================================
+    %% VALIDATION PHASE
+    %% ========================================
+    Phase5Complete --> ValidationPhase[Enter Validation Phase]
+
+    subgraph Validation_SG ["Validation Subgraph"]
+        ValidationPhase --> CheckNoNestedFolders[Verify no nested live/completed folders]
+        CheckNoNestedFolders --> CheckNoLiveFiles[Verify no plan_live_*.yml files]
+        CheckNoLiveFiles --> RunFinalTests[Run pytest on affected modules]
+        RunFinalTests --> TestCLI[Test agentic plan list]
+        TestCLI --> ValidationPassed{All Validation Passed?}
+
+        ValidationPassed -- "No" --> IdentifyGaps[Identify Gaps]
+        IdentifyGaps -.->|Return to Phase 4| Phase4
+
+        ValidationPassed -- "Yes" --> ValidationComplete[Validation Complete]
+    end
+
+    %% ========================================
+    %% FINALIZATION
+    %% ========================================
+    ValidationComplete --> UpdatePlanStatus[Update Plan Status: completed]
+    UpdatePlanStatus --> ArchivePlan[Archive to docs/plans/completed/]
+    ArchivePlan --> End((End: Structure Simplification Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef entrypoint fill:#90EE90,stroke:#228B22
+    classDef exitpoint fill:#FFB6C1,stroke:#DC143C
+    classDef userpoint fill:#87CEEB,stroke:#4682B4
+    classDef keyaction fill:#FFD700,stroke:#DAA520
+    class Start entrypoint
+    class End exitpoint
+    class AskUser,EscalateTests userpoint
+    class UpdatePlanService,RunTests keyaction
