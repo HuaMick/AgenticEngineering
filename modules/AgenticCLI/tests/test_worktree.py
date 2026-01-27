@@ -84,46 +84,46 @@ class TestCreatePlanningFolder:
     """Tests for create_planning_folder function."""
 
     def test_creates_directory_structure(self, temp_dir):
-        """Test that planning folder structure is created."""
+        """Test that planning folder structure is created (flattened)."""
         from agenticcli.commands.worktree import create_planning_folder
 
         plan_path = temp_dir / "test_plan"
         create_planning_folder(plan_path)
 
-        assert (plan_path / "live").exists()
-        assert (plan_path / "completed").exists()
+        # Flattened: plan_path is the main directory
+        assert plan_path.exists()
 
     def test_creates_placeholder_files(self, temp_dir):
-        """Test that placeholder YAML files are created."""
+        """Test that placeholder YAML files are created (flattened)."""
         from agenticcli.commands.worktree import create_planning_folder
 
         plan_path = temp_dir / "test_plan"
         create_planning_folder(plan_path)
 
-        live_dir = plan_path / "live"
-        assert (live_dir / "plan_live_teach.yml").exists()
-        assert (live_dir / "plan_live_test.yml").exists()
-        assert (live_dir / "plan_live_audit_clean.yml").exists()
+        # Flattened: files directly in plan_path
+        assert (plan_path / "plan_teach.yml").exists()
+        assert (plan_path / "plan_test.yml").exists()
+        assert (plan_path / "plan_audit_clean.yml").exists()
 
     def test_creates_completed_placeholder(self, temp_dir):
-        """Test that completed placeholder is created."""
+        """Test that completed placeholder is created (flattened)."""
         from agenticcli.commands.worktree import create_planning_folder
 
         plan_path = temp_dir / "test_plan"
         create_planning_folder(plan_path)
 
-        assert (plan_path / "completed" / "plan_completed.yml").exists()
+        # Flattened: plan_completed.yml directly in plan_path
+        assert (plan_path / "plan_completed.yml").exists()
 
     def test_does_not_overwrite_existing(self, temp_dir):
-        """Test that existing files are not overwritten."""
+        """Test that existing files are not overwritten (flattened)."""
         from agenticcli.commands.worktree import create_planning_folder
 
         plan_path = temp_dir / "test_plan"
-        live_dir = plan_path / "live"
-        live_dir.mkdir(parents=True)
+        plan_path.mkdir(parents=True)
 
-        # Create existing file with custom content
-        existing_file = live_dir / "plan_live_teach.yml"
+        # Create existing file with custom content (flattened naming)
+        existing_file = plan_path / "plan_teach.yml"
         existing_file.write_text("# Custom content\n")
 
         create_planning_folder(plan_path)
@@ -255,42 +255,42 @@ class TestStubTemplates:
     """Tests for stub template generation and detection (FF-007)."""
 
     def test_stub_templates_have_header(self, temp_dir):
-        """Test that generated stub files contain template header."""
+        """Test that generated stub files contain template header (flattened)."""
         from agenticcli.commands.worktree import STUB_TEMPLATE_HEADER, create_planning_folder
 
         plan_path = temp_dir / "test_plan_stubs"
         create_planning_folder(plan_path)
 
-        live_dir = plan_path / "live"
-        for filename in ["plan_live_teach.yml", "plan_live_test.yml", "plan_live_audit_clean.yml"]:
-            content = (live_dir / filename).read_text()
+        # Flattened: files directly in plan_path
+        for filename in ["plan_teach.yml", "plan_test.yml", "plan_audit_clean.yml"]:
+            content = (plan_path / filename).read_text()
             assert "TEMPLATE FILE - ACTION REQUIRED" in content
             assert "OPTIONS:" in content
             assert "POPULATE:" in content
             assert "DELETE:" in content
 
     def test_stub_templates_have_status_field(self, temp_dir):
-        """Test that generated stub files contain _template_status: stub field."""
+        """Test that generated stub files contain _template_status: stub field (flattened)."""
         from agenticcli.commands.worktree import create_planning_folder
 
         plan_path = temp_dir / "test_plan_stubs"
         create_planning_folder(plan_path)
 
-        live_dir = plan_path / "live"
-        for filename in ["plan_live_teach.yml", "plan_live_test.yml", "plan_live_audit_clean.yml"]:
-            content = (live_dir / filename).read_text()
+        # Flattened: files directly in plan_path
+        for filename in ["plan_teach.yml", "plan_test.yml", "plan_audit_clean.yml"]:
+            content = (plan_path / filename).read_text()
             assert "_template_status: stub" in content
 
     def test_stub_templates_have_todo_markers(self, temp_dir):
-        """Test that generated stub files contain TODO markers with guidance."""
+        """Test that generated stub files contain TODO markers with guidance (flattened)."""
         from agenticcli.commands.worktree import create_planning_folder
 
         plan_path = temp_dir / "test_plan_stubs"
         create_planning_folder(plan_path)
 
-        live_dir = plan_path / "live"
-        for filename in ["plan_live_teach.yml", "plan_live_test.yml", "plan_live_audit_clean.yml"]:
-            content = (live_dir / filename).read_text()
+        # Flattened: files directly in plan_path
+        for filename in ["plan_teach.yml", "plan_test.yml", "plan_audit_clean.yml"]:
+            content = (plan_path / filename).read_text()
             assert "TODO:" in content
 
 

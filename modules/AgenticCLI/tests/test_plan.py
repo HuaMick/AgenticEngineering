@@ -36,12 +36,12 @@ class TestPlanValidate:
         stdout, stderr, code = cli_runner(["plan", "validate", str(temp_dir / "nonexistent")])
         assert "does not exist" in stderr or code == 1
 
-    def test_validate_missing_live_dir(self, cli_runner, temp_dir):
-        """Test validating a plan without live/ directory."""
+    def test_validate_missing_plan_files(self, cli_runner, temp_dir):
+        """Test validating a plan without plan_*.yml files (flattened structure)."""
         plan_path = temp_dir / "invalid_plan"
         plan_path.mkdir()
         stdout, stderr, code = cli_runner(["plan", "validate", str(plan_path)])
-        assert "Missing live/" in stdout or code == 1
+        assert "No plan_*.yml" in stdout or code == 1
 
 
 class TestPlanList:
@@ -69,7 +69,7 @@ class TestPlanScaffold:
     """Tests for 'agentic plan scaffold' command."""
 
     def test_scaffold_creates_structure(self, cli_runner, temp_repo):
-        """Test scaffold creates proper folder structure."""
+        """Test scaffold creates proper folder structure (flattened)."""
         # cli_runner already runs in temp_repo which is a git repo
         stdout, stderr, code = cli_runner(["plan", "scaffold", "260103AE_new_feature"])
 
@@ -77,11 +77,11 @@ class TestPlanScaffold:
         assert "Created planning folder" in stdout
         assert code == 0
 
-        # Verify structure - temp_repo is the cwd in cli_runner
+        # Verify flattened structure - plan_*.yml files directly in folder
         plan_path = temp_repo / "docs" / "plans" / "live" / "260103AE_new_feature"
         assert plan_path.exists()
-        assert (plan_path / "live").exists()
-        assert (plan_path / "completed").exists()
+        # Should have plan_*.yml files directly in plan_path (flattened)
+        assert list(plan_path.glob("plan_*.yml")), "Should have plan_*.yml files"
 
     def test_scaffold_existing_folder(self, cli_runner, mock_cwd, temp_repo):
         """Test scaffold fails if folder exists."""
@@ -94,14 +94,14 @@ class TestPlanTask:
     """Tests for 'agentic plan task start/complete' commands."""
 
     def test_task_start(self, cli_runner, temp_repo):
-        """Test starting a task."""
+        """Test starting a task (flattened structure)."""
         plan_path = temp_repo / "docs" / "plans" / "live" / "260103AE_test"
         stdout, stderr, code = cli_runner(["plan", "task", "start", "02", "--plan", str(plan_path)])
         assert "in_progress" in stdout
         assert code == 0
 
-        # Verify the file was updated
-        plan_file = plan_path / "live" / "plan_test.yml"
+        # Verify the file was updated (flattened: directly in plan_path)
+        plan_file = plan_path / "plan_test.yml"
         content = yaml.safe_load(plan_file.read_text())
         phases = content["plan"]["phases"]
         phase_02 = next(p for p in phases if p["id"] == "02")

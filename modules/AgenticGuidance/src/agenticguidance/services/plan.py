@@ -133,9 +133,8 @@ class PlanMovementWorkflow:
             repo_path: Path to git repository. Defaults to plan_path ancestor.
         """
         self.plan_path = plan_path
-        self.live_dir = plan_path / "live"
-        self.completed_dir = plan_path / "completed"
-        self.completed_file = self.completed_dir / "plan_completed.yml"
+        # Flattened structure: YAML files are directly in plan_path, not nested
+        self.completed_file = plan_path / "plan_completed.yml"
 
         # Find repo root
         self.repo_path = repo_path or self._find_repo_root(plan_path)
@@ -167,11 +166,11 @@ class PlanMovementWorkflow:
         Returns:
             TaskMoveResult with operation outcome.
         """
-        # Find the task in plan files
+        # Find the task in plan files (directly in plan_path, flattened structure)
         task_data = None
         source_file = None
 
-        for yaml_file in self.live_dir.glob("*.yml"):
+        for yaml_file in self.plan_path.glob("*.yml"):
             try:
                 content = yaml.safe_load(yaml_file.read_text())
             except yaml.YAMLError:
@@ -227,8 +226,8 @@ class PlanMovementWorkflow:
                 target_file="plan_completed.yml",
             )
 
-        # Ensure completed directory exists
-        self.completed_dir.mkdir(parents=True, exist_ok=True)
+        # Ensure plan_path exists (flattened structure)
+        self.plan_path.mkdir(parents=True, exist_ok=True)
 
         # Use file lock for atomic operation
         with FileLock(self.completed_file):
@@ -287,8 +286,8 @@ class PlanMovementWorkflow:
         results = []
         completed_task_ids = []
 
-        # Find all completed tasks
-        for yaml_file in self.live_dir.glob("*.yml"):
+        # Find all completed tasks (directly in plan_path, flattened structure)
+        for yaml_file in self.plan_path.glob("*.yml"):
             try:
                 content = yaml.safe_load(yaml_file.read_text())
             except yaml.YAMLError:
@@ -359,8 +358,8 @@ class PlanMovementWorkflow:
             # Copy the folder
             shutil.copytree(self.plan_path, dest_dir)
 
-            # Update archive metadata
-            archive_meta_file = dest_dir / "completed" / "plan_completed.yml"
+            # Update archive metadata (flattened structure: plan_completed.yml in dest_dir)
+            archive_meta_file = dest_dir / "plan_completed.yml"
             if archive_meta_file.exists():
                 try:
                     data = yaml.safe_load(archive_meta_file.read_text())
@@ -398,7 +397,7 @@ class PlanMovementWorkflow:
         """
         completed = []
 
-        for yaml_file in self.live_dir.glob("*.yml"):
+        for yaml_file in self.plan_path.glob("*.yml"):
             try:
                 content = yaml.safe_load(yaml_file.read_text())
             except yaml.YAMLError:

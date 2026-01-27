@@ -121,15 +121,15 @@ class TestPlanMovementWorkflow:
     """Tests for PlanMovementWorkflow class."""
 
     def test_init_sets_paths(self, tmp_path):
-        """Test initialization sets correct paths."""
+        """Test initialization sets correct paths (flattened structure)."""
         plan_path = tmp_path / "docs" / "plans" / "live" / "feature"
         plan_path.mkdir(parents=True)
 
         workflow = PlanMovementWorkflow(plan_path)
 
         assert workflow.plan_path == plan_path
-        assert workflow.live_dir == plan_path / "live"
-        assert workflow.completed_dir == plan_path / "completed"
+        # Flattened: completed_file directly in plan_path
+        assert workflow.completed_file == plan_path / "plan_completed.yml"
 
     def test_find_repo_root(self, tmp_path):
         """Test _find_repo_root finds git directory."""
@@ -143,10 +143,9 @@ class TestPlanMovementWorkflow:
         assert result == tmp_path
 
     def test_get_completed_tasks(self, tmp_path):
-        """Test get_completed_tasks finds completed tasks."""
+        """Test get_completed_tasks finds completed tasks (flattened structure)."""
         plan_path = tmp_path / "plan"
-        live_dir = plan_path / "live"
-        live_dir.mkdir(parents=True)
+        plan_path.mkdir(parents=True)
 
         # Using 'tasks' at the plan level (not nested in phases)
         plan_content = """
@@ -159,7 +158,8 @@ plan:
       name: Task 2
       status: pending
 """
-        (live_dir / "plan_live.yml").write_text(plan_content)
+        # Flattened: plan file directly in plan_path
+        (plan_path / "plan_build.yml").write_text(plan_content)
 
         workflow = PlanMovementWorkflow(plan_path)
         completed = workflow.get_completed_tasks()
@@ -179,10 +179,9 @@ plan:
 
     @patch.object(GitSafetyChecker, "has_uncommitted_changes", return_value=False)
     def test_move_task_to_completed_dry_run(self, mock_git, tmp_path):
-        """Test move_task_to_completed with dry_run."""
+        """Test move_task_to_completed with dry_run (flattened structure)."""
         plan_path = tmp_path / "plan"
-        live_dir = plan_path / "live"
-        live_dir.mkdir(parents=True)
+        plan_path.mkdir(parents=True)
 
         plan_content = """
 plan:
@@ -191,7 +190,8 @@ plan:
       name: Task 1
       status: completed
 """
-        (live_dir / "plan_live.yml").write_text(plan_content)
+        # Flattened: plan file directly in plan_path
+        (plan_path / "plan_build.yml").write_text(plan_content)
 
         workflow = PlanMovementWorkflow(plan_path)
         result = workflow.move_task_to_completed("task_001", dry_run=True)
@@ -200,10 +200,9 @@ plan:
         assert "[dry-run]" in result.message
 
     def test_move_task_fails_for_non_completed(self, tmp_path):
-        """Test move_task_to_completed fails for non-completed task."""
+        """Test move_task_to_completed fails for non-completed task (flattened structure)."""
         plan_path = tmp_path / "plan"
-        live_dir = plan_path / "live"
-        live_dir.mkdir(parents=True)
+        plan_path.mkdir(parents=True)
 
         plan_content = """
 plan:
@@ -212,7 +211,8 @@ plan:
       name: Task 1
       status: pending
 """
-        (live_dir / "plan_live.yml").write_text(plan_content)
+        # Flattened: plan file directly in plan_path
+        (plan_path / "plan_build.yml").write_text(plan_content)
 
         workflow = PlanMovementWorkflow(plan_path)
         result = workflow.move_task_to_completed("task_001")
@@ -221,11 +221,11 @@ plan:
         assert "pending" in result.message
 
     def test_move_task_fails_for_missing(self, tmp_path):
-        """Test move_task_to_completed fails for missing task."""
+        """Test move_task_to_completed fails for missing task (flattened structure)."""
         plan_path = tmp_path / "plan"
-        live_dir = plan_path / "live"
-        live_dir.mkdir(parents=True)
-        (live_dir / "plan_live.yml").write_text("plan:\n  phases: []\n")
+        plan_path.mkdir(parents=True)
+        # Flattened: plan file directly in plan_path
+        (plan_path / "plan_build.yml").write_text("plan:\n  phases: []\n")
 
         workflow = PlanMovementWorkflow(plan_path)
         result = workflow.move_task_to_completed("nonexistent")

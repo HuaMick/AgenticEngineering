@@ -37,10 +37,9 @@ def plan_repo(temp_dir):
         capture_output=True,
     )
 
-    # Create docs/plans/live structure with a plan folder
+    # Create docs/plans/live structure with a plan folder (flattened structure)
     plan_folder = repo_dir / "docs" / "plans" / "live" / "260123CL_test_plan"
-    (plan_folder / "live").mkdir(parents=True)
-    (plan_folder / "completed").mkdir(parents=True)
+    plan_folder.mkdir(parents=True)
 
     # Create README.md
     readme = plan_folder / "README.md"
@@ -55,8 +54,8 @@ This is a test plan for integration testing.
 """
     )
 
-    # Create plan_live_build.yml with tasks
-    plan_file = plan_folder / "live" / "plan_live_build.yml"
+    # Create plan_build.yml with tasks (flattened: directly in plan_folder)
+    plan_file = plan_folder / "plan_build.yml"
     plan_content = {
         "name": "test-build-plan",
         "status": "active",

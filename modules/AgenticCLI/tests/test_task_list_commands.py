@@ -38,10 +38,9 @@ def task_repo(temp_dir):
         capture_output=True,
     )
 
-    # Create docs/plans/live structure
+    # Create docs/plans/live structure (flattened structure)
     plan_folder = repo_dir / "docs" / "plans" / "live" / "260123CL_task_test"
-    (plan_folder / "live").mkdir(parents=True)
-    (plan_folder / "completed").mkdir(parents=True)
+    plan_folder.mkdir(parents=True)
 
     # Create README
     (plan_folder / "README.md").write_text(
@@ -52,8 +51,8 @@ def task_repo(temp_dir):
 """
     )
 
-    # Create plan with multiple tasks in different statuses
-    plan_file = plan_folder / "live" / "plan_live_build.yml"
+    # Create plan with multiple tasks in different statuses (flattened: directly in plan_folder)
+    plan_file = plan_folder / "plan_build.yml"
     plan_content = {
         "name": "task-test-plan",
         "status": "active",

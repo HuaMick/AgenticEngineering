@@ -132,10 +132,8 @@ class TestMainFirstPlanResolver:
         assert result == []
 
     def test_extract_all_tasks_parses_plan_file(self, tmp_path):
-        """Test extracts tasks from plan YAML files."""
-        live_dir = tmp_path / "live"
-        live_dir.mkdir()
-
+        """Test extracts tasks from plan YAML files (flattened structure)."""
+        # Flattened: plan files directly in tmp_path
         plan_content = """
 phases:
   - name: "Build Phase"
@@ -146,7 +144,7 @@ phases:
         description: "Do something"
         status: "pending"
 """
-        (live_dir / "plan_live_build.yml").write_text(plan_content)
+        (tmp_path / "plan_build.yml").write_text(plan_content)
 
         resolver = MainFirstPlanResolver()
         tasks = resolver.extract_all_tasks(tmp_path)
@@ -158,10 +156,8 @@ phases:
         assert tasks[0]["phase"] == "Build Phase"
 
     def test_extract_current_task_returns_in_progress_first(self, tmp_path):
-        """Test returns in_progress task over pending."""
-        live_dir = tmp_path / "live"
-        live_dir.mkdir()
-
+        """Test returns in_progress task over pending (flattened structure)."""
+        # Flattened: plan files directly in tmp_path
         plan_content = """
 phases:
   - name: "Build"
@@ -173,7 +169,7 @@ phases:
         name: "In progress task"
         status: "in_progress"
 """
-        (live_dir / "plan_live_build.yml").write_text(plan_content)
+        (tmp_path / "plan_build.yml").write_text(plan_content)
 
         resolver = MainFirstPlanResolver()
         task = resolver.extract_current_task(tmp_path)
@@ -182,10 +178,8 @@ phases:
         assert task["status"] == "in_progress"
 
     def test_extract_current_task_returns_first_pending(self, tmp_path):
-        """Test returns first pending when no in_progress."""
-        live_dir = tmp_path / "live"
-        live_dir.mkdir()
-
+        """Test returns first pending when no in_progress (flattened structure)."""
+        # Flattened: plan files directly in tmp_path
         plan_content = """
 phases:
   - name: "Build"
@@ -197,7 +191,7 @@ phases:
         name: "Second pending"
         status: "pending"
 """
-        (live_dir / "plan_live_build.yml").write_text(plan_content)
+        (tmp_path / "plan_build.yml").write_text(plan_content)
 
         resolver = MainFirstPlanResolver()
         task = resolver.extract_current_task(tmp_path)

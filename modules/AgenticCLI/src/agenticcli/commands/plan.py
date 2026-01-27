@@ -71,16 +71,16 @@ def find_plan_folder(path: str | None = None) -> Path:
     # Auto-detect: look for docs/plans/live/ in current directory tree
     cwd = Path.cwd()
 
-    # Check if we're in a plan folder
-    if (cwd / "live").exists() and (cwd / "completed").exists():
+    # Check if we're in a plan folder (flattened structure: plan_*.yml directly in cwd)
+    if list(cwd.glob("plan_*.yml")):
         return cwd
 
     # Check if we're in a worktree with plans
     plans_dir = cwd / "docs" / "plans" / "live"
     if plans_dir.exists():
-        # Return first plan folder found
+        # Return first plan folder found (flattened: has plan_*.yml files)
         for item in plans_dir.iterdir():
-            if item.is_dir() and (item / "live").exists():
+            if item.is_dir() and list(item.glob("plan_*.yml")):
                 return item
 
     print("Error: Could not find a plan folder. Specify path explicitly.", file=sys.stderr)
@@ -296,8 +296,7 @@ def cmd_scaffold(args):
 
     create_planning_folder(plan_path)
     print(f"Created planning folder: {plan_path}")
-    print(f"  live/: {plan_path / 'live'}")
-    print(f"  completed/: {plan_path / 'completed'}")
+    print(f"  (flattened structure: plan files directly in folder)")
 
 
 def cmd_status(args):
@@ -312,10 +311,11 @@ def cmd_status(args):
     )
 
     plan_path = find_plan_folder(args.path)
-    live_dir = plan_path / "live"
 
-    if not live_dir.exists():
-        print_error(f"No live/ directory in {plan_path}")
+    # Flattened structure: YAML files directly in plan_path
+    yaml_files = list(plan_path.glob("plan_*.yml"))
+    if not yaml_files:
+        print_error(f"No plan_*.yml files found in {plan_path}")
         sys.exit(1)
 
     total_pending = 0
@@ -323,7 +323,7 @@ def cmd_status(args):
     total_completed = 0
     file_stats = []
 
-    for yaml_file in sorted(live_dir.glob("*.yml")):
+    for yaml_file in sorted(yaml_files):
         try:
             content = yaml.safe_load(yaml_file.read_text())
         except yaml.YAMLError as e:
@@ -454,36 +454,26 @@ def cmd_validate(args):
         print(f"Error: Path does not exist: {plan_path}", file=sys.stderr)
         sys.exit(1)
 
-    live_dir = plan_path / "live"
-    completed_dir = plan_path / "completed"
+    # Flattened structure: plan_*.yml files directly in plan_path
+    yaml_files = list(plan_path.glob("plan_*.yml"))
+    if not yaml_files:
+        errors.append("No plan_*.yml files in directory")
 
-    if not live_dir.exists():
-        errors.append("Missing live/ subdirectory")
-    if not completed_dir.exists():
-        errors.append("Missing completed/ subdirectory")
+    # Validate YAML syntax and check for stub templates
+    for yaml_file in yaml_files:
+        try:
+            content = yaml.safe_load(yaml_file.read_text())
+            if content is None:
+                warnings.append(f"{yaml_file.name}: Empty file")
+            elif is_stub_template(content):
+                stub_files.append(yaml_file.name)
+        except yaml.YAMLError as e:
+            errors.append(f"{yaml_file.name}: Invalid YAML - {e}")
 
-    # Check for required files
-    if live_dir.exists():
-        yaml_files = list(live_dir.glob("*.yml"))
-        if not yaml_files:
-            warnings.append("No YAML files in live/ directory")
-
-        # Validate YAML syntax and check for stub templates
-        for yaml_file in yaml_files:
-            try:
-                content = yaml.safe_load(yaml_file.read_text())
-                if content is None:
-                    warnings.append(f"{yaml_file.name}: Empty file")
-                elif is_stub_template(content):
-                    stub_files.append(yaml_file.name)
-            except yaml.YAMLError as e:
-                errors.append(f"{yaml_file.name}: Invalid YAML - {e}")
-
-    # Check completed directory
-    if completed_dir.exists():
-        completed_file = completed_dir / "plan_completed.yml"
-        if not completed_file.exists():
-            warnings.append("Missing completed/plan_completed.yml")
+    # Check for plan_completed.yml (optional in flattened structure)
+    completed_file = plan_path / "plan_completed.yml"
+    if not completed_file.exists():
+        warnings.append("Missing plan_completed.yml (optional for new plans)")
 
     # Handle stub files - promote to errors in strict mode
     if stub_files:
@@ -542,13 +532,12 @@ def _update_task_status(plan_path: Path, task_id: str, new_status: str):
     """Update a task's status in plan files.
 
     Args:
-        plan_path: Path to plan folder
+        plan_path: Path to plan folder (flattened structure)
         task_id: Task ID to update
         new_status: New status value
     """
-    live_dir = plan_path / "live"
-
-    for yaml_file in live_dir.glob("*.yml"):
+    # Flattened structure: YAML files directly in plan_path
+    for yaml_file in plan_path.glob("plan_*.yml"):
         content = yaml_file.read_text()
         data = yaml.safe_load(content)
         if not data:
@@ -661,15 +650,16 @@ def cmd_task_list(args, ctx=None):
     plan_path = find_plan_folder(getattr(args, "plan", None))
     status_filter = getattr(args, "status", "all")
     verbose = getattr(args, "verbose", False)
-    live_dir = plan_path / "live"
 
-    if not live_dir.exists():
-        print_error(f"No live/ directory in {plan_path}")
+    # Flattened structure: YAML files directly in plan_path
+    yaml_files = list(plan_path.glob("plan_*.yml"))
+    if not yaml_files:
+        print_error(f"No plan_*.yml files found in {plan_path}")
         sys.exit(1)
 
     all_tasks = []
 
-    for yaml_file in sorted(live_dir.glob("*.yml")):
+    for yaml_file in sorted(yaml_files):
         try:
             content = yaml.safe_load(yaml_file.read_text())
         except yaml.YAMLError:
@@ -754,13 +744,13 @@ def cmd_task_status(args, ctx=None):
 
     task_id = args.task_id
     plan_path = find_plan_folder(getattr(args, "plan", None))
-    live_dir = plan_path / "live"
 
     task_data = None
     source_file = None
     phase_info = None
 
-    for yaml_file in live_dir.glob("*.yml"):
+    # Flattened structure: YAML files directly in plan_path
+    for yaml_file in plan_path.glob("plan_*.yml"):
         try:
             content = yaml.safe_load(yaml_file.read_text())
         except yaml.YAMLError:
@@ -850,18 +840,17 @@ def cmd_task_add(args, ctx=None):
     phase_id = getattr(args, "phase", None)
     custom_id = getattr(args, "id", None)
     priority = getattr(args, "priority", "medium")
-    live_dir = plan_path / "live"
 
-    # Find the first plan_live_*.yml file or plan_build*.yml
+    # Flattened structure: find plan_*.yml files directly in plan_path
     target_file = None
-    for pattern in ["plan_live_*.yml", "plan_build*.yml", "*.yml"]:
-        files = list(live_dir.glob(pattern))
+    for pattern in ["plan_build*.yml", "plan_*.yml"]:
+        files = list(plan_path.glob(pattern))
         if files:
             target_file = files[0]
             break
 
     if not target_file:
-        print_error("No plan file found in live/ directory")
+        print_error("No plan_*.yml file found in plan directory")
         sys.exit(1)
 
     try:
@@ -959,8 +948,8 @@ def cmd_archive(args):
     # Copy the folder
     shutil.copytree(plan_path, dest_dir)
 
-    # Update completion metadata
-    completed_file = dest_dir / "completed" / "plan_completed.yml"
+    # Update completion metadata (flattened structure: plan_completed.yml in dest_dir)
+    completed_file = dest_dir / "plan_completed.yml"
     if completed_file.exists():
         try:
             data = yaml.safe_load(completed_file.read_text())
@@ -999,8 +988,9 @@ def cmd_list(args):
     plans_data = []
 
     for plan_folder in plan_folders:
-        live_dir = plan_folder / "live"
-        if not live_dir.exists():
+        # Flattened structure: plan_*.yml files directly in plan_folder
+        yaml_files = list(plan_folder.glob("plan_*.yml"))
+        if not yaml_files:
             continue
 
         # Count tasks across all files
@@ -1009,7 +999,7 @@ def cmd_list(args):
         total_completed = 0
         plan_status = "unknown"
 
-        for yaml_file in live_dir.glob("*.yml"):
+        for yaml_file in yaml_files:
             try:
                 content = yaml.safe_load(yaml_file.read_text())
             except yaml.YAMLError:
@@ -1199,17 +1189,18 @@ def cmd_task_update(args, ctx=None):
     new_status = args.status
     note = getattr(args, "note", None)
     plan_path = find_plan_folder(getattr(args, "plan", None))
-    live_dir = plan_path / "live"
 
-    if not live_dir.exists():
-        print_error(f"No live/ directory in {plan_path}")
+    # Flattened structure: YAML files directly in plan_path
+    yaml_files = list(plan_path.glob("plan_*.yml"))
+    if not yaml_files:
+        print_error(f"No plan_*.yml files found in {plan_path}")
         sys.exit(1)
 
     # Find and update the task
     task_found = False
     updated_file = None
 
-    for yaml_file in live_dir.glob("*.yml"):
+    for yaml_file in yaml_files:
         try:
             content = yaml.safe_load(yaml_file.read_text())
         except yaml.YAMLError:
@@ -1312,16 +1303,17 @@ def cmd_task_current(args, ctx=None):
     )
 
     plan_path = find_plan_folder(getattr(args, "plan", None))
-    live_dir = plan_path / "live"
 
-    if not live_dir.exists():
-        print_error(f"No live/ directory in {plan_path}")
+    # Flattened structure: YAML files directly in plan_path
+    yaml_files = list(plan_path.glob("plan_*.yml"))
+    if not yaml_files:
+        print_error(f"No plan_*.yml files found in {plan_path}")
         sys.exit(1)
 
     # Collect all tasks with full details
     all_tasks = []
 
-    for yaml_file in sorted(live_dir.glob("*.yml")):
+    for yaml_file in sorted(yaml_files):
         try:
             content = yaml.safe_load(yaml_file.read_text())
         except yaml.YAMLError:

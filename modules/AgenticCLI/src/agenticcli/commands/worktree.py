@@ -97,23 +97,19 @@ def generate_plan_folder_name(branch: str, repo_root: Path) -> str:
 def create_planning_folder(plan_path: Path):
     """Create planning folder structure with placeholder files.
 
-    Creates:
-        - live/ subdirectory
-        - completed/ subdirectory
-        - 4 placeholder YAML files in live/
+    Creates (flattened structure):
+        - plan_*.yml files directly in plan_path
+        - plan_completed.yml for completed items
     """
-    live_dir = plan_path / "live"
-    completed_dir = plan_path / "completed"
-
-    live_dir.mkdir(parents=True, exist_ok=True)
-    completed_dir.mkdir(parents=True, exist_ok=True)
+    plan_path.mkdir(parents=True, exist_ok=True)
 
     # Create placeholder files with clear template markers
     created_date = datetime.now().strftime("%Y-%m-%d")
     current_worktree = str(Path.cwd())
 
+    # Flattened naming: plan_*.yml (no live_ prefix)
     plan_files = {
-        "plan_live_teach.yml": f"""{STUB_TEMPLATE_HEADER}
+        "plan_teach.yml": f"""{STUB_TEMPLATE_HEADER}
 _template_status: stub  # Change to 'active' when populated
 
 # Teaching/Implementation Plan
@@ -154,7 +150,7 @@ plan:
     #         - "migrations/001_users.sql"
     []
 """,
-        "plan_live_test.yml": f"""{STUB_TEMPLATE_HEADER}
+        "plan_test.yml": f"""{STUB_TEMPLATE_HEADER}
 _template_status: stub  # Change to 'active' when populated
 
 # Test Plan
@@ -194,7 +190,7 @@ plan:
       location: "tests/integration/"
       # TODO: Add specific test targets
 """,
-        "plan_live_audit_clean.yml": f"""{STUB_TEMPLATE_HEADER}
+        "plan_audit_clean.yml": f"""{STUB_TEMPLATE_HEADER}
 _template_status: stub  # Change to 'active' when populated
 
 # Audit and Cleanup Plan
@@ -235,13 +231,14 @@ plan:
 """,
     }
 
+    # Flattened structure: files directly in plan_path
     for filename, content in plan_files.items():
-        file_path = live_dir / filename
+        file_path = plan_path / filename
         if not file_path.exists():
             file_path.write_text(content)
 
-    # Create completed placeholder
-    completed_file = completed_dir / "plan_completed.yml"
+    # Create completed placeholder (flattened: directly in plan_path)
+    completed_file = plan_path / "plan_completed.yml"
     if not completed_file.exists():
         completed_file.write_text("""# Completed Items
 # Items moved here when completed during implementation
@@ -543,13 +540,13 @@ def cmd_status(args):
         for plan_dir in sorted(plans_dir.iterdir()):
             if plan_dir.is_dir():
                 plan_folders.append(plan_dir.name)
-                # Count tasks in this plan
-                live_dir = plan_dir / "live"
-                if live_dir.exists():
+                # Count tasks in this plan (flattened structure: plan_*.yml directly in plan_dir)
+                plan_files = list(plan_dir.glob("plan_*.yml"))
+                if plan_files:
                     pending = 0
                     in_progress = 0
                     completed = 0
-                    for yml_file in live_dir.glob("*.yml"):
+                    for yml_file in plan_files:
                         try:
                             import yaml
 

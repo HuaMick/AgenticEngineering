@@ -105,17 +105,10 @@ def validate_plan_folder_structure(path: Path) -> tuple[bool, list[str]]:
     if not path.is_dir():
         return False, [f"path is not a directory: {path}"]
 
-    # Check for live directory
-    live_dir = path / "live"
-    if not live_dir.exists():
-        issues.append("missing 'live' directory")
-    elif not live_dir.is_dir():
-        issues.append("'live' is not a directory")
-    else:
-        # Check for at least one YAML file in live
-        yaml_files = list(live_dir.glob("*.yml")) + list(live_dir.glob("*.yaml"))
-        if not yaml_files:
-            issues.append("no YAML files in 'live' directory")
+    # Flattened structure: check for plan_*.yml files directly in path
+    yaml_files = list(path.glob("plan_*.yml")) + list(path.glob("plan_*.yaml"))
+    if not yaml_files:
+        issues.append("no plan_*.yml files in directory")
 
     return len(issues) == 0, issues
 

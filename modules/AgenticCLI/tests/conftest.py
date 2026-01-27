@@ -39,12 +39,11 @@ def temp_repo(temp_dir):
     plans_live = repo_dir / "docs" / "plans" / "live"
     plans_live.mkdir(parents=True)
 
-    # Create a sample plan folder
+    # Create a sample plan folder (flattened structure: plan files directly in folder)
     plan_folder = plans_live / "260103AE_test"
-    (plan_folder / "live").mkdir(parents=True)
-    (plan_folder / "completed").mkdir(parents=True)
+    plan_folder.mkdir(parents=True)
 
-    # Create sample plan file
+    # Create sample plan file (flattened: directly in plan_folder)
     sample_plan = {
         "plan": {
             "name": "Test Plan",
@@ -55,7 +54,7 @@ def temp_repo(temp_dir):
             ],
         }
     }
-    with open(plan_folder / "live" / "plan_test.yml", "w") as f:
+    with open(plan_folder / "plan_test.yml", "w") as f:
         yaml.dump(sample_plan, f)
 
     yield repo_dir

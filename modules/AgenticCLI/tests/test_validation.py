@@ -122,30 +122,30 @@ class TestValidatePlanFolderStructure:
         assert is_valid is False
         assert "not a directory" in issues[0]
 
-    def test_missing_live_directory(self, temp_dir):
-        """Test missing live directory is invalid."""
+    def test_missing_plan_files(self, temp_dir):
+        """Test missing plan_*.yml files is invalid (flattened structure)."""
         plan_dir = temp_dir / "plan_folder"
         plan_dir.mkdir()
         is_valid, issues = validate_plan_folder_structure(plan_dir)
         assert is_valid is False
-        assert "missing 'live' directory" in issues[0]
+        assert "no plan_*.yml files" in issues[0]
 
-    def test_empty_live_directory(self, temp_dir):
-        """Test empty live directory is invalid."""
+    def test_empty_directory(self, temp_dir):
+        """Test empty directory is invalid (no plan_*.yml files)."""
         plan_dir = temp_dir / "plan_folder"
         plan_dir.mkdir()
-        (plan_dir / "live").mkdir()
+        # Create a non-plan file
+        (plan_dir / "README.md").write_text("# Test")
         is_valid, issues = validate_plan_folder_structure(plan_dir)
         assert is_valid is False
-        assert "no YAML files" in issues[0]
+        assert "no plan_*.yml files" in issues[0]
 
     def test_valid_structure(self, temp_dir):
-        """Test valid plan folder structure."""
+        """Test valid plan folder structure (flattened: plan_*.yml directly in folder)."""
         plan_dir = temp_dir / "plan_folder"
         plan_dir.mkdir()
-        live_dir = plan_dir / "live"
-        live_dir.mkdir()
-        (live_dir / "plan.yml").write_text("plan:\n  name: Test")
+        # Flattened: plan file directly in plan_dir
+        (plan_dir / "plan_build.yml").write_text("plan:\n  name: Test")
         is_valid, issues = validate_plan_folder_structure(plan_dir)
         assert is_valid is True
         assert issues == []
@@ -155,12 +155,11 @@ class TestValidatePlanFolderOrRaise:
     """Tests for validate_plan_folder_or_raise."""
 
     def test_valid_returns_path(self, temp_dir):
-        """Test valid folder returns path."""
+        """Test valid folder returns path (flattened structure)."""
         plan_dir = temp_dir / "plan_folder"
         plan_dir.mkdir()
-        live_dir = plan_dir / "live"
-        live_dir.mkdir()
-        (live_dir / "plan.yml").write_text("test")
+        # Flattened: plan file directly in plan_dir
+        (plan_dir / "plan_build.yml").write_text("test")
         result = validate_plan_folder_or_raise(plan_dir)
         assert result == plan_dir
 

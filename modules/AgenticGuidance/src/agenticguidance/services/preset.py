@@ -26,7 +26,7 @@ class TaskPresetWorkflow:
 
     Provides:
     - Loading preset templates from templates/presets/
-    - Adding preset tasks to plan_live_*.yml files
+    - Adding preset tasks to plan_*.yml files (flattened structure)
     - Listing available presets
     """
 
@@ -38,7 +38,6 @@ class TaskPresetWorkflow:
             presets_dir: Path to presets directory. Defaults to AgenticGuidance templates.
         """
         self.plan_path = plan_path
-        self.live_dir = plan_path / "live"
 
         # Default to AgenticGuidance templates directory
         if presets_dir:
@@ -167,17 +166,17 @@ class TaskPresetWorkflow:
         """Find existing task file or create path for new one.
 
         Returns:
-            Path to task file.
+            Path to task file (flattened structure: directly in plan_path).
         """
-        # Look for existing plan_live_tasks.yml
-        task_file = self.live_dir / "plan_live_tasks.yml"
+        # Look for existing plan_tasks.yml (flattened structure)
+        task_file = self.plan_path / "plan_tasks.yml"
         if task_file.exists():
             return task_file
 
-        # Look for any plan_live_*.yml
-        for f in self.live_dir.glob("plan_live_*.yml"):
+        # Look for any plan_*.yml (flattened structure)
+        for f in self.plan_path.glob("plan_*.yml"):
             return f
 
         # Create new task file
-        self.live_dir.mkdir(parents=True, exist_ok=True)
+        self.plan_path.mkdir(parents=True, exist_ok=True)
         return task_file

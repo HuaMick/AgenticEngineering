@@ -140,11 +140,11 @@ class MainFirstPlanResolver:
                     matching_plan = folder
                     break
 
-            # Strategy 2: Check plan.yml for branch field
-            plan_yml = folder / "live" / "plan.yml"
+            # Strategy 2: Check plan.yml for branch field (flattened structure)
+            plan_yml = folder / "plan.yml"
             if not plan_yml.exists():
-                # Try root level plan_*.yml files
-                for pf in folder.glob("live/plan_*.yml"):
+                # Try plan_*.yml files directly in folder
+                for pf in folder.glob("plan_*.yml"):
                     plan_yml = pf
                     break
 
@@ -160,13 +160,13 @@ class MainFirstPlanResolver:
                 except (yaml.YAMLError, IOError):
                     pass
 
-        # Strategy 3: If on main/master, return most recent active plan
+        # Strategy 3: If on main/master, return most recent active plan (flattened structure)
         if not matching_plan and branch in ("main", "master"):
             for folder in sorted(plans_live.iterdir(), key=lambda x: x.name, reverse=True):
-                if folder.is_dir() and (folder / "live").exists():
-                    # Check if there are actual files in live/
-                    live_files = list((folder / "live").glob("*.yml"))
-                    if live_files:
+                if folder.is_dir():
+                    # Check if there are actual plan files directly in the folder (flattened)
+                    plan_files = list(folder.glob("plan_*.yml"))
+                    if plan_files:
                         matching_plan = folder
                         break
 
@@ -182,8 +182,8 @@ class MainFirstPlanResolver:
             "status": None,
         }
 
-        # Try to extract objective from plan files
-        for plan_file in (matching_plan / "live").glob("plan_*.yml"):
+        # Try to extract objective from plan files (flattened: directly in matching_plan)
+        for plan_file in matching_plan.glob("plan_*.yml"):
             try:
                 with open(plan_file) as f:
                     plan_data = yaml.safe_load(f)
@@ -227,18 +227,18 @@ class MainFirstPlanResolver:
         """Extract all tasks from plan files in a folder.
 
         Args:
-            plan_folder: Path to the plan folder.
+            plan_folder: Path to the plan folder (flattened structure).
 
         Returns:
             List of task dicts.
         """
         tasks = []
-        live_folder = plan_folder / "live"
 
-        if not live_folder.exists():
+        if not plan_folder.exists():
             return tasks
 
-        for plan_file in live_folder.glob("plan_*.yml"):
+        # Flattened structure: plan files directly in plan_folder
+        for plan_file in plan_folder.glob("plan_*.yml"):
             try:
                 with open(plan_file) as f:
                     plan_data = yaml.safe_load(f)
