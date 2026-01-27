@@ -134,24 +134,20 @@ def _resolve_prompt(args) -> tuple[str, str]:
     # Prompt from entrypoint reference
     entrypoint = getattr(args, "entrypoint", None)
     if entrypoint:
-        # Look for entrypoint in standard locations
-        # First, check if it's a path to a file
+        # Use the entrypoint module for consistent resolution
+        from agenticcli.commands.entrypoint import _find_entrypoint
+
+        # First, check if it's a direct path to a file
         if Path(entrypoint).exists():
             return Path(entrypoint).read_text().strip(), f"entrypoint:{entrypoint}"
 
-        # Check common locations for entrypoints
-        search_paths = [
-            Path.cwd() / ".claude" / f"{entrypoint}.md",
-            Path.cwd() / ".claude" / "entrypoints" / f"{entrypoint}.md",
-            Path.cwd() / "prompts" / f"{entrypoint}.md",
-            Path.cwd() / "prompts" / f"{entrypoint}.txt",
-        ]
-        for search_path in search_paths:
-            if search_path.exists():
-                return search_path.read_text().strip(), f"entrypoint:{entrypoint}"
+        # Use entrypoint module's resolution logic
+        filepath = _find_entrypoint(entrypoint)
+        if filepath:
+            return filepath.read_text().strip(), f"entrypoint:{entrypoint}"
 
         print_error(f"Entrypoint not found: {entrypoint}")
-        print_error("Searched in: .claude/, .claude/entrypoints/, prompts/")
+        print_error("Hint: Use 'agentic entrypoint list' to see available entrypoints.")
         sys.exit(1)
 
     print_error("Prompt is required. Use --prompt, --prompt-file, or --entrypoint.")

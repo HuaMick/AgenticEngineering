@@ -198,10 +198,11 @@ class TestResolvePrompt:
         """Test resolving prompt from entrypoint name in standard locations."""
         from agenticcli.commands import loop
 
-        # Create .claude directory with entrypoint
-        claude_dir = tmp_path / ".claude"
-        claude_dir.mkdir()
-        entrypoint_file = claude_dir / "my-task.md"
+        # Create .claude/entrypoints directory with entrypoint using proper naming convention
+        # The entrypoint module expects files like _my-task.md in .claude/entrypoints/
+        entrypoints_dir = tmp_path / ".claude" / "entrypoints"
+        entrypoints_dir.mkdir(parents=True)
+        entrypoint_file = entrypoints_dir / "_my-task.md"
         entrypoint_file.write_text("Task from .claude")
 
         monkeypatch.chdir(tmp_path)
