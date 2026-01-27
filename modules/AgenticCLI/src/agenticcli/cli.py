@@ -135,6 +135,9 @@ Agent Bootstrap (full context with file paths):
     # Session management (Claude Code sessions)
     _add_session_parser(subparsers)
 
+    # Loop management (Ralph Loops)
+    _add_loop_parser(subparsers)
+
     # Environment management
     _add_env_parser(subparsers)
 
@@ -1135,6 +1138,110 @@ def _add_session_parser(subparsers):
     )
 
 
+def _add_loop_parser(subparsers):
+    """Add loop subcommand parser for Ralph Loop management."""
+    loop_parser = subparsers.add_parser(
+        "loop",
+        help="Manage Ralph Loops",
+        description="Start, stop, and monitor Ralph Loop executions.",
+    )
+    loop_subparsers = loop_parser.add_subparsers(
+        dest="loop_command", help="Loop commands"
+    )
+
+    # loop start
+    start_parser = loop_subparsers.add_parser(
+        "start",
+        help="Start a new Ralph Loop",
+        description="Start a Ralph Loop with a prompt from various sources.",
+    )
+    start_parser.add_argument(
+        "--prompt", "-p",
+        help="Direct prompt string",
+    )
+    start_parser.add_argument(
+        "--prompt-file", "-f",
+        help="Path to file containing the prompt",
+    )
+    start_parser.add_argument(
+        "--entrypoint", "-e",
+        help="Entrypoint reference (e.g., _orchestrate)",
+    )
+    start_parser.add_argument(
+        "--max-iterations", "-m",
+        type=int,
+        default=10,
+        help="Maximum number of loop iterations (default: 10)",
+    )
+    start_parser.add_argument(
+        "--completion-promise", "-c",
+        help="Text that signals loop completion (e.g., 'No more work to do')",
+    )
+    start_parser.add_argument(
+        "--background", "-b",
+        action="store_true",
+        help="Run the loop in the background",
+    )
+    start_parser.add_argument(
+        "--directory", "-d",
+        help="Working directory for the loop (default: current directory)",
+    )
+    start_parser.add_argument(
+        "--output", "-o",
+        help="Output file for results",
+    )
+
+    # loop stop
+    stop_parser = loop_subparsers.add_parser(
+        "stop",
+        help="Stop a running loop",
+        description="Gracefully terminate a running Ralph Loop.",
+    )
+    stop_parser.add_argument(
+        "loop_id",
+        help="Loop ID (or partial ID) to stop",
+    )
+    stop_parser.add_argument(
+        "--force", "-f",
+        action="store_true",
+        help="Force kill the loop (SIGKILL instead of SIGTERM)",
+    )
+
+    # loop status
+    status_parser = loop_subparsers.add_parser(
+        "status",
+        help="Get loop status and progress",
+        description="Display detailed status of a specific loop including iteration progress.",
+    )
+    status_parser.add_argument(
+        "loop_id",
+        help="Loop ID (or partial ID) to check",
+    )
+
+    # loop history
+    history_parser = loop_subparsers.add_parser(
+        "history",
+        help="Show past loop executions",
+        description="List all Ralph Loop executions with their status.",
+    )
+    history_parser.add_argument(
+        "--active", "-a",
+        action="store_true",
+        help="Show only active (running) loops",
+    )
+    history_parser.add_argument(
+        "--status", "-s",
+        choices=["running", "completed", "failed", "stopped"],
+        help="Filter by loop status",
+    )
+    history_parser.add_argument(
+        "--limit", "-l",
+        type=int,
+        default=20,
+        help="Maximum number of loops to show (default: 20)",
+    )
+
+
 def _add_env_parser(subparsers):
     """Add env subcommand parser."""
     env_parser = subparsers.add_parser(
@@ -1291,6 +1398,7 @@ GLOBAL_COMMANDS = {
     "health",
     "state",
     "session",
+    "loop",
     "env",
     "langsmith",
     "ls",  # alias for langsmith
@@ -1428,6 +1536,10 @@ def run_cli():
         from agenticcli.commands import session
 
         session.handle(args, ctx=ctx)
+    elif args.command == "loop":
+        from agenticcli.commands import loop
+
+        loop.handle(args, ctx=ctx)
     elif args.command == "env":
         from agenticcli.commands import env
 
