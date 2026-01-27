@@ -36,6 +36,8 @@ tool-offloading:
       - "Text transformations with fixed rules (sed, grep)"
       - "Task status updates in plan files"
       - "Moving files between plan folders (live/ -> completed/)"
+      - "Spawning Claude Code sessions (deterministic process management)"
+      - "Starting/stopping Ralph Loops (deterministic iteration control)"
 
     keep_with_agents:
       - "Deciding what to build or change"
@@ -85,6 +87,47 @@ tool-offloading:
     - name: "Over-tooling"
       description: "Not everything needs a CLI. One-off or rare operations can remain agent-based."
 
+  cli_offload_patterns:
+    # Specific patterns that map to CLI_OFFLOAD decisions
+    # Use these patterns to identify when to offload to CLI tools
+
+    session_management:
+      pattern: "spawn claude session"
+      action: CLI_OFFLOAD
+      command: "agentic session spawn --role <role>"
+      rationale: |
+        Session spawning is deterministic process management.
+        CLI ensures consistent session creation, proper CCI bootstrap,
+        and reliable process tracking. Agent judgment is not needed
+        for the spawning mechanics - only for deciding WHAT to spawn.
+
+    loop_management:
+      pattern: "start ralph loop"
+      action: CLI_OFFLOAD
+      command: "agentic loop start <loop-type>"
+      rationale: |
+        Loop lifecycle management is deterministic iteration control.
+        CLI handles iteration counting, state persistence, and
+        escalation triggers reliably. Agent judgment determines
+        WHEN to start loops and WHICH type - not the mechanics.
+
+    context_bootstrap:
+      pattern: "bootstrap agent context"
+      action: CLI_OFFLOAD
+      command: "agentic context bootstrap --role <role>"
+      rationale: |
+        Context retrieval follows deterministic paths based on role.
+        CLI provides structured file paths without exploration overhead.
+        CCI pattern replaces agent file discovery with reliable CLI output.
+
+    plan_initialization:
+      pattern: "create plan folder"
+      action: CLI_OFFLOAD
+      command: "agentic plan init <branch> --description <desc>"
+      rationale: |
+        Plan folder creation enforces naming conventions programmatically.
+        Eliminates naming drift from agent interpretation of documentation.
+
   related:
     - "cli-commands.yml - Catalog of available CLI commands"
     - "role-separation.yml - Agent knowledge boundaries"
@@ -94,3 +137,9 @@ tool-offloading:
     When designing new workflows, ask: "Is this operation deterministic?"
     If yes, consider building a CLI command before writing agent guidance.
     Reference this guideline when proposing new CLI commands.
+
+    QUICK REFERENCE - CLI_OFFLOAD patterns:
+    - "spawn claude session" -> agentic session spawn
+    - "start ralph loop" -> agentic loop start
+    - "bootstrap agent context" -> agentic context bootstrap
+    - "create plan folder" -> agentic plan init

@@ -197,6 +197,140 @@ cli_commands:
         --role/-r: "Agent role identifier"
         -j: "Output in JSON format"
 
+  session:
+    # Session management commands for spawning and managing Claude Code sessions
+    # Sessions enable parallel execution across multiple worktrees/contexts
+    spawn:
+      command: "agentic session spawn --role <agent-role> [--worktree <path>] [--plan <plan-folder>] [-j]"
+      description: |
+        Spawn a new Claude Code session for parallel agent execution.
+        Sessions run in isolated contexts and can target specific worktrees.
+
+        Returns session ID and connection details for monitoring.
+        Automatically handles CCI bootstrap for the spawned agent.
+      parameters:
+        --role/-r: "Agent role identifier for the session (e.g., build-python, test-runner)"
+        --worktree/-w: "Target worktree path for session execution (optional)"
+        --plan/-p: "Plan folder path for task context (optional)"
+        -j: "Output in JSON format for machine parsing"
+      json_output:
+        session_id: "Unique identifier for the spawned session"
+        role: "Agent role assigned to session"
+        worktree: "Worktree path if specified"
+        plan: "Plan folder path if specified"
+        status: "Session status (running, pending)"
+        pid: "Process ID of the session"
+      exit_codes:
+        0: "Success - session spawned"
+        1: "Invalid role or role not found"
+        2: "Worktree path does not exist"
+        3: "Session spawn failed"
+      examples:
+        - "agentic session spawn --role build-python -j"
+        - "agentic session spawn -r test-runner --worktree /home/code/MyProject-feature"
+        - "agentic session spawn --role orchestration-executor --plan docs/plans/live/260127XX_feature"
+
+    list:
+      command: "agentic session list [-j]"
+      description: "List all active Claude Code sessions"
+      parameters:
+        -j: "Output in JSON format"
+      json_output:
+        sessions: "Array of session objects with id, role, status, started_at"
+
+    stop:
+      command: "agentic session stop <session-id>"
+      description: "Stop a running Claude Code session"
+      parameters:
+        session-id: "Session ID to stop (from session list or spawn output)"
+      exit_codes:
+        0: "Success - session stopped"
+        1: "Session not found"
+        2: "Session already stopped"
+
+    status:
+      command: "agentic session status <session-id> [-j]"
+      description: "Get detailed status of a specific session"
+      parameters:
+        session-id: "Session ID to query"
+        -j: "Output in JSON format"
+      json_output:
+        session_id: "Session identifier"
+        role: "Agent role"
+        status: "Current status (running, completed, failed, stopped)"
+        started_at: "Session start timestamp"
+        last_activity: "Last activity timestamp"
+        output_summary: "Summary of session output/progress"
+
+  loop:
+    # Ralph Loop management commands for iterative agent workflows
+    # Loops provide structured iteration patterns for test-fix, build-validate cycles
+    # Reference: modules/AgenticGuidance/assets/definitions/agent-loops.yml
+    start:
+      command: "agentic loop start <loop-type> [--plan <plan-folder>] [--max-iterations <n>] [-j]"
+      description: |
+        Start a Ralph Loop for iterative agent execution.
+        Loop types define iteration patterns (test-fix, build-validate, etc.).
+
+        Loops automatically manage iteration state and escalation triggers.
+        Reference: modules/AgenticGuidance/assets/definitions/agent-loops.yml
+      parameters:
+        loop-type: "Loop type from agent-loops.yml (e.g., test-fix-loop, build-validate-loop)"
+        --plan/-p: "Plan folder path for loop context"
+        --max-iterations/-m: "Maximum iterations before escalation (default from loop definition)"
+        -j: "Output in JSON format"
+      json_output:
+        loop_id: "Unique identifier for the loop instance"
+        loop_type: "Type of loop started"
+        plan: "Plan folder if specified"
+        max_iterations: "Maximum iterations configured"
+        current_iteration: "Current iteration number (starts at 1)"
+        status: "Loop status (running, pending)"
+      exit_codes:
+        0: "Success - loop started"
+        1: "Invalid loop type"
+        2: "Plan folder not found"
+        3: "Loop start failed"
+      examples:
+        - "agentic loop start test-fix-loop -j"
+        - "agentic loop start build-validate-loop --plan docs/plans/live/260127XX_feature"
+        - "agentic loop start guidance-test-loop --max-iterations 3"
+
+    stop:
+      command: "agentic loop stop <loop-id>"
+      description: "Stop a running Ralph Loop"
+      parameters:
+        loop-id: "Loop ID to stop"
+      exit_codes:
+        0: "Success - loop stopped"
+        1: "Loop not found"
+        2: "Loop already stopped"
+
+    status:
+      command: "agentic loop status [<loop-id>] [-j]"
+      description: "Get status of active loops or a specific loop"
+      parameters:
+        loop-id: "Optional loop ID for specific loop status"
+        -j: "Output in JSON format"
+      json_output:
+        loop_id: "Loop identifier"
+        loop_type: "Type of loop"
+        status: "Current status (running, completed, failed, stopped, escalated)"
+        current_iteration: "Current iteration number"
+        max_iterations: "Maximum iterations allowed"
+        last_result: "Result of last iteration (pass, fail)"
+        history: "Array of iteration results"
+
+    history:
+      command: "agentic loop history [<loop-id>] [--limit <n>] [-j]"
+      description: "Show history of loop iterations and results"
+      parameters:
+        loop-id: "Optional loop ID for specific loop history"
+        --limit/-l: "Limit number of history entries (default: 10)"
+        -j: "Output in JSON format"
+      json_output:
+        entries: "Array of loop history entries with iteration, result, timestamp, details"
+
 usage_notes:
   - "CLI commands are executed by orchestration agents directly (tool-offloading pattern)"
   - "Prefer CLI over manual file operations for consistency"
@@ -205,3 +339,5 @@ usage_notes:
   - "Use 'agentic plan init' as primary entry point for new plans (replaces deploy-worktree spawn)"
   - "JSON output (-j flag) available for machine-parseable responses"
   - "CCI context commands (context bootstrap, context role, etc.) provide deterministic context retrieval"
+  - "Session commands enable parallel Claude Code execution across worktrees"
+  - "Loop commands manage iterative workflows (test-fix, build-validate cycles)"

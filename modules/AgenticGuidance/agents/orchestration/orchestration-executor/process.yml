@@ -53,6 +53,32 @@ process:
         ONLY use Glob/Grep/Read if CLI output indicates specific files to examine.
         DO NOT explore the codebase before running these commands.
 
+        CLI SESSION MANAGEMENT (for parallel execution):
+        When spawning agents for phase execution, use CLI session commands:
+        ```bash
+        # Spawn a Claude Code session for an agent role
+        agentic session spawn --role <agent-role> --plan <plan-folder> -j
+
+        # Check session status
+        agentic session status <session-id> -j
+
+        # List active sessions
+        agentic session list -j
+        ```
+
+        CLI LOOP MANAGEMENT (for iterative workflows):
+        When starting test-fix or build-validate loops, use CLI loop commands:
+        ```bash
+        # Start a Ralph Loop
+        agentic loop start <loop-type> --plan <plan-folder> -j
+
+        # Check loop status
+        agentic loop status <loop-id> -j
+        ```
+
+        MANDATE: Use CLI for all session/loop state management.
+        CLI provides deterministic process control and state persistence.
+
     # =========================================================================
     # PHASE 1: STARTUP SEQUENCE
     # =========================================================================
@@ -178,13 +204,22 @@ process:
     - id: "loop_spawn_agent"
       name: "Spawn Routed Agent"
       description: |
-        Invoke the resolved agent with context:
-        1. Provide phase-specific context from plan YAML
-        2. Include success criteria for phase
-        3. Pass relevant input files
-        4. Set timeout based on phase complexity
+        Invoke the resolved agent with context using CLI session commands:
 
-        Agent is spawned as subagent, execution waits for completion.
+        CLI SESSION SPAWN (preferred for deterministic management):
+        ```bash
+        agentic session spawn --role <resolved-agent> --plan <plan_folder_path> -j
+        ```
+
+        Context provided automatically via CCI:
+        1. Phase-specific context from plan YAML
+        2. Success criteria for phase
+        3. Relevant input files
+        4. Timeout based on phase complexity
+
+        MANDATE: Use CLI session commands for agent spawning.
+        This ensures proper CCI bootstrap and state tracking.
+        Agent is spawned as session, execution waits for completion.
 
     - id: "loop_collect_output"
       name: "Collect Agent Output"
