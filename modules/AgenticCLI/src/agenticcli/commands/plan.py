@@ -10,6 +10,34 @@ from pathlib import Path
 import yaml
 
 
+def _get_phases_from_content(content: dict) -> list:
+    """Get phases from either root or nested under plan.
+
+    Supports both structures:
+    - Root level: content["phases"]
+    - Nested: content["plan"]["phases"]
+
+    Args:
+        content: Parsed YAML content from a plan file.
+
+    Returns:
+        List of phases, empty list if none found.
+    """
+    return content.get("phases", []) or content.get("plan", {}).get("phases", [])
+
+
+def _get_phase_id(phase: dict) -> str:
+    """Get phase ID from either phase_id or id field.
+
+    Args:
+        phase: Phase dictionary from YAML.
+
+    Returns:
+        Phase ID string, empty if not found.
+    """
+    return phase.get("phase_id", "") or phase.get("id", "")
+
+
 def handle(args, ctx=None):
     """Route plan subcommands.
 
@@ -686,10 +714,10 @@ def cmd_task_list(args, ctx=None):
         if not content:
             continue
 
-        # Extract tasks from phases structure
-        phases = content.get("phases", [])
+        # Extract tasks from phases structure (check both root and nested under plan)
+        phases = _get_phases_from_content(content)
         for phase in phases:
-            phase_id = phase.get("phase_id", "")
+            phase_id = _get_phase_id(phase)
             phase_name = phase.get("name", "")
             tasks = phase.get("tasks", [])
 
@@ -777,7 +805,7 @@ def cmd_task_status(args, ctx=None):
         if not content:
             continue
 
-        phases = content.get("phases", [])
+        phases = _get_phases_from_content(content)
         for phase in phases:
             tasks = phase.get("tasks", [])
             for task in tasks:
@@ -786,7 +814,7 @@ def cmd_task_status(args, ctx=None):
                     task_data = task
                     source_file = yaml_file.name
                     phase_info = {
-                        "phase_id": phase.get("phase_id"),
+                        "phase_id": _get_phase_id(phase),
                         "name": phase.get("name"),
                         "status": phase.get("status"),
                     }
@@ -881,13 +909,13 @@ def cmd_task_add(args, ctx=None):
     if not content:
         content = {"phases": []}
 
-    phases = content.get("phases", [])
+    phases = _get_phases_from_content(content)
 
     # Find target phase
     target_phase = None
     if phase_id:
         for phase in phases:
-            if phase.get("phase_id") == phase_id:
+            if _get_phase_id(phase) == phase_id:
                 target_phase = phase
                 break
         if not target_phase:
@@ -912,7 +940,7 @@ def cmd_task_add(args, ctx=None):
         new_task_id = custom_id
     else:
         existing_ids = [t.get("task_id", "") for t in target_phase.get("tasks", [])]
-        phase_prefix = target_phase.get("phase_id", "task")
+        phase_prefix = _get_phase_id(target_phase) or "task"
         task_num = len(existing_ids) + 1
         new_task_id = f"{phase_prefix}_{task_num:03d}"
 
@@ -1229,7 +1257,7 @@ def cmd_task_update(args, ctx=None):
             continue
 
         # Look for the task in phases
-        phases = content.get("phases", [])
+        phases = _get_phases_from_content(content)
         for phase in phases:
             tasks = phase.get("tasks", [])
             for task in tasks:
@@ -1341,10 +1369,10 @@ def cmd_task_current(args, ctx=None):
         if not content:
             continue
 
-        phases = content.get("phases", [])
+        phases = _get_phases_from_content(content)
         for phase in phases:
             phase_name = phase.get("name", "")
-            phase_id = phase.get("id", "")
+            phase_id = _get_phase_id(phase)
             tasks = phase.get("tasks", [])
 
             for task in tasks:
