@@ -34,6 +34,7 @@ Project Commands (require .git or .agenticcli.yml):
   worktree (wt)   Manage git worktrees with planning folder integration
   plan            Manage planning folders and track task status
   context (ctx)   CCI context retrieval for agents
+  entrypoint (ep) Discover and execute workflow entrypoints
   langsmith (ls)  Query LangSmith traces and runs
   inputs          Validate and resolve inputs.yml references
   template (tpl)  Generate plan files from templates
@@ -74,6 +75,11 @@ Agent Bootstrap (full context with file paths):
   agentic planner-guidance --bootstrap   # Full bootstrap context
   agentic build-python --bootstrap       # Full bootstrap context
   agentic <agent-name> --bootstrap       # Works for all 26 agents
+
+Entrypoint Commands (workflow starting points):
+  agentic entrypoint list                # List available entrypoints
+  agentic ep show plan_build             # Show entrypoint contents
+  agentic ep execute orchestrate --context "My context"  # Execute with context
 """,
     )
 
@@ -143,6 +149,9 @@ Agent Bootstrap (full context with file paths):
 
     # CCI Context commands
     _add_context_parser(subparsers)
+
+    # Entrypoint commands
+    _add_entrypoint_parser(subparsers)
 
     # Note: LangSmith parser already added at line 101
     # Duplicate call removed during Phase 5 integration
@@ -1384,6 +1393,58 @@ def _add_context_parser(subparsers):
     )
 
 
+def _add_entrypoint_parser(subparsers):
+    """Add entrypoint subcommand parser for workflow entrypoints."""
+    entrypoint_parser = subparsers.add_parser(
+        "entrypoint",
+        aliases=["ep"],
+        help="Discover and execute workflow entrypoints",
+        description="List, show, and execute entrypoint files that define workflow starting points.",
+    )
+    entrypoint_subparsers = entrypoint_parser.add_subparsers(
+        dest="entrypoint_command", help="Entrypoint commands"
+    )
+
+    # entrypoint list
+    entrypoint_subparsers.add_parser(
+        "list",
+        help="List all available entrypoints",
+        description="Display all entrypoints from .claude/entrypoints/ and modules/AgenticGuidance/entrypoints/.",
+    )
+
+    # entrypoint show
+    show_parser = entrypoint_subparsers.add_parser(
+        "show",
+        help="Display contents of an entrypoint file",
+        description="Show the full contents of an entrypoint file by name.",
+    )
+    show_parser.add_argument(
+        "name",
+        help="Entrypoint name (with or without underscore prefix, e.g., 'plan_build' or '_plan_build')",
+    )
+
+    # entrypoint execute
+    execute_parser = entrypoint_subparsers.add_parser(
+        "execute",
+        help="Execute an entrypoint with variable substitution",
+        description="Read entrypoint, apply variable substitution, and output to stdout.",
+    )
+    execute_parser.add_argument(
+        "name",
+        help="Entrypoint name (with or without underscore prefix)",
+    )
+    execute_parser.add_argument(
+        "--vars", "-v",
+        action="append",
+        metavar="KEY=VALUE",
+        help="Variable substitution (can be used multiple times). Supports: PLAN_PATH, WORKTREE, and custom vars.",
+    )
+    execute_parser.add_argument(
+        "--context", "-c",
+        help="Additional context text to prepend to the entrypoint content",
+    )
+
+
 # Command categories for project requirement checking
 # Includes aliases for each command
 GLOBAL_COMMANDS = {
@@ -1419,6 +1480,8 @@ PROJECT_COMMANDS = {
     "cicd",
     "context",
     "ctx",  # alias for context
+    "entrypoint",
+    "ep",  # alias for entrypoint
 }
 
 
@@ -1552,6 +1615,10 @@ def run_cli():
         from agenticcli.commands import context
 
         context.handle(args, ctx=ctx)
+    elif args.command in ("entrypoint", "ep"):
+        from agenticcli.commands import entrypoint
+
+        entrypoint.handle(args, ctx=ctx)
     else:
         parser.print_help()
         sys.exit(1)
