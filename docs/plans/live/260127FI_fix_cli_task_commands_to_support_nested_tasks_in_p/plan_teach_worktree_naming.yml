@@ -1,0 +1,230 @@
+# Worktree and Plan Naming Guidance Update
+# Plan ID: 260127FI (part of CLI task fix - related guidance)
+# Created: 2026-01-27
+# Type: TEACH (guidance modification)
+#
+# Goal: Update guidance to enforce semantic worktree codes and worktree reuse.
+#
+# Problems Identified:
+# 1. XX code (e.g., "FI" in 260127FI) is derived from description, not semantically meaningful
+# 2. "FI" comes from "FIx" - meaningless and confusing
+# 3. Agents create NEW worktrees for every plan instead of reusing existing ones
+# 4. No standard module codes defined (CL=CLI, AG=AgenticGuidance, etc.)
+
+_template_status: active
+
+plan:
+  name: "worktree-naming-guidance"
+  worktree: "/home/code/AgenticEngineering-cli-task-nested-fix"  # Reuse existing!
+  branch: "cli-task-nested-fix"
+  status: "pending"
+  priority: "high"
+  type: "teach"
+  created: "2026-01-27"
+
+  objective: |
+    Update guidance files to:
+    1. Define standard module codes (XX part of YYMMDDXX)
+    2. Enforce worktree reuse when appropriate
+    3. Update CLI plan init to suggest existing worktrees
+    4. Add examples showing correct vs incorrect naming
+
+  # ========================================
+  # FRICTION ANALYSIS
+  # ========================================
+  friction_analysis:
+    session_reviewed: "260127 Ralph Loop session"
+    patterns_detected:
+      - id: "FP-005"
+        name: "Convention Violations"
+        severity: "medium"
+        description: |
+          Plan folder named "260127FI_fix_cli_task_commands_to_support_nested_tasks_in_p"
+          where "FI" is derived from "FIx" - not semantically meaningful.
+          Should be "CL" (CLI) since this is CLI-related work.
+
+      - id: "FP-006"
+        name: "Automatable Patterns"
+        severity: "medium"
+        description: |
+          Agent created new worktree instead of reusing existing CLI worktree.
+          Worktree reuse should be suggested by CLI or guidance.
+
+  # ========================================
+  # PHASES
+  # ========================================
+  phases:
+    - name: "Phase 1 - Define Standard Module Codes"
+      id: "phase_01"
+      description: |
+        Create authoritative list of standard module codes for YYMMDDXX naming.
+      status: "pending"
+      tasks:
+        - id: "WN-001"
+          name: "Add module_codes section to plans.yml"
+          description: |
+            File: modules/AgenticGuidance/assets/definitions/plans.yml
+
+            Add standard module codes section:
+            ```yaml
+            module_codes:
+              description: "Standard 2-letter codes for the XX part of YYMMDDXX naming"
+              codes:
+                CL: "AgenticCLI - CLI commands and features"
+                AG: "AgenticGuidance - Agent guidance and processes"
+                AT: "AgenticTmux - Tmux integration"
+                AV: "AgenticVoice - Voice features"
+                LS: "LangSmith - LangSmith integration"
+                TS: "Tests - Test infrastructure"
+                DC: "Documentation - Docs and README updates"
+                RF: "Refactor - Code refactoring"
+                BF: "Bugfix - Bug fixes"
+              selection_rules:
+                - "Use module code matching the PRIMARY module being modified"
+                - "For cross-module work, use the module with most changes"
+                - "For new modules, create a new 2-letter code and add to this list"
+                - "NEVER derive code from description words (e.g., 'FI' from 'Fix')"
+            ```
+          status: "pending"
+          target_files:
+            - "modules/AgenticGuidance/assets/definitions/plans.yml"
+          acceptance_criteria:
+            - "module_codes section added with all standard codes"
+            - "selection_rules clearly explain how to choose a code"
+            - "Anti-pattern explicitly states not to derive from description"
+
+        - id: "WN-002"
+          name: "Update naming_convention to reference module_codes"
+          description: |
+            File: modules/AgenticGuidance/assets/definitions/plans.yml
+
+            Update the naming_convention section to:
+            1. Reference the new module_codes section
+            2. Remove "derived from worktree path suffix" guidance
+            3. Add clear examples of correct vs incorrect naming
+
+            Change:
+            ```yaml
+            XX: "2 uppercase letters derived from worktree path suffix"
+            ```
+            To:
+            ```yaml
+            XX: "2-letter module code from module_codes section - NOT derived from description"
+            ```
+          status: "pending"
+          target_files:
+            - "modules/AgenticGuidance/assets/definitions/plans.yml"
+
+    - name: "Phase 2 - Add Worktree Reuse Guidance"
+      id: "phase_02"
+      description: |
+        Update guidance to encourage worktree reuse instead of creating new ones.
+      status: "pending"
+      tasks:
+        - id: "WN-003"
+          name: "Add worktree_reuse section to worktree-and-branching.yml"
+          description: |
+            File: modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml
+
+            Add new rule for worktree reuse:
+            ```yaml
+            - rule: "Worktree Reuse"
+              description: |
+                Before creating a new worktree, check if an existing worktree
+                is appropriate for the work. Reuse worktrees when:
+                - Working on the same module (e.g., AgenticCLI)
+                - Work is related to an existing feature branch
+                - Previous plan in the worktree is complete or can be merged
+              justification: |
+                Excessive worktrees create confusion and merge complexity.
+                Reusing worktrees keeps related changes together.
+              characteristics:
+                - "Check existing worktrees before creating new ones"
+                - "Use `git worktree list` to see available worktrees"
+                - "Reuse if same module or related feature"
+                - "Only create new worktree for genuinely independent work"
+            ```
+          status: "pending"
+          target_files:
+            - "modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml"
+
+        - id: "WN-004"
+          name: "Update CLI plan init guidance to suggest existing worktrees"
+          description: |
+            File: modules/AgenticGuidance/assets/definitions/cli-commands.yml
+
+            Update the plan.init command documentation to mention:
+            - Check existing worktrees first
+            - Reuse if appropriate
+            - How to specify existing worktree
+          status: "pending"
+          target_files:
+            - "modules/AgenticGuidance/assets/definitions/cli-commands.yml"
+
+    - name: "Phase 3 - Agent Self-Review"
+      id: "phase_03"
+      description: |
+        Spawn an agent to review the guidance changes and validate they are clear.
+      status: "pending"
+      tasks:
+        - id: "WN-005"
+          name: "Agent self-review of naming guidance"
+          description: |
+            Spawn an agent that:
+            1. Reads ONLY the updated plans.yml and worktree-and-branching.yml
+            2. Attempts to determine the correct XX code for a hypothetical plan:
+               - "Fix the session command in AgenticCLI" -> Should pick "CL"
+               - "Add voice recognition to AgenticVoice" -> Should pick "AV"
+               - "Fix bug in test runner" -> Should pick "TS" or "BF"
+            3. Reports if the guidance is clear enough to make the right choice
+            4. Identifies any ambiguities or gaps
+          status: "pending"
+          acceptance_criteria:
+            - "Agent correctly identifies CL for CLI work"
+            - "Agent correctly identifies AV for voice work"
+            - "Agent does NOT derive code from description words"
+
+    - name: "Phase 4 - Blind Test"
+      id: "phase_04"
+      description: |
+        Spawn a blind test agent to validate the guidance works in practice.
+      status: "pending"
+      loop_definition:
+        type: "test-fix-loop"
+        loop_on_failure: "phase_01"
+        max_iterations: 3
+      tasks:
+        - id: "WN-006"
+          name: "Blind test: Agent creates plan with correct naming"
+          description: |
+            Spawn an agent with ONLY the guidance files (no context about this plan).
+            Give it a task: "Create a plan to add a new feature to AgenticCLI"
+
+            Validate:
+            1. Agent uses "CL" as the XX code (not derived from description)
+            2. Agent checks for existing worktrees before creating new
+            3. Agent follows the naming_convention correctly
+
+            If agent uses wrong code (e.g., "AD" for "add"), the test FAILS.
+            On failure, return to Phase 1 to improve guidance clarity.
+          status: "pending"
+          acceptance_criteria:
+            - "Agent uses 'CL' code for CLI-related work"
+            - "Agent mentions checking existing worktrees"
+            - "Agent does NOT derive code from description"
+
+  # ========================================
+  # VALIDATION CRITERIA
+  # ========================================
+  validation:
+    - criterion: "module_codes section exists in plans.yml"
+      command: "grep -A 20 'module_codes:' modules/AgenticGuidance/assets/definitions/plans.yml"
+      expected: "Section with CL, AG, AT, AV, LS codes"
+
+    - criterion: "Worktree reuse rule exists"
+      command: "grep 'Worktree Reuse' modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml"
+      expected: "Rule found"
+
+    - criterion: "Anti-pattern for description-derived codes"
+      command: "grep -i 'derive.*description' modules/AgenticGuidance/assets/definitions/plans.yml"
+      expected: "Warning against deriving from description"
