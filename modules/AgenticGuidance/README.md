@@ -13,6 +13,82 @@ AgenticGuidance/
 └── userstories/      # User story definitions (legacy reference)
 ```
 
+## Agent Responsibilities
+
+### Agent Responsibility Boundary
+
+**Agents handle judgment, interpretation, and novel situations.**
+
+Agents are responsible for operations that require context-sensitivity, creativity, or reasoning about ambiguous inputs. When a task cannot be reduced to a deterministic rule, it belongs to an agent.
+
+| Agent Handles | CLI Handles |
+|---------------|-------------|
+| Deciding what to build | Scaffolding the folder structure |
+| Interpreting user intent | Validating input format |
+| Code generation and review | Git mechanics (commit, branch) |
+| Error diagnosis strategy | Status reporting |
+| Adapting to unexpected results | File movement between folders |
+
+### When Agents Should NOT Be Used
+
+Do not use agents for deterministic operations:
+
+- **Naming conventions** - If the naming rule is documented, CLI enforces it
+- **Validation against schemas** - CLI validates or fails fast
+- **State queries** - CLI reports current state without interpretation
+- **Mechanical file operations** - CLI moves, copies, scaffolds reliably
+
+Using agents for deterministic work creates:
+- Interpretation variance (different results from same input)
+- Verification overhead (another agent checking the first)
+- Untraceable drift (behavior changes without code changes)
+
+### How Agents Discover What to Do
+
+The guidance layer provides three types of navigation aids:
+
+| Aid Type | Purpose | Example |
+|----------|---------|---------|
+| **Paths** | Sequential steps through a workflow | `process.yml` files in agent folders |
+| **Fences** | Boundaries that constrain behavior | Safety guidelines, anti-patterns |
+| **Signposts** | Directional hints for decision points | "When X, consider Y" guidance |
+
+Agents read guidance files to understand:
+1. What inputs they need (`inputs.yml`)
+2. What steps to follow (`process.yml`)
+3. What constraints apply (guidelines in `assets/guidelines/`)
+4. What patterns to follow (definitions in `assets/definitions/`)
+
+### Agent-Appropriate Tasks
+
+Tasks that require agent involvement:
+
+- **Code review** - Requires understanding context, intent, and quality
+- **Error diagnosis** - Must interpret logs, reason about causes, propose fixes
+- **Requirement interpretation** - Translates ambiguous requests into concrete plans
+- **Plan creation** - Determines what needs to be done based on objectives
+- **Approval decisions** - Judges whether work meets acceptance criteria
+- **Adapting to failure** - Decides how to recover when things go wrong
+
+### Relationship to CLI
+
+Agents and CLI form a complementary system:
+
+```
+User Request
+     |
+     v
+Agent (interprets, plans, decides)
+     |
+     v
+CLI (executes deterministic operations)
+     |
+     v
+Agent (evaluates results, adapts if needed)
+```
+
+The CLI provides reliable primitives. Agents compose those primitives with judgment to accomplish goals. See `assets/guidelines/tool-offloading.yml` for detailed offloading criteria.
+
 ## Agent Categories
 
 The module contains 6 implemented agent categories with 23 active sub-agents (plus 2 deprecated):

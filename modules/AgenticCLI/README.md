@@ -276,6 +276,71 @@ Commands validate inputs before executing. Error messages explain what went wron
 
 Commands are added when LangSmith traces show repeated friction patterns. Hypothetical needs don't justify new commands.
 
+## CLI vs Agent Architecture
+
+### CLI Responsibility Boundary
+
+**CLI is a deterministic executor - no decision making.**
+
+The CLI handles operations with predictable, rule-based outcomes. Given the same inputs, a CLI command produces the same output every time. There is no interpretation, judgment, or context-sensitivity in CLI execution.
+
+| CLI Handles | Agent Handles |
+|-------------|---------------|
+| Folder naming conventions | Deciding when to create folders |
+| YAML/JSON validation | Interpreting requirements |
+| Git worktree mechanics | Choosing branch strategy |
+| Task status updates | Determining task completion |
+| File movement (live/ to completed/) | Deciding what to archive |
+
+### When to Add New CLI Commands
+
+Add a CLI command when:
+
+1. **Established pattern exists** - The operation follows documented conventions that don't require interpretation
+2. **Mechanical operation** - The work is repetitive and rule-based
+3. **LangSmith traces show friction** - Agents repeatedly struggle with the same deterministic task
+4. **Verification can be eliminated** - CLI enforcement removes the need for verification agents
+
+Do NOT add a CLI command when:
+- The operation requires context-sensitivity or creativity
+- Judgment is needed to determine inputs
+- The operation is rare or one-off
+- The command would just wrap agent reasoning
+
+### The Handoff Pattern
+
+Operations evolve from agent-handled to CLI-handled as patterns become established:
+
+```
+Novel Situation          Agent handles with judgment
+       |
+       v
+Repeated Pattern         Agent still handles, friction observed
+       |
+       v
+Established Convention   Document the pattern, design CLI interface
+       |
+       v
+CLI Implementation       Offload to CLI, agent invokes tool
+```
+
+**Example: Plan Folder Naming**
+
+1. Initially, agents interpreted naming conventions from documentation
+2. LangSmith traces showed naming drift and verification loops
+3. Convention was documented: `YYMMDDXX_description`
+4. `agentic plan init` now enforces naming programmatically
+5. Agents call CLI - no interpretation, no verification needed
+
+### Boundary Definition
+
+The boundary between CLI and agent sits at the point where **determinism ends**:
+
+- **Deterministic** (CLI): "Create folder named `260128AB_feature_auth`"
+- **Judgment** (Agent): "Should we create a new plan folder for this work?"
+
+CLI commands guarantee: **correct output or explicit failure**. Agents guarantee: **thoughtful handling of ambiguity**.
+
 ---
 
 *Part of [AgenticEngineering](../../docs/README.md) - scaffolding for Claude Code sessions*
