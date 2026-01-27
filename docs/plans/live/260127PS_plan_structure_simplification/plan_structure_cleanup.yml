@@ -1,0 +1,404 @@
+# Plan Structure Simplification - Cleanup Redundant Nesting
+# Plan ID: 260127PS
+# Created: 2026-01-27
+#
+# Problem: Redundant folder structure in docs/plans/
+# Current: docs/plans/live/PLAN_FOLDER/live/plan_live_build.yml
+# Desired: docs/plans/live/PLAN_FOLDER/plan_build.yml
+#
+# The status (live/completed) is already conveyed by the parent folder
+# location, making nested live/ and completed/ subfolders redundant.
+
+# ========================================
+# ROOT-LEVEL PLAN METADATA
+# ========================================
+name: "plan-structure-simplification"
+status: "pending"
+priority: "medium"
+created: "2026-01-27"
+
+# ========================================
+# CONTEXT
+# ========================================
+context: |
+  The current plan folder structure has redundant nesting:
+
+  CURRENT STRUCTURE:
+    docs/plans/live/260127TL_description/live/plan_live_build.yml
+    docs/plans/completed/260123AE_description/completed/plan_completed.yml
+
+  DESIRED STRUCTURE:
+    docs/plans/live/260127TL_description/plan_build.yml
+    docs/plans/completed/260123AE_description/plan_completed.yml
+
+  Rules after migration:
+  - Plan files: plan_*.yml (prefix required, rest is agent's choice)
+  - Orchestration files: orchestration_*.mmd
+  - No nested live/ or completed/ subfolders within plan folders
+  - Parent folder (docs/plans/live/ vs docs/plans/completed/) indicates status
+
+  SCOPE:
+  - Live plans: 2 folders to flatten
+  - Completed plans: 21+ folders to flatten (some already have analysis/ subfolders which are OK)
+  - Python code: ~11 files reference docs/plans patterns
+  - Documentation: ~32 markdown files reference docs/plans patterns
+
+# ========================================
+# AFFECTED FILES DISCOVERED
+# ========================================
+discovered_files:
+  live_plans:
+    - folder: "docs/plans/live/260126AT_agentictmux"
+      nested_subfolders:
+        - "live/"
+        - "completed/"
+      files_to_move:
+        - from: "completed/orchestration_agentictmux.mmd"
+          to: "orchestration_agentictmux.mmd"
+      files_at_root:
+        - "plan_live_build.yml"  # rename to plan_build.yml
+        - "README.md"
+
+    - folder: "docs/plans/live/260126AV_agenticvoice"
+      nested_subfolders:
+        - "live/"
+        - "completed/"
+      files_to_move:
+        - from: "completed/orchestration_agenticvoice.mmd"
+          to: "orchestration_agenticvoice.mmd"
+        - from: "live/plan_live_build.yml"
+          to: "plan_build.yml"
+
+  completed_plans_with_redundant_nesting:
+    # Many completed plans have live/ and/or completed/ subfolders
+    - "docs/plans/completed/260113AE_agenticlangsmith/live/"
+    - "docs/plans/completed/260127AG_ralph_loop_compliance/live/"
+    - "docs/plans/completed/260106AE_friction_improvements/completed/"
+    - "docs/plans/completed/260113LS_langsmith_api_wrapper/completed/"
+    - "docs/plans/completed/260113LS_langsmith_api_wrapper/live/"
+    - "docs/plans/completed/260123AE_agenticguidance/completed/"
+    - "docs/plans/completed/260123AE_agenticguidance/live/"
+    - "docs/plans/completed/260102AG_migration/completed/"
+    - "docs/plans/completed/251230AE_main/completed/"
+    - "docs/plans/completed/251230AE_main/live/"
+    - "docs/plans/completed/260103AE_agentic-cli/completed/"
+    - "docs/plans/completed/260103AE_agentic-cli/live/"
+    - "docs/plans/completed/260103_AgenticGuidance_dependency-migration/completed/"
+    - "docs/plans/completed/260103_AgenticGuidance_dependency-migration/live/"
+    - "docs/plans/completed/260113LS_langsmith_cli/completed/"
+    - "docs/plans/completed/260113LS_langsmith_cli/live/"
+    - "docs/plans/completed/260119BR_test_main_first_planning/completed/"
+    - "docs/plans/completed/260119BR_test_main_first_planning/live/"
+    - "docs/plans/completed/260118AG_rlm_integration/completed/"
+    - "docs/plans/completed/260118AG_rlm_integration/live/"
+    - "docs/plans/completed/260119CL_cli_main_first_planning/completed/"
+    - "docs/plans/completed/260119CL_cli_main_first_planning/live/"
+    - "docs/plans/completed/260113LS_langsmith_backend/completed/"
+    - "docs/plans/completed/260113LS_langsmith_backend/live/"
+    - "docs/plans/completed/260127TL_cli_tasklist_tracking/completed/"
+    - "docs/plans/completed/260127TL_cli_tasklist_tracking/live/"
+    - "docs/plans/completed/261115CL_agenticcli/completed/"
+
+  python_files_to_update:
+    - path: "modules/AgenticGuidance/src/agenticguidance/services/plan.py"
+      patterns:
+        - "plan_completed.yml"
+        - "live_dir = plan_path / 'live'"
+        - "completed_dir = plan_path / 'completed'"
+
+    - path: "modules/AgenticGuidance/src/agenticguidance/services/context.py"
+      patterns:
+        - "docs/plans/live/"
+
+    - path: "modules/AgenticCLI/src/agenticcli/cli.py"
+      patterns:
+        - "docs/plans/completed/"
+        - "docs/plans/live"
+
+    - path: "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+      patterns:
+        - "docs/plans/live/"
+        - "docs/plans/completed/"
+
+    - path: "modules/AgenticCLI/src/agenticcli/commands/context.py"
+      patterns:
+        - "docs/plans/live/"
+
+    - path: "modules/AgenticCLI/src/agenticcli/commands/worktree.py"
+      patterns:
+        - "docs/plans/live/"
+
+    - path: "modules/AgenticCLI/tests/test_context_commands.py"
+      patterns:
+        - "(plan_folder / 'live').mkdir"
+
+    - path: "modules/AgenticCLI/tests/conftest.py"
+      patterns:
+        - "docs/plans/live"
+
+    - path: "modules/AgenticCLI/tests/test_task_list_commands.py"
+      patterns:
+        - "(plan_folder / 'live').mkdir"
+
+    - path: "modules/AgenticGuidance/tests/test_services_plan.py"
+      patterns:
+        - "docs/plans/live"
+        - "docs/plans/completed"
+
+# ========================================
+# PHASES
+# ========================================
+phases:
+  - phase_id: "P1"
+    name: "Flatten live plans"
+    description: |
+      Move files from nested live/ and completed/ subfolders up to the plan folder root.
+      Delete the empty nested subfolders after moving.
+    status: "pending"
+    tasks:
+      - id: "P1-T1"
+        name: "Flatten 260126AT_agentictmux"
+        description: |
+          Move orchestration_agentictmux.mmd from completed/ to plan root.
+          Delete empty live/ and completed/ subfolders.
+        status: "pending"
+        target_files:
+          - "docs/plans/live/260126AT_agentictmux/completed/orchestration_agentictmux.mmd"
+          - "docs/plans/live/260126AT_agentictmux/live/"
+          - "docs/plans/live/260126AT_agentictmux/completed/"
+
+      - id: "P1-T2"
+        name: "Flatten 260126AV_agenticvoice"
+        description: |
+          Move plan_live_build.yml from live/ to plan root.
+          Move orchestration_agenticvoice.mmd from completed/ to plan root.
+          Delete empty live/ and completed/ subfolders.
+        status: "pending"
+        target_files:
+          - "docs/plans/live/260126AV_agenticvoice/live/plan_live_build.yml"
+          - "docs/plans/live/260126AV_agenticvoice/completed/orchestration_agenticvoice.mmd"
+          - "docs/plans/live/260126AV_agenticvoice/live/"
+          - "docs/plans/live/260126AV_agenticvoice/completed/"
+
+  - phase_id: "P2"
+    name: "Flatten completed plans"
+    description: |
+      Move files from nested live/ and completed/ subfolders up to plan folder root.
+      Preserve analysis/ and audit/ subfolders (these are not redundant).
+      Delete empty live/ and completed/ subfolders after moving.
+    status: "pending"
+    tasks:
+      - id: "P2-T1"
+        name: "Flatten 260113AE_agenticlangsmith"
+        description: "Move files from live/ subfolder to plan root, delete empty subfolder."
+        status: "pending"
+        target_files:
+          - "docs/plans/completed/260113AE_agenticlangsmith/live/"
+
+      - id: "P2-T2"
+        name: "Flatten 260127AG_ralph_loop_compliance"
+        description: "Move files from live/ subfolder to plan root, delete empty subfolder."
+        status: "pending"
+        target_files:
+          - "docs/plans/completed/260127AG_ralph_loop_compliance/live/"
+
+      - id: "P2-T3"
+        name: "Flatten 260123AE_agenticguidance"
+        description: "Move files from live/ and completed/ subfolders to plan root."
+        status: "pending"
+        target_files:
+          - "docs/plans/completed/260123AE_agenticguidance/live/"
+          - "docs/plans/completed/260123AE_agenticguidance/completed/"
+
+      - id: "P2-T4"
+        name: "Flatten 260103AE_agentic-cli"
+        description: "Move files from live/ and completed/ subfolders to plan root. Preserve analysis/."
+        status: "pending"
+        target_files:
+          - "docs/plans/completed/260103AE_agentic-cli/live/"
+          - "docs/plans/completed/260103AE_agentic-cli/completed/"
+
+      - id: "P2-T5"
+        name: "Flatten remaining completed plans"
+        description: |
+          Apply same flattening to all other completed plan folders with nested subfolders:
+          - 260106AE_friction_improvements
+          - 260113LS_langsmith_api_wrapper
+          - 260102AG_migration
+          - 251230AE_main
+          - 260103_AgenticGuidance_dependency-migration
+          - 260113LS_langsmith_cli
+          - 260119BR_test_main_first_planning
+          - 260118AG_rlm_integration
+          - 260119CL_cli_main_first_planning
+          - 260113LS_langsmith_backend
+          - 260127TL_cli_tasklist_tracking
+          - 261115CL_agenticcli
+        status: "pending"
+        target_files:
+          - "docs/plans/completed/*/live/"
+          - "docs/plans/completed/*/completed/"
+
+  - phase_id: "P3"
+    name: "Rename plan files"
+    description: |
+      Remove _live and _completed from filenames:
+      - plan_live_build.yml -> plan_build.yml
+      - plan_live_teach.yml -> plan_teach.yml
+      - plan_completed.yml -> plan_archive.yml (or keep as plan_completed.yml for historical records)
+
+      Note: plan_completed.yml files in completed folders may be kept as-is since they
+      are historical records of completion, not indicators of "completed status".
+    status: "pending"
+    tasks:
+      - id: "P3-T1"
+        name: "Rename live plan files in docs/plans/live/"
+        description: |
+          For all plans in docs/plans/live/:
+          - plan_live_build.yml -> plan_build.yml
+          - plan_live_teach.yml -> plan_teach.yml
+          - plan_live_*.yml -> plan_*.yml
+        status: "pending"
+        target_files:
+          - "docs/plans/live/260126AT_agentictmux/plan_live_build.yml"
+          - "docs/plans/live/260126AV_agenticvoice/plan_live_build.yml"
+
+      - id: "P3-T2"
+        name: "Rename plan files in docs/plans/completed/"
+        description: |
+          For all plans in docs/plans/completed/:
+          - plan_live_build.yml -> plan_build.yml
+          - plan_live_teach.yml -> plan_teach.yml
+
+          Decision needed: keep plan_completed.yml as-is (historical record)
+          or rename to plan_archive.yml for clarity.
+        status: "pending"
+        target_files:
+          - "docs/plans/completed/**/plan_live_*.yml"
+
+  - phase_id: "P4"
+    name: "Update glob patterns in code"
+    description: |
+      Update Python code that references the old folder structure patterns.
+      Main changes:
+      - Remove references to plan_path / 'live' and plan_path / 'completed'
+      - Update file discovery patterns
+      - Update test fixtures that create the old structure
+    status: "pending"
+    tasks:
+      - id: "P4-T1"
+        name: "Update AgenticGuidance plan service"
+        description: |
+          Update modules/AgenticGuidance/src/agenticguidance/services/plan.py:
+          - Remove self.live_dir = plan_path / "live"
+          - Remove self.completed_dir = plan_path / "completed"
+          - Update file discovery to look at plan_path directly
+        status: "pending"
+        target_files:
+          - "modules/AgenticGuidance/src/agenticguidance/services/plan.py"
+
+      - id: "P4-T2"
+        name: "Update AgenticCLI plan commands"
+        description: |
+          Update modules/AgenticCLI/src/agenticcli/commands/plan.py:
+          - Update plan file discovery patterns
+          - Update archive logic
+        status: "pending"
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+
+      - id: "P4-T3"
+        name: "Update AgenticCLI tests"
+        description: |
+          Update test fixtures that create nested live/completed subfolders:
+          - modules/AgenticCLI/tests/test_context_commands.py
+          - modules/AgenticCLI/tests/test_task_list_commands.py
+          - modules/AgenticCLI/tests/conftest.py
+        status: "pending"
+        target_files:
+          - "modules/AgenticCLI/tests/test_context_commands.py"
+          - "modules/AgenticCLI/tests/test_task_list_commands.py"
+          - "modules/AgenticCLI/tests/conftest.py"
+
+      - id: "P4-T4"
+        name: "Update AgenticGuidance tests"
+        description: |
+          Update modules/AgenticGuidance/tests/test_services_plan.py to use new structure.
+        status: "pending"
+        target_files:
+          - "modules/AgenticGuidance/tests/test_services_plan.py"
+
+  - phase_id: "P5"
+    name: "Update documentation"
+    description: |
+      Update documentation files that reference the old folder structure.
+    status: "pending"
+    tasks:
+      - id: "P5-T1"
+        name: "Update core documentation"
+        description: |
+          Update main documentation files:
+          - modules/AgenticGuidance/README.md
+          - docs/CCI_CONTEXT_ARCHITECTURE.md
+          - modules/AgenticCLI/README.md
+        status: "pending"
+        target_files:
+          - "modules/AgenticGuidance/README.md"
+          - "docs/CCI_CONTEXT_ARCHITECTURE.md"
+          - "modules/AgenticCLI/README.md"
+
+      - id: "P5-T2"
+        name: "Update plan folder READMEs"
+        description: |
+          Update README files within plan folders that reference the old structure:
+          - docs/plans/completed/*/README.md
+        status: "pending"
+        target_files:
+          - "docs/plans/completed/261115CL_agenticcli/README.md"
+          - "docs/plans/completed/260118AG_rlm_integration/README.md"
+          - "docs/plans/completed/260114CL_context_entrypoints/README.md"
+          - "docs/plans/completed/260113LS_langsmith_backend/README.md"
+
+      - id: "P5-T3"
+        name: "Update legacy documentation"
+        description: |
+          Update legacy MyAgents documentation if still referenced:
+          - modules/legacy/MyAgents/docs/plans/README.md
+          - modules/legacy/MyAgents/projects/MyAgentsGuidance/assets/examples/
+        status: "pending"
+        target_files:
+          - "modules/legacy/MyAgents/docs/plans/README.md"
+          - "modules/legacy/MyAgents/projects/MyAgentsBackend/docs/plans/README.md"
+
+# ========================================
+# VALIDATION CRITERIA
+# ========================================
+validation:
+  - criterion: "No nested live/ or completed/ subfolders remain in any plan folder"
+    command: "find docs/plans -type d -name 'live' -o -name 'completed' | grep -v '^docs/plans/live$' | grep -v '^docs/plans/completed$'"
+    expected: "Empty output (no matches)"
+
+  - criterion: "No plan_live_*.yml files remain"
+    command: "find docs/plans -name 'plan_live_*.yml'"
+    expected: "Empty output (no matches)"
+
+  - criterion: "All tests pass"
+    command: "pytest modules/AgenticCLI/tests/ modules/AgenticGuidance/tests/ -v"
+    expected: "All tests pass"
+
+  - criterion: "CLI commands still work"
+    command: "agentic plan list"
+    expected: "Lists plans without error"
+
+# ========================================
+# ROLLBACK PLAN
+# ========================================
+rollback:
+  description: |
+    If migration causes issues, can revert using git:
+    1. git checkout HEAD~1 -- docs/plans/
+    2. git checkout HEAD~1 -- modules/AgenticGuidance/src/
+    3. git checkout HEAD~1 -- modules/AgenticCLI/src/
+
+    Alternatively, create backup branch before starting:
+    git checkout -b backup/pre-plan-structure-cleanup
