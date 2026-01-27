@@ -427,16 +427,52 @@ cli_commands:
         - "agentic entrypoint show orchestration-planning -j"
 
     execute:
-      command: "agentic entrypoint execute <name> [--vars KEY=VAL ...] [-j]"
-      description: "Execute entrypoint for agent consumption, rendering variables"
+      command: "agentic entrypoint execute <name> [--vars KEY=VAL ...] [--compile] [-j]"
+      description: |
+        Execute entrypoint for agent consumption, rendering variables.
+        With --compile flag, recursively resolves all file references and outputs
+        a complete context bundle - eliminating the need for manual file reading.
       parameters:
         name: "Entrypoint name to execute"
         --vars: "Variable substitutions in KEY=VAL format (repeatable)"
+        --compile/-c: "Compile complete context bundle by recursively resolving all file references"
         -j: "Output in JSON format"
+      compile_flag:
+        description: |
+          The --compile flag enables CLI-First Context pattern:
+          - Recursively resolves all path: references in inputs.yml files
+          - Outputs complete context as structured sections
+          - Eliminates need for Read/Glob/Grep during agent bootstrap
+          - Each referenced file becomes a labeled section in output
+        replaces_manual_reading: |
+          BEFORE (manual file reading):
+            1. Read entrypoint file
+            2. Read process.yml
+            3. Read inputs.yml
+            4. For each path: in inputs.yml, Read that file
+            5. Repeat for nested references
+
+          AFTER (CLI-first):
+            agentic entrypoint execute <name> --compile
+
+          Single command provides all context needed for agent bootstrap.
+        output_format: |
+          Multi-section output with headers:
+          === ENTRYPOINT: <name> ===
+          [entrypoint content]
+
+          === FILE: <path1> ===
+          [file1 content]
+
+          === FILE: <path2> ===
+          [file2 content]
+          ...
       json_output:
         name: "Entrypoint name"
         rendered_content: "Entrypoint content with variables substituted"
         variables_used: "Object of variables that were substituted"
+        compiled_files: "Array of resolved file paths (when --compile used)"
+        compiled_content: "Object mapping paths to file contents (when --compile used)"
       exit_codes:
         0: "Success - entrypoint executed and rendered"
         1: "Entrypoint not found"
@@ -446,14 +482,33 @@ cli_commands:
         - "agentic entrypoint execute builder-session"
         - "agentic entrypoint execute plan-executor --vars PLAN_PATH=docs/plans/live/260127XX_feature"
         - "agentic entrypoint execute orchestration-planning --vars OBJECTIVE='Implement auth' --vars SCOPE=backend -j"
+        - "agentic entrypoint execute _plan_teach --compile"
+        - "agentic entrypoint execute _plan_build --compile"
+        - "agentic -j entrypoint execute _orchestrate --compile"
 
 usage_notes:
-  - "CLI commands are executed by orchestration agents directly (tool-offloading pattern)"
-  - "Prefer CLI over manual file operations for consistency"
-  - "CLI validates inputs and enforces naming conventions programmatically"
-  - "Errors are returned with actionable messages and exit codes"
-  - "Use 'agentic plan init' as primary entry point for new plans (replaces deploy-worktree spawn)"
-  - "JSON output (-j flag) available for machine-parseable responses"
-  - "CCI context commands (context bootstrap, context role, etc.) provide deterministic context retrieval"
-  - "Session commands enable parallel Claude Code execution across worktrees"
-  - "Loop commands manage iterative workflows (test-fix, build-validate cycles)"
+  # CLI-FIRST CONTEXT PRINCIPLE
+  cli_first_context:
+    principle: |
+      CLI-First Context: Always use agentic CLI commands for initial context.
+      Agents should not need Read/Glob/Grep tools during bootstrap phase.
+    implementation:
+      - "Use 'agentic entrypoint execute <name> --compile' for complete context bundles"
+      - "Use 'agentic context bootstrap --role <role>' for role-specific context"
+      - "Use 'agentic plan task current' for task context"
+    benefits:
+      - "Eliminates repetitive file reading across agent sessions"
+      - "Ensures consistent context delivery"
+      - "Reduces token usage by providing pre-compiled context"
+      - "Enables deterministic agent bootstrap without exploration phase"
+
+  general:
+    - "CLI commands are executed by orchestration agents directly (tool-offloading pattern)"
+    - "Prefer CLI over manual file operations for consistency"
+    - "CLI validates inputs and enforces naming conventions programmatically"
+    - "Errors are returned with actionable messages and exit codes"
+    - "Use 'agentic plan init' as primary entry point for new plans (replaces deploy-worktree spawn)"
+    - "JSON output (-j flag) available for machine-parseable responses"
+    - "CCI context commands (context bootstrap, context role, etc.) provide deterministic context retrieval"
+    - "Session commands enable parallel Claude Code execution across worktrees"
+    - "Loop commands manage iterative workflows (test-fix, build-validate cycles)"
