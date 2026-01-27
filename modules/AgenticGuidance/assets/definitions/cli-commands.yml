@@ -331,6 +331,59 @@ cli_commands:
       json_output:
         entries: "Array of loop history entries with iteration, result, timestamp, details"
 
+  entrypoint:
+    # Entrypoint management commands for session context bootstrapping
+    # Entrypoints provide pre-defined context templates for agent sessions
+    # Reference: modules/AgenticCLI/agentic_cli/commands/entrypoint.py
+    description: "Manage and execute entrypoints for session context bootstrapping"
+
+    list:
+      command: "agentic entrypoint list [-j]"
+      description: "List available entrypoints"
+      parameters:
+        -j: "Output in JSON format"
+      json_output:
+        entrypoints: "Array of entrypoint names and descriptions"
+      examples:
+        - "agentic entrypoint list"
+        - "agentic entrypoint list -j"
+
+    show:
+      command: "agentic entrypoint show <name> [-j]"
+      description: "Display entrypoint contents and metadata"
+      parameters:
+        name: "Entrypoint name to display"
+        -j: "Output in JSON format"
+      json_output:
+        name: "Entrypoint name"
+        description: "Entrypoint description"
+        content: "Full entrypoint content"
+        variables: "Array of variable placeholders in the entrypoint"
+      examples:
+        - "agentic entrypoint show builder-session"
+        - "agentic entrypoint show orchestration-planning -j"
+
+    execute:
+      command: "agentic entrypoint execute <name> [--vars KEY=VAL ...] [-j]"
+      description: "Execute entrypoint for agent consumption, rendering variables"
+      parameters:
+        name: "Entrypoint name to execute"
+        --vars: "Variable substitutions in KEY=VAL format (repeatable)"
+        -j: "Output in JSON format"
+      json_output:
+        name: "Entrypoint name"
+        rendered_content: "Entrypoint content with variables substituted"
+        variables_used: "Object of variables that were substituted"
+      exit_codes:
+        0: "Success - entrypoint executed and rendered"
+        1: "Entrypoint not found"
+        2: "Missing required variable"
+        3: "Invalid variable format"
+      examples:
+        - "agentic entrypoint execute builder-session"
+        - "agentic entrypoint execute plan-executor --vars PLAN_PATH=docs/plans/live/260127XX_feature"
+        - "agentic entrypoint execute orchestration-planning --vars OBJECTIVE='Implement auth' --vars SCOPE=backend -j"
+
 usage_notes:
   - "CLI commands are executed by orchestration agents directly (tool-offloading pattern)"
   - "Prefer CLI over manual file operations for consistency"
