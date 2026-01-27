@@ -19,14 +19,14 @@ This planning folder has been **DECOMMISSIONED** and its contents have been move
 |---------------|--------------|
 | `plan.yml` | `261115CL_agenticcli/plan_jit_context.yml` |
 | `specification.md` | `261115CL_agenticcli/specification.md` |
-| `live/plan_live_build.yml` | `261115CL_agenticcli/live/plan_live_build.yml` |
-| `live/plan_live_test.yml` | `261115CL_agenticcli/live/plan_live_test.yml` |
+| `plan_build.yml` | `261115CL_agenticcli/plan_build.yml` |
+| `plan_test.yml` | `261115CL_agenticcli/plan_test.yml` |
 | `live/orchestration_jit_context.mmd` | `261115CL_agenticcli/live/orchestration_jit_context.mmd` |
 
 ### Coordination Document
 
 A new coordination file was created at:
-`261115CL_agenticcli/live/plan_live_jit_context_entrypoints.yml`
+`261115CL_agenticcli/plan_jit_context_entrypoints.yml`
 
 ### Rationale
 

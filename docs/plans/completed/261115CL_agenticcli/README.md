@@ -24,9 +24,9 @@ Implement JIT (Just-In-Time) Pull-based context architecture for agents. Evolves
 
 | File | Purpose | Status |
 |------|---------|--------|
-| `live/plan_live_jit_context_entrypoints.yml` | Initiative overview and coordination | ACTIVE |
-| `live/plan_live_build.yml` | Build implementation (5 phases, 21 tasks) | IN PROGRESS |
-| `live/plan_live_test.yml` | Test validation (7 phases) | PENDING |
+| `plan_jit_context_entrypoints.yml` | Initiative overview and coordination | ACTIVE |
+| `plan_build.yml` | Build implementation (5 phases, 21 tasks) | IN PROGRESS |
+| `plan_test.yml` | Test validation (7 phases) | PENDING |
 | `live/orchestration_jit_context.mmd` | Orchestration flow for build/test | ACTIVE |
 | `live/backlog_test_execution_workflow_investigation.yml` | Investigation: generalized test workflow | LOW priority backlog |
 
@@ -114,9 +114,9 @@ Implemented CLI-based preset task lists to help agents remember ancillary tasks 
 
 | File | Purpose | Status |
 |------|---------|--------|
-| `plan_live_build.yml` | Build phases: CLI commands, handlers, workflow, templates | completed -> archived |
-| `plan_live_test.yml` | Test phases: unit, integration, subagent observation | completed -> archived |
-| `plan_live_cli_task_lists.yml` | Original experiment specification | completed -> archived |
+| `plan_build.yml` | Build phases: CLI commands, handlers, workflow, templates | completed -> archived |
+| `plan_test.yml` | Test phases: unit, integration, subagent observation | completed -> archived |
+| `plan_cli_task_lists.yml` | Original experiment specification | completed -> archived |
 | `orchestration_cli_task_lists.mmd` | Execution flow for orchestrator | completed -> archived |
 
 ### Implementation Phases - ALL COMPLETE
@@ -148,9 +148,9 @@ agentic plan task add <description>               # Add new task
 ├── audit/              # Audit reports
 ├── completed/          # Completed plans
 └── live/               # Active plans
-    ├── plan_live_jit_context_entrypoints.yml  # Current initiative coordination
-    ├── plan_live_build.yml                    # Build implementation plan
-    ├── plan_live_test.yml                     # Test validation plan
+    ├── plan_jit_context_entrypoints.yml  # Current initiative coordination
+    ├── plan_build.yml                    # Build implementation plan
+    ├── plan_test.yml                     # Test validation plan
     ├── orchestration_jit_context.mmd          # Orchestration flow
     └── backlog_*.yml                          # Backlog items
 ```

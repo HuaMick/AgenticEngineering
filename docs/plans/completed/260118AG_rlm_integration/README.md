@@ -18,11 +18,10 @@ Orchestration systems spawn many subagents, producing numerous traces that can f
 ```
 docs/plans/live/260118AG_rlm_integration/
 ├── README.md                                    # This file
-├── live/
-│   ├── plan_live_teach_trace_diagnostics.yml   # Phase plan with 4 phases, 11 tasks
-│   ├── orchestration_trace_diagnostics.mmd     # Execution flowchart (NEW)
-│   ├── plan_live_teach.yml                     # Original RLM plan (reference)
-│   └── orchestration_rlm_integration.mmd       # Original RLM orchestration
+├── plan_teach_trace_diagnostics.yml       # Phase plan with 4 phases, 11 tasks
+├── orchestration_trace_diagnostics.mmd    # Execution flowchart (NEW)
+├── plan_teach.yml                         # Original RLM plan (reference)
+├── orchestration_rlm_integration.mmd      # Original RLM orchestration
 ├── completed/                                   # For completed task artifacts
 ├── analysis/                                    # For iteration logs
 └── audit/                                       # For audit reports
@@ -90,7 +89,7 @@ This agent uses RLM (Recursive Language Model) patterns:
 
 ```bash
 # Via orchestration-executor with trace diagnostics plan
-agentic run _orchestrate.yml --plan-folder docs/plans/live/260118AG_rlm_integration --plan-file plan_live_teach_trace_diagnostics.yml
+agentic run _orchestrate.yml --plan-folder docs/plans/live/260118AG_rlm_integration --plan-file plan_teach_trace_diagnostics.yml
 ```
 
 ## Target Worktree

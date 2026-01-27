@@ -13,9 +13,8 @@ Scaffold and implement the AgenticLangSmith Python package as a reusable library
 ```
 260113_langsmith_backend/
 ├── README.md                              # This file
-└── live/
-    ├── plan_live_build.yml                # Build plan with phases and tasks
-    └── orchestration_langsmith_backend.mmd # Orchestration flowchart
+├── plan_build.yml                       # Build plan with phases and tasks
+└── orchestration_langsmith_backend.mmd  # Orchestration flowchart
 ```
 
 ## Phases

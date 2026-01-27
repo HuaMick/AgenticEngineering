@@ -148,7 +148,7 @@ CCI uses a chained command pattern where each command provides the next commands
 │  │ Agent uses file paths from CLI output to read:                    │   │
 │  │   - modules/AgenticGuidance/agents/planner/planner-build/*.yml   │   │
 │  │   - modules/AgenticGuidance/assets/definitions/*.yml              │   │
-│  │   - docs/plans/live/YYMMDDXX_*/live/plan_live_*.yml              │   │
+│  │   - docs/plans/live/YYMMDDXX_*/plan_*.yml                        │   │
 │  └─────────────────────────────────────────────────────────────────┘   │
 │                              │                                          │
 │                              v                                          │
@@ -222,7 +222,7 @@ PROCESS STEPS:
 INPUTS TO READ:
   - modules/AgenticGuidance/agents/planner/planner-build/process.yml
   - modules/AgenticGuidance/assets/definitions/plans.yml
-  - docs/plans/live/260123AE_feature/live/plan_live_build.yml
+  - docs/plans/live/260123AE_feature/plan_build.yml
 
 NEXT COMMANDS:
   agentic context bootstrap --role planner-build -j  # Get full seed context
