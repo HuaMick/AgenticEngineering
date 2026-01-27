@@ -1,0 +1,235 @@
+# CLI vs Agent Architecture Definition
+# Created: 2026-01-28
+# Purpose: Formalize the boundary between CLI (deterministic executor) and Agent (thinking decision-maker)
+# Referenced by: tool-offloading.yml, role-separation.yml
+
+cli_agent_architecture:
+  overview: |
+    The CLI-Agent architecture establishes a clear separation of concerns between
+    deterministic execution (CLI) and judgment-based decision-making (Agent).
+    This boundary reduces complexity, improves reliability, and enables predictable behavior.
+
+  cli_responsibility:
+    definition: |
+      CLI is the deterministic executor. It performs mechanical operations with
+      predictable, rule-based outcomes. CLI commands always produce the same output
+      for the same input, or fail explicitly with actionable error messages.
+
+    characteristics:
+      - "Deterministic: Same input always produces same output"
+      - "Fail-fast: Invalid input rejected immediately with clear errors"
+      - "Stateless: Each invocation is independent (no memory between calls)"
+      - "Inspectable: Behavior is defined in source code, not prompts"
+      - "Composable: Commands can be piped and chained reliably"
+
+    responsibilities:
+      - "File and folder scaffolding with enforced naming conventions"
+      - "YAML/JSON validation against schemas"
+      - "Git operations (worktree create, branch, commit)"
+      - "Status queries and state reporting"
+      - "Task status updates in plan files"
+      - "Session and loop lifecycle management"
+      - "Context bootstrapping (CCI pattern)"
+      - "Moving files between directories"
+
+    guarantees:
+      - "Exit code 0 means success, non-zero means failure with reason"
+      - "JSON output available for machine parsing (-j flag)"
+      - "No side effects on failure (atomic operations where possible)"
+      - "Consistent behavior across invocations"
+
+  agent_responsibility:
+    definition: |
+      Agent is the thinking decision-maker. It applies judgment, interprets context,
+      and makes choices that require reasoning. Agents handle ambiguity, adapt to
+      unexpected situations, and produce creative solutions.
+
+    characteristics:
+      - "Judgment-based: Applies reasoning to interpret context"
+      - "Adaptive: Handles unexpected situations and edge cases"
+      - "Creative: Generates novel solutions, code, and content"
+      - "Context-sensitive: Behavior varies based on understanding"
+      - "Interpretive: Extracts meaning from ambiguous input"
+
+    responsibilities:
+      - "Deciding what to build or change"
+      - "Interpreting user intent and requirements"
+      - "Code generation and modification"
+      - "Review, approval, and quality decisions"
+      - "Error diagnosis and remediation strategy"
+      - "Adapting to unexpected situations"
+      - "Planning and sequencing work"
+      - "Synthesizing information from multiple sources"
+
+    anti_patterns:
+      - "Agent manually performs file operations CLI can handle"
+      - "Agent interprets naming conventions from documentation"
+      - "Agent verifies another agent's mechanical work"
+      - "Agent manages iteration state manually"
+
+  handoff_pattern:
+    definition: |
+      The handoff pattern defines when and how work transitions from Agent to CLI.
+      Agents make decisions; CLI executes them. The boundary is at the point where
+      determinism begins and judgment ends.
+
+    when_to_handoff:
+      - "Agent has determined WHAT to do; CLI handles HOW to do it mechanically"
+      - "Operation follows fixed rules that don't require interpretation"
+      - "Output must be consistent across invocations"
+      - "Operation can be validated programmatically"
+
+    handoff_flow:
+      step_1: "Agent analyzes situation and makes decision"
+      step_2: "Agent formulates CLI command with required parameters"
+      step_3: "CLI executes with validation and fail-fast behavior"
+      step_4: "CLI returns structured result (JSON or exit code)"
+      step_5: "Agent interprets result and decides next action"
+
+    examples:
+      plan_creation:
+        agent_decides: "We need a plan folder for the authentication feature"
+        cli_executes: "agentic plan init auth-feature --description user_authentication"
+        agent_interprets: "Plan folder created at path X, proceeding with planning"
+
+      task_management:
+        agent_decides: "Task FI-001 is complete based on my review"
+        cli_executes: "agentic plan task complete FI-001 --plan docs/plans/live/260128XX"
+        agent_interprets: "Task marked complete, checking for next task"
+
+      session_spawning:
+        agent_decides: "Need a builder session for Python work"
+        cli_executes: "agentic session spawn --role build-python -j"
+        agent_interprets: "Session spawned with ID X, monitoring for completion"
+
+  decision_criteria:
+    description: |
+      Use this checklist to determine whether new functionality belongs in CLI or Agent.
+      Ask these questions in order; stop at the first "yes" answer.
+
+    is_cli_work:
+      - question: "Does the operation have a single, predictable outcome for given inputs?"
+        if_yes: "CLI - Deterministic operations belong in tools"
+      - question: "Can the operation be fully specified without interpretation?"
+        if_yes: "CLI - Rule-based execution doesn't need judgment"
+      - question: "Would you want this to work exactly the same way every time?"
+        if_yes: "CLI - Consistency requires deterministic execution"
+      - question: "Can invalid inputs be rejected before execution?"
+        if_yes: "CLI - Validation is a deterministic operation"
+      - question: "Is this operation repeated frequently across agents?"
+        if_yes: "CLI - Shared mechanical work should be centralized"
+
+    is_agent_work:
+      - question: "Does the operation require understanding context or intent?"
+        if_yes: "Agent - Interpretation requires judgment"
+      - question: "Could reasonable people disagree on the right approach?"
+        if_yes: "Agent - Ambiguity requires decision-making"
+      - question: "Does the operation produce creative or novel output?"
+        if_yes: "Agent - Creation requires thinking"
+      - question: "Must the operation adapt to unexpected situations?"
+        if_yes: "Agent - Adaptation requires reasoning"
+      - question: "Does success depend on understanding previous conversation?"
+        if_yes: "Agent - Context-sensitivity requires memory"
+
+    gray_area_guidance: |
+      When the answer is unclear, prefer CLI for the mechanical portion and Agent
+      for the decision portion. Split the work at the boundary where judgment ends.
+
+      Example: "Create a well-named plan folder"
+      - Agent decides: What should the description be? (judgment)
+      - CLI executes: Create folder with that description (mechanical)
+
+  examples:
+    cli_examples:
+      - operation: "Create worktree and plan folder"
+        command: "agentic plan init feature-x --description api_refactor"
+        why_cli: "Naming convention and folder structure are rule-based"
+
+      - operation: "Update task status"
+        command: "agentic plan task complete FI-001 --plan <path>"
+        why_cli: "Status update is a deterministic state change"
+
+      - operation: "Bootstrap agent context"
+        command: "agentic context bootstrap --role build-python"
+        why_cli: "File path resolution follows fixed rules per role"
+
+      - operation: "Start iteration loop"
+        command: "agentic loop start test-fix-loop"
+        why_cli: "Loop lifecycle is deterministic process management"
+
+    agent_examples:
+      - operation: "Decide what feature to build next"
+        why_agent: "Requires understanding priorities and user needs"
+
+      - operation: "Write implementation code"
+        why_agent: "Code generation requires creative problem-solving"
+
+      - operation: "Review code for quality issues"
+        why_agent: "Quality judgment requires interpretation and experience"
+
+      - operation: "Diagnose why tests are failing"
+        why_agent: "Root cause analysis requires reasoning about behavior"
+
+      - operation: "Determine if a task is truly complete"
+        why_agent: "Completion judgment requires understanding requirements"
+
+    handoff_examples:
+      - scenario: "Starting work on a new feature"
+        agent_part: "Interpret user request, decide on branch name and description"
+        cli_part: "agentic plan init <branch> --description <desc>"
+        boundary: "Agent provides the WHAT (names), CLI handles the HOW (creation)"
+
+      - scenario: "Completing a build task"
+        agent_part: "Verify implementation meets requirements, decide task is done"
+        cli_part: "agentic plan task complete <task-id> --plan <path>"
+        boundary: "Agent makes completion judgment, CLI records the state change"
+
+      - scenario: "Spawning parallel workers"
+        agent_part: "Decide which roles are needed and in what order"
+        cli_part: "agentic session spawn --role <role>"
+        boundary: "Agent decides WHO to spawn, CLI handles process management"
+
+  anti_patterns:
+    - name: "Agent as CLI wrapper"
+      description: |
+        Agent just calls CLI and reports result without adding judgment.
+        Solution: Remove the agent layer; let caller invoke CLI directly.
+
+    - name: "CLI requiring judgment inputs"
+      description: |
+        CLI command needs context-sensitive input it can't validate.
+        Solution: Agent provides interpreted input; CLI validates format only.
+
+    - name: "Agent interpreting documentation"
+      description: |
+        Agent reads docs to learn naming conventions or rules.
+        Solution: Encode rules in CLI; agent just invokes with parameters.
+
+    - name: "Verification agents"
+      description: |
+        Agent verifies another agent's mechanical work.
+        Solution: CLI guarantees correctness; no verification needed.
+
+    - name: "Agent managing state"
+      description: |
+        Agent tracks iteration counts, session IDs, or loop state.
+        Solution: CLI manages state; agent queries when needed.
+
+  related:
+    - "tool-offloading.yml - When and how to offload work to CLI"
+    - "role-separation.yml - Agent role boundaries and knowledge separation"
+    - "cli-commands.yml - Catalog of available CLI commands"
+    - "context-minimization.yml - Reducing unnecessary agent context"
+
+  signpost: |
+    When designing new functionality, ask: "Where does determinism end?"
+    Put everything deterministic in CLI. Put everything requiring judgment in Agent.
+    The boundary should be crisp: Agent decides WHAT, CLI executes HOW.
+
+    QUICK REFERENCE:
+    - Predictable outcome? -> CLI
+    - Requires interpretation? -> Agent
+    - Rule-based execution? -> CLI
+    - Context-sensitive? -> Agent
+    - Repeated mechanical work? -> CLI
+    - Creative or novel output? -> Agent
