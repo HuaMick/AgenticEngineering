@@ -1,0 +1,261 @@
+# Claude Code Session Spawning - CLI Integration
+# Plan ID: 260127CC
+# Created: 2026-01-27
+#
+# Goal: Enable CLI-driven Claude Code session spawning for orchestration loops
+# This allows agents to spawn new Claude Code sessions programmatically,
+# enabling proper orchestration workflows without manual intervention.
+
+name: "claude-code-session-spawning"
+status: "pending"
+priority: "high"
+created: "2026-01-27"
+
+# ========================================
+# CONTEXT
+# ========================================
+context: |
+  Current State:
+  - Ralph Loop uses manual prompt injection for orchestration
+  - No CLI command exists to spawn Claude Code sessions
+  - Agents cannot programmatically start new sessions with specific prompts
+
+  Desired State:
+  - CLI command: `agentic session spawn --prompt "..." --max-turns N`
+  - Integration with Ralph Loop for iterative orchestration
+  - Proper session management (list, stop, status)
+
+  Benefits:
+  - Enables proper orchestration loops via CLI
+  - Allows guidance to specify session spawning as CLI_OFFLOAD
+  - Supports automated testing of agent workflows
+
+# ========================================
+# PHASES
+# ========================================
+phases:
+  - phase_id: "P1"
+    name: "CLI Session Commands"
+    description: |
+      Implement CLI commands for Claude Code session management.
+      Commands: spawn, list, stop, status
+    status: "pending"
+    tasks:
+      - id: "CC-001"
+        name: "Create session command module"
+        description: |
+          Create modules/AgenticCLI/src/agenticcli/commands/session.py
+          with the following commands:
+          - spawn: Start a new Claude Code session with a prompt
+          - list: List active sessions
+          - stop: Stop a running session
+          - status: Get session status
+        status: "pending"
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/commands/session.py"
+        acceptance_criteria:
+          - "Session spawn accepts --prompt, --max-turns, --background flags"
+          - "Session list shows active sessions with PID and status"
+          - "Session stop gracefully terminates a session"
+          - "All commands have JSON output mode (-j)"
+
+      - id: "CC-002"
+        name: "Add session parser to CLI entry"
+        description: |
+          Register session commands in the main CLI entry point.
+          Add to modules/AgenticCLI/src/agenticcli/cli.py
+        status: "pending"
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/cli.py"
+
+      - id: "CC-003"
+        name: "Implement session spawning logic"
+        description: |
+          Implement the actual session spawning using subprocess:
+          - Spawn `claude` CLI with the provided prompt
+          - Support background mode for async execution
+          - Handle session lifecycle (start, monitor, stop)
+          - Capture and return session output
+        status: "pending"
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/commands/session.py"
+        implementation_notes: |
+          Use subprocess.Popen for background sessions
+          Use subprocess.run for foreground sessions
+          Store session state in ~/.agentic/sessions/
+
+  - phase_id: "P2"
+    name: "Session State Management"
+    description: |
+      Implement persistent session state tracking.
+      Sessions need to survive CLI restarts.
+    status: "pending"
+    tasks:
+      - id: "CC-004"
+        name: "Create SessionStateService"
+        description: |
+          Create a service to track session state:
+          - Session ID, PID, prompt, start time, status
+          - Persist to ~/.agentic/sessions/<session_id>.json
+          - Support listing, querying, and cleanup
+        status: "pending"
+        target_files:
+          - "modules/AgenticGuidance/src/agenticguidance/services/claude_session.py"
+
+      - id: "CC-005"
+        name: "Integrate with StateRegistry"
+        description: |
+          Register SessionStateService with the existing StateRegistry
+          for consistent state management patterns.
+        status: "pending"
+        target_files:
+          - "modules/AgenticGuidance/src/agenticguidance/services/state.py"
+
+  - phase_id: "P3"
+    name: "Ralph Loop Integration"
+    description: |
+      Integrate session spawning with Ralph Loop plugin.
+      Enable CLI-driven loop execution.
+    status: "pending"
+    tasks:
+      - id: "CC-006"
+        name: "Create Ralph Loop CLI command"
+        description: |
+          Add `agentic loop` command group:
+          - start: Start a Ralph Loop with prompt file
+          - stop: Stop an active loop
+          - status: Show loop progress
+          - history: Show past loop executions
+        status: "pending"
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/commands/loop.py"
+
+      - id: "CC-007"
+        name: "Support prompt file loading"
+        description: |
+          Allow prompts to be loaded from:
+          - Direct string (--prompt "...")
+          - File path (--prompt-file path/to/prompt.txt)
+          - Entrypoint reference (--entrypoint _orchestrate)
+        status: "pending"
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/commands/loop.py"
+
+      - id: "CC-008"
+        name: "Add iteration tracking"
+        description: |
+          Track loop iterations via CLI:
+          - Current iteration number
+          - Max iterations limit
+          - Completion promise status
+          - Output file for results
+        status: "pending"
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/commands/loop.py"
+
+  - phase_id: "P4"
+    name: "Guidance Updates"
+    description: |
+      Update orchestration guidance to mandate CLI usage.
+      Add session spawning as CLI_OFFLOAD pattern.
+    status: "pending"
+    tasks:
+      - id: "CC-009"
+        name: "Update cli-commands.yml"
+        description: |
+          Add session and loop commands to the CLI commands definition:
+          - session spawn, list, stop, status
+          - loop start, stop, status, history
+        status: "pending"
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/cli-commands.yml"
+
+      - id: "CC-010"
+        name: "Update tool-offloading.yml"
+        description: |
+          Add session spawning as a CLI_OFFLOAD pattern:
+          - Pattern: "spawn claude session" -> CLI_OFFLOAD
+          - Rationale: Deterministic session management
+        status: "pending"
+        target_files:
+          - "modules/AgenticGuidance/assets/guidelines/tool-offloading.yml"
+
+      - id: "CC-011"
+        name: "Update orchestration process files"
+        description: |
+          Update orchestration process.mmd files to:
+          - Reference CLI session commands
+          - Include CCI bootstrap step
+          - Mandate CLI for state management
+        status: "pending"
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml"
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+
+  - phase_id: "P5"
+    name: "Testing"
+    description: |
+      Create tests for session spawning functionality.
+    status: "pending"
+    tasks:
+      - id: "CC-012"
+        name: "Unit tests for session commands"
+        description: |
+          Test session spawn, list, stop, status commands.
+          Mock subprocess calls for deterministic testing.
+        status: "pending"
+        target_files:
+          - "modules/AgenticCLI/tests/test_session_commands.py"
+
+      - id: "CC-013"
+        name: "Unit tests for SessionStateService"
+        description: |
+          Test session state persistence and retrieval.
+        status: "pending"
+        target_files:
+          - "modules/AgenticGuidance/tests/test_services_claude_session.py"
+
+      - id: "CC-014"
+        name: "Integration test with Ralph Loop"
+        description: |
+          Test end-to-end loop execution via CLI.
+          Verify iteration tracking and completion.
+        status: "pending"
+        target_files:
+          - "modules/AgenticCLI/tests/test_loop_integration.py"
+
+# ========================================
+# VALIDATION CRITERIA
+# ========================================
+validation:
+  - criterion: "Session spawn command works"
+    command: "agentic session spawn --prompt 'echo hello' --max-turns 1"
+    expected: "Session starts and completes"
+
+  - criterion: "Session list shows active sessions"
+    command: "agentic session list -j"
+    expected: "JSON array of sessions"
+
+  - criterion: "Loop start command works"
+    command: "agentic loop start --prompt-file docs/prompts/loop1.txt --max-iterations 1"
+    expected: "Loop executes one iteration"
+
+  - criterion: "All tests pass"
+    command: "pytest modules/AgenticCLI/tests/test_session*.py modules/AgenticCLI/tests/test_loop*.py -v"
+    expected: "All tests pass"
+
+# ========================================
+# DEPENDENCIES
+# ========================================
+dependencies:
+  - "Claude CLI must be installed and accessible"
+  - "StateRegistry must be functional (from 260126AT)"
+  - "AgenticCLI module structure must exist"
+
+# ========================================
+# RELATED PLANS
+# ========================================
+related:
+  - "260127PS: Plan structure simplification (completed)"
+  - "260126AT: AgenticTmux with SessionService (completed)"
+  - "260127TL: CLI tasklist tracking (completed)"

@@ -1,0 +1,169 @@
+%% =============================================================================
+%% GOAL: Implement CLI-driven Claude Code session spawning for orchestration
+%% =============================================================================
+%% PROFILE: Orchestration-ClaudeSession
+%% OUTPUT: CLI session commands, loop commands, guidance updates
+%% GUIDELINE: BUILD FOCUS policy - code implementation and testing
+%% GUIDELINE: modules/AgenticGuidance/assets/guidelines/testing.yml
+%% INPUT_PATH: docs/plans/live/260127CC_claude_code_session_spawning/plan_build.yml
+%%
+%% PHASES:
+%%   1. CLISessionCommands - Implement agentic session spawn/list/stop/status
+%%   2. SessionStateManagement - Persistent session tracking service
+%%   3. RalphLoopIntegration - CLI loop commands for orchestration
+%%   4. GuidanceUpdates - Update guidance to mandate CLI usage
+%%   5. Testing - Unit and integration tests
+%%
+%% AGENT_ROUTING: CLISessionCommands -> builder, SessionStateManagement -> builder, RalphLoopIntegration -> builder, GuidanceUpdates -> builder, Testing -> test-builder
+%% STATUS: CLISessionCommands=pending, SessionStateManagement=pending, RalphLoopIntegration=pending, GuidanceUpdates=pending, Testing=pending
+%% FEEDBACK_TRIGGERS: TEST_FAILURE -> test-fix-loop, BUILD_FAILURE -> escalate
+%% =============================================================================
+
+flowchart LR
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% ========================================
+    %% CCI BOOTSTRAP (MANDATORY FIRST STEP)
+    %% ========================================
+    LoadInputs --> CCIBootstrap[Run CCI Bootstrap]
+    CCIBootstrap --> RunBootstrap["agentic context bootstrap --role orchestration-executor -j"]
+    RunBootstrap --> GetCurrentTask["agentic plan task current -j"]
+    GetCurrentTask --> CheckInputs{All Inputs Found?}
+
+    CheckInputs -- "No: Missing" --> AskUser((Ask User for Clarification))
+    CheckInputs -- "Yes: Verified" --> Phase1
+
+    %% ========================================
+    %% PHASE 1: CLI SESSION COMMANDS
+    %% ========================================
+    %% AGENT_ROUTING: builder agent implements session commands
+    %% Tasks: CC-001, CC-002, CC-003
+
+    subgraph CLISessionCommands_SG ["Phase 1: CLI Session Commands Subgraph"]
+        Phase1[Enter Phase 1: CLI Session Commands] --> SpawnBuilder1[Spawn builder Agent]
+        SpawnBuilder1 --> CreateSessionModule[Create session.py command module]
+        CreateSessionModule --> AddSessionParser[Add session parser to CLI entry]
+        AddSessionParser --> ImplementSpawnLogic[Implement session spawning logic]
+        ImplementSpawnLogic --> Phase1Complete[Phase 1 Complete]
+    end
+
+    Phase1Complete --> UpdateTask1["agentic plan task complete CC-001,CC-002,CC-003"]
+    UpdateTask1 --> Phase2
+
+    %% ========================================
+    %% PHASE 2: SESSION STATE MANAGEMENT
+    %% ========================================
+    %% AGENT_ROUTING: builder agent implements state service
+    %% Tasks: CC-004, CC-005
+
+    subgraph SessionStateManagement_SG ["Phase 2: Session State Management Subgraph"]
+        Phase2[Enter Phase 2: Session State Management] --> SpawnBuilder2[Spawn builder Agent]
+        SpawnBuilder2 --> CreateSessionStateService[Create SessionStateService]
+        CreateSessionStateService --> IntegrateStateRegistry[Integrate with StateRegistry]
+        IntegrateStateRegistry --> Phase2Complete[Phase 2 Complete]
+    end
+
+    Phase2Complete --> UpdateTask2["agentic plan task complete CC-004,CC-005"]
+    UpdateTask2 --> Phase3
+
+    %% ========================================
+    %% PHASE 3: RALPH LOOP INTEGRATION
+    %% ========================================
+    %% AGENT_ROUTING: builder agent implements loop commands
+    %% Tasks: CC-006, CC-007, CC-008
+
+    subgraph RalphLoopIntegration_SG ["Phase 3: Ralph Loop Integration Subgraph"]
+        Phase3[Enter Phase 3: Ralph Loop Integration] --> SpawnBuilder3[Spawn builder Agent]
+        SpawnBuilder3 --> CreateLoopModule[Create loop.py command module]
+        CreateLoopModule --> SupportPromptFiles[Support prompt file loading]
+        SupportPromptFiles --> AddIterationTracking[Add iteration tracking]
+        AddIterationTracking --> Phase3Complete[Phase 3 Complete]
+    end
+
+    Phase3Complete --> UpdateTask3["agentic plan task complete CC-006,CC-007,CC-008"]
+    UpdateTask3 --> Phase4
+
+    %% ========================================
+    %% PHASE 4: GUIDANCE UPDATES
+    %% ========================================
+    %% AGENT_ROUTING: builder agent updates guidance files
+    %% Tasks: CC-009, CC-010, CC-011
+
+    subgraph GuidanceUpdates_SG ["Phase 4: Guidance Updates Subgraph"]
+        Phase4[Enter Phase 4: Guidance Updates] --> SpawnBuilder4[Spawn builder Agent]
+        SpawnBuilder4 --> UpdateCLICommands[Update cli-commands.yml]
+        UpdateCLICommands --> UpdateToolOffloading[Update tool-offloading.yml]
+        UpdateToolOffloading --> UpdateOrchestrationProcesses[Update orchestration process files]
+        UpdateOrchestrationProcesses --> Phase4Complete[Phase 4 Complete]
+    end
+
+    Phase4Complete --> UpdateTask4["agentic plan task complete CC-009,CC-010,CC-011"]
+    UpdateTask4 --> Phase5
+
+    %% ========================================
+    %% PHASE 5: TESTING (TEST-FIX-LOOP)
+    %% ========================================
+    %% LOOP_DEFINITION: test-fix-loop
+    %% MAX_ITERATIONS: 5
+    %% FEEDBACK_TRIGGER: TEST_FAILURE -> retry or escalate
+
+    subgraph Testing_SG ["Phase 5: Testing Subgraph (Test-Fix-Loop)"]
+        Phase5[Enter Phase 5: Testing] --> SpawnTestBuilder[Spawn test-builder Agent]
+
+        SpawnTestBuilder --> SessionCommandTests[Session command tests]
+        SessionCommandTests --> SessionStateTests[Session state service tests]
+        SessionStateTests --> LoopIntegrationTests[Loop integration tests]
+
+        LoopIntegrationTests --> RunTests[Run All Tests]
+        RunTests --> TestsPassed{Tests Passed?}
+
+        %% Test-Fix Loop: retry path
+        TestsPassed -- "No: Fix in Iteration" --> SpawnBuilderFix[Spawn builder Agent for Fixes]
+        SpawnBuilderFix --> ApplyFixes[Apply Implementation Fixes]
+        ApplyFixes --> RunTests
+
+        %% Success path
+        TestsPassed -- "Yes: All Pass" --> Phase5Complete[Phase 5 Complete]
+    end
+
+    %% Escalation path for persistent test failures
+    TestsPassed -- "No: Escalate" --> CheckIterations{Max Iterations Reached?}
+    CheckIterations -- "No" --> SpawnTestBuilder
+    CheckIterations -- "Yes" --> EscalateTests((Ask User: Test Failures Persist))
+
+    Phase5Complete --> UpdateTask5["agentic plan task complete CC-012,CC-013,CC-014"]
+    UpdateTask5 --> ValidationPhase
+
+    %% ========================================
+    %% VALIDATION PHASE
+    %% ========================================
+    subgraph Validation_SG ["Validation Subgraph"]
+        ValidationPhase[Enter Validation Phase] --> TestSessionSpawn["agentic session spawn --prompt 'echo test' --max-turns 1"]
+        TestSessionSpawn --> TestSessionList["agentic session list -j"]
+        TestSessionList --> TestLoopStart["agentic loop start --prompt-file docs/prompts/loop1.txt --max-iterations 1 --dry-run"]
+        TestLoopStart --> ValidationPassed{All Validation Passed?}
+
+        ValidationPassed -- "No" --> IdentifyGaps[Identify Gaps]
+        IdentifyGaps -.->|Return to Phase 5| Phase5
+
+        ValidationPassed -- "Yes" --> ValidationComplete[Validation Complete]
+    end
+
+    %% ========================================
+    %% FINALIZATION
+    %% ========================================
+    ValidationComplete --> UpdatePlanStatus["agentic plan task complete all"]
+    UpdatePlanStatus --> ArchivePlan[Archive to docs/plans/completed/]
+    ArchivePlan --> End((End: Claude Session Spawning Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef entrypoint fill:#90EE90,stroke:#228B22
+    classDef exitpoint fill:#FFB6C1,stroke:#DC143C
+    classDef userpoint fill:#87CEEB,stroke:#4682B4
+    classDef cliaction fill:#FFD700,stroke:#DAA520
+    class Start entrypoint
+    class End exitpoint
+    class AskUser,EscalateTests userpoint
+    class RunBootstrap,GetCurrentTask,UpdateTask1,UpdateTask2,UpdateTask3,UpdateTask4,UpdateTask5 cliaction
