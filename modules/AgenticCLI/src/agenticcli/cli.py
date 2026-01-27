@@ -1440,8 +1440,13 @@ def _add_entrypoint_parser(subparsers):
         help="Variable substitution (can be used multiple times). Supports: PLAN_PATH, WORKTREE, and custom vars.",
     )
     execute_parser.add_argument(
-        "--context", "-c",
+        "--context",
         help="Additional context text to prepend to the entrypoint content",
+    )
+    execute_parser.add_argument(
+        "--compile", "-c",
+        action="store_true",
+        help="Compile complete context bundle including orchestration, inputs.yml, and all referenced files",
     )
 
 

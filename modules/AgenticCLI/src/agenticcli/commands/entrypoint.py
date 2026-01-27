@@ -9,7 +9,6 @@ Commands:
     execute: Execute an entrypoint with variable substitution
 """
 
-import os
 import re
 import sys
 from datetime import datetime
@@ -115,6 +114,279 @@ def _find_entrypoint(name: str) -> Optional[Path]:
                 return filepath
 
     return None
+
+
+def _get_repo_root() -> Optional[Path]:
+    """Find the repository root by walking up from cwd.
+
+    Looks for .git directory or modules/ directory as indicators.
+
+    Returns:
+        Path to repository root, or None if not found.
+    """
+    current = Path.cwd()
+    while current != current.parent:
+        if (current / ".git").exists() or (current / "modules").exists():
+            return current
+        current = current.parent
+    return None
+
+
+def _find_inputs_yml(entrypoint_data: dict, repo_root: Path) -> Optional[Path]:
+    """Find inputs.yml relative to the orchestration path in entrypoint.
+
+    Algorithm:
+    1. Parse entrypoint YAML to get orchestration: field
+    2. Extract agent path from orchestration
+    3. Replace process.mmd with inputs.yml
+    4. Return absolute path to inputs.yml
+
+    Args:
+        entrypoint_data: Parsed entrypoint YAML data.
+        repo_root: Repository root path for resolving relative paths.
+
+    Returns:
+        Path to inputs.yml, or None if not found.
+    """
+    # Get orchestration field from entrypoint
+    entrypoint = entrypoint_data.get("entrypoint", {})
+    orchestration_path = entrypoint.get("orchestration")
+
+    if not orchestration_path:
+        return None
+
+    # orchestration_path is like:
+    # "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+    # Replace the filename with inputs.yml
+    orchestration_dir = Path(orchestration_path).parent
+    inputs_path = repo_root / orchestration_dir / "inputs.yml"
+
+    if inputs_path.exists():
+        return inputs_path
+
+    return None
+
+
+def _parse_location_references(data: dict | list, collected: list = None) -> list[dict]:
+    """Extract all location: fields from YAML data recursively.
+
+    Searches all YAML nodes for keys named "location" and collects
+    file path values along with optional descriptions.
+
+    Args:
+        data: Parsed YAML data (dict or list).
+        collected: Internal list for collecting results.
+
+    Returns:
+        List of dicts with 'path' and optional 'description' keys.
+    """
+    if collected is None:
+        collected = []
+
+    if isinstance(data, dict):
+        # Check if this dict has a 'location' key
+        if "location" in data:
+            location = data["location"]
+            if isinstance(location, str):
+                collected.append({
+                    "path": location,
+                    "description": data.get("description", ""),
+                })
+        # Recurse into all values
+        for value in data.values():
+            _parse_location_references(value, collected)
+
+    elif isinstance(data, list):
+        for item in data:
+            _parse_location_references(item, collected)
+
+    return collected
+
+
+def _compile_context(
+    filepath: Path,
+    entrypoint_content: str,
+    variables: dict,
+) -> dict:
+    """Compile complete context bundle by resolving all references.
+
+    Algorithm:
+    1. Read and parse entrypoint YAML
+    2. Extract orchestration: field if present
+    3. Find and read orchestration file (process.mmd)
+    4. Find and read inputs.yml
+    5. Parse inputs.yml for location: references
+    6. Read all referenced files
+    7. Build output dictionary with sections
+
+    Args:
+        filepath: Path to the entrypoint file.
+        entrypoint_content: Already processed entrypoint content with variables applied.
+        variables: Variable substitution dict (for potential future use).
+
+    Returns:
+        Dict with structure:
+        {
+            "entrypoint": {"path": str, "content": str},
+            "orchestration": {"path": str, "content": str} | None,
+            "inputs": {"path": str, "content": str} | None,
+            "references": [{"path": str, "content": str, "description": str}, ...]
+        }
+    """
+    result = {
+        "entrypoint": {
+            "path": str(filepath),
+            "content": entrypoint_content,
+        },
+        "orchestration": None,
+        "inputs": None,
+        "references": [],
+    }
+
+    repo_root = _get_repo_root()
+    if not repo_root:
+        return result
+
+    # Parse the original entrypoint file (without variable substitution)
+    # to get the orchestration path
+    try:
+        original_content = filepath.read_text()
+        entrypoint_data = yaml.safe_load(original_content)
+        if not isinstance(entrypoint_data, dict):
+            return result
+    except Exception:
+        return result
+
+    # Get orchestration file
+    entrypoint_section = entrypoint_data.get("entrypoint", {})
+    orchestration_path = entrypoint_section.get("orchestration")
+
+    if orchestration_path:
+        full_orchestration_path = repo_root / orchestration_path
+        if full_orchestration_path.exists():
+            try:
+                result["orchestration"] = {
+                    "path": orchestration_path,
+                    "content": full_orchestration_path.read_text(),
+                }
+            except Exception:
+                result["orchestration"] = {
+                    "path": orchestration_path,
+                    "content": None,
+                    "error": "Failed to read file",
+                }
+        else:
+            result["orchestration"] = {
+                "path": orchestration_path,
+                "content": None,
+                "error": "File not found",
+            }
+
+    # Find and read inputs.yml
+    inputs_path = _find_inputs_yml(entrypoint_data, repo_root)
+    if inputs_path:
+        try:
+            inputs_content = inputs_path.read_text()
+            # Store relative path from repo root
+            relative_inputs_path = inputs_path.relative_to(repo_root)
+            result["inputs"] = {
+                "path": str(relative_inputs_path),
+                "content": inputs_content,
+            }
+
+            # Parse location references from inputs.yml
+            try:
+                inputs_data = yaml.safe_load(inputs_content)
+                if isinstance(inputs_data, dict):
+                    location_refs = _parse_location_references(inputs_data)
+
+                    # Read each referenced file
+                    for ref in location_refs:
+                        ref_path = ref["path"]
+                        full_ref_path = repo_root / ref_path
+
+                        if full_ref_path.exists():
+                            try:
+                                result["references"].append({
+                                    "path": ref_path,
+                                    "content": full_ref_path.read_text(),
+                                    "description": ref.get("description", ""),
+                                })
+                            except Exception:
+                                result["references"].append({
+                                    "path": ref_path,
+                                    "content": None,
+                                    "error": "Failed to read file",
+                                    "description": ref.get("description", ""),
+                                })
+                        else:
+                            result["references"].append({
+                                "path": ref_path,
+                                "content": None,
+                                "error": "File not found",
+                                "description": ref.get("description", ""),
+                            })
+            except Exception:
+                pass  # Gracefully handle YAML parse errors
+
+        except Exception:
+            relative_inputs_path = inputs_path.relative_to(repo_root)
+            result["inputs"] = {
+                "path": str(relative_inputs_path),
+                "content": None,
+                "error": "Failed to read file",
+            }
+
+    return result
+
+
+def _format_compiled_output(compiled: dict) -> str:
+    """Format compiled context for text output with section headers.
+
+    Args:
+        compiled: Compiled context dict from _compile_context.
+
+    Returns:
+        Formatted text output with section delimiters.
+    """
+    sections = []
+
+    # Entrypoint section
+    entrypoint = compiled["entrypoint"]
+    entrypoint_name = Path(entrypoint["path"]).stem
+    sections.append(f"# === ENTRYPOINT: {entrypoint_name} ===")
+    sections.append(entrypoint["content"])
+
+    # Orchestration section
+    if compiled["orchestration"]:
+        orch = compiled["orchestration"]
+        orch_name = Path(orch["path"]).name
+        if orch.get("content"):
+            sections.append(f"\n# === ORCHESTRATION: {orch_name} ===")
+            sections.append(orch["content"])
+        elif orch.get("error"):
+            sections.append(f"\n# === MISSING: {orch['path']} ({orch['error']}) ===")
+
+    # Inputs section
+    if compiled["inputs"]:
+        inputs = compiled["inputs"]
+        inputs_name = Path(inputs["path"]).name
+        if inputs.get("content"):
+            sections.append(f"\n# === INPUTS: {inputs_name} ===")
+            sections.append(inputs["content"])
+        elif inputs.get("error"):
+            sections.append(f"\n# === MISSING: {inputs['path']} ({inputs['error']}) ===")
+
+    # Referenced files
+    for ref in compiled["references"]:
+        ref_name = Path(ref["path"]).name
+        if ref.get("content"):
+            sections.append(f"\n# === REFERENCED: {ref_name} ===")
+            sections.append(ref["content"])
+        elif ref.get("error"):
+            sections.append(f"\n# === MISSING: {ref['path']} ({ref['error']}) ===")
+
+    return "\n".join(sections)
 
 
 def _extract_description(filepath: Path) -> str:
@@ -252,7 +524,7 @@ def cmd_show(args, ctx=None):
     if not filepath:
         print_error(f"Entrypoint not found: {name}")
         print(
-            f"Hint: Use 'agentic entrypoint list' to see available entrypoints.",
+            "Hint: Use 'agentic entrypoint list' to see available entrypoints.",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -281,6 +553,7 @@ def cmd_execute(args, ctx=None):
             - name: Entrypoint name (required)
             - vars: List of KEY=VALUE pairs (optional)
             - context: Additional context text to prepend (optional)
+            - compile: Compile complete context bundle (optional)
         ctx: CLI context.
     """
     from agenticcli.console import is_json_output, print_error, print_json
@@ -288,6 +561,7 @@ def cmd_execute(args, ctx=None):
     name = args.name
     var_pairs = getattr(args, "vars", None) or []
     context_text = getattr(args, "context", None)
+    compile_mode = getattr(args, "compile", False)
     json_output = is_json_output()
 
     filepath = _find_entrypoint(name)
@@ -295,7 +569,7 @@ def cmd_execute(args, ctx=None):
     if not filepath:
         print_error(f"Entrypoint not found: {name}")
         print(
-            f"Hint: Use 'agentic entrypoint list' to see available entrypoints.",
+            "Hint: Use 'agentic entrypoint list' to see available entrypoints.",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -327,6 +601,25 @@ def cmd_execute(args, ctx=None):
     if context_text:
         content = f"# Context\n{context_text}\n\n---\n\n{content}"
 
+    # Handle --compile flag: compile complete context bundle
+    if compile_mode:
+        compiled = _compile_context(filepath, content, variables)
+
+        if json_output:
+            print_json({
+                "name": f"_{_normalize_entrypoint_name(name)}",
+                "compiled": True,
+                "entrypoint": compiled["entrypoint"],
+                "orchestration": compiled["orchestration"],
+                "inputs": compiled["inputs"],
+                "references": compiled["references"],
+                "reference_count": len(compiled["references"]),
+            })
+        else:
+            print(_format_compiled_output(compiled))
+        return
+
+    # Standard output (no compile)
     if json_output:
         print_json({
             "name": f"_{_normalize_entrypoint_name(name)}",
