@@ -1,0 +1,212 @@
+# Fix CLI to Support plan.phases Structure
+# Plan ID: 260127CL (CLI module)
+# Created: 2026-01-27
+#
+# Goal: Fix CLI task commands to find phases nested under plan.phases
+# Currently, cmd_task_list/status/current only check content.get("phases", [])
+# but plan_teach.yml uses plan.phases structure
+
+name: "fix-cli-plan-phases-structure"
+status: "pending"
+priority: "high"
+created: "2026-01-27"
+
+# ========================================
+# PROBLEM STATEMENT
+# ========================================
+problem: |
+  CLI task commands cannot find tasks in plans using the `plan.phases` structure:
+
+  ```yaml
+  # Structure A (works): phases at root
+  phases:
+    - phase_id: "P1"
+      tasks: [...]
+
+  # Structure B (broken): phases under plan
+  plan:
+    phases:
+      - id: "phase_01"
+        tasks: [...]
+  ```
+
+  Functions affected:
+  - cmd_task_list() - line 690: `phases = content.get("phases", [])`
+  - cmd_task_status() - line 780: `phases = content.get("phases", [])`
+  - cmd_task_current() - line 1344: `phases = content.get("phases", [])`
+  - cmd_task_update() - line 1232: `phases = content.get("phases", [])`
+
+  Additional issue: Some functions use `phase.get("phase_id")` but plans also use `phase.get("id")`.
+
+# ========================================
+# ROOT CAUSE
+# ========================================
+root_cause: |
+  The previous fix (260127FI) only updated `_update_task_status()` to check both structures.
+  The other task functions still only check root-level phases.
+
+# ========================================
+# PHASES
+# ========================================
+phases:
+  - phase_id: "P1"
+    name: "Build - Fix Phase Lookup in All Functions"
+    description: |
+      Update all task-related functions to check both root-level and nested phases.
+    status: "pending"
+    tasks:
+      - id: "CL-001"
+        name: "Fix cmd_task_list phase lookup"
+        description: |
+          Update cmd_task_list() to check both structures:
+          ```python
+          phases = content.get("phases", []) or content.get("plan", {}).get("phases", [])
+          ```
+          Also fix phase_id lookup to check both field names:
+          ```python
+          phase_id = phase.get("phase_id", "") or phase.get("id", "")
+          ```
+        status: "pending"
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+        acceptance_criteria:
+          - "cmd_task_list finds tasks under plan.phases"
+          - "Both phase_id and id field names work"
+
+      - id: "CL-002"
+        name: "Fix cmd_task_status phase lookup"
+        description: |
+          Update cmd_task_status() to check both structures and field names.
+        status: "pending"
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+        acceptance_criteria:
+          - "cmd_task_status finds tasks under plan.phases"
+          - "Phase info correctly extracted"
+
+      - id: "CL-003"
+        name: "Fix cmd_task_current phase lookup"
+        description: |
+          Update cmd_task_current() to check both structures and field names.
+        status: "pending"
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+        acceptance_criteria:
+          - "cmd_task_current finds tasks under plan.phases"
+
+      - id: "CL-004"
+        name: "Fix cmd_task_update phase lookup"
+        description: |
+          Update cmd_task_update() to check both structures and field names.
+        status: "pending"
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+        acceptance_criteria:
+          - "cmd_task_update finds tasks under plan.phases"
+
+      - id: "CL-005"
+        name: "Extract helper function for phase lookup"
+        description: |
+          Create a reusable helper to reduce code duplication:
+          ```python
+          def _get_phases_from_content(content: dict) -> list:
+              '''Get phases from either root or nested under plan.'''
+              return content.get("phases", []) or content.get("plan", {}).get("phases", [])
+          ```
+        status: "pending"
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+        acceptance_criteria:
+          - "Helper function created"
+          - "All task functions use the helper"
+
+  - phase_id: "P2"
+    name: "Test - Validate Both Structures"
+    description: |
+      Add tests for both plan structures and verify existing tests pass.
+    status: "pending"
+    tasks:
+      - id: "CL-006"
+        name: "Add tests for plan.phases structure"
+        description: |
+          Add test cases to test_plan_nested_tasks.py for:
+          - Plan with phases under plan.phases (not root)
+          - Plan using id instead of phase_id
+          - Both structures in same test suite
+        status: "pending"
+        target_files:
+          - "modules/AgenticCLI/tests/test_plan_nested_tasks.py"
+        acceptance_criteria:
+          - "Tests for plan.phases structure added"
+          - "Tests for id vs phase_id field names"
+          - "All tests pass"
+
+      - id: "CL-007"
+        name: "Run full test suite"
+        description: |
+          Run pytest to verify no regressions.
+        status: "pending"
+        acceptance_criteria:
+          - "All existing tests pass"
+          - "No regressions"
+
+  - phase_id: "P3"
+    name: "Blind Test - Validate with Real Plans"
+    description: |
+      Test against the actual plan files that were failing.
+    status: "pending"
+    loop_on_failure:
+      target_phase: "P1"
+      reason: "If CLI still can't find tasks, the fix is incomplete"
+    tasks:
+      - id: "CL-008"
+        name: "Test against 260127DO plan"
+        description: |
+          Run CLI commands against the guidance plan that uses plan.phases:
+          ```bash
+          agentic plan task list --plan docs/plans/live/260127DO_cli_agent_responsibilities
+          ```
+          Expected: Should list all 7 tasks (AG_001 through AG_007)
+        status: "pending"
+        acceptance_criteria:
+          - "task list shows all tasks"
+          - "task current returns first pending task"
+          - "task start/complete work"
+
+      - id: "CL-009"
+        name: "Test against 260127CO plan"
+        description: |
+          Verify the CLI plan still works (uses root-level phases):
+          ```bash
+          agentic plan task list --plan docs/plans/live/260127CO_entrypoint_compile
+          ```
+          Expected: Should still list all 10 tasks
+        status: "pending"
+        acceptance_criteria:
+          - "Existing root-level structure still works"
+          - "No regression"
+
+# ========================================
+# VALIDATION CRITERIA
+# ========================================
+validation:
+  - criterion: "task list works with plan.phases"
+    command: "agentic plan task list --plan docs/plans/live/260127DO_cli_agent_responsibilities"
+    expected: "Lists 7 tasks (AG_001 through AG_007)"
+
+  - criterion: "task list works with root phases"
+    command: "agentic plan task list --plan docs/plans/live/260127CO_entrypoint_compile"
+    expected: "Lists 10 tasks (build_001 through cleanup_002)"
+
+  - criterion: "All unit tests pass"
+    command: "pytest modules/AgenticCLI/tests/test_plan_nested_tasks.py -v"
+    expected: "All tests pass"
+
+# ========================================
+# TARGET FILE SUMMARY
+# ========================================
+target_files:
+  primary:
+    - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+  tests:
+    - "modules/AgenticCLI/tests/test_plan_nested_tasks.py"
