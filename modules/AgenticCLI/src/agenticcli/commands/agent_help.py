@@ -319,6 +319,8 @@ def _load_agent_context(agent_name: str) -> dict:
         "agentic plan task current -j                       # Get current task details",
         "agentic plan task update <id> --status completed   # Mark task done",
         "agentic plan task list                             # Show all tasks",
+        "agentic entrypoint list                            # List available entrypoints",
+        "agentic entrypoint execute <name>                  # Execute an entrypoint",
     ]
 
     return context
@@ -617,7 +619,8 @@ def _load_agent_bootstrap_context(agent_name: str) -> dict:
         "agentic plan task update <id> --status in_progress # Start working on task",
         "agentic plan task update <id> --status completed   # Mark task done",
         "agentic plan task list                             # Show all tasks",
-        "agentic context inputs --role {agent_name}         # Get input files with existence checks",
+        "agentic entrypoint list                            # List available entrypoints",
+        "agentic entrypoint execute <name>                  # Execute an entrypoint",
     ]
 
     return context
