@@ -1,0 +1,235 @@
+# Remove Manual Patterns from Guidance - CLI Compliance Update
+# Plan ID: 260127CL
+# Created: 2026-01-27
+# Type: TEACH (guidance modification)
+#
+# Goal: Remove outdated manual file manipulation patterns from guidance files
+# and replace them with references to existing CLI commands.
+#
+# Context: Friction analysis of session revealed agents are still being
+# directed to manually edit YAML files and use shell commands instead of
+# the CLI commands defined in cli-commands.yml.
+
+_template_status: active
+
+plan:
+  name: "remove-manual-patterns"
+  worktree: "/home/code/AgenticEngineering-cli-guidance-cleanup"
+  branch: "cli-guidance-cleanup"
+  status: "pending"
+  priority: "high"
+  type: "teach"  # Guidance modification requires _plan_teach.yml entrypoint
+  created: "2026-01-27"
+
+  objective: |
+    Remove outdated manual file manipulation patterns from guidance files
+    and replace them with references to existing CLI commands defined in
+    cli-commands.yml. This ensures agents use deterministic CLI commands
+    instead of error-prone manual YAML editing.
+
+  # ========================================
+  # FRICTION ANALYSIS FINDINGS
+  # ========================================
+  friction_analysis:
+    session_reviewed: "260127CC execution session"
+    patterns_detected:
+      - id: "FP-006"
+        name: "Automatable Patterns"
+        severity: "high"
+        description: |
+          Guidance files direct agents to manually edit plan YAML files
+          instead of using CLI commands like:
+          - agentic plan task start/complete
+          - agentic plan move tasks/folder
+
+  # ========================================
+  # PHASES
+  # ========================================
+  phases:
+    - name: "Phase 1 - Update Authoritative Definitions"
+      id: "phase_01"
+      description: |
+        Update core definition files that serve as the source of truth.
+        These have highest impact as other agents reference them.
+      status: "pending"
+      tasks:
+        - id: "CL-001"
+          name: "Update plans.yml - Remove shell command examples"
+          description: |
+            File: modules/AgenticGuidance/assets/definitions/plans.yml
+
+            Current problems:
+            - Line 166: `rm live/my_feature.yml  # All done, remove working copy`
+            - Line 178: `Command: cp -r docs/plans/live/YYMMDDXX_description docs/plans/completed/`
+
+            Replace with:
+            - Reference `agentic plan move folder --plan <plan_folder>`
+            - Keep conceptual explanation, update command examples
+          status: "pending"
+          target_files:
+            - "modules/AgenticGuidance/assets/definitions/plans.yml"
+          acceptance_criteria:
+            - "No raw shell commands (rm, cp, mv) in examples"
+            - "CLI commands referenced for file operations"
+
+        - id: "CL-002"
+          name: "Update plan-completion.yml - Replace shell examples"
+          description: |
+            File: modules/AgenticGuidance/assets/guidelines/plan-completion.yml
+
+            Current problems:
+            - Line 36: `"rm live/my_feature.yml"` (shell command)
+            - Line 76: `"Delete live/my_feature.yml"` (manual instruction)
+            - Line 81: `"Copy completed/old_feature.yml back to live/"` (manual copy)
+
+            Replace all shell command examples with CLI command references.
+          status: "pending"
+          target_files:
+            - "modules/AgenticGuidance/assets/guidelines/plan-completion.yml"
+          acceptance_criteria:
+            - "No raw shell commands in examples"
+            - "Use CLI commands for all file operations"
+
+    - name: "Phase 2 - Update Planner Agent Processes"
+      id: "phase_02"
+      description: |
+        Update planner agents that have manual file manipulation instructions.
+      status: "pending"
+      tasks:
+        - id: "CL-003"
+          name: "Update planner-cleaning/process.yml"
+          description: |
+            File: modules/AgenticGuidance/agents/planner/planner-cleaning/process.yml
+
+            Current problems:
+            - Line 13: "Updates `completed/plan_completed.yml` with summary entries"
+            - Line 14: "COPIES entire plan folder to `docs/plans/completed/`"
+            - Line 138: "Move completed items to: docs/plans/live/.../completed/plan_completed.yml"
+
+            Replace with:
+            - Reference `agentic plan move tasks --plan <plan_folder>`
+            - Reference `agentic plan move folder --plan <plan_folder>`
+            - Add CLI mandate statement
+          status: "pending"
+          target_files:
+            - "modules/AgenticGuidance/agents/planner/planner-cleaning/process.yml"
+          acceptance_criteria:
+            - "All file movement uses CLI commands"
+            - "MANDATE statement added for CLI usage"
+
+        - id: "CL-004"
+          name: "Update planner-build/process.yml"
+          description: |
+            File: modules/AgenticGuidance/agents/planner/planner-build/process.yml
+
+            Current problem:
+            - Line 117: "move them to `completed/plan_completed.yml`"
+
+            Replace with reference to `agentic plan move tasks`.
+          status: "pending"
+          target_files:
+            - "modules/AgenticGuidance/agents/planner/planner-build/process.yml"
+
+        - id: "CL-005"
+          name: "Update planner-guidance-testing/process.yml"
+          description: |
+            File: modules/AgenticGuidance/agents/planner/planner-guidance-testing/process.yml
+
+            Current problem:
+            - Line 85: "Move any completed items to `completed/plan_completed.yml`"
+
+            Replace with reference to `agentic plan move tasks`.
+          status: "pending"
+          target_files:
+            - "modules/AgenticGuidance/agents/planner/planner-guidance-testing/process.yml"
+
+    - name: "Phase 3 - Update Orchestration Guidance"
+      id: "phase_03"
+      description: |
+        Ensure orchestration agents mandate CLI usage for task management.
+      status: "pending"
+      tasks:
+        - id: "CL-006"
+          name: "Add CLI mandate to orchestration-executor"
+          description: |
+            File: modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml
+
+            Add explicit mandate:
+            - NEVER use Edit tool to change task status in plan files
+            - ALWAYS use `agentic plan task start/complete` for status updates
+            - ALWAYS use `agentic plan move folder` for archiving
+          status: "pending"
+          target_files:
+            - "modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml"
+
+        - id: "CL-007"
+          name: "Add CLI mandate to orchestration-planning"
+          description: |
+            File: modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd
+
+            Add explicit mandate in header comments for CLI task management.
+          status: "pending"
+          target_files:
+            - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+
+    - name: "Phase 4 - Validation and Testing"
+      id: "phase_04"
+      description: |
+        Validate that updated guidance files are syntactically correct
+        and agent self-review confirms CLI patterns.
+      status: "pending"
+      tasks:
+        - id: "CL-008"
+          name: "YAML validation of all updated files"
+          description: |
+            Run YAML syntax validation on all modified files.
+            Ensure no broken references.
+          status: "pending"
+          acceptance_criteria:
+            - "All YAML files pass syntax validation"
+            - "No broken file references"
+
+        - id: "CL-009"
+          name: "Agent self-review for consistency"
+          description: |
+            Run grep/search to confirm no remaining manual patterns:
+            - No "rm " or "cp " commands in guidance examples
+            - No "Edit tool" references for plan file modifications
+            - All task status updates reference CLI commands
+          status: "pending"
+          acceptance_criteria:
+            - "grep for 'rm live/' returns no results in guidance"
+            - "grep for 'cp -r docs/plans' returns no results"
+            - "All status updates reference CLI"
+
+  # ========================================
+  # VALIDATION CRITERIA
+  # ========================================
+  validation:
+    - criterion: "No shell commands in guidance examples"
+      command: "grep -r 'rm live/' modules/AgenticGuidance/"
+      expected: "No matches"
+
+    - criterion: "No manual copy commands"
+      command: "grep -r 'cp -r docs/plans' modules/AgenticGuidance/"
+      expected: "No matches"
+
+    - criterion: "CLI commands referenced for task updates"
+      command: "grep -r 'agentic plan task' modules/AgenticGuidance/agents/"
+      expected: "Multiple matches in orchestration and planner agents"
+
+  # ========================================
+  # REFERENCE
+  # ========================================
+  reference:
+    correct_patterns:
+      - file: "modules/AgenticGuidance/agents/deploy/deploy-worktree/process.yml"
+        note: "Correctly uses CLI, states 'Do NOT create folders manually'"
+      - file: "modules/AgenticGuidance/agents/planner/planner-guidance/process.yml"
+        note: "Correctly uses CLI, states 'Do NOT create the folder manually'"
+
+    cli_commands_to_use:
+      - "agentic plan task start <task_id> --plan <path>"
+      - "agentic plan task complete <task_id> --plan <path>"
+      - "agentic plan move tasks --plan <path>"
+      - "agentic plan move folder --plan <path>"

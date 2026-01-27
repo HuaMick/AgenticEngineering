@@ -1,0 +1,139 @@
+%% =============================================================================
+%% GOAL: Remove manual patterns from guidance and enforce CLI usage
+%% =============================================================================
+%% PROFILE: Orchestration-GuidanceCleanup
+%% OUTPUT: Updated guidance files with CLI command references
+%% GUIDELINE: TEACH FOCUS policy - guidance modification requires validation
+%% INPUT_PATH: docs/plans/live/260127CL_remove_manual_patterns/plan_teach.yml
+%%
+%% PHASES:
+%%   1. UpdateDefinitions - Update plans.yml and plan-completion.yml
+%%   2. UpdatePlannerAgents - Update planner process files
+%%   3. UpdateOrchestration - Add CLI mandates to orchestration
+%%   4. Validation - YAML validation and self-review
+%%
+%% AGENT_ROUTING: UpdateDefinitions -> builder, UpdatePlannerAgents -> builder, UpdateOrchestration -> builder, Validation -> test-builder
+%% STATUS: UpdateDefinitions=pending, UpdatePlannerAgents=pending, UpdateOrchestration=pending, Validation=pending
+%% FEEDBACK_TRIGGERS: YAML_INVALID -> fix-loop, PATTERN_REMAINING -> fix-loop
+%% =============================================================================
+%%
+%% CLI TASK MANAGEMENT (MANDATORY):
+%%   - Use `agentic plan task start <id>` before starting a task
+%%   - Use `agentic plan task complete <id>` after completing a task
+%%   - NEVER use Edit tool to change task status in plan files
+%%   - Use `agentic plan move folder` to archive when complete
+%% =============================================================================
+
+flowchart LR
+    Start((Start)) --> LoadInputs[Load plan_teach.yml]
+
+    %% ========================================
+    %% CCI BOOTSTRAP (MANDATORY FIRST STEP)
+    %% ========================================
+    LoadInputs --> CCIBootstrap[Run CCI Bootstrap]
+    CCIBootstrap --> RunBootstrap["agentic context bootstrap --role orchestration-executor -j"]
+    RunBootstrap --> GetCurrentTask["agentic plan task current -j"]
+    GetCurrentTask --> CheckInputs{Inputs Valid?}
+
+    CheckInputs -- "No" --> AskUser((Ask User for Clarification))
+    CheckInputs -- "Yes" --> Phase1
+
+    %% ========================================
+    %% PHASE 1: UPDATE AUTHORITATIVE DEFINITIONS
+    %% ========================================
+    %% Tasks: CL-001, CL-002
+    %% AGENT_ROUTING: builder
+
+    subgraph UpdateDefinitions_SG ["Phase 1: Update Definitions"]
+        Phase1[Enter Phase 1] --> StartTask1["agentic plan task start CL-001"]
+        StartTask1 --> SpawnBuilder1[Spawn builder Agent]
+        SpawnBuilder1 --> UpdatePlansYml[Update plans.yml - remove shell commands]
+        UpdatePlansYml --> CompleteTask1["agentic plan task complete CL-001"]
+        CompleteTask1 --> StartTask2["agentic plan task start CL-002"]
+        StartTask2 --> UpdatePlanCompletion[Update plan-completion.yml]
+        UpdatePlanCompletion --> CompleteTask2["agentic plan task complete CL-002"]
+        CompleteTask2 --> Phase1Complete[Phase 1 Complete]
+    end
+
+    Phase1Complete --> Phase2
+
+    %% ========================================
+    %% PHASE 2: UPDATE PLANNER AGENTS
+    %% ========================================
+    %% Tasks: CL-003, CL-004, CL-005
+    %% AGENT_ROUTING: builder
+
+    subgraph UpdatePlannerAgents_SG ["Phase 2: Update Planner Agents"]
+        Phase2[Enter Phase 2] --> StartTask3["agentic plan task start CL-003"]
+        StartTask3 --> SpawnBuilder2[Spawn builder Agent]
+        SpawnBuilder2 --> UpdatePlannerCleaning[Update planner-cleaning/process.yml]
+        UpdatePlannerCleaning --> CompleteTask3["agentic plan task complete CL-003"]
+        CompleteTask3 --> StartTask4["agentic plan task start CL-004"]
+        StartTask4 --> UpdatePlannerBuild[Update planner-build/process.yml]
+        UpdatePlannerBuild --> CompleteTask4["agentic plan task complete CL-004"]
+        CompleteTask4 --> StartTask5["agentic plan task start CL-005"]
+        StartTask5 --> UpdatePlannerTesting[Update planner-guidance-testing/process.yml]
+        UpdatePlannerTesting --> CompleteTask5["agentic plan task complete CL-005"]
+        CompleteTask5 --> Phase2Complete[Phase 2 Complete]
+    end
+
+    Phase2Complete --> Phase3
+
+    %% ========================================
+    %% PHASE 3: UPDATE ORCHESTRATION
+    %% ========================================
+    %% Tasks: CL-006, CL-007
+    %% AGENT_ROUTING: builder
+
+    subgraph UpdateOrchestration_SG ["Phase 3: Update Orchestration"]
+        Phase3[Enter Phase 3] --> StartTask6["agentic plan task start CL-006"]
+        StartTask6 --> SpawnBuilder3[Spawn builder Agent]
+        SpawnBuilder3 --> UpdateOrchExecutor[Add CLI mandate to orchestration-executor]
+        UpdateOrchExecutor --> CompleteTask6["agentic plan task complete CL-006"]
+        CompleteTask6 --> StartTask7["agentic plan task start CL-007"]
+        StartTask7 --> UpdateOrchPlanning[Add CLI mandate to orchestration-planning]
+        UpdateOrchPlanning --> CompleteTask7["agentic plan task complete CL-007"]
+        CompleteTask7 --> Phase3Complete[Phase 3 Complete]
+    end
+
+    Phase3Complete --> Phase4
+
+    %% ========================================
+    %% PHASE 4: VALIDATION
+    %% ========================================
+    %% Tasks: CL-008, CL-009
+    %% AGENT_ROUTING: test-builder
+
+    subgraph Validation_SG ["Phase 4: Validation"]
+        Phase4[Enter Phase 4] --> StartTask8["agentic plan task start CL-008"]
+        StartTask8 --> SpawnTestBuilder[Spawn test-builder Agent]
+        SpawnTestBuilder --> ValidateYAML[Validate all YAML files]
+        ValidateYAML --> CompleteTask8["agentic plan task complete CL-008"]
+        CompleteTask8 --> StartTask9["agentic plan task start CL-009"]
+        StartTask9 --> SelfReview[Run grep to confirm no manual patterns]
+        SelfReview --> ReviewPassed{All Checks Pass?}
+
+        ReviewPassed -- "No: Patterns Found" --> IdentifyRemaining[Identify remaining patterns]
+        IdentifyRemaining -.-> Phase1
+
+        ReviewPassed -- "Yes: Clean" --> CompleteTask9["agentic plan task complete CL-009"]
+        CompleteTask9 --> Phase4Complete[Phase 4 Complete]
+    end
+
+    %% ========================================
+    %% FINALIZATION
+    %% ========================================
+    Phase4Complete --> ArchivePlan["agentic plan move folder --plan <plan_folder>"]
+    ArchivePlan --> End((End: Guidance Updated))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef entrypoint fill:#90EE90,stroke:#228B22
+    classDef exitpoint fill:#FFB6C1,stroke:#DC143C
+    classDef userpoint fill:#87CEEB,stroke:#4682B4
+    classDef cliaction fill:#FFD700,stroke:#DAA520
+    class Start entrypoint
+    class End exitpoint
+    class AskUser userpoint
+    class RunBootstrap,GetCurrentTask,StartTask1,CompleteTask1,StartTask2,CompleteTask2,StartTask3,CompleteTask3,StartTask4,CompleteTask4,StartTask5,CompleteTask5,StartTask6,CompleteTask6,StartTask7,CompleteTask7,StartTask8,CompleteTask8,StartTask9,CompleteTask9,ArchivePlan cliaction
