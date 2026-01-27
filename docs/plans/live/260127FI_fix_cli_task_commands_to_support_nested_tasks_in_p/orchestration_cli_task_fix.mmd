@@ -1,0 +1,124 @@
+%% =============================================================================
+%% ORCHESTRATION: Fix CLI Task Commands for Nested Tasks
+%% =============================================================================
+%% GOAL: Fix CLI task commands to correctly find tasks nested within phases
+%% PROFILE: Orchestrator-Build
+%% INPUT_PATH: docs/plans/live/260127FI_fix_cli_task_commands_to_support_nested_tasks_in_p/plan_build.yml
+%%
+%% PHASES: Build, Test, BlindTest, SelfReview, UpdateGuidance
+%% AGENT_ROUTING: Build -> build-python, Test -> test-runner, BlindTest -> blind-test
+%% FEEDBACK_TRIGGER: BLIND_TEST_FAILURE -> Build
+%%
+%% STATUS: PENDING
+%% =============================================================================
+
+flowchart TD
+    Start((Start)) --> LoadPlan[Load plan_build.yml]
+
+    %% ========================================
+    %% PHASE 1: BUILD - FIX CLI TASK PARSING
+    %% ========================================
+    LoadPlan --> P1
+
+    subgraph P1_SG ["Phase 1: Build - Fix CLI Task Parsing"]
+        P1[Start Build Phase] --> FI001[FI-001: Update _update_task_status]
+        FI001 --> FI002[FI-002: Verify cmd_task_list]
+        FI002 --> FI003[FI-003: Verify cmd_task_current]
+        FI003 --> FI004[FI-004: Verify cmd_task_status]
+        FI004 --> P1Complete[Build Phase Complete]
+    end
+
+    P1Complete --> P2
+
+    %% ========================================
+    %% PHASE 2: TEST - UNIT TESTS
+    %% ========================================
+    subgraph P2_SG ["Phase 2: Test - Unit Tests"]
+        P2[Start Test Phase] --> FI005[FI-005: Create unit tests]
+        FI005 --> FI006[FI-006: Test task start]
+        FI006 --> FI007[FI-007: Test task complete]
+        FI007 --> FI008[FI-008: Test task list]
+        FI008 --> RunTests{Run pytest}
+        RunTests -- Pass --> P2Complete[Test Phase Complete]
+        RunTests -- Fail --> FixTests[Fix failing tests]
+        FixTests --> RunTests
+    end
+
+    P2Complete --> P3
+
+    %% ========================================
+    %% PHASE 3: BLIND TEST - CLI VALIDATION
+    %% CRITICAL: Feedback loop to Build on failure
+    %% ========================================
+    subgraph P3_SG ["Phase 3: Agent Blind Test - CLI Validation"]
+        P3[Start Blind Test] --> FI009[FI-009: Spawn blind test agent]
+        FI009 --> FI010[FI-010: Test task list]
+        FI010 --> FI011[FI-011: Test task start]
+        FI011 --> FI012[FI-012: Test task complete]
+        FI012 --> FI013[FI-013: Test task current]
+        FI013 --> FI014[FI-014: Test task status]
+        FI014 --> FI015[FI-015: Validate full workflow]
+        FI015 --> BlindTestResult{All Commands Pass?}
+    end
+
+    %% CRITICAL FEEDBACK LOOP
+    BlindTestResult -- "NO - Any Command Fails" --> AnalyzeFailure[Analyze Failure]
+    AnalyzeFailure --> P1
+    BlindTestResult -- "YES - All Pass" --> P3Complete[Blind Test Complete]
+
+    P3Complete --> P4
+
+    %% ========================================
+    %% PHASE 4: AGENT SELF-REVIEW
+    %% ========================================
+    subgraph P4_SG ["Phase 4: Agent Self-Review"]
+        P4[Start Review] --> FI016[FI-016: Review nested task logic]
+        FI016 --> FI017[FI-017: Verify edge case handling]
+        FI017 --> FI018[FI-018: Check consistency]
+        FI018 --> ReviewResult{Review Pass?}
+        ReviewResult -- Issues Found --> FixIssues[Fix Issues]
+        FixIssues --> P1
+        ReviewResult -- Approved --> P4Complete[Review Complete]
+    end
+
+    P4Complete --> P5
+
+    %% ========================================
+    %% PHASE 5: UPDATE GUIDANCE
+    %% ========================================
+    subgraph P5_SG ["Phase 5: Update Guidance"]
+        P5[Start Guidance Update] --> FI019[FI-019: Update cli-commands.yml]
+        FI019 --> FI020[FI-020: Add missing commands]
+        FI020 --> P5Complete[Guidance Updated]
+    end
+
+    P5Complete --> FinalValidation
+
+    %% ========================================
+    %% FINAL VALIDATION
+    %% ========================================
+    subgraph Final_SG ["Final Validation"]
+        FinalValidation[Run All Validation Criteria] --> AllPass{All Criteria Pass?}
+        AllPass -- No --> DebugFinal[Debug and Fix]
+        DebugFinal --> P1
+        AllPass -- Yes --> Complete((Complete))
+    end
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef buildPhase fill:#e1f5fe,stroke:#01579b
+    classDef testPhase fill:#f3e5f5,stroke:#4a148c
+    classDef blindTestPhase fill:#fff3e0,stroke:#e65100
+    classDef reviewPhase fill:#e8f5e9,stroke:#1b5e20
+    classDef guidancePhase fill:#fce4ec,stroke:#880e4f
+    classDef decision fill:#fff9c4,stroke:#f57f17
+    classDef feedbackLoop fill:#ffcdd2,stroke:#c62828
+
+    class P1_SG buildPhase
+    class P2_SG testPhase
+    class P3_SG blindTestPhase
+    class P4_SG reviewPhase
+    class P5_SG guidancePhase
+    class BlindTestResult,ReviewResult,AllPass,RunTests decision
+    class AnalyzeFailure,FixIssues,DebugFinal,FixTests feedbackLoop
