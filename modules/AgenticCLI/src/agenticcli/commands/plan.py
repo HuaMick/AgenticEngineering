@@ -328,17 +328,29 @@ def cmd_scaffold(args):
 
 
 def cmd_status(args):
-    """Show plan status and task summary."""
+    """Show plan status and task summary.
+
+    Enhanced with orchestration status (EN-003, EN-004, EN-005):
+    - Shows orchestration MMD path or MISSING status
+    - Shows deferred reason if plan is deferred
+    - Shows next action guidance for agents
+    """
     from agenticcli.console import (
         console,
         is_json_output,
         print_error,
         print_header,
         print_json,
+        print_key_value,
         print_table,
     )
 
     plan_path = find_plan_folder(args.path)
+
+    # EN-003: Check for orchestration_*.mmd files
+    mmd_files = list(plan_path.glob("orchestration_*.mmd"))
+    has_orchestration = len(mmd_files) > 0
+    orchestration_file = mmd_files[0].name if mmd_files else None
 
     # Flattened structure: YAML files directly in plan_path
     yaml_files = list(plan_path.glob("plan_*.yml"))
@@ -350,6 +362,9 @@ def cmd_status(args):
     total_in_progress = 0
     total_completed = 0
     file_stats = []
+    plan_status = "unknown"
+    deferred_reason = None
+    has_tasks = False
 
     for yaml_file in sorted(yaml_files):
         try:
@@ -361,17 +376,42 @@ def cmd_status(args):
         if not content:
             continue
 
-        # Count tasks by status
+        # Extract plan status and deferred reason (EN-004)
+        if "status" in content:
+            plan_status = content["status"]
+            if plan_status == "deferred" and "deferred_reason" in content:
+                deferred_reason = content["deferred_reason"]
+        else:
+            plan_data = content.get("plan", content.get("feature", {}))
+            if "status" in plan_data:
+                plan_status = plan_data["status"]
+            if plan_status == "deferred" and "deferred_reason" in plan_data:
+                deferred_reason = plan_data["deferred_reason"]
+
+        # Count tasks by status from phases
+        phases = _get_phases_from_content(content)
         pending = 0
         in_progress = 0
         completed = 0
 
-        # Check for phases or implementation_steps
-        plan = content.get("plan", content.get("feature", {}))
-        phases = plan.get("phases", [])
-        steps = plan.get("implementation_steps", [])
+        for phase in phases:
+            tasks = phase.get("tasks", [])
+            if tasks:
+                has_tasks = True
+            for task in tasks:
+                status = task.get("status", "pending")
+                if status == "pending":
+                    pending += 1
+                elif status == "in_progress":
+                    in_progress += 1
+                elif status == "completed":
+                    completed += 1
 
-        for item in phases + steps:
+        # Legacy: implementation_steps
+        plan_data = content.get("plan", content.get("feature", {}))
+        steps = plan_data.get("implementation_steps", [])
+        for item in steps:
+            has_tasks = True
             status = item.get("status", "pending")
             if status == "pending":
                 pending += 1
@@ -396,10 +436,44 @@ def cmd_status(args):
     total = total_pending + total_in_progress + total_completed
     pct = (total_completed / total) * 100 if total > 0 else 0
 
+    # EN-005: Determine next action and command
+    if plan_status == "deferred":
+        action_required = "blocked"
+        next_action = "Resolve blockers"
+        next_command = None
+    elif not has_orchestration:
+        action_required = "needs_planning"
+        next_action = "Spawn orchestration-planning agent"
+        next_command = "agentic entrypoint execute _plan_build --compile"
+    elif not has_tasks or total == 0:
+        action_required = "needs_planning"
+        next_action = "Define tasks in plan"
+        next_command = "agentic entrypoint execute _plan_build --compile"
+    elif total_pending > 0 or total_in_progress > 0:
+        action_required = "execute"
+        next_action = "Execute current task"
+        next_command = f"agentic plan task current --plan {plan_path}"
+    elif total_completed == total and total > 0:
+        action_required = "archive"
+        next_action = "Archive completed plan"
+        next_command = f"agentic plan move folder --plan {plan_path}"
+    else:
+        action_required = "blocked"
+        next_action = "Check plan state"
+        next_command = None
+
     if is_json_output():
         print_json(
             {
                 "plan": plan_path.name,
+                "status": plan_status,
+                "has_orchestration": has_orchestration,
+                "orchestration_file": orchestration_file,
+                "has_tasks": has_tasks,
+                "action_required": action_required,
+                "next_action": next_action,
+                "next_command": next_command,
+                "deferred_reason": deferred_reason,
                 "files": file_stats,
                 "totals": {
                     "pending": total_pending,
@@ -411,6 +485,22 @@ def cmd_status(args):
         )
     else:
         print_header(f"Plan Status: {plan_path.name}")
+
+        # EN-003: Show orchestration status
+        if has_orchestration:
+            console.print(f"[bold]Orchestration:[/bold] [green]{orchestration_file}[/green]")
+        else:
+            console.print("[bold]Orchestration:[/bold] [red]MISSING[/red]")
+            console.print("  [dim]Run: agentic entrypoint execute _plan_build --compile[/dim]")
+
+        console.print(f"[bold]Status:[/bold] {plan_status}")
+
+        # EN-004: Show deferred reason
+        if deferred_reason:
+            console.print(f"[bold]Deferred Reason:[/bold] [yellow]{deferred_reason}[/yellow]")
+
+        console.print(f"[bold]Action Required:[/bold] {action_required}")
+        console.print()
 
         rows = []
         for stat in file_stats:
@@ -436,6 +526,12 @@ def cmd_status(args):
             f"[green]{total_completed} completed[/green]"
         )
         console.print(f"[bold]Progress:[/bold] [cyan]{pct:.1f}%[/cyan]")
+
+        # EN-005: Show next action guidance
+        console.print()
+        console.print(f"[bold]Next Action:[/bold] {next_action}")
+        if next_command:
+            console.print(f"  [dim]Command: {next_command}[/dim]")
 
 
 def is_stub_template(content: dict) -> bool:
@@ -539,9 +635,34 @@ def cmd_validate(args):
 
 
 def cmd_task_start(args):
-    """Mark a task as in_progress."""
+    """Mark a task as in_progress.
+
+    EN-006: Validates that orchestration_*.mmd exists before allowing
+    task execution. Plans must be orchestrated before execution.
+    """
+    from agenticcli.console import (
+        is_json_output,
+        print_error,
+        print_json,
+    )
+
     task_id = args.task_id
     plan_path = find_plan_folder(args.plan)
+
+    # EN-006: Validate orchestration MMD exists before task start
+    mmd_files = list(plan_path.glob("orchestration_*.mmd"))
+    if not mmd_files:
+        if is_json_output():
+            print_json({
+                "error": "Cannot start task - plan has no orchestration_*.mmd",
+                "task_id": task_id,
+                "plan": plan_path.name,
+                "hint": "Run 'agentic entrypoint execute _plan_build --compile' and spawn orchestration-planning agent",
+            })
+        else:
+            print_error("Cannot start task - plan has no orchestration_*.mmd")
+            print("Hint: Run 'agentic entrypoint execute _plan_build --compile' and spawn planner", file=sys.stderr)
+        sys.exit(1)
 
     _update_task_status(plan_path, task_id, "in_progress")
     print(f"Task {task_id} marked as in_progress")
@@ -1012,7 +1133,16 @@ def cmd_archive(args):
 
 
 def cmd_list(args):
-    """List all plans in the repository."""
+    """List all plans in the repository.
+
+    Enhanced with orchestration status fields (EN-001, EN-002):
+    - has_orchestration: Whether plan has orchestration_*.mmd file
+    - action_required: What action the orchestration agent should take
+      - blocked: Plan is deferred or has dependencies
+      - needs_planning: No MMD file or no tasks defined
+      - execute: Has pending tasks ready for execution
+      - archive: All tasks completed, ready to archive
+    """
     from agenticcli.console import (
         console,
         format_status,
@@ -1040,11 +1170,16 @@ def cmd_list(args):
         if not yaml_files:
             continue
 
+        # EN-001: Check for orchestration_*.mmd files
+        mmd_files = list(plan_folder.glob("orchestration_*.mmd"))
+        has_orchestration = len(mmd_files) > 0
+
         # Count tasks across all files
         total_pending = 0
         total_in_progress = 0
         total_completed = 0
         plan_status = "unknown"
+        has_tasks = False
 
         for yaml_file in yaml_files:
             try:
@@ -1055,16 +1190,34 @@ def cmd_list(args):
             if not content:
                 continue
 
-            # Extract plan status if available
+            # Extract plan status if available (check root level first, then nested)
+            if "status" in content:
+                plan_status = content["status"]
+            else:
+                plan_data = content.get("plan", content.get("feature", {}))
+                if "status" in plan_data:
+                    plan_status = plan_data["status"]
+
+            # Count tasks from phases (check both root and nested locations)
+            phases = _get_phases_from_content(content)
+            for phase in phases:
+                tasks = phase.get("tasks", [])
+                if tasks:
+                    has_tasks = True
+                for task in tasks:
+                    status = task.get("status", "pending")
+                    if status == "pending":
+                        total_pending += 1
+                    elif status == "in_progress":
+                        total_in_progress += 1
+                    elif status == "completed":
+                        total_completed += 1
+
+            # Legacy support: count phases/implementation_steps as tasks
             plan_data = content.get("plan", content.get("feature", {}))
-            if "status" in plan_data:
-                plan_status = plan_data["status"]
-
-            # Count tasks
-            phases = plan_data.get("phases", [])
             steps = plan_data.get("implementation_steps", [])
-
-            for item in phases + steps:
+            for item in steps:
+                has_tasks = True
                 status = item.get("status", "pending")
                 if status == "pending":
                     total_pending += 1
@@ -1074,12 +1227,31 @@ def cmd_list(args):
                     total_completed += 1
 
         total = total_pending + total_in_progress + total_completed
+
+        # EN-002: Determine action_required based on plan state
+        # Priority order matters - check from most blocking to least
+        if plan_status == "deferred":
+            action_required = "blocked"
+        elif not has_orchestration:
+            action_required = "needs_planning"
+        elif not has_tasks or total == 0:
+            action_required = "needs_planning"
+        elif total_pending > 0 or total_in_progress > 0:
+            action_required = "execute"
+        elif total_completed == total and total > 0:
+            action_required = "archive"
+        else:
+            action_required = "blocked"
+
         pct = (total_completed / total) * 100 if total > 0 else 0
 
         plans_data.append(
             {
                 "name": plan_folder.name,
                 "status": plan_status,
+                "has_orchestration": has_orchestration,
+                "has_tasks": has_tasks,
+                "action_required": action_required,
                 "pending": total_pending,
                 "in_progress": total_in_progress,
                 "completed": total_completed,
@@ -1099,10 +1271,27 @@ def cmd_list(args):
         rows = []
         for plan in plans_data:
             progress = f"{plan['progress_percent']:.0f}%" if plan["progress_percent"] > 0 else "N/A"
+            # Format orchestration status
+            orch = "[green]Yes[/green]" if plan["has_orchestration"] else "[red]No[/red]"
+            # Format action_required with color coding
+            action = plan["action_required"]
+            if action == "blocked":
+                action_fmt = "[dim]blocked[/dim]"
+            elif action == "needs_planning":
+                action_fmt = "[yellow]needs_planning[/yellow]"
+            elif action == "execute":
+                action_fmt = "[green]execute[/green]"
+            elif action == "archive":
+                action_fmt = "[cyan]archive[/cyan]"
+            else:
+                action_fmt = action
+
             rows.append(
                 [
                     f"[bold]{plan['name']}[/bold]",
                     format_status(plan["status"]),
+                    orch,
+                    action_fmt,
                     f"[dim]{plan['pending']}[/dim]",
                     f"[yellow]{plan['in_progress']}[/yellow]",
                     f"[green]{plan['completed']}[/green]",
@@ -1110,7 +1299,7 @@ def cmd_list(args):
                 ]
             )
 
-        print_table("", ["Plan", "Status", "Pending", "In Prog", "Done", "Progress"], rows)
+        print_table("", ["Plan", "Status", "Orch", "Action", "Pending", "In Prog", "Done", "Progress"], rows)
 
 
 def cmd_move(args, ctx=None):
