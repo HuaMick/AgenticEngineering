@@ -1,0 +1,110 @@
+%% =============================================================================
+%% ORCHESTRATION: Fix Session Spawn Background Mode Bugs
+%% =============================================================================
+%% PLAN: 260128FI_fix_session_spawn_background_mode_bugs
+%% OBJECTIVE: Fix --prompt flag bug and PIPE blocking bug in session spawn
+%%
+%% CLI BOOTSTRAP:
+%%   agentic plan task current --plan docs/plans/live/260128FI_fix_session_spawn_background_mode_bugs
+%%   agentic plan task list --plan docs/plans/live/260128FI_fix_session_spawn_background_mode_bugs
+%%
+%% PHASES: P1 (CLI arg fix), P2 (output handling), P3 (log visibility), P4 (test)
+%% AGENT_ROUTING:
+%%   P1 -> builder-python
+%%   P2 -> builder-python
+%%   P3 -> builder-python
+%%   P4 -> test-runner
+%%
+%% FEEDBACK_TRIGGERS:
+%%   TEST_FAILURE -> ReturnToBuild
+%%   BUILD_FAILURE -> AskUser
+%%
+%% EXECUTION_WORKTREE: /home/code/AgenticEngineering-session-spawn-fix
+%% =============================================================================
+
+flowchart TD
+    Start((Start)) --> ValidateInputs[Validate Plan Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION
+    %% ========================================
+    ValidateInputs --> CheckWorktree{Worktree Exists?}
+    CheckWorktree -- "No" --> CreateWorktree[Switch to Worktree]
+    CheckWorktree -- "Yes" --> GetCurrentTask
+    CreateWorktree --> GetCurrentTask[CLI: agentic plan task current]
+
+    %% ========================================
+    %% PHASE 1: FIX CLI ARGUMENT BUG
+    %% ========================================
+    subgraph P1_SG ["Phase 1: Fix CLI Argument Bug"]
+        GetCurrentTask --> P1Start{Phase P1?}
+        P1Start -- "Yes: SS-001" --> SpawnBuilderP1[Spawn builder-python]
+        SpawnBuilderP1 --> BuildP1[Fix --prompt to positional]
+        BuildP1 --> MarkP1Complete[CLI: agentic plan task complete SS-001]
+    end
+
+    %% ========================================
+    %% PHASE 2: FIX OUTPUT HANDLING
+    %% ========================================
+    subgraph P2_SG ["Phase 2: Fix Output Handling"]
+        MarkP1Complete --> P2Start{Phase P2?}
+        P1Start -- "No" --> P2Start
+        P2Start -- "Yes: SS-002,003" --> SpawnBuilderP2[Spawn builder-python]
+        SpawnBuilderP2 --> BuildP2[Add logs dir + file handles]
+        BuildP2 --> MarkP2Complete[CLI: agentic plan task complete SS-002,003]
+    end
+
+    %% ========================================
+    %% PHASE 3: ADD LOG VISIBILITY
+    %% ========================================
+    subgraph P3_SG ["Phase 3: Add Log Visibility"]
+        MarkP2Complete --> P3Start{Phase P3?}
+        P2Start -- "No" --> P3Start
+        P3Start -- "Yes: SS-004,005,006" --> SpawnBuilderP3[Spawn builder-python]
+        SpawnBuilderP3 --> BuildP3[Store paths + add --show-output]
+        BuildP3 --> MarkP3Complete[CLI: agentic plan task complete SS-004,005,006]
+    end
+
+    %% ========================================
+    %% PHASE 4: TEST AND VALIDATE
+    %% ========================================
+    subgraph P4_SG ["Phase 4: Test and Validate"]
+        MarkP3Complete --> P4Start{Phase P4?}
+        P3Start -- "No" --> P4Start
+        P4Start -- "Yes: SS-007..010" --> SpawnTester[Spawn test-runner]
+        SpawnTester --> RunTests[Execute Test Scenarios]
+        RunTests --> TestResult{All Tests Pass?}
+    end
+
+    %% ========================================
+    %% TEST-FIX LOOP
+    %% ========================================
+    subgraph TestFixLoop_SG ["Test-Fix Loop"]
+        TestResult -- "No: Failures" --> CaptureFailures[Capture Test Failures]
+        CaptureFailures --> CheckIterations{Max Iterations?}
+        CheckIterations -- "No" --> ReturnToBuild[Return to Build Phase]
+        ReturnToBuild --> SpawnBuilderP3
+        CheckIterations -- "Yes" --> EscalateUser((Ask User))
+    end
+
+    %% ========================================
+    %% COMPLETION
+    %% ========================================
+    TestResult -- "Yes: All Pass" --> MarkTestsComplete[CLI: agentic plan task complete SS-007..010]
+    MarkTestsComplete --> HumanApproval{Human Approval?}
+    HumanApproval -- "No" --> EscalateUser
+    HumanApproval -- "Yes" --> ArchivePlan[CLI: agentic plan archive]
+    ArchivePlan --> Success((Plan Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef phase fill:#e1f5fe,stroke:#01579b
+    classDef decision fill:#fff3e0,stroke:#e65100
+    classDef endpoint fill:#c8e6c9,stroke:#2e7d32
+    classDef error fill:#ffcdd2,stroke:#c62828
+
+    class P1_SG,P2_SG,P3_SG,P4_SG phase
+    class CheckWorktree,P1Start,P2Start,P3Start,TestResult,CheckIterations,HumanApproval decision
+    class Start,Success endpoint
+    class EscalateUser error

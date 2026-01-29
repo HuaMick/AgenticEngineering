@@ -155,6 +155,7 @@ class PlanMovementWorkflow:
         task_id: str,
         dry_run: bool = False,
         force: bool = False,
+        silent: bool = False,
     ) -> TaskMoveResult:
         """Move a completed task to plan_completed.yml.
 
@@ -162,10 +163,15 @@ class PlanMovementWorkflow:
             task_id: ID of the task to move.
             dry_run: If True, don't make any changes.
             force: If True, move even if git status is unclean.
+            silent: If True, run without any user interaction (implies force=True).
+                   Skips confirmation prompts and uses sensible defaults.
 
         Returns:
             TaskMoveResult with operation outcome.
         """
+        # Silent mode implies force mode - no prompts, no git checks
+        if silent:
+            force = True
         # Find the task in plan files (directly in plan_path, flattened structure)
         task_data = None
         source_file = None
@@ -252,6 +258,17 @@ class PlanMovementWorkflow:
             if "completed_tasks" not in completed_data:
                 completed_data["completed_tasks"] = []
 
+            # Check for duplicate before appending
+            existing_ids = {t.get("id") for t in completed_data["completed_tasks"] if t.get("id")}
+            if task_id in existing_ids:
+                return TaskMoveResult(
+                    task_id=task_id,
+                    result=MoveResult.SKIPPED,
+                    message=f"Task '{task_id}' already exists in plan_completed.yml",
+                    source_file=source_file.name,
+                    target_file="plan_completed.yml",
+                )
+
             # Add the task
             completed_data["completed_tasks"].append(task_data)
             completed_data["metadata"] = completed_data.get("metadata", {})
@@ -261,28 +278,110 @@ class PlanMovementWorkflow:
             with open(self.completed_file, "w") as f:
                 yaml.dump(completed_data, f, default_flow_style=False, sort_keys=False)
 
+        # Remove the task from the source file to prevent duplicates
+        removal_error = self._remove_task_from_source(source_file, task_id)
+        if removal_error:
+            return TaskMoveResult(
+                task_id=task_id,
+                result=MoveResult.SUCCESS,
+                message=f"Task moved to plan_completed.yml (warning: {removal_error})",
+                source_file=source_file.name,
+                target_file="plan_completed.yml",
+            )
+
         return TaskMoveResult(
             task_id=task_id,
             result=MoveResult.SUCCESS,
-            message="Task moved to plan_completed.yml",
+            message="Task moved to plan_completed.yml and removed from source",
             source_file=source_file.name,
             target_file="plan_completed.yml",
         )
+
+    def _remove_task_from_source(self, source_file: Path, task_id: str) -> Optional[str]:
+        """Remove a task from the source YAML file.
+
+        Handles both flat task lists (plan.tasks, plan.implementation_steps)
+        and nested tasks in phases (plan.phases[].tasks[]).
+
+        Args:
+            source_file: Path to the source YAML file.
+            task_id: ID of the task to remove.
+
+        Returns:
+            None on success, error message string on failure.
+        """
+        try:
+            content = yaml.safe_load(source_file.read_text())
+        except yaml.YAMLError as e:
+            return f"failed to parse source file: {e}"
+
+        if not content:
+            return "source file is empty"
+
+        plan = content.get("plan", content.get("feature", {}))
+        task_removed = False
+
+        # Handle flat task lists (plan.tasks, plan.implementation_steps)
+        for key in ["tasks", "implementation_steps"]:
+            items = plan.get(key, [])
+            if items:
+                original_len = len(items)
+                plan[key] = [item for item in items if item.get("id") != task_id]
+                if len(plan[key]) < original_len:
+                    task_removed = True
+                    break
+
+        # Handle nested tasks in phases (plan.phases[].tasks[])
+        if not task_removed:
+            phases = plan.get("phases", [])
+            for phase in phases:
+                phase_tasks = phase.get("tasks", [])
+                if phase_tasks:
+                    original_len = len(phase_tasks)
+                    phase["tasks"] = [t for t in phase_tasks if t.get("id") != task_id]
+                    if len(phase["tasks"]) < original_len:
+                        task_removed = True
+                        break
+
+        if not task_removed:
+            return f"task '{task_id}' not found in source file for removal"
+
+        # Write back the modified content
+        try:
+            with open(source_file, "w") as f:
+                yaml.dump(
+                    content,
+                    f,
+                    default_flow_style=False,
+                    sort_keys=False,
+                    allow_unicode=True,
+                    width=120,
+                )
+        except OSError as e:
+            return f"failed to write source file: {e}"
+
+        return None
 
     def move_all_completed_tasks(
         self,
         dry_run: bool = False,
         force: bool = False,
+        silent: bool = False,
     ) -> list[TaskMoveResult]:
         """Move all completed tasks to plan_completed.yml.
 
         Args:
             dry_run: If True, don't make any changes.
             force: If True, move even if git status is unclean.
+            silent: If True, run without any user interaction (implies force=True).
+                   Skips confirmation prompts and uses sensible defaults.
 
         Returns:
             List of TaskMoveResult for each task.
         """
+        # Silent mode implies force mode
+        if silent:
+            force = True
         results = []
         completed_task_ids = []
 
@@ -305,7 +404,7 @@ class PlanMovementWorkflow:
 
         # Move each one
         for task_id in completed_task_ids:
-            result = self.move_task_to_completed(task_id, dry_run=dry_run, force=force)
+            result = self.move_task_to_completed(task_id, dry_run=dry_run, force=force, silent=silent)
             results.append(result)
 
         return results
@@ -314,16 +413,22 @@ class PlanMovementWorkflow:
         self,
         dry_run: bool = False,
         force: bool = False,
+        silent: bool = False,
     ) -> FolderMoveResult:
         """Archive the plan folder to docs/plans/completed/.
 
         Args:
             dry_run: If True, don't make any changes.
             force: If True, archive even if git status is unclean.
+            silent: If True, run without any user interaction (implies force=True).
+                   Skips confirmation prompts and uses sensible defaults.
 
         Returns:
             FolderMoveResult with operation outcome.
         """
+        # Silent mode implies force mode - no prompts, no git checks
+        if silent:
+            force = True
         # Determine destination
         # Go up from docs/plans/live/FOLDER to docs/plans/completed/FOLDER
         dest_dir = self.plan_path.parent.parent / "completed" / self.plan_path.name
@@ -373,6 +478,21 @@ class PlanMovementWorkflow:
 
                 with open(archive_meta_file, "w") as f:
                     yaml.dump(data, f, default_flow_style=False)
+
+            # Remove the source folder after successful copy
+            rmtree_error = None
+            try:
+                shutil.rmtree(self.plan_path)
+            except OSError as e:
+                rmtree_error = str(e)
+
+            if rmtree_error:
+                return FolderMoveResult(
+                    source=str(self.plan_path),
+                    destination=str(dest_dir),
+                    result=MoveResult.SUCCESS,
+                    message=f"Archived to {dest_dir} (warning: failed to remove source: {rmtree_error})",
+                )
 
             return FolderMoveResult(
                 source=str(self.plan_path),

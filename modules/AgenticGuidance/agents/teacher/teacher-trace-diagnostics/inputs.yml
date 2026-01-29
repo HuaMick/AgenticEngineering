@@ -228,3 +228,137 @@ inputs:
       3. Flag if recommendation would introduce anti-pattern
          - Rewrite recommendation using effective pattern instead
          - Prefer structural fixes over emphasis fixes
+
+  # RLM (Recursive Language Model) Enforcement Configuration
+  # Reference: modules/AgenticGuidance/assets/definitions/rlm-patterns.yml
+  rlm_enforcement:
+    description: |
+      RLM is MANDATORY for large-context trace analysis. This section defines
+      thresholds, required variables, and validation checks to ensure RLM
+      patterns are properly applied when processing large trace datasets.
+
+    # Thresholds that trigger mandatory RLM usage
+    thresholds:
+      trace_count: 100           # Number of traces that triggers mandatory RLM
+      context_lines: 500         # Total lines of trace data that triggers mandatory RLM
+      session_span: 5            # Number of sessions that triggers mandatory RLM
+      max_recursion_depth: 5     # Maximum allowed recursion depth per rlm-patterns.yml
+      max_active_variables: 10   # Maximum active context variables per rlm-patterns.yml
+
+    # Required RLM variables that MUST be created when thresholds exceeded
+    # Naming follows conventions from rlm-patterns.yml#variable_management
+    required_rlm_variables:
+      context_variables:
+        - name: "CONTEXT_TRACES_RAW"
+          description: "Raw trace data stored as context for programmatic access"
+          required_when: "trace_count >= 100"
+
+        - name: "CONTEXT_TRACES_SUMMARIES"
+          description: "Summarized trace metadata for efficient scanning"
+          required_when: "trace_count >= 100"
+
+        - name: "CONTEXT_TRACES_ERRORS"
+          description: "Filtered subset containing only error traces"
+          required_when: "error_count >= 10"
+
+      filter_variables:
+        - name: "FILTER_BACKTRACKING"
+          description: "Traces exhibiting backtracking friction patterns"
+          required_when: "friction_detection_enabled"
+
+        - name: "FILTER_ERROR_CLUSTERS"
+          description: "Grouped error traces by root cause"
+          required_when: "friction_detection_enabled"
+
+        - name: "FILTER_PATH_AMBIGUITY"
+          description: "Traces with hesitation or multiple attempts"
+          required_when: "friction_detection_enabled"
+
+        - name: "FILTER_TOKEN_ANOMALY"
+          description: "Traces with unusual token consumption"
+          required_when: "friction_detection_enabled"
+
+      accumulator_variables:
+        - name: "ACCUMULATOR_FRICTION_FINDINGS"
+          description: "Accumulated friction patterns detected across all trace chunks"
+          required_when: "trace_count >= 100"
+
+        - name: "ACCUMULATOR_GUIDANCE_RECOMMENDATIONS"
+          description: "Accumulated guidance improvement recommendations"
+          required_when: "trace_count >= 100"
+
+        - name: "ACCUMULATOR_EVIDENCE"
+          description: "Accumulated evidence supporting each finding"
+          required_when: "trace_count >= 100"
+
+      final_variables:
+        - name: "FINAL_ANALYSIS"
+          description: "Final aggregated analysis results - only set after all branches complete"
+          required_when: "always_for_rlm"
+
+    # Validation checklist for RLM compliance
+    rlm_compliance_checklist:
+      pre_processing:
+        - check: "threshold_evaluation"
+          description: "Evaluate if RLM thresholds are exceeded BEFORE loading traces"
+          validation: "trace_count OR context_lines OR session_span exceeds threshold"
+
+        - check: "context_storage"
+          description: "Store trace data as named context variables, not direct loading"
+          validation: "CONTEXT_* variables created before analysis begins"
+
+        - check: "programmatic_filtering"
+          description: "Use code to filter traces, not full context loading"
+          validation: "Traces accessed via get_context() with filter patterns"
+
+      during_processing:
+        - check: "bounded_recursion"
+          description: "Recursion depth must be bounded"
+          validation: "max_depth parameter <= 5 on all recursive operations"
+
+        - check: "accumulator_usage"
+          description: "Results accumulate in named variables, not inline"
+          validation: "ACCUMULATOR_* variables used for intermediate results"
+
+        - check: "variable_naming"
+          description: "Variables follow hierarchical naming convention"
+          validation: "All variables match CONTEXT_*, FILTER_*, ACCUMULATOR_*, or FINAL_*"
+
+        - check: "variable_limit"
+          description: "Active variable count within limits"
+          validation: "Active context variables <= 10"
+
+      post_processing:
+        - check: "completion_signaling"
+          description: "FINAL signal only after all branches complete"
+          validation: "FINAL_ANALYSIS set only at top level, after accumulator aggregation"
+
+        - check: "rlm_usage_reporting"
+          description: "Report RLM usage in output schema"
+          validation: "rlm_context_usage field populated in trace_diagnostics_report"
+
+    # Error messages for RLM violations
+    violation_messages:
+      threshold_exceeded_no_rlm: |
+        VIOLATION: Trace count ({trace_count}) exceeds RLM threshold (100) but RLM
+        decomposition was not applied. Re-run analysis using RLM patterns.
+        Reference: modules/AgenticGuidance/assets/definitions/rlm-patterns.yml
+
+      missing_context_variable: |
+        VIOLATION: Required context variable {variable_name} was not created.
+        When trace count >= 100, CONTEXT_TRACES_SUMMARIES MUST be created.
+
+      missing_accumulator: |
+        VIOLATION: Accumulator variable {variable_name} was not used.
+        Results MUST accumulate in ACCUMULATOR_* variables, not inline.
+
+      premature_final: |
+        VIOLATION: FINAL_ANALYSIS signaled before all processing branches completed.
+        Ensure all recursive branches contribute to accumulators before FINAL.
+
+      unbounded_recursion: |
+        VIOLATION: Recursion depth exceeds maximum (5). Add depth bounds to recursive calls.
+
+      variable_limit_exceeded: |
+        WARNING: Active context variables ({count}) exceed recommended limit (10).
+        Consider cleaning up unused variables to prevent context soup anti-pattern.

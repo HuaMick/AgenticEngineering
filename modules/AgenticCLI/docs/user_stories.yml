@@ -1,0 +1,196 @@
+# User Stories for AgenticCLI Plan Commands
+#
+# Format:
+#   - id: Unique identifier (US-PLAN-XXX)
+#   - as: Who is performing the action
+#   - i_want: What they want to do
+#   - so_that: Why they want to do it
+#   - command: The CLI command
+#   - acceptance_criteria: List of criteria for success
+
+user_stories:
+
+  # =============================================================================
+  # Plan Initialization
+  # =============================================================================
+
+  - id: US-PLAN-001
+    as: orchestration agent
+    i_want: initialize a new plan with a worktree and plan folder
+    so_that: I have a dedicated workspace for implementing a feature with proper naming convention
+    command: agentic plan init <branch> [--description <desc>] [--base <base-branch>]
+    acceptance_criteria:
+      - Creates git worktree if not exists
+      - Creates plan folder in docs/plans/live/ of main worktree
+      - Uses YYMMDDXX_description naming convention
+      - Returns JSON output with worktree path, plan folder path, and branch name
+      - Exits with code 0 on success
+      - Exits with code 1 if worktree creation fails
+      - Exits with code 2 if folder already exists
+      - Exits with code 3 if invalid branch name or description
+
+  # =============================================================================
+  # Task Management
+  # =============================================================================
+
+  - id: US-PLAN-002
+    as: builder agent
+    i_want: add a new task to the current plan
+    so_that: I can track additional work items discovered during implementation
+    command: agentic plan task add <description> [--plan <path>] [--phase <phase-id>] [--id <custom-id>] [--priority <level>]
+    acceptance_criteria:
+      - Creates task entry in target plan file
+      - Auto-generates task ID if not provided
+      - Assigns to specified phase or last phase by default
+      - Sets initial status to pending
+      - Supports priority levels (low, medium, high)
+      - Returns task ID and file location
+
+  - id: US-PLAN-003
+    as: orchestration agent
+    i_want: list all tasks in the current plan
+    so_that: I can see what work remains and plan agent assignments
+    command: agentic plan task list [--plan <path>] [--status <status>] [--verbose]
+    acceptance_criteria:
+      - Lists all tasks from plan_*.yml files
+      - Supports filtering by status (pending, in_progress, completed, all)
+      - Shows task ID, description, status, and phase
+      - Verbose mode shows guidance and success criteria
+      - Returns JSON array in machine-readable mode
+
+  - id: US-PLAN-004
+    as: builder agent
+    i_want: get the current task to work on
+    so_that: I know exactly what to implement next without reviewing the entire plan
+    command: agentic plan task current [--plan <path>]
+    acceptance_criteria:
+      - Returns first in_progress task if any exists
+      - Returns first pending task if no in_progress tasks
+      - Returns null/empty if all tasks completed
+      - Includes full task details (inputs, target_files, guidance, success_criteria)
+      - Provides agent_type hint if specified in plan
+
+  - id: US-PLAN-005
+    as: builder agent
+    i_want: mark a task as started
+    so_that: other agents know this task is being worked on
+    command: agentic plan task start <task-id> [--plan <path>]
+    acceptance_criteria:
+      - Updates task status to in_progress
+      - Validates orchestration MMD exists before allowing task start
+      - Fails with error if plan has no orchestration file
+      - Updates the correct plan_*.yml file
+      - Returns success message with task ID
+
+  - id: US-PLAN-006
+    as: builder agent
+    i_want: mark a task as completed
+    so_that: the plan reflects actual progress
+    command: agentic plan task complete <task-id> [--plan <path>]
+    acceptance_criteria:
+      - Updates task status to completed
+      - Updates the correct plan_*.yml file
+      - Returns success message with task ID
+
+  - id: US-PLAN-007
+    as: builder agent
+    i_want: update a task status with optional note
+    so_that: I can record progress details and handle various status transitions
+    command: agentic plan task update <task-id> <status> [--plan <path>] [--note <note>]
+    acceptance_criteria:
+      - Updates task to specified status (pending, in_progress, completed, blocked)
+      - Validates status transition is valid
+      - Adds completion_note if provided
+      - Adds completed_at timestamp for completed tasks
+      - Returns success message with task ID and new status
+
+  - id: US-PLAN-008
+    as: orchestration agent
+    i_want: view detailed status for a specific task
+    so_that: I can provide complete context to builder agents
+    command: agentic plan task status <task-id> [--plan <path>]
+    acceptance_criteria:
+      - Shows task description, status, phase info
+      - Shows inputs and target files
+      - Shows guidance and success criteria
+      - Returns structured JSON in machine-readable mode
+      - Exits with error if task not found
+
+  # =============================================================================
+  # Plan Status and Validation
+  # =============================================================================
+
+  - id: US-PLAN-009
+    as: orchestration agent
+    i_want: view the overall status of a plan
+    so_that: I can determine the next action to take
+    command: agentic plan status [--path <path>]
+    acceptance_criteria:
+      - Shows plan name and overall status
+      - Shows orchestration status (has MMD file or MISSING)
+      - Shows task counts by status (pending, in_progress, completed)
+      - Shows progress percentage
+      - Shows deferred_reason if plan is deferred
+      - Provides action_required field (blocked, needs_planning, execute, archive)
+      - Provides next_action guidance with suggested command
+      - Returns structured JSON in machine-readable mode
+
+  - id: US-PLAN-010
+    as: orchestration agent
+    i_want: validate a plan folder structure and content
+    so_that: I can ensure plans meet quality standards before execution
+    command: agentic plan validate <path> [--strict]
+    acceptance_criteria:
+      - Checks for required plan_*.yml files
+      - Validates YAML syntax
+      - Detects stub templates that need population
+      - Checks for orchestration_*.mmd file
+      - Compares phases and tasks between YAML and MMD
+      - Reports errors, warnings, and orchestration validation results
+      - Strict mode fails on stub templates and missing orchestration
+      - Exits with code 1 if validation fails
+
+  # =============================================================================
+  # Plan Archival and Movement
+  # =============================================================================
+
+  - id: US-PLAN-011
+    as: orchestration agent
+    i_want: archive a completed plan folder
+    so_that: completed work is preserved and the live folder stays clean
+    command: agentic plan archive <path>
+    acceptance_criteria:
+      - Copies plan folder from live/ to completed/
+      - Updates archived_date in plan_completed.yml
+      - Prompts for confirmation if destination exists
+      - Preserves all plan files and structure
+
+  - id: US-PLAN-012
+    as: orchestration agent
+    i_want: move completed tasks or archive the plan folder
+    so_that: I can organize completed work appropriately
+    command: agentic plan move <task|tasks|folder> [--plan <path>] [--dry-run] [--force]
+    acceptance_criteria:
+      - "move task <id>: Moves single completed task to plan_completed.yml"
+      - "move tasks: Moves all completed tasks to plan_completed.yml"
+      - "move folder: Archives entire plan to completed directory"
+      - Dry-run mode shows what would be moved without making changes
+      - Force mode skips confirmation prompts
+      - Returns detailed results for each operation
+
+  # =============================================================================
+  # Plan Listing
+  # =============================================================================
+
+  - id: US-PLAN-013
+    as: orchestration agent
+    i_want: list all plans in the repository
+    so_that: I can see which plans need attention and their status
+    command: agentic plan list
+    acceptance_criteria:
+      - Lists all plan folders in docs/plans/live/
+      - Shows plan name, status, orchestration status
+      - Shows action_required for each plan (blocked, needs_planning, execute, archive)
+      - Shows task counts (pending, in_progress, completed)
+      - Shows progress percentage
+      - Returns JSON array in machine-readable mode

@@ -3,6 +3,7 @@
 Handles planning folder operations and task tracking.
 """
 
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -36,6 +37,72 @@ def _get_phase_id(phase: dict) -> str:
         Phase ID string, empty if not found.
     """
     return phase.get("phase_id", "") or phase.get("id", "")
+
+
+def is_plan_fully_completed(plan_folder: Path) -> bool:
+    """Check if all tasks across all plan files are completed.
+
+    Reads all plan_*.yml files in the folder and checks if every task
+    has status "completed". Used to determine if a plan is ready for archival.
+
+    Args:
+        plan_folder: Path to the plan folder containing plan_*.yml files.
+
+    Returns:
+        True if ALL tasks across ALL plan files have status "completed",
+        False otherwise. Returns False if no plan files are found or
+        if there are no tasks defined.
+
+    Edge cases:
+        - No plan_*.yml files found: Returns False
+        - Plan files with no tasks: Returns False (nothing to complete)
+        - Mixed statuses across files: Returns False
+        - YAML parse errors: Skips the file (counts as incomplete)
+    """
+    yaml_files = list(plan_folder.glob("plan_*.yml"))
+
+    # No plan files found - not completed
+    if not yaml_files:
+        return False
+
+    total_tasks = 0
+    completed_tasks = 0
+
+    for yaml_file in yaml_files:
+        try:
+            content = yaml.safe_load(yaml_file.read_text())
+        except yaml.YAMLError:
+            # Parse error - treat as incomplete
+            return False
+
+        if not content:
+            continue
+
+        # Count tasks from phases structure
+        phases = _get_phases_from_content(content)
+        for phase in phases:
+            tasks = phase.get("tasks", [])
+            for task in tasks:
+                total_tasks += 1
+                status = task.get("status", "pending")
+                if status == "completed":
+                    completed_tasks += 1
+
+        # Legacy: implementation_steps
+        plan_data = content.get("plan", content.get("feature", {}))
+        steps = plan_data.get("implementation_steps", [])
+        for item in steps:
+            total_tasks += 1
+            status = item.get("status", "pending")
+            if status == "completed":
+                completed_tasks += 1
+
+    # No tasks defined - not completed
+    if total_tasks == 0:
+        return False
+
+    # All tasks must be completed
+    return completed_tasks == total_tasks
 
 
 def handle(args, ctx=None):
@@ -75,12 +142,40 @@ def handle(args, ctx=None):
             sys.exit(1)
     elif args.plan_command == "archive":
         cmd_archive(args)
+    elif args.plan_command == "unarchive":
+        cmd_unarchive(args, ctx)
     elif args.plan_command == "list":
         cmd_list(args)
     elif args.plan_command == "move":
         cmd_move(args, ctx)
+    elif args.plan_command == "phase":
+        if args.phase_action == "add":
+            cmd_phase_add(args, ctx)
+        elif args.phase_action == "list":
+            cmd_phase_list(args, ctx)
+        elif args.phase_action == "update":
+            cmd_phase_update(args, ctx)
+        else:
+            print("Usage: agentic plan phase <add|list|update>", file=sys.stderr)
+            sys.exit(1)
+    elif args.plan_command == "orchestration":
+        if args.orchestration_action == "generate":
+            cmd_orchestration_generate(args, ctx)
+        elif args.orchestration_action == "validate":
+            cmd_orchestration_validate(args, ctx)
+        else:
+            print("Usage: agentic plan orchestration <generate|validate>", file=sys.stderr)
+            sys.exit(1)
+    elif args.plan_command == "stories":
+        if args.stories_action == "list":
+            cmd_stories_list(args, ctx)
+        elif args.stories_action == "test":
+            cmd_stories_test(args, ctx)
+        else:
+            print("Usage: agentic plan stories <list|test>", file=sys.stderr)
+            sys.exit(1)
     else:
-        print("Usage: agentic plan <init|scaffold|status|validate|task|archive|list|move>", file=sys.stderr)
+        print("Usage: agentic plan <init|scaffold|status|validate|task|archive|unarchive|list|move|phase|orchestration|stories>", file=sys.stderr)
         sys.exit(1)
 
 
@@ -89,12 +184,60 @@ def find_plan_folder(path: str | None = None) -> Path:
 
     Args:
         path: Explicit path to plan folder, or None to auto-detect.
+              Can be a full path, or a partial folder name to search for
+              in docs/plans/live/ (e.g., "260129FI" matches "260129FI_cli_bug_fixes").
 
     Returns:
         Path to the plan folder.
     """
     if path:
-        return Path(path)
+        # First check if path exists as-is
+        path_obj = Path(path)
+        if path_obj.exists() and path_obj.is_dir():
+            return path_obj
+
+        # Path doesn't exist - search for matching folder in docs/plans/live/
+        # Find repo root to locate plans directory
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "--show-toplevel"],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            repo_root = Path(result.stdout.strip())
+        except subprocess.CalledProcessError:
+            # Not in a git repo, can't search for plans
+            print(f"Error: Path '{path}' not found and not in a git repository.", file=sys.stderr)
+            sys.exit(1)
+
+        plans_live_dir = repo_root / "docs" / "plans" / "live"
+        if plans_live_dir.exists():
+            # Search for matching folders
+            search_name = path_obj.name if path_obj.name else path
+            exact_match = None
+            partial_matches = []
+
+            for item in plans_live_dir.iterdir():
+                if item.is_dir():
+                    if item.name == search_name:
+                        # Exact match - return immediately
+                        exact_match = item
+                        break
+                    elif item.name.startswith(search_name):
+                        # Partial match (e.g., "260129FI" matches "260129FI_cli_bug_fixes")
+                        partial_matches.append(item)
+
+            if exact_match:
+                return exact_match
+            if partial_matches:
+                # Return first partial match (sorted for consistency)
+                partial_matches.sort(key=lambda p: p.name)
+                return partial_matches[0]
+
+        # No match found
+        print(f"Error: Plan folder '{path}' not found.", file=sys.stderr)
+        sys.exit(1)
 
     # Auto-detect: look for docs/plans/live/ in current directory tree
     cwd = Path.cwd()
@@ -565,8 +708,80 @@ def is_stub_template(content: dict) -> bool:
     return False
 
 
+def _parse_mmd_phases(mmd_content: str) -> list[str]:
+    """Parse phase IDs from MMD file content.
+
+    Looks for:
+    - subgraph patterns: subgraph "Phase 1: Name" or subgraph Phase1_SG
+    - Phase node patterns: P1[...], Phase1[...]
+
+    Args:
+        mmd_content: Raw MMD file content.
+
+    Returns:
+        List of phase IDs found (e.g., ["P1", "P2", "P3"]).
+    """
+    import re
+
+    phases = set()
+
+    # Pattern 1: subgraph "Phase N: Name" or subgraph Phase_N_SG
+    # Examples: subgraph "Phase 1: Plan List Enhancement"
+    subgraph_pattern = r'subgraph\s+["\']?(?:Phase\s*)?(\d+|P\d+)[:\s]'
+    for match in re.finditer(subgraph_pattern, mmd_content, re.IGNORECASE):
+        phase_num = match.group(1)
+        if phase_num.isdigit():
+            phases.add(f"P{phase_num}")
+        else:
+            phases.add(phase_num.upper())
+
+    # Pattern 2: subgraph with ID like "Phase1_SG" or "CLISessionCommands_SG"
+    # We skip these as they are internal subgraph names, not phase IDs
+
+    # Pattern 3: Phase node definitions like P1[P1: description] or P1[Enter Phase 1]
+    phase_node_pattern = r'\b(P\d+)\s*\['
+    for match in re.finditer(phase_node_pattern, mmd_content):
+        phases.add(match.group(1).upper())
+
+    return sorted(phases)
+
+
+def _parse_mmd_tasks(mmd_content: str) -> list[str]:
+    """Parse task IDs from MMD file content.
+
+    Looks for task node patterns like:
+    - P1_T1[EN-001: description]
+    - EN-001, EN-002, CC-001, etc.
+
+    Args:
+        mmd_content: Raw MMD file content.
+
+    Returns:
+        List of task IDs found.
+    """
+    import re
+
+    tasks = set()
+
+    # Pattern: Task IDs like EN-001, CC-001, etc. (2-3 letter prefix + hyphen + 3 digits)
+    task_id_pattern = r'\b([A-Z]{2,3}-\d{3})\b'
+    for match in re.finditer(task_id_pattern, mmd_content):
+        tasks.add(match.group(1))
+
+    return sorted(tasks)
+
+
 def cmd_validate(args):
-    """Validate plan folder structure and YAML."""
+    """Validate plan folder structure and YAML.
+
+    Enhanced with orchestration validation (EN-007):
+    - Checks for orchestration_*.mmd file
+    - Parses MMD to extract phase references
+    - Compares with phases in plan_*.yml files
+    - Reports validation results (PASS/FAIL with details)
+    """
+    from agenticcli.console import is_json_output, print_json
+
     plan_path = Path(args.path)
     strict = getattr(args, "strict", False)
     errors = []
@@ -608,29 +823,128 @@ def cmd_validate(args):
             else:
                 warnings.append(f"{stub_file}: {stub_message}")
 
+    # EN-007: Orchestration validation
+    mmd_files = list(plan_path.glob("orchestration_*.mmd"))
+    orchestration_result = {"status": "PASS", "details": []}
+
+    if not mmd_files:
+        orchestration_result["status"] = "FAIL"
+        orchestration_result["details"].append("Missing: orchestration_*.mmd")
+        orchestration_result["details"].append("Action: Spawn orchestration-planning agent")
+        orchestration_result["details"].append("Command: agentic entrypoint execute _plan_build --compile")
+        if strict:
+            errors.append("Missing orchestration_*.mmd file")
+        else:
+            warnings.append("Missing orchestration_*.mmd file")
+    else:
+        # Parse MMD for phases and tasks
+        mmd_file = mmd_files[0]
+        try:
+            mmd_content = mmd_file.read_text()
+            mmd_phases = _parse_mmd_phases(mmd_content)
+            mmd_tasks = _parse_mmd_tasks(mmd_content)
+
+            # Collect phases and tasks from YAML
+            yaml_phases = set()
+            yaml_tasks = set()
+
+            for yaml_file in yaml_files:
+                try:
+                    content = yaml.safe_load(yaml_file.read_text())
+                    if not content:
+                        continue
+                    phases = _get_phases_from_content(content)
+                    for phase in phases:
+                        phase_id = _get_phase_id(phase)
+                        if phase_id:
+                            yaml_phases.add(phase_id.upper())
+                        for task in phase.get("tasks", []):
+                            task_id = task.get("id") or task.get("task_id", "")
+                            if task_id:
+                                yaml_tasks.add(task_id.upper())
+                except yaml.YAMLError:
+                    continue
+
+            # Compare phases
+            mmd_phase_set = set(p.upper() for p in mmd_phases)
+            if yaml_phases and mmd_phase_set:
+                missing_in_mmd = yaml_phases - mmd_phase_set
+                missing_in_yaml = mmd_phase_set - yaml_phases
+
+                if missing_in_mmd:
+                    orchestration_result["details"].append(
+                        f"Phases in YAML but not in MMD: {', '.join(sorted(missing_in_mmd))}"
+                    )
+                if missing_in_yaml:
+                    orchestration_result["details"].append(
+                        f"Phases in MMD but not in YAML: {', '.join(sorted(missing_in_yaml))}"
+                    )
+
+            # Compare tasks
+            mmd_task_set = set(t.upper() for t in mmd_tasks)
+            if yaml_tasks and mmd_task_set:
+                missing_tasks_in_mmd = yaml_tasks - mmd_task_set
+                if missing_tasks_in_mmd and len(missing_tasks_in_mmd) > len(yaml_tasks) // 2:
+                    # Only warn if more than half the tasks are missing
+                    orchestration_result["details"].append(
+                        f"Many YAML tasks not referenced in MMD ({len(missing_tasks_in_mmd)} tasks)"
+                    )
+
+            # Set status based on findings
+            if orchestration_result["details"]:
+                orchestration_result["status"] = "WARN"
+            else:
+                orchestration_result["details"].append(f"Orchestration file: {mmd_file.name}")
+                orchestration_result["details"].append(f"Phases found: {len(mmd_phases)}")
+                orchestration_result["details"].append(f"Tasks referenced: {len(mmd_tasks)}")
+
+        except IOError as e:
+            orchestration_result["status"] = "FAIL"
+            orchestration_result["details"].append(f"Cannot read MMD: {e}")
+            errors.append(f"Cannot read {mmd_file.name}: {e}")
+
+    # Determine overall validation result
+    has_errors = len(errors) > 0
+    overall_status = "FAIL" if has_errors else ("WARN" if warnings else "PASS")
+
     # Report results
-    print(f"Validating: {plan_path}")
-    print("=" * 60)
+    if is_json_output():
+        print_json({
+            "plan": plan_path.name,
+            "status": overall_status,
+            "orchestration": orchestration_result,
+            "errors": errors,
+            "warnings": warnings,
+            "stub_files": stub_files,
+        })
+    else:
+        print(f"Validating: {plan_path}")
+        print("=" * 60)
 
-    if errors:
-        print("\nErrors:")
-        for err in errors:
-            print(f"  - {err}")
+        # Orchestration validation section
+        print(f"\nOrchestration: {orchestration_result['status']}")
+        for detail in orchestration_result["details"]:
+            print(f"  - {detail}")
 
-    if warnings:
-        print("\nWarnings:")
-        for warn in warnings:
-            print(f"  - {warn}")
+        if errors:
+            print("\nErrors:")
+            for err in errors:
+                print(f"  - {err}")
 
-    # Special message for stub templates
-    if stub_files and not strict:
-        print("\nNote: Stub templates detected. Use --strict to fail validation on stubs.")
-        print("      Either populate these files with content or delete them if unused.")
+        if warnings:
+            print("\nWarnings:")
+            for warn in warnings:
+                print(f"  - {warn}")
 
-    if not errors and not warnings:
-        print("  All checks passed")
+        # Special message for stub templates
+        if stub_files and not strict:
+            print("\nNote: Stub templates detected. Use --strict to fail validation on stubs.")
+            print("      Either populate these files with content or delete them if unused.")
 
-    if errors:
+        if not errors and not warnings and orchestration_result["status"] == "PASS":
+            print("\n  All checks passed")
+
+    if has_errors:
         sys.exit(1)
 
 
@@ -669,12 +983,37 @@ def cmd_task_start(args):
 
 
 def cmd_task_complete(args):
-    """Mark a task as completed."""
+    """Mark a task as completed.
+
+    After marking the task complete, checks if all tasks in the plan are
+    completed and triggers auto-archival if so (unless --no-archive is set).
+    """
+    from agenticcli.console import print_info, print_success
+
     task_id = args.task_id
     plan_path = find_plan_folder(args.plan)
+    no_archive = getattr(args, "no_archive", False)
 
     _update_task_status(plan_path, task_id, "completed")
     print(f"Task {task_id} marked as completed")
+
+    # Check if all tasks are completed and trigger auto-archival
+    if not no_archive and is_plan_fully_completed(plan_path):
+        print_info("All tasks completed. Auto-archiving plan...")
+        try:
+            from agenticguidance.services import MoveResult, PlanMovementWorkflow
+
+            workflow = PlanMovementWorkflow(plan_path)
+            # Use silent=True for auto-archive: no prompts, skips git checks
+            result = workflow.archive_plan_folder(dry_run=False, silent=True)
+
+            if result.result == MoveResult.SUCCESS:
+                print_success(result.message)
+            else:
+                # Archive failed but task update succeeded - don't fail the command
+                print(f"Auto-archive skipped: {result.message}", file=sys.stderr)
+        except ImportError:
+            print("Auto-archive unavailable: PlanMovementWorkflow not found", file=sys.stderr)
 
 
 def _update_task_status(plan_path: Path, task_id: str, new_status: str):
@@ -1132,6 +1471,152 @@ def cmd_archive(args):
     print(f"Archived plan to: {dest_dir}")
 
 
+def cmd_unarchive(args, ctx=None):
+    """Move a plan folder from completed/ back to live/.
+
+    This is the reverse of archiving - useful when a plan was archived
+    prematurely or needs to be resumed.
+
+    Args:
+        args: Parsed arguments with plan name and optional force flag.
+        ctx: Optional CLIContext.
+    """
+    import shutil
+
+    from agenticcli.console import (
+        console,
+        is_json_output,
+        print_error,
+        print_json,
+        print_success,
+        print_warning,
+    )
+
+    plan_name = args.plan
+    force = getattr(args, "force", False)
+
+    # Find the repository root by looking for docs/plans
+    cwd = Path.cwd()
+    plans_base = cwd / "docs" / "plans"
+
+    if not plans_base.exists():
+        print_error("No docs/plans directory found in current repository.")
+        sys.exit(1)
+
+    completed_dir = plans_base / "completed"
+    live_dir = plans_base / "live"
+
+    if not completed_dir.exists():
+        print_error("No docs/plans/completed directory found.")
+        sys.exit(1)
+
+    # Find the plan in completed/
+    # Support both exact name and partial match
+    source_path = None
+
+    # First try exact match
+    exact_path = completed_dir / plan_name
+    if exact_path.exists() and exact_path.is_dir():
+        source_path = exact_path
+    else:
+        # Try to find by partial match (folder name contains plan_name)
+        matches = [
+            d for d in completed_dir.iterdir()
+            if d.is_dir() and plan_name.lower() in d.name.lower()
+        ]
+        if len(matches) == 1:
+            source_path = matches[0]
+        elif len(matches) > 1:
+            if is_json_output():
+                print_json({
+                    "error": "Multiple plans match the given name",
+                    "matches": [m.name for m in matches],
+                })
+            else:
+                print_error(f"Multiple plans match '{plan_name}':")
+                for m in matches:
+                    console.print(f"  - {m.name}")
+                console.print("\nPlease specify the full folder name.")
+            sys.exit(1)
+
+    if source_path is None:
+        if is_json_output():
+            print_json({
+                "error": f"Plan '{plan_name}' not found in completed/",
+                "searched_in": str(completed_dir),
+            })
+        else:
+            print_error(f"Plan '{plan_name}' not found in {completed_dir}")
+        sys.exit(1)
+
+    # Check destination
+    dest_path = live_dir / source_path.name
+
+    if dest_path.exists():
+        if is_json_output():
+            print_json({
+                "error": "Destination already exists",
+                "source": str(source_path),
+                "destination": str(dest_path),
+            })
+        else:
+            print_error(f"Destination already exists: {dest_path}")
+            console.print("[dim]Remove or rename the existing folder first.[/dim]")
+        sys.exit(1)
+
+    # Confirm unless --force is set
+    if not force and not is_json_output():
+        console.print(f"[bold]Unarchiving plan:[/bold] {source_path.name}")
+        console.print(f"  From: {source_path}")
+        console.print(f"  To:   {dest_path}")
+        response = input("\nProceed? [y/N] ")
+        if response.lower() != "y":
+            print_warning("Aborted")
+            sys.exit(0)
+
+    # Ensure live directory exists
+    live_dir.mkdir(parents=True, exist_ok=True)
+
+    # Move the folder
+    try:
+        shutil.move(str(source_path), str(dest_path))
+    except OSError as e:
+        if is_json_output():
+            print_json({
+                "error": f"Failed to move folder: {e}",
+                "source": str(source_path),
+                "destination": str(dest_path),
+            })
+        else:
+            print_error(f"Failed to move folder: {e}")
+        sys.exit(1)
+
+    # Update metadata to reflect unarchival
+    completed_file = dest_path / "plan_completed.yml"
+    if completed_file.exists():
+        try:
+            data = yaml.safe_load(completed_file.read_text())
+            if data is None:
+                data = {}
+            data["unarchived_date"] = datetime.now().strftime("%Y-%m-%d")
+            data["unarchived_from"] = str(source_path)
+            with open(completed_file, "w") as f:
+                yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+        except yaml.YAMLError:
+            pass  # Non-fatal if metadata update fails
+
+    # Output result
+    if is_json_output():
+        print_json({
+            "result": "success",
+            "source": str(source_path),
+            "destination": str(dest_path),
+            "plan_name": source_path.name,
+        })
+    else:
+        print_success(f"Unarchived plan to: {dest_path}")
+
+
 def cmd_list(args):
     """List all plans in the repository.
 
@@ -1409,6 +1894,9 @@ def cmd_task_update(args, ctx=None):
     Enables agents to persist progress without holding plan in context.
     Modifies EXISTING plan files created by planner agents.
 
+    After marking a task as completed, checks if all tasks in the plan are
+    completed and triggers auto-archival if so (unless --no-archive is set).
+
     Args:
         args: Parsed arguments with task_id, status, optional note.
         ctx: Optional CLIContext.
@@ -1416,6 +1904,7 @@ def cmd_task_update(args, ctx=None):
     from agenticcli.console import (
         is_json_output,
         print_error,
+        print_info,
         print_json,
         print_success,
         print_warning,
@@ -1424,6 +1913,7 @@ def cmd_task_update(args, ctx=None):
     task_id = args.task_id
     new_status = args.status
     note = getattr(args, "note", None)
+    no_archive = getattr(args, "no_archive", False)
     plan_path = find_plan_folder(getattr(args, "plan", None))
 
     # Flattened structure: YAML files directly in plan_path
@@ -1516,6 +2006,36 @@ def cmd_task_update(args, ctx=None):
         })
     else:
         print_success(f"Updated task {task_id} to '{new_status}'")
+
+    # Check if all tasks are completed and trigger auto-archival
+    if new_status == "completed" and not no_archive and is_plan_fully_completed(plan_path):
+        if is_json_output():
+            # For JSON output, we'll add archive info to the response
+            pass  # Archival info will be printed separately
+        print_info("All tasks completed. Auto-archiving plan...")
+        try:
+            from agenticguidance.services import MoveResult, PlanMovementWorkflow
+
+            workflow = PlanMovementWorkflow(plan_path)
+            # Use silent=True for auto-archive: no prompts, skips git checks
+            result = workflow.archive_plan_folder(dry_run=False, silent=True)
+
+            if is_json_output():
+                print_json({
+                    "auto_archive": True,
+                    "archive_result": result.result.value,
+                    "archive_message": result.message,
+                    "destination": getattr(result, "destination", None),
+                })
+            else:
+                if result.result == MoveResult.SUCCESS:
+                    print_success(result.message)
+                else:
+                    # Archive failed but task update succeeded - don't fail the command
+                    print(f"Auto-archive skipped: {result.message}", file=sys.stderr)
+        except ImportError:
+            if not is_json_output():
+                print("Auto-archive unavailable: PlanMovementWorkflow not found", file=sys.stderr)
 
 
 def cmd_task_current(args, ctx=None):
@@ -1648,3 +2168,1271 @@ def cmd_task_current(args, ctx=None):
                 console.print("[green]All tasks completed![/green]")
             else:
                 console.print("[dim]No tasks found or no pending tasks.[/dim]")
+
+
+def cmd_phase_add(args, ctx=None):
+    """Add a new phase to plan_build.yml.
+
+    Creates or updates plan_build.yml to include a new phase with the
+    specified ID, name, and description.
+
+    Args:
+        args: Parsed arguments with id, name, description, plan.
+        ctx: Optional CLIContext.
+    """
+    from agenticcli.console import (
+        is_json_output,
+        print_error,
+        print_json,
+        print_success,
+    )
+
+    phase_id = args.id
+    phase_name = args.name
+    phase_description = getattr(args, "description", None) or ""
+    plan_path = find_plan_folder(getattr(args, "plan", None))
+
+    # Target file is plan_build.yml
+    build_file = plan_path / "plan_build.yml"
+
+    # Load existing content or create new structure
+    if build_file.exists():
+        try:
+            content = yaml.safe_load(build_file.read_text())
+            if content is None:
+                content = {}
+        except yaml.YAMLError as e:
+            print_error(f"Failed to parse {build_file.name}: {e}")
+            sys.exit(1)
+    else:
+        print_error(f"plan_build.yml not found in {plan_path}")
+        print("Hint: Create a plan first with 'agentic plan init' or 'agentic plan scaffold'", file=sys.stderr)
+        sys.exit(1)
+
+    # Get or create phases list
+    # Support both root-level phases and nested under 'plan'
+    if "phases" in content:
+        phases = content["phases"]
+    elif "plan" in content and "phases" in content["plan"]:
+        phases = content["plan"]["phases"]
+    else:
+        # Create phases at root level
+        phases = []
+        content["phases"] = phases
+
+    # Check for duplicate phase ID
+    for existing_phase in phases:
+        existing_id = _get_phase_id(existing_phase)
+        if existing_id == phase_id:
+            print_error(f"Phase with ID '{phase_id}' already exists")
+            sys.exit(1)
+
+    # Create new phase entry
+    new_phase = {
+        "phase_id": phase_id,
+        "name": phase_name,
+        "status": "pending",
+        "tasks": [],
+    }
+
+    if phase_description:
+        new_phase["description"] = phase_description
+
+    # Add phase to list
+    phases.append(new_phase)
+
+    # Update the content (handle both structures)
+    if "plan" in content and "phases" in content["plan"]:
+        content["plan"]["phases"] = phases
+    else:
+        content["phases"] = phases
+
+    # Write back to file
+    try:
+        with open(build_file, "w") as f:
+            yaml.dump(content, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+    except IOError as e:
+        print_error(f"Failed to write {build_file}: {e}")
+        sys.exit(1)
+
+    if is_json_output():
+        print_json({
+            "phase_id": phase_id,
+            "name": phase_name,
+            "description": phase_description,
+            "file": build_file.name,
+            "plan_path": str(plan_path),
+        })
+    else:
+        print_success(f"Added phase '{phase_id}' ({phase_name}) to {build_file.name}")
+
+
+def cmd_phase_list(args, ctx=None):
+    """List all phases in the plan with task counts.
+
+    Displays a table showing phase ID, name, status, and task count
+    from plan_build.yml.
+
+    Args:
+        args: Parsed arguments with optional plan path.
+        ctx: Optional CLIContext.
+    """
+    from agenticcli.console import (
+        console,
+        format_status,
+        is_json_output,
+        print_error,
+        print_header,
+        print_json,
+        print_table,
+    )
+
+    plan_path = find_plan_folder(getattr(args, "plan", None))
+
+    # Load plan_build.yml
+    build_file = plan_path / "plan_build.yml"
+    if not build_file.exists():
+        print_error(f"plan_build.yml not found in {plan_path}")
+        sys.exit(1)
+
+    try:
+        content = yaml.safe_load(build_file.read_text())
+    except yaml.YAMLError as e:
+        print_error(f"Failed to parse {build_file.name}: {e}")
+        sys.exit(1)
+
+    if not content:
+        print_error(f"{build_file.name} is empty")
+        sys.exit(1)
+
+    # Get phases from content
+    phases = _get_phases_from_content(content)
+
+    if not phases:
+        if is_json_output():
+            print_json({"phases": [], "count": 0})
+        else:
+            console.print("[dim]No phases found in plan_build.yml[/dim]")
+        return
+
+    # Build phase data with task counts
+    phases_data = []
+    for phase in phases:
+        phase_id = _get_phase_id(phase)
+        phase_name = phase.get("name", "")
+        phase_status = phase.get("status", "pending")
+        tasks = phase.get("tasks", [])
+        task_count = len(tasks)
+
+        phases_data.append({
+            "id": phase_id,
+            "name": phase_name,
+            "status": phase_status,
+            "tasks": task_count,
+        })
+
+    if is_json_output():
+        print_json({"phases": phases_data, "count": len(phases_data)})
+    else:
+        print_header(f"Phases in {plan_path.name}")
+
+        rows = []
+        for phase in phases_data:
+            rows.append([
+                f"[bold]{phase['id']}[/bold]",
+                phase["name"],
+                format_status(phase["status"]),
+                f"[cyan]{phase['tasks']}[/cyan]",
+            ])
+
+        print_table("", ["ID", "Name", "Status", "Tasks"], rows)
+
+        console.print(f"\n[dim]Total: {len(phases_data)} phases[/dim]")
+
+
+def cmd_phase_update(args, ctx=None):
+    """Update a phase in plan_build.yml.
+
+    Updates the status and/or name of an existing phase by ID.
+
+    Args:
+        args: Parsed arguments with phase_id, optional status, optional name, plan.
+        ctx: Optional CLIContext.
+    """
+    from agenticcli.console import (
+        is_json_output,
+        print_error,
+        print_json,
+        print_success,
+        print_warning,
+    )
+
+    phase_id = args.phase_id
+    new_status = getattr(args, "status", None)
+    new_name = getattr(args, "name", None)
+    plan_path = find_plan_folder(getattr(args, "plan", None))
+
+    # Validate that at least one update field is provided
+    if not new_status and not new_name:
+        print_error("At least one of --status or --name must be provided")
+        sys.exit(1)
+
+    # Target file is plan_build.yml
+    build_file = plan_path / "plan_build.yml"
+
+    if not build_file.exists():
+        print_error(f"plan_build.yml not found in {plan_path}")
+        sys.exit(1)
+
+    # Load the YAML content
+    try:
+        content = yaml.safe_load(build_file.read_text())
+        if content is None:
+            content = {}
+    except yaml.YAMLError as e:
+        print_error(f"Failed to parse {build_file.name}: {e}")
+        sys.exit(1)
+
+    # Get phases list (support both root-level and nested under 'plan')
+    if "phases" in content:
+        phases = content["phases"]
+        phases_location = "root"
+    elif "plan" in content and "phases" in content["plan"]:
+        phases = content["plan"]["phases"]
+        phases_location = "nested"
+    else:
+        print_error("No phases found in plan_build.yml")
+        sys.exit(1)
+
+    # Find and update the phase
+    phase_found = False
+    old_status = None
+    old_name = None
+
+    for phase in phases:
+        existing_id = _get_phase_id(phase)
+        if existing_id == phase_id:
+            phase_found = True
+            old_status = phase.get("status", "pending")
+            old_name = phase.get("name", "")
+
+            # Update status if provided
+            if new_status:
+                # Validate status transition
+                valid_transitions = {
+                    "pending": ["in_progress", "blocked"],
+                    "in_progress": ["completed", "blocked", "pending"],
+                    "completed": ["pending", "in_progress"],  # Allow rollback
+                    "blocked": ["pending", "in_progress"],
+                }
+
+                if new_status not in valid_transitions.get(old_status, []) and old_status != new_status:
+                    if not is_json_output():
+                        print_warning(f"Status transition from '{old_status}' to '{new_status}' for phase {phase_id}")
+
+                phase["status"] = new_status
+
+            # Update name if provided
+            if new_name:
+                phase["name"] = new_name
+
+            break
+
+    if not phase_found:
+        if is_json_output():
+            print_json({"error": f"Phase not found: {phase_id}"})
+        else:
+            print_error(f"Phase not found: {phase_id}")
+            print("Hint: Use 'agentic plan phase list' to see available phase IDs", file=sys.stderr)
+        sys.exit(1)
+
+    # Update content in correct location
+    if phases_location == "nested":
+        content["plan"]["phases"] = phases
+    else:
+        content["phases"] = phases
+
+    # Write back to file
+    try:
+        with open(build_file, "w") as f:
+            yaml.dump(content, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+    except IOError as e:
+        print_error(f"Failed to write {build_file}: {e}")
+        sys.exit(1)
+
+    if is_json_output():
+        result = {
+            "phase_id": phase_id,
+            "file": build_file.name,
+            "plan_path": str(plan_path),
+        }
+        if new_status:
+            result["old_status"] = old_status
+            result["new_status"] = new_status
+        if new_name:
+            result["old_name"] = old_name
+            result["new_name"] = new_name
+        print_json(result)
+    else:
+        changes = []
+        if new_status:
+            changes.append(f"status: {old_status} -> {new_status}")
+        if new_name:
+            changes.append(f"name: '{old_name}' -> '{new_name}'")
+        print_success(f"Updated phase '{phase_id}' in {build_file.name} ({', '.join(changes)})")
+
+
+def _determine_agent_type(phase_name: str, phase_id: str) -> str:
+    """Determine the agent type for a phase based on its name or ID.
+
+    Uses keyword matching to route phases to appropriate agents.
+
+    Args:
+        phase_name: The name of the phase.
+        phase_id: The ID of the phase.
+
+    Returns:
+        Agent type string (builder, tester, test-builder, etc.)
+    """
+    name_lower = phase_name.lower()
+    id_lower = phase_id.lower()
+
+    # Check for test-related phases
+    if any(kw in name_lower for kw in ["test", "testing", "validation", "verify"]):
+        return "test-builder"
+
+    # Check for documentation phases
+    if any(kw in name_lower for kw in ["doc", "documentation", "readme", "guide"]):
+        return "builder"
+
+    # Check for cleanup/audit phases
+    if any(kw in name_lower for kw in ["cleanup", "clean", "audit", "archive"]):
+        return "builder"
+
+    # Default to builder for build/implementation phases
+    return "builder"
+
+
+def _generate_phase_subgraph(phase: dict, phase_index: int) -> list[str]:
+    """Generate MMD subgraph content for a single phase.
+
+    Args:
+        phase: Phase dictionary from YAML.
+        phase_index: Index of the phase (1-based).
+
+    Returns:
+        List of MMD lines for this phase subgraph.
+    """
+    phase_id = _get_phase_id(phase) or f"P{phase_index}"
+    phase_name = phase.get("name", f"Phase {phase_index}")
+    agent_type = _determine_agent_type(phase_name, phase_id)
+    tasks = phase.get("tasks", [])
+
+    # Create a safe subgraph ID (alphanumeric only)
+    sg_id = f"{phase_id.replace('-', '_')}_SG"
+
+    lines = []
+    lines.append(f'    subgraph {sg_id} ["{phase_name}"]')
+    lines.append(f"        Phase{phase_index}[Enter {phase_name}] --> SpawnAgent{phase_index}[Spawn {agent_type} Agent]")
+
+    # Add task nodes
+    prev_node = f"SpawnAgent{phase_index}"
+    for i, task in enumerate(tasks):
+        task_id = task.get("id") or task.get("task_id", f"T{i+1}")
+        task_name = task.get("name", task.get("description", "")[:40])
+        task_node = f"Task_{phase_id.replace('-', '_')}_{i+1}"
+        lines.append(f"        {prev_node} --> {task_node}[{task_id}: {task_name}]")
+        prev_node = task_node
+
+    lines.append(f"        {prev_node} --> Phase{phase_index}Complete[{phase_name} Complete]")
+    lines.append("    end")
+
+    return lines
+
+
+def _generate_test_fix_loop(phase_index: int, phase_name: str) -> list[str]:
+    """Generate MMD content for a test-fix loop phase.
+
+    Args:
+        phase_index: Index of the phase (1-based).
+        phase_name: Name of the testing phase.
+
+    Returns:
+        List of MMD lines for the test-fix loop.
+    """
+    lines = []
+    sg_id = f"Testing{phase_index}_SG"
+
+    lines.append(f'    subgraph {sg_id} ["{phase_name} (Test-Fix-Loop)"]')
+    lines.append(f"        Phase{phase_index}[Enter {phase_name}] --> SpawnTestBuilder{phase_index}[Spawn test-builder Agent]")
+    lines.append(f"        SpawnTestBuilder{phase_index} --> RunTests{phase_index}[Run Tests]")
+    lines.append(f"        RunTests{phase_index} --> TestsPassed{phase_index}{{Tests Passed?}}")
+    lines.append("")
+    lines.append("        %% Test-Fix Loop: retry path")
+    lines.append(f'        TestsPassed{phase_index} -- "No: Fix in Iteration" --> SpawnBuilderFix{phase_index}[Spawn builder Agent for Fixes]')
+    lines.append(f"        SpawnBuilderFix{phase_index} --> ApplyFixes{phase_index}[Apply Implementation Fixes]")
+    lines.append(f"        ApplyFixes{phase_index} --> RunTests{phase_index}")
+    lines.append("")
+    lines.append("        %% Success path")
+    lines.append(f'        TestsPassed{phase_index} -- "Yes: All Pass" --> Phase{phase_index}Complete[{phase_name} Complete]')
+    lines.append("    end")
+    lines.append("")
+    lines.append("    %% Escalation path for persistent test failures")
+    lines.append(f'    TestsPassed{phase_index} -- "No: Escalate" --> CheckIterations{phase_index}{{Max Iterations Reached?}}')
+    lines.append(f'    CheckIterations{phase_index} -- "No" --> SpawnTestBuilder{phase_index}')
+    lines.append(f'    CheckIterations{phase_index} -- "Yes" --> EscalateTests{phase_index}((Ask User: Test Failures Persist))')
+
+    return lines
+
+
+def cmd_orchestration_generate(args, ctx=None):
+    """Generate orchestration MMD from plan YAML files.
+
+    Reads plan_*.yml files in the plan folder and generates a Mermaid
+    flowchart diagram with:
+    - Phase nodes from YAML
+    - Agent routing based on phase type
+    - Test-fix loop structure for test phases
+    - Feedback triggers
+    - CLI commands in comments
+
+    Args:
+        args: Parsed arguments with plan path, output, force flags.
+        ctx: Optional CLIContext.
+    """
+    from agenticcli.console import (
+        console,
+        is_json_output,
+        print_error,
+        print_json,
+        print_success,
+        print_warning,
+    )
+
+    plan_path = find_plan_folder(getattr(args, "plan", None))
+    output_name = getattr(args, "output", None)
+    force = getattr(args, "force", False)
+
+    # Gather all plan YAML files
+    yaml_files = list(plan_path.glob("plan_*.yml"))
+    if not yaml_files:
+        print_error(f"No plan_*.yml files found in {plan_path}")
+        sys.exit(1)
+
+    # Collect all phases from YAML files
+    all_phases = []
+    plan_name = None
+    plan_objective = None
+
+    for yaml_file in sorted(yaml_files):
+        try:
+            content = yaml.safe_load(yaml_file.read_text())
+        except yaml.YAMLError as e:
+            print_warning(f"Skipping {yaml_file.name}: {e}")
+            continue
+
+        if not content:
+            continue
+
+        # Extract plan metadata from first file that has it
+        if not plan_name:
+            plan_name = content.get("name", "")
+        if not plan_objective:
+            plan_objective = content.get("objective", "")
+
+        # Collect phases
+        phases = _get_phases_from_content(content)
+        for phase in phases:
+            all_phases.append(phase)
+
+    if not all_phases:
+        print_error("No phases found in plan YAML files")
+        sys.exit(1)
+
+    # Determine output file name
+    if output_name:
+        mmd_file = plan_path / output_name
+    else:
+        # Use plan folder name for the MMD file
+        folder_name = plan_path.name
+        # Extract the short name part (after date prefix)
+        if "_" in folder_name:
+            short_name = folder_name.split("_", 1)[1]
+        else:
+            short_name = folder_name
+        mmd_file = plan_path / f"orchestration_{short_name}.mmd"
+
+    # Check if file exists
+    if mmd_file.exists() and not force:
+        print_error(f"MMD file already exists: {mmd_file.name}")
+        print("Use --force to overwrite", file=sys.stderr)
+        sys.exit(1)
+
+    # Build phase metadata for header comments
+    phase_names = []
+    agent_routing = []
+    phase_statuses = []
+
+    for phase in all_phases:
+        phase_id = _get_phase_id(phase) or f"P{len(phase_names)+1}"
+        phase_name = phase.get("name", f"Phase {len(phase_names)+1}")
+        phase_status = phase.get("status", "pending")
+        agent_type = _determine_agent_type(phase_name, phase_id)
+
+        phase_names.append(f"{phase_id}: {phase_name}")
+        agent_routing.append(f"{phase_id} -> {agent_type}")
+        phase_statuses.append(f"{phase_id}={phase_status}")
+
+    # Generate MMD content
+    mmd_lines = []
+
+    # Header with metadata comments
+    mmd_lines.append("%% =============================================================================")
+    mmd_lines.append(f"%% GOAL: {plan_objective or 'Execute plan tasks'}")
+    mmd_lines.append("%% =============================================================================")
+    mmd_lines.append(f"%% PROFILE: Orchestration-{plan_name or plan_path.name}")
+    mmd_lines.append(f"%% INPUT_PATH: {plan_path}/plan_build.yml")
+    mmd_lines.append("%%")
+    mmd_lines.append("%% PHASES:")
+    for pn in phase_names:
+        mmd_lines.append(f"%%   {pn}")
+    mmd_lines.append("%%")
+    mmd_lines.append(f"%% AGENT_ROUTING: {', '.join(agent_routing)}")
+    mmd_lines.append(f"%% STATUS: {', '.join(phase_statuses)}")
+    mmd_lines.append("%% FEEDBACK_TRIGGERS: TEST_FAILURE -> test-fix-loop, BUILD_FAILURE -> escalate")
+    mmd_lines.append("%% =============================================================================")
+    mmd_lines.append("")
+
+    # Flowchart start
+    mmd_lines.append("flowchart LR")
+    mmd_lines.append("    Start((Start)) --> LoadInputs[Load Context Inputs]")
+    mmd_lines.append("")
+
+    # Input validation phase
+    mmd_lines.append("    %% ========================================")
+    mmd_lines.append("    %% INPUT VALIDATION PHASE")
+    mmd_lines.append("    %% ========================================")
+    mmd_lines.append("    LoadInputs --> ReviewInputs[Review All Listed Inputs]")
+    mmd_lines.append("    ReviewInputs --> CheckInputs{All Inputs Found?}")
+    mmd_lines.append("")
+    mmd_lines.append('    CheckInputs -- "No: Missing" --> SearchInputs[Search for Missing Inputs]')
+    mmd_lines.append("    SearchInputs --> Found{Found?}")
+    mmd_lines.append('    Found -- "Yes: Update paths" --> UpdateRefs[Update References]')
+    mmd_lines.append("    UpdateRefs --> ReviewInputs")
+    mmd_lines.append('    Found -- "No: Stop" --> AskUser((Ask User for Clarification))')
+    mmd_lines.append("")
+    mmd_lines.append('    CheckInputs -- "Yes: Verified" --> Phase1')
+    mmd_lines.append("")
+
+    # Generate phase subgraphs
+    for i, phase in enumerate(all_phases, 1):
+        phase_name = phase.get("name", f"Phase {i}")
+        phase_id = _get_phase_id(phase) or f"P{i}"
+
+        mmd_lines.append("    %% ========================================")
+        mmd_lines.append(f"    %% PHASE {i}: {phase_name.upper()}")
+        mmd_lines.append("    %% ========================================")
+
+        # Determine if this is a test phase (use test-fix loop)
+        is_test_phase = any(kw in phase_name.lower() for kw in ["test", "testing", "validation"])
+
+        if is_test_phase:
+            # Generate test-fix loop
+            agent_type = "test-builder"
+            mmd_lines.append(f"    %% AGENT_ROUTING: {agent_type} agent with test-fix loop")
+            mmd_lines.append("    %% LOOP_DEFINITION: test-fix-loop")
+            mmd_lines.append("    %% MAX_ITERATIONS: 5")
+            mmd_lines.append("")
+
+            loop_lines = _generate_test_fix_loop(i, phase_name)
+            mmd_lines.extend(loop_lines)
+        else:
+            # Generate standard phase subgraph
+            agent_type = _determine_agent_type(phase_name, phase_id)
+            tasks = phase.get("tasks", [])
+            task_ids = [t.get("id") or t.get("task_id", "") for t in tasks]
+
+            mmd_lines.append(f"    %% AGENT_ROUTING: {agent_type} agent")
+            if task_ids:
+                mmd_lines.append(f"    %% Tasks: {', '.join(filter(None, task_ids))}")
+            mmd_lines.append("")
+
+            sg_lines = _generate_phase_subgraph(phase, i)
+            mmd_lines.extend(sg_lines)
+
+        mmd_lines.append("")
+
+        # Connect to next phase
+        if i < len(all_phases):
+            mmd_lines.append(f"    Phase{i}Complete --> Phase{i+1}")
+        mmd_lines.append("")
+
+    # Validation and finalization
+    mmd_lines.append("    %% ========================================")
+    mmd_lines.append("    %% FINALIZATION")
+    mmd_lines.append("    %% ========================================")
+    last_phase = len(all_phases)
+    mmd_lines.append(f"    Phase{last_phase}Complete --> UpdatePlanStatus[Update Plan Status: completed]")
+    mmd_lines.append("    %% agentic plan move folder --plan <path>")
+    mmd_lines.append("    UpdatePlanStatus --> ArchivePlan[Archive to docs/plans/completed/]")
+    mmd_lines.append("    ArchivePlan --> End((End: Plan Complete))")
+    mmd_lines.append("")
+
+    # Styling
+    mmd_lines.append("    %% ========================================")
+    mmd_lines.append("    %% STYLING")
+    mmd_lines.append("    %% ========================================")
+    mmd_lines.append("    classDef entrypoint fill:#90EE90,stroke:#228B22")
+    mmd_lines.append("    classDef exitpoint fill:#FFB6C1,stroke:#DC143C")
+    mmd_lines.append("    classDef userpoint fill:#87CEEB,stroke:#4682B4")
+    mmd_lines.append("    classDef keyaction fill:#FFD700,stroke:#DAA520")
+    mmd_lines.append("    class Start entrypoint")
+    mmd_lines.append("    class End exitpoint")
+
+    # Collect user points (escalation nodes)
+    user_points = ["AskUser"]
+    for i in range(1, len(all_phases) + 1):
+        phase_name = all_phases[i-1].get("name", "")
+        if any(kw in phase_name.lower() for kw in ["test", "testing", "validation"]):
+            user_points.append(f"EscalateTests{i}")
+
+    if user_points:
+        mmd_lines.append(f"    class {','.join(user_points)} userpoint")
+
+    mmd_lines.append("")
+
+    # Write the MMD file
+    mmd_content = "\n".join(mmd_lines)
+
+    try:
+        mmd_file.write_text(mmd_content)
+    except IOError as e:
+        print_error(f"Failed to write {mmd_file}: {e}")
+        sys.exit(1)
+
+    if is_json_output():
+        print_json({
+            "output_file": str(mmd_file),
+            "plan_path": str(plan_path),
+            "phases_count": len(all_phases),
+            "phases": [_get_phase_id(p) or f"P{i+1}" for i, p in enumerate(all_phases)],
+        })
+    else:
+        print_success(f"Generated orchestration MMD: {mmd_file.name}")
+        console.print(f"[dim]Phases: {len(all_phases)}[/dim]")
+        console.print(f"[dim]Plan: {plan_path.name}[/dim]")
+
+
+def cmd_orchestration_validate(args, ctx=None):
+    """Validate orchestration MMD against plan YAML files.
+
+    Compares the orchestration_*.mmd file against plan_*.yml files to detect:
+    - Missing phases: YAML phases not mentioned in MMD
+    - Missing task IDs: Task IDs from YAML not referenced in MMD
+    - Invalid agent routing: Agent types not matching expected patterns
+
+    Args:
+        args: Parsed arguments with plan path and strict flag.
+        ctx: Optional CLIContext.
+
+    Exit codes:
+        0: Validation passed (no errors)
+        1: Validation failed (errors found, or warnings with --strict)
+        2: File not found or parsing error
+    """
+    import re
+
+    from agenticcli.console import (
+        console,
+        is_json_output,
+        print_error,
+        print_info,
+        print_json,
+        print_success,
+        print_warning,
+    )
+
+    plan_path = find_plan_folder(getattr(args, "plan", None))
+    strict = getattr(args, "strict", False)
+
+    # Find orchestration MMD file
+    mmd_files = list(plan_path.glob("orchestration_*.mmd"))
+    if not mmd_files:
+        print_error(f"No orchestration_*.mmd file found in {plan_path}")
+        sys.exit(2)
+
+    mmd_file = mmd_files[0]  # Use first match
+    if len(mmd_files) > 1:
+        print_warning(f"Multiple MMD files found, using: {mmd_file.name}")
+
+    # Find plan YAML files
+    yaml_files = list(plan_path.glob("plan_*.yml"))
+    if not yaml_files:
+        print_error(f"No plan_*.yml files found in {plan_path}")
+        sys.exit(2)
+
+    # Read MMD content
+    try:
+        mmd_content = mmd_file.read_text()
+    except IOError as e:
+        print_error(f"Failed to read {mmd_file}: {e}")
+        sys.exit(2)
+
+    # Collect all phases and tasks from YAML files
+    yaml_phases = []
+    yaml_tasks = []
+    yaml_phase_ids = set()
+
+    for yaml_file in sorted(yaml_files):
+        try:
+            content = yaml.safe_load(yaml_file.read_text())
+        except yaml.YAMLError as e:
+            print_warning(f"Skipping {yaml_file.name}: YAML parse error - {e}")
+            continue
+
+        if not content:
+            continue
+
+        # Collect phases
+        phases = _get_phases_from_content(content)
+        for phase in phases:
+            phase_id = _get_phase_id(phase)
+            phase_name = phase.get("name", "")
+            if phase_id:
+                yaml_phases.append({"id": phase_id, "name": phase_name, "source": yaml_file.name})
+                yaml_phase_ids.add(phase_id)
+
+            # Collect tasks from this phase
+            tasks = phase.get("tasks", [])
+            for task in tasks:
+                task_id = task.get("id") or task.get("task_id", "")
+                if task_id:
+                    yaml_tasks.append({
+                        "id": task_id,
+                        "phase_id": phase_id,
+                        "name": task.get("name", ""),
+                        "source": yaml_file.name,
+                    })
+
+    # Validation results
+    errors = []
+    warnings = []
+
+    # --- Validation 1: All YAML phases present in MMD ---
+    # Check for phase references in MMD (comments or nodes)
+    # Patterns to look for: "P1", "Phase 1", "P1:" in comments, phase_id in PHASES section
+    for phase in yaml_phases:
+        phase_id = phase["id"]
+        phase_name = phase["name"]
+
+        # Check various patterns that indicate phase is mentioned
+        patterns = [
+            rf"\b{re.escape(phase_id)}\b",  # Exact phase ID (e.g., P1)
+            rf"{re.escape(phase_id)}:",  # Phase ID with colon
+            rf"{re.escape(phase_id)} ->",  # Phase ID in routing
+            rf"Phase{phase_id.lstrip('P')}",  # Phase1, Phase2, etc.
+        ]
+
+        found = False
+        for pattern in patterns:
+            if re.search(pattern, mmd_content, re.IGNORECASE):
+                found = True
+                break
+
+        if not found:
+            errors.append({
+                "type": "missing_phase",
+                "phase_id": phase_id,
+                "phase_name": phase_name,
+                "source": phase["source"],
+                "message": f"Phase {phase_id} ({phase_name}) not found in MMD",
+            })
+
+    # --- Validation 2: Task IDs referenced in MMD ---
+    # Task IDs should appear in comments or node labels (e.g., CR-001, 01.1)
+    for task in yaml_tasks:
+        task_id = task["id"]
+
+        # Search for task ID in MMD
+        pattern = rf"\b{re.escape(task_id)}\b"
+        if not re.search(pattern, mmd_content):
+            warnings.append({
+                "type": "missing_task_id",
+                "task_id": task_id,
+                "phase_id": task["phase_id"],
+                "task_name": task["name"],
+                "source": task["source"],
+                "message": f"Task {task_id} not referenced in MMD",
+            })
+
+    # --- Validation 3: Agent routing valid ---
+    # Extract AGENT_ROUTING comments and validate format
+    # Expected patterns: P1 -> builder-python, P2 -> test-runner, etc.
+    valid_agent_types = {
+        "builder", "builder-python", "builder-typescript", "builder-go",
+        "test-runner", "test-builder", "test-guidance-simulator",
+        "planner", "planner-build", "planner-test", "planner-guidance",
+        "documentation-writer", "documentation",
+        "orchestration", "orchestration-executor",
+        "reviewer", "code-reviewer",
+    }
+
+    # Find AGENT_ROUTING lines in MMD
+    routing_pattern = r"%%\s*AGENT_ROUTING:\s*(.+)"
+    routing_matches = re.findall(routing_pattern, mmd_content)
+
+    for routing_line in routing_matches:
+        # Parse individual routings (comma-separated)
+        routings = routing_line.split(",")
+        for routing in routings:
+            routing = routing.strip()
+            # Parse "P1 -> builder-python" format
+            match = re.match(r"(\w+)\s*->\s*(\S+)", routing)
+            if match:
+                route_phase_id, agent_type = match.groups()
+                agent_type = agent_type.strip().lower()
+
+                # Check if agent type is valid
+                if agent_type not in valid_agent_types:
+                    warnings.append({
+                        "type": "invalid_agent_routing",
+                        "phase_id": route_phase_id,
+                        "agent_type": agent_type,
+                        "message": f"Unknown agent type '{agent_type}' for phase {route_phase_id}",
+                    })
+
+                # Check if routed phase exists in YAML (if we have yaml_phase_ids)
+                if yaml_phase_ids and route_phase_id not in yaml_phase_ids:
+                    # Could be a generic reference, so just warn
+                    warnings.append({
+                        "type": "routing_unknown_phase",
+                        "phase_id": route_phase_id,
+                        "agent_type": agent_type,
+                        "message": f"Agent routing references unknown phase {route_phase_id}",
+                    })
+
+    # --- Validation 4: Check PHASES comment section matches YAML ---
+    # Extract PHASES from MMD comments and compare
+    phases_section_pattern = r"%%\s*PHASES:\s*\n((?:%%\s+.+\n)*)"
+    phases_section_match = re.search(phases_section_pattern, mmd_content)
+
+    if phases_section_match:
+        mmd_phases_text = phases_section_match.group(1)
+        # Extract phase IDs from the comment section
+        mmd_phase_ids = set()
+        for line in mmd_phases_text.split("\n"):
+            # Pattern: %%   P1: Phase name
+            phase_match = re.match(r"%%\s+(\w+):", line)
+            if phase_match:
+                mmd_phase_ids.add(phase_match.group(1))
+
+        # Check for phases in YAML not in MMD PHASES section
+        for phase_id in yaml_phase_ids:
+            if phase_id not in mmd_phase_ids:
+                errors.append({
+                    "type": "phase_not_in_header",
+                    "phase_id": phase_id,
+                    "message": f"Phase {phase_id} missing from MMD PHASES header section",
+                })
+
+    # --- Output results ---
+    total_errors = len(errors)
+    total_warnings = len(warnings)
+    validation_passed = total_errors == 0 and (not strict or total_warnings == 0)
+
+    if is_json_output():
+        print_json({
+            "plan_path": str(plan_path),
+            "mmd_file": mmd_file.name,
+            "yaml_files": [f.name for f in yaml_files],
+            "validation_passed": validation_passed,
+            "strict_mode": strict,
+            "yaml_phases_count": len(yaml_phases),
+            "yaml_tasks_count": len(yaml_tasks),
+            "errors": errors,
+            "warnings": warnings,
+            "summary": {
+                "errors": total_errors,
+                "warnings": total_warnings,
+            },
+        })
+    else:
+        print_info(f"Validating: {mmd_file.name}")
+        print_info(f"Against: {', '.join(f.name for f in yaml_files)}")
+        console.print()
+
+        # Print errors
+        if errors:
+            console.print("[bold red]Errors:[/bold red]")
+            for err in errors:
+                console.print(f"  [red]ERROR[/red] [{err['type']}] {err['message']}")
+            console.print()
+
+        # Print warnings
+        if warnings:
+            console.print("[bold yellow]Warnings:[/bold yellow]")
+            for warn in warnings:
+                console.print(f"  [yellow]WARN[/yellow] [{warn['type']}] {warn['message']}")
+            console.print()
+
+        # Summary
+        console.print(f"[dim]YAML phases: {len(yaml_phases)}, tasks: {len(yaml_tasks)}[/dim]")
+
+        if validation_passed:
+            print_success(f"Validation passed ({total_errors} errors, {total_warnings} warnings)")
+        else:
+            if total_errors > 0:
+                print_error(f"Validation failed: {total_errors} errors, {total_warnings} warnings")
+            else:
+                print_warning(f"Validation failed (strict mode): {total_warnings} warnings")
+
+    # Exit code
+    if not validation_passed:
+        sys.exit(1)
+    sys.exit(0)
+
+
+def cmd_stories_list(args, ctx=None):
+    """List user stories from plan YAML files.
+
+    Reads user_stories arrays from plan_*.yml files and displays
+    them in a table with ID, As (persona), I Want (action), and Command columns.
+
+    Args:
+        args: Parsed arguments with optional plan path.
+        ctx: Optional CLIContext.
+    """
+    from agenticcli.console import (
+        console,
+        is_json_output,
+        print_error,
+        print_header,
+        print_json,
+        print_table,
+    )
+
+    plan_path = find_plan_folder(getattr(args, "plan", None))
+
+    # Flattened structure: YAML files directly in plan_path
+    yaml_files = list(plan_path.glob("plan_*.yml"))
+    if not yaml_files:
+        print_error(f"No plan_*.yml files found in {plan_path}")
+        sys.exit(1)
+
+    all_stories = []
+
+    for yaml_file in sorted(yaml_files):
+        try:
+            content = yaml.safe_load(yaml_file.read_text())
+        except yaml.YAMLError:
+            continue
+
+        if not content:
+            continue
+
+        # Extract user_stories from content
+        # Can be at root level or nested under plan/feature
+        user_stories = content.get("user_stories", [])
+        if not user_stories:
+            plan_data = content.get("plan", content.get("feature", {}))
+            user_stories = plan_data.get("user_stories", [])
+
+        for story in user_stories:
+            story_info = {
+                "id": story.get("id", ""),
+                "as": story.get("as", ""),
+                "i_want": story.get("i_want", ""),
+                "so_that": story.get("so_that", ""),
+                "command": story.get("command", ""),
+                "acceptance": story.get("acceptance", ""),
+                "source_file": yaml_file.name,
+            }
+            all_stories.append(story_info)
+
+    if is_json_output():
+        print_json({"user_stories": all_stories, "count": len(all_stories)})
+    else:
+        print_header(f"User Stories in {plan_path.name}")
+
+        if not all_stories:
+            console.print("[dim]No user stories found.[/dim]")
+            return
+
+        rows = []
+        for story in all_stories:
+            # Truncate i_want to fit in table
+            i_want = story["i_want"]
+            if len(i_want) > 40:
+                i_want = i_want[:37] + "..."
+
+            rows.append([
+                f"[bold]{story['id']}[/bold]",
+                story["as"],
+                i_want,
+                f"[dim]{story['command']}[/dim]" if story["command"] else "[dim]-[/dim]",
+            ])
+
+        print_table("", ["ID", "As", "I Want", "Command"], rows)
+
+        console.print(f"\n[dim]Total: {len(all_stories)} user stories[/dim]")
+
+
+def cmd_stories_test(args, ctx=None):
+    """Generate blind test scenarios from user stories.
+
+    Reads user_stories arrays from plan_*.yml files and generates
+    executable test cases in YAML format.
+
+    For each story:
+    - Extracts command (if present)
+    - Generates test_id based on story id
+    - Creates expected_outcome from so_that or i_want
+    - Determines validation_type based on command type
+
+    Args:
+        args: Parsed arguments with optional plan, output, format.
+        ctx: Optional CLIContext.
+    """
+    import json
+
+    from agenticcli.console import (
+        console,
+        is_json_output,
+        print_error,
+        print_header,
+        print_info,
+        print_json,
+        print_success,
+    )
+
+    plan_path = find_plan_folder(getattr(args, "plan", None))
+    output_file = getattr(args, "output", None)
+    output_format = getattr(args, "format", "yaml")
+
+    # Flattened structure: YAML files directly in plan_path
+    yaml_files = list(plan_path.glob("plan_*.yml"))
+    if not yaml_files:
+        print_error(f"No plan_*.yml files found in {plan_path}")
+        sys.exit(1)
+
+    all_stories = []
+
+    for yaml_file in sorted(yaml_files):
+        try:
+            content = yaml.safe_load(yaml_file.read_text())
+        except yaml.YAMLError:
+            continue
+
+        if not content:
+            continue
+
+        # Extract user_stories from content
+        # Can be at root level or nested under plan/feature
+        user_stories = content.get("user_stories", [])
+        if not user_stories:
+            plan_data = content.get("plan", content.get("feature", {}))
+            user_stories = plan_data.get("user_stories", [])
+
+        for story in user_stories:
+            story_info = {
+                "id": story.get("id", ""),
+                "as": story.get("as", ""),
+                "i_want": story.get("i_want", ""),
+                "so_that": story.get("so_that", ""),
+                "command": story.get("command", ""),
+                "acceptance": story.get("acceptance", ""),
+                "source_file": yaml_file.name,
+            }
+            all_stories.append(story_info)
+
+    if not all_stories:
+        print_error("No user stories found in plan files")
+        sys.exit(1)
+
+    # Generate test cases from stories
+    test_cases = []
+    for story in all_stories:
+        test_case = _generate_test_case_from_story(story)
+        test_cases.append(test_case)
+
+    # Build output structure
+    test_output = {
+        "test_suite": {
+            "name": f"User Story Tests - {plan_path.name}",
+            "plan_folder": str(plan_path),
+            "generated_at": datetime.now().isoformat(),
+            "test_count": len(test_cases),
+        },
+        "test_cases": test_cases,
+    }
+
+    # Output results
+    if output_file:
+        output_path = Path(output_file)
+        if output_format == "json":
+            output_path.write_text(json.dumps(test_output, indent=2))
+        else:
+            output_path.write_text(yaml.dump(test_output, default_flow_style=False, sort_keys=False))
+
+        if not is_json_output():
+            print_success(f"Generated {len(test_cases)} test cases to {output_path}")
+    else:
+        # Output to stdout
+        if is_json_output() or output_format == "json":
+            print_json(test_output)
+        else:
+            print(yaml.dump(test_output, default_flow_style=False, sort_keys=False))
+
+
+def _generate_test_case_from_story(story: dict) -> dict:
+    """Generate a test case structure from a user story.
+
+    Args:
+        story: User story dictionary with id, i_want, so_that, command, etc.
+
+    Returns:
+        Test case dictionary with test_id, command, expected_outcome, validation_type.
+    """
+    story_id = story.get("id", "unknown")
+    command = story.get("command", "")
+    i_want = story.get("i_want", "")
+    so_that = story.get("so_that", "")
+    acceptance = story.get("acceptance", "")
+
+    # Generate test_id from story id
+    test_id = f"test_{story_id}" if story_id else "test_unknown"
+
+    # Determine expected outcome - prefer so_that, then i_want
+    if so_that:
+        expected_outcome = so_that
+    elif i_want:
+        expected_outcome = f"User can {i_want}"
+    else:
+        expected_outcome = "Feature works as expected"
+
+    # Determine validation type based on command
+    validation_type = _determine_validation_type(command)
+
+    # Build test case
+    test_case = {
+        "test_id": test_id,
+        "story_id": story_id,
+        "description": i_want,
+        "command": command if command else None,
+        "expected_outcome": expected_outcome,
+        "validation_type": validation_type,
+    }
+
+    # Add acceptance criteria if present
+    if acceptance:
+        if isinstance(acceptance, list):
+            test_case["acceptance_criteria"] = acceptance
+        else:
+            test_case["acceptance_criteria"] = [acceptance]
+
+    # Add suggested assertions based on validation type
+    test_case["assertions"] = _generate_assertions(validation_type, command, expected_outcome)
+
+    return test_case
+
+
+def _determine_validation_type(command: str) -> str:
+    """Determine the validation type based on the command.
+
+    Args:
+        command: CLI command string.
+
+    Returns:
+        Validation type: exit_code, output_contains, file_exists, json_schema, or manual.
+    """
+    if not command:
+        return "manual"
+
+    command_lower = command.lower()
+
+    # JSON output commands should validate schema
+    if "--json" in command_lower or "-j" in command_lower:
+        return "json_schema"
+
+    # File creation/modification commands
+    file_keywords = ["create", "scaffold", "init", "write", "generate"]
+    if any(kw in command_lower for kw in file_keywords):
+        return "file_exists"
+
+    # List/show commands should check output content
+    list_keywords = ["list", "show", "status", "get", "find"]
+    if any(kw in command_lower for kw in list_keywords):
+        return "output_contains"
+
+    # Default to exit code check
+    return "exit_code"
+
+
+def _generate_assertions(validation_type: str, command: str, expected_outcome: str) -> list:
+    """Generate test assertions based on validation type.
+
+    Args:
+        validation_type: Type of validation to perform.
+        command: The CLI command being tested.
+        expected_outcome: Expected outcome description.
+
+    Returns:
+        List of assertion dictionaries.
+    """
+    assertions = []
+
+    if validation_type == "exit_code":
+        assertions.append({
+            "type": "exit_code",
+            "expected": 0,
+            "description": "Command completes successfully",
+        })
+
+    elif validation_type == "output_contains":
+        assertions.append({
+            "type": "exit_code",
+            "expected": 0,
+            "description": "Command completes successfully",
+        })
+        assertions.append({
+            "type": "output_contains",
+            "pattern": "# TODO: Add expected output pattern",
+            "description": expected_outcome,
+        })
+
+    elif validation_type == "file_exists":
+        assertions.append({
+            "type": "exit_code",
+            "expected": 0,
+            "description": "Command completes successfully",
+        })
+        assertions.append({
+            "type": "file_exists",
+            "path": "# TODO: Add expected file path",
+            "description": "Expected file is created",
+        })
+
+    elif validation_type == "json_schema":
+        assertions.append({
+            "type": "exit_code",
+            "expected": 0,
+            "description": "Command completes successfully",
+        })
+        assertions.append({
+            "type": "json_valid",
+            "description": "Output is valid JSON",
+        })
+        assertions.append({
+            "type": "json_has_key",
+            "key": "# TODO: Add expected JSON key",
+            "description": expected_outcome,
+        })
+
+    else:  # manual
+        assertions.append({
+            "type": "manual",
+            "description": expected_outcome,
+            "steps": ["# TODO: Add manual verification steps"],
+        })
+
+    return assertions

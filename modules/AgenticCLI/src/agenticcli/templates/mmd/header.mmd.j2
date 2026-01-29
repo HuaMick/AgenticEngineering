@@ -1,0 +1,47 @@
+%% =============================================================================
+%% GOAL: {{ goal }}
+%% =============================================================================
+%% PROFILE: {{ profile }}
+%% OUTPUT: {{ output }}
+%% GUIDELINE: {{ guideline }}
+{% if guideline_testing %}
+%% GUIDELINE: {{ guideline_testing }}
+{% endif %}
+%% INPUT_PATH: {{ input_path }}
+%%
+%% PHASES:
+{% for phase in phases %}
+%%   {{ loop.index }}. {{ phase.id }} - {{ phase.description }}
+{% endfor %}
+%%
+%% AGENT_ROUTING: {% for phase in phases %}{{ phase.id }} -> {{ phase.agent }}{% if not loop.last %}, {% endif %}{% endfor %}
+
+%% STATUS: {% for phase in phases %}{{ phase.id }}={{ phase.status | default('pending') }}{% if not loop.last %}, {% endif %}{% endfor %}
+
+%% FEEDBACK_TRIGGERS: TEST_FAILURE -> test-fix-loop, BUILD_FAILURE -> escalate
+%% =============================================================================
+
+flowchart LR
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    LoadInputs --> ReviewInputs[Review All Listed Inputs]
+    ReviewInputs --> CheckInputs{All Inputs Found?}
+
+    CheckInputs -- "No: Missing" --> SearchInputs[Search for Missing Inputs]
+    SearchInputs --> Found{Found?}
+    Found -- "Yes: Update paths" --> UpdateRefs[Update References]
+    UpdateRefs --> ReviewInputs
+    Found -- "No: Stop" --> AskUser((Ask User for Clarification))
+
+    CheckInputs -- "Yes: Verified" --> WorktreeSetup
+
+    %% ========================================
+    %% WORKTREE SETUP
+    %% ========================================
+    WorktreeSetup[Verify Worktree: {{ worktree }}] --> ValidateWorktree{Worktree Valid?}
+    ValidateWorktree -- "No" --> AskUser
+    ValidateWorktree -- "Yes" --> Phase1
+

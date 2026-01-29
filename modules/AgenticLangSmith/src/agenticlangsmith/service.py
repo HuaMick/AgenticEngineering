@@ -23,24 +23,60 @@ class LangSmithService:
     """Service for interacting with LangSmith API."""
 
     def __init__(self, api_key: Optional[str] = None):
-        """Initialize service with API key from param or environment.
+        """Initialize service with API key from param, environment, or config.
 
         Args:
-            api_key: Optional API key. If not provided, reads from LANGSMITH_API_KEY env var.
+            api_key: Optional API key. If not provided, reads from:
+                1. LANGSMITH_API_KEY env var
+                2. ~/.config/agenticcli/config.yml (langsmith.api_key)
 
         Raises:
             LangSmithConfigError: If no API key is available.
         """
         self.api_key = api_key or os.environ.get("LANGSMITH_API_KEY")
+
+        # Try loading from config file if not in env
+        if not self.api_key:
+            self.api_key = self._load_api_key_from_config()
+
         if not self.api_key:
             raise LangSmithConfigError(
-                "LANGSMITH_API_KEY environment variable not set. "
-                "Set it or pass api_key parameter."
+                "LANGSMITH_API_KEY not found. Set it via:\n"
+                "  1. LANGSMITH_API_KEY environment variable, or\n"
+                "  2. ~/.config/agenticcli/config.yml (langsmith.api_key)"
             )
         try:
             self._client = Client(api_key=self.api_key)
         except Exception as e:
             raise LangSmithAPIError(f"Failed to initialize LangSmith client: {e}") from e
+
+    @staticmethod
+    def _load_api_key_from_config() -> Optional[str]:
+        """Load API key from CLI config file.
+
+        Returns:
+            API key string if found, None otherwise.
+        """
+        from pathlib import Path
+
+        import yaml
+
+        # Check XDG config or default location
+        xdg_config = os.environ.get("XDG_CONFIG_HOME")
+        if xdg_config:
+            config_path = Path(xdg_config) / "agenticcli" / "config.yml"
+        else:
+            config_path = Path.home() / ".config" / "agenticcli" / "config.yml"
+
+        if not config_path.exists():
+            return None
+
+        try:
+            with open(config_path) as f:
+                config = yaml.safe_load(f)
+            return config.get("langsmith", {}).get("api_key")
+        except Exception:
+            return None
 
     def _run_to_dict(self, run: Run) -> dict[str, Any]:
         """Convert a Run object to a dictionary with relevant fields.

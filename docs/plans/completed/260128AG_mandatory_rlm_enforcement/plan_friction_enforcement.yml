@@ -1,0 +1,101 @@
+name: friction-analysis-rlm-enforcement
+status: active
+priority: high
+created: '2026-01-28'
+description: 'First milestone of mandatory RLM enforcement, specifically targeting
+  the
+
+  `_analyze_friction` entrypoint. This ensures that large-scale trace analysis
+
+  always uses Recursive Language Model patterns for context management.
+
+  '
+problem: 'The `_analyze_friction` entrypoint pulls LangSmith traces for pattern detection.
+
+  When the trace count is high (e.g., 100+), agents often bypass RLM and try
+
+  to process raw traces in a single block, leading to context overflow and
+
+  shallow analysis of friction patterns.
+
+  '
+success_criteria:
+- _analyze_friction orchestration (process.mmd) has a mandatory RLM gate
+- Orchestration rejects analysis findings if RLM thresholds were hit but RLM was not
+  used
+- 'Thresholds: 100+ traces or 500+ lines of trace data'
+- 'Test case: _analyze_friction with 150 traces successfully uses RLM decomposition'
+phases:
+- phase_id: P1
+  name: Mandate RLM in Friction Orchestration
+  status: pending
+  tasks:
+  - id: FRLM-001
+    name: Add RLM Validation Gate to orchestration-friction/process.mmd
+    description: "Insert a validation gate after TraceQuery_SG and before FrictionDetection_SG.\n\
+      Logic:\n- Check if trace count > 100\n- If yes, verify RLM variables (CONTEXT_*,\
+      \ ACCUMULATOR_*) are present in session state.\n- If missing, trigger \"Error:\
+      \ RLM Required\".\n- RECOVERY: Following agent loop patterns, the orchestrator\
+      \ MUST NOT hard-fail. \n  Instead, it should return the error to the sub-agent\
+      \ loop with a directive to \n  \"Retry analysis using RLM decomposition patterns\
+      \ as mandated by process.yml\".\n  The loop continues until compliance is met\
+      \ or max retries exceeded.\n"
+    status: completed
+    target_files:
+    - modules/AgenticGuidance/agents/orchestration/orchestration-friction/process.mmd
+  - id: FRLM-002
+    name: Define RLM thresholds in orchestration-friction/inputs.yml
+    description: "Add an `rlm_enforcement` section to define the thresholds that trigger\
+      \ \nmandatory RLM (100 traces, 500 lines).\n"
+    status: completed
+    target_files:
+    - modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml
+- phase_id: P2
+  name: Update Teacher Diagnostics for RLM Compliance
+  status: pending
+  tasks:
+  - id: FRLM-003
+    name: Mandate RLM in teacher-trace-diagnostics/process.yml
+    description: 'Update the process definition to use "MUST" language and remove
+
+      "(when implemented)" qualifiers from RLM steps.
+
+      '
+    status: completed
+    target_files:
+    - modules/AgenticGuidance/agents/teacher/teacher-trace-diagnostics/process.yml
+  - id: FRLM-004
+    name: Require RLM usage metadata in Friction Report
+    description: 'Update the friction report schema to require an `rlm_context_usage`
+      field
+
+      showing decomposition depth and variable count.
+
+      '
+    status: completed
+    target_files:
+    - modules/AgenticGuidance/agents/teacher/teacher-trace-diagnostics/process.yml
+- phase_id: P3
+  name: Validation and Testing
+  status: pending
+  tasks:
+  - id: FRLM-005
+    name: Execute Blind Test for Friction Analysis
+    description: '1. Run `_analyze_friction` with 50 traces -> verify success without
+      RLM.
+
+      2. Run `_analyze_friction` with 150 traces -> verify it triggers RLM logic.
+
+      3. Verify the final report includes the RLM metadata.
+
+      '
+    status: completed
+    acceptance_criteria:
+    - Gate correctly identifies and blocks non-RLM analysis of 100+ traces
+    - Agent successfully transitions to RLM decomposition
+orchestration_notes: "REMEDIATION PATTERN:\nThis plan implements a \"Guardrail-Retry\"\
+  \ loop. When the Orchestration Gate \ndetects a violation of the Mandatory RLM rule,\
+  \ it signals a process failure \nback to the executing agent.\n\nThe executing agent\
+  \ (Teacher Trace Diagnostics) is expected to interpret this \nfailure as a prompt\
+  \ for self-correction, pivoting from standard analysis to \nthe RLM (Recursive Language\
+  \ Model) pattern as defined in its process documentation.\n"

@@ -1,7 +1,7 @@
 # Plan Example
 
 This example demonstrates the **unified plan pattern**:
-- `live/plan_<name>.yml` - Plan definition (phases, tasks, inputs, success criteria)
+- `plan_<name>.yml` - Plan definition (phases, tasks, inputs, success criteria)
 - `orchestration_<name>.mmd` - Execution flow (Mermaid diagram with agents and loops)
 
 ## Folder Structure
@@ -10,10 +10,8 @@ This example demonstrates the **unified plan pattern**:
 YYMMDDXX_description/
 ├── README.md                   # This file
 ├── orchestration_example.mmd   # Visual execution flow with agents and loops
-├── live/                       # Active plans
-│   └── plan_example.yml        # Unified plan with all phases
-├── completed/                  # Archived completed plans
-│   └── plan_completed.yml      # Summary of completed work
+├── plan_example.yml            # Unified plan with all phases
+├── plan_completed.yml          # Summary of completed work (when applicable)
 └── reference/                  # Supporting reference material
     └── test-scenarios-detailed.yml
 ```
@@ -42,7 +40,7 @@ See: `modules/AgenticGuidance/assets/guidelines/context-minimisation.yml`
 
 ## Plan File Structure
 
-The plan file (`live/plan_example.yml`) contains:
+The plan file (`plan_example.yml`) contains:
 - **Root metadata**: name, worktree_path, branch, status, priority
 - **Context**: Running narrative of progress
 - **Related plans**: Link to orchestration MMD
@@ -102,7 +100,7 @@ Once answered by HUMAN, the decision has authority and must not be reversed by A
 
 | Resource | Purpose |
 |----------|---------|
-| `live/plan_example.yml` | Unified plan structure example |
+| `plan_example.yml` | Unified plan structure example |
 | `orchestration_example.mmd` | Visual agent flow diagram |
 | `context-minimisation.yml` | When and why to split plans |
 | `plan-mmd-schema.yml` | Orchestration file schema |

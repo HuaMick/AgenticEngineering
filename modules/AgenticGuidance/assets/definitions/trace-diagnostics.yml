@@ -113,8 +113,65 @@ trace_diagnostics:
         - "Slightly elevated token usage"
         - "Inconsistent but non-blocking patterns"
 
+  rlm_mandatory:
+    description: |
+      RLM (Recursive Load Management) is MANDATORY for large-context trace analysis.
+      Trace diagnostics often involve processing hundreds or thousands of execution
+      traces, each with potentially large inputs/outputs. Without RLM patterns,
+      agents risk context overflow, degraded analysis quality, and missed patterns.
+
+    rationale: |
+      Trace data is inherently hierarchical and voluminous. A single project may have
+      thousands of runs, each with multiple child runs. Loading all trace data at once
+      violates context minimisation principles and leads to poor analysis outcomes.
+
+    thresholds:
+      trace_count_boundary: 50
+      description: "RLM patterns required when analyzing more than 50 traces"
+      child_run_boundary: 100
+      child_description: "RLM required when total child runs exceed 100"
+      token_boundary: 50000
+      token_description: "RLM required when estimated token load exceeds 50K"
+
+    required_rlm_patterns:
+      - pattern: "hierarchical_sampling"
+        reference: "modules/AgenticGuidance/assets/definitions/rlm-patterns.yml#hierarchical"
+        applies_when: "Analyzing trace hierarchies with parent/child relationships"
+
+      - pattern: "progressive_loading"
+        reference: "modules/AgenticGuidance/assets/definitions/rlm-patterns.yml#progressive"
+        applies_when: "Processing large trace sets incrementally"
+
+      - pattern: "summary_first"
+        reference: "modules/AgenticGuidance/assets/definitions/rlm-patterns.yml#summary_first"
+        applies_when: "Need overview before detailed analysis"
+
+    compliance_requirements:
+      - requirement: "threshold_check"
+        description: "Agent MUST check trace count before loading full data"
+        enforcement: "Validate trace count < threshold before bulk operations"
+
+      - requirement: "chunked_processing"
+        description: "Agent MUST process traces in chunks when above threshold"
+        enforcement: "Use time_windowing or hierarchical_sampling strategies"
+
+      - requirement: "summary_before_detail"
+        description: "Agent MUST fetch summaries before detailed trace data"
+        enforcement: "Load run metadata first, inputs/outputs only when needed"
+
+      - requirement: "progressive_drill_down"
+        description: "Agent MUST drill down only into anomalous traces"
+        enforcement: "Filter to error/anomaly traces before loading children"
+
+    violation_consequences:
+      - "Context overflow leading to truncated analysis"
+      - "Missed friction patterns due to incomplete processing"
+      - "Degraded response quality from context pollution"
+      - "Increased latency and token costs"
+
   relationship_to_other_concepts:
     path: "modules/AgenticGuidance/assets/definitions/path.yml"
     fence: "modules/AgenticGuidance/assets/definitions/guidance-artifacts.yml#fence"
     signpost: "modules/AgenticGuidance/assets/definitions/guidance-artifacts.yml#signpost"
     context_minimisation: "modules/AgenticGuidance/assets/guidelines/context-minimisation.yml"
+    rlm_patterns: "modules/AgenticGuidance/assets/definitions/rlm-patterns.yml"

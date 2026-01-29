@@ -49,10 +49,42 @@ flowchart LR
         FilterByTimeframe --> ApplyLimit[Apply Run Limit]
         ApplyLimit --> TracesReady{Traces Found?}
         TracesReady -- "No: Empty" --> ReportNoTraces[Report: No Traces in Timeframe]
-        TracesReady -- "Yes: Found" --> BeginDetection[Begin Pattern Detection]
+        TracesReady -- "Yes: Found" --> CheckRLMRequired
     end
 
     ReportNoTraces --> End
+
+    %% ========================================
+    %% RLM VALIDATION PHASE
+    %% ========================================
+    %% Validates that RLM (Runaway LLM Mitigation) was properly used for large trace sets.
+    %% RLM requires CONTEXT_* and ACCUMULATOR_* variables to manage incremental processing.
+    %% RECOVERY: Instead of hard-failing, directs sub-agent to retry with RLM patterns enabled.
+    subgraph RLM_Validation_SG ["RLM Validation"]
+        CheckRLMRequired{Traces > 100?}
+        CheckRLMRequired -- "No: Under Threshold" --> BeginDetection[Begin Pattern Detection]
+        CheckRLMRequired -- "Yes: Over Threshold" --> ValidateRLMUsage{RLM Variables Present?}
+        ValidateRLMUsage -- "Yes: CONTEXT_*/ACCUMULATOR_*" --> BeginDetection
+        ValidateRLMUsage -- "No: Missing" --> RLMRecoveryDirective
+    end
+
+    %% ========================================
+    %% RLM RECOVERY MECHANISM
+    %% ========================================
+    %% Graceful recovery instead of hard-fail: signals sub-agent to retry with RLM enabled.
+    %% Follows agent loop patterns for recovery per process.yml mandates.
+    subgraph RLM_Recovery_SG ["RLM Recovery"]
+        RLMRecoveryDirective[/"Directive: Retry with RLM decomposition patterns as mandated by process.yml"/]
+        RLMRecoveryDirective --> IncrementRetryCount[Increment RLM Retry Counter]
+        IncrementRetryCount --> CheckRetryLimit{Retry Count <= 2?}
+        CheckRetryLimit -- "Yes: Can Retry" --> EnableRLMPatterns[Enable CONTEXT_*/ACCUMULATOR_* Variables]
+        EnableRLMPatterns --> LogRecoveryAttempt[Log Recovery Attempt to Sub-Agent]
+        LogRecoveryAttempt --> CheckRLMRequired
+        CheckRetryLimit -- "No: Max Retries Exceeded" --> ErrorRLMRequired((Error: RLM Required - Recovery Failed))
+    end
+
+    ErrorRLMRequired --> ReportRLMError[Report: RLM Recovery Exhausted After 2 Retries]
+    ReportRLMError --> End
 
     %% ========================================
     %% FRICTION DETECTION PHASE
@@ -118,6 +150,10 @@ flowchart LR
     classDef entrypoint fill:#90EE90,stroke:#228B22
     classDef exitpoint fill:#FFB6C1,stroke:#DC143C
     classDef userpoint fill:#87CEEB,stroke:#4682B4
+    classDef errorpoint fill:#FF6B6B,stroke:#CC0000
+    classDef recoverypoint fill:#FFA500,stroke:#FF8C00
     class Start entrypoint
     class End exitpoint
     class AskUser,UserDecision userpoint
+    class ErrorRLMRequired,ErrorNoLangSmith errorpoint
+    class RLMRecoveryDirective recoverypoint

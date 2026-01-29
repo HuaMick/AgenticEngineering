@@ -1,0 +1,40 @@
+    %% ========================================
+    %% PHASE {{ phase_number }}: TESTING (TEST-FIX-LOOP)
+    %% ========================================
+    %% LOOP_DEFINITION: test-fix-loop
+    %% MAX_ITERATIONS: {{ max_iterations | default(5) }}
+    %% FEEDBACK_TRIGGER: TEST_FAILURE -> retry or escalate
+{% if task_ids %}
+    %% Tasks: {{ task_ids }}
+{% endif %}
+
+    subgraph Testing_SG ["Phase {{ phase_number }}: Testing Subgraph (Test-Fix-Loop)"]
+        Phase{{ phase_number }}[Enter Phase {{ phase_number }}: Testing] --> SpawnTestBuilder[Spawn test-builder Agent]
+
+{% for test_step in test_steps %}
+        {% if loop.first %}SpawnTestBuilder{% else %}{{ test_steps[loop.index0 - 1].id }}{% endif %} --> {{ test_step.id }}[{{ test_step.label }}]
+{% endfor %}
+
+        {{ test_steps[-1].id }} --> RunTests[Run All Tests]
+        RunTests --> TestsPassed{Tests Passed?}
+
+        %% Test-Fix Loop: retry path
+        TestsPassed -- "No: Fix in Iteration" --> SpawnBuilderFix[Spawn builder Agent for Fixes]
+        SpawnBuilderFix --> ApplyFixes[Apply Implementation Fixes]
+        ApplyFixes --> RunTests
+
+        %% Success path
+        TestsPassed -- "Yes: All Pass" --> Phase{{ phase_number }}Complete[Phase {{ phase_number }} Complete]
+    end
+
+    %% Escalation path for persistent test failures
+    TestsPassed -- "No: Escalate" --> CheckIterations{Max Iterations Reached?}
+    CheckIterations -- "No" --> SpawnTestBuilder
+    CheckIterations -- "Yes" --> EscalateTests((Ask User: Test Failures Persist))
+
+{% if next_phase %}
+    Phase{{ phase_number }}Complete --> Phase{{ next_phase }}
+{% else %}
+    Phase{{ phase_number }}Complete --> ValidationPhase
+{% endif %}
+

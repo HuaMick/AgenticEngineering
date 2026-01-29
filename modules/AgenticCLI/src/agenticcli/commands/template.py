@@ -185,6 +185,192 @@ def _get_context() -> dict:
     }
 
 
+def _parse_phases(phases_str: str) -> list[dict]:
+    """Parse phases string into list of phase dictionaries.
+
+    Args:
+        phases_str: Comma-separated list of ID:Name pairs
+                   Example: "P1:Build,P2:Test,P3:Deploy"
+
+    Returns:
+        List of phase dictionaries with id, name, status, and tasks fields.
+
+    Raises:
+        ValueError: If phases_str is malformed.
+    """
+    phases = []
+    for pair in phases_str.split(","):
+        pair = pair.strip()
+        if not pair:
+            continue
+        if ":" not in pair:
+            raise ValueError(
+                f"Invalid phase format '{pair}'. Expected 'ID:Name' (e.g., 'P1:Build')"
+            )
+        parts = pair.split(":", 1)
+        phase_id = parts[0].strip()
+        phase_name = parts[1].strip()
+        if not phase_id or not phase_name:
+            raise ValueError(
+                f"Invalid phase format '{pair}'. Both ID and Name are required."
+            )
+        phases.append({
+            "id": phase_id,
+            "name": phase_name,
+            "status": "pending",
+            "tasks": [],
+        })
+    return phases
+
+
+def _inject_phases(content: str, phases: list[dict]) -> str:
+    """Inject custom phases into generated template content.
+
+    Replaces the default phases section with user-provided phases.
+
+    Args:
+        content: The template YAML content.
+        phases: List of phase dictionaries from _parse_phases().
+
+    Returns:
+        Modified content with custom phases.
+    """
+    import re
+
+    # Build YAML representation of phases
+    phases_yaml_lines = []
+    for phase in phases:
+        phases_yaml_lines.append(f'    - id: "{phase["id"]}"')
+        phases_yaml_lines.append(f'      name: "{phase["name"]}"')
+        phases_yaml_lines.append(f'      status: {phase["status"]}')
+        phases_yaml_lines.append("      tasks: []")
+    phases_yaml = "\n".join(phases_yaml_lines)
+
+    # Pattern to match the phases section in YAML
+    # Matches from "phases:" to the next top-level key or end of plan section
+    # This handles multi-line phases blocks
+    pattern = r"(  phases:\n)((?:    - [^\n]*\n(?:      [^\n]*\n)*)+)"
+
+    def replace_phases(match):
+        return f"  phases:\n{phases_yaml}\n"
+
+    new_content = re.sub(pattern, replace_phases, content)
+
+    return new_content
+
+
+def _parse_success_criteria(criteria_str: str) -> list[str]:
+    """Parse success criteria string into list of criteria.
+
+    Args:
+        criteria_str: Comma-separated or newline-separated list of criteria.
+                     Example: "Tests pass,Coverage > 80%,No lint errors"
+                     Or multiline:
+                     "Tests pass
+                     Coverage > 80%
+                     No lint errors"
+
+    Returns:
+        List of success criteria strings, stripped of whitespace.
+    """
+    criteria = []
+    # Split by newlines first, then by commas if no newlines
+    if "\n" in criteria_str:
+        items = criteria_str.split("\n")
+    else:
+        items = criteria_str.split(",")
+
+    for item in items:
+        item = item.strip()
+        if item:
+            criteria.append(item)
+
+    return criteria
+
+
+def _inject_success_criteria(content: str, criteria: list[str]) -> str:
+    """Inject success_criteria into generated template content.
+
+    Adds a success_criteria field to the plan section in the YAML content.
+
+    Args:
+        content: The template YAML content.
+        criteria: List of success criteria strings.
+
+    Returns:
+        Modified content with success_criteria field added.
+    """
+    import re
+
+    # Build YAML representation of success criteria
+    criteria_yaml_lines = ["  success_criteria:"]
+    for criterion in criteria:
+        # Escape quotes in criteria text
+        escaped = criterion.replace('"', '\\"')
+        criteria_yaml_lines.append(f'    - "{escaped}"')
+    criteria_yaml = "\n".join(criteria_yaml_lines)
+
+    # Find where to insert - after status: line in plan section
+    # Look for pattern like "  status: planning" or "  status: pending"
+    pattern = r"(  status:\s*\w+\n)(  created:)"
+
+    def insert_criteria(match):
+        return f"{match.group(1)}\n{criteria_yaml}\n\n{match.group(2)}"
+
+    new_content = re.sub(pattern, insert_criteria, content, count=1)
+
+    # If pattern not found, try inserting after created: line instead
+    if new_content == content:
+        pattern = r"(  created:\s*\"[^\"]+\"\n)"
+
+        def insert_after_created(match):
+            return f"{match.group(1)}\n{criteria_yaml}\n"
+
+        new_content = re.sub(pattern, insert_after_created, content, count=1)
+
+    return new_content
+
+
+def _inject_objective(content: str, objective: str) -> str:
+    """Inject objective into generated template content.
+
+    Replaces placeholder objective text with the provided objective.
+    Handles multi-line objectives by indenting continuation lines.
+    """
+    import re
+
+    # Format objective with proper YAML indentation for multi-line
+    lines = objective.strip().split("\n")
+    if len(lines) == 1:
+        formatted_objective = lines[0]
+    else:
+        # Multi-line: use YAML block scalar with proper indentation
+        formatted_objective = "\n    ".join(lines)
+
+    # Pattern to match objective placeholder in YAML
+    # Matches: objective: |
+    #            TODO: Describe the build objective
+    # or: objective: |
+    #       Improve agent guidance based on observed friction points
+    pattern = r"(objective:\s*\|)\n(\s+)(TODO: Describe[^\n]*|[^\n]+)"
+
+    def replace_objective(match):
+        prefix = match.group(1)  # "objective: |"
+        indent = match.group(2)  # whitespace indentation
+        return f"{prefix}\n{indent}{formatted_objective}"
+
+    new_content = re.sub(pattern, replace_objective, content, count=1)
+
+    # If no match found (template doesn't have objective field), add it after plan name
+    if new_content == content and "objective:" not in content:
+        # Find where to insert - after plan: name: line
+        pattern = r"(plan:\s*\n\s+name:\s*[^\n]+)"
+        replacement = r"\1\n\n  objective: |\n    " + formatted_objective
+        new_content = re.sub(pattern, replacement, content, count=1)
+
+    return new_content
+
+
 def _try_jinja2_render(template_type: str, context: dict) -> str | None:
     """Try to render using Jinja2 templates if available.
 
@@ -218,6 +404,9 @@ def cmd_generate(args):
 
     template_type = args.type
     output_path = Path(args.output) if args.output else None
+    objective = getattr(args, "objective", None)
+    phases_str = getattr(args, "phases", None)
+    success_criteria_str = getattr(args, "success_criteria", None)
 
     if template_type not in TEMPLATES:
         print_error(f"Unknown template type: {template_type}")
@@ -233,6 +422,26 @@ def cmd_generate(args):
         # Fall back to simple string formatting
         template = TEMPLATES[template_type]
         content = template.format(**context)
+
+    # Inject objective if provided
+    if objective:
+        content = _inject_objective(content, objective)
+
+    # Inject custom phases if provided
+    if phases_str:
+        try:
+            phases = _parse_phases(phases_str)
+            if phases:
+                content = _inject_phases(content, phases)
+        except ValueError as e:
+            print_error(str(e))
+            sys.exit(1)
+
+    # Inject success criteria if provided
+    if success_criteria_str:
+        criteria = _parse_success_criteria(success_criteria_str)
+        if criteria:
+            content = _inject_success_criteria(content, criteria)
 
     if output_path:
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -264,4 +473,4 @@ def cmd_list(args):
     print_table("", ["Type", "Description"], rows)
 
     console.print()
-    console.print("[dim]Usage: agentic template generate <type> [--output FILE][/dim]")
+    console.print("[dim]Usage: agentic template generate <type> [--output FILE] [--objective TEXT] [--phases 'P1:Build,P2:Test'] [--success-criteria 'Criteria1,Criteria2'][/dim]")

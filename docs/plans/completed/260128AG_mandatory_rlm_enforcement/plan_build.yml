@@ -1,0 +1,220 @@
+name: mandatory-rlm-enforcement
+status: active
+priority: high
+created: '2026-01-28'
+problem: 'Current state:
+
+  - RLM patterns are defined in rlm-patterns.yml but usage is OPTIONAL
+
+  - teacher-trace-diagnostics/process.yml mentions RLM with "(when implemented)" qualifier
+
+  - No enforcement that agents actually use RLM for large trace contexts
+
+  - Agents can analyze 500+ line traces without RLM decomposition
+
+
+  Desired state:
+
+  - RLM is MANDATORY when trace count exceeds threshold (100+ traces or 500+ lines)
+
+  - Mandatory RLM validation step in process.yml
+
+  - orchestration-friction validates RLM usage before presenting results
+
+  - Clear escalation path if RLM cannot be applied
+
+  '
+success_criteria:
+- teacher-trace-diagnostics/process.yml has mandatory RLM step with MUST language
+- orchestration-friction/process.mmd has RLM validation gate
+- trace_diagnostics_report includes rlm_context_usage field
+- Blind test shows agent cannot bypass RLM for large contexts
+- Remove "(when implemented)" qualifier from RLM references
+phases:
+- phase_id: P1
+  name: Update teacher-trace-diagnostics to mandate RLM
+  status: pending
+  tasks:
+  - id: RLM-001
+    name: Make RLM mandatory in process.yml STEP 2
+    description: "Update teacher-trace-diagnostics/process.yml STEP 2 (FETCH AND FILTER\
+      \ TRACES)\nto make RLM MANDATORY, not optional.\n\nCurrent text:\n  \"CONTEXT\
+      \ MANAGEMENT via RLM DECOMPOSITION:\n  This agent uses RLM (Recursive Language\
+      \ Model) patterns for context management.\n  Reference: modules/AgenticGuidance/assets/definitions/rlm-patterns.yml\
+      \ (when implemented)\"\n\nNew text:\n  \"MANDATORY RLM CONTEXT MANAGEMENT:\n\
+      \  This agent MUST use RLM patterns when:\n  - Trace count exceeds 100 runs\n\
+      \  - Total trace data exceeds 500 lines\n  - Cross-session analysis spans 5+\
+      \ sessions\n\n  RLM Implementation Requirements:\n  1. STORE_CONTEXT: Store\
+      \ trace metadata as CONTEXT_TRACES_SUMMARIES\n  2. FILTER: Use programmatic\
+      \ filtering, not full context loading\n  3. ACCUMULATE: Use ACCUMULATOR_FRICTION_FINDINGS\
+      \ pattern\n  4. SIGNAL_FINAL: Only signal completion after all analysis branches\
+      \ complete\n\n  Reference: modules/AgenticGuidance/assets/definitions/rlm-patterns.yml\n\
+      \n  VIOLATION: Analyzing 100+ traces without RLM decomposition is a process\
+      \ violation.\"\n"
+    status: completed
+    target_files:
+    - modules/AgenticGuidance/agents/teacher/teacher-trace-diagnostics/process.yml
+    acceptance_criteria:
+    - RLM described as MANDATORY not optional
+    - Remove "(when implemented)" qualifier
+    - Add threshold triggers (100+ traces, 500+ lines)
+    - Add explicit VIOLATION statement for bypassing RLM
+  - id: RLM-002
+    name: Add RLM validation criteria to inputs.yml
+    description: 'Add RLM validation section to teacher-trace-diagnostics/inputs.yml
+
+      that defines:
+
+      - Thresholds that trigger mandatory RLM
+
+      - Required RLM variables to be created
+
+      - Validation checks for RLM compliance
+
+      '
+    status: completed
+    target_files:
+    - modules/AgenticGuidance/agents/teacher/teacher-trace-diagnostics/inputs.yml
+    acceptance_criteria:
+    - rlm_enforcement section added with thresholds
+    - required_rlm_variables list defined
+    - rlm_compliance_checklist defined
+- phase_id: P2
+  name: Update orchestration-friction to validate RLM
+  status: pending
+  tasks:
+  - id: RLM-003
+    name: Add RLM validation gate to orchestration-friction process.mmd
+    description: "Add a validation gate in orchestration-friction/process.mmd that:\n\
+      1. Checks if trace count exceeded RLM threshold\n2. Validates RLM variables\
+      \ were created (CONTEXT_*, ACCUMULATOR_*)\n3. Blocks result presentation if\
+      \ RLM was bypassed for large contexts\n\nNew subgraph: RLM_Validation_SG\n \
+      \ TraceQuery_SG --> RLM_Validation_SG\n  RLM_Validation_SG --> CheckRLMRequired{Traces\
+      \ > 100?}\n  CheckRLMRequired -- Yes --> ValidateRLMUsage{RLM Variables Present?}\n\
+      \  ValidateRLMUsage -- No --> ErrorRLMRequired((Error: RLM Required))\n  ValidateRLMUsage\
+      \ -- Yes --> FrictionDetection_SG\n  CheckRLMRequired -- No --> FrictionDetection_SG\n"
+    status: completed
+    target_files:
+    - modules/AgenticGuidance/agents/orchestration/orchestration-friction/process.mmd
+    acceptance_criteria:
+    - RLM validation subgraph added
+    - Gate blocks processing if RLM bypassed for 100+ traces
+    - Error message explains RLM requirement
+  - id: RLM-004
+    name: Update orchestration-friction inputs.yml with RLM settings
+    description: 'Add RLM enforcement configuration to orchestration-friction/inputs.yml
+
+      including thresholds and validation criteria.
+
+      '
+    status: completed
+    target_files:
+    - modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml
+    acceptance_criteria:
+    - rlm_enforcement section added
+    - thresholds match teacher-trace-diagnostics
+- phase_id: P3
+  name: Update shared definitions for RLM mandatory status
+  status: pending
+  tasks:
+  - id: RLM-005
+    name: Add rlm_mandatory flag to trace-diagnostics.yml
+    description: 'Update modules/AgenticGuidance/assets/definitions/trace-diagnostics.yml
+
+      to add a rlm_mandatory section that clearly states RLM is required
+
+      for large-context trace analysis.
+
+      '
+    status: completed
+    target_files:
+    - modules/AgenticGuidance/assets/definitions/trace-diagnostics.yml
+    acceptance_criteria:
+    - rlm_mandatory section added with enforcement rules
+    - Threshold values documented (100 traces, 500 lines)
+    - Reference to rlm-patterns.yml included
+  - id: RLM-006
+    name: Update rlm-integration.yml with mandatory use cases
+    description: "Update the rlm-integration.yml guideline to add trace analysis\n\
+      as a MANDATORY use case (not just recommended).\n\nAdd to quick_reference.always_rlm:\n\
+      \  - \"Trace analysis exceeding 100 runs\"\n  - \"Friction detection spanning\
+      \ 5+ sessions\"\n"
+    status: completed
+    target_files:
+    - modules/AgenticGuidance/assets/guidelines/rlm-integration.yml
+    acceptance_criteria:
+    - Trace analysis added to always_rlm list
+    - Mandatory language used for trace analysis scenarios
+- phase_id: P4
+  name: Update output schema to track RLM usage
+  status: pending
+  tasks:
+  - id: RLM-007
+    name: Add rlm_context_usage to trace_diagnostics_report schema
+    description: 'Update the output schema in teacher-trace-diagnostics/process.yml
+
+      to include rlm_context_usage field that tracks:
+
+      - Whether RLM was used
+
+      - Number of context variables created
+
+      - Recursion depth reached
+
+      - Total traces processed via RLM
+
+
+      This enables validation that RLM was actually applied.
+
+      '
+    status: completed
+    target_files:
+    - modules/AgenticGuidance/agents/teacher/teacher-trace-diagnostics/process.yml
+    acceptance_criteria:
+    - rlm_context_usage field in output schema
+    - 'Fields: used, variables_created, max_depth, traces_processed'
+- phase_id: P5
+  name: Blind test and validation
+  status: pending
+  tasks:
+  - id: RLM-008
+    name: Blind test RLM enforcement
+    description: 'Test scenarios:
+
+      1. Analyze 50 traces - should work without RLM
+
+      2. Analyze 150 traces - should REQUIRE RLM, fail without
+
+      3. Analyze 150 traces with RLM - should succeed
+
+      4. Verify rlm_context_usage populated in output
+
+
+      Use: agentic entrypoint execute _analyze_friction with varying trace counts
+
+      '
+    status: completed
+    acceptance_criteria:
+    - Small context (< 100 traces) works without RLM
+    - Large context (100+ traces) blocked without RLM
+    - Large context with RLM succeeds
+    - Output includes rlm_context_usage
+orchestration_notes: 'This plan enforces RLM through GUIDANCE, not code implementation.
+
+
+  The RLM context accessor specification explicitly states that implementation
+
+  is flexible - agents generate code using available tools to achieve RLM patterns.
+
+
+  Enforcement is via:
+
+  1. MUST language in process.yml
+
+  2. Validation gates in orchestration MMD
+
+  3. Output schema requiring RLM usage reporting
+
+  4. Blind testing to verify enforcement
+
+  '

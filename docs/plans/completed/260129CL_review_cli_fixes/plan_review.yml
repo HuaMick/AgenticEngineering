@@ -1,0 +1,131 @@
+_template_status: active
+plan:
+  name: Review CLI Movement Fixes and Update Guidance
+  worktree: /home/code/AgenticEngineering
+  status: pending
+  objective: "Verify the reliability of the recent `agentic` CLI fixes (short name\
+    \ support, proper folder move, task removal) \nand update the system guidance\
+    \ to reflect these improved capabilities.\n\nCRITICAL NOTE: This is an initial\
+    \ sketch. A proper planning loop (spawned sub-agent or self-correction loop) \n\
+    must be executed to flesh out the technical details and specific guidance entries.\n"
+  phases:
+  - name: Verification & Review
+    id: review_01
+    status: pending
+    tasks:
+    - id: review_01_001
+      name: Verify CLI short-name resolution
+      description: Test that `agentic plan move folder` works with just the folder
+        name from various working directories.
+      status: completed
+      completion_note: 'BUG FOUND: Short-name resolution does NOT work as expected.
+
+
+        Test Results:
+
+        - Full path works: `agentic plan move folder --plan docs/plans/live/260129TE_test`
+        SUCCESS
+
+        - Absolute path works: `agentic plan move folder --plan /home/code/.../260129TE_test`
+        SUCCESS
+
+        - Short name FAILS: `agentic plan move folder --plan 260129TE_test` ERROR:
+        No such file or directory
+
+
+        Root Cause: The `find_plan_folder()` function in plan.py line 190-191 simply
+        converts
+
+        the path string to a Path object without any resolution logic for short names.
+
+        It does NOT search in `docs/plans/live/` to match folder names.
+
+
+        Note: The `--dry-run` flag appeared to work because it only calculates the
+        destination
+
+        path without actually accessing files. The actual move operation fails.
+
+
+        Recommended Fix: The `find_plan_folder()` function should be enhanced to:
+
+        1. If path is not an existing directory
+
+        2. And path looks like a plan folder name (matches YYMMDDXX_description pattern)
+
+        3. Search in docs/plans/live/ for a matching folder
+
+        4. Return the resolved full path
+
+        '
+    - id: review_01_002
+      name: Verify folder archival cleanup
+      description: Confirm that the source directory in `docs/plans/live` is correctly
+        removed after move.
+      status: completed
+      completion_note: "BUG FOUND: Source folder is NOT removed after archival.\n\n\
+        Test Procedure:\n1. Created test folder: docs/plans/live/260129TE_test_archival_cleanup/\n\
+        \   - plan_build.yml with all tasks status: completed\n   - orchestration_test.mmd\n\
+        2. Ran: agentic plan move folder --plan docs/plans/live/260129TE_test_archival_cleanup\
+        \ --force\n3. Command output: \"Archived to docs/plans/completed/260129TE_test_archival_cleanup\"\
+        \n\nTest Results:\n- Folder EXISTS in docs/plans/completed/260129TE_test_archival_cleanup/\
+        \ (CORRECT)\n- Folder ALSO EXISTS in docs/plans/live/260129TE_test_archival_cleanup/\
+        \ (BUG!)\n\nRoot Cause:\nThe `archive_plan_folder()` method in:\n/home/code/AgenticEngineering/modules/AgenticGuidance/src/agenticguidance/services/plan.py\n\
+        Line 377 uses `shutil.copytree()` instead of `shutil.move()`.\n\nThe code\
+        \ copies the folder to completed/ but NEVER deletes the source from live/.\n\
+        This leaves duplicate folders and defeats the purpose of \"archiving\".\n\n\
+        Recommended Fix:\nAfter the successful copytree on line 377, add:\n```python\n\
+        shutil.rmtree(self.plan_path)\n```\nOr replace copytree with shutil.move()\
+        \ entirely.\n\nNote: The same bug exists in cmd_archive() in plan.py (CLI\
+        \ fallback) at line 1407.\n\nCleanup: Test folders removed from both live/\
+        \ and completed/.\n"
+    - id: review_01_003
+      name: Verify task removal integrity
+      description: Verify that `agentic plan move task` correctly removes the task
+        entry from the source YAML file.
+      status: completed
+      completion_note: "BUG FOUND: Task is NOT removed from source file after move.\n\
+        \nTest Procedure:\n1. Created test folder: docs/plans/live/260129TE_task_removal_test/\n\
+        \   - plan_build.yml with 3 tasks: test_01_001 (pending), test_01_002 (completed),\
+        \ test_01_003 (pending)\n2. Ran: agentic plan move task test_01_002 --plan\
+        \ docs/plans/live/260129TE_task_removal_test --force\n3. Command output: \"\
+        Task moved to plan_completed.yml\"\n\nTest Results:\n- Task APPEARS in plan_completed.yml\
+        \ with metadata (moved_at, moved_from) - CORRECT\n- Task STILL EXISTS in plan_build.yml\
+        \ - BUG!\n\nRoot Cause:\nThe `move_task_to_completed()` method in:\n/home/code/AgenticEngineering/modules/AgenticGuidance/src/agenticguidance/services/plan.py\n\
+        Lines 153-276\n\nThe function:\n1. Finds the task in source file (lines 176-208)\n\
+        2. Copies task data to plan_completed.yml (lines 239-268)\n3. NEVER removes\
+        \ the task from the source file - no code exists for removal!\n\nAdditional\
+        \ Bug:\nRunning the same move command twice adds DUPLICATE entries to plan_completed.yml.\n\
+        There is no duplicate detection before appending tasks.\n\nSecondary Issue\
+        \ Found:\nThe task search only looks at top-level items in \"phases\", \"\
+        implementation_steps\", or \"tasks\".\nTasks nested inside phases (phases\
+        \ -> tasks) are NOT searched. This limits the command\nto non-standard flat\
+        \ plan structures.\n\nRecommended Fixes:\n1. After writing to plan_completed.yml,\
+        \ add code to:\n   - Re-read source file\n   - Remove the task from the appropriate\
+        \ list\n   - Re-write the source file\n2. Add duplicate detection before appending\
+        \ to completed_tasks\n3. Implement recursive search for nested task structures\n\
+        \nCleanup: Test folder removed.\n"
+  - name: Guidance Updates
+    id: guidance_02
+    status: pending
+    tasks:
+    - id: guidance_02_001
+      name: Update Main-First Planning guidance
+      description: Enhance guidance to recommend using short names and explain the
+        automated moving/archiving behavior.
+      status: completed
+    - id: guidance_02_002
+      name: Update Sub-agent Orchestration loops
+      description: Refine guidance for orchestration agents to rely on the CLI for
+        data consistency instead of manual `rm` or `mv`.
+      status: completed
+  - name: Planning Loop Execution
+    id: plan_03
+    status: pending
+    tasks:
+    - id: plan_03_001
+      name: Execute Detailed Planning Loop
+      description: Spawn a planner agent to fully flesh out this plan, specifically
+        identifying which guidance files need updates.
+      status: completed
+      guidance: Refer to docs/guidance/planning.md for loop procedures.

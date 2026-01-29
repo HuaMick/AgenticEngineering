@@ -1,0 +1,171 @@
+%% =============================================================================
+%% ORCHESTRATION: CLI Plan Creation Commands
+%% =============================================================================
+%% PLAN: 260128CR_add_cli_commands_for_plan_creation_and_orchestrati
+%% OBJECTIVE: Add CLI commands for fully CLI-driven plan creation
+%%
+%% CLI BOOTSTRAP:
+%%   agentic plan task current --plan docs/plans/live/260128CR_add_cli_commands_for_plan_creation_and_orchestrati
+%%   agentic plan task list --plan docs/plans/live/260128CR_add_cli_commands_for_plan_creation_and_orchestrati
+%%
+%% PHASES:
+%%   P1: Enhanced template generation (CR-001..003)
+%%   P2: Phase management commands (CR-004..006)
+%%   P3: Orchestration MMD generation (CR-007..009)
+%%   P4: User story and test generation (CR-010..012)
+%%   P5: Test iteration 1 - Unit tests (CR-013..015)
+%%   P6: Test iteration 2 - Integration tests (CR-016..018)
+%%   P7: Test iteration 3 - Blind agent tests (CR-019..021)
+%%   P8: Documentation and cleanup (CR-022..024)
+%%
+%% AGENT_ROUTING:
+%%   P1 -> builder-python
+%%   P2 -> builder-python
+%%   P3 -> builder-python
+%%   P4 -> builder-python
+%%   P5 -> test-runner
+%%   P6 -> test-runner
+%%   P7 -> test-guidance-simulator (blind tests)
+%%   P8 -> documentation-writer
+%%
+%% FEEDBACK_TRIGGERS:
+%%   TEST_FAILURE -> ReturnToBuild (fix and retest)
+%%   BUILD_FAILURE -> AskUser
+%%   BLIND_TEST_FAILURE -> ReturnToBuild
+%%
+%% EXECUTION_WORKTREE: /home/code/AgenticEngineering-cli-plan-creation
+%%
+%% TEST_ITERATIONS: 3 (P5 unit, P6 integration, P7 blind)
+%% =============================================================================
+
+flowchart TD
+    Start((Start)) --> ValidateInputs[Validate Plan Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION
+    %% ========================================
+    ValidateInputs --> CheckWorktree{Worktree Ready?}
+    CheckWorktree -- "No" --> SwitchWorktree[cd /home/code/AgenticEngineering-cli-plan-creation]
+    CheckWorktree -- "Yes" --> GetTask
+    SwitchWorktree --> GetTask[CLI: agentic plan task current]
+
+    %% ========================================
+    %% BUILD PHASES (P1-P4)
+    %% ========================================
+    subgraph BuildPhases ["Build Phases P1-P4"]
+        GetTask --> PhaseRouter{Which Phase?}
+
+        %% P1: Template Enhancement
+        PhaseRouter -- "P1" --> P1_Build[Spawn builder-python]
+        P1_Build --> P1_Tasks[CR-001: --objective flag\nCR-002: --phases flag\nCR-003: --success-criteria flag]
+        P1_Tasks --> P1_Complete[Mark P1 tasks complete]
+
+        %% P2: Phase Commands
+        PhaseRouter -- "P2" --> P2_Build[Spawn builder-python]
+        P2_Build --> P2_Tasks[CR-004: phase add\nCR-005: phase list\nCR-006: phase update]
+        P2_Tasks --> P2_Complete[Mark P2 tasks complete]
+
+        %% P3: Orchestration Generation
+        PhaseRouter -- "P3" --> P3_Build[Spawn builder-python]
+        P3_Build --> P3_Tasks[CR-007: orchestration generate\nCR-008: MMD templates\nCR-009: orchestration validate]
+        P3_Tasks --> P3_Complete[Mark P3 tasks complete]
+
+        %% P4: User Stories
+        PhaseRouter -- "P4" --> P4_Build[Spawn builder-python]
+        P4_Build --> P4_Tasks[CR-010: stories list\nCR-011: stories test\nCR-012: document existing stories]
+        P4_Tasks --> P4_Complete[Mark P4 tasks complete]
+    end
+
+    P1_Complete --> GetTask
+    P2_Complete --> GetTask
+    P3_Complete --> GetTask
+    P4_Complete --> GetTask
+
+    %% ========================================
+    %% TEST ITERATION 1: UNIT TESTS (P5)
+    %% ========================================
+    subgraph TestIteration1 ["Test Iteration 1: Unit Tests"]
+        PhaseRouter -- "P5" --> P5_Test[Spawn test-runner]
+        P5_Test --> P5_Tasks[CR-013: template tests\nCR-014: phase tests\nCR-015: orchestration tests]
+        P5_Tasks --> P5_Result{Tests Pass?}
+
+        P5_Result -- "No" --> P5_Capture[Capture failures]
+        P5_Capture --> P5_Fix[Return to Build Phase]
+        P5_Fix --> PhaseRouter
+
+        P5_Result -- "Yes" --> P5_Complete[Mark P5 complete]
+    end
+
+    %% ========================================
+    %% TEST ITERATION 2: INTEGRATION TESTS (P6)
+    %% ========================================
+    subgraph TestIteration2 ["Test Iteration 2: Integration Tests"]
+        P5_Complete --> P6_Test[Spawn test-runner]
+        P6_Test --> P6_Tasks[CR-016: full flow test\nCR-017: user story test\nCR-018: orchestration sync test]
+        P6_Tasks --> P6_Result{Tests Pass?}
+
+        P6_Result -- "No" --> P6_Capture[Capture failures]
+        P6_Capture --> P6_Iterations{Max Iterations?}
+        P6_Iterations -- "No" --> P6_Fix[Return to Build Phase]
+        P6_Fix --> PhaseRouter
+        P6_Iterations -- "Yes" --> Escalate1((Escalate to User))
+
+        P6_Result -- "Yes" --> P6_Complete[Mark P6 complete]
+    end
+
+    %% ========================================
+    %% TEST ITERATION 3: BLIND AGENT TESTS (P7)
+    %% ========================================
+    subgraph TestIteration3 ["Test Iteration 3: Blind Agent Tests"]
+        P6_Complete --> P7_Test[Spawn test-guidance-simulator]
+        P7_Test --> P7_Tasks[CR-019: agent creates plan via CLI\nCR-020: agent runs user story tests\nCR-021: agent recovers from errors]
+        P7_Tasks --> P7_Result{Blind Tests Pass?}
+
+        P7_Result -- "No" --> P7_Capture[Capture blind test failures]
+        P7_Capture --> P7_Analyze[Analyze: CLI gap or agent issue?]
+        P7_Analyze --> P7_Decision{CLI Gap?}
+        P7_Decision -- "Yes" --> P7_Fix[Return to Build Phase]
+        P7_Fix --> PhaseRouter
+        P7_Decision -- "No: Agent Issue" --> Escalate2((Escalate: Guidance Issue))
+
+        P7_Result -- "Yes" --> P7_Complete[Mark P7 complete]
+    end
+
+    %% ========================================
+    %% DOCUMENTATION (P8)
+    %% ========================================
+    subgraph Documentation ["Documentation Phase P8"]
+        P7_Complete --> P8_Doc[Spawn documentation-writer]
+        P8_Doc --> P8_Tasks[CR-022: update README\nCR-023: update --help\nCR-024: create tutorial]
+        P8_Tasks --> P8_Complete[Mark P8 complete]
+    end
+
+    %% ========================================
+    %% COMPLETION
+    %% ========================================
+    P8_Complete --> FinalValidate[CLI: agentic plan validate]
+    FinalValidate --> ValidResult{Validation Pass?}
+    ValidResult -- "No" --> Escalate3((Escalate: Validation Failed))
+    ValidResult -- "Yes" --> HumanApproval{Human Approval?}
+    HumanApproval -- "No" --> Escalate3
+    HumanApproval -- "Yes" --> Archive[CLI: agentic plan archive]
+    Archive --> Success((Plan Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef build fill:#e3f2fd,stroke:#1565c0
+    classDef test fill:#fff3e0,stroke:#ef6c00
+    classDef blind fill:#fce4ec,stroke:#c2185b
+    classDef doc fill:#e8f5e9,stroke:#2e7d32
+    classDef decision fill:#fff8e1,stroke:#f9a825
+    classDef endpoint fill:#c8e6c9,stroke:#2e7d32
+    classDef error fill:#ffcdd2,stroke:#c62828
+
+    class BuildPhases build
+    class TestIteration1,TestIteration2 test
+    class TestIteration3 blind
+    class Documentation doc
+    class P5_Result,P6_Result,P7_Result,P7_Decision,ValidResult,HumanApproval decision
+    class Start,Success endpoint
+    class Escalate1,Escalate2,Escalate3 error

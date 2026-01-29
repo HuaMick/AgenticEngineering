@@ -53,6 +53,14 @@ process:
           avg_latency: "float - seconds"
           total_tokens: "integer"
           backtracking_rate: "float - percentage of runs with backtracking"
+        rlm_context_usage:
+          description: "RLM context management tracking - REQUIRED when traces_analyzed > 100"
+          rlm_applied: "boolean - whether RLM decomposition was used"
+          context_variables_created: "integer - number of CONTEXT_* variables stored"
+          recursion_depth_reached: "integer - max decomposition depth (0 if no recursion)"
+          traces_processed_via_rlm: "integer - traces handled through RLM patterns"
+          decomposition_strategy: "string - strategy used (time_window, run_type, hybrid, none)"
+          required_when: "analysis_summary.traces_analyzed > 100"
 
   steps:
     - |
@@ -94,9 +102,14 @@ process:
          - Prioritize runs with errors for detailed analysis
          - Sample long-running traces for latency patterns
 
-      CONTEXT MANAGEMENT via RLM DECOMPOSITION:
-      This agent uses RLM (Recursive Language Model) patterns for context management.
-      Reference: modules/AgenticGuidance/assets/definitions/rlm-patterns.yml (when implemented)
+      CONTEXT MANAGEMENT via RLM DECOMPOSITION - MANDATORY:
+      This agent MUST use RLM (Recursive Language Model) patterns for context management.
+      RLM decomposition is MANDATORY when ANY of these conditions apply:
+        - Trace count exceeds 100 runs
+        - Total trace data exceeds context limits
+        - Complex multi-pattern analysis needed (analyzing 3+ pattern types simultaneously)
+
+      Definition: modules/AgenticGuidance/assets/definitions/rlm-patterns.yml
 
       RLM Pattern for Trace Analysis:
       1. STORE CONTEXT: Store trace metadata as environment variables

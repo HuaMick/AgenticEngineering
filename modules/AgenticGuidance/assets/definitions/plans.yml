@@ -29,18 +29,25 @@ There are 3 types of plans:
   See naming_convention above for pattern details.
   Use 'agentic plan init' command to create - CLI enforces naming programmatically.
   MAIN-FIRST: Plans are created in the main worktree BEFORE worktree switching for execution.
-  Common subfolders (planning agent determines appropriate structure based on plan complexity):
-  - live/: Active phase files (recommended for multi-phase plans)
-  - completed/: Completed items (recommended when tracking completion)
+
+  FLAT STRUCTURE REQUIREMENT:
+  Plan files (plan_*.yml, orchestration_*.mmd, README.md) MUST be in the folder root.
+  Do NOT create live/ or completed/ subdirectories within plan folders.
+
+  Standard folder structure:
+    YYMMDDXX_description/
+    ├── README.md              # Plan overview and status
+    ├── orchestration_*.mmd    # Process diagram(s)
+    ├── plan_*.yml             # Phase files (directly in root)
+    └── reference/             # Optional: reference materials
+
+  Optional subfolders for artifacts (NOT for plan files):
+  - reference/: Reference materials and research (optional)
   - analysis/: Iteration logs and analysis artifacts (optional)
   - audit/: Audit reports and findings (optional)
 
-  Note: Simple plans may have all files at root level. Complex plans benefit from subfolder
-  organization. The planning agent determines the appropriate structure based on plan complexity.
-
-  Additional folders (design-specs/, etc.) can be used as a "dumping ground" for agent artifacts
-  (e.g., .md analysis files) to avoid polluting the project root or other shared spaces.
-  Note: For staging and main branches, the plan name is omitted from the folder name. For other branches, a plan name may be appended (e.g., 251211MA_custom_agents).
+  Note: Additional folders (design-specs/, etc.) can be used for agent artifacts
+  (e.g., .md analysis files) to avoid polluting the project root.
   This structure reduces context window usage and keeps implementation artifacts organized.
 
 - plans_backlog: Backlog plans organized by worktree/category in docs/plans/backlog/backlog_*.yml.
@@ -68,6 +75,91 @@ main_first_policy:
     and remain accessible for auditing, follow-on work, and historical reference.
   cross_reference: "modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml#Main-First Planning"
 
+# CLI Plan Command Usage
+cli_usage:
+  path_requirements:
+    description: |
+      Plan commands require full paths to plan folders. Short-name resolution
+      is NOT supported. Always use the full path from the repository root.
+    correct_usage:
+      - "agentic plan task complete build_01 --plan docs/plans/live/260128AG_example"
+      - "agentic plan archive docs/plans/live/260128AG_example"
+      - "agentic plan status --plan docs/plans/live/260128AG_example"
+    incorrect_usage:
+      - "agentic plan task complete build_01 --plan 260128AG_example  # Short name not resolved"
+      - "agentic plan archive example  # Must use full path"
+
+  archival_commands:
+    archive:
+      command: "agentic plan archive <plan_path>"
+      behavior: |
+        Copies the plan folder from live/ to completed/.
+        IMPORTANT: Does NOT remove the source folder from live/.
+        Manual cleanup of the live/ folder may be needed if desired.
+      example: "agentic plan archive docs/plans/live/260128AG_example"
+
+    unarchive:
+      command: "agentic plan unarchive <plan_name>"
+      behavior: |
+        Moves a plan folder from completed/ back to live/.
+        Useful when a plan was archived prematurely or needs to be resumed.
+        Supports partial matching of folder names.
+      example: "agentic plan unarchive 260128AG_example"
+      notes:
+        - "Will fail if destination already exists in live/"
+        - "Prompts for confirmation unless --force is used"
+
+  auto_archival:
+    description: |
+      When marking the last task in a plan as completed, the CLI automatically
+      triggers archival to docs/plans/completed/. This can be suppressed.
+    trigger: "All tasks in all plan_*.yml files have status: completed"
+    suppress_flag: "--no-archive"
+    example: "agentic plan task complete final_task_01 --plan docs/plans/live/260128AG_example --no-archive"
+    notes:
+      - "Auto-archival copies but does not remove source folder"
+      - "Task update succeeds even if auto-archive fails"
+
+  known_limitations:
+    - "Short-name resolution not supported - must use full paths"
+    - "Archive command copies but does not remove source folder"
+    - "Task move does not remove from source file (copy-not-move pattern)"
+
+  # ==============================================
+  # FENCE: CLI-ONLY PLAN OPERATIONS
+  # ==============================================
+  cli_only_fence:
+    description: |
+      FENCE: All plan status updates and archival MUST use CLI commands.
+      Manual file operations bypass data consistency checks and auto-archival.
+    prohibited_operations:
+      bash_commands:
+        - "rm docs/plans/live/<folder>"
+        - "rm -rf docs/plans/live/<folder>"
+        - "mv docs/plans/live/<folder> docs/plans/completed/"
+        - "cp -r docs/plans/live/<folder> docs/plans/completed/"
+      edit_operations:
+        - "Edit tool to modify status: field in plan YAML files"
+        - "Direct YAML manipulation of task status values"
+    required_alternatives:
+      task_status:
+        instead_of: "Edit tool on status: field"
+        use: "agentic plan task start/complete <task_id> --plan <folder>"
+      plan_archival:
+        instead_of: "mv or cp commands"
+        use: "agentic plan archive <folder> (or let auto-archive handle it)"
+      plan_cleanup:
+        instead_of: "rm commands"
+        use: "Manual cleanup is user-only operation after archival"
+    auto_archival_behavior: |
+      When `agentic plan task complete` marks the last task as completed,
+      the CLI automatically:
+      1. Copies the plan folder to docs/plans/completed/
+      2. Preserves the live/ copy for potential follow-on work
+      3. Logs the archival action
+
+      Use --no-archive flag ONLY if follow-on work is planned.
+
 plan_lifecycle:
   Four distinct stages govern how plans move through their lifecycle:
 
@@ -80,13 +172,13 @@ plan_lifecycle:
      - Plan execution is in progress
      - One or more phases are being worked on
      - Folder exists in docs/plans/live/
-     - Active phase files in live/ subfolder
+     - Phase files (plan_*.yml) are in folder root
 
   3. partially_completed:
      - Some phases completed, follow-on work continues
      - Folder exists in BOTH docs/plans/live/ AND docs/plans/completed/
-     - completed/ folder contains snapshot of finished phases
-     - live/ folder contains new phases for ongoing work
+     - completed/ copy in docs/plans/completed/ contains snapshot of finished phases
+     - live/ copy in docs/plans/live/ contains ongoing work
 
   4. fully_completed:
      - All phases done, no active work remaining
@@ -94,25 +186,32 @@ plan_lifecycle:
      - May or may not remain in docs/plans/live/ (user decision)
 
 file_taxonomy:
-  Agents can create ANY .yml files during planning/execution (no naming restrictions).
-  The file's LOCATION determines its status, not its name:
+  CRITICAL: Plan files (plan_*.yml) MUST be in the plan folder root, NOT in subdirectories.
 
-  live/ subfolder:
-    purpose: "Active work files (in progress or pending)"
-    contains: "Any .yml files the agent creates during planning/execution"
-    reserved_files:
-      - plan_live_*.yml: "Phase definition files (stay in live/)"
-      - plan_next_actions.yml: "Active tracking file (stays in live/)"
+  Correct structure:
+    YYMMDDXX_description/
+    ├── README.md
+    ├── orchestration_*.mmd
+    ├── plan_build.yml       # <-- Directly in folder root
+    ├── plan_teach.yml       # <-- Directly in folder root
+    └── reference/           # Optional subfolder for reference materials
 
-  completed/ subfolder:
-    purpose: "Finished work files (done, verified)"
-    contains: "Files moved from live/ when all their tasks are complete"
-    reserved_files:
-      - plan_completed.yml: "Summary index of completed items (stays in completed/)"
+  WRONG structure (do NOT use):
+    YYMMDDXX_description/
+    ├── live/
+    │   └── plan_*.yml       # WRONG: nested in subdirectory
+    └── completed/
+        └── plan_*.yml       # WRONG: nested in subdirectory
 
-  analysis/ subfolder:
-    purpose: "Iteration logs and analysis artifacts"
-    contains: "plan_iteration_*.yml files and .md analysis documents"
+  File naming conventions:
+    - plan_*.yml: Phase files (build, teach, test, audit, cleanup, uat)
+    - orchestration_*.mmd: Process diagrams
+    - README.md: Plan overview and status
+
+  Optional subfolders (for artifacts only, NOT for plan files):
+    - reference/: Reference materials and research
+    - analysis/: Iteration logs and analysis artifacts (plan_iteration_*.yml, .md documents)
+    - audit/: Audit reports and findings
 
 scrap_file_taxonomy:
   description: "Transient artifacts from planning loops with different lifecycle than phase plans"
@@ -136,60 +235,60 @@ scrap_file_taxonomy:
     retention: "Tasks preserved in phase plan; original file deleted (not archived)"
 
 two_level_completion_pattern:
-  Plans use a two-level completion model: item-level sync and folder-level copy.
+  Plans use a two-level completion model: task-level status updates and folder-level copy.
+
+  Note: This pattern refers to docs/plans/live/ and docs/plans/completed/ directories,
+  NOT to subdirectories within plan folders. Plan files remain in their folder root.
 
   SCRAP FILE FENCE:
-  The Copy-and-Sync pattern applies to PHASE PLANS (plan_live_*.yml).
+  The Copy-and-Sync pattern applies to PHASE PLANS (plan_*.yml).
   SCRAP FILES (audit_*.yml, review_*.yml, plan_*_remediation*.yml) have different rules:
   - They do NOT use Copy-and-Sync
-  - They MOVE (not copy) to target subfolders after processing
+  - They MOVE to analysis/ or audit/ subfolders after processing
   - remediation_plans are DELETED (not moved) after task merge
   - Cleanup is triggered by APPROVAL, not by completion of all items
 
-  FILE-LEVEL COMPLETION (Copy-and-Sync pattern):
-  Files stay in live/ while work continues. Completed items are synced to a copy in completed/.
+  TASK-LEVEL COMPLETION:
+  Tasks are marked completed within their plan_*.yml files in the folder root.
+  Status updates happen in-place within the plan files.
 
-  INCREMENTAL COMPLETION (partial file completion):
-  - File remains in live/ while any items are pending/in-progress
-  - Create/update a COPY in completed/ containing ONLY completed items
-  - Both copies coexist: live/ has all items, completed/ has only done items
+  INCREMENTAL COMPLETION (partial plan completion):
+  - Plan folder remains in docs/plans/live/ while any tasks are pending/in-progress
+  - Update task statuses within plan_*.yml files as work progresses
   Example:
-    live/my_feature.yml         # 5 items: 3 completed, 2 pending
-    completed/my_feature.yml    # 3 items: only the completed ones
+    docs/plans/live/260115AG_example/
+    ├── plan_build.yml    # 5 tasks: 3 completed, 2 pending
+    └── plan_test.yml     # All tasks pending
 
-  FULL COMPLETION (all items done):
-  - When ALL items in a file have status: completed
-  - Ensure completed/ copy has all items
-  - DELETE the file from live/ (no longer needed)
-  - File now exists ONLY in completed/
+  FULL COMPLETION (all tasks done):
+  - When ALL tasks in ALL plan files have status: completed
+  - Copy entire folder to docs/plans/completed/
+  - Original may remain in docs/plans/live/ for follow-on work
   Example:
-    agentic plan move tasks --plan <plan_folder>  # Move completed tasks
-    completed/my_feature.yml    # Authoritative completed version
+    agentic plan move folder --plan <plan_folder>  # Copy to completed
+    docs/plans/completed/260115AG_example/         # Archived version
 
   REACTIVATION (issues found post-completion):
-  - COPY file back from completed/ to live/
-  - Update affected items' status to reflect the issue
-  - Keep completed/ copy as historical record
-  - Sync changes back to completed/ as items are re-completed
+  - Update plan files in docs/plans/live/ copy
+  - Update affected tasks' status to reflect the issue
+  - docs/plans/completed/ copy remains as historical record
 
   FOLDER-LEVEL COMPLETION (COPY-NOT-MOVE pattern):
-  - When ALL items in a plan folder are completed (status: 'fully_completed')
+  - When ALL tasks in a plan folder are completed (status: 'fully_completed')
   - The ENTIRE plan folder is COPIED (not moved) to docs/plans/completed/
     Command: agentic plan move folder --plan <plan_folder>
-  - The original live/ folder remains in place to support follow-on work
-  - The completed/ subfolder is preserved in both locations as the canonical archive
+  - The original docs/plans/live/ folder remains in place to support follow-on work
   - Only users manually move old plan folders from live/ to an archived/ subdirectory
 
   Why this pattern works:
-  - Agents can add missed items to live/ files without disrupting completed/ archive
-  - Completed items are preserved even while work continues
-  - Clear deletion signal: file removed from live/ = fully done
-  - Reactivation is clean: copy back, fix, sync
+  - Agents can add missed items to files in docs/plans/live/ without disrupting completed/ archive
+  - Completed tasks are preserved even while work continues
+  - Reactivation is clean: update docs/plans/live/ copy, sync to completed later
 
 follow_on_work_pattern:
   DO:
   - Keep the existing folder in docs/plans/live/ for follow-on work
-  - Add new plan files for new phases in the live/ subfolder
+  - Add new plan files (plan_*.yml) for new phases in the folder root
   - Reference the original work in metadata (e.g., original_plan_date, previous_phases)
   - Copy the folder to docs/plans/completed/ when initial phases complete
   - Update the docs/plans/completed/ copy when new phases complete
@@ -198,6 +297,7 @@ follow_on_work_pattern:
   - Create a new folder for related follow-on work (reuse the existing folder)
   - Move the folder out of docs/plans/live/ while work continues
   - Archive the folder without explicit user confirmation
+  - Create live/ or completed/ subdirectories within plan folders
 
 archived_vs_completed:
   Critical distinction between completed and archived storage:
@@ -301,7 +401,7 @@ validation_checklist:
     - "loop_structure present for non-trivial plans"
   naming:
     - "Folder matches YYMMDDXX_description pattern (see naming_convention.regex)"
-    - "Phase files in live/ or completed/ subfolder"
+    - "Phase files (plan_*.yml) in folder root, NOT in subdirectories"
     - "Naming validated by CLI during plan init (do not validate manually)"
   quality:
     - "Success criteria are specific and verifiable"

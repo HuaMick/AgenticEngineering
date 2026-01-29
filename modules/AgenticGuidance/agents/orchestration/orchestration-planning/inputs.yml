@@ -294,6 +294,50 @@ cli_commands_reference: "modules/AgenticGuidance/assets/definitions/cli-commands
 # ==============================================
 
 # ==============================================
+# SUB-AGENT ORCHESTRATION CLI WORKFLOW
+# ==============================================
+# When orchestrating sub-agents, use CLI commands for all task state management.
+# This ensures data consistency and triggers auto-archival automatically.
+# ==============================================
+sub_agent_orchestration_workflow:
+  description: |
+    Standard workflow for spawning and managing sub-agents during plan execution.
+    CLI commands handle all state transitions - agents should NEVER use Edit tool
+    on plan YAML files or rm/mv commands on plan folders.
+
+  workflow_steps:
+    1_get_task:
+      command: "agentic plan task current --plan <folder>"
+      purpose: "Get the next task to execute"
+      output: "Task details including id, description, guidance, inputs"
+
+    2_start_task:
+      command: "agentic plan task start <task_id> --plan <folder>"
+      purpose: "Mark task as in_progress before spawning agent"
+      timing: "BEFORE spawning the sub-agent"
+
+    3_spawn_agent:
+      command: "agentic session spawn --role <agent-role> --plan <folder>"
+      purpose: "Spawn appropriate agent for the task"
+      note: "Agent role determined by task type and agent-task alignment check"
+
+    4_complete_task:
+      command: "agentic plan task complete <task_id> --plan <folder>"
+      purpose: "Mark task as completed after agent succeeds"
+      auto_archive: "Triggers auto-archival when this is the last task"
+
+  prohibited_operations:
+    - "Edit tool to change status: field in plan YAML"
+    - "rm commands on docs/plans/ paths"
+    - "mv commands on docs/plans/ paths"
+    - "Manual YAML editing for task status"
+
+  auto_archival_note: |
+    When completing the last task, CLI automatically archives the plan folder.
+    Use --no-archive flag ONLY if follow-on work is explicitly planned.
+# ==============================================
+
+# ==============================================
 # PHASE FILE STRATEGY
 # ==============================================
 phase_file_strategy: |

@@ -81,3 +81,57 @@ guideline:
             - "Copy completed/old_feature.yml back to live/"
             - "Update affected items' status"
             - "Sync fixes back to completed/ as resolved"
+
+  cli_commands:
+    description: |
+      CLI commands for plan archival. See modules/AgenticGuidance/assets/definitions/plans.yml
+      for authoritative CLI usage documentation.
+    commands:
+      archive:
+        command: "agentic plan archive <full_path>"
+        example: "agentic plan archive docs/plans/live/260128AG_example"
+        note: "Copies to completed/ but does NOT remove source from live/"
+      unarchive:
+        command: "agentic plan unarchive <plan_name>"
+        example: "agentic plan unarchive 260128AG_example"
+        note: "Moves from completed/ back to live/ (reverse archival)"
+      auto_archival:
+        trigger: "When completing the last task with 'agentic plan task complete'"
+        suppress: "Use --no-archive flag to prevent auto-archival"
+    path_requirement: |
+      IMPORTANT: Full paths are required for plan commands.
+      Short-name resolution is NOT supported.
+      Always use: docs/plans/live/<folder> or docs/plans/completed/<folder>
+
+  # ==============================================
+  # FENCE: CLI-ONLY FILE OPERATIONS
+  # ==============================================
+  cli_only_fence:
+    description: |
+      FENCE: All plan file operations MUST use CLI commands.
+      Manual file operations (rm, mv, Edit on status fields) are PROHIBITED.
+    justification: |
+      CLI commands ensure data consistency, trigger auto-archival, and maintain
+      proper plan lifecycle state. Manual operations bypass these safeguards and
+      can leave plans in inconsistent states.
+    prohibited_operations:
+      - "rm docs/plans/live/<folder>  # Use CLI archival instead"
+      - "mv docs/plans/live/<folder> docs/plans/completed/  # CLI handles this"
+      - "Edit tool to change task status fields  # Use agentic plan task start/complete"
+      - "Direct YAML editing of plan status  # CLI manages status transitions"
+    required_cli_commands:
+      task_management:
+        - command: "agentic plan task start <task_id> --plan <folder>"
+          purpose: "Mark task as in_progress"
+        - command: "agentic plan task complete <task_id> --plan <folder>"
+          purpose: "Mark task as completed; triggers auto-archive if last task"
+      archival:
+        - command: "agentic plan archive <folder>"
+          purpose: "Manual archival (copies to completed/)"
+        - command: "agentic plan unarchive <name>"
+          purpose: "Restore archived plan to live/"
+    violation_indicators:
+      - "Bash rm command on docs/plans/ paths"
+      - "Bash mv command on docs/plans/ paths"
+      - "Edit tool modifying status: field in plan YAML"
+      - "Plan folder missing from live/ without CLI archive call"

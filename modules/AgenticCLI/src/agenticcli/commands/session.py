@@ -25,6 +25,17 @@ def _get_sessions_dir() -> Path:
     return sessions_dir
 
 
+def _get_logs_dir() -> Path:
+    """Get the logs directory path for session output.
+
+    Returns:
+        Path to ~/.agentic/sessions/logs/
+    """
+    logs_dir = Path.home() / ".agentic" / "sessions" / "logs"
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    return logs_dir
+
+
 def _load_session(session_id: str) -> dict | None:
     """Load a session from disk.
 
@@ -148,7 +159,7 @@ def cmd_spawn(args, ctx=None):
     cmd = ["claude", "--print"]
     if max_turns:
         cmd.extend(["--max-turns", str(max_turns)])
-    cmd.extend(["--prompt", prompt])
+    cmd.append(prompt)
 
     # Create session record
     session_data = {
@@ -167,15 +178,23 @@ def cmd_spawn(args, ctx=None):
     try:
         if background:
             # Background mode: use Popen and return immediately
+            # Open log files for stdout and stderr
+            logs_dir = _get_logs_dir()
+            stdout_log = open(logs_dir / f"{session_id}.stdout.log", "w")
+            stderr_log = open(logs_dir / f"{session_id}.stderr.log", "w")
+
             process = subprocess.Popen(
                 cmd,
                 cwd=working_dir,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stdin=subprocess.DEVNULL,
+                stdout=stdout_log,
+                stderr=stderr_log,
                 start_new_session=True,
             )
             session_data["pid"] = process.pid
             session_data["status"] = "running"
+            session_data["stdout_log"] = str(logs_dir / f"{session_id}.stdout.log")
+            session_data["stderr_log"] = str(logs_dir / f"{session_id}.stderr.log")
             _save_session(session_data)
 
             if is_json_output():
@@ -449,3 +468,33 @@ def cmd_status(args, ctx=None):
 
     if session.get("exit_code") is not None:
         console.print(f"[cyan]Exit Code:[/cyan] {session.get('exit_code')}")
+
+    # Display log file paths if they exist
+    stdout_log = session.get("stdout_log")
+    stderr_log = session.get("stderr_log")
+
+    if stdout_log:
+        console.print(f"[cyan]Stdout Log:[/cyan] {stdout_log}")
+    if stderr_log:
+        console.print(f"[cyan]Stderr Log:[/cyan] {stderr_log}")
+
+    # If --show-output is passed and log files exist, display their contents
+    show_output = getattr(args, "show_output", False)
+    if show_output:
+        if stdout_log and Path(stdout_log).exists():
+            console.print("\n[bold cyan]--- Stdout Log Contents ---[/bold cyan]")
+            with open(stdout_log) as f:
+                content = f.read()
+                if content:
+                    console.print(content)
+                else:
+                    console.print("[dim](empty)[/dim]")
+
+        if stderr_log and Path(stderr_log).exists():
+            console.print("\n[bold cyan]--- Stderr Log Contents ---[/bold cyan]")
+            with open(stderr_log) as f:
+                content = f.read()
+                if content:
+                    console.print(f"[red]{content}[/red]")
+                else:
+                    console.print("[dim](empty)[/dim]")

@@ -1,0 +1,83 @@
+%% =============================================================================
+%% ORCHESTRATION: MANDATORY RLM ENFORCEMENT
+%% =============================================================================
+%% GOAL: Ensure RLM patterns are mandatory for trace analysis
+%% PROFILE: Orchestration-Build
+%% PLAN_FOLDER: docs/plans/live/260128AG_mandatory_rlm_enforcement
+%%
+%% PHASE_ROUTING:
+%%   P1: teacher-trace-diagnostics updates (builder agent)
+%%   P2: orchestration-friction updates (builder agent)
+%%   P3: shared definition updates (builder agent)
+%%   P4: output schema updates (builder agent)
+%%   P5: blind test (test agent)
+%% =============================================================================
+
+flowchart TD
+    Start((Start)) --> LoadPlan[Load plan_build.yml]
+
+    %% ========================================
+    %% PHASE 1: TEACHER-TRACE-DIAGNOSTICS
+    %% ========================================
+    subgraph P1_SG ["P1: Mandate RLM in teacher-trace-diagnostics"]
+        LoadPlan --> RLM001[RLM-001: Update process.yml STEP 2]
+        RLM001 --> RLM002[RLM-002: Add RLM validation to inputs.yml]
+        RLM002 --> P1Complete{P1 Complete?}
+        P1Complete -- "No: Issues" --> FixP1[Fix P1 Issues]
+        FixP1 --> RLM001
+    end
+
+    %% ========================================
+    %% PHASE 2: ORCHESTRATION-FRICTION
+    %% ========================================
+    subgraph P2_SG ["P2: Add RLM validation to orchestration-friction"]
+        P1Complete -- "Yes" --> RLM003[RLM-003: Add MMD validation gate]
+        RLM003 --> RLM004[RLM-004: Update inputs.yml]
+        RLM004 --> P2Complete{P2 Complete?}
+        P2Complete -- "No: Issues" --> FixP2[Fix P2 Issues]
+        FixP2 --> RLM003
+    end
+
+    %% ========================================
+    %% PHASE 3: SHARED DEFINITIONS
+    %% ========================================
+    subgraph P3_SG ["P3: Update shared definitions"]
+        P2Complete -- "Yes" --> RLM005[RLM-005: Update trace-diagnostics.yml]
+        RLM005 --> RLM006[RLM-006: Update rlm-integration.yml]
+        RLM006 --> P3Complete{P3 Complete?}
+        P3Complete -- "No: Issues" --> FixP3[Fix P3 Issues]
+        FixP3 --> RLM005
+    end
+
+    %% ========================================
+    %% PHASE 4: OUTPUT SCHEMA
+    %% ========================================
+    subgraph P4_SG ["P4: Track RLM usage in output"]
+        P3Complete -- "Yes" --> RLM007[RLM-007: Add rlm_context_usage to schema]
+        RLM007 --> P4Complete{P4 Complete?}
+        P4Complete -- "No: Issues" --> FixP4[Fix P4 Issues]
+        FixP4 --> RLM007
+    end
+
+    %% ========================================
+    %% PHASE 5: BLIND TEST
+    %% ========================================
+    subgraph P5_SG ["P5: Validate enforcement"]
+        P4Complete -- "Yes" --> RLM008[RLM-008: Blind test RLM enforcement]
+        RLM008 --> TestPass{All Tests Pass?}
+        TestPass -- "No: Failures" --> AnalyzeFailures[Analyze Test Failures]
+        AnalyzeFailures --> FixIssues[Fix identified issues]
+        FixIssues --> RLM008
+    end
+
+    TestPass -- "Yes" --> End((Plan Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef entrypoint fill:#90EE90,stroke:#228B22
+    classDef exitpoint fill:#FFB6C1,stroke:#DC143C
+    classDef decision fill:#87CEEB,stroke:#4682B4
+    class Start entrypoint
+    class End exitpoint
+    class P1Complete,P2Complete,P3Complete,P4Complete,TestPass decision

@@ -1,0 +1,309 @@
+_template_status: active
+name: cli-docs-test
+worktree_path: /home/code/AgenticEngineering-cli-docs-update
+worktree: cli-docs-update
+status: pending
+created: '2026-01-28'
+summary: 'Validate that the updated CLI documentation (README) matches the actual
+
+  --help output and that all documented commands work as described.
+
+  '
+objective: 'Ensure documentation quality by:
+
+  1. Verifying README examples match --help output
+
+  2. Testing all documented command examples
+
+  3. Checking for broken or outdated references
+
+  4. Validating command categories are accurate
+
+  '
+scope:
+  includes:
+  - modules/AgenticCLI/README.md
+  - All CLI --help output
+  excludes:
+  - Unit tests for CLI implementation
+  - Integration tests for command behavior
+phases:
+- phase_id: test_01
+  name: Help Output Validation
+  description: Verify --help output matches README documentation
+  status: pending
+  estimated_effort: medium
+  tasks:
+  - task_id: test_01_001
+    description: Validate main command help matches README
+    status: completed
+    guidance: 'Run `agentic --help` and compare against README Quick Reference section.
+
+
+      Check:
+
+      - All commands listed in --help are in README
+
+      - All commands in README exist in --help
+
+      - Command descriptions are consistent
+
+      '
+    success_criteria:
+    - No commands missing from either source
+    - Descriptions are consistent
+  - task_id: test_01_002
+    description: Validate plan command help matches README
+    status: completed
+    guidance: 'Run `agentic plan --help` and all subcommand help.
+
+      Compare against README plan section.
+
+
+      Check:
+
+      - All subcommands documented
+
+      - Options match (--plan, --status, etc.)
+
+      - Task subcommands (start, complete, prefill, list, status, add, update, current)
+
+      '
+    success_criteria:
+    - All plan subcommands match
+    - Options are accurately documented
+  - task_id: test_01_003
+    description: Validate context command help matches README
+    status: completed
+    guidance: 'Run `agentic context --help` and subcommand help.
+
+      Compare against README context section.
+
+
+      Check:
+
+      - bootstrap, role, task, inputs, generate-agent documented
+
+      - Options match (--role, --format, --all, --resolve)
+
+      '
+    success_criteria:
+    - All context subcommands match
+    - Options are accurately documented
+  - task_id: test_01_004
+    description: Validate entrypoint command help matches README
+    status: completed
+    guidance: 'Run `agentic entrypoint --help` and subcommand help.
+
+      Compare against README entrypoint section.
+
+
+      Check:
+
+      - list, show, execute documented
+
+      - --compile, --vars, --context options documented
+
+      '
+    success_criteria:
+    - All entrypoint subcommands match
+    - Options are accurately documented
+  - task_id: test_01_005
+    description: Validate session and loop command help
+    status: completed
+    guidance: 'Run `agentic session --help` and `agentic loop --help`.
+
+      Compare against README sections.
+
+
+      Check:
+
+      - session: spawn, list, stop, status
+
+      - loop: start, stop, status, history
+
+      - All options documented
+
+      '
+    success_criteria:
+    - All session/loop subcommands match
+    - Options are accurately documented
+- phase_id: test_02
+  name: Example Validation
+  description: Test that README examples work correctly
+  status: pending
+  estimated_effort: medium
+  depends_on:
+  - test_01
+  tasks:
+  - task_id: test_02_001
+    description: Test plan command examples
+    status: completed
+    guidance: 'Test README examples for plan commands:
+
+
+      ```bash
+
+      agentic plan list
+
+      agentic plan status
+
+      agentic plan task list
+
+      agentic plan task current
+
+      ```
+
+
+      Verify commands execute without error.
+
+      '
+    success_criteria:
+    - All plan examples execute successfully
+    - Output matches expected behavior
+  - task_id: test_02_002
+    description: Test context command examples
+    status: completed
+    guidance: 'Test README examples for context commands:
+
+
+      ```bash
+
+      agentic context bootstrap --role build-python
+
+      agentic context task
+
+      agentic context inputs --role planner-build
+
+      ```
+
+
+      Verify commands execute and return expected data.
+
+      '
+    success_criteria:
+    - All context examples execute successfully
+    - Output format is as documented
+  - task_id: test_02_003
+    description: Test entrypoint command examples
+    status: completed
+    guidance: 'Test README examples for entrypoint commands:
+
+
+      ```bash
+
+      agentic entrypoint list
+
+      agentic ep show _plan_build
+
+      ```
+
+
+      Verify commands execute and return expected data.
+
+      '
+    success_criteria:
+    - All entrypoint examples execute successfully
+    - Output format is as documented
+  - task_id: test_02_004
+    description: Test langsmith command examples
+    status: completed
+    guidance: 'Test README examples for langsmith commands (requires API key):
+
+
+      ```bash
+
+      agentic langsmith projects
+
+      agentic ls sessions
+
+      ```
+
+
+      Note: Some commands may require LANGSMITH_API_KEY.
+
+      '
+    success_criteria:
+    - Commands execute without argument errors
+    - Appropriate error if API key missing
+- phase_id: test_03
+  name: Category Validation
+  description: Verify command categories (Global vs Project) are accurate
+  status: pending
+  estimated_effort: low
+  depends_on:
+  - test_02
+  tasks:
+  - task_id: test_03_001
+    description: Test global commands work outside git repo
+    status: completed
+    guidance: 'Navigate to a non-git directory (e.g., /tmp) and test:
+
+
+      ```bash
+
+      cd /tmp
+
+      agentic --help
+
+      agentic setup --help
+
+      agentic health
+
+      agentic config show
+
+      agentic update --help
+
+      ```
+
+
+      These should work without requiring a git repository.
+
+      '
+    success_criteria:
+    - Global commands work outside git repo
+    - No 'not in git repository' errors
+  - task_id: test_03_002
+    description: Test project commands require git context
+    status: completed
+    guidance: 'Test that project commands appropriately require git context:
+
+
+      ```bash
+
+      cd /tmp
+
+      agentic plan status
+
+      agentic worktree list
+
+      agentic context task
+
+      ```
+
+
+      These should fail gracefully with helpful error messages.
+
+      '
+    success_criteria:
+    - Project commands fail outside git repo
+    - Error messages are helpful
+success_criteria:
+- All --help output matches README documentation
+- All README examples execute successfully
+- Command categories (Global/Project) are accurate
+- No broken or outdated command references
+test_strategy:
+- type: manual
+  scope: Help output comparison
+  description: Compare --help output against README sections
+- type: manual
+  scope: Example execution
+  description: Execute README examples and verify behavior
+- type: manual
+  scope: Category verification
+  description: Test commands in/outside git repositories
+notes:
+- This is validation testing, not unit/integration testing
+- Focus on documentation accuracy, not command implementation
+- Some langsmith commands require API key to fully test
