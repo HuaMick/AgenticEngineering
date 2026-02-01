@@ -1,0 +1,177 @@
+%% =============================================================================
+%% ORCHESTRATION: Multi-Agent tmux Coordination
+%% =============================================================================
+%% GOAL: Build multi-agent coordination through tmux session monitoring and messaging
+%% PROFILE: Orchestrator-Build
+%% INPUT_PATH: docs/plans/deferred/260130MA_multi_agent_tmux_coordination/plan_build.yml
+%% WORKTREE: /home/code/AgenticEngineering-agentictmux
+%% BRANCH: agentictmux
+%%
+%% PHASES: RoleInfra, OutputCapture, InboxMessaging, SupervisorCLI, QualityGate, Integration
+%% AGENT_ROUTING:
+%%   RoleInfra -> build-python (SessionService extension)
+%%   OutputCapture -> build-python (capture utilities)
+%%   InboxMessaging -> build-python (messaging system)
+%%   SupervisorCLI -> build-python (CLI commands)
+%%   QualityGate -> build-python (ReviewService, plan integration)
+%%   Integration -> build-python (CLI wiring, tests)
+%%
+%% FEEDBACK_TRIGGERS:
+%%   TEST_FAILURE -> TestFixLoop (pytest failures)
+%%   BUILD_ERROR -> BuildFixLoop (syntax, import errors)
+%%
+%% LOOP_DEFINITIONS:
+%%   test-fix: Max 5 iterations per phase, escalate to human on failure
+%%
+%% DEPENDENCIES:
+%%   - 260130TE: tmux Remote Terminal Access (completed)
+%%   - 260123AE: AgenticGuidance Services (completed)
+%%
+%% STATUS: Deferred
+%% =============================================================================
+
+flowchart TD
+    Start((Start)) --> LoadPlan[Load plan_build.yml]
+
+    %% ========================================
+    %% INPUT VALIDATION
+    %% ========================================
+    LoadPlan --> ValidateWorktree{Worktree Exists?<br/>AgenticEngineering-agentictmux}
+    ValidateWorktree -- "No" --> CreateWorktree[Create Worktree: agentictmux]
+    CreateWorktree --> ValidateDeps
+    ValidateWorktree -- "Yes" --> ValidateDeps
+
+    ValidateDeps[Validate Dependencies] --> CheckSessionService{SessionService Exists?}
+    CheckSessionService -- "No" --> EscalateMissing((Escalate: Missing SessionService))
+    CheckSessionService -- "Yes" --> CheckTmuxRemote{tmux Remote Config Exists?}
+    CheckTmuxRemote -- "No" --> EscalateMissing
+    CheckTmuxRemote -- "Yes" --> Phase1
+
+    %% ========================================
+    %% PHASE 1: SESSION ROLE INFRASTRUCTURE
+    %% ========================================
+    subgraph Phase1_SG ["Phase 1: Session Role Infrastructure (MA-001 to MA-003)"]
+        Phase1[Enter Role Infrastructure Phase] --> SpawnBuilderRole[Spawn build-python Agent]
+        SpawnBuilderRole --> Task_MA001[MA-001: Extend SessionInfo with role]
+        Task_MA001 --> Task_MA002[MA-002: Add role-based queries]
+        Task_MA002 --> Task_MA003[MA-003: Create CoordinationService core]
+        Task_MA003 --> TestPhase1{Run Phase 1 Tests}
+    end
+
+    TestPhase1 -- "Pass" --> Phase2
+    TestPhase1 -- "Fail" --> TestFixLoop1{Test-Fix Loop}
+    TestFixLoop1 -- "Iteration < 5" --> SpawnBuilderRole
+    TestFixLoop1 -- "Iteration >= 5" --> EscalatePhase1((Escalate: Phase 1 Failures))
+
+    %% ========================================
+    %% PHASE 2: TERMINAL OUTPUT CAPTURE
+    %% ========================================
+    subgraph Phase2_SG ["Phase 2: Terminal Output Capture (MA-004 to MA-006)"]
+        Phase2[Enter Output Capture Phase] --> SpawnBuilderCapture[Spawn build-python Agent]
+        SpawnBuilderCapture --> Task_MA004[MA-004: Implement capture_terminal]
+        Task_MA004 --> Task_MA005[MA-005: Implement monitor_workers]
+        Task_MA005 --> Task_MA006[MA-006: Implement send_keys]
+        Task_MA006 --> TestPhase2{Run Phase 2 Tests}
+    end
+
+    TestPhase2 -- "Pass" --> Phase3
+    TestPhase2 -- "Fail" --> TestFixLoop2{Test-Fix Loop}
+    TestFixLoop2 -- "Iteration < 5" --> SpawnBuilderCapture
+    TestFixLoop2 -- "Iteration >= 5" --> EscalatePhase2((Escalate: Phase 2 Failures))
+
+    %% ========================================
+    %% PHASE 3: INBOX MESSAGING SYSTEM
+    %% ========================================
+    subgraph Phase3_SG ["Phase 3: Inbox Messaging System (MA-007 to MA-009)"]
+        Phase3[Enter Inbox Messaging Phase] --> SpawnBuilderInbox[Spawn build-python Agent]
+        SpawnBuilderInbox --> Task_MA007[MA-007: Define Message schema]
+        Task_MA007 --> Task_MA008[MA-008: Implement inbox file operations]
+        Task_MA008 --> Task_MA009[MA-009: Add status reporting]
+        Task_MA009 --> TestPhase3{Run Phase 3 Tests}
+    end
+
+    TestPhase3 -- "Pass" --> Phase4
+    TestPhase3 -- "Fail" --> TestFixLoop3{Test-Fix Loop}
+    TestFixLoop3 -- "Iteration < 5" --> SpawnBuilderInbox
+    TestFixLoop3 -- "Iteration >= 5" --> EscalatePhase3((Escalate: Phase 3 Failures))
+
+    %% ========================================
+    %% PHASE 4: SUPERVISOR/WORKER CLI
+    %% ========================================
+    subgraph Phase4_SG ["Phase 4: Supervisor/Worker CLI (MA-010 to MA-012)"]
+        Phase4[Enter Supervisor CLI Phase] --> SpawnBuilderCLI[Spawn build-python Agent]
+        SpawnBuilderCLI --> Task_MA010[MA-010: Create coordination commands]
+        Task_MA010 --> Task_MA011[MA-011: Create observation commands]
+        Task_MA011 --> Task_MA012[MA-012: Create worker commands]
+        Task_MA012 --> TestPhase4{Run Phase 4 Tests}
+    end
+
+    TestPhase4 -- "Pass" --> Phase5
+    TestPhase4 -- "Fail" --> TestFixLoop4{Test-Fix Loop}
+    TestFixLoop4 -- "Iteration < 5" --> SpawnBuilderCLI
+    TestFixLoop4 -- "Iteration >= 5" --> EscalatePhase4((Escalate: Phase 4 Failures))
+
+    %% ========================================
+    %% PHASE 5: QUALITY GATE PATTERN
+    %% ========================================
+    subgraph Phase5_SG ["Phase 5: Quality Gate Pattern (MA-013 to MA-015)"]
+        Phase5[Enter Quality Gate Phase] --> SpawnBuilderGate[Spawn build-python Agent]
+        SpawnBuilderGate --> Task_MA013[MA-013: Create ReviewService]
+        Task_MA013 --> Task_MA014[MA-014: Create review CLI commands]
+        Task_MA014 --> Task_MA015[MA-015: Integrate with plan phases]
+        Task_MA015 --> TestPhase5{Run Phase 5 Tests}
+    end
+
+    TestPhase5 -- "Pass" --> Phase6
+    TestPhase5 -- "Fail" --> TestFixLoop5{Test-Fix Loop}
+    TestFixLoop5 -- "Iteration < 5" --> SpawnBuilderGate
+    TestFixLoop5 -- "Iteration >= 5" --> EscalatePhase5((Escalate: Phase 5 Failures))
+
+    %% ========================================
+    %% PHASE 6: INTEGRATION AND TESTING
+    %% ========================================
+    subgraph Phase6_SG ["Phase 6: Integration and Testing (MA-016 to MA-018)"]
+        Phase6[Enter Integration Phase] --> SpawnBuilderIntegration[Spawn build-python Agent]
+        SpawnBuilderIntegration --> Task_MA016[MA-016: Register CLI commands]
+        Task_MA016 --> Task_MA017[MA-017: Create unit tests]
+        Task_MA017 --> Task_MA018[MA-018: Create integration tests]
+        Task_MA018 --> TestPhase6{Run Phase 6 Tests}
+    end
+
+    TestPhase6 -- "Pass" --> FinalValidation
+    TestPhase6 -- "Fail" --> TestFixLoop6{Test-Fix Loop}
+    TestFixLoop6 -- "Iteration < 5" --> SpawnBuilderIntegration
+    TestFixLoop6 -- "Iteration >= 5" --> EscalatePhase6((Escalate: Phase 6 Failures))
+
+    %% ========================================
+    %% FINAL VALIDATION
+    %% ========================================
+    subgraph FinalValidation_SG ["Final Validation"]
+        FinalValidation[Run Full Test Suite] --> SpawnTester[Spawn test-runner Agent]
+        SpawnTester --> RunAllTests[Run All Tests]
+        RunAllTests --> CheckCoverage{Coverage >= 80%?}
+    end
+
+    CheckCoverage -- "Yes" --> ValidationComplete
+    CheckCoverage -- "No" --> CoverageFixLoop{Add Missing Tests}
+    CoverageFixLoop --> Phase6
+
+    %% ========================================
+    %% COMPLETION
+    %% ========================================
+    ValidationComplete[All Validation Complete] --> UpdatePlanStatus[Update Plan Status: Completed]
+    UpdatePlanStatus --> ArchivePlan[Archive Plan to Completed]
+    ArchivePlan --> ReportOutput[Report: Plan Completed]
+
+    subgraph Output_SG ["Output Summary"]
+        ReportOutput --> ShowNewCommands[New Commands: agentic coord, agentic review]
+        ShowNewCommands --> ShowPatterns[Patterns: Supervisor/Worker, Quality Gate]
+        ShowPatterns --> ShowNextSteps[Next Steps: Documentation, Real-world Testing]
+    end
+
+    ShowNextSteps --> End((End: Build Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef dashedstroke stroke-dasharray: 5 5;

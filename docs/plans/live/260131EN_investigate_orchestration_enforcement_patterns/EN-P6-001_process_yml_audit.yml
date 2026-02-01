@@ -1,0 +1,443 @@
+# EN-P6-001: Process.yml Structure Audit for Step Extraction
+# Task: Audit process.yml structures for step extraction
+# Status: Completed
+# Date: 2026-02-01
+
+task_id: EN-P6-001
+task_name: Audit process.yml structures for step extraction
+status: completed
+agent_type: explore
+
+# =============================================================================
+# EXECUTIVE SUMMARY
+# =============================================================================
+summary:
+  finding: |
+    Process.yml files follow a consistent schema with extractable steps. The structure
+    supports automated step extraction for agent-specific plan generation. Key finding:
+    steps are stored as a list of either strings (free-form) or dicts (structured),
+    both formats can be parsed for task generation.
+
+  recommendation: |
+    Step extraction is feasible. The CLI already parses process.yml files (see
+    agent_help.py). Extending this to generate agent-specific task files is
+    LOW complexity.
+
+# =============================================================================
+# PROCESS.YML SCHEMA ANALYSIS
+# =============================================================================
+process_yml_schema:
+  description: |
+    All process.yml files follow a consistent top-level structure with a single
+    'process' key containing the agent's workflow definition.
+
+  canonical_structure:
+    process:
+      goal: "string - Description of what this agent accomplishes"
+      profile: "string (optional) - Agent profile type (e.g., 'orchestrator')"
+      project_type: "string (optional) - Project specialization (e.g., 'python', 'flutter')"
+
+      loop_context:
+        participates_in: "list[string] - Loop types this agent participates in"
+        loop_definition: "string (optional) - Reference to agent-loops.yml"
+        role: "string (optional) - Role in loop (executor, auditor, fixer)"
+        max_iterations: "integer (optional) - Max loop iterations"
+        exit_conditions: "list[string] (optional) - Conditions to exit loop"
+        iteration_strategy: "string (optional) - How iterations are handled"
+        state_management: "string (optional) - How state persists between iterations"
+
+      invocation_context:
+        caller_chain: "list[string] (optional) - Who calls this agent"
+        note: "string (optional) - Notes on invocation patterns"
+
+      inputs:
+        - location: "string - Path to inputs file"
+          description: "string - Description of inputs"
+
+      outputs:
+        - name: "string - Output artifact name"
+          description: "string - What this output contains"
+          path_template: "string (optional) - Where output is written"
+          required_fields: "list[string] (optional) - Required fields in output"
+          schema_reference: "string (optional) - Reference to schema file"
+          format: "string (optional) - Output format (yaml, json)"
+
+      steps: "list[string | dict] - Ordered workflow steps"
+
+      guidelines: "list[string] - Behavioral guidelines"
+
+      fallbacks: "dict (optional) - Fallback behaviors for error cases"
+
+  files_examined:
+    - path: modules/AgenticGuidance/agents/planner/planner-build/process.yml
+      lines: 297
+      step_format: string (free-form multiline)
+      step_count: 7
+
+    - path: modules/AgenticGuidance/agents/build/build-python/process.yml
+      lines: 113
+      step_format: string (free-form multiline)
+      step_count: 7
+
+    - path: modules/AgenticGuidance/agents/test/test-runner/process.yml
+      lines: 125
+      step_format: string (free-form multiline)
+      step_count: 6
+
+    - path: modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml
+      lines: 424
+      step_format: dict (structured with id, name, description)
+      step_count: 18
+
+    - path: modules/AgenticGuidance/agents/planner/planner-test/process.yml
+      lines: 137
+      step_format: string (free-form multiline)
+      step_count: 6
+
+    - path: modules/AgenticGuidance/agents/teacher/teacher-update-guidance/process.yml
+      lines: 314
+      step_format: string (free-form multiline)
+      step_count: 5
+
+    - path: modules/AgenticGuidance/agents/deploy/deploy-worktree/process.yml
+      lines: 133
+      step_format: string (free-form multiline)
+      step_count: 7
+
+    - path: modules/AgenticGuidance/agents/test/test-audit/process.yml
+      lines: 91
+      step_format: string (free-form multiline)
+      step_count: 6
+
+  total_files_found: 54
+  legacy_files: 33  # In modules/legacy/MyAgents/
+  current_files: 21  # In modules/AgenticGuidance/agents/
+
+# =============================================================================
+# STEP FORMAT ANALYSIS
+# =============================================================================
+step_formats:
+  description: |
+    Steps appear in two formats. Both are parseable for task extraction.
+
+  format_1_string:
+    name: Free-form string steps
+    prevalence: 95%  # Most agents use this format
+    example: |
+      steps:
+        - |
+          CCI BOOTSTRAP (CLI Context Injection) - Run FIRST before any file exploration:
+          Execute these commands to get structured context efficiently:
+
+          ```bash
+          agentic context bootstrap --role build-python -j
+          agentic plan task current -j
+          ```
+        - |
+          Review all inputs if an input cannot be found do not proceed.
+        - |
+          Build components following the builder-role pattern...
+
+    extraction_strategy:
+      - First line becomes task name (truncated to 100 chars)
+      - Full text becomes task description
+      - Step index becomes task order
+      - Step number is 1-indexed
+
+    parsing_code: |
+      # From modules/AgenticCLI/src/agenticcli/commands/agent_help.py line 210-217
+      steps = proc.get("steps", [])
+      for step in steps[:10]:  # Limit to first 10 steps
+          if isinstance(step, str):
+              # First line only
+              context["process_steps"].append(step.split("\n")[0][:100])
+
+  format_2_dict:
+    name: Structured dict steps
+    prevalence: 5%  # Only orchestration-executor uses this
+    example: |
+      steps:
+        - id: "startup_validate_inputs"
+          name: "Validate Required Inputs"
+          description: |
+            REQUIRED INPUTS (from inputs.yml):
+            1. plan_folder_path (string, required)...
+
+        - id: "loop_spawn_agent"
+          name: "Spawn Routed Agent"
+          description: |
+            Invoke the resolved agent with context...
+
+    fields:
+      - id: "string - Unique step identifier"
+      - name: "string - Human-readable step name"
+      - description: "string - Detailed step instructions"
+      - fence: "string (optional) - Constraint/validation text"
+
+    extraction_strategy:
+      - step.id becomes task.id
+      - step.name becomes task.name
+      - step.description becomes task.description
+      - step index determines order
+
+    parsing_code: |
+      # From modules/AgenticCLI/src/agenticcli/commands/agent_help.py line 433-440
+      for i, step in enumerate(steps):
+          if isinstance(step, dict):
+              step_info = {
+                  "number": i + 1,
+                  "name": step.get("name", step.get("id", f"Step {i+1}")),
+                  "description": step.get("description", ""),
+              }
+
+# =============================================================================
+# STEP METADATA AND CONTEXT
+# =============================================================================
+step_metadata:
+  common_patterns:
+    cci_bootstrap:
+      description: |
+        Most process.yml files start with a CCI Bootstrap step. This is a standard
+        pattern for context initialization.
+      detection: "Step contains 'CCI BOOTSTRAP' or 'agentic context bootstrap'"
+      frequency: "~85% of agents"
+
+    input_validation:
+      description: |
+        Second step typically validates inputs were received correctly.
+      detection: "Step contains 'VALIDATE' and 'INPUTS'"
+      frequency: "~70% of agents"
+
+    loop_context:
+      description: |
+        Many agents define loop_context to indicate participation in iterative loops.
+      relevant_fields:
+        - participates_in
+        - role
+        - max_iterations
+        - exit_conditions
+      can_inform_task_generation: true
+
+  step_dependencies:
+    explicit: false  # Steps don't declare dependencies on each other
+    implicit: true   # Steps are ordered and assumed sequential
+    note: |
+      Steps in process.yml are implicitly sequential. No explicit depends_on
+      relationships exist. Task generation should preserve order.
+
+# =============================================================================
+# EXISTING CLI PARSING INFRASTRUCTURE
+# =============================================================================
+existing_infrastructure:
+  file: modules/AgenticCLI/src/agenticcli/commands/agent_help.py
+
+  functions:
+    _load_agent_context:
+      purpose: "Loads agent context including steps for basic help"
+      parses_steps: true
+      step_limit: 10
+
+    _load_agent_bootstrap_context:
+      purpose: "Loads full bootstrap context with expanded step details"
+      parses_steps: true
+      includes_descriptions: true
+
+    _find_agent_directory:
+      purpose: "Locates agent guidance directory by name"
+      uses_category_mapping: true
+
+  agent_discovery:
+    known_agents_list: "Hardcoded list of 24 agents in KNOWN_AGENTS"
+    category_mapping: "AGENT_CATEGORIES maps agent name to category folder"
+
+  observations:
+    - CLI already parses process.yml successfully
+    - CLI extracts steps, goal, inputs
+    - CLI handles both string and dict step formats
+    - Code can be extended for task file generation
+
+# =============================================================================
+# AGENT-SPECIFIC PLAN FILE DESIGN
+# =============================================================================
+proposed_task_file_structure:
+  location: "{plan_folder}/agents/{session_id}_{role}.yml"
+
+  schema:
+    session_id: "string - Claude Code session identifier"
+    role: "string - Agent role from process.yml"
+    source_process: "string - Path to original process.yml"
+    created_at: "datetime - When file was generated"
+    parent_task_id: "string (optional) - Task ID in parent plan"
+    status: "enum(pending, in_progress, completed, failed)"
+
+    steps:
+      - id: "string - Step identifier (step_N or from dict)"
+        name: "string - Step name (first line or dict.name)"
+        description: "string - Full step text"
+        status: "enum(pending, in_progress, completed, skipped)"
+        started_at: "datetime (optional)"
+        completed_at: "datetime (optional)"
+        notes: "string (optional) - Agent notes during execution"
+
+  example: |
+    session_id: "abc123def"
+    role: "build-python"
+    source_process: "modules/AgenticGuidance/agents/build/build-python/process.yml"
+    created_at: "2026-02-01T10:30:00Z"
+    parent_task_id: "BUILD-001"
+    status: "in_progress"
+    steps:
+      - id: "step_1"
+        name: "CCI BOOTSTRAP (CLI Context Injection)"
+        description: |
+          Run FIRST before any file exploration...
+        status: "completed"
+        completed_at: "2026-02-01T10:31:00Z"
+      - id: "step_2"
+        name: "Review all inputs if an input cannot be found do not proceed"
+        description: "..."
+        status: "in_progress"
+        started_at: "2026-02-01T10:32:00Z"
+
+# =============================================================================
+# TRANSFORMATION COMPLEXITY ASSESSMENT
+# =============================================================================
+complexity_assessment:
+  overall: LOW
+
+  rationale:
+    - Process.yml schema is consistent across agents
+    - CLI already has parsing infrastructure
+    - Step extraction is straightforward for both formats
+    - No complex transformations required
+
+  implementation_estimate:
+    hours: 4-8
+    confidence: HIGH
+
+  required_work:
+    - Extend agent_help.py to support task file generation
+    - Add CLI command `agentic plan agent-init` or extend bootstrap
+    - Define task file schema (simple YAML)
+    - Add step status tracking fields
+
+  risks:
+    - Free-form steps may have inconsistent naming (mitigated by first-line extraction)
+    - Long steps may need truncation for task names
+    - Session ID availability at bootstrap time (need to verify)
+
+# =============================================================================
+# EXTRACTION PATTERNS FOR COMMON STEP TYPES
+# =============================================================================
+extraction_patterns:
+  cci_bootstrap_step:
+    detection: "contains 'CCI BOOTSTRAP'"
+    task_name: "CCI Bootstrap - Context Initialization"
+    task_type: "setup"
+    mandatory: true
+    note: "Should always be first task in generated plan"
+
+  input_validation_step:
+    detection: "contains 'VALIDATE' and 'INPUTS' or 'Review all inputs'"
+    task_name: "Validate Required Inputs"
+    task_type: "validation"
+    mandatory: true
+
+  build_step:
+    detection: "contains 'Build' or 'Create' or 'Implement'"
+    task_name: "Extracted from first line"
+    task_type: "implementation"
+
+  verify_step:
+    detection: "contains 'Verify' or 'Check' or 'Validate'"
+    task_name: "Extracted from first line"
+    task_type: "verification"
+
+  report_step:
+    detection: "contains 'Report' or 'Output' or 'Return'"
+    task_name: "Extracted from first line"
+    task_type: "reporting"
+    note: "Usually last task"
+
+# =============================================================================
+# GAPS AND LIMITATIONS
+# =============================================================================
+gaps_and_limitations:
+  - gap: "No step IDs in string format"
+    mitigation: "Generate sequential IDs (step_1, step_2, etc.)"
+
+  - gap: "No explicit dependencies between steps"
+    mitigation: "Assume sequential ordering, generate depends_on based on index"
+
+  - gap: "Step names may be verbose (multiline strings)"
+    mitigation: "Use first line, truncate to 100 chars, clean formatting"
+
+  - gap: "Some steps have embedded code blocks"
+    mitigation: "Preserve in description, but extract clean name from first line"
+
+  - gap: "Inconsistent step granularity across agents"
+    mitigation: "Accept variability - some agents have 5 steps, others 18"
+    note: "Orchestration agents naturally have more steps"
+
+# =============================================================================
+# RELATED DOCUMENTATION
+# =============================================================================
+related_documentation:
+  guidance_artifacts:
+    path: modules/AgenticGuidance/assets/definitions/guidance-artifacts.yml
+    relevance: |
+      Defines process.yml standard format with canonical structure:
+      - goal, loop_context, inputs, outputs, steps, guidelines
+
+  guidance_process_requirements:
+    path: modules/AgenticGuidance/assets/definitions/guidance-process-requirements.yml
+    relevance: |
+      Defines when modifications to guidance files require teach process validation.
+      Important for any implementation that generates files.
+
+  agent_help_command:
+    path: modules/AgenticCLI/src/agenticcli/commands/agent_help.py
+    relevance: |
+      Contains existing parsing infrastructure for process.yml files.
+      Key functions: _load_agent_context, _load_agent_bootstrap_context
+
+# =============================================================================
+# RECOMMENDATIONS FOR EN-P6-002
+# =============================================================================
+recommendations_for_next_task:
+  - |
+    EN-P6-002 should prototype the transformation using the existing agent_help.py
+    parsing code as a starting point. The _load_agent_bootstrap_context function
+    already extracts steps with names and descriptions.
+
+  - |
+    Consider whether to generate task files at bootstrap time or plan start time.
+    Bootstrap time has session ID available; plan start may not.
+
+  - |
+    Design the agents/ subfolder cleanup strategy early. Options:
+    - Auto-delete on plan completion
+    - Archive to completed/ subfolder
+    - Keep indefinitely for audit trail
+
+  - |
+    Consider adding a --dry-run flag to the generation command for testing
+    without creating files.
+
+# =============================================================================
+# CONCLUSION
+# =============================================================================
+conclusion:
+  feasibility: HIGH
+  complexity: LOW
+  recommendation: PROCEED
+
+  summary: |
+    Process.yml structures are well-suited for step extraction. The schema is
+    consistent, the CLI already has parsing infrastructure, and both step formats
+    (string and dict) can be handled. Generating agent-specific plan files from
+    process.yml is feasible with approximately 4-8 hours of implementation work.
+
+    The key insight is that this is NOT a complex transformation problem - it's
+    primarily about extending existing CLI infrastructure to output task files
+    instead of just displaying help text.

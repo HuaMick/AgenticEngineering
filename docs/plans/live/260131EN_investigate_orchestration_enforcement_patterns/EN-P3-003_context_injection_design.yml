@@ -1,0 +1,869 @@
+# EN-P3-003: Orchestration Context Injection Design
+# Task: Design orchestration context injection approach
+# Agent: builder
+# Status: completed
+# Date: 2026-01-31
+
+task_id: EN-P3-003
+task_description: "Design orchestration context injection approach"
+investigator: builder-agent
+status: completed
+based_on:
+  - EN-P3-001_session_spawn_audit.yml
+  - EN-P3-002_session_context_flow_lifecycle.yml
+
+# =============================================================================
+# EXECUTIVE SUMMARY
+# =============================================================================
+
+summary: |
+  This document presents the technical design for orchestration context injection
+  into Claude Code sessions. Based on the findings from EN-P3-001 (session spawn
+  audit) and EN-P3-002 (context flow lifecycle), this design provides a hybrid
+  approach combining environment variables, CLI extensions, session registry
+  enhancements, and optional prompt injection.
+
+  Key Design Principles:
+  1. Backward Compatible: All new features are opt-in
+  2. Explicit Over Implicit: Prefer explicit context over auto-detection
+  3. Layered Injection: Multiple layers for redundancy and verification
+  4. Traceable: Full context history in session registry
+
+# =============================================================================
+# DESIGN OVERVIEW
+# =============================================================================
+
+design_overview:
+  name: "Hybrid Context Injection System"
+
+  components:
+    - name: "CLI Argument Extensions"
+      purpose: "Accept orchestration context at spawn time"
+      priority: HIGH
+      effort: LOW
+
+    - name: "Environment Variable Injection"
+      purpose: "Pass context to subprocess for runtime detection"
+      priority: HIGH
+      effort: LOW
+
+    - name: "Session Record Schema Update"
+      purpose: "Store orchestration context for traceability"
+      priority: HIGH
+      effort: LOW
+
+    - name: "Context Prompt Prefix (Optional)"
+      purpose: "Embed context directly in prompt for immediate availability"
+      priority: MEDIUM
+      effort: LOW
+
+    - name: "Auto-Resolution from Active Plan (Optional)"
+      purpose: "Automatically detect context when not explicitly provided"
+      priority: LOW
+      effort: MEDIUM
+
+# =============================================================================
+# COMPONENT 1: CLI ARGUMENT EXTENSIONS
+# =============================================================================
+
+cli_argument_extensions:
+
+  target_file: modules/AgenticCLI/src/agenticcli/cli.py
+  target_function: _add_session_parser()
+  insertion_point: "After existing spawn_parser.add_argument calls (line ~1593)"
+
+  new_arguments:
+
+    argument_1:
+      name: "--role"
+      short: "-r"
+      type: "choice"
+      choices: ["orchestrator", "subagent"]
+      required: false
+      help: |
+        Orchestration role for this session. 'orchestrator' indicates this
+        session manages task delegation. 'subagent' indicates this session
+        is spawned by an orchestrator to perform a specific task.
+
+      code_example: |
+        spawn_parser.add_argument(
+            "--role", "-r",
+            choices=["orchestrator", "subagent"],
+            help="Orchestration role for this session (orchestrator or subagent).",
+        )
+
+    argument_2:
+      name: "--task"
+      short: "-t"
+      type: "string"
+      required: false
+      help: |
+        Task ID this session is assigned to work on. Should match a task
+        identifier from the active plan's task list.
+
+      code_example: |
+        spawn_parser.add_argument(
+            "--task", "-t",
+            help="Task ID this session is working on (e.g., EN-P3-003).",
+        )
+
+    argument_3:
+      name: "--plan"
+      short: null
+      type: "string"
+      required: false
+      help: |
+        Plan folder path for orchestration context. This is the folder
+        containing plan_build.yml and orchestration files.
+
+      code_example: |
+        spawn_parser.add_argument(
+            "--plan",
+            help="Plan folder path for orchestration context.",
+        )
+
+    argument_4:
+      name: "--parent-session"
+      short: null
+      type: "string"
+      required: false
+      help: |
+        Parent session ID that spawned this session. Establishes session
+        hierarchy for tracing orchestration flow.
+
+      code_example: |
+        spawn_parser.add_argument(
+            "--parent-session",
+            help="Parent session ID (for subagent sessions spawned by orchestrator).",
+        )
+
+    argument_5:
+      name: "--phase"
+      short: null
+      type: "string"
+      required: false
+      help: |
+        Current orchestration phase (e.g., 'plan', 'build', 'test', 'review').
+        Helps agent understand workflow context.
+
+      code_example: |
+        spawn_parser.add_argument(
+            "--phase",
+            help="Orchestration phase (e.g., plan, build, test, review).",
+        )
+
+    argument_6:
+      name: "--inject-context"
+      short: null
+      type: "flag"
+      required: false
+      default: false
+      help: |
+        When set, prepend orchestration context block to the prompt.
+        This embeds context directly in the prompt for immediate availability.
+
+      code_example: |
+        spawn_parser.add_argument(
+            "--inject-context",
+            action="store_true",
+            help="Prepend orchestration context block to the prompt.",
+        )
+
+  usage_examples:
+    basic_subagent: |
+      agentic session spawn \
+        --prompt "Implement feature X" \
+        --role subagent \
+        --task EN-P3-003 \
+        --plan docs/plans/live/260131EN_investigate_orchestration_enforcement_patterns \
+        --parent-session abc123 \
+        --background
+
+    orchestrator_session: |
+      agentic session spawn \
+        --prompt "Execute the plan" \
+        --role orchestrator \
+        --plan docs/plans/live/260131EN_investigate_orchestration_enforcement_patterns \
+        --background
+
+    with_context_injection: |
+      agentic session spawn \
+        --prompt "Build the feature" \
+        --role subagent \
+        --task EN-P3-003 \
+        --inject-context \
+        --background
+
+# =============================================================================
+# COMPONENT 2: ENVIRONMENT VARIABLE INJECTION
+# =============================================================================
+
+environment_variable_injection:
+
+  target_file: modules/AgenticCLI/src/agenticcli/commands/session.py
+  target_function: cmd_spawn()
+  insertion_point: "Before subprocess.Popen/run calls (lines 186 and 215)"
+
+  environment_variables:
+
+    variable_1:
+      name: "AGENTIC_SESSION_ID"
+      value: "session_id (generated UUID)"
+      purpose: |
+        Unique identifier for this session. Allows agent to reference
+        itself in logs, reports, or when spawning child sessions.
+
+    variable_2:
+      name: "AGENTIC_SESSION_ROLE"
+      value: "orchestrator | subagent | unset"
+      purpose: |
+        Role of this session in the orchestration hierarchy.
+        - orchestrator: Managing task delegation
+        - subagent: Performing assigned task
+        - unset: Legacy session without orchestration context
+
+    variable_3:
+      name: "AGENTIC_TASK_ID"
+      value: "Task identifier (e.g., EN-P3-003)"
+      purpose: |
+        Task this session is assigned to complete. Used for:
+        - Task boundary enforcement
+        - Progress tracking
+        - Correlation in logs and reports
+
+    variable_4:
+      name: "AGENTIC_PLAN_FOLDER"
+      value: "Relative path to plan folder"
+      purpose: |
+        Path to the plan folder containing orchestration files.
+        Agent can use this to read plan_build.yml, orchestration MMD, etc.
+
+    variable_5:
+      name: "AGENTIC_PARENT_SESSION"
+      value: "Parent session UUID or empty"
+      purpose: |
+        ID of the session that spawned this one. Used for:
+        - Building session hierarchy
+        - Tracing orchestration flow
+        - Reporting to parent on completion
+
+    variable_6:
+      name: "AGENTIC_PHASE"
+      value: "Current orchestration phase"
+      purpose: |
+        Which phase of the orchestration workflow this session operates in.
+        Helps agent understand scope and expected behaviors.
+
+  implementation:
+
+    env_dict_construction: |
+      # In cmd_spawn(), before subprocess calls:
+
+      # Extract orchestration context from args
+      role = getattr(args, "role", None)
+      task = getattr(args, "task", None)
+      plan = getattr(args, "plan", None)
+      parent_session = getattr(args, "parent_session", None)
+      phase = getattr(args, "phase", None)
+
+      # Build environment with orchestration context
+      spawn_env = os.environ.copy()
+
+      # Always set session ID
+      spawn_env["AGENTIC_SESSION_ID"] = session_id
+
+      # Set orchestration context if provided
+      if role:
+          spawn_env["AGENTIC_SESSION_ROLE"] = role
+      if task:
+          spawn_env["AGENTIC_TASK_ID"] = task
+      if plan:
+          spawn_env["AGENTIC_PLAN_FOLDER"] = plan
+      if parent_session:
+          spawn_env["AGENTIC_PARENT_SESSION"] = parent_session
+      if phase:
+          spawn_env["AGENTIC_PHASE"] = phase
+
+    popen_modification: |
+      # Modify subprocess.Popen call:
+      process = subprocess.Popen(
+          cmd,
+          cwd=working_dir,
+          stdin=subprocess.DEVNULL,
+          stdout=stdout_log,
+          stderr=stderr_log,
+          start_new_session=True,
+          env=spawn_env,  # <-- ADD THIS PARAMETER
+      )
+
+    run_modification: |
+      # Modify subprocess.run call:
+      result = subprocess.run(
+          cmd,
+          cwd=working_dir,
+          capture_output=True,
+          text=True,
+          env=spawn_env,  # <-- ADD THIS PARAMETER
+      )
+
+  detection_in_agent: |
+    # How the spawned agent can detect its context:
+    import os
+
+    session_id = os.environ.get("AGENTIC_SESSION_ID")
+    role = os.environ.get("AGENTIC_SESSION_ROLE")
+    task_id = os.environ.get("AGENTIC_TASK_ID")
+    plan_folder = os.environ.get("AGENTIC_PLAN_FOLDER")
+    parent_session = os.environ.get("AGENTIC_PARENT_SESSION")
+    phase = os.environ.get("AGENTIC_PHASE")
+
+    if role == "subagent":
+        print(f"I am a subagent working on task {task_id}")
+        print(f"My parent session is {parent_session}")
+    elif role == "orchestrator":
+        print(f"I am the orchestrator managing plan {plan_folder}")
+    else:
+        print("I am a legacy session without orchestration context")
+
+# =============================================================================
+# COMPONENT 3: SESSION RECORD SCHEMA UPDATE
+# =============================================================================
+
+session_record_schema:
+
+  target_file: modules/AgenticCLI/src/agenticcli/commands/session.py
+  target_function: cmd_spawn()
+  insertion_point: "In session_data dict construction (lines 165-176)"
+
+  current_schema:
+    - session_id: "UUID"
+    - pid: "Process ID"
+    - prompt: "User prompt text"
+    - max_turns: "Turn limit"
+    - status: "starting|running|completed|failed|stopped"
+    - started_at: "ISO timestamp"
+    - ended_at: "ISO timestamp"
+    - background: "boolean"
+    - working_dir: "cwd path"
+    - command: "Full command string"
+    - stdout_log: "Path (background)"
+    - stderr_log: "Path (background)"
+    - exit_code: "int (foreground)"
+    - error: "Error message"
+
+  new_fields:
+
+    field_1:
+      name: "role"
+      type: "string | null"
+      values: ["orchestrator", "subagent", null]
+      description: "Orchestration role of this session"
+
+    field_2:
+      name: "task_id"
+      type: "string | null"
+      description: "Task ID this session is working on"
+
+    field_3:
+      name: "plan_folder"
+      type: "string | null"
+      description: "Plan folder path for orchestration context"
+
+    field_4:
+      name: "parent_session"
+      type: "string | null"
+      description: "Parent session ID (for subagents)"
+
+    field_5:
+      name: "child_sessions"
+      type: "array | null"
+      description: "List of child session IDs spawned by this session"
+      note: "Populated when children register, not at spawn time"
+
+    field_6:
+      name: "phase"
+      type: "string | null"
+      description: "Orchestration phase (plan, build, test, review, etc.)"
+
+    field_7:
+      name: "orchestration_context"
+      type: "object | null"
+      description: "Full orchestration context blob for extensibility"
+      subfields:
+        - injected_at: "ISO timestamp"
+        - env_vars_set: "List of AGENTIC_* vars set"
+        - context_injected: "boolean (was --inject-context used)"
+
+  updated_schema_example: |
+    session_data = {
+        # Existing fields
+        "session_id": session_id,
+        "pid": None,
+        "prompt": prompt,
+        "max_turns": max_turns,
+        "status": "starting",
+        "started_at": datetime.now().isoformat(),
+        "ended_at": None,
+        "background": background,
+        "working_dir": working_dir,
+        "command": " ".join(cmd),
+
+        # NEW: Orchestration fields
+        "role": getattr(args, "role", None),
+        "task_id": getattr(args, "task", None),
+        "plan_folder": getattr(args, "plan", None),
+        "parent_session": getattr(args, "parent_session", None),
+        "child_sessions": [],  # Empty initially
+        "phase": getattr(args, "phase", None),
+        "orchestration_context": {
+            "injected_at": datetime.now().isoformat(),
+            "env_vars_set": [
+                "AGENTIC_SESSION_ID",
+                "AGENTIC_SESSION_ROLE" if role else None,
+                "AGENTIC_TASK_ID" if task else None,
+                # ... etc
+            ],
+            "context_injected": getattr(args, "inject_context", False),
+        } if any([role, task, plan, parent_session, phase]) else None,
+    }
+
+  backward_compatibility: |
+    All new fields default to None/empty. Existing session records remain
+    valid. The session list/status commands will gracefully handle missing
+    orchestration fields by showing "N/A" or omitting the field.
+
+# =============================================================================
+# COMPONENT 4: CONTEXT PROMPT PREFIX (OPTIONAL)
+# =============================================================================
+
+context_prompt_prefix:
+
+  target_file: modules/AgenticCLI/src/agenticcli/commands/session.py
+  target_function: cmd_spawn()
+  insertion_point: "Before command construction (around line 159)"
+  trigger: "--inject-context flag is set"
+
+  format: |
+    When --inject-context is provided, the user's prompt is prefixed with
+    a structured context block that provides immediate visibility to the agent.
+
+  context_block_template: |
+    [ORCHESTRATION CONTEXT]
+    Session ID: {session_id}
+    Role: {role}
+    Task: {task_id}
+    Plan: {plan_folder}
+    Phase: {phase}
+    Parent Session: {parent_session}
+    [END ORCHESTRATION CONTEXT]
+
+    {original_prompt}
+
+  implementation: |
+    # In cmd_spawn(), after extracting args but before building cmd:
+
+    inject_context = getattr(args, "inject_context", False)
+
+    if inject_context:
+        context_block = f"""[ORCHESTRATION CONTEXT]
+    Session ID: {session_id}
+    Role: {role or 'unspecified'}
+    Task: {task or 'unspecified'}
+    Plan: {plan or 'unspecified'}
+    Phase: {phase or 'unspecified'}
+    Parent Session: {parent_session or 'none'}
+    [END ORCHESTRATION CONTEXT]
+
+    """
+        prompt = context_block + prompt
+
+  token_cost_analysis: |
+    The context block adds approximately 50-100 tokens to the prompt.
+    This is acceptable overhead for ensuring context visibility, but
+    users can opt out by not using --inject-context.
+
+  when_to_use: |
+    - When the agent needs IMMEDIATE access to context without calling
+      `agentic context bootstrap`
+    - When environment variable detection is unreliable
+    - For debugging/tracing orchestration flow
+    - When spawning subagents that need to know their role from the start
+
+  when_NOT_to_use: |
+    - For token-sensitive operations
+    - When environment variables are sufficient
+    - For simple, single-task sessions
+
+# =============================================================================
+# COMPONENT 5: AUTO-RESOLUTION FROM ACTIVE PLAN (OPTIONAL)
+# =============================================================================
+
+auto_resolution:
+
+  target_file: modules/AgenticCLI/src/agenticcli/commands/session.py
+  target_function: cmd_spawn()
+  priority: LOW
+  effort: MEDIUM
+
+  description: |
+    When orchestration context is not explicitly provided, attempt to
+    auto-resolve from the active plan based on the current git branch.
+
+  mechanism: |
+    1. Check if role/task/plan are explicitly provided
+    2. If not, invoke MainFirstPlanResolver to find active plan
+    3. Extract current task from plan if available
+    4. Use resolved values as defaults
+
+  implementation_sketch: |
+    # Only auto-resolve if not explicitly provided
+    if not plan and not task:
+        try:
+            from agenticguidance.services import MainFirstPlanResolver
+            resolver = MainFirstPlanResolver()
+            active_plan = resolver.resolve_active_plan()
+            if active_plan:
+                plan = active_plan.plan_folder
+                current_task = resolver.extract_current_task(active_plan)
+                if current_task:
+                    task = current_task.get("id")
+        except Exception:
+            # Auto-resolution failed, continue without context
+            pass
+
+  risks:
+    - May resolve to wrong plan in multi-branch scenarios
+    - Adds latency to spawn operation
+    - May fail silently if resolver has issues
+
+  recommendation: |
+    Defer auto-resolution to a future iteration. Explicit context via
+    CLI arguments is more reliable and traceable.
+
+# =============================================================================
+# CONTEXT FLOW: ORCHESTRATOR TO SUBAGENT
+# =============================================================================
+
+context_flow_design:
+
+  overview: |
+    This section describes how context flows from an orchestrator session
+    to its spawned subagent sessions.
+
+  flow_diagram: |
+
+    ORCHESTRATOR SESSION                    SUBAGENT SESSION
+    ==================                      =================
+
+    1. User starts orchestrator
+       (manual or via entrypoint)
+            |
+            v
+    2. Orchestrator calls:
+       `agentic context bootstrap --role orchestrator`
+       Sets AGENTIC_SESSION_ROLE=orchestrator
+            |
+            v
+    3. Orchestrator reads plan,
+       identifies next task
+            |
+            v
+    4. Orchestrator spawns subagent:
+       `agentic session spawn \             5. Subagent receives:
+         --prompt "Do task X" \    ------>     - AGENTIC_SESSION_ID
+         --role subagent \                     - AGENTIC_SESSION_ROLE=subagent
+         --task TASK-001 \                     - AGENTIC_TASK_ID=TASK-001
+         --parent-session $ORCH_ID \           - AGENTIC_PARENT_SESSION
+         --plan $PLAN_FOLDER \                 - AGENTIC_PLAN_FOLDER
+         --phase build \                       - AGENTIC_PHASE=build
+         --background`
+            |                               |
+            v                               v
+    6. Orchestrator records               7. Subagent detects context:
+       child_session in registry             `env | grep AGENTIC_`
+            |                               OR reads from prompt prefix
+            v                               |
+    8. Orchestrator monitors              v
+       via `agentic session status`   9. Subagent performs work
+            |                           within task boundaries
+            v                               |
+    10. On completion, orchestrator     v
+        reads subagent output,        11. Subagent completes,
+        updates task status               exit code captured
+
+  key_responsibilities:
+
+    orchestrator:
+      - Identify its own role at session start
+      - Read plan and determine task assignments
+      - Spawn subagents WITH orchestration context
+      - Track child session IDs
+      - Monitor subagent completion
+      - Update task status based on results
+
+    subagent:
+      - Detect orchestration context from env vars
+      - Understand its role and task boundaries
+      - Perform ONLY the assigned task
+      - Report back via exit code and output
+      - NOT spawn additional subagents (unless explicitly authorized)
+
+  enforcement_points: |
+    With orchestration context in place, enforcement can be added at:
+
+    1. Spawn Time: Reject --role orchestrator if already in subagent session
+    2. Task Scope: Warn if subagent attempts work outside assigned task
+    3. Hierarchy Depth: Limit subagent nesting depth
+    4. Phase Gates: Require phase progression (plan -> build -> test)
+
+# =============================================================================
+# IMPLEMENTATION PHASES
+# =============================================================================
+
+implementation_phases:
+
+  phase_1:
+    name: "Core Infrastructure"
+    priority: HIGH
+    effort: LOW
+    tasks:
+      - "Add CLI arguments to session spawn parser"
+      - "Implement environment variable injection"
+      - "Update session record schema"
+    deliverables:
+      - "Modified cli.py with new arguments"
+      - "Modified session.py with env injection and schema"
+    estimated_loc: ~50 lines
+
+  phase_2:
+    name: "Context Prompt Injection"
+    priority: MEDIUM
+    effort: LOW
+    tasks:
+      - "Implement --inject-context flag handling"
+      - "Add context block formatting"
+    deliverables:
+      - "Prompt prefix injection in session.py"
+    estimated_loc: ~20 lines
+
+  phase_3:
+    name: "Session Registry Enhancement"
+    priority: MEDIUM
+    effort: LOW
+    tasks:
+      - "Update session list to show role/task"
+      - "Update session status to show orchestration context"
+      - "Add parent/child relationship display"
+    deliverables:
+      - "Enhanced session list output"
+      - "Enhanced session status output"
+    estimated_loc: ~30 lines
+
+  phase_4:
+    name: "Auto-Resolution (Future)"
+    priority: LOW
+    effort: MEDIUM
+    tasks:
+      - "Integrate MainFirstPlanResolver"
+      - "Implement fallback when explicit values not provided"
+    deliverables:
+      - "Auto-resolution logic in session.py"
+    estimated_loc: ~40 lines
+
+# =============================================================================
+# API SUMMARY
+# =============================================================================
+
+api_summary:
+
+  new_cli_arguments:
+    session_spawn:
+      - "--role, -r [orchestrator|subagent]"
+      - "--task, -t <task-id>"
+      - "--plan <plan-folder>"
+      - "--parent-session <session-id>"
+      - "--phase <phase-name>"
+      - "--inject-context"
+
+  new_environment_variables:
+    - "AGENTIC_SESSION_ID"
+    - "AGENTIC_SESSION_ROLE"
+    - "AGENTIC_TASK_ID"
+    - "AGENTIC_PLAN_FOLDER"
+    - "AGENTIC_PARENT_SESSION"
+    - "AGENTIC_PHASE"
+
+  new_session_record_fields:
+    - "role"
+    - "task_id"
+    - "plan_folder"
+    - "parent_session"
+    - "child_sessions"
+    - "phase"
+    - "orchestration_context"
+
+# =============================================================================
+# DESIGN DECISIONS AND RATIONALE
+# =============================================================================
+
+design_decisions:
+
+  decision_1:
+    topic: "Environment Variables vs System Prompt"
+    decision: "Use environment variables as primary mechanism"
+    rationale: |
+      - Environment variables are immediate and don't consume tokens
+      - Can be detected without LLM interpretation
+      - Works with any prompt content
+      - System prompt requires file management and Claude CLI flags
+    alternative_considered: "System prompt injection via --system-prompt"
+
+  decision_2:
+    topic: "Explicit vs Implicit Context"
+    decision: "Prefer explicit CLI arguments, defer auto-resolution"
+    rationale: |
+      - Explicit context is traceable and predictable
+      - Auto-resolution may pick wrong plan/task
+      - User maintains control over orchestration
+      - Auto-resolution can be added later as convenience
+    alternative_considered: "Default to auto-resolution from active plan"
+
+  decision_3:
+    topic: "Prompt Prefix as Optional"
+    decision: "Make prompt prefix opt-in via --inject-context"
+    rationale: |
+      - Not all sessions need embedded context
+      - Reduces token overhead for simple tasks
+      - Gives user control over prompt structure
+      - Environment variables provide alternative detection
+    alternative_considered: "Always inject context into prompt"
+
+  decision_4:
+    topic: "Session Hierarchy in Registry"
+    decision: "Store parent_session and child_sessions in record"
+    rationale: |
+      - Enables hierarchical session views
+      - Supports tracing orchestration flow
+      - Allows cleanup of orphaned sessions
+      - Minimal storage overhead (just UUIDs)
+    alternative_considered: "Separate hierarchy database"
+
+  decision_5:
+    topic: "Backward Compatibility"
+    decision: "All new features are optional, defaults preserve current behavior"
+    rationale: |
+      - Existing scripts continue to work
+      - Gradual adoption possible
+      - No breaking changes to session registry
+      - New fields default to null/empty
+    alternative_considered: "Breaking changes with migration"
+
+# =============================================================================
+# RISKS AND MITIGATIONS
+# =============================================================================
+
+risks:
+
+  risk_1:
+    description: "Environment variables can be overwritten by agent"
+    likelihood: LOW
+    impact: MEDIUM
+    mitigation: |
+      - Session registry provides authoritative context
+      - Prompt prefix provides redundant context visibility
+      - Log env vars at spawn time for audit trail
+
+  risk_2:
+    description: "Subagent ignores orchestration context"
+    likelihood: MEDIUM
+    impact: MEDIUM
+    mitigation: |
+      - Context is advisory, not enforced
+      - Future enforcement layer can add hard limits
+      - Agent training/guidance should emphasize role awareness
+
+  risk_3:
+    description: "Session registry grows with orchestration fields"
+    likelihood: LOW
+    impact: LOW
+    mitigation: |
+      - New fields are minimal (strings, not objects)
+      - Existing session cleanup still applies
+      - orchestration_context is optional blob
+
+  risk_4:
+    description: "Token overhead from prompt prefix"
+    likelihood: LOW
+    impact: LOW
+    mitigation: |
+      - Prompt prefix is opt-in via --inject-context
+      - Context block is compact (~50-100 tokens)
+      - Can be disabled when not needed
+
+# =============================================================================
+# TESTING STRATEGY
+# =============================================================================
+
+testing_strategy:
+
+  unit_tests:
+    - "Test CLI argument parsing for new flags"
+    - "Test environment variable construction"
+    - "Test session record schema with new fields"
+    - "Test prompt prefix generation"
+
+  integration_tests:
+    - "Spawn session with orchestration context, verify env vars"
+    - "Spawn session with --inject-context, verify prompt prefix"
+    - "Verify session registry contains orchestration fields"
+    - "Verify session list displays role and task"
+
+  manual_tests:
+    - "Spawn orchestrator session, spawn subagent, verify hierarchy"
+    - "Resume session with orchestration context"
+    - "Check session status shows orchestration details"
+
+# =============================================================================
+# CONCLUSION
+# =============================================================================
+
+conclusion: |
+  This design provides a comprehensive approach to orchestration context
+  injection that addresses all gaps identified in EN-P3-001 and EN-P3-002.
+
+  The hybrid approach combines:
+  1. CLI arguments for explicit context specification
+  2. Environment variables for runtime detection
+  3. Session registry for traceability and hierarchy
+  4. Optional prompt prefix for immediate visibility
+
+  Implementation is straightforward with ~100 lines of code for Phase 1,
+  and all changes are backward compatible. The design establishes the
+  foundation for future enforcement mechanisms while providing immediate
+  value for orchestration-aware sessions.
+
+  Next Steps:
+  - Review design with stakeholders
+  - Implement Phase 1 (core infrastructure)
+  - Add Phase 2 (prompt injection) if needed
+  - Enhance session list/status displays in Phase 3
+  - Defer auto-resolution (Phase 4) for future iteration
+
+# =============================================================================
+# METADATA
+# =============================================================================
+
+metadata:
+  design_date: "2026-01-31"
+  designer: "builder-agent"
+  task_id: "EN-P3-003"
+  proposal: "P3 - Session Spawn Context Injection"
+  based_on:
+    - "EN-P3-001_session_spawn_audit.yml"
+    - "EN-P3-002_session_context_flow_lifecycle.yml"
+  components_designed: 5
+  new_cli_arguments: 6
+  new_env_variables: 6
+  new_record_fields: 7
+  estimated_phase_1_loc: 50
+  estimated_total_loc: 140

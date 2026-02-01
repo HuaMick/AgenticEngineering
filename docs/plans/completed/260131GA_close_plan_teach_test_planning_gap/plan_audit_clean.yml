@@ -1,0 +1,146 @@
+# Audit and Cleanup Plan: Close _plan_teach.yml Test Planning Gap
+# Created: 2026-01-31
+# Purpose: Define audit checks and cleanup tasks for post-implementation
+
+_template_status: active
+
+plan:
+  name: "Teach-Test-Gap Audit and Cleanup"
+  status: pending
+
+  objective: |
+    Verify implementation completeness and clean up any artifacts
+    created during development. Ensure no stale references or
+    inconsistencies remain after the teach-test-gap fix is complete.
+
+  phases:
+    - name: "Consistency Audit"
+      id: "audit_01"
+      status: pending
+      description: |
+        Verify all modified files are internally consistent and
+        cross-references resolve correctly.
+      tasks:
+        - id: "audit_01_001"
+          name: "Audit orchestration-planning consistency"
+          status: pending
+          description: |
+            Verify orchestration-planning/process.mmd:
+            1. All node IDs are unique
+            2. All linkStyle references match edge numbers
+            3. Subgraph boundaries are correct
+            4. Input references in header resolve
+          validation:
+            - "Node ID uniqueness check"
+            - "LinkStyle edge number verification"
+            - "Input path resolution"
+          success_criteria:
+            - "No duplicate node IDs"
+            - "All linkStyle edges exist"
+            - "All input paths resolve"
+
+        - id: "audit_01_002"
+          name: "Audit planner-test consistency"
+          status: pending
+          description: |
+            Verify planner-test files:
+            1. process.yml references inputs defined in inputs.yml
+            2. New guidance_test_mode documented in both files
+            3. Output schema matches expected format
+          validation:
+            - "Cross-file reference check"
+            - "Input/output schema validation"
+          success_criteria:
+            - "All cross-references resolve"
+            - "Schema is complete and valid"
+
+        - id: "audit_01_003"
+          name: "Audit entrypoint documentation"
+          status: pending
+          description: |
+            Verify _plan_teach.yml:
+            1. Steps match actual orchestration flow
+            2. Output section reflects new test artifacts
+            3. Comments are accurate and up-to-date
+          validation:
+            - "Documentation accuracy check"
+          success_criteria:
+            - "Steps match implementation"
+            - "Documentation is current"
+
+    - name: "Stale Reference Search"
+      id: "audit_02"
+      status: pending
+      depends_on: ["audit_01"]
+      description: |
+        Search for any stale references created or exposed by changes.
+      tasks:
+        - id: "audit_02_001"
+          name: "Search for stale path references"
+          status: pending
+          description: |
+            Grep codebase for any paths that:
+            1. Reference removed or renamed files
+            2. Reference old guidance_test patterns
+            3. Reference deprecated guidance_modification patterns
+          command: |
+            grep -r "guidance_test_mode" modules/AgenticGuidance/
+            grep -r "test-guidance-simulator" modules/AgenticGuidance/
+          success_criteria:
+            - "No broken path references"
+            - "All references point to existing files"
+
+        - id: "audit_02_002"
+          name: "Search for inconsistent terminology"
+          status: pending
+          description: |
+            Verify consistent terminology across files:
+            1. "guidance_test_mode" vs "guidanceTestMode"
+            2. "test-guidance-simulator" vs "guidance-test-simulator"
+            3. Phase names match across orchestration and planners
+          success_criteria:
+            - "Terminology is consistent"
+            - "No naming conflicts"
+
+    - name: "Cleanup"
+      id: "cleanup_01"
+      status: pending
+      depends_on: ["audit_02"]
+      description: |
+        Clean up any temporary artifacts and finalize documentation.
+      tasks:
+        - id: "cleanup_01_001"
+          name: "Remove analysis artifacts (if not needed)"
+          status: pending
+          description: |
+            Review analysis/ folder contents:
+            - friction_analysis.yml: KEEP (documents investigation rationale)
+            - Any temp files: REMOVE
+          decision: "Keep friction_analysis.yml for future reference"
+          success_criteria:
+            - "No unnecessary files in plan folder"
+            - "Useful artifacts preserved"
+
+        - id: "cleanup_01_002"
+          name: "Update related documentation"
+          status: pending
+          description: |
+            Update any related documentation affected by changes:
+            1. guidance-process-requirements.yml (add test phase note)
+            2. agent-loops.yml (verify guidance-test-loop is documented)
+          target_files:
+            - "modules/AgenticGuidance/assets/definitions/guidance-process-requirements.yml"
+            - "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+          success_criteria:
+            - "Related docs updated"
+            - "No orphaned documentation"
+
+  cleanup_targets:
+    - "Temporary analysis files (if any)"
+    - "Debug logs from testing"
+
+  documentation:
+    keep:
+      - "analysis/friction_analysis.yml - Investigation rationale"
+    update:
+      - "guidance-process-requirements.yml - Add test phase requirement"

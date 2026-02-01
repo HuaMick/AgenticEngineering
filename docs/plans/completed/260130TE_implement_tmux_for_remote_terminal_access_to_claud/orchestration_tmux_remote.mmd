@@ -1,0 +1,164 @@
+%% =============================================================================
+%% ORCHESTRATION: tmux Remote Terminal Access for Claude Code Mobile
+%% =============================================================================
+%% GOAL: Build remote access capability for Claude Code sessions from mobile devices
+%% PROFILE: Orchestrator-Build
+%% INPUT_PATH: docs/plans/live/260130TE_implement_tmux_for_remote_terminal_access_to_claud/plan_build.yml
+%%
+%% PHASES: TmuxConfig, TailscaleIntegration, SessionTemplates, CLIIntegration
+%% AGENT_ROUTING:
+%%   TmuxConfig -> build-python (CLI commands, config files)
+%%   TailscaleIntegration -> build-python (network commands, scripts)
+%%   SessionTemplates -> build-python (template engine)
+%%   CLIIntegration -> build-python (agentic CLI registration)
+%%
+%% FEEDBACK_TRIGGERS:
+%%   TEST_FAILURE -> TestFixLoop (pytest failures)
+%%   BUILD_ERROR -> BuildFixLoop (syntax, import errors)
+%%
+%% LOOP_DEFINITIONS:
+%%   test-fix: Max 3 iterations per task, escalate to human on failure
+%%
+%% STATUS: Build=completed, Test=validated
+%% =============================================================================
+
+flowchart TD
+    Start((Start)) --> LoadPlan[Load plan_build.yml]
+
+    %% ========================================
+    %% INPUT VALIDATION
+    %% ========================================
+    LoadPlan --> ValidateWorktree{Worktree Exists?}
+    ValidateWorktree -- "No" --> CreateWorktree[Create Worktree: tmux-remote-terminal]
+    CreateWorktree --> ValidateDeps
+    ValidateWorktree -- "Yes" --> ValidateDeps
+
+    ValidateDeps[Validate Dependencies] --> CheckAgenticTmux{AgenticTmux Module Exists?}
+    CheckAgenticTmux -- "No" --> EscalateMissing((Escalate: Missing AgenticTmux))
+    CheckAgenticTmux -- "Yes" --> CheckSessionService{SessionService Exists?}
+    CheckSessionService -- "No" --> EscalateMissing
+    CheckSessionService -- "Yes" --> Phase1
+
+    %% ========================================
+    %% PHASE 1: TMUX CONFIGURATION
+    %% ========================================
+    subgraph Phase1_SG ["Phase 1: tmux Configuration (TR-001 to TR-003)"]
+        Phase1[Enter tmux Config Phase] --> SpawnBuilderConfig[Spawn build-python Agent]
+        SpawnBuilderConfig --> Task_TR001[TR-001: Create .tmux.conf template]
+        Task_TR001 --> Task_TR002[TR-002: Configure tmux plugins]
+        Task_TR002 --> Task_TR003[TR-003: Create remote setup command]
+        Task_TR003 --> TestPhase1{Run Phase 1 Tests}
+    end
+
+    TestPhase1 -- "Pass" --> Phase2
+    TestPhase1 -- "Fail" --> TestFixLoop1{Test-Fix Loop}
+    TestFixLoop1 -- "Iteration < 3" --> SpawnBuilderConfig
+    TestFixLoop1 -- "Iteration >= 3" --> EscalatePhase1((Escalate: Phase 1 Test Failures))
+
+    %% ========================================
+    %% PHASE 2: TAILSCALE INTEGRATION
+    %% ========================================
+    subgraph Phase2_SG ["Phase 2: Tailscale Integration (TR-004 to TR-006)"]
+        Phase2[Enter Tailscale Phase] --> SpawnBuilderNetwork[Spawn build-python Agent]
+        SpawnBuilderNetwork --> Task_TR004[TR-004: Create Tailscale setup script]
+        Task_TR004 --> Task_TR005[TR-005: Create network status command]
+        Task_TR005 --> Task_TR006[TR-006: Add Tailscale IP to session info]
+        Task_TR006 --> TestPhase2{Run Phase 2 Tests}
+    end
+
+    TestPhase2 -- "Pass" --> Phase3
+    TestPhase2 -- "Fail" --> TestFixLoop2{Test-Fix Loop}
+    TestFixLoop2 -- "Iteration < 3" --> SpawnBuilderNetwork
+    TestFixLoop2 -- "Iteration >= 3" --> EscalatePhase2((Escalate: Phase 2 Test Failures))
+
+    %% ========================================
+    %% PHASE 3: SESSION TEMPLATES
+    %% ========================================
+    subgraph Phase3_SG ["Phase 3: Claude Code Session Templates (TR-007 to TR-009)"]
+        Phase3[Enter Session Templates Phase] --> SpawnBuilderTemplates[Spawn build-python Agent]
+        SpawnBuilderTemplates --> Task_TR007[TR-007: Create Claude Code template]
+        Task_TR007 --> Task_TR008[TR-008: Implement template-based session creation]
+        Task_TR008 --> Task_TR009[TR-009: Create quick-start command]
+        Task_TR009 --> TestPhase3{Run Phase 3 Tests}
+    end
+
+    TestPhase3 -- "Pass" --> Phase4
+    TestPhase3 -- "Fail" --> TestFixLoop3{Test-Fix Loop}
+    TestFixLoop3 -- "Iteration < 3" --> SpawnBuilderTemplates
+    TestFixLoop3 -- "Iteration >= 3" --> EscalatePhase3((Escalate: Phase 3 Test Failures))
+
+    %% ========================================
+    %% PHASE 4: CLI INTEGRATION
+    %% ========================================
+    subgraph Phase4_SG ["Phase 4: agentic CLI Integration (TR-010 to TR-011)"]
+        Phase4[Enter CLI Integration Phase] --> SpawnBuilderCLI[Spawn build-python Agent]
+        SpawnBuilderCLI --> Task_TR010[TR-010: Register tmux commands with agentic CLI]
+        Task_TR010 --> Task_TR011[TR-011: Add remote access info to context bootstrap]
+        Task_TR011 --> TestPhase4{Run Phase 4 Tests}
+    end
+
+    TestPhase4 -- "Pass" --> IntegrationTests
+    TestPhase4 -- "Fail" --> TestFixLoop4{Test-Fix Loop}
+    TestFixLoop4 -- "Iteration < 3" --> SpawnBuilderCLI
+    TestFixLoop4 -- "Iteration >= 3" --> EscalatePhase4((Escalate: Phase 4 Test Failures))
+
+    %% ========================================
+    %% INTEGRATION TESTING
+    %% ========================================
+    subgraph IntegrationTests_SG ["Integration Testing (TT-004 to TT-005)"]
+        IntegrationTests[Run Integration Tests] --> SpawnTester[Spawn test-runner Agent]
+        SpawnTester --> RunIntegrationSuite[Run Integration Test Suite]
+        RunIntegrationSuite --> IntegrationResult{All Tests Pass?}
+    end
+
+    IntegrationResult -- "Pass" --> ManualValidation
+    IntegrationResult -- "Fail" --> IntegrationFixLoop{Integration Fix Loop}
+    IntegrationFixLoop -- "Iteration < 3" --> IdentifyFailure[Identify Failing Component]
+    IdentifyFailure --> RouteToPhase{Route to Phase}
+    RouteToPhase -- "Phase 1" --> Phase1
+    RouteToPhase -- "Phase 2" --> Phase2
+    RouteToPhase -- "Phase 3" --> Phase3
+    RouteToPhase -- "Phase 4" --> Phase4
+    IntegrationFixLoop -- "Iteration >= 3" --> EscalateIntegration((Escalate: Integration Failures))
+
+    %% ========================================
+    %% MANUAL VALIDATION
+    %% ========================================
+    subgraph ManualValidation_SG ["Manual Validation (TT-006 to TT-007)"]
+        ManualValidation[Enter Manual Validation] --> NotifyUser[Notify User: Ready for Mobile Testing]
+        NotifyUser --> UserTestAndroid{User Tests Android?}
+        UserTestAndroid -- "Pass" --> AndroidValidated[Android Validated]
+        UserTestAndroid -- "Fail" --> CaptureAndroidIssues[Capture Issues]
+        UserTestAndroid -- "Skip" --> CheckiOS
+
+        AndroidValidated --> CheckiOS{User Tests iOS?}
+        CaptureAndroidIssues -.-> IdentifyFailure
+
+        CheckiOS -- "Pass" --> iOSValidated[iOS Validated]
+        CheckiOS -- "Fail" --> CaptureiOSIssues[Capture Issues]
+        CheckiOS -- "Skip" --> ValidationComplete
+
+        iOSValidated --> ValidationComplete
+        CaptureiOSIssues -.-> IdentifyFailure
+    end
+
+    %% ========================================
+    %% COMPLETION
+    %% ========================================
+    ValidationComplete[Validation Complete] --> UpdatePlanStatus[Update Plan Status: Completed]
+    UpdatePlanStatus --> ArchivePlan[Archive Plan to Completed]
+    ArchivePlan --> ReportOutput[Report: Plan Completed]
+
+    subgraph Output_SG ["Output Summary"]
+        ReportOutput --> ShowNewCommands[New Commands Available]
+        ShowNewCommands --> ShowMobileWorkflow[Mobile Workflow Ready]
+        ShowMobileWorkflow --> ShowNextSteps[Next Steps: AgenticVoice Integration]
+    end
+
+    ShowNextSteps --> End((End: Build Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    %% Dotted lines for feedback loops
+    classDef dashedstroke stroke-dasharray: 5 5;

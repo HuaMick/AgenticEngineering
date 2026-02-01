@@ -1,0 +1,131 @@
+flowchart LR
+    %% ========================================
+    %% ORCHESTRATION: Update Testing Guidance for Honeycomb and UAT
+    %% ========================================
+    %% GOAL: Execute guidance updates to prioritize Honeycomb Integration First testing and reinforce UAT as core success criterion.
+    %% PROFILE: Orchestration-Teaching
+    %% INPUT_PATH: modules/AgenticGuidance/agents/orchestration/orchestration-executor/inputs.yml
+    %%
+    %% GUIDELINE: modules/AgenticGuidance/assets/guidelines/testing.yml - Testing strategies and validation
+    %% GUIDELINE: TEACH FOCUS policy - guidance improvement through teacher agents, not code implementation.
+    %%
+    %% PLAN_FOLDER: docs/plans/live/260130HO_update_testing_guidance_for_honeycomb_and_uat
+    %% PLAN_FILES: plan_teach.yml, plan_audit_clean.yml
+    %%
+    %% OUTPUTS (FENCE: Output must match declared schema before marking complete):
+    %% - Updated testing-types.yml with honeycomb_testing definition
+    %% - Updated strategy-validation.yml with honeycomb as default strategy
+    %% - Updated testing.yml with UAT as core success criterion
+    %% - Updated agent-loops.yml with UAT-core phase ordering
+    %% - Self-review validation passed for all modified files
+    %% - Audit confirmation of template compatibility and no stale references
+    %%
+    %% AGENT_ROUTING: TeachPhase -> teacher-update-assets, ValidationPhase -> planner-reviewer, AuditPhase -> test-audit
+    %% STATUS: TeachPhase=pending, ValidationPhase=pending, AuditPhase=pending
+
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    %% Verify plan files and worktree are available.
+    LoadInputs --> ReviewInputs[Review Plan Files]
+    ReviewInputs --> CheckInputs{All Inputs Found?}
+    CheckInputs -- "No: Missing" --> AskUser((Ask User for Clarification))
+    CheckInputs -- "Yes: Verified" --> VerifyWorktree[Verify Worktree Exists]
+
+    %% ========================================
+    %% WORKTREE VERIFICATION
+    %% ========================================
+    %% Worktree: /home/code/AgenticEngineering-guidance-testing-honeycomb
+    %% Branch: guidance-testing-honeycomb
+    VerifyWorktree --> WorktreeValid{Worktree Valid?}
+    WorktreeValid -- "No: Missing" --> CreateWorktree[Run: agentic worktree create guidance-testing-honeycomb]
+    CreateWorktree --> WorktreeValid
+    WorktreeValid -- "Yes: Ready" --> EnterTeachPhase[Enter Teach Phase]
+
+    %% ========================================
+    %% TEACH PHASE
+    %% ========================================
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.guidance-self-review-loop
+    %% MAX_ITERATIONS: 3 (per guidance-self-review-loop definition)
+    %% ESCALATION: If max iterations reached without passing self-review, stop and Ask User
+    %%
+    %% Tasks: HO-001, HO-002, HO-003, HO-004, HO-005
+    %% Agent: teacher-update-assets (executes guidance file modifications)
+
+    subgraph TeachPhase_SG ["Teach Phase Subgraph"]
+        EnterTeachPhase --> SpawnTeacher[Spawn teacher-update-assets Agent]
+        SpawnTeacher --> TeachTasksComplete{All Teach Tasks Complete?}
+
+        %% Iterative teaching with self-review validation
+        TeachTasksComplete -- "No: In Progress" --> ContinueTeaching[Continue Task Execution]
+        ContinueTeaching --> SpawnTeacher
+        TeachTasksComplete -- "Yes: Tasks Done" --> EnterValidation[Enter Validation Phase]
+    end
+
+    %% ========================================
+    %% VALIDATION PHASE (Self-Review)
+    %% ========================================
+    %% Task: HO-005 - Self-review of all modified guidance files
+    %% Loop: guidance-self-review-loop
+    %% Agent: planner-reviewer for validation approval
+
+    subgraph ValidationPhase_SG ["Validation Phase Subgraph"]
+        EnterValidation --> SpawnSelfReview[Spawn guidance-self-review Agent]
+        SpawnSelfReview --> SelfReviewResult{Self-Review Passed?}
+
+        SelfReviewResult -- "No: Issues Found" --> CaptureSelfReviewFeedback[Capture Self-Review Feedback]
+        CaptureSelfReviewFeedback --> CheckValidationIterations{Max Iterations?}
+        CheckValidationIterations -- "No: Continue" --> SpawnTeacherFix[Spawn teacher-update-assets Agent for Fix]
+        SpawnTeacherFix --> SpawnSelfReview
+        CheckValidationIterations -- "Yes: Limit" --> EscalateValidation((Escalate: Self-Review Failed))
+
+        SelfReviewResult -- "Yes: Passed" --> ValidationComplete[Validation Complete]
+    end
+
+    ValidationComplete --> EnterAuditPhase[Enter Audit Phase]
+
+    %% ========================================
+    %% AUDIT PHASE
+    %% ========================================
+    %% Tasks: HO-AU-001, HO-AU-002
+    %% - Verify template alignment for Honeycomb compatibility
+    %% - Identify and remove stale Pyramid model references
+    %% Agent: test-audit
+
+    subgraph AuditPhase_SG ["Audit Phase Subgraph"]
+        EnterAuditPhase --> SpawnAudit[Spawn test-audit Agent]
+        SpawnAudit --> AuditResult{Audit Passed?}
+
+        AuditResult -- "No: Issues Found" --> CaptureAuditFeedback[Capture Audit Feedback]
+        CaptureAuditFeedback --> CheckAuditIterations{Max Iterations?}
+        CheckAuditIterations -- "No: Continue" --> SpawnTeacherAuditFix[Spawn teacher-update-assets for Audit Fix]
+        SpawnTeacherAuditFix --> SpawnAudit
+        CheckAuditIterations -- "Yes: Limit" --> EscalateAudit((Escalate: Audit Failed))
+
+        AuditResult -- "Yes: Passed" --> AuditComplete[Audit Complete]
+    end
+
+    %% ========================================
+    %% OUTPUT PHASE
+    %% ========================================
+    subgraph Output_SG ["Output Subgraph"]
+        AuditComplete --> ReportCompletion[Report Completion Status]
+        ReportCompletion --> ArchivePlan[Run: agentic plan move folder --plan 260130HO]
+    end
+
+    ArchivePlan --> End((End: Plan Completed))
+
+    %% ========================================
+    %% FEEDBACK TRIGGERS
+    %% ========================================
+    %% FEEDBACK_TRIGGER: SELF_REVIEW_FAILURE -> SpawnTeacherFix (within ValidationPhase)
+    %% FEEDBACK_TRIGGER: AUDIT_FAILURE -> SpawnTeacherAuditFix (within AuditPhase)
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    %% Feedback loops: edges 12, 15, 20, 23 (iteration paths)
+    classDef dashedstroke stroke-dasharray: 5 5;
+    linkStyle 12,15,20,23 stroke:#888,stroke-width:2px,stroke-dasharray: 5 5;

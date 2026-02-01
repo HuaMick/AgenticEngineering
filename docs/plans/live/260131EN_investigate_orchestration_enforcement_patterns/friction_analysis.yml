@@ -1,0 +1,263 @@
+# Friction Analysis: Orchestration Enforcement
+# Plan ID: 260131EN
+# Type: Friction Analysis (problem documentation)
+# Created: 2026-01-31
+
+report_metadata:
+  analysis_timestamp: "2026-01-31"
+  analysis_method: "observational_pattern_analysis"
+  scope: "orchestration_compliance_issues"
+  trigger: "recurring_orchestration_failures"
+
+# =============================================================================
+# PROBLEM STATEMENT
+# =============================================================================
+
+problem:
+  title: "Agents Do Not Consistently Follow Orchestration Patterns"
+  severity: HIGH
+  frequency: RECURRING
+
+  description: |
+    Orchestration agents frequently deviate from established orchestration patterns,
+    resulting in:
+    - Tasks executed directly instead of being delegated to subagents
+    - Validation gates bypassed (MMD presence, reviewer approval)
+    - Loss of orchestration state during long sessions
+    - Role boundary confusion between orchestrator and subagent responsibilities
+
+  symptoms:
+    - symptom: "Direct task execution by orchestrators"
+      description: |
+        Orchestration agents, when instructed to follow orchestration processes,
+        often execute implementation tasks directly instead of spawning appropriate
+        subagent types (builder, tester, etc.).
+      evidence:
+        - "260127AG: Ralph Loop orchestrator executed tasks directly"
+        - "Plans archived without spawning planner-reviewer"
+
+    - symptom: "Skipped validation gates"
+      description: |
+        Mandatory validation steps defined in orchestration processes are skipped,
+        including MMD file presence checks and reviewer approval gates.
+      evidence:
+        - "Plans completed without mmd_presence fence validation"
+        - "Phase transitions without required approvals"
+
+    - symptom: "Orchestration state loss"
+      description: |
+        During long sessions, agents lose track of which phase/task is current,
+        what has been completed, and what remains. This leads to duplicated work
+        or skipped steps.
+      evidence:
+        - "Repeated work on already-completed tasks"
+        - "Confusion about current plan phase"
+
+    - symptom: "Role boundary confusion"
+      description: |
+        Subagents sometimes attempt orchestration decisions (spawning other agents,
+        making phase transition decisions) while orchestrators sometimes do
+        implementation work.
+      evidence:
+        - "Builder agents attempting to spawn reviewers"
+        - "Orchestrators editing code files directly"
+
+# =============================================================================
+# ROOT CAUSE ANALYSIS
+# =============================================================================
+
+root_causes:
+
+  cause_1_no_persistent_state:
+    name: "No Persistent Orchestration State"
+    description: |
+      Orchestration state (current phase, completed tasks, pending validations)
+      exists only in the conversation context. When context grows large or
+      sessions are long-running, this state can be effectively "forgotten" or
+      deprioritized.
+    contributing_factors:
+      - "Plan YAML files track task status but agents don't always re-read them"
+      - "No runtime mechanism to enforce checking orchestration state"
+      - "Context window limitations push older state information out"
+    potential_solutions:
+      - "CLI tasklist that persists and is re-queried"
+      - "Mandatory state refresh at phase boundaries"
+      - "External state tracking (files, tmux session names)"
+
+  cause_2_weak_role_identification:
+    name: "Weak Role Identification at Runtime"
+    description: |
+      There's no reliable mechanism for an agent to determine whether it is the
+      orchestration agent or a spawned subagent. Role is inferred from context
+      injection, which can be ambiguous or lost.
+    contributing_factors:
+      - "Context injection sets role, but can be overridden by user messages"
+      - "No environment variable or marker identifying session type"
+      - "Spawned sessions don't have distinct markers from main sessions"
+    potential_solutions:
+      - "Session metadata marking orchestrator vs worker"
+      - "Environment variables set at spawn time"
+      - "Tmux session naming conventions"
+
+  cause_3_soft_enforcement:
+    name: "Orchestration Patterns Are Guidance, Not Enforcement"
+    description: |
+      Orchestration processes are documented in process.mmd files but these are
+      guidance documents. There's no mechanism to prevent an orchestrator from
+      deviating from the process.
+    contributing_factors:
+      - "process.mmd is read but not enforced"
+      - "No validation that orchestration steps were followed"
+      - "Agents can rationalize deviations as 'efficiency'"
+    potential_solutions:
+      - "Gate checks before phase transitions"
+      - "Required CLI commands that validate state"
+      - "Audit trail that can be validated post-execution"
+
+  cause_4_context_injection_timing:
+    name: "Context Only Injected at Session Start"
+    description: |
+      Orchestration context (CCI) is injected when a session starts. For long-running
+      sessions, this initial context can be diluted or forgotten as the conversation
+      progresses.
+    contributing_factors:
+      - "No mechanism for mid-session context refresh"
+      - "User messages can redirect agent focus"
+      - "Context window management deprioritizes older content"
+    potential_solutions:
+      - "Periodic orchestration state reminders"
+      - "CLI commands that re-inject orchestration context"
+      - "Checkpoint mechanisms that enforce state review"
+
+# =============================================================================
+# IMPACT ASSESSMENT
+# =============================================================================
+
+impact:
+  process_impact:
+    - "Plans completed without proper validation"
+    - "Quality gates bypassed"
+    - "Inconsistent agent behavior across sessions"
+
+  quality_impact:
+    - "Work may not meet acceptance criteria"
+    - "Missing documentation (MMD files)"
+    - "Incomplete test coverage"
+
+  efficiency_impact:
+    - "Rework required when non-compliance discovered"
+    - "Manual intervention needed to correct deviations"
+    - "Trust in automated orchestration diminished"
+
+# =============================================================================
+# EXISTING MITIGATIONS
+# =============================================================================
+
+existing_mitigations:
+  - mitigation: "CCI Context Injection"
+    status: IMPLEMENTED
+    effectiveness: PARTIAL
+    notes: |
+      Context injection provides orchestration guidance at session start,
+      but doesn't enforce compliance or refresh during session.
+
+  - mitigation: "Plan YAML Task Tracking"
+    status: IMPLEMENTED
+    effectiveness: PARTIAL
+    notes: |
+      Tasks can be tracked in YAML, but agents must explicitly re-read
+      the files. No automated state synchronization.
+
+  - mitigation: "Bootstrap Files"
+    status: IMPLEMENTED
+    effectiveness: LOW
+    notes: |
+      Bootstrap files (.claude/agents/*.md) provide initial guidance,
+      but are minimal and don't enforce orchestration patterns.
+
+  - mitigation: "Process MMD Files"
+    status: IMPLEMENTED
+    effectiveness: PARTIAL
+    notes: |
+      Process flowcharts document expected orchestration, but are
+      guidance only. No enforcement mechanism.
+
+# =============================================================================
+# PROPOSALS TO INVESTIGATE
+# =============================================================================
+
+proposals_overview:
+  - id: P1
+    name: "CLI Tasklist Orchestration Tracking"
+    hypothesis: |
+      If the CLI tasklist functionality is integrated with orchestration,
+      agents can be required to query/update tasklists before taking actions,
+      providing persistent state tracking.
+
+  - id: P2
+    name: "Preloaded Tasklists at Plan Start"
+    hypothesis: |
+      If tasklists representing the orchestration process are preloaded when
+      a plan starts, orchestrators will have a structured checklist that
+      persists across the session.
+
+  - id: P3
+    name: "Session Spawn Context Injection"
+    hypothesis: |
+      If `agentic session spawn` injects orchestration context and markers
+      for the main session, spawned sessions will clearly know they are
+      subagents with limited scope.
+
+  - id: P4
+    name: "Main Session Detection/Identification"
+    hypothesis: |
+      If there's a reliable way for a session to detect whether it's the
+      main orchestrator or a subagent, role-appropriate behavior can be
+      enforced.
+
+  - id: P5
+    name: "Tmux Session Management Patterns"
+    hypothesis: |
+      If tmux session naming and management patterns encode orchestration
+      state, the terminal environment itself becomes an enforcement
+      mechanism.
+
+  - id: P6
+    name: "Bootstrap-time Agent-Specific Plan Auto-generation"
+    hypothesis: |
+      If agents auto-generate their own internal planning files from process.yml
+      during the bootstrap phase, they gain a persistent, trackable checklist
+      that enforces process compliance without polluting main plan files.
+
+# =============================================================================
+# SUCCESS CRITERIA FOR INVESTIGATION
+# =============================================================================
+
+success_criteria:
+  - "Each proposal has its open questions answered"
+  - "Trade-offs are documented for each approach"
+  - "Implementation complexity is assessed (low/medium/high)"
+  - "Validation criteria are defined for each approach"
+  - "A clear recommendation emerges on which to pursue first"
+  - "Any quick wins are identified for immediate implementation"
+
+# =============================================================================
+# RELATED WORK
+# =============================================================================
+
+related_work:
+  internal:
+    - reference: "260127AG_ralph_loop_compliance"
+      relevance: "Primary incident that demonstrated this problem"
+    - reference: "260127TL_cli_tasklist_tracking"
+      relevance: "Existing tasklist infrastructure"
+    - reference: "260130MA_multi_agent_tmux_coordination"
+      relevance: "Deferred plan with tmux patterns"
+
+  external:
+    - reference: "Geoffrey Huntley Ralph Loop"
+      relevance: "File-based state persistence patterns"
+    - reference: "Agent Conductor (supervisor/worker)"
+      relevance: "Role-based coordination patterns"
+    - reference: "Claude Squad (multi-agent)"
+      relevance: "Tmux-based agent management"

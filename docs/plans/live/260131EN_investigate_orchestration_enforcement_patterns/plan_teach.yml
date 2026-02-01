@@ -1,0 +1,704 @@
+_template_status: active
+name: 260131EN_investigate_orchestration_enforcement_patterns
+worktree_path: /home/code/AgenticEngineering
+branch: main
+status: active
+priority: high
+plan_file: docs/plans/live/260131EN_investigate_orchestration_enforcement_patterns/plan_teach.yml
+related_plans:
+  orchestration: orchestration_orchestration_enforcement.mmd
+plan:
+  name: Investigate Orchestration Enforcement Patterns
+  worktree: /home/code/AgenticEngineering
+  branch: main
+  status: planning
+  created: '2026-01-31'
+  objective: 'Investigate six proposed approaches for enforcing orchestration patterns
+
+    in agent sessions. Each proposal should be evaluated for feasibility,
+
+    trade-offs, and implementation complexity. This is an INVESTIGATION plan,
+
+    not an implementation plan.
+
+    '
+  context: 'This investigation addresses recurring orchestration compliance failures
+    where
+
+    agents execute tasks directly instead of spawning subagents, skip validation
+
+    gates, or lose orchestration state during long sessions.
+
+
+    UPDATE 2026-01-31: Plan created from friction analysis. Six proposals defined
+
+    for investigation. Investigation phase ready to begin.
+
+
+    IMPLEMENTATION NOTE: Implementation will require separate plans:
+
+    - AgenticGuidance plan: Guidance and orchestration changes
+
+    - AgenticCLI plan: CLI command enhancements (if needed)
+
+    AgenticGuidance has its own CLI backend, so most work likely there.
+
+    '
+  scope:
+    includes:
+    - modules/AgenticCLI/src/agenticcli/commands/
+    - modules/AgenticGuidance/agents/orchestration/
+    - .claude/agents/
+    - modules/AgenticGuidance/src/
+    excludes:
+    - modules/legacy/
+    - Implementation work (out of scope for investigation)
+  implementation_strategy:
+    note: 'This investigation spans AgenticGuidance and AgenticCLI codebases.
+
+      Implementation (if approved) should create separate plans:
+
+      '
+    recommended_approach:
+    - codebase: AgenticGuidance
+      plan_type: teach/build
+      reason: Primary guidance and orchestration changes; has own CLI backend
+      likely_scope: Process definitions, agent guidance, session management
+    - codebase: AgenticCLI
+      plan_type: build
+      reason: CLI command enhancements if proposal requires them
+      likely_scope: Task commands, session spawn, plan commands
+      note: May not be needed - AgenticGuidance has own CLI backend
+open_questions:
+- id: QUESTION-001
+  question: Should we prioritize state-based enforcement or spawn-time enforcement?
+  severity: high
+  status: OPEN
+  context: 'P1/P2 (tasklists) focus on persistent state tracking.
+
+    P3/P4 (session spawn/detection) focus on role identification at spawn time.
+
+    P5 (tmux) provides environment-based enforcement.
+
+    P6 (bootstrap generation) shifts enforcement to process initialization.
+
+    The approach affects architecture significantly.
+
+    '
+- id: QUESTION-002
+  question: What is the acceptable overhead for enforcement mechanisms?
+  severity: medium
+  status: OPEN
+  context: 'Some proposals (P1 tasklist updates, P6 bootstrap file generation) add
+
+    overhead to every orchestration action. Need to determine acceptable
+
+    latency and context cost tradeoffs.
+
+    '
+- id: QUESTION-003
+  question: Should enforcement be soft (warnings) or hard (blocks)?
+  severity: medium
+  status: OPEN
+  context: 'Hard enforcement may prevent edge cases from being handled flexibly.
+
+    Soft enforcement may be ignored by agents. Need to determine the
+
+    right balance for different violation types.
+
+    '
+success_criteria:
+- All 6 proposals investigated with open questions answered
+- Trade-offs documented for each approach with concrete evidence
+- Implementation complexity assessed (L/M/H) with rationale
+- At least one proposal recommended for implementation
+- Quick wins identified that could be implemented immediately
+- Dependencies between proposals documented
+- Clear recommendation on which codebase(s) require changes
+loop_structures:
+- id: loop_investigation
+  type: exploration-loop
+  applies_to_phase: Investigation Phase
+  trigger: Each proposal investigation
+  description: 'Iterative exploration pattern for each proposal. Explore agents gather
+
+    information, document findings, and assess feasibility. Each proposal
+
+    follows: Audit -> Document -> Assess pattern.
+
+    '
+  exit_criteria:
+    success: All open questions answered with documented evidence
+    max_iterations: 3
+    escalation: Escalate to user if information cannot be gathered
+  participants:
+  - agent: explore
+    role: Gathers information from codebase
+  - agent: planner
+    role: Synthesizes findings into assessments
+- id: loop_synthesis_review
+  type: planner-loop
+  applies_to_phase: Synthesis Phase
+  trigger: After all proposals investigated
+  description: 'Standard planner-reviewer loop for synthesis report creation.
+
+    Planner creates comparison matrix and recommendations, reviewer
+
+    validates completeness and quality.
+
+    '
+  exit_criteria:
+    success: Recommendation report approved by reviewer
+    max_iterations: 3
+    escalation: Escalate to user for guidance on recommendations
+  participants:
+  - agent: planner
+    role: Creates synthesis and recommendations
+  - agent: planner-reviewer
+    role: Validates recommendation quality
+phases:
+- name: P1 - CLI Tasklist Orchestration Tracking
+  id: proposal_1_tasklist
+  status: pending
+  description: 'Investigate using CLI tasklist functionality to track orchestration
+    state.
+
+    The CLI already has tasklist commands - could these be leveraged for
+
+    orchestration phase/task tracking?
+
+    '
+  open_questions:
+  - question: What tasklist functionality currently exists in the CLI?
+    investigation_needed: '- Review `agentic plan task` commands
+
+      - Check if tasklists support hierarchical tasks (phases > tasks)
+
+      - Determine if tasklists can be queried programmatically
+
+      '
+    files_to_review:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    - modules/AgenticCLI/src/agenticcli/commands/task.py
+  - question: Can tasklists enforce sequential execution?
+    investigation_needed: '- Check if tasks can have dependencies
+
+      - Determine if task status affects what can be started
+
+      - Review if there''s a ''current task'' concept
+
+      '
+    validation_criteria: '- Tasklist can block starting Task B until Task A is complete
+
+      - OR: Clear documentation that this is not supported
+
+      '
+  - question: How would orchestration MMD map to tasklist items?
+    investigation_needed: '- Compare process.mmd structure to tasklist schema
+
+      - Identify if gates/validations can be represented
+
+      - Determine transformation complexity
+
+      '
+  - question: What's the UX for agents updating tasklist state?
+    investigation_needed: '- Review CLI commands for task status updates
+
+      - Check if updates require reading entire plan file
+
+      - Assess context cost of tasklist operations
+
+      '
+  potential_benefits:
+  - Uses existing CLI infrastructure
+  - Persistent state in files (survives session restart)
+  - Queryable via CLI (agent can check current state)
+  - Human-readable task tracking
+  potential_drawbacks:
+  - May require significant changes to tasklist schema
+  - Could add overhead (CLI calls for every action)
+  - Still relies on agent discipline to call CLI
+  - May not fit orchestration patterns well
+  validation_criteria:
+  - Tasklist can represent orchestration phases and tasks
+  - Agents can query current task without loading full plan
+  - State updates are atomic and reliable
+  tasks:
+  - id: EN-P1-001
+    description: Audit existing CLI tasklist commands and capabilities
+    agent_type: explore
+    status: completed
+  - id: EN-P1-002
+    description: Document gaps between tasklist and orchestration needs
+    agent_type: explore
+    status: completed
+    depends_on:
+    - EN-P1-001
+    output: proposal_1_gaps_analysis.yml
+  - id: EN-P1-003
+    description: Assess implementation complexity for tasklist-based orchestration
+    agent_type: planner
+    status: completed
+    depends_on:
+    - EN-P1-002
+    output: proposal_1_complexity_assessment.yml
+- name: P2 - Preloaded Tasklists at Plan Start
+  id: proposal_2_preload
+  status: pending
+  description: 'Investigate preloading orchestration tasklists when a plan is started.
+
+    Could the `agentic plan start` command automatically generate a tasklist
+
+    from the orchestration MMD?
+
+    '
+  open_questions:
+  - question: What happens when `agentic plan start` is called?
+    investigation_needed: '- Review plan start command implementation
+
+      - Check if any setup/initialization occurs
+
+      - Determine extension points for preloading
+
+      '
+    files_to_review:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+  - question: Can orchestration MMD be automatically parsed?
+    investigation_needed: '- Review MMD file format and structure
+
+      - Check for existing MMD parsing utilities
+
+      - Assess complexity of MMD -> tasklist transformation
+
+      '
+    files_to_review:
+    - modules/AgenticGuidance/agents/orchestration/*/process.mmd
+  - question: Where would preloaded tasklists be stored?
+    investigation_needed: '- Options: plan folder, ~/.agentic/, session-specific
+
+      - Consider multi-session scenarios (parallel workers)
+
+      - Determine cleanup/lifecycle requirements
+
+      '
+  - question: How would the main session vs subagent tasklists differ?
+    investigation_needed: '- Orchestrator needs full plan tasklist
+
+      - Subagents need only their assigned tasks
+
+      - Consider scoping mechanisms
+
+      '
+  potential_benefits:
+  - Automatic setup reduces manual orchestration prep
+  - Consistent tasklist structure across all plans
+  - Clear starting point for orchestration
+  - Could include validation gates in tasklist
+  potential_drawbacks:
+  - Requires MMD parsing infrastructure
+  - MMD formats may vary across orchestration types
+  - Preloaded state may become stale
+  - Doesn't solve mid-session state loss
+  validation_criteria:
+  - Plan start generates tasklist from MMD automatically
+  - Generated tasklist matches MMD structure
+  - Tasklist is accessible to agents immediately
+  tasks:
+  - id: EN-P2-001
+    description: Review plan start command and identify extension points
+    agent_type: explore
+    status: completed
+    output: EN-P2-001_plan_start_analysis.yml
+  - id: EN-P2-002
+    description: Analyze MMD file formats across orchestration types
+    agent_type: explore
+    status: completed
+  - id: EN-P2-003
+    description: Design MMD-to-tasklist transformation approach
+    agent_type: planner
+    status: completed
+    depends_on:
+    - EN-P2-001
+    - EN-P2-002
+- name: P3 - Session Spawn Context Injection
+  id: proposal_3_spawn
+  status: pending
+  description: 'Investigate injecting orchestration context when sessions are spawned
+
+    via `agentic session spawn`. Could the main session be marked as
+
+    orchestrator with spawned sessions knowing they are subagents?
+
+    '
+  open_questions:
+  - question: What does `agentic session spawn` currently do?
+    investigation_needed: '- Review session spawn command implementation
+
+      - Check what context is injected at spawn time
+
+      - Identify extension points for additional context
+
+      '
+    files_to_review:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    - modules/AgenticGuidance/src/agenticguidance/services/session.py
+  - question: Can spawned sessions inherit orchestration context?
+    investigation_needed: '- Review how context flows from parent to child session
+
+      - Check if task assignment can be included
+
+      - Determine if role can be explicitly set
+
+      '
+  - question: How would the main session be marked as orchestrator?
+    investigation_needed: '- Options: environment variable, session metadata, file
+      marker
+
+      - Consider how to set this at session start
+
+      - Determine if it can be changed mid-session
+
+      '
+  - question: What happens to context injection for `--resume` sessions?
+    investigation_needed: '- Check if resumed sessions re-inject context
+
+      - Determine if orchestration state persists across resume
+
+      - Identify gaps in resume workflow
+
+      '
+  potential_benefits:
+  - Clear role identification at spawn time
+  - Subagents know their scope from the start
+  - Could include specific task assignment
+  - Leverages existing session infrastructure
+  potential_drawbacks:
+  - Only helps at spawn time, not for existing sessions
+  - Main session started manually won't have marker
+  - Doesn't prevent subagent from spawning more agents
+  - Context can still be lost mid-session
+  validation_criteria:
+  - Spawned sessions receive role and task context
+  - Spawned sessions can identify themselves as subagents
+  - Main session can be marked as orchestrator
+  tasks:
+  - id: EN-P3-001
+    description: Audit session spawn command and context injection
+    agent_type: explore
+    status: completed
+    output: EN-P3-001_session_spawn_audit.yml
+  - id: EN-P3-002
+    description: Document current context flow in session lifecycle
+    agent_type: explore
+    status: completed
+  - id: EN-P3-003
+    description: Design orchestration context injection approach
+    agent_type: planner
+    status: completed
+    depends_on:
+    - EN-P3-001
+    - EN-P3-002
+- name: P4 - Main Session Detection/Identification
+  id: proposal_4_detection
+  status: pending
+  description: 'Investigate mechanisms for a session to reliably detect whether it
+    is
+
+    the main orchestration session or a spawned subagent.
+
+    '
+  open_questions:
+  - question: What session metadata currently exists?
+    investigation_needed: '- Review SessionService and SessionInfo schema
+
+      - Check what fields are set at session creation
+
+      - Identify if role/type field exists
+
+      '
+    files_to_review:
+    - modules/AgenticGuidance/src/agenticguidance/services/session.py
+    - modules/AgenticGuidance/src/agenticguidance/models/
+  - question: Can environment variables distinguish session types?
+    investigation_needed: '- Check if any env vars are set at spawn
+
+      - Determine if CLAUDE_* variables could be used
+
+      - Consider cross-platform compatibility
+
+      '
+  - question: Could tmux session properties encode role?
+    investigation_needed: '- Review tmux session naming conventions
+
+      - Check if tmux environment can store metadata
+
+      - Consider integration with AgenticTmux
+
+      '
+  - question: How would detection inform agent behavior?
+    investigation_needed: '- Determine what actions should be gated
+
+      - Consider soft vs hard enforcement
+
+      - Define behavior differences by role
+
+      '
+  potential_benefits:
+  - Reliable role identification at any point in session
+  - Could gate actions based on role
+  - Enables role-appropriate behavior enforcement
+  - Works for both new and existing sessions
+  potential_drawbacks:
+  - Detection alone doesn't enforce behavior
+  - May require changes across multiple systems
+  - False positives/negatives could cause issues
+  - Overhead of detection at every decision point
+  validation_criteria:
+  - Session can query its role via CLI or environment
+  - Role detection is accurate 100% of the time
+  - Detection works in all session creation scenarios
+  tasks:
+  - id: EN-P4-001
+    description: Audit SessionService metadata and capabilities
+    agent_type: explore
+    status: completed
+    output: EN-P4-001_session_metadata_audit.yml
+  - id: EN-P4-002
+    description: Research environment-based session identification
+    agent_type: explore
+    status: completed
+  - id: EN-P4-003
+    description: Design role detection and enforcement approach
+    agent_type: planner
+    status: completed
+    depends_on:
+    - EN-P4-001
+    - EN-P4-002
+- name: P5 - Tmux Session Management Patterns
+  id: proposal_5_tmux
+  status: pending
+  description: 'Investigate using tmux session management patterns to enforce
+
+    orchestration boundaries. Could tmux naming, environment, or
+
+    session hierarchy encode orchestration state?
+
+    '
+  open_questions:
+  - question: What tmux infrastructure already exists?
+    investigation_needed: '- Review AgenticTmux module
+
+      - Check completed plan 260130TE for remote access patterns
+
+      - Review deferred plan 260130MA for coordination patterns
+
+      '
+    files_to_review:
+    - modules/AgenticTmux/
+    - docs/plans/completed/260130TE_*/
+    - docs/plans/deferred/260130MA_*/
+  - question: Can tmux session names encode orchestration state?
+    investigation_needed: '- Review naming conventions
+
+      - Consider: plan-id, role, phase encoding
+
+      - Check if names can be updated mid-session
+
+      '
+  - question: Can tmux environment variables persist state?
+    investigation_needed: '- Check tmux environment propagation
+
+      - Determine if ORCHESTRATION_* vars would persist
+
+      - Consider tmux hooks for state management
+
+      '
+  - question: How would orchestration use tmux capture-pane?
+    investigation_needed: '- Review capture-pane for monitoring subagents
+
+      - Consider orchestrator observing worker progress
+
+      - Determine if this aids compliance enforcement
+
+      '
+  potential_benefits:
+  - Tmux is already part of the environment
+  - Visual separation of orchestrator and workers
+  - Environment-based enforcement is harder to bypass
+  - Enables external monitoring of agent sessions
+  potential_drawbacks:
+  - Not all sessions run in tmux
+  - Adds complexity to session management
+  - May not work well with GUI terminals
+  - Tmux learning curve for users
+  validation_criteria:
+  - Tmux sessions clearly indicate role
+  - Orchestration state retrievable from tmux
+  - Works with both local and remote sessions
+  tasks:
+  - id: EN-P5-001
+    description: Audit AgenticTmux infrastructure and patterns
+    agent_type: explore
+    status: completed
+  - id: EN-P5-002
+    description: Review completed/deferred tmux plans for relevant patterns
+    agent_type: explore
+    status: completed
+  - id: EN-P5-003
+    description: Design tmux-based orchestration enforcement approach
+    agent_type: planner
+    status: completed
+    depends_on:
+    - EN-P5-001
+    - EN-P5-002
+- name: P6 - Bootstrap-time Agent-Specific Plan Auto-generation
+  id: proposal_6_generate
+  status: pending
+  description: 'Investigate moving process enforcement to the bootstrap phase.
+
+    When an agent runs `agentic context bootstrap`, the CLI would:
+
+    1. Require a plan folder path (mandated).
+
+    2. Automatically generate an agent-specific plan file in `agents/` subfolder.
+
+    3. Initialize that file with steps extracted from the agent''s `process.yml`.
+
+    4. The subagent then tracks its internal process progress in this dedicated file.
+
+    '
+  open_questions:
+  - question: How should `agentic context bootstrap` handle plan folder enforcement?
+    investigation_needed: '- Review current bootstrap argument handling
+
+      - Determine how to make plan folder mandatory without breaking legacy sessions
+
+      - Check if plan folder can be auto-resolved from the environment
+
+      '
+    files_to_review:
+    - modules/AgenticCLI/src/agenticcli/commands/context.py
+  - question: What is the structure for the `agents/` subfolder?
+    investigation_needed: '- Define naming convention for agent plan files (e.g. `agents/<session_id>_<role>.yml`)
+
+      - Determine how to link these back to the parent task in the main plan
+
+      - Consider how to clean up these files post-session or keep for audit
+
+      '
+  - question: How to map `process.yml` steps to trackable YAML tasks?
+    investigation_needed: '- Review `process.yml` schema for ''steps'' format consistency
+
+      - Design the internal schema for agent-specific task tracking
+
+      - Determine if agents can add their own ''micro-tasks'' to this file
+
+      '
+  - question: How will the Audit Agent interact with the `agents/` subfolder?
+    investigation_needed: '- Identify how the auditor finds all relevant agent plan
+      files for a task
+
+      - Determine the success criteria for ''compliance'' (all tasks completed)
+
+      - Design a reporting mechanism for compliance failures
+
+      '
+  potential_benefits:
+  - Decouples orchestration from process internal tracking
+  - Maintains 'Main-First' visibility without file pollution
+  - Provides granular accountability for process compliance
+  - Agent-driven initialization ensures process is followed from T=0
+  potential_drawbacks:
+  - Increases file count in plan folders
+  - May require agents to call CLI more frequently for internal steps
+  - Need to ensure sync between session ID and file naming
+  - Complexity of mapping markdown-style steps to task schemas
+  validation_criteria:
+  - Orchestrator can generate a plan file from process.yml
+  - Generated plan contains all mandatory steps as tasks
+  - Subagent correctly identifies and uses the generated plan
+  tasks:
+  - id: EN-P6-001
+    description: Audit process.yml structures for step extraction
+    agent_type: explore
+    status: completed
+    output: EN-P6-001_process_yml_audit.yml
+  - id: EN-P6-002
+    description: Prototype MMD-to-Task-Plan transformation logic
+    agent_type: explore
+    status: pending
+  - id: EN-P6-003
+    description: Design agent-specific plan generation and discovery
+    agent_type: planner
+    status: pending
+    depends_on:
+    - EN-P6-001
+    - EN-P6-002
+- name: Synthesis - Recommendation Report
+  id: synthesis
+  status: blocked
+  blocked_by:
+  - proposal_1_tasklist
+  - proposal_2_preload
+  - proposal_3_spawn
+  - proposal_4_detection
+  - proposal_5_tmux
+  - proposal_6_generate
+  description: 'After investigating all 5 proposals, synthesize findings into a
+
+    recommendation report.
+
+    '
+  deliverables:
+  - Comparison matrix of all proposals
+  - Recommended implementation order
+  - Quick wins that can be implemented immediately
+  - Dependencies between approaches
+  - Go/no-go decision for each proposal
+  tasks:
+  - id: EN-SYNTH-001
+    description: Create comparison matrix for all proposals
+    agent_type: planner
+    status: pending
+  - id: EN-SYNTH-002
+    description: Identify quick wins and immediate actions
+    agent_type: planner
+    status: pending
+  - id: EN-SYNTH-003
+    description: Write recommendation report
+    agent_type: teacher
+    status: pending
+    depends_on:
+    - EN-SYNTH-001
+    - EN-SYNTH-002
+investigation_guidelines:
+  principles:
+  - Understand before proposing solutions
+  - Document trade-offs, not just benefits
+  - Consider integration with existing systems
+  - Identify minimal viable approach for each proposal
+  output_format:
+  - Each proposal should result in an investigation_findings.yml
+  - Findings should explicitly address all open questions
+  - Trade-offs should be concrete, not speculative
+  - Implementation complexity should be L/M/H with rationale
+  success_criteria:
+  - All open questions have documented answers
+  - At least one proposal is recommended for implementation
+  - Quick wins are actionable within 1-2 hours
+  - Recommendation has clear rationale
+metadata:
+  total_tasks: 21
+  proposals: 6
+  tasks_per_proposal: 3
+  synthesis_tasks: 3
+  investigation_only: true
+  implementation_out_of_scope: true
+  dependencies:
+  - Access to CLI source code
+  - Access to AgenticGuidance agents
+  - Access to AgenticGuidance CLI backend (src/agenticguidance/)
+  - Review of completed tmux plans
+  implementation_worktrees:
+    primary: AgenticGuidance
+    secondary: AgenticCLI (if needed)

@@ -1,0 +1,125 @@
+%% =============================================================================
+%% GOAL: Execute plan tasks
+%% =============================================================================
+%% PROFILE: Orchestration-260131OR_technical_spike_for_mcp_gui_orchestration_dashboar
+%% INPUT_PATH: docs/plans/live/260131OR_technical_spike_for_mcp_gui_orchestration_dashboar/plan_build.yml
+%%
+%% PHASES:
+%%   SPIKE-01: Protocol Validation
+%%   SPIKE-02: Real-time Data Integration
+%%   SPIKE-03: Visual Orchestration
+%%   SPIKE-04: Review & Finalization
+%%
+%% AGENT_ROUTING: SPIKE-01 -> test-builder, SPIKE-02 -> builder, SPIKE-03 -> builder, SPIKE-04 -> builder
+%% STATUS: SPIKE-01=in_progress, SPIKE-02=pending, SPIKE-03=pending, SPIKE-04=pending
+%% FEEDBACK_TRIGGERS: TEST_FAILURE -> test-fix-loop, BUILD_FAILURE -> escalate
+%% =============================================================================
+
+flowchart LR
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    LoadInputs --> ReviewInputs[Review All Listed Inputs]
+    ReviewInputs --> CheckInputs{All Inputs Found?}
+
+    CheckInputs -- "No: Missing" --> SearchInputs[Search for Missing Inputs]
+    SearchInputs --> Found{Found?}
+    Found -- "Yes: Update paths" --> UpdateRefs[Update References]
+    UpdateRefs --> ReviewInputs
+    Found -- "No: Stop" --> AskUser((Ask User for Clarification))
+
+    CheckInputs -- "Yes: Verified" --> Phase1
+
+    %% ========================================
+    %% PHASE 1: PROTOCOL VALIDATION
+    %% ========================================
+    %% AGENT_ROUTING: test-builder agent with test-fix loop
+    %% LOOP_DEFINITION: test-fix-loop
+    %% MAX_ITERATIONS: 5
+
+    subgraph Testing1_SG ["Protocol Validation (Test-Fix-Loop)"]
+        Phase1[Enter Protocol Validation] --> SpawnTestBuilder1[Spawn test-builder Agent]
+        SpawnTestBuilder1 --> RunTests1[Run Tests]
+        RunTests1 --> TestsPassed1{Tests Passed?}
+
+        %% Test-Fix Loop: retry path
+        TestsPassed1 -- "No: Fix in Iteration" --> SpawnBuilderFix1[Spawn builder Agent for Fixes]
+        SpawnBuilderFix1 --> ApplyFixes1[Apply Implementation Fixes]
+        ApplyFixes1 --> RunTests1
+
+        %% Success path
+        TestsPassed1 -- "Yes: All Pass" --> Phase1Complete[Protocol Validation Complete]
+    end
+
+    %% Escalation path for persistent test failures
+    TestsPassed1 -- "No: Escalate" --> CheckIterations1{Max Iterations Reached?}
+    CheckIterations1 -- "No" --> SpawnTestBuilder1
+    CheckIterations1 -- "Yes" --> EscalateTests1((Ask User: Test Failures Persist))
+
+    Phase1Complete --> Phase2
+
+    %% ========================================
+    %% PHASE 2: REAL-TIME DATA INTEGRATION
+    %% ========================================
+    %% AGENT_ROUTING: builder agent
+    %% Tasks: SP-02-001, SP-02-002
+
+    subgraph SPIKE_02_SG ["Real-time Data Integration"]
+        Phase2[Enter Real-time Data Integration] --> SpawnAgent2[Spawn builder Agent]
+        SpawnAgent2 --> Task_SPIKE_02_1[SP-02-001: Implement CLI state fetching in MCP serv]
+        Task_SPIKE_02_1 --> Task_SPIKE_02_2[SP-02-002: Map session labels to Mermaid node IDs.]
+        Task_SPIKE_02_2 --> Phase2Complete[Real-time Data Integration Complete]
+    end
+
+    Phase2Complete --> Phase3
+
+    %% ========================================
+    %% PHASE 3: VISUAL ORCHESTRATION
+    %% ========================================
+    %% AGENT_ROUTING: builder agent
+    %% Tasks: SP-03-001, SP-03-002
+
+    subgraph SPIKE_03_SG ["Visual Orchestration"]
+        Phase3[Enter Visual Orchestration] --> SpawnAgent3[Spawn builder Agent]
+        SpawnAgent3 --> Task_SPIKE_03_1[SP-03-001: Implement dynamic node styling in Mermai]
+        Task_SPIKE_03_1 --> Task_SPIKE_03_2[SP-03-002: Implement auto-refresh mechanism (Pollin]
+        Task_SPIKE_03_2 --> Phase3Complete[Visual Orchestration Complete]
+    end
+
+    Phase3Complete --> Phase4
+
+    %% ========================================
+    %% PHASE 4: REVIEW & FINALIZATION
+    %% ========================================
+    %% AGENT_ROUTING: builder agent
+    %% Tasks: SP-04-001, SP-04-002, SP-04-003
+
+    subgraph SPIKE_04_SG ["Review & Finalization"]
+        Phase4[Enter Review & Finalization] --> SpawnAgent4[Spawn builder Agent]
+        SpawnAgent4 --> Task_SPIKE_04_1[SP-04-001: Audit implementation against MCP standar]
+        Task_SPIKE_04_1 --> Task_SPIKE_04_2[SP-04-002: Refine dashboard aesthetics (Glassmorphi]
+        Task_SPIKE_04_2 --> Task_SPIKE_04_3[SP-04-003: Move spike implementation to module perm]
+        Task_SPIKE_04_3 --> Phase4Complete[Review & Finalization Complete]
+    end
+
+
+    %% ========================================
+    %% FINALIZATION
+    %% ========================================
+    Phase4Complete --> UpdatePlanStatus[Update Plan Status: completed]
+    %% agentic plan move folder --plan <path>
+    UpdatePlanStatus --> ArchivePlan[Archive to docs/plans/completed/]
+    ArchivePlan --> End((End: Plan Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef entrypoint fill:#90EE90,stroke:#228B22
+    classDef exitpoint fill:#FFB6C1,stroke:#DC143C
+    classDef userpoint fill:#87CEEB,stroke:#4682B4
+    classDef keyaction fill:#FFD700,stroke:#DAA520
+    class Start entrypoint
+    class End exitpoint
+    class AskUser,EscalateTests1 userpoint

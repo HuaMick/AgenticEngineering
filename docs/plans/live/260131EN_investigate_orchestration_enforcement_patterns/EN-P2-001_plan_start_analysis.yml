@@ -1,0 +1,329 @@
+# Investigation Findings: EN-P2-001
+# Task: Review plan start command and identify extension points
+# Agent: explore
+# Date: 2026-01-31
+# Status: completed
+
+task:
+  id: EN-P2-001
+  description: Review plan start command and identify extension points
+  proposal: P2 - Preloaded Tasklists at Plan Start
+
+# =============================================================================
+# KEY FINDING: There is NO "plan start" command
+# =============================================================================
+# The investigation reveals that the conceptual "plan start" doesn't exist as a
+# single command. Plan execution is initiated through different pathways.
+# This fundamentally affects how preloading would need to be implemented.
+
+findings:
+
+  command_analysis:
+    plan_start_exists: false
+    explanation: |
+      There is no `agentic plan start` command. The plan commands are:
+      - init: Creates worktree + plan folder (initialization, not execution)
+      - scaffold: Generates plan file templates
+      - status: Shows plan status
+      - validate: Validates plan structure
+      - task: Task management subcommands
+      - phase: Phase management
+      - orchestration: MMD generation/validation
+      - archive/unarchive: Plan lifecycle management
+      - list: List available plans
+      - move: Move tasks/plans between files
+      - stories: User story management
+
+    task_start_command:
+      exists: true
+      command: "agentic plan task start <task_id>"
+      location: "/home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/plan.py"
+      line_number: 951
+      function: "cmd_task_start"
+      description: |
+        Marks a specific task as in_progress. Has orchestration validation:
+        - EN-006: Validates orchestration_*.mmd exists before allowing task start
+        - Fails if no MMD file is found in plan folder
+        - Calls _update_task_status() to modify plan YAML
+
+    execution_entry_points:
+      - name: "agentic entrypoint execute"
+        description: |
+          Primary entry point for orchestration. Executes entrypoint files
+          that reference orchestration MMD files. Used with --compile flag
+          to bundle all context.
+        location: "/home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/entrypoint.py"
+        function: "cmd_execute"
+        extension_potential: HIGH
+        notes: |
+          This is THE natural place for tasklist preloading. The entrypoint
+          execute command with --compile already:
+          1. Reads the entrypoint YAML
+          2. Resolves the orchestration MMD file
+          3. Reads inputs.yml and all referenced files
+          4. Bundles everything for the session
+
+          Adding tasklist preloading here would be straightforward.
+
+      - name: "agentic plan task start"
+        description: |
+          Marks individual tasks as in_progress. Already has orchestration
+          validation gate (requires MMD existence).
+        extension_potential: MEDIUM
+        notes: |
+          Could preload remaining tasks at first task start, but this is
+          late in the workflow. Better suited for task tracking, not preloading.
+
+      - name: "agentic loop start"
+        description: |
+          Starts a Ralph Loop with a prompt. Can reference entrypoints.
+          Sessions initiated here could also trigger preloading.
+        location: "/home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/loop.py"
+        extension_potential: MEDIUM
+        notes: |
+          If loop start references an orchestration entrypoint, preloading
+          could happen there. But this adds complexity vs. doing it in
+          entrypoint execute.
+
+  extension_points:
+
+    recommended:
+      - location: "cmd_execute() in entrypoint.py"
+        line: 605
+        description: |
+          When --compile flag is used, add tasklist generation after
+          _compile_context() returns. The orchestration MMD is already
+          loaded at this point.
+        changes_required:
+          - Parse orchestration MMD to extract phases and nodes
+          - Generate tasklist structure from MMD
+          - Option 1: Write to file in plan folder
+          - Option 2: Include in compiled output for session
+          - Option 3: Both (persistent + session context)
+
+    alternative:
+      - location: "_compile_context() in entrypoint.py"
+        line: 206
+        description: |
+          Extend the compiled context dict to include a "tasklist" key
+          with generated tasks from the orchestration MMD.
+
+      - location: "cmd_orchestration_generate() in plan.py"
+        line: 2588
+        description: |
+          When generating the orchestration MMD, also generate a parallel
+          tasklist YAML file. This front-loads the work to plan creation
+          rather than execution time.
+
+      - location: "cmd_task_start() in plan.py"
+        line: 951
+        description: |
+          First-task-start hook: if no tasklist exists when first task
+          starts, generate one from the orchestration MMD. Less ideal
+          because it's reactive rather than proactive.
+
+  mmd_parsing_requirements:
+    current_state: |
+      The codebase generates MMD files from plan YAML (cmd_orchestration_generate)
+      but does not parse MMD files back into structured data.
+
+    needed_capability: |
+      To preload tasklists from MMD, need to:
+      1. Parse Mermaid flowchart syntax
+      2. Extract nodes (phases, tasks, gates)
+      3. Extract edges (dependencies, flow)
+      4. Map to tasklist schema
+
+    complexity_assessment: MEDIUM
+    notes: |
+      MMD parsing is not trivial. Options:
+      - Use regex for simple extraction (fragile)
+      - Use a Mermaid parsing library (external dependency)
+      - Parse comments in MMD (more reliable since we control generation)
+
+      RECOMMENDATION: Since we control MMD generation (cmd_orchestration_generate),
+      add structured comments with JSON/YAML data that can be easily parsed.
+      The header comments already include phase names and agent routing.
+
+  tasklist_storage_options:
+
+    option_1_plan_folder:
+      path: "<plan_folder>/orchestration_tasklist.yml"
+      pros:
+        - Persistent across sessions
+        - Visible to humans
+        - Can be version controlled
+        - Follows existing plan file patterns
+      cons:
+        - Requires cleanup/update management
+        - May become stale if MMD changes
+
+    option_2_session_context:
+      location: "Included in compiled entrypoint output"
+      pros:
+        - Always fresh from MMD
+        - No file management needed
+        - Session-scoped
+      cons:
+        - Lost when session ends
+        - Not visible to external tools
+        - Increases context token cost
+
+    option_3_hybrid:
+      description: "Generate file AND include in context"
+      pros:
+        - Best of both worlds
+        - File for persistence and visibility
+        - Context for immediate availability
+      cons:
+        - Slight redundancy
+        - Need sync strategy
+
+  related_infrastructure:
+
+    existing_tasklist_commands:
+      - command: "agentic plan task list"
+        function: "cmd_task_list"
+        notes: "Lists tasks from plan_*.yml files"
+
+      - command: "agentic plan task current"
+        function: "cmd_task_current"
+        notes: "Gets first in_progress or pending task"
+
+      - command: "agentic plan task prefill"
+        function: "cmd_task_prefill"
+        notes: |
+          IMPORTANT: This command already exists for loading preset tasklists!
+          Uses TaskPresetWorkflow (not yet implemented - see line 1099).
+          This could be repurposed or extended for orchestration preloading.
+        status: "Partially implemented - workflow not available yet"
+
+    task_tracking_in_yaml:
+      location: "plan_*.yml files"
+      schema: |
+        phases:
+          - id: phase_id
+            tasks:
+              - id: task_id
+                description: ...
+                status: pending|in_progress|completed
+      notes: "Tasks already tracked in plan YAML - could add orchestration mapping"
+
+# =============================================================================
+# RECOMMENDATIONS
+# =============================================================================
+
+recommendations:
+
+  primary:
+    title: "Extend entrypoint execute --compile with tasklist generation"
+    rationale: |
+      This is the most natural extension point because:
+      1. It's where orchestration context is already bundled
+      2. The orchestration MMD is already loaded
+      3. It's the entry point for orchestration workflows
+      4. Changes are localized to one command
+
+    implementation_approach:
+      phase_1: "Add MMD metadata extraction from comments"
+      phase_2: "Generate tasklist structure from metadata"
+      phase_3: "Include in compiled output"
+      phase_4: "Optionally write to plan folder file"
+
+    estimated_complexity: MEDIUM
+    files_to_modify:
+      - modules/AgenticCLI/src/agenticcli/commands/entrypoint.py
+      - modules/AgenticCLI/src/agenticcli/commands/plan.py (for shared utilities)
+
+  secondary:
+    title: "Leverage existing cmd_task_prefill infrastructure"
+    rationale: |
+      The task prefill command already has the concept of loading
+      tasks from a template. Could extend TaskPresetWorkflow to
+      support "orchestration" as a preset type that reads from MMD.
+
+    implementation_approach:
+      - Implement TaskPresetWorkflow
+      - Add "orchestration" preset type
+      - Have it read from orchestration_*.mmd in plan folder
+
+    estimated_complexity: HIGH (more infrastructure needed)
+
+  enhancement:
+    title: "Improve MMD generation to include parseable metadata"
+    rationale: |
+      Current MMD generation (cmd_orchestration_generate) puts
+      metadata in comments, but in inconsistent formats. Standardizing
+      to JSON/YAML in comments makes parsing reliable.
+
+    quick_win: true
+    estimated_effort: "1-2 hours"
+
+# =============================================================================
+# ANSWERS TO INVESTIGATION QUESTIONS
+# =============================================================================
+
+investigation_questions_answered:
+
+  question_1:
+    original: "What happens when `agentic plan start` is called?"
+    answer: |
+      There is NO `agentic plan start` command. Plan execution is initiated
+      through `agentic entrypoint execute` which loads orchestration context.
+      The closest command is `agentic plan task start <task_id>` which marks
+      individual tasks as in_progress.
+
+  question_2:
+    original: "What are the extension points for preloading?"
+    answer: |
+      Primary extension point: cmd_execute() in entrypoint.py, specifically
+      the --compile code path (line 605-620). The orchestration MMD is
+      already loaded here, making it ideal for tasklist generation.
+
+      Secondary extension points:
+      - cmd_orchestration_generate() - generate at MMD creation time
+      - cmd_task_prefill() - existing but unimplemented preset loading
+      - cmd_task_start() - reactive generation on first task start
+
+  question_3:
+    original: "Where would preloaded tasklists be stored?"
+    answer: |
+      Three options identified:
+      1. Plan folder file (orchestration_tasklist.yml) - persistent
+      2. Session context (in compiled output) - ephemeral
+      3. Hybrid approach - both file and context
+
+      Recommendation: Hybrid approach for maximum flexibility.
+
+# =============================================================================
+# VALIDATION STATUS
+# =============================================================================
+
+validation:
+  files_reviewed:
+    - path: modules/AgenticCLI/src/agenticcli/commands/plan.py
+      sections: "cmd_task_start, cmd_orchestration_generate, handle()"
+    - path: modules/AgenticCLI/src/agenticcli/commands/entrypoint.py
+      sections: "cmd_execute, _compile_context"
+    - path: modules/AgenticCLI/src/agenticcli/cli.py
+      sections: "plan subparser, task subparser"
+
+  key_functions_analyzed:
+    - function: handle()
+      file: plan.py
+      finding: "Routes plan subcommands - no 'start' subcommand exists"
+    - function: cmd_task_start()
+      file: plan.py
+      finding: "Validates MMD existence, updates task status"
+    - function: cmd_execute()
+      file: entrypoint.py
+      finding: "Primary orchestration entry point with --compile context bundling"
+    - function: _compile_context()
+      file: entrypoint.py
+      finding: "Bundles entrypoint, orchestration, inputs, references"
+
+  confidence_level: HIGH
+  notes: |
+    All relevant code paths reviewed. The finding that there is no
+    "plan start" command is definitive. The extension points identified
+    are concrete locations in the codebase with line numbers.

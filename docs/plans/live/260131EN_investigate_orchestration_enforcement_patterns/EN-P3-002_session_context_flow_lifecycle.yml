@@ -1,0 +1,756 @@
+# EN-P3-002: Session Context Flow Lifecycle Documentation
+# Task: Document current context flow in session lifecycle
+# Agent: builder
+# Status: completed
+# Date: 2026-01-31
+
+task_id: EN-P3-002
+task_description: "Document current context flow in session lifecycle"
+investigator: builder-agent
+status: completed
+based_on: EN-P3-001_session_spawn_audit.yml
+
+# =============================================================================
+# EXECUTIVE SUMMARY
+# =============================================================================
+
+summary: |
+  This document maps the complete context flow through the session lifecycle,
+  from user invocation through session completion and metadata recording.
+
+  Key Finding: Context is FRAGMENTED across the lifecycle. The CCI (CLI Context
+  Injection) system provides rich context via `agentic context bootstrap`, but
+  this is NOT integrated with session spawn. Sessions start "context-blind" and
+  must manually fetch their context after starting.
+
+  The lifecycle has clear stages where context injection COULD occur but
+  currently does NOT.
+
+# =============================================================================
+# SESSION LIFECYCLE STAGES
+# =============================================================================
+
+lifecycle_stages:
+
+  # ---------------------------------------------------------------------------
+  # STAGE 1: USER INVOCATION
+  # ---------------------------------------------------------------------------
+
+  stage_1_user_invocation:
+    name: "User Invokes Session Spawn"
+    trigger: "agentic session spawn -p <prompt>"
+
+    entry_point:
+      file: modules/AgenticCLI/src/agenticcli/commands/session.py
+      function: cmd_spawn()
+      line: 137
+
+    current_context_available:
+      from_cli_args:
+        - name: "prompt"
+          source: "--prompt, -p flag"
+          passed_to_claude: "Yes (as positional argument)"
+
+        - name: "max_turns"
+          source: "--max-turns flag"
+          passed_to_claude: "Yes (as --max-turns flag)"
+
+        - name: "background"
+          source: "--background, -b flag"
+          passed_to_claude: "No (controls spawn mode only)"
+
+        - name: "directory"
+          source: "--directory, -d flag"
+          passed_to_claude: "Yes (as cwd for subprocess)"
+
+      from_environment:
+        - name: "os.environ"
+          description: "Parent process environment"
+          passed_to_claude: "Implicit inheritance (not explicit)"
+          note: "If parent sets AGENTIC_* vars, they propagate"
+
+      from_cli_context:
+        - name: "CLIContext.cwd"
+          available: true
+          used: false
+
+        - name: "CLIContext.project_root"
+          available: true
+          used: false
+
+        - name: "CLIContext.config_dir"
+          available: true
+          used: false
+
+    current_context_NOT_available:
+      - "Role identification (orchestrator vs subagent)"
+      - "Task ID or task details"
+      - "Plan folder path"
+      - "Parent session ID"
+      - "Orchestration phase"
+      - "CCI bootstrap data"
+
+    context_gap_severity: HIGH
+
+  # ---------------------------------------------------------------------------
+  # STAGE 2: SESSION CREATION
+  # ---------------------------------------------------------------------------
+
+  stage_2_session_creation:
+    name: "Session Record Created"
+    trigger: "Internal - before subprocess launch"
+
+    implementation:
+      file: modules/AgenticCLI/src/agenticcli/commands/session.py
+      function: cmd_spawn()
+      lines: "164-176"
+
+    session_data_stored:
+      - session_id: "UUID generated"
+      - pid: "null (set after spawn)"
+      - prompt: "User prompt text"
+      - max_turns: "Turn limit if specified"
+      - status: "starting"
+      - started_at: "ISO timestamp"
+      - ended_at: "null"
+      - background: "boolean"
+      - working_dir: "cwd or --directory"
+      - command: "Full claude command string"
+
+    orchestration_fields_MISSING:
+      - role: "NOT STORED"
+      - task_id: "NOT STORED"
+      - plan_folder: "NOT STORED"
+      - parent_session: "NOT STORED"
+      - orchestration_phase: "NOT STORED"
+
+    storage_location: "~/.agentic/sessions/<uuid>.json"
+
+    context_gap_severity: HIGH
+
+  # ---------------------------------------------------------------------------
+  # STAGE 3: SESSION RUNS (BACKGROUND)
+  # ---------------------------------------------------------------------------
+
+  stage_3_session_runs_background:
+    name: "Session Runs (Background Mode)"
+    trigger: "subprocess.Popen() with start_new_session=True"
+
+    implementation:
+      file: modules/AgenticCLI/src/agenticcli/commands/session.py
+      function: cmd_spawn()
+      lines: "186-198"
+
+    subprocess_call:
+      command: "claude --print [--max-turns N] <prompt>"
+      cwd: "working_dir"
+      stdin: "DEVNULL"
+      stdout: "Log file (~/.agentic/sessions/logs/<uuid>.stdout.log)"
+      stderr: "Log file (~/.agentic/sessions/logs/<uuid>.stderr.log)"
+      env: "INHERITED (not explicit)"
+      detached: true
+
+    context_passed_to_claude:
+      explicit:
+        - prompt: "User text"
+        - max_turns: "If specified"
+        - cwd: "Working directory"
+
+      implicit:
+        - environment: "Inherited from parent"
+
+    context_NOT_passed_to_claude:
+      - system_prompt: "None injected"
+      - session_id: "Not available to claude"
+      - role: "Not available"
+      - task: "Not available"
+      - plan: "Not available"
+
+    agent_self_discovery_required: |
+      The spawned agent must call `agentic context bootstrap` to discover:
+      - What plan it's working on
+      - What task is assigned
+      - What role it should play
+      - What process to follow
+
+      This is REACTIVE context (agent requests) not PROACTIVE injection.
+
+    context_gap_severity: HIGH
+
+  # ---------------------------------------------------------------------------
+  # STAGE 3B: SESSION RUNS (FOREGROUND)
+  # ---------------------------------------------------------------------------
+
+  stage_3b_session_runs_foreground:
+    name: "Session Runs (Foreground Mode)"
+    trigger: "subprocess.run() with capture_output=True"
+
+    implementation:
+      file: modules/AgenticCLI/src/agenticcli/commands/session.py
+      function: cmd_spawn()
+      lines: "215-220"
+
+    subprocess_call:
+      command: "claude --print [--max-turns N] <prompt>"
+      cwd: "working_dir"
+      stdout: "Captured"
+      stderr: "Captured"
+      env: "INHERITED (not explicit)"
+      blocking: true
+
+    context_differences_from_background: |
+      - Output is captured, not logged to files
+      - Caller waits for completion
+      - Same context limitations as background mode
+
+  # ---------------------------------------------------------------------------
+  # STAGE 4: SESSION COMPLETES
+  # ---------------------------------------------------------------------------
+
+  stage_4_session_completes:
+    name: "Session Completes"
+    trigger: "Claude process exits"
+
+    detection_mechanism:
+      background: |
+        Status update on next access via _update_session_status():
+        - Checks if PID is still running (os.kill(pid, 0))
+        - If not running, marks status as "completed"
+        - Updates ended_at timestamp
+
+      foreground: |
+        Immediate detection via subprocess.run() return:
+        - returncode checked
+        - status set to "completed" or "failed"
+        - ended_at timestamp set
+
+    implementation:
+      update_check:
+        file: modules/AgenticCLI/src/agenticcli/commands/session.py
+        function: _update_session_status()
+        lines: "99-114"
+
+      foreground_complete:
+        file: modules/AgenticCLI/src/agenticcli/commands/session.py
+        function: cmd_spawn()
+        lines: "222-225"
+
+    data_captured_at_completion:
+      - status: "completed|failed"
+      - ended_at: "ISO timestamp"
+      - exit_code: "Process return code (foreground only)"
+
+    orchestration_data_NOT_captured:
+      - task_completion_status: "NOT TRACKED"
+      - work_summary: "NOT CAPTURED"
+      - files_modified: "NOT TRACKED"
+      - commits_made: "NOT TRACKED"
+      - child_sessions_spawned: "NOT TRACKED"
+
+    context_gap_severity: MEDIUM
+
+  # ---------------------------------------------------------------------------
+  # STAGE 5: METADATA RECORDED
+  # ---------------------------------------------------------------------------
+
+  stage_5_metadata_recorded:
+    name: "Metadata Recorded"
+    trigger: "Session file updated via _save_session()"
+
+    implementation:
+      file: modules/AgenticCLI/src/agenticcli/commands/session.py
+      function: _save_session()
+      lines: "55-63"
+
+    final_session_record:
+      schema:
+        session_id: "UUID"
+        pid: "Process ID"
+        prompt: "Original prompt text"
+        max_turns: "Turn limit if set"
+        status: "starting|running|completed|failed|stopped"
+        started_at: "ISO timestamp"
+        ended_at: "ISO timestamp or null"
+        background: "boolean"
+        working_dir: "cwd path"
+        command: "Full command string"
+        stdout_log: "Path (background only)"
+        stderr_log: "Path (background only)"
+        exit_code: "int (foreground only)"
+        error: "Error message if failed"
+
+    queryable_via:
+      - command: "agentic session list"
+        shows: "Session ID, PID, Status, Started, Prompt (truncated)"
+
+      - command: "agentic session status <id>"
+        shows: "Full session details including log paths"
+
+    missing_from_metadata:
+      - role: "Cannot tell if orchestrator or subagent"
+      - task_id: "Cannot correlate to plan tasks"
+      - plan_folder: "Cannot trace back to plan"
+      - parent_session: "Cannot build session hierarchy"
+      - child_sessions: "Cannot see spawned children"
+      - orchestration_phase: "Cannot determine workflow stage"
+
+    context_gap_severity: MEDIUM
+
+# =============================================================================
+# CONTEXT SOURCES ANALYSIS
+# =============================================================================
+
+context_sources:
+
+  source_1_cci_bootstrap:
+    name: "CCI Bootstrap (agentic context bootstrap)"
+    file: modules/AgenticCLI/src/agenticcli/commands/context.py
+    function: cmd_bootstrap()
+
+    provides:
+      - role: "Agent role ID (inferred from task or specified)"
+      - objective: "Plan objective"
+      - plan_folder: "Plan folder name"
+      - plan_path: "Full path to plan"
+      - main_worktree: "Main worktree path"
+      - current_task: "Task details (id, name, status, phase, description, guidance)"
+      - process: "Role-specific process guidelines"
+      - essential_inputs: "Top 10 input file references"
+      - cli_commands: "Helpful CLI command hints"
+
+    integration_with_session_spawn: NONE
+
+    when_available: |
+      After session starts, agent must call `agentic context bootstrap`
+      to fetch this context. This is REACTIVE, not PROACTIVE.
+
+    gap: |
+      This context should be available AT spawn time, not requiring
+      the agent to discover and fetch it after starting.
+
+  source_2_cli_context:
+    name: "CLIContext (internal)"
+    file: modules/AgenticCLI/src/agenticcli/context.py
+    class: CLIContext
+
+    provides:
+      - cwd: "Current working directory"
+      - config_dir: "Config directory path"
+      - project_root: "Project root path"
+      - json_output: "Output format flag"
+      - verbose: "Verbose mode flag"
+
+    integration_with_session_spawn: PARTIAL
+
+    how_used: |
+      ctx is passed to cmd_spawn() but only used for potential
+      future extensions. Currently the context is mostly ignored.
+
+  source_3_plan_resolver:
+    name: "MainFirstPlanResolver"
+    file: "modules/AgenticGuidance/services.py (referenced)"
+
+    provides:
+      - resolve_active_plan(): "Find active plan for current branch"
+      - extract_current_task(): "Get next task from plan"
+      - extract_all_tasks(): "Get all tasks from plan"
+
+    integration_with_session_spawn: NONE
+
+    gap: |
+      This resolver could be used at spawn time to inject plan context,
+      but it is not currently integrated.
+
+  source_4_entrypoint:
+    name: "Entrypoint System"
+    file: modules/AgenticCLI/src/agenticcli/commands/entrypoint.py
+
+    provides:
+      - Workflow starting point definitions
+      - Variable substitution in prompts
+      - Reference to orchestration files
+      - Compiled context bundles (--compile flag)
+
+    integration_with_session_spawn: INDIRECT
+
+    how_used: |
+      Loop spawn can use --entrypoint to load prompt from entrypoint file.
+      But the compiled context is not automatically injected into spawned sessions.
+
+# =============================================================================
+# CONTEXT FLOW DIAGRAM
+# =============================================================================
+
+context_flow_diagram: |
+
+  CURRENT CONTEXT FLOW (FRAGMENTED)
+  =================================
+
+  User invokes spawn
+        |
+        v
+  +------------------+     Context Available:
+  | session spawn    |---> - prompt (from user)
+  | cmd_spawn()      |     - max_turns (from user)
+  +------------------+     - working_dir (from user)
+        |
+        | NO orchestration context injected
+        v
+  +------------------+     Session Record:
+  | Create session   |---> - session_id (generated)
+  | _save_session()  |     - prompt, max_turns, etc.
+  +------------------+     - NO role, task, plan fields
+        |
+        | NO context passed to subprocess
+        v
+  +------------------+     Claude receives:
+  | subprocess.Popen |---> - prompt text
+  | subprocess.run   |     - cwd
+  +------------------+     - inherited env (implicit)
+        |
+        | Session starts "context-blind"
+        v
+  +------------------+     Agent must REACTIVELY fetch:
+  | Claude session   |---> `agentic context bootstrap`
+  | (running)        |     to discover role, task, plan
+  +------------------+
+        |
+        | On exit, minimal metadata captured
+        v
+  +------------------+     Final record:
+  | Session complete |---> - status, ended_at, exit_code
+  | _save_session()  |     - NO work summary captured
+  +------------------+
+
+
+  DESIRED CONTEXT FLOW (INTEGRATED)
+  ==================================
+
+  User invokes spawn
+        |
+        v
+  +------------------+     Context Available:
+  | session spawn    |---> - prompt (from user)
+  | with context     |     - role (from plan or flag)
+  +------------------+     - task_id (from plan)
+        |                  - plan_folder (from resolver)
+        |                  - parent_session (if subagent)
+        v
+  +------------------+     Session Record:
+  | Create session   |---> ALL fields including:
+  | with context     |     - role, task_id, plan_folder
+  +------------------+     - parent_session, phase
+        |
+        | Context PROACTIVELY passed
+        v
+  +------------------+     Claude receives:
+  | subprocess with  |---> - prompt WITH context prefix
+  | env injection    |     - AGENTIC_* env vars
+  +------------------+     - Optional: system prompt
+        |
+        | Session starts "context-aware"
+        v
+  +------------------+     Agent knows immediately:
+  | Claude session   |---> - Its role (orchestrator/subagent)
+  | (context-aware)  |     - Its task assignment
+  +------------------+     - Its boundaries
+        |
+        | Rich metadata captured on exit
+        v
+  +------------------+     Final record:
+  | Session complete |---> - status, ended_at, exit_code
+  | with summary     |     - task_completion_status
+  +------------------+     - work_summary
+
+# =============================================================================
+# GAP ANALYSIS BY LIFECYCLE STAGE
+# =============================================================================
+
+gap_analysis:
+
+  stage_1_gaps:
+    stage: "User Invocation"
+    what_is_missing:
+      - "No --role flag to specify orchestrator vs subagent"
+      - "No --task flag to assign a task ID"
+      - "No --plan flag to specify plan folder"
+      - "No --parent-session flag for hierarchy tracking"
+
+    impact: |
+      Sessions cannot be categorized at spawn time. User must rely
+      on prompts to convey role expectations, which is unreliable.
+
+    recommended_fix: |
+      Add CLI arguments to session spawn command:
+      - --role <orchestrator|subagent>
+      - --task <task-id>
+      - --plan <plan-folder>
+      - --parent-session <session-id>
+
+  stage_2_gaps:
+    stage: "Session Creation"
+    what_is_missing:
+      - "Session record lacks orchestration fields"
+      - "No automatic plan resolution"
+      - "No context from CCI bootstrap"
+
+    impact: |
+      Session metadata cannot answer: "What task was this session
+      working on?" or "Who spawned this session?"
+
+    recommended_fix: |
+      Enhance session record schema with:
+      - role, task_id, plan_folder, parent_session, phase
+      If not explicitly provided, attempt auto-resolution from active plan.
+
+  stage_3_gaps:
+    stage: "Session Runs"
+    what_is_missing:
+      - "No env vars set (AGENTIC_SESSION_ROLE, etc.)"
+      - "No prompt prefix with context"
+      - "No system prompt injection"
+
+    impact: |
+      Agent starts blind. Must call `agentic context bootstrap`
+      to discover its context, wasting tokens and time.
+
+    recommended_fix: |
+      At subprocess spawn time:
+      1. Set AGENTIC_* environment variables
+      2. Optionally prepend context block to prompt
+      3. Optionally use --system-prompt flag for role guidance
+
+  stage_4_gaps:
+    stage: "Session Completes"
+    what_is_missing:
+      - "No task completion status tracking"
+      - "No work summary capture"
+      - "No file/commit tracking"
+
+    impact: |
+      Post-session analysis is limited. Cannot correlate sessions
+      to plan progress without manual investigation.
+
+    recommended_fix: |
+      Consider post-completion hooks that:
+      - Query session output for task status updates
+      - Record files modified during session
+      - Capture any commits made
+
+  stage_5_gaps:
+    stage: "Metadata Recorded"
+    what_is_missing:
+      - "No parent-child relationships"
+      - "No session hierarchy view"
+      - "No plan correlation in listings"
+
+    impact: |
+      `agentic session list` shows flat list. Cannot visualize
+      orchestration hierarchy or trace task assignments.
+
+    recommended_fix: |
+      Enhance session list/status to show:
+      - Role (orchestrator/subagent)
+      - Task ID
+      - Parent session (for subagents)
+      - Child count (for orchestrators)
+
+# =============================================================================
+# OPEN QUESTIONS (from EN-P3-001)
+# =============================================================================
+
+open_questions:
+
+  question_1:
+    question: "How should the main session mark itself as orchestrator?"
+    context: |
+      The main session is started manually by the user, not via
+      `agentic session spawn`. It cannot receive injected context.
+
+    options:
+      - option_a: |
+          User provides --role flag at manual start:
+          `claude --role orchestrator` (requires Claude CLI modification)
+
+      - option_b: |
+          First `agentic context bootstrap --role orchestrator` sets env var:
+          The agent's first action is to establish its role.
+
+      - option_c: |
+          Presence of orchestration MMD in plan folder implies orchestrator role:
+          If working on a plan with orchestration file, assume orchestrator.
+
+      - option_d: |
+          New `agentic session register` command:
+          Agent registers itself as orchestrator in session registry.
+
+    recommendation: |
+      Option B (bootstrap sets role) combined with Option D (explicit registration)
+      provides both flexibility and clarity. The orchestrator should actively
+      register itself rather than rely on implicit detection.
+
+  question_2:
+    question: "Should spawned sessions inherit ALL parent environment vars?"
+    context: |
+      Currently, spawned sessions inherit process environment implicitly.
+      If parent sets AGENTIC_* vars, they propagate.
+
+    analysis: |
+      Implicit inheritance is convenient but can cause confusion:
+      - Child might inherit stale parent context
+      - No clear boundary between parent and child state
+      - Hard to reason about what env was active at spawn time
+
+    recommendation: |
+      Explicit injection is preferred:
+      1. Clear copy of os.environ
+      2. Set child-specific AGENTIC_* vars (override parent values)
+      3. Pass explicit env dict to Popen/run
+
+      This ensures child context is deterministic and traceable.
+
+  question_3:
+    question: "How does this interact with --resume sessions?"
+    context: |
+      Resumed sessions restore conversation history but may lose env context.
+
+    analysis: |
+      When using `claude --resume <session>`:
+      - Conversation history is restored
+      - Environment vars at resume time may differ from original
+      - Session registry may or may not match
+
+    considerations:
+      - Should resumed sessions re-inject context from original spawn?
+      - Should there be a "session context restore" step?
+      - How to handle resumed sessions in session registry?
+
+    recommendation: |
+      For --resume sessions:
+      1. Check if session exists in agentic registry
+      2. If yes, restore context vars from session metadata
+      3. If no, warn that session lacks orchestration context
+
+      This requires enhancing session status to persist context vars.
+
+# =============================================================================
+# RECOMMENDATIONS FOR EN-P3-003
+# =============================================================================
+
+recommendations_for_P3_003:
+
+  recommendation_1:
+    title: "Add CLI Arguments for Context"
+    priority: HIGH
+    effort: LOW
+
+    changes:
+      - file: modules/AgenticCLI/src/agenticcli/cli.py
+        action: "Add arguments to session spawn parser"
+        arguments:
+          - "--role <orchestrator|subagent>"
+          - "--task <task-id>"
+          - "--plan <plan-folder>"
+          - "--parent-session <session-id>"
+
+  recommendation_2:
+    title: "Inject Environment Variables at Spawn"
+    priority: HIGH
+    effort: LOW
+
+    changes:
+      - file: modules/AgenticCLI/src/agenticcli/commands/session.py
+        action: "Add env dict to Popen/run calls"
+        variables:
+          - "AGENTIC_SESSION_ID"
+          - "AGENTIC_SESSION_ROLE"
+          - "AGENTIC_TASK_ID"
+          - "AGENTIC_PLAN_FOLDER"
+          - "AGENTIC_PARENT_SESSION"
+
+  recommendation_3:
+    title: "Enhance Session Record Schema"
+    priority: HIGH
+    effort: LOW
+
+    changes:
+      - file: modules/AgenticCLI/src/agenticcli/commands/session.py
+        action: "Add orchestration fields to session_data dict"
+        fields:
+          - "role"
+          - "task_id"
+          - "plan_folder"
+          - "parent_session"
+          - "orchestration_phase"
+
+  recommendation_4:
+    title: "Optional Prompt Prefix Injection"
+    priority: MEDIUM
+    effort: LOW
+
+    changes:
+      - file: modules/AgenticCLI/src/agenticcli/commands/session.py
+        action: "Prepend context block to prompt if --inject-context flag"
+        format: |
+          [ORCHESTRATION CONTEXT]
+          Role: {role}
+          Task: {task_id}
+          Plan: {plan_folder}
+          Parent: {parent_session}
+          [END CONTEXT]
+
+          {original_prompt}
+
+  recommendation_5:
+    title: "Auto-Resolution from Active Plan"
+    priority: MEDIUM
+    effort: MEDIUM
+
+    changes:
+      - file: modules/AgenticCLI/src/agenticcli/commands/session.py
+        action: "If --task not specified, attempt to resolve from active plan"
+        implementation: |
+          Use MainFirstPlanResolver to:
+          1. Find active plan for current branch
+          2. Get current/next task
+          3. Auto-fill task_id and plan_folder
+
+# =============================================================================
+# CONCLUSION
+# =============================================================================
+
+conclusion: |
+  The session lifecycle has FIVE clear stages, but context flows ONLY at
+  Stage 1 (user provides prompt) and is LOST thereafter. Orchestration
+  context (role, task, plan, hierarchy) is completely absent.
+
+  The CCI bootstrap system provides excellent context aggregation, but it
+  operates REACTIVELY (agent calls after start) rather than PROACTIVELY
+  (injected at spawn).
+
+  The recommended approach for P3 (Session Spawn Context Injection) is:
+
+  1. Add CLI arguments for explicit context (--role, --task, --plan, --parent)
+  2. Set environment variables at spawn time for detection
+  3. Enhance session registry with orchestration fields
+  4. Optionally prepend context to prompt for immediate availability
+  5. Consider auto-resolution from active plan when explicit values not provided
+
+  This addresses the key gaps identified across all lifecycle stages while
+  maintaining backward compatibility with existing session spawn usage.
+
+# =============================================================================
+# METADATA
+# =============================================================================
+
+metadata:
+  investigation_date: "2026-01-31"
+  investigator: "builder-agent"
+  task_id: "EN-P3-002"
+  proposal: "P3 - Session Spawn Context Injection"
+  based_on: "EN-P3-001_session_spawn_audit.yml"
+  files_analyzed: 5
+  lifecycle_stages_documented: 5
+  context_sources_analyzed: 4
+  gaps_identified: 5
+  recommendations_made: 5

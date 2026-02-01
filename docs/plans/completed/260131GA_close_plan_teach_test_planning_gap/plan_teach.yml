@@ -1,0 +1,229 @@
+# Teaching/Guidance Plan: Close _plan_teach.yml Test Planning Gap
+# Created: 2026-01-31
+# Purpose: Close the gap where _plan_teach.yml doesn't orchestrate test planning
+
+_template_status: active
+
+plan:
+  name: "Close _plan_teach.yml Test Planning Gap"
+  worktree: "/home/code/AgenticEngineering-teach-test-gap"
+  branch: "teach-test-gap"
+  status: planning
+  created: "2026-01-31"
+
+  objective: |
+    Add test phase orchestration to the _plan_teach.yml workflow so that
+    guidance changes are validated through test-guidance-simulator before
+    completion. Currently, guidance plans only include teach, validation (self-review),
+    and audit phases - missing behavioral testing that would catch issues before
+    guidance is deployed.
+
+  scope:
+    includes:
+      - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+      - "modules/AgenticGuidance/agents/planner/planner-test/process.yml"
+      - "modules/AgenticGuidance/agents/planner/planner-test/inputs.yml"
+      - "modules/AgenticGuidance/entrypoints/_plan_teach.yml"
+    excludes:
+      - "modules/AgenticGuidance/agents/test/test-guidance-simulator/" # Exists, no changes needed
+      - "modules/legacy/" # Legacy code out of scope
+
+  phases:
+    - name: "Phase 1 - Investigation and Design"
+      id: "teach_01"
+      status: pending
+      description: |
+        Investigate the current state and design the integration approach.
+        Confirm test-guidance-simulator is fit for purpose and identify
+        any additional scenarios needed for guidance validation.
+      tasks:
+        - id: "teach_01_001"
+          name: "Review test-guidance-simulator capabilities"
+          status: pending
+          description: |
+            Read and analyze test-guidance-simulator/process.yml and inputs.yml
+            to understand current test scenarios (self_review_test, task_completion_test,
+            reference_resolution_test, friction_detection_test).
+            Confirm these cover minimum viable testing for guidance changes.
+          target_files:
+            - "modules/AgenticGuidance/agents/test/test-guidance-simulator/process.yml"
+            - "modules/AgenticGuidance/agents/test/test-guidance-simulator/inputs.yml"
+          success_criteria:
+            - "Test scenarios documented with coverage assessment"
+            - "Gap analysis if any scenarios missing"
+
+        - id: "teach_01_002"
+          name: "Map orchestration-planning test routing"
+          status: pending
+          description: |
+            Analyze orchestration-planning/process.mmd to understand:
+            1. How CheckTest decision node works
+            2. Where guidance-specific test routing should be added
+            3. How teach intent is communicated from entrypoint
+            Document proposed insertion points for guidance test routing.
+          target_files:
+            - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+            - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml"
+          success_criteria:
+            - "Routing diagram for guidance test flow"
+            - "Insertion points identified in process.mmd"
+
+        - id: "teach_01_003"
+          name: "Design planner-test guidance mode"
+          status: pending
+          description: |
+            Design how planner-test should handle guidance_test_mode:
+            1. New input parameter: guidance_test_mode (boolean)
+            2. New input parameter: modified_guidance_files (list)
+            3. Task generation for test-guidance-simulator invocation
+            4. Test plan structure for guidance validation
+          target_files:
+            - "modules/AgenticGuidance/agents/planner/planner-test/process.yml"
+            - "modules/AgenticGuidance/agents/planner/planner-test/inputs.yml"
+          success_criteria:
+            - "Input parameter design documented"
+            - "Task generation pattern defined"
+
+    - name: "Phase 2 - Implementation"
+      id: "teach_02"
+      status: pending
+      depends_on: ["teach_01"]
+      description: |
+        Implement the changes to close the test planning gap.
+      tasks:
+        - id: "teach_02_001"
+          name: "Update orchestration-planning/process.mmd"
+          status: pending
+          description: |
+            Add guidance test routing to the orchestration flowchart:
+            1. After TeachPlanApproved, add CheckGuidanceTestRequired decision
+            2. If guidance files modified AND teach phase completed: Route to test
+            3. Test phase spawns planner-test with guidance_test_mode=true
+            4. Add appropriate subgraph for clarity
+
+            Changes should be minimal - leverage existing CheckTest infrastructure.
+          target_files:
+            - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+          success_criteria:
+            - "New decision node CheckGuidanceTestRequired added"
+            - "Routing from teach phase to test phase implemented"
+            - "Subgraph labeled for clarity"
+            - "Linkstyle updated for feedback loops"
+
+        - id: "teach_02_002"
+          name: "Update planner-test for guidance mode"
+          status: pending
+          description: |
+            Modify planner-test to handle guidance test mode:
+            1. Add guidance_test_mode to required_inputs in inputs.yml
+            2. Add modified_guidance_files list input
+            3. Add step in process.yml to generate guidance test tasks
+            4. Task template should spawn test-guidance-simulator for each agent
+
+            When guidance_test_mode=true, planner-test creates tasks like:
+            - "Execute self-review test for agent X"
+            - "Execute reference resolution test for agent X"
+            - "Execute friction detection test for agent X"
+          target_files:
+            - "modules/AgenticGuidance/agents/planner/planner-test/process.yml"
+            - "modules/AgenticGuidance/agents/planner/planner-test/inputs.yml"
+          success_criteria:
+            - "guidance_test_mode input added to inputs.yml"
+            - "Guidance test task generation step added to process.yml"
+            - "Task template documented"
+
+        - id: "teach_02_003"
+          name: "Update _plan_teach.yml documentation"
+          status: pending
+          description: |
+            Update the entrypoint documentation to reflect new test phase:
+            1. Add test phase to the steps list
+            2. Document which test scenarios are executed
+            3. Document how to bypass tests (for documentation-only changes)
+            4. Update the output section to include test results
+          target_files:
+            - "modules/AgenticGuidance/entrypoints/_plan_teach.yml"
+          success_criteria:
+            - "Steps list includes test phase"
+            - "Documentation explains guidance testing"
+            - "Bypass mechanism documented"
+
+    - name: "Phase 3 - Validation"
+      id: "teach_03"
+      status: pending
+      depends_on: ["teach_02"]
+      description: |
+        Validate the implementation through self-review and simulation.
+      tasks:
+        - id: "teach_03_001"
+          name: "Self-review modified guidance files"
+          status: pending
+          description: |
+            Execute agent self-review for all modified guidance files:
+            - orchestration-planning (process.mmd review)
+            - planner-test (process.yml, inputs.yml review)
+            Validate path resolution, consistency, and clarity.
+          success_criteria:
+            - "Self-review passes for orchestration-planning"
+            - "Self-review passes for planner-test"
+            - "No broken references"
+            - "No inconsistencies between files"
+
+        - id: "teach_03_002"
+          name: "Dry-run test flow with sample guidance change"
+          status: pending
+          description: |
+            Create a minimal guidance change and execute through the updated
+            _plan_teach.yml flow to verify:
+            1. Teach phase completes normally
+            2. Test phase is triggered after teach
+            3. planner-test generates guidance test tasks
+            4. Test plan includes test-guidance-simulator invocation
+          success_criteria:
+            - "Test phase triggered after teach phase"
+            - "planner-test generates appropriate tasks"
+            - "Flow completes without errors"
+
+  open_questions:
+    - id: "oq_001"
+      question: "Should ALL guidance changes require test simulation?"
+      proposed_answer: |
+        YES, but with graduated depth based on change severity:
+        - CRITICAL (new agents, major rewrites): Full simulation (all scenarios)
+        - HIGH (multiple file updates): Targeted simulation (self-review + task completion)
+        - MEDIUM (single file updates): Minimal simulation (self-review only)
+        - LOW (documentation, examples): No simulation required
+
+    - id: "oq_002"
+      question: "What's the minimum viable test for guidance changes?"
+      proposed_answer: |
+        Minimum test set (from test-guidance-simulator):
+        1. self_review_test - Agent validates its own guidance
+        2. reference_resolution_test - All paths resolve
+        3. task_completion_test - Agent can understand and attempt task
+        These are already implemented in test-guidance-simulator.
+
+    - id: "oq_003"
+      question: "Should test failures block plan completion?"
+      proposed_answer: |
+        YES with escalation path:
+        - CRITICAL failures: Block completion, require fix
+        - HIGH failures: Block completion, allow human override
+        - MEDIUM failures: Warn, continue with acknowledgment
+        - LOW failures: Log only
+
+    - id: "oq_004"
+      question: "How to detect which agents need testing?"
+      proposed_answer: |
+        Use file modification patterns from guidance-process-requirements.yml:
+        - Extract agent paths from modified files matching patterns
+        - e.g., modules/AgenticGuidance/agents/*/process.yml -> agent name
+        - Pass list of affected agents to test-guidance-simulator
+
+  success_criteria:
+    - "_plan_teach.yml flow includes test phase for guidance validation"
+    - "orchestration-planning routes to test phase after teach completes"
+    - "planner-test generates test-guidance-simulator tasks when guidance_test_mode=true"
+    - "Test scenarios cover self-review, reference resolution, and task completion"
+    - "Documentation updated to reflect new test phase"
+    - "Self-review passes for all modified guidance files"

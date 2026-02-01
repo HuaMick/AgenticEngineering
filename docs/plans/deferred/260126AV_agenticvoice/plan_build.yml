@@ -1,0 +1,239 @@
+# AgenticVoice Build Plan
+# Plan ID: 260126AV
+# Created: 2026-01-26
+# Status: Deferred - validated by orchestration agent on 2026-01-27
+
+_template_status: active
+
+plan:
+  id: 260126AV
+  name: AgenticVoice Module
+  worktree_path: "/home/code/AgenticEngineering-agenticvoice"
+  branch: "agenticvoice"
+  status: deferred
+  deferred_reason: "Missing core services (PlanService, ContextService, TaskService, ConfigService, StateService)"
+  blocked_by_completed: 260123AE_agenticguidance  # Completed 2026-01-26
+  reviewed: "2026-01-27"
+  objective: |
+    Create AgenticVoice module as a thin presentation layer for voice-based access
+    to AgenticGuidance services. Voice commands are routed to the appropriate
+    AgenticGuidance/services/* modules via WebSocket server with STT/TTS integration.
+
+  # DEFERRAL VALIDATED
+  # ==================
+  # Reviewed by orchestration agent (iteration 6) on 2026-01-27.
+  # Deferral is VALID - plan cannot proceed until dependencies are implemented:
+  # - PlanService (not implemented)
+  # - ContextService (not implemented)
+  # - TaskService (not implemented)
+  # - ConfigService (partial - TieredConfigLoader only)
+  # - StateService (partial - StateRegistry only)
+  # - External STT/TTS service integrations
+  #
+  # This plan remains in live/ as deferred until dependencies are available.
+  # No work can proceed without the missing services.
+
+  original_deferred_reason: |
+    This plan references services that don't exist in AgenticGuidance:
+    - PlanService (plan.py has PlanMovementWorkflow only)
+    - ContextService (not implemented)
+    - TaskService (not implemented)
+    - ConfigService (config.py has TieredConfigLoader/ConfigWorkflow)
+    - StateService (state.py has StateRegistry only)
+
+    Additionally requires external STT/TTS service integrations.
+    Defer to future planning when core services are expanded.
+
+architecture:
+  description: |
+    AgenticVoice is a thin presentation layer that provides voice-based access
+    to AgenticGuidance services. Voice commands are routed to the appropriate
+    AgenticGuidance/services/* modules.
+
+  imports:
+    - from: agenticguidance.services.plan
+      import: PlanService
+    - from: agenticguidance.services.context
+      import: ContextService
+    - from: agenticguidance.services.task
+      import: TaskService
+    - from: agenticguidance.services.config
+      import: ConfigService
+    - from: agenticguidance.services.state
+      import: StateService
+
+  routing:
+    voice_commands:
+      - command: "create plan"
+        routes_to: agenticguidance.services.plan.PlanService
+      - command: "show context"
+        routes_to: agenticguidance.services.context.ContextService
+      - command: "list tasks"
+        routes_to: agenticguidance.services.task.TaskService
+      - command: "update task"
+        routes_to: agenticguidance.services.task.TaskService
+      - command: "get config"
+        routes_to: agenticguidance.services.config.ConfigService
+
+phases:
+  - name: "Phase 1: Module Structure and WebSocket Server"
+    id: "phase_module_structure"
+    status: "pending"
+    tasks:
+      - id: AV-001
+        name: Create module directory structure
+        status: pending
+        description: |
+          Set up AgenticVoice module with standard project layout:
+          - modules/AgenticVoice/src/agenticvoice/
+          - pyproject.toml with agenticguidance as dependency
+        target_files:
+          - modules/AgenticVoice/
+          - modules/AgenticVoice/pyproject.toml
+          - modules/AgenticVoice/src/agenticvoice/__init__.py
+        acceptance_criteria:
+          - "Module directory structure created at modules/AgenticVoice/"
+          - "pyproject.toml includes agenticguidance as dependency"
+          - "__init__.py exports module version and core components"
+
+      - id: AV-002
+        name: Implement WebSocket server
+        status: pending
+        description: Create WebSocket server for real-time voice communication
+        target_files:
+          - modules/AgenticVoice/src/agenticvoice/server.py
+        acceptance_criteria:
+          - "WebSocket server accepts connections on configurable port"
+          - "Handles connection lifecycle (connect, disconnect, error)"
+          - "Supports binary audio data streaming"
+
+      - id: AV-003
+        name: Define core interfaces
+        status: pending
+        description: Define Python interfaces (protocols) for voice module
+        target_files:
+          - modules/AgenticVoice/src/agenticvoice/interfaces.py
+        acceptance_criteria:
+          - "VoiceCommand protocol defined with intent and parameters"
+          - "VoiceResponse protocol defined with audio and text output"
+          - "ServiceRouter protocol defined for command dispatch"
+
+  - name: "Phase 2: STT/TTS Integration"
+    id: "phase_stt_tts"
+    status: "pending"
+    tasks:
+      - id: AV-004
+        name: Integrate STT service
+        status: pending
+        description: Add speech-to-text integration
+        target_files:
+          - modules/AgenticVoice/src/agenticvoice/stt.py
+        acceptance_criteria:
+          - "STT service interface abstraction defined"
+          - "At least one STT provider implemented (e.g., Whisper, Google)"
+          - "Handles streaming audio input"
+
+      - id: AV-005
+        name: Integrate TTS service
+        status: pending
+        description: Add text-to-speech integration
+        target_files:
+          - modules/AgenticVoice/src/agenticvoice/tts.py
+        acceptance_criteria:
+          - "TTS service interface abstraction defined"
+          - "At least one TTS provider implemented"
+          - "Supports configurable voice parameters"
+
+      - id: AV-006
+        name: Implement audio streaming
+        status: pending
+        description: Handle audio streaming and buffering
+        target_files:
+          - modules/AgenticVoice/src/agenticvoice/streaming.py
+        acceptance_criteria:
+          - "Audio buffer management with configurable size"
+          - "Support for chunked audio streaming"
+          - "Handles backpressure and flow control"
+
+  - name: "Phase 3: Command Routing"
+    id: "phase_command_routing"
+    status: "pending"
+    tasks:
+      - id: AV-007
+        name: Voice command parser
+        status: pending
+        description: Parse voice commands into structured intents
+        target_files:
+          - modules/AgenticVoice/src/agenticvoice/parser.py
+        acceptance_criteria:
+          - "Parses natural language into structured VoiceCommand"
+          - "Supports command aliases and synonyms"
+          - "Returns confidence score with parsed result"
+
+      - id: AV-008
+        name: Command routing to AgenticGuidance services
+        status: pending
+        description: |
+          Route parsed voice commands to AgenticGuidance/services/*.
+          Imports from agenticguidance.services to access:
+          - PlanService for plan operations
+          - ContextService for context resolution
+          - TaskService for task CRUD
+        target_files:
+          - modules/AgenticVoice/src/agenticvoice/router.py
+        acceptance_criteria:
+          - "Routes commands to correct AgenticGuidance service"
+          - "Handles service unavailable gracefully"
+          - "Logs all command routing for debugging"
+
+      - id: AV-009
+        name: Response handler
+        status: pending
+        description: Convert AgenticGuidance service responses to voice output
+        target_files:
+          - modules/AgenticVoice/src/agenticvoice/response.py
+        acceptance_criteria:
+          - "Converts service responses to natural language"
+          - "Queues TTS output for streaming"
+          - "Handles error responses with user-friendly messages"
+
+  - name: "Phase 4: PersonaPlex Integration (Optional)"
+    id: "phase_personaplex"
+    status: "pending"
+    optional: true
+    tasks:
+      - id: AV-010
+        name: PersonaPlex connector
+        status: pending
+        optional: true
+        description: Connect to PersonaPlex for persona-aware interactions
+        target_files:
+          - modules/AgenticVoice/src/agenticvoice/personaplex.py
+        acceptance_criteria:
+          - "PersonaPlex client integration implemented"
+          - "Fetches persona context for voice interactions"
+          - "Graceful fallback when PersonaPlex unavailable"
+
+      - id: AV-011
+        name: Voice personas
+        status: pending
+        optional: true
+        description: Support multiple voice personas
+        target_files:
+          - modules/AgenticVoice/src/agenticvoice/personas.py
+        acceptance_criteria:
+          - "Voice persona configuration schema defined"
+          - "Persona selection based on context"
+          - "Voice parameters (tone, speed) per persona"
+
+      - id: AV-012
+        name: Context-aware responses
+        status: pending
+        optional: true
+        description: Implement context-aware voice responses
+        target_files:
+          - modules/AgenticVoice/src/agenticvoice/context_responses.py
+        acceptance_criteria:
+          - "Maintains conversation context across interactions"
+          - "Adjusts response style based on persona"
+          - "Supports context reset command"

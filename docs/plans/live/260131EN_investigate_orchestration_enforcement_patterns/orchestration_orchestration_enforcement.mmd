@@ -1,0 +1,210 @@
+flowchart LR
+    %% =============================================================================
+    %% GOAL: Orchestrate investigation of orchestration enforcement patterns.
+    %% PROFILE: Orchestration-Investigation
+    %% OUTPUT: Investigation findings, proposal evaluations, and recommendations.
+    %% GUIDELINE: Investigation-only - no implementation in this plan.
+    %% GUIDELINE: modules/AgenticGuidance/assets/guidelines/context-minimisation.yml
+    %% INPUT_PATH: modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml
+    %% =============================================================================
+    %%
+    %% PLAN_ID: 260131EN
+    %% PLAN_TYPE: Investigation (teach/guidance focus)
+    %% PLAN_FOLDER: docs/plans/live/260131EN_investigate_orchestration_enforcement_patterns/
+    %%
+    %% AGENT_ROUTING: P1_Investigation -> explore, P2_Investigation -> explore,
+    %%                P3_Investigation -> explore, P4_Investigation -> explore,
+    %%                P5_Investigation -> explore, P6_Investigation -> explore,
+    %%                Synthesis -> planner, Review -> planner-reviewer
+    %%
+    %% STATUS: InputValidation=pending, P1=pending, P2=pending, P3=pending,
+    %%         P4=pending, P5=pending, P6=pending, Synthesis=blocked, Review=pending
+    %%
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.exploration-loop
+    %% MAX_ITERATIONS: 3 (per exploration-loop definition)
+    %% ESCALATION: If investigation cannot proceed, Ask User for guidance
+    %% =============================================================================
+
+    Start((Start)) --> LoadInputs[Load Investigation Context]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    %% Verify friction analysis and investigation scope are clear.
+    LoadInputs --> ReviewInputs[Review friction_analysis.yml]
+    ReviewInputs --> CheckInputs{Context Clear?}
+    CheckInputs -- "No: Missing" --> AskUser((Ask User for Clarification))
+    CheckInputs -- "Yes: Verified" --> InvestigationPhase
+
+    %% ========================================
+    %% INVESTIGATION PHASE
+    %% ========================================
+    %% Execute investigation for each proposal in priority order.
+    %% Proposals can be investigated in parallel or sequentially.
+    %% Each proposal follows: Explore -> Document -> Assess pattern.
+
+    subgraph Investigation_SG ["Investigation Subgraph"]
+        InvestigationPhase[Enter Investigation Phase] --> P1_Start
+
+        %% ----------------------------------------
+        %% PROPOSAL 1: CLI Tasklist Orchestration Tracking
+        %% ----------------------------------------
+        subgraph P1_SG ["P1 - CLI Tasklist Investigation"]
+            P1_Start((P1 Start)) --> SpawnExploreP1[Spawn explore Agent: Audit CLI tasklist]
+            SpawnExploreP1 --> P1_Audit[EN-P1-001: Audit CLI commands]
+            P1_Audit --> P1_Gaps[EN-P1-002: Document gaps]
+            P1_Gaps --> P1_Assess[EN-P1-003: Assess complexity]
+            P1_Assess --> P1_Complete((P1 Complete))
+        end
+
+        P1_Complete --> P2_Start
+
+        %% ----------------------------------------
+        %% PROPOSAL 2: Preloaded Tasklists at Plan Start
+        %% ----------------------------------------
+        subgraph P2_SG ["P2 - Preloaded Tasklists Investigation"]
+            P2_Start((P2 Start)) --> SpawnExploreP2[Spawn explore Agent: Plan start analysis]
+            SpawnExploreP2 --> P2_Review[EN-P2-001: Review plan start command]
+            P2_Review --> P2_MMD[EN-P2-002: Analyze MMD formats]
+            P2_MMD --> P2_Design[EN-P2-003: Design transformation]
+            P2_Design --> P2_Complete((P2 Complete))
+        end
+
+        P2_Complete --> P3_Start
+
+        %% ----------------------------------------
+        %% PROPOSAL 3: Session Spawn Context Injection
+        %% ----------------------------------------
+        subgraph P3_SG ["P3 - Session Spawn Investigation"]
+            P3_Start((P3 Start)) --> SpawnExploreP3[Spawn explore Agent: Session spawn audit]
+            SpawnExploreP3 --> P3_Audit[EN-P3-001: Audit session spawn]
+            P3_Audit --> P3_Flow[EN-P3-002: Document context flow]
+            P3_Flow --> P3_Design[EN-P3-003: Design injection approach]
+            P3_Design --> P3_Complete((P3 Complete))
+        end
+
+        P3_Complete --> P4_Start
+
+        %% ----------------------------------------
+        %% PROPOSAL 4: Main Session Detection/Identification
+        %% ----------------------------------------
+        subgraph P4_SG ["P4 - Session Detection Investigation"]
+            P4_Start((P4 Start)) --> SpawnExploreP4[Spawn explore Agent: Session metadata audit]
+            SpawnExploreP4 --> P4_Audit[EN-P4-001: Audit SessionService]
+            P4_Audit --> P4_Env[EN-P4-002: Research env-based identification]
+            P4_Env --> P4_Design[EN-P4-003: Design detection approach]
+            P4_Design --> P4_Complete((P4 Complete))
+        end
+
+        P4_Complete --> P5_Start
+
+        %% ----------------------------------------
+        %% PROPOSAL 5: Tmux Session Management Patterns
+        %% ----------------------------------------
+        subgraph P5_SG ["P5 - Tmux Patterns Investigation"]
+            P5_Start((P5 Start)) --> SpawnExploreP5[Spawn explore Agent: AgenticTmux audit]
+            SpawnExploreP5 --> P5_Audit[EN-P5-001: Audit AgenticTmux]
+            P5_Audit --> P5_Plans[EN-P5-002: Review related plans]
+            P5_Plans --> P5_Design[EN-P5-003: Design tmux enforcement]
+            P5_Design --> P5_Complete((P5 Complete))
+        end
+
+        P5_Complete --> P6_Start
+
+        %% ----------------------------------------
+        %% PROPOSAL 6: Bootstrap-time Plan Auto-generation
+        %% ----------------------------------------
+        subgraph P6_SG ["P6 - Bootstrap Plan Generation Investigation"]
+            P6_Start((P6 Start)) --> SpawnExploreP6[Spawn explore Agent: Process.yml audit]
+            SpawnExploreP6 --> P6_Audit[EN-P6-001: Audit process.yml structures]
+            P6_Audit --> P6_Prototype[EN-P6-002: Prototype transformation]
+            P6_Prototype --> P6_Design[EN-P6-003: Design generation approach]
+            P6_Design --> P6_Complete((P6 Complete))
+        end
+
+        P6_Complete --> AllProposalsComplete[All Proposals Investigated]
+    end
+
+    %% ========================================
+    %% SYNTHESIS PHASE
+    %% ========================================
+    %% Synthesize findings across all proposals into recommendations.
+    %% BLOCKED_BY: All proposal investigations must complete first.
+
+    AllProposalsComplete --> SynthesisPhase
+
+    subgraph Synthesis_SG ["Synthesis Subgraph"]
+        SynthesisPhase[Enter Synthesis Phase] --> SpawnPlannerSynth[Spawn planner Agent: Create comparison]
+        SpawnPlannerSynth --> Synth_Matrix[EN-SYNTH-001: Create comparison matrix]
+        Synth_Matrix --> Synth_QuickWins[EN-SYNTH-002: Identify quick wins]
+        Synth_QuickWins --> Synth_Report[EN-SYNTH-003: Write recommendation report]
+        Synth_Report --> SynthesisComplete((Synthesis Complete))
+    end
+
+    %% ========================================
+    %% REVIEW PHASE
+    %% ========================================
+    %% Review investigation findings and recommendations.
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.planner-loop
+    %% MAX_ITERATIONS: 3
+
+    SynthesisComplete --> ReviewPhase
+
+    subgraph Review_SG ["Review Subgraph"]
+        ReviewPhase[Enter Review Phase] --> SpawnReviewer[Spawn planner-reviewer Agent]
+        SpawnReviewer --> ReviewDecision{Findings Approved?}
+        ReviewDecision -- "No: Refine" --> CaptureReviewFeedback[Capture Reviewer Feedback]
+        CaptureReviewFeedback --> CheckReviewIterations{Max Iterations?}
+        CheckReviewIterations -- "No: Continue" --> RefineFindings[Refine Investigation Findings]
+        RefineFindings --> SpawnReviewer
+        CheckReviewIterations -- "Yes: Limit Reached" --> EscalateReview((Escalate: Cannot Approve))
+        ReviewDecision -- "Yes: Approved" --> ReviewComplete((Review Complete))
+    end
+
+    %% ========================================
+    %% HUMAN APPROVAL GATE
+    %% ========================================
+    %% Present findings and recommendations to user for approval.
+    %% POLICY: Investigation plans require user approval before creating
+    %% follow-on implementation plans.
+
+    ReviewComplete --> HumanApproval
+
+    subgraph HumanApproval_SG ["Human Approval Gate Subgraph"]
+        HumanApproval[Present Investigation Findings] --> ShowMatrix[Display Comparison Matrix]
+        ShowMatrix --> ShowRecommendations[Display Recommendations]
+        ShowRecommendations --> ShowQuickWins[Display Quick Wins]
+        ShowQuickWins --> UserDecision{User Decision?}
+        UserDecision -- "Approved" --> MarkApproved[Mark Investigation Complete]
+        UserDecision -- "Changes Requested" --> CaptureChanges[Capture User Feedback]
+        CaptureChanges -.->|Return to Synthesis| SynthesisPhase
+        UserDecision -- "Rejected" --> CaptureRejection[Capture Rejection Reason]
+        CaptureRejection --> RejectEnd((End: Investigation Rejected))
+    end
+
+    %% ========================================
+    %% OUTPUT PHASE
+    %% ========================================
+    %% Generate final deliverables and archive plan.
+
+    MarkApproved --> OutputPhase
+
+    subgraph Output_SG ["Output Subgraph"]
+        OutputPhase[Generate Outputs] --> CreateFindingsFiles[Create proposal_N_findings.yml files]
+        CreateFindingsFiles --> CreateRecommendationReport[Create recommendation_report.md]
+        CreateRecommendationReport --> UpdatePlanStatus[Update plan status to completed]
+        UpdatePlanStatus --> ArchivePlan[Run: agentic plan move folder --plan <folder>]
+    end
+
+    ArchivePlan --> End((End: Investigation Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    %% Dashed lines for feedback loops
+    classDef entrypoint fill:#90EE90,stroke:#228B22
+    classDef exitpoint fill:#FFB6C1,stroke:#DC143C
+    classDef dashedstroke stroke-dasharray: 5 5
+    class Start,P1_Start,P2_Start,P3_Start,P4_Start,P5_Start,P6_Start entrypoint
+    class End,RejectEnd,EscalateReview exitpoint
+    linkStyle 36 stroke:#888,stroke-width:2px,stroke-dasharray: 5 5

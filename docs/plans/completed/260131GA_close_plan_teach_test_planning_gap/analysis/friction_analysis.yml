@@ -1,0 +1,255 @@
+# Friction Analysis: _plan_teach.yml Test Planning Gap
+# Created: 2026-01-31
+# Analyst: planner-guidance agent
+
+analysis:
+  name: "teach-test-planning-gap"
+  date: "2026-01-31"
+  severity: HIGH
+  category: process-gap
+
+problem_statement: |
+  The _plan_teach.yml entrypoint orchestrates guidance changes through:
+  - Teach phase (guidance updates via teacher-update-assets)
+  - Validation phase (agent self-review)
+  - Audit phase (consistency checks)
+
+  MISSING: Test phase to validate that guidance changes actually work correctly
+  with simulated agent behavior. Without this, guidance changes may pass validation
+  but fail in actual execution scenarios.
+
+evidence:
+  observed_gap: |
+    The honeycomb/UAT guidance plan (260130HO) was executed with only:
+    - Self-review validation (grep-based checks in guidance files)
+    - Audit validation (stale reference search)
+
+    No actual test scenarios were created to verify agents would behave correctly
+    with the new guidance when executing real tasks.
+
+  root_cause: |
+    The orchestration-planning process (process.mmd) includes:
+    - CheckTeach phase that spawns planner-guidance
+    - CheckBuild phase that spawns planner-build
+    - CheckTest phase that spawns planner-test
+
+    However, when invoked via _plan_teach.yml (guidance-focused entrypoint):
+    1. The orchestrator may skip test phase for "guidance-only" changes
+    2. There's no explicit routing to test guidance simulation scenarios
+    3. test-guidance-simulator exists but isn't invoked by the planning flow
+
+  impact: |
+    - Guidance changes deployed without behavioral validation
+    - Issues discovered only during actual agent execution
+    - Higher remediation cost (similar to CCI Initiative incident)
+    - Guidance may be syntactically correct but operationally broken
+
+current_state:
+  entrypoint_plan_teach:
+    path: "modules/AgenticGuidance/entrypoints/_plan_teach.yml"
+    orchestrates:
+      - "teach phase via planner-guidance"
+      - "self-review validation"
+      - "audit phase"
+    missing:
+      - "test phase for guidance simulation"
+      - "test-guidance-simulator invocation"
+      - "behavioral validation scenarios"
+
+  orchestration_planning:
+    path: "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+    has_test_phase: true
+    test_phase_routing: |
+      CheckTest decision node exists but:
+      - May be skipped for guidance-only plans
+      - No special handling for guidance test scenarios
+      - planner-test is spawned but doesn't know to create guidance tests
+
+  test_guidance_simulator:
+    path: "modules/AgenticGuidance/agents/test/test-guidance-simulator/"
+    exists: true
+    purpose: |
+      Spawns target agents to perform self-guided guidance review.
+      Collects feedback on ambiguities, broken references, missing context.
+    invocation: "NOT invoked from _plan_teach.yml flow"
+
+  planner_test:
+    path: "modules/AgenticGuidance/agents/planner/planner-test/process.yml"
+    purpose: |
+      Creates test plans for build phases (test-fix-loop, audit-test-fix-loop).
+      Focused on implementation testing, not guidance validation.
+    guidance_awareness: "Limited - doesn't generate guidance-specific test scenarios"
+
+gap_analysis:
+  question_1:
+    q: "Should ALL guidance changes require test simulation?"
+    analysis: |
+      YES, with graduated depth:
+      - CRITICAL changes (new agents, major process rewrites): Full simulation
+      - HIGH changes (multiple file updates): Targeted simulation
+      - MEDIUM changes (single file updates): Self-review may suffice
+      - LOW changes (documentation, examples): No simulation needed
+    recommendation: "Implement severity-based test routing"
+
+  question_2:
+    q: "What's the minimum viable test for guidance changes?"
+    analysis: |
+      Minimum should include:
+      1. Self-review test (agent validates its own guidance)
+      2. Reference resolution test (all paths resolve)
+      3. Task completion test (agent can understand and attempt task)
+      These are already defined in test-guidance-simulator's process.yml
+    recommendation: "Invoke test-guidance-simulator's core scenarios"
+
+  question_3:
+    q: "How should test-guidance-simulator be invoked?"
+    analysis: |
+      Options:
+      A. Directly from _plan_teach.yml as new phase
+      B. Through planner-test with guidance-test flag
+      C. Through orchestration-planning routing logic
+
+      Option C is cleanest - orchestrator already handles phase routing.
+      Need to add guidance-test routing when teach phase is primary.
+    recommendation: "Add test phase routing in orchestration-planning for teach plans"
+
+  question_4:
+    q: "Should test phase be mandatory or optional?"
+    analysis: |
+      MANDATORY for:
+      - Agent process.yml changes
+      - Agent inputs.yml changes (new references)
+      - New agent creation
+      - Entrypoint changes
+
+      OPTIONAL for:
+      - Documentation-only changes
+      - Example file updates
+      - Minor formatting fixes
+    recommendation: "Mandatory for behavioral changes, optional for documentation"
+
+proposed_solutions:
+  option_a:
+    name: "Add test phase to _plan_teach.yml entrypoint"
+    description: |
+      Modify _plan_teach.yml to include explicit test phase after teach phase.
+      Add steps entry for test-guidance-simulator invocation.
+    pros:
+      - "Explicit - clear what teach plans include"
+      - "Self-contained change"
+    cons:
+      - "Duplicates logic that orchestration-planning should own"
+      - "Entrypoints should delegate, not implement"
+    viability: LOW
+
+  option_b:
+    name: "Add test phase routing in orchestration-planning/process.mmd"
+    description: |
+      Modify the orchestration flowchart to:
+      1. Detect when teach phase is primary (from _plan_teach.yml intent)
+      2. After teach phase completes, route to test phase
+      3. Test phase spawns test-guidance-simulator for affected agents
+    pros:
+      - "Maintains orchestration ownership of phase routing"
+      - "Reuses existing CheckTest infrastructure"
+      - "Consistent with how build plans handle testing"
+    cons:
+      - "Requires orchestration-planning changes"
+      - "Need to pass 'guidance test needed' context"
+    viability: HIGH
+
+  option_c:
+    name: "Make test phase conditional based on guidance type"
+    description: |
+      Add conditional routing in orchestration-planning:
+      - If guidance files modified: Include test-guidance-simulator phase
+      - If documentation only: Skip test phase
+      Use existing guidance_modification_fence patterns for detection.
+    pros:
+      - "Smart routing based on actual changes"
+      - "Avoids unnecessary testing overhead"
+      - "Reuses existing detection patterns"
+    cons:
+      - "More complex routing logic"
+      - "Detection must be accurate"
+    viability: HIGH
+
+  option_d:
+    name: "Create separate _plan_teach_with_test.yml entrypoint"
+    description: |
+      New entrypoint that explicitly includes test phase.
+      Keep _plan_teach.yml as-is for backwards compatibility.
+    pros:
+      - "No changes to existing entrypoint"
+      - "Explicit user choice"
+    cons:
+      - "Entrypoint proliferation"
+      - "Users may forget to use tested version"
+      - "Doesn't solve the fundamental routing gap"
+    viability: LOW
+
+recommended_approach:
+  primary: "Option B + Option C hybrid"
+  rationale: |
+    1. Modify orchestration-planning/process.mmd to detect teach intent
+    2. When teach phase completes, route to test phase automatically
+    3. Test phase spawns planner-test with guidance_test_mode flag
+    4. planner-test creates test-guidance-simulator execution tasks
+    5. Make test phase conditional on change severity (Option C)
+
+    This approach:
+    - Maintains orchestration ownership of flow control
+    - Reuses existing infrastructure
+    - Adds minimal complexity
+    - Provides graduated testing based on change type
+
+implementation_tasks:
+  - id: "gap_001"
+    name: "Update orchestration-planning/process.mmd"
+    description: |
+      Add guidance test routing after teach phase:
+      - New decision node: CheckGuidanceTestRequired
+      - Condition: Teach phase completed AND guidance files modified
+      - Route to: TestPhase with guidance_test_mode=true
+
+  - id: "gap_002"
+    name: "Update planner-test/process.yml"
+    description: |
+      Add guidance test mode handling:
+      - New input: guidance_test_mode (boolean)
+      - When true: Create tasks for test-guidance-simulator
+      - Generate test scenarios based on modified guidance files
+
+  - id: "gap_003"
+    name: "Update _plan_teach.yml documentation"
+    description: |
+      Update the entrypoint comments to document:
+      - Test phase is now included for guidance validation
+      - Which test scenarios are executed
+      - How to skip tests for documentation-only changes
+
+  - id: "gap_004"
+    name: "Create integration test"
+    description: |
+      Test the complete flow:
+      - Create sample guidance change
+      - Execute via _plan_teach.yml
+      - Verify test-guidance-simulator is invoked
+      - Verify test results are captured
+
+open_questions:
+  - question: "Should test failures block plan completion?"
+    proposed_answer: "Yes, with escalation path to human"
+
+  - question: "How to handle test-guidance-simulator for new agents with no prior state?"
+    proposed_answer: "Use cold-start test scenario (can agent understand its own guidance)"
+
+  - question: "What test coverage metrics should we track?"
+    proposed_answer: "Friction points found, test scenarios passed, agents reviewed"
+
+related_artifacts:
+  - "modules/AgenticGuidance/entrypoints/_plan_teach.yml"
+  - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+  - "modules/AgenticGuidance/agents/test/test-guidance-simulator/process.yml"
+  - "modules/AgenticGuidance/agents/planner/planner-test/process.yml"
+  - "modules/AgenticGuidance/assets/definitions/guidance-process-requirements.yml"

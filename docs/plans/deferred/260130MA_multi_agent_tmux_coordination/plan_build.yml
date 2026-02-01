@@ -1,0 +1,301 @@
+# Multi-Agent tmux Coordination - Build Plan
+# Plan ID: 260130MA
+# Created: 2026-01-30
+
+_template_status: active
+
+plan:
+  id: 260130MA
+  name: Multi-Agent tmux Coordination
+  worktree: /home/code/AgenticEngineering-agentictmux
+  branch: agentictmux
+  status: deferred
+  deferred_reason: "Pending complexity review - multi-phase implementation with 18 tasks"
+
+  dependencies:
+    - id: 260130TE
+      name: tmux Remote Terminal Access
+      status: completed
+      required: true
+      description: Provides tmux integration infrastructure
+    - id: 260123AE
+      name: AgenticGuidance Services
+      status: completed
+      required: true
+      description: Provides SessionService to be extended
+
+  objective: |
+    Enable multi-agent coordination through tmux session monitoring and
+    file-based messaging, supporting Supervisor/Worker and Quality Gate patterns.
+
+  phases:
+    # ==================================================
+    # PHASE 1: SESSION ROLE INFRASTRUCTURE
+    # ==================================================
+    - name: Session Role Infrastructure
+      id: role_infra
+      status: pending
+      loop_strategy: test-fix
+      tasks:
+        - id: MA-001
+          name: Extend SessionInfo with role field
+          status: pending
+          description: |
+            Add role field to SessionInfo dataclass. Create SessionRole enum
+            with values: standalone, supervisor, worker, observer.
+          acceptance_criteria:
+            - SessionInfo has role field with SessionRole enum
+            - SessionRole enum defines standalone, supervisor, worker, observer
+            - to_dict/from_dict handle role serialization
+          file: modules/AgenticGuidance/src/agenticguidance/services/session.py
+
+        - id: MA-002
+          name: Add role-based queries to SessionService
+          status: pending
+          description: |
+            Add methods to query sessions by role and manage supervisor/worker relationships.
+          acceptance_criteria:
+            - list_by_role(role) returns filtered session list
+            - get_supervisor() returns the supervisor session or None
+            - get_workers(supervisor) returns list of worker sessions
+          file: modules/AgenticGuidance/src/agenticguidance/services/session.py
+
+        - id: MA-003
+          name: Create CoordinationService core
+          status: pending
+          description: |
+            New service class for multi-agent coordination operations.
+          acceptance_criteria:
+            - CoordinationService wraps SessionService
+            - create_supervisor() creates supervisor-role session
+            - spawn_worker() creates worker linked to supervisor
+            - list_workers() returns workers for a supervisor
+          file: modules/AgenticGuidance/src/agenticguidance/services/coordination.py
+
+    # ==================================================
+    # PHASE 2: TERMINAL OUTPUT CAPTURE
+    # ==================================================
+    - name: Terminal Output Capture
+      id: output_capture
+      status: pending
+      loop_strategy: test-fix
+      tasks:
+        - id: MA-004
+          name: Implement capture_terminal method
+          status: pending
+          description: |
+            Add method to capture tmux pane output using capture-pane command.
+          acceptance_criteria:
+            - capture_terminal(session, pane, lines) returns TerminalSnapshot
+            - Uses tmux capture-pane -p -J -t session:pane -S -lines
+            - Returns dataclass with content, timestamp, line_count
+          file: modules/AgenticGuidance/src/agenticguidance/services/coordination.py
+
+        - id: MA-005
+          name: Implement monitor_workers method
+          status: pending
+          description: |
+            Capture terminal output from all workers under a supervisor.
+          acceptance_criteria:
+            - monitor_workers(supervisor) returns dict of snapshots
+            - Captures from all running workers
+            - Handles terminated workers gracefully
+          file: modules/AgenticGuidance/src/agenticguidance/services/coordination.py
+
+        - id: MA-006
+          name: Implement send_keys method
+          status: pending
+          description: |
+            Send keystrokes to a tmux session pane.
+          acceptance_criteria:
+            - send_keys(session, keys, pane, enter) sends text
+            - Uses tmux send-keys -t session:pane
+            - Optional Enter key appending
+          file: modules/AgenticGuidance/src/agenticguidance/services/coordination.py
+
+    # ==================================================
+    # PHASE 3: INBOX MESSAGING SYSTEM
+    # ==================================================
+    - name: Inbox Messaging System
+      id: inbox_messaging
+      status: pending
+      loop_strategy: test-fix
+      tasks:
+        - id: MA-007
+          name: Define Message dataclass and schema
+          status: pending
+          description: |
+            Create Message dataclass for inter-session communication.
+          acceptance_criteria:
+            - Message with id, from_session, to_session, type, payload, timestamp
+            - MessageType for task, status, query, response, heartbeat
+            - JSON serialization/deserialization
+          file: modules/AgenticGuidance/src/agenticguidance/services/coordination.py
+
+        - id: MA-008
+          name: Implement inbox file operations
+          status: pending
+          description: |
+            File-based inbox at ~/.agentic/coordination/inbox/{session}/.
+          acceptance_criteria:
+            - send_message() writes JSON to recipient inbox
+            - read_inbox() reads pending messages
+            - acknowledge_message() marks message as processed
+          file: modules/AgenticGuidance/src/agenticguidance/services/coordination.py
+
+        - id: MA-009
+          name: Add status reporting for workers
+          status: pending
+          description: |
+            Workers report status back to supervisor via inbox.
+          acceptance_criteria:
+            - report_status(worker, status, progress, message) sends to supervisor
+            - Status includes working, completed, failed, blocked
+            - Optional progress percentage and result payload
+          file: modules/AgenticGuidance/src/agenticguidance/services/coordination.py
+
+    # ==================================================
+    # PHASE 4: SUPERVISOR/WORKER CLI
+    # ==================================================
+    - name: Supervisor Worker CLI
+      id: supervisor_cli
+      status: pending
+      loop_strategy: test-fix
+      tasks:
+        - id: MA-010
+          name: Create coordination CLI commands
+          status: pending
+          description: |
+            CLI commands for supervisor/worker coordination.
+          acceptance_criteria:
+            - agentic coord supervisor create <name>
+            - agentic coord supervisor spawn-worker --supervisor <sup> --worker-name <name> --task <desc>
+            - agentic coord supervisor list-workers --supervisor <name>
+          file: modules/AgenticCLI/src/agenticcli/commands/coordination.py
+
+        - id: MA-011
+          name: Create observation CLI commands
+          status: pending
+          description: |
+            CLI commands for terminal observation.
+          acceptance_criteria:
+            - agentic coord observe capture <session> --lines N
+            - agentic coord observe monitor --supervisor <name>
+            - agentic coord observe send <session> <keys>
+          file: modules/AgenticCLI/src/agenticcli/commands/coordination.py
+
+        - id: MA-012
+          name: Create worker CLI commands
+          status: pending
+          description: |
+            CLI commands for worker operations.
+          acceptance_criteria:
+            - agentic coord worker status --name <name> --status <status>
+            - agentic coord worker inbox --name <name>
+            - agentic coord worker ack --name <name> --message-id <id>
+          file: modules/AgenticCLI/src/agenticcli/commands/coordination.py
+
+    # ==================================================
+    # PHASE 5: QUALITY GATE PATTERN
+    # ==================================================
+    - name: Quality Gate Pattern
+      id: quality_gate
+      status: pending
+      loop_strategy: test-fix
+      tasks:
+        - id: MA-013
+          name: Create ReviewService
+          status: pending
+          description: |
+            Service for managing review requests and verdicts.
+          acceptance_criteria:
+            - request_review(phase, reviewer) creates pending review
+            - approve(review_id) marks approved
+            - reject(review_id, reason) marks rejected with feedback
+            - get_pending_reviews() lists awaiting reviews
+          file: modules/AgenticGuidance/src/agenticguidance/services/review.py
+
+        - id: MA-014
+          name: Create review CLI commands
+          status: pending
+          description: |
+            CLI commands for review workflow.
+          acceptance_criteria:
+            - agentic review request --phase <id> --reviewer <session>
+            - agentic review approve --review-id <id>
+            - agentic review reject --review-id <id> --reason <text>
+            - agentic review status lists pending reviews
+          file: modules/AgenticCLI/src/agenticcli/commands/review.py
+
+        - id: MA-015
+          name: Integrate approval gates with plan phases
+          status: pending
+          description: |
+            Block phase transitions when approval required.
+          acceptance_criteria:
+            - Phases can specify requires_approval: true
+            - Phase transition blocked until approval received
+            - Rejection creates feedback for rework
+          file: modules/AgenticCLI/src/agenticcli/commands/plan.py
+
+    # ==================================================
+    # PHASE 6: INTEGRATION AND TESTING
+    # ==================================================
+    - name: Integration and Testing
+      id: integration
+      status: pending
+      loop_strategy: test-fix
+      tasks:
+        - id: MA-016
+          name: Register commands with agentic CLI
+          status: pending
+          description: |
+            Wire up new commands to main CLI entrypoint.
+          acceptance_criteria:
+            - coord commands accessible via agentic CLI
+            - review commands accessible via agentic CLI
+            - Help text complete for all commands
+          file: modules/AgenticCLI/src/agenticcli/cli.py
+
+        - id: MA-017
+          name: Create unit tests for CoordinationService
+          status: pending
+          description: |
+            Comprehensive tests for coordination service.
+          acceptance_criteria:
+            - Test supervisor/worker creation
+            - Test inbox messaging
+            - Test terminal capture (mocked)
+            - Coverage >= 80%
+          file: modules/AgenticGuidance/tests/test_services_coordination.py
+
+        - id: MA-018
+          name: Create integration tests
+          status: pending
+          description: |
+            End-to-end tests with actual tmux sessions.
+          acceptance_criteria:
+            - Test supervisor spawning workers
+            - Test terminal capture from live session
+            - Test message flow between sessions
+          file: modules/AgenticGuidance/tests/integration/test_coordination.py
+
+  test_strategy:
+    - type: unit
+      scope: CoordinationService and ReviewService
+      location: modules/AgenticGuidance/tests/
+      framework: pytest
+      coverage_target: 80%
+
+    - type: integration
+      scope: End-to-end coordination workflows
+      location: modules/AgenticGuidance/tests/integration/
+      requires:
+        - tmux installed
+        - Running on Linux/macOS
+
+  success_criteria:
+    - All unit tests pass
+    - Integration tests pass on Linux
+    - Coverage >= 80% for new code
+    - No regressions in existing SessionService tests (46 tests)

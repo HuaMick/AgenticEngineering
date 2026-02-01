@@ -1,0 +1,199 @@
+# Test Plan: Close _plan_teach.yml Test Planning Gap
+# Created: 2026-01-31
+# Purpose: Define testing strategy for the teach-test-gap fix
+
+_template_status: active
+
+plan:
+  name: "Teach-Test-Gap Test Plan"
+  worktree: "/home/code/AgenticEngineering-teach-test-gap"
+  branch: "teach-test-gap"
+  status: pending
+
+  objective: |
+    Validate that the implemented changes correctly route guidance plans through
+    test phase and that test-guidance-simulator is properly invoked for modified
+    guidance files.
+
+  phases:
+    - name: "Unit Validation Tests"
+      id: "test_unit"
+      status: pending
+      description: |
+        Validate individual components work correctly in isolation.
+      tasks:
+        - id: "test_unit_001"
+          name: "Validate orchestration-planning routing logic"
+          status: pending
+          description: |
+            Test that CheckGuidanceTestRequired decision node:
+            1. Routes to test phase when teach_phase_completed=true
+            2. Routes to test phase when guidance_files_modified=true
+            3. Skips test phase when no guidance modifications
+            4. Handles edge cases (empty modification list, etc.)
+          validation_method: "Manual flowchart trace"
+          success_criteria:
+            - "All routing paths verified"
+            - "Edge cases documented and handled"
+
+        - id: "test_unit_002"
+          name: "Validate planner-test guidance mode inputs"
+          status: pending
+          description: |
+            Test that planner-test correctly:
+            1. Accepts guidance_test_mode parameter
+            2. Accepts modified_guidance_files list
+            3. Rejects invalid inputs with clear error messages
+            4. Generates appropriate tasks based on inputs
+          validation_method: "Input validation testing"
+          success_criteria:
+            - "guidance_test_mode boolean validated"
+            - "modified_guidance_files list validated"
+            - "Error messages are clear and actionable"
+
+        - id: "test_unit_003"
+          name: "Validate task generation for test-guidance-simulator"
+          status: pending
+          description: |
+            Test that planner-test generates correct tasks:
+            1. One self_review_test task per modified agent
+            2. One reference_resolution_test task per modified agent
+            3. One task_completion_test task per modified agent
+            4. Tasks reference correct agent paths
+          validation_method: "Task output inspection"
+          success_criteria:
+            - "Tasks generated for each test scenario"
+            - "Agent paths are correct"
+            - "Task dependencies are properly set"
+
+    - name: "Integration Tests"
+      id: "test_integration"
+      status: pending
+      depends_on: ["test_unit"]
+      description: |
+        Validate end-to-end flow through the complete teach-test pipeline.
+      tasks:
+        - id: "test_int_001"
+          name: "End-to-end guidance change flow"
+          status: pending
+          description: |
+            Execute complete flow with sample guidance modification:
+            1. Create minimal agent guidance change
+            2. Initialize plan via `agentic plan init test-sample`
+            3. Execute through _plan_teach.yml entrypoint
+            4. Verify teach phase completes
+            5. Verify test phase is triggered
+            6. Verify planner-test generates guidance test tasks
+            7. Verify test-guidance-simulator tasks are in plan
+          validation_method: "End-to-end execution"
+          success_criteria:
+            - "Plan initializes correctly"
+            - "Teach phase creates guidance update tasks"
+            - "Test phase is automatically triggered"
+            - "Guidance test tasks appear in plan"
+
+        - id: "test_int_002"
+          name: "Documentation-only change bypass"
+          status: pending
+          description: |
+            Verify test phase can be bypassed for documentation-only changes:
+            1. Create documentation-only change (e.g., README update)
+            2. Execute through _plan_teach.yml
+            3. Verify test phase is skipped (no guidance files modified)
+            4. Verify plan completes without test tasks
+          validation_method: "Flow execution with docs-only change"
+          success_criteria:
+            - "Test phase correctly skipped"
+            - "No unnecessary test tasks generated"
+            - "Plan completes successfully"
+
+        - id: "test_int_003"
+          name: "Multi-agent modification test"
+          status: pending
+          description: |
+            Verify correct handling when multiple agents modified:
+            1. Create changes affecting 3+ agents
+            2. Execute through _plan_teach.yml
+            3. Verify test tasks generated for ALL modified agents
+            4. Verify no duplicate tasks
+            5. Verify tasks execute in correct order
+          validation_method: "Multi-agent change execution"
+          success_criteria:
+            - "Tasks generated for all modified agents"
+            - "No duplicate test tasks"
+            - "Execution order is correct"
+
+    - name: "Self-Review Validation"
+      id: "test_selfrev"
+      status: pending
+      depends_on: ["test_integration"]
+      description: |
+        Validate guidance changes through agent self-review.
+      loop:
+        type: "guidance-test-loop"
+        maximum_iterations: 3
+        exit_conditions:
+          success:
+            condition: "PASS"
+            criteria: "All self-review tests pass"
+          max_iterations:
+            action: "escalate"
+            reason: "Persistent self-review failures"
+      tasks:
+        - id: "test_selfrev_001"
+          name: "Self-review orchestration-planning"
+          status: pending
+          description: |
+            Spawn test-guidance-simulator to review:
+            - orchestration-planning/process.mmd changes
+            - New routing logic clarity
+            - Subgraph structure validation
+          target_agent: "orchestration-planning"
+          success_criteria:
+            - "No broken references"
+            - "Routing logic is clear"
+            - "Subgraph correctly encapsulates guidance test flow"
+
+        - id: "test_selfrev_002"
+          name: "Self-review planner-test"
+          status: pending
+          description: |
+            Spawn test-guidance-simulator to review:
+            - planner-test/process.yml changes
+            - planner-test/inputs.yml changes
+            - guidance_test_mode handling clarity
+          target_agent: "planner-test"
+          success_criteria:
+            - "No broken references"
+            - "guidance_test_mode documented clearly"
+            - "Task generation logic is unambiguous"
+
+  test_strategy:
+    - type: "validation"
+      scope: "Orchestration routing logic"
+      location: "modules/AgenticGuidance/agents/orchestration/orchestration-planning/"
+      tests:
+        - "Flowchart path tracing"
+        - "Decision node coverage"
+
+    - type: "validation"
+      scope: "Planner-test guidance mode"
+      location: "modules/AgenticGuidance/agents/planner/planner-test/"
+      tests:
+        - "Input validation"
+        - "Task generation verification"
+
+    - type: "integration"
+      scope: "End-to-end teach-test flow"
+      location: "Executed via agentic CLI"
+      tests:
+        - "Full flow execution"
+        - "Bypass scenario"
+        - "Multi-agent scenario"
+
+  success_criteria:
+    - "All unit validation tests pass"
+    - "End-to-end flow executes correctly"
+    - "Documentation-only bypass works"
+    - "Multi-agent changes handled correctly"
+    - "Self-review passes for all modified agents"

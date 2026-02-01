@@ -1,0 +1,462 @@
+_template_status: active
+task_id: EN-P5-001
+task_description: Audit AgenticTmux infrastructure and patterns
+agent_type: explore
+status: completed
+completed_at: '2026-02-01'
+plan: 260131EN_investigate_orchestration_enforcement_patterns
+
+# =============================================================================
+# EXECUTIVE SUMMARY
+# =============================================================================
+executive_summary: |
+  AgenticTmux is a thin presentation layer over SessionService in AgenticGuidance.
+  The architecture cleanly separates concerns: business logic in AgenticGuidance,
+  CLI commands in AgenticTmux. The existing infrastructure provides solid foundations
+  for orchestration enforcement, particularly through session metadata, environment
+  variables, and worktree/plan linking capabilities.
+
+# =============================================================================
+# INFRASTRUCTURE AUDIT
+# =============================================================================
+infrastructure:
+  modules_found:
+    - path: /home/code/AgenticEngineering/modules/AgenticTmux/
+      purpose: CLI commands for tmux session management
+      version: 0.1.0
+
+    - path: /home/code/AgenticEngineering/modules/AgenticGuidance/src/agenticguidance/services/session.py
+      purpose: Core SessionService business logic
+
+    - path: /home/code/AgenticEngineering/modules/AgenticGuidance/src/agenticguidance/services/session_config.py
+      purpose: Session configuration and naming conventions
+
+  architecture_pattern: |
+    AgenticTmux follows a "thin-client" pattern:
+
+    +-------------------+     +---------------------------+
+    | AgenticTmux CLI   |---->| AgenticGuidance Services |
+    | (presentation)    |     | (business logic)         |
+    +-------------------+     +---------------------------+
+           |                              |
+           v                              v
+    +--------------+             +------------------+
+    | tmux binary  |             | sessions.json    |
+    | (subprocess) |             | (state registry) |
+    +--------------+             +------------------+
+
+  entry_point:
+    command: agentic-tmux
+    module: agentictmux.entry:main
+    subcommands:
+      - session create <name> [--worktree PATH] [--plan FOLDER]
+      - session attach <name>
+      - session list
+      - session kill <name> [--force]
+      - session status [name]
+
+# =============================================================================
+# SESSION MANAGEMENT INFRASTRUCTURE
+# =============================================================================
+session_management:
+
+  data_model:
+    SessionInfo:
+      fields:
+        - name: name
+          type: str
+          description: Unique session identifier
+        - name: state
+          type: SessionState
+          values: [running, detached, dead]
+        - name: created_at
+          type: float
+          description: Unix timestamp
+        - name: attached
+          type: bool
+          description: Whether session has attached clients
+        - name: worktree
+          type: Optional[str]
+          description: Linked worktree path
+        - name: plan_folder
+          type: Optional[str]
+          description: Linked plan folder
+        - name: windows
+          type: int
+          default: 1
+        - name: metadata
+          type: dict
+          description: Arbitrary key-value pairs
+
+    SessionResult:
+      purpose: Operation result container
+      fields:
+        - success: bool
+        - message: str
+        - session: Optional[SessionInfo]
+        - data: Optional[dict]
+
+  state_persistence:
+    registry_path: ~/.config/agenticcli/sessions.json
+    format: JSON
+    schema: |
+      {
+        "sessions": {
+          "<session_name>": {
+            "name": str,
+            "state": str,
+            "created_at": float,
+            "attached": bool,
+            "worktree": str | null,
+            "plan_folder": str | null,
+            "windows": int,
+            "metadata": {}
+          }
+        }
+      }
+
+  session_lifecycle:
+    create:
+      steps:
+        1: Validate tmux is available
+        2: Check session name not already in use
+        3: Determine start directory (worktree or cwd)
+        4: Execute tmux new-session -d -s <name> [-c <dir>]
+        5: Create SessionInfo with metadata
+        6: Save to registry
+      returns: SessionResult with session info
+
+    attach:
+      steps:
+        1: Validate tmux is available
+        2: Verify session exists
+        3: Return command array for os.execvp()
+      note: Actual attach happens in caller via os.execvp()
+
+    list:
+      steps:
+        1: Load registry from file
+        2: Query tmux for active sessions
+        3: Reconcile registry with actual tmux state
+        4: Return merged session list
+      note: Discovers unregistered tmux sessions too
+
+    kill:
+      steps:
+        1: Validate tmux available
+        2: Check session exists
+        3: Check attached state (block if attached, unless --force)
+        4: Execute tmux kill-session
+        5: Remove from registry
+
+    cleanup_dead:
+      purpose: Remove dead sessions from registry
+      trigger: Manual or via lifecycle helper
+
+  linking_capabilities:
+    worktree_linking:
+      method: SessionService.link_worktree(session_name, worktree_path)
+      storage: sessions.json registry
+      effect: Auto-navigate on attach
+
+    plan_linking:
+      method: SessionService.link_plan(session_name, plan_folder)
+      storage: sessions.json registry
+      effect: Track which plan a session is working on
+
+# =============================================================================
+# CONFIGURATION AND NAMING
+# =============================================================================
+configuration:
+
+  SessionConfig:
+    source: ~/.config/agenticcli/session_config.yml
+    fields:
+      - default_shell: /bin/bash
+      - auto_attach: false
+      - naming_pattern: "^[a-zA-Z][a-zA-Z0-9_-]{0,49}$"
+      - max_sessions: 0 (unlimited)
+      - auto_cleanup: true
+      - persist_registry: true
+      - worktree_auto_link: true
+      - plan_auto_link: true
+
+  naming_conventions:
+    rules:
+      - Must start with a letter
+      - Can contain letters, numbers, underscores, hyphens
+      - Maximum 50 characters
+      - No spaces or special characters
+    reserved_names:
+      - main
+      - master
+      - default
+      - all
+      - new
+      - list
+      - kill
+    recommended_patterns:
+      worktree_based: "{repo}-{branch} e.g., myproject-feature-auth"
+      plan_based: "{plan_id} e.g., 260126AT"
+      task_based: "{plan_id}-{task_id} e.g., 260126AT-AT-005"
+
+  name_generation:
+    from_worktree: Extracts branch name from path
+    from_plan: Extracts plan ID (first part before underscore)
+
+# =============================================================================
+# ORCHESTRATION-RELEVANT PATTERNS
+# =============================================================================
+orchestration_patterns:
+
+  existing_capabilities:
+    session_metadata:
+      description: |
+        SessionInfo.metadata is an arbitrary dict that could store
+        orchestration state (role, phase, assigned task, etc.)
+      current_usage: Empty by default, available for extension
+      potential_use: |
+        metadata: {
+          "orchestration_role": "builder",
+          "parent_session": "orchestrator-260126AT",
+          "assigned_task": "AT-005",
+          "phase": "build"
+        }
+
+    plan_folder_linking:
+      description: Sessions can be linked to plan folders
+      current_usage: Used for navigation and tracking
+      potential_use: |
+        Could be used to:
+        - Automatically load orchestration state from plan
+        - Enforce that session only works on linked plan
+        - Provide context about current orchestration
+
+    worktree_linking:
+      description: Sessions can be linked to worktrees
+      current_usage: Used for directory context
+      potential_use: |
+        Could be combined with plan to ensure session
+        operates in correct directory for the plan
+
+  missing_capabilities:
+    role_identification:
+      description: No explicit role field in SessionInfo
+      recommendation: Add 'role' field or use metadata
+
+    parent_child_relationship:
+      description: No explicit session hierarchy
+      recommendation: Could track parent_session in metadata
+
+    environment_injection:
+      description: No automatic environment variable setup
+      recommendation: Could set AGENTIC_SESSION_ROLE, etc.
+
+  lifecycle_helper:
+    name: session_lifecycle_create
+    location: session_config.py
+    purpose: Standard pattern for session creation with validation
+    steps:
+      1: Validate name against naming conventions
+      2: Auto-cleanup dead sessions if configured
+      3: Check max sessions limit
+      4: Create session with auto-linking if configured
+    extension_point: |
+      This helper could be extended to:
+      - Accept role parameter
+      - Set orchestration metadata
+      - Inject environment variables
+
+# =============================================================================
+# TMUX-SPECIFIC CAPABILITIES
+# =============================================================================
+tmux_capabilities:
+
+  session_naming:
+    current: Simple name validation
+    potential: |
+      Could encode orchestration info in session name:
+      - "orch-260126AT" for orchestrator
+      - "build-260126AT-AT005" for builder on task
+      - Convention: "{role}-{plan}-{task}"
+
+  environment_propagation:
+    tmux_behavior: |
+      tmux sessions inherit environment from creation context.
+      Environment can be set at session creation via:
+      - tmux set-environment
+      - Modifying environment before subprocess call
+    potential_use: |
+      Set AGENTIC_SESSION_ROLE, AGENTIC_ORCHESTRATION_PHASE, etc.
+      These persist for the session lifetime.
+
+  session_querying:
+    methods:
+      - "tmux list-sessions -F '#{session_name}'"
+      - "tmux list-sessions -F '#{session_name}:#{session_attached}'"
+      - "tmux show-environment -t <session>"
+    potential_use: |
+      Could query session environment to determine role
+      without needing file-based state
+
+# =============================================================================
+# TEST COVERAGE
+# =============================================================================
+test_coverage:
+  session_service_tests: 37 tests
+  session_config_tests: 25 tests
+  total: 62 tests
+  coverage_areas:
+    - SessionState enum values
+    - SessionInfo serialization
+    - SessionResult handling
+    - SessionService CRUD operations
+    - Registry persistence
+    - Tmux subprocess mocking
+    - Naming convention validation
+    - Config loading/saving
+    - Name generation utilities
+
+# =============================================================================
+# COMPLETED PLANS REFERENCE
+# =============================================================================
+related_plans:
+  completed:
+    260126AT_agentictmux:
+      summary: Built AgenticTmux module and SessionService
+      deliverables:
+        - modules/AgenticGuidance/src/agenticguidance/services/session.py
+        - modules/AgenticGuidance/src/agenticguidance/services/session_config.py
+        - modules/AgenticTmux/src/agentictmux/commands/session.py
+        - 46 tests for session functionality
+      deferred:
+        - WorktreeIntegration
+        - PlanIntegration
+        - TUIDashboard
+
+    260130TE_implement_tmux_for_remote_terminal_access:
+      summary: Built remote access capability for Claude Code sessions
+      phases:
+        - TmuxConfig
+        - TailscaleIntegration
+        - SessionTemplates
+        - CLIIntegration
+      note: Reviewed separately in EN-P5-002
+
+# =============================================================================
+# KEY FINDINGS
+# =============================================================================
+key_findings:
+
+  strengths:
+    - Clean architecture separating presentation (AgenticTmux) from business logic (AgenticGuidance)
+    - Flexible metadata dict in SessionInfo supports arbitrary orchestration state
+    - Plan and worktree linking already implemented
+    - Solid test coverage (62 tests)
+    - Naming conventions support orchestration-style names
+    - Lifecycle helper provides extension point for validation
+
+  gaps_for_orchestration:
+    - No explicit role field - must use metadata dict
+    - No parent-child session relationship tracking
+    - No automatic environment variable injection
+    - No session querying by role/plan
+    - No enforcement of plan compliance
+
+  quick_wins_identified:
+    - Add 'role' key to metadata when creating sessions
+    - Use naming convention for role encoding: "{role}-{plan}"
+    - Set environment variables at session creation time
+    - Add SessionService.get_by_plan(plan_folder) method
+
+# =============================================================================
+# RECOMMENDATIONS FOR P5
+# =============================================================================
+recommendations:
+  for_orchestration_enforcement:
+    1_metadata_extension:
+      description: Use SessionInfo.metadata for orchestration state
+      implementation: |
+        session = service.create(
+          name="build-260126AT",
+          plan_folder="260126AT_test"
+        )
+        # Then update metadata via registry
+        metadata = {
+          "orchestration_role": "builder",
+          "parent_session": "orch-260126AT",
+          "assigned_task": "AT-005"
+        }
+      complexity: LOW
+
+    2_naming_convention:
+      description: Encode role in session name
+      pattern: "{role}-{plan}[-{task}]"
+      examples:
+        - "orch-260126AT" (orchestrator)
+        - "build-260126AT-AT005" (builder)
+        - "test-260126AT-TT001" (tester)
+      complexity: LOW
+
+    3_environment_injection:
+      description: Set env vars at session creation
+      implementation: |
+        # In SessionService.create():
+        env = {
+          "AGENTIC_SESSION_ROLE": role,
+          "AGENTIC_PLAN_FOLDER": plan_folder,
+          "AGENTIC_PARENT_SESSION": parent_session,
+        }
+        # Pass to tmux via set-environment
+      complexity: MEDIUM
+
+    4_session_querying:
+      description: Add methods to find sessions by role/plan
+      methods:
+        - get_by_role(role) -> list[SessionInfo]
+        - get_by_plan(plan_folder) -> list[SessionInfo]
+        - get_orchestrator_for_plan(plan_folder) -> Optional[SessionInfo]
+      complexity: LOW
+
+  implementation_priority:
+    immediate:
+      - Naming convention (no code changes needed)
+      - Metadata for role tracking (extend existing usage)
+    short_term:
+      - Session query methods
+    medium_term:
+      - Environment variable injection
+
+# =============================================================================
+# VALIDATION
+# =============================================================================
+validation:
+  open_questions_addressed:
+    - "What tmux infrastructure already exists?"
+      answer: |
+        AgenticTmux module with SessionService provides comprehensive
+        session management: create, attach, list, kill, status.
+        State persisted in ~/.config/agenticcli/sessions.json
+
+    - "Can sessions store orchestration state?"
+      answer: |
+        Yes, via SessionInfo.metadata dict. Currently unused but
+        available for arbitrary key-value storage.
+
+    - "Can sessions be linked to plans?"
+      answer: |
+        Yes, SessionService.link_plan() and create(plan_folder=...)
+        already support this.
+
+  files_reviewed:
+    - /home/code/AgenticEngineering/modules/AgenticTmux/src/agentictmux/__init__.py
+    - /home/code/AgenticEngineering/modules/AgenticTmux/src/agentictmux/entry.py
+    - /home/code/AgenticEngineering/modules/AgenticTmux/src/agentictmux/commands/session.py
+    - /home/code/AgenticEngineering/modules/AgenticTmux/README.md
+    - /home/code/AgenticEngineering/modules/AgenticTmux/pyproject.toml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/src/agenticguidance/services/session.py
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/src/agenticguidance/services/session_config.py
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/tests/test_services_session.py
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/tests/test_services_session_config.py
+    - /home/code/AgenticEngineering/docs/plans/completed/260126AT_agentictmux/orchestration_agentictmux.mmd
+    - /home/code/AgenticEngineering/docs/plans/completed/260130TE_implement_tmux_for_remote_terminal_access_to_claud/orchestration_tmux_remote.mmd

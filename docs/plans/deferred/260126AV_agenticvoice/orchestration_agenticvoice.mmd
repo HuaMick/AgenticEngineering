@@ -1,0 +1,96 @@
+%% =============================================================================
+%% ORCHESTRATION: AgenticVoice Module Build
+%% =============================================================================
+%% GOAL: Build AgenticVoice as a thin presentation layer for voice-based access to AgenticGuidance
+%% PROFILE: Orchestrator-Build
+%% PLAN_PATH: docs/plans/live/260126AV_agenticvoice/plan_build.yml
+%% WORKTREE_PATH: /home/code/AgenticEngineering-agenticvoice
+%% BRANCH: agenticvoice
+%%
+%% PHASES: ModuleStructure, STT_TTS, CommandRouting, PersonaPlex
+%% AGENT_ROUTING: ModuleStructure -> build-module, STT_TTS -> build-integration
+%% FEEDBACK_TRIGGER: TEST_FAILURE -> FixLoop, BUILD_ERROR -> build-fix
+%%
+%% STATUS: DEFERRED
+%% DEFERRED_REASON: Requires services not yet implemented in AgenticGuidance
+%%   - PlanService (plan.py has PlanMovementWorkflow only)
+%%   - ContextService (not implemented)
+%%   - TaskService (not implemented)
+%%   - ConfigService (config.py has TieredConfigLoader/ConfigWorkflow)
+%%   - StateService (state.py has StateRegistry only)
+%%   Additionally requires external STT/TTS service integrations.
+%%
+%% BLOCKER_COMPLETED: 260123AE_agenticguidance (2026-01-26)
+%% =============================================================================
+
+flowchart TD
+    Start((Start)) --> LoadPlan[Load plan_build.yml]
+
+    %% ========================================
+    %% BLOCKER CHECK
+    %% ========================================
+    LoadPlan --> CheckBlocker{Blocker 260123AE Complete?}
+    CheckBlocker -- "No" --> WaitBlocker((Wait: Blocker Pending))
+    CheckBlocker -- "Yes" --> CheckServices
+
+    %% ========================================
+    %% SERVICE DEPENDENCY CHECK
+    %% ========================================
+    subgraph ServiceCheck_SG ["Service Dependency Check"]
+        CheckServices[Check Required Services] --> HasPlanService{PlanService exists?}
+        HasPlanService -- "No" --> MissingPlanService[Missing: PlanService]
+        HasPlanService -- "Yes" --> HasContextService{ContextService exists?}
+        HasContextService -- "No" --> MissingContextService[Missing: ContextService]
+        HasContextService -- "Yes" --> HasTaskService{TaskService exists?}
+        HasTaskService -- "No" --> MissingTaskService[Missing: TaskService]
+        HasTaskService -- "Yes" --> ServicesReady[All Services Ready]
+    end
+
+    MissingPlanService --> DeferDecision
+    MissingContextService --> DeferDecision
+    MissingTaskService --> DeferDecision
+
+    %% ========================================
+    %% DEFER DECISION
+    %% ========================================
+    subgraph Defer_SG ["Deferral Decision"]
+        DeferDecision[Services Not Available] --> DeferPlan[Defer Plan Execution]
+        DeferPlan --> UpdateStatus[Update plan status: deferred]
+        UpdateStatus --> ArchiveDeferred[Archive to Completed with deferred status]
+    end
+
+    ArchiveDeferred --> DeferredComplete((Deferred: Awaiting Service Implementation))
+
+    %% ========================================
+    %% FUTURE PHASES (When Services Ready)
+    %% ========================================
+    ServicesReady --> Phase1
+
+    subgraph Phase1_SG ["Phase 1: Module Structure (AV-001 to AV-003)"]
+        Phase1[Create Module] --> CreatePyproject[pyproject.toml]
+        CreatePyproject --> CreateWebSocket[WebSocket Server]
+        CreateWebSocket --> CreateInterfaces[Define Interfaces]
+    end
+
+    Phase1 -.-> Phase2
+
+    subgraph Phase2_SG ["Phase 2: STT/TTS Integration (AV-004 to AV-006)"]
+        Phase2[STT Integration] --> TTS[TTS Integration]
+        TTS --> Streaming[Audio Streaming]
+    end
+
+    Phase2 -.-> Phase3
+
+    subgraph Phase3_SG ["Phase 3: Command Routing (AV-007 to AV-009)"]
+        Phase3[Voice Parser] --> Router[Service Router]
+        Router --> Response[Response Handler]
+    end
+
+    Phase3 -.-> Phase4
+
+    subgraph Phase4_SG ["Phase 4: PersonaPlex (AV-010 to AV-012) - Optional"]
+        Phase4[PersonaPlex Connector] --> Personas[Voice Personas]
+        Personas --> ContextResponses[Context-Aware Responses]
+    end
+
+    Phase4 -.-> FutureComplete((Future: Full Implementation))

@@ -1,0 +1,1080 @@
+# EN-P4-003: Role Detection and Enforcement Design
+# Task: Design role detection and enforcement approach
+# Agent: builder
+# Status: completed
+# Created: 2026-01-31
+
+_template_status: active
+
+design_summary:
+  task_id: EN-P4-003
+  description: "Design comprehensive role detection and enforcement approach"
+  status: completed
+  date: "2026-01-31"
+  based_on:
+    - EN-P4-001_session_metadata_audit.yml
+    - EN-P4-002_environment_session_identification.yml
+    - EN-P3-003_context_injection_design.yml
+
+# =============================================================================
+# EXECUTIVE SUMMARY
+# =============================================================================
+
+executive_summary: |
+  This document synthesizes findings from EN-P4-001 (session metadata audit) and
+  EN-P4-002 (environment-based session identification) to design a complete role
+  detection and enforcement system for distinguishing orchestrators from subagents.
+
+  The design establishes:
+  1. A multi-layer role detection strategy (environment vars + session registry)
+  2. Role-appropriate behavior enforcement for CLI commands
+  3. Integration points with existing session and plan management
+  4. Graduated enforcement levels (advisory, warning, blocking)
+
+  Key Design Decisions:
+  - Environment variables (AGENTIC_SESSION_ROLE) as primary detection mechanism
+  - Session registry as authoritative source for role persistence
+  - CLI-level enforcement with graceful degradation for legacy sessions
+  - Subagent restrictions on spawning and full plan access
+
+# =============================================================================
+# ROLE DETECTION STRATEGY
+# =============================================================================
+
+role_detection_strategy:
+
+  overview: |
+    Role detection uses a layered approach with fallback mechanisms. The primary
+    source is environment variables set at spawn time; the secondary source is
+    the session registry for persistence and verification.
+
+  detection_layers:
+
+    layer_1_environment_variables:
+      name: "Environment Variable Detection"
+      priority: PRIMARY
+      mechanism: |
+        At session start, check AGENTIC_SESSION_ROLE environment variable:
+        - "orchestrator": Session manages task delegation
+        - "subagent": Session performs assigned task only
+        - Not set: Legacy session without orchestration context
+
+      advantages:
+        - Zero latency detection
+        - Available immediately at process start
+        - No file I/O required
+        - Propagates to subprocesses automatically
+
+      implementation:
+        detection_function: |
+          import os
+
+          def detect_role_from_env() -> str | None:
+              """Detect session role from environment variable.
+
+              Returns:
+                  'orchestrator', 'subagent', or None for legacy sessions.
+              """
+              return os.environ.get("AGENTIC_SESSION_ROLE")
+
+          def is_orchestrator() -> bool:
+              """Check if current session is an orchestrator."""
+              return detect_role_from_env() == "orchestrator"
+
+          def is_subagent() -> bool:
+              """Check if current session is a subagent."""
+              return detect_role_from_env() == "subagent"
+
+          def is_legacy_session() -> bool:
+              """Check if session has no orchestration context."""
+              return detect_role_from_env() is None
+
+    layer_2_session_registry:
+      name: "Session Registry Lookup"
+      priority: SECONDARY (verification/persistence)
+      mechanism: |
+        Query ~/.agentic/sessions/{session_id}.json for role field.
+        This provides:
+        - Persistence across process restarts (if session is resumed)
+        - Verification of environment variables (tampering detection)
+        - Historical role tracking for audit trails
+
+      storage_location: "~/.agentic/sessions/*.json"
+
+      schema_extension: |
+        # New fields in session record (from EN-P3-003 design)
+        {
+            "role": "orchestrator" | "subagent" | null,
+            "task_id": "EN-P4-003",
+            "plan_folder": "docs/plans/live/...",
+            "parent_session": "uuid-of-parent",
+            "phase": "build",
+            "orchestration_context": {
+                "injected_at": "2026-01-31T10:00:00",
+                "env_vars_set": ["AGENTIC_SESSION_ID", "AGENTIC_SESSION_ROLE", ...],
+                "context_injected": true
+            }
+        }
+
+      implementation:
+        lookup_function: |
+          import json
+          from pathlib import Path
+
+          def get_session_role_from_registry(session_id: str) -> str | None:
+              """Look up session role from registry.
+
+              Args:
+                  session_id: UUID of the session to look up.
+
+              Returns:
+                  Role string or None if not found/not set.
+              """
+              session_file = Path.home() / ".agentic" / "sessions" / f"{session_id}.json"
+              if not session_file.exists():
+                  return None
+
+              with open(session_file) as f:
+                  data = json.load(f)
+                  return data.get("role")
+
+    layer_3_inference_fallback:
+      name: "Inference-Based Detection (Fallback)"
+      priority: FALLBACK (when layers 1-2 unavailable)
+      mechanism: |
+        When environment variables and registry don't provide role, use
+        heuristics to infer likely role:
+
+        Orchestrator signals:
+        - Working directory is plan root folder
+        - Prompt contains "orchestrat*" patterns
+        - Session spawned multiple children
+
+        Subagent signals:
+        - AGENTIC_TASK_ID is set (even without AGENTIC_SESSION_ROLE)
+        - AGENTIC_PARENT_SESSION is set
+        - Working directory is module/test subdirectory
+
+      reliability: LOW - use only as advisory signal
+      recommendation: |
+        Inference should NOT be used for enforcement decisions.
+        It exists only to provide UX hints for legacy sessions.
+
+  combined_detection_flow: |
+    def detect_session_role() -> dict:
+        """Detect session role using all available layers.
+
+        Returns:
+            dict with keys:
+            - role: 'orchestrator', 'subagent', or None
+            - source: 'environment', 'registry', 'inferred', or 'unknown'
+            - confidence: 'high', 'medium', 'low'
+            - context: dict with additional context (task_id, parent, etc.)
+        """
+        # Layer 1: Environment variables (high confidence)
+        env_role = os.environ.get("AGENTIC_SESSION_ROLE")
+        if env_role:
+            return {
+                "role": env_role,
+                "source": "environment",
+                "confidence": "high",
+                "context": {
+                    "session_id": os.environ.get("AGENTIC_SESSION_ID"),
+                    "task_id": os.environ.get("AGENTIC_TASK_ID"),
+                    "parent_session": os.environ.get("AGENTIC_PARENT_SESSION"),
+                    "plan_folder": os.environ.get("AGENTIC_PLAN_FOLDER"),
+                    "phase": os.environ.get("AGENTIC_PHASE"),
+                }
+            }
+
+        # Layer 2: Session registry (medium confidence)
+        session_id = os.environ.get("AGENTIC_SESSION_ID")
+        if session_id:
+            registry_role = get_session_role_from_registry(session_id)
+            if registry_role:
+                return {
+                    "role": registry_role,
+                    "source": "registry",
+                    "confidence": "medium",
+                    "context": load_session_context(session_id)
+                }
+
+        # Layer 3: Inference (low confidence)
+        inferred = infer_role_from_context()
+        if inferred:
+            return {
+                "role": inferred,
+                "source": "inferred",
+                "confidence": "low",
+                "context": {}
+            }
+
+        # No role detected
+        return {
+            "role": None,
+            "source": "unknown",
+            "confidence": "none",
+            "context": {}
+        }
+
+# =============================================================================
+# ROLE ENFORCEMENT STRATEGY
+# =============================================================================
+
+role_enforcement_strategy:
+
+  overview: |
+    Role enforcement defines what actions each role is permitted to perform.
+    Enforcement can be advisory (warnings), restrictive (blocking), or
+    conditional (allowed with explicit override).
+
+  enforcement_levels:
+
+    level_1_advisory:
+      name: "Advisory (Soft Warning)"
+      behavior: |
+        Log warning but allow action to proceed.
+        Used for low-risk actions where user may have valid reasons.
+      indicator: "[ADVISORY]"
+      example: |
+        [ADVISORY] Subagents typically don't read full plan. Consider focusing on assigned task.
+
+    level_2_warning:
+      name: "Warning (Strong Caution)"
+      behavior: |
+        Display prominent warning, require --force to proceed.
+        Used for medium-risk actions that could disrupt orchestration.
+      indicator: "[WARNING]"
+      example: |
+        [WARNING] Spawning additional agents as a subagent may confuse orchestration.
+        Use --force to proceed anyway.
+
+    level_3_blocking:
+      name: "Blocking (Prohibited)"
+      behavior: |
+        Reject action with error. No override available.
+        Used for high-risk actions that would break orchestration invariants.
+      indicator: "[ERROR]"
+      example: |
+        [ERROR] Subagents cannot claim orchestrator role. This action is blocked.
+
+  role_permissions:
+
+    orchestrator_permissions:
+      description: "Orchestrator is the main session managing task delegation"
+      allowed_actions:
+        - "Read full plan files (plan_build.yml, orchestration.mmd)"
+        - "Spawn subagent sessions with context injection"
+        - "Monitor subagent session status"
+        - "Update plan task status"
+        - "Mark tasks as started/completed"
+        - "Archive/move plans"
+        - "Access all session registry entries"
+        - "Set AGENTIC_* environment variables for children"
+      restricted_actions:
+        - "Claim subagent role after starting as orchestrator (blocked)"
+      advisory_actions:
+        - "Reading task details outside current phase (advisory)"
+
+    subagent_permissions:
+      description: "Subagent performs assigned task, reports to parent"
+      allowed_actions:
+        - "Read assigned task details from plan"
+        - "Update assigned task status (started, completed)"
+        - "Query own session status"
+        - "Read files relevant to assigned task"
+        - "Create output/deliverables for assigned task"
+        - "Report completion to stdout/exit code"
+      restricted_actions:
+        - "Spawn new Claude Code sessions (warning, --force to override)"
+        - "Read full orchestration plan (advisory)"
+        - "Mark unassigned tasks as completed (blocked)"
+        - "Archive or move plans (blocked)"
+        - "Claim orchestrator role (blocked)"
+      advisory_actions:
+        - "Reading unrelated modules (advisory)"
+        - "Modifying files outside task scope (advisory)"
+
+    legacy_permissions:
+      description: "Sessions without orchestration context (backward compatible)"
+      allowed_actions:
+        - "All actions permitted without enforcement"
+        - "Behaves like pre-orchestration CLI"
+      behavior: |
+        Legacy sessions have no role restrictions. This ensures backward
+        compatibility for users who don't use orchestration features.
+
+  enforcement_points:
+
+    enforcement_point_session_spawn:
+      location: "modules/AgenticCLI/src/agenticcli/commands/session.py"
+      function: "cmd_spawn()"
+      enforcement:
+        - check: "If current session is subagent and trying to spawn"
+          level: "warning"
+          message: "Subagents typically don't spawn additional agents."
+          override: "--force"
+        - check: "If trying to set --role orchestrator as subagent"
+          level: "blocking"
+          message: "Subagents cannot spawn orchestrator sessions."
+          override: none
+
+    enforcement_point_plan_read:
+      location: "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+      functions: ["cmd_status()", "cmd_task_list()", "cmd_orchestration_*()"]
+      enforcement:
+        - check: "If subagent accesses full plan"
+          level: "advisory"
+          message: "Subagents should focus on assigned task."
+          override: allowed (informational only)
+
+    enforcement_point_task_complete:
+      location: "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+      function: "cmd_task_complete()"
+      enforcement:
+        - check: "If subagent tries to complete non-assigned task"
+          level: "blocking"
+          message: "Can only complete assigned task: {AGENTIC_TASK_ID}"
+          override: none (unless no task assigned)
+
+    enforcement_point_plan_archive:
+      location: "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+      function: "cmd_archive()"
+      enforcement:
+        - check: "If subagent tries to archive plan"
+          level: "blocking"
+          message: "Only orchestrator can archive plans."
+          override: none
+
+    enforcement_point_plan_move:
+      location: "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+      function: "cmd_move()"
+      enforcement:
+        - check: "If subagent tries to move plan"
+          level: "blocking"
+          message: "Only orchestrator can move plans."
+          override: none
+
+# =============================================================================
+# ENFORCEMENT IMPLEMENTATION
+# =============================================================================
+
+enforcement_implementation:
+
+  core_enforcement_module:
+    location: "modules/AgenticCLI/src/agenticcli/orchestration/enforcement.py"
+    purpose: "Centralized role detection and enforcement logic"
+
+    class_design: |
+      from enum import Enum
+      from dataclasses import dataclass
+      import os
+
+
+      class Role(Enum):
+          ORCHESTRATOR = "orchestrator"
+          SUBAGENT = "subagent"
+          LEGACY = None  # No role set
+
+
+      class EnforcementLevel(Enum):
+          ADVISORY = "advisory"
+          WARNING = "warning"
+          BLOCKING = "blocking"
+
+
+      @dataclass
+      class RoleContext:
+          """Context about the current session's role."""
+          role: Role
+          source: str  # 'environment', 'registry', 'inferred', 'unknown'
+          confidence: str  # 'high', 'medium', 'low', 'none'
+          session_id: str | None
+          task_id: str | None
+          parent_session: str | None
+          plan_folder: str | None
+          phase: str | None
+
+
+      @dataclass
+      class EnforcementResult:
+          """Result of an enforcement check."""
+          allowed: bool
+          level: EnforcementLevel
+          message: str | None
+          requires_force: bool
+
+
+      class RoleEnforcer:
+          """Enforces role-based restrictions on CLI actions."""
+
+          def __init__(self):
+              self._context: RoleContext | None = None
+
+          @property
+          def context(self) -> RoleContext:
+              """Lazily detect and cache role context."""
+              if self._context is None:
+                  self._context = self._detect_context()
+              return self._context
+
+          def _detect_context(self) -> RoleContext:
+              """Detect role from environment and registry."""
+              role_str = os.environ.get("AGENTIC_SESSION_ROLE")
+
+              if role_str == "orchestrator":
+                  role = Role.ORCHESTRATOR
+              elif role_str == "subagent":
+                  role = Role.SUBAGENT
+              else:
+                  role = Role.LEGACY
+
+              return RoleContext(
+                  role=role,
+                  source="environment" if role_str else "unknown",
+                  confidence="high" if role_str else "none",
+                  session_id=os.environ.get("AGENTIC_SESSION_ID"),
+                  task_id=os.environ.get("AGENTIC_TASK_ID"),
+                  parent_session=os.environ.get("AGENTIC_PARENT_SESSION"),
+                  plan_folder=os.environ.get("AGENTIC_PLAN_FOLDER"),
+                  phase=os.environ.get("AGENTIC_PHASE"),
+              )
+
+          def check_spawn_allowed(self, target_role: str | None = None) -> EnforcementResult:
+              """Check if spawning a new session is allowed."""
+              if self.context.role == Role.LEGACY:
+                  # Legacy sessions can spawn freely
+                  return EnforcementResult(True, EnforcementLevel.ADVISORY, None, False)
+
+              if self.context.role == Role.SUBAGENT:
+                  if target_role == "orchestrator":
+                      return EnforcementResult(
+                          allowed=False,
+                          level=EnforcementLevel.BLOCKING,
+                          message="Subagents cannot spawn orchestrator sessions.",
+                          requires_force=False
+                      )
+                  return EnforcementResult(
+                      allowed=False,
+                      level=EnforcementLevel.WARNING,
+                      message="Subagents typically don't spawn additional agents. Use --force to proceed.",
+                      requires_force=True
+                  )
+
+              # Orchestrator can spawn anything
+              return EnforcementResult(True, EnforcementLevel.ADVISORY, None, False)
+
+          def check_task_complete_allowed(self, task_id: str) -> EnforcementResult:
+              """Check if completing a task is allowed."""
+              if self.context.role == Role.LEGACY:
+                  return EnforcementResult(True, EnforcementLevel.ADVISORY, None, False)
+
+              if self.context.role == Role.SUBAGENT:
+                  if self.context.task_id and task_id != self.context.task_id:
+                      return EnforcementResult(
+                          allowed=False,
+                          level=EnforcementLevel.BLOCKING,
+                          message=f"Can only complete assigned task: {self.context.task_id}",
+                          requires_force=False
+                      )
+
+              return EnforcementResult(True, EnforcementLevel.ADVISORY, None, False)
+
+          def check_plan_archive_allowed(self) -> EnforcementResult:
+              """Check if archiving a plan is allowed."""
+              if self.context.role == Role.LEGACY:
+                  return EnforcementResult(True, EnforcementLevel.ADVISORY, None, False)
+
+              if self.context.role == Role.SUBAGENT:
+                  return EnforcementResult(
+                      allowed=False,
+                      level=EnforcementLevel.BLOCKING,
+                      message="Only orchestrator can archive plans.",
+                      requires_force=False
+                  )
+
+              return EnforcementResult(True, EnforcementLevel.ADVISORY, None, False)
+
+          def check_full_plan_access(self) -> EnforcementResult:
+              """Check if reading full plan is advisable."""
+              if self.context.role == Role.SUBAGENT:
+                  return EnforcementResult(
+                      allowed=True,  # Still allowed, just advisory
+                      level=EnforcementLevel.ADVISORY,
+                      message="Subagents should focus on assigned task. Consider using 'agentic plan task status {task_id}'.",
+                      requires_force=False
+                  )
+
+              return EnforcementResult(True, EnforcementLevel.ADVISORY, None, False)
+
+
+      # Singleton enforcer instance
+      _enforcer: RoleEnforcer | None = None
+
+      def get_enforcer() -> RoleEnforcer:
+          """Get the global role enforcer instance."""
+          global _enforcer
+          if _enforcer is None:
+              _enforcer = RoleEnforcer()
+          return _enforcer
+
+  cli_integration_pattern:
+    description: "How to integrate enforcement checks into existing CLI commands"
+
+    pattern_for_session_spawn: |
+      # In modules/AgenticCLI/src/agenticcli/commands/session.py
+      # Add at start of cmd_spawn():
+
+      from agenticcli.orchestration.enforcement import get_enforcer
+
+      def cmd_spawn(args, ctx=None):
+          # ... existing setup code ...
+
+          # Enforcement check
+          enforcer = get_enforcer()
+          target_role = getattr(args, "role", None)
+          result = enforcer.check_spawn_allowed(target_role)
+
+          if not result.allowed:
+              if result.level == EnforcementLevel.BLOCKING:
+                  print_error(f"[BLOCKED] {result.message}")
+                  sys.exit(1)
+              elif result.requires_force and not getattr(args, "force", False):
+                  print_error(f"[WARNING] {result.message}")
+                  sys.exit(1)
+
+          # ... rest of spawn implementation ...
+
+    pattern_for_plan_commands: |
+      # In modules/AgenticCLI/src/agenticcli/commands/plan.py
+      # Add to cmd_archive():
+
+      from agenticcli.orchestration.enforcement import get_enforcer
+
+      def cmd_archive(args):
+          # Enforcement check
+          enforcer = get_enforcer()
+          result = enforcer.check_plan_archive_allowed()
+
+          if not result.allowed:
+              print_error(f"[BLOCKED] {result.message}")
+              sys.exit(1)
+
+          # ... rest of archive implementation ...
+
+  enforcement_decorator:
+    description: "Optional decorator for cleaner enforcement integration"
+
+    implementation: |
+      from functools import wraps
+      from agenticcli.orchestration.enforcement import get_enforcer, EnforcementLevel
+
+      def enforce_role(check_function: str, **kwargs):
+          """Decorator to enforce role-based restrictions.
+
+          Args:
+              check_function: Name of RoleEnforcer method to call
+              **kwargs: Arguments to pass to the check function
+
+          Example:
+              @enforce_role("check_plan_archive_allowed")
+              def cmd_archive(args):
+                  ...
+          """
+          def decorator(func):
+              @wraps(func)
+              def wrapper(*args, **wrapper_kwargs):
+                  enforcer = get_enforcer()
+                  check = getattr(enforcer, check_function)
+                  result = check(**kwargs)
+
+                  if not result.allowed:
+                      from agenticcli.console import print_error
+                      level_prefix = {
+                          EnforcementLevel.BLOCKING: "[BLOCKED]",
+                          EnforcementLevel.WARNING: "[WARNING]",
+                          EnforcementLevel.ADVISORY: "[ADVISORY]",
+                      }
+                      print_error(f"{level_prefix[result.level]} {result.message}")
+
+                      if result.level == EnforcementLevel.BLOCKING:
+                          import sys
+                          sys.exit(1)
+
+                      # For warnings, check for --force
+                      if result.requires_force:
+                          import sys
+                          cmd_args = args[0] if args else None
+                          if not getattr(cmd_args, "force", False):
+                              sys.exit(1)
+
+                  return func(*args, **wrapper_kwargs)
+              return wrapper
+          return decorator
+
+      # Usage example:
+      @enforce_role("check_plan_archive_allowed")
+      def cmd_archive(args):
+          # Enforcement already handled by decorator
+          ...
+
+# =============================================================================
+# CLI COMMAND INTEGRATION
+# =============================================================================
+
+cli_integration:
+
+  session_spawn_integration:
+    file: "modules/AgenticCLI/src/agenticcli/commands/session.py"
+    changes:
+      - location: "cmd_spawn() - after argument parsing"
+        change: "Add enforcement check for spawn permission"
+        code: |
+          # Check spawn permission based on current role
+          enforcer = get_enforcer()
+          target_role = getattr(args, "role", None)
+          result = enforcer.check_spawn_allowed(target_role)
+
+          if not result.allowed:
+              from agenticcli.console import print_error
+              if result.level.value == "blocking":
+                  print_error(f"[BLOCKED] {result.message}")
+                  sys.exit(1)
+              elif result.requires_force and not getattr(args, "force", False):
+                  print_error(f"[WARNING] {result.message}")
+                  sys.exit(1)
+
+      - location: "cmd_spawn() - environment construction"
+        change: "Inject AGENTIC_* variables (from EN-P3-003)"
+        code: |
+          # Build spawn environment with orchestration context
+          spawn_env = os.environ.copy()
+          spawn_env["AGENTIC_SESSION_ID"] = session_id
+
+          role = getattr(args, "role", None)
+          if role:
+              spawn_env["AGENTIC_SESSION_ROLE"] = role
+          # ... other AGENTIC_* variables ...
+
+  plan_commands_integration:
+    file: "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+    changes:
+      - function: "cmd_archive()"
+        change: "Add enforcement for archive permission"
+
+      - function: "cmd_move()"
+        change: "Add enforcement for move permission"
+
+      - function: "cmd_task_complete()"
+        change: "Add enforcement for task completion scope"
+
+      - function: "cmd_status()"
+        change: "Add advisory for full plan access by subagent"
+
+  new_cli_argument:
+    file: "modules/AgenticCLI/src/agenticcli/cli.py"
+    change: "Add --force flag to session spawn"
+    code: |
+      spawn_parser.add_argument(
+          "--force", "-f",
+          action="store_true",
+          help="Override role-based enforcement warnings.",
+      )
+
+# =============================================================================
+# SESSION WHOAMI COMMAND
+# =============================================================================
+
+session_whoami_command:
+  description: "New command to display current session role and context"
+  usage: "agentic session whoami"
+
+  implementation:
+    location: "modules/AgenticCLI/src/agenticcli/commands/session.py"
+
+    function: |
+      def cmd_whoami(args, ctx=None):
+          """Display current session role and orchestration context.
+
+          Args:
+              args: Parsed command arguments.
+              ctx: Optional CLIContext.
+          """
+          from agenticcli.console import console, is_json_output, print_header, print_json
+          from agenticcli.orchestration.enforcement import get_enforcer
+
+          enforcer = get_enforcer()
+          context = enforcer.context
+
+          if is_json_output():
+              print_json({
+                  "role": context.role.value if context.role.value else "legacy",
+                  "source": context.source,
+                  "confidence": context.confidence,
+                  "session_id": context.session_id,
+                  "task_id": context.task_id,
+                  "parent_session": context.parent_session,
+                  "plan_folder": context.plan_folder,
+                  "phase": context.phase,
+              })
+              return
+
+          print_header("Session Identity")
+
+          role_display = context.role.value if context.role.value else "legacy (no orchestration)"
+          console.print(f"[cyan]Role:[/cyan] {role_display}")
+          console.print(f"[cyan]Detection Source:[/cyan] {context.source}")
+          console.print(f"[cyan]Confidence:[/cyan] {context.confidence}")
+          console.print()
+
+          if context.session_id:
+              console.print(f"[cyan]Session ID:[/cyan] {context.session_id}")
+          if context.task_id:
+              console.print(f"[cyan]Assigned Task:[/cyan] {context.task_id}")
+          if context.parent_session:
+              console.print(f"[cyan]Parent Session:[/cyan] {context.parent_session}")
+          if context.plan_folder:
+              console.print(f"[cyan]Plan Folder:[/cyan] {context.plan_folder}")
+          if context.phase:
+              console.print(f"[cyan]Phase:[/cyan] {context.phase}")
+
+          if not any([context.session_id, context.task_id, context.parent_session]):
+              console.print("[dim]No orchestration context detected.[/dim]")
+              console.print("[dim]This is a legacy session with no role restrictions.[/dim]")
+
+    cli_parser_addition: |
+      # In _add_session_parser():
+      whoami_parser = session_subparsers.add_parser(
+          "whoami",
+          help="Display current session role and orchestration context",
+      )
+      whoami_parser.set_defaults(session_command="whoami")
+
+    handle_routing: |
+      # In handle():
+      elif args.session_command == "whoami":
+          cmd_whoami(args, ctx)
+
+# =============================================================================
+# ERROR MESSAGES AND UX
+# =============================================================================
+
+error_messages:
+
+  blocked_messages:
+    spawn_as_orchestrator: |
+      [BLOCKED] Subagents cannot spawn orchestrator sessions.
+
+      You are currently running as a subagent (task: {task_id}).
+      Orchestrator spawning is reserved for the main session.
+
+      If you need additional compute, consider:
+      - Reporting back to your parent session
+      - Requesting the orchestrator spawn additional subagents
+
+    complete_wrong_task: |
+      [BLOCKED] Can only complete assigned task: {assigned_task_id}
+
+      You attempted to complete: {requested_task_id}
+      Your assigned task is: {assigned_task_id}
+
+      To complete a different task, you must be assigned to it
+      via --task when spawned.
+
+    archive_as_subagent: |
+      [BLOCKED] Only orchestrator can archive plans.
+
+      You are running as a subagent. Plan archival is an
+      orchestrator-level operation that affects all subagents.
+
+      Complete your assigned task and let the orchestrator
+      handle plan lifecycle management.
+
+  warning_messages:
+    spawn_as_subagent: |
+      [WARNING] Subagents typically don't spawn additional agents.
+
+      Spawning additional agents as a subagent may:
+      - Confuse orchestration hierarchy
+      - Create orphan sessions
+      - Compete for resources
+
+      Use --force to proceed anyway, or report to your parent
+      session if additional compute is needed.
+
+  advisory_messages:
+    full_plan_access: |
+      [ADVISORY] Subagents should focus on assigned task.
+
+      You are accessing the full plan while assigned to task: {task_id}
+
+      Consider using:
+        agentic plan task status {task_id}
+
+      to focus on your specific task context.
+
+# =============================================================================
+# IMPLEMENTATION PHASES
+# =============================================================================
+
+implementation_phases:
+
+  phase_1_core_detection:
+    name: "Core Role Detection"
+    priority: HIGH
+    effort: LOW
+    estimated_loc: 100
+    tasks:
+      - "Create orchestration/enforcement.py module"
+      - "Implement RoleEnforcer class with detection logic"
+      - "Add environment variable detection"
+      - "Export get_enforcer() function"
+    files_affected:
+      - "modules/AgenticCLI/src/agenticcli/orchestration/__init__.py (create)"
+      - "modules/AgenticCLI/src/agenticcli/orchestration/enforcement.py (create)"
+
+  phase_2_cli_integration:
+    name: "CLI Command Integration"
+    priority: HIGH
+    effort: MEDIUM
+    estimated_loc: 80
+    tasks:
+      - "Add enforcement to session spawn"
+      - "Add enforcement to plan archive/move"
+      - "Add enforcement to task complete"
+      - "Add --force flag to session spawn"
+    files_affected:
+      - "modules/AgenticCLI/src/agenticcli/commands/session.py"
+      - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+      - "modules/AgenticCLI/src/agenticcli/cli.py"
+
+  phase_3_whoami_command:
+    name: "Session Whoami Command"
+    priority: MEDIUM
+    effort: LOW
+    estimated_loc: 60
+    tasks:
+      - "Implement cmd_whoami()"
+      - "Add CLI parser for 'agentic session whoami'"
+      - "Add JSON output support"
+    files_affected:
+      - "modules/AgenticCLI/src/agenticcli/commands/session.py"
+      - "modules/AgenticCLI/src/agenticcli/cli.py"
+
+  phase_4_environment_injection:
+    name: "Environment Variable Injection"
+    priority: HIGH
+    effort: LOW
+    estimated_loc: 40
+    depends_on: "EN-P3-003 implementation"
+    tasks:
+      - "Add AGENTIC_* env injection to session spawn"
+      - "Add new CLI args (--role, --task, --plan, --parent-session, --phase)"
+      - "Store context in session registry"
+    note: "This overlaps with EN-P3-003 implementation"
+
+  total_estimate:
+    new_lines_of_code: 280
+    files_modified: 5
+    files_created: 2
+    breaking_changes: none
+    backward_compatible: yes
+
+# =============================================================================
+# TESTING STRATEGY
+# =============================================================================
+
+testing_strategy:
+
+  unit_tests:
+    location: "modules/AgenticCLI/tests/test_orchestration_enforcement.py"
+    tests:
+      - test_detect_role_from_env_orchestrator
+      - test_detect_role_from_env_subagent
+      - test_detect_role_from_env_legacy
+      - test_check_spawn_allowed_as_orchestrator
+      - test_check_spawn_allowed_as_subagent
+      - test_check_spawn_allowed_as_legacy
+      - test_check_spawn_orchestrator_blocked_for_subagent
+      - test_check_task_complete_allowed_for_assigned_task
+      - test_check_task_complete_blocked_for_wrong_task
+      - test_check_plan_archive_blocked_for_subagent
+      - test_enforce_role_decorator
+
+  integration_tests:
+    location: "modules/AgenticCLI/tests/test_session_enforcement_integration.py"
+    tests:
+      - test_spawn_with_role_sets_env_vars
+      - test_spawn_as_subagent_warns_without_force
+      - test_spawn_as_subagent_proceeds_with_force
+      - test_archive_blocked_when_subagent
+      - test_whoami_shows_role_context
+
+  manual_verification:
+    scenarios:
+      - name: "Orchestrator spawns subagent"
+        steps:
+          - "Start session with --role orchestrator"
+          - "Spawn subagent with --role subagent --task TASK-001"
+          - "Verify subagent sees AGENTIC_* env vars"
+          - "Verify subagent can complete only TASK-001"
+
+      - name: "Subagent attempts to spawn"
+        steps:
+          - "Start session with --role subagent"
+          - "Attempt 'agentic session spawn --prompt test'"
+          - "Verify warning is displayed"
+          - "Verify --force allows spawn"
+
+      - name: "Legacy session backward compatibility"
+        steps:
+          - "Start session without --role"
+          - "Run 'agentic session whoami'"
+          - "Verify shows 'legacy' with no restrictions"
+          - "Verify all commands work normally"
+
+# =============================================================================
+# SECURITY CONSIDERATIONS
+# =============================================================================
+
+security_considerations:
+
+  environment_variable_tampering:
+    risk: |
+      A malicious or confused agent could modify AGENTIC_SESSION_ROLE
+      environment variable to escalate privileges.
+
+    mitigation: |
+      1. Session registry is authoritative - can cross-verify
+      2. Environment is set at spawn time, hard to modify in subprocess
+      3. Enforcement is defense-in-depth, not security boundary
+      4. High-privilege operations should require explicit orchestrator role
+
+  subagent_escape:
+    risk: |
+      Subagent could use --force to bypass restrictions and
+      behave as if it were an orchestrator.
+
+    mitigation: |
+      1. --force only overrides WARNING level, not BLOCKING
+      2. Critical operations (archive, orchestrator spawn) are BLOCKING
+      3. Audit trail via session registry shows all spawns
+      4. Parent orchestrator can monitor child behavior
+
+  inheritance_attacks:
+    risk: |
+      Child process inherits parent's environment including role,
+      could lead to unintended privilege propagation.
+
+    mitigation: |
+      1. Each spawn explicitly sets AGENTIC_SESSION_ROLE for child
+      2. Default is to NOT inherit role (role = None in child)
+      3. Orchestrator must explicitly grant role to children
+
+# =============================================================================
+# FUTURE ENHANCEMENTS
+# =============================================================================
+
+future_enhancements:
+
+  phase_based_enforcement:
+    description: |
+      Enforce that certain operations only happen in certain phases.
+      E.g., no code changes during "review" phase, no deploys during "plan".
+    priority: LOW
+    effort: MEDIUM
+
+  resource_quotas:
+    description: |
+      Limit number of subagents an orchestrator can spawn.
+      Limit compute time per subagent.
+    priority: LOW
+    effort: HIGH
+
+  audit_logging:
+    description: |
+      Log all enforcement decisions to file for debugging
+      and compliance tracking.
+    priority: MEDIUM
+    effort: LOW
+
+  mcp_server_integration:
+    description: |
+      Expose role enforcement through MCP server so Claude Code
+      can query role context programmatically.
+    priority: MEDIUM
+    effort: MEDIUM
+
+  permission_overrides:
+    description: |
+      Allow plan files to specify custom permission overrides
+      for specific tasks or phases.
+    priority: LOW
+    effort: MEDIUM
+
+# =============================================================================
+# CONCLUSION
+# =============================================================================
+
+conclusion: |
+  This design provides a comprehensive role detection and enforcement system
+  that builds on the foundations laid in EN-P4-001 (session metadata) and
+  EN-P4-002 (environment-based identification).
+
+  Key Achievements:
+  1. Multi-layer detection strategy with environment variables as primary source
+  2. Graduated enforcement levels (advisory, warning, blocking)
+  3. Clear role permissions for orchestrators and subagents
+  4. CLI integration patterns for existing commands
+  5. New 'agentic session whoami' command for role introspection
+  6. Full backward compatibility for legacy sessions
+
+  The implementation requires approximately 280 lines of new code across
+  5 modified files and 2 new files. All changes are backward compatible
+  with existing sessions that don't use orchestration context.
+
+  Next Steps:
+  1. Implement Phase 1 (core detection module)
+  2. Implement Phase 2 (CLI integration)
+  3. Complete EN-P3-003 for environment injection (dependency)
+  4. Add unit and integration tests
+  5. Document in user-facing documentation
+
+# =============================================================================
+# REFERENCES
+# =============================================================================
+
+references:
+  internal:
+    - EN-P4-001_session_metadata_audit.yml
+    - EN-P4-002_environment_session_identification.yml
+    - EN-P3-003_context_injection_design.yml
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+
+  design_patterns:
+    - "RBAC (Role-Based Access Control)"
+    - "Defense in Depth"
+    - "Fail-Open for Backward Compatibility"
+
+# =============================================================================
+# METADATA
+# =============================================================================
+
+metadata:
+  design_date: "2026-01-31"
+  designer: "builder-agent"
+  task_id: "EN-P4-003"
+  proposal: "P4 - Main Session Detection/Identification"
+  based_on:
+    - "EN-P4-001_session_metadata_audit.yml"
+    - "EN-P4-002_environment_session_identification.yml"
+    - "EN-P3-003_context_injection_design.yml"
+  detection_layers: 3
+  enforcement_levels: 3
+  new_cli_commands: 1
+  enforcement_points: 5
+  estimated_total_loc: 280
+  files_modified: 5
+  files_created: 2
+  backward_compatible: true

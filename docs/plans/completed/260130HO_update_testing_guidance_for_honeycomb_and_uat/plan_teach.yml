@@ -1,0 +1,131 @@
+_template_status: active
+plan:
+  name: Update Testing Guidance for Honeycomb and UAT
+  worktree_path: /home/code/AgenticEngineering-guidance-testing-honeycomb
+  branch: guidance-testing-honeycomb
+  status: pending
+  objective: 'Align the AgenticGuidance testing assets with the "Honeycomb Integration
+    First" model
+
+    and reinforce "User Story UAT" as the core validation requirement.
+
+    '
+  phases:
+  - name: Update Definitions
+    id: phase_definitions
+    status: pending
+    tasks:
+    - id: HO-001
+      name: Add Honeycomb Testing Definition
+      inputs:
+      - modules/AgenticGuidance/assets/definitions/testing-types.yml
+      target_files:
+      - modules/AgenticGuidance/assets/definitions/testing-types.yml
+      guidance: "Add `honeycomb_testing` to the testing types. Define it as focusing\
+        \ on\nintegration/service boundaries where the most value is found, rather\
+        \ than \nlower-level unit tests or high-level E2E tests.\n"
+      acceptance_criteria:
+      - honeycomb_testing defined in testing-types.yml
+      - Definition emphasizes integration over unit/E2E as the primary volume
+      status: completed
+  - name: Update Guidelines
+    id: phase_guidelines
+    status: pending
+    tasks:
+    - id: HO-002
+      name: Update Strategy Validation to Honeycomb
+      inputs:
+      - modules/AgenticGuidance/assets/guidelines/strategy-validation.yml
+      target_files:
+      - modules/AgenticGuidance/assets/guidelines/strategy-validation.yml
+      guidance: 'Introduce the `honeycomb` strategy. Make it the default recommended
+        strategy
+
+        for planners. Update selection guidance to favor honeycomb for most use cases.
+
+        '
+      acceptance_criteria:
+      - honeycomb strategy available in strategy-validation.yml
+      - Selection guidance updated to recommend honeycomb-first
+      status: completed
+    - id: HO-003
+      name: Reinforce UAT Core in Testing Guidelines
+      inputs:
+      - modules/AgenticGuidance/assets/guidelines/testing.yml
+      target_files:
+      - modules/AgenticGuidance/assets/guidelines/testing.yml
+      guidance: 'Update the UAT requirements section to call out UAT as the "Core"
+
+        success criterion. Emphasize that all validation must ultimately
+
+        anchor to user stories.
+
+        '
+      acceptance_criteria:
+      - testing.yml identifies UAT as the core success criterion
+      - Explicit mention of anchoring to user stories as mandatory
+      status: completed
+  - name: Update Loops and Ordering
+    id: phase_loops
+    status: pending
+    tasks:
+    - id: HO-004
+      name: Update Loop Phase Ordering
+      inputs:
+      - modules/AgenticGuidance/assets/definitions/agent-loops.yml
+      target_files:
+      - modules/AgenticGuidance/assets/definitions/agent-loops.yml
+      guidance: 'Update the `phase_ordering` section to ensure `user-story-validation-loop`
+
+        is highlighted as the primary success criterion and correctly ordered.
+
+        '
+      acceptance_criteria:
+      - phase_ordering reflects the UAT-core priority
+      status: completed
+  - name: Validation Phase
+    id: phase_validation
+    status: pending
+    loop_strategy: guidance-self-review-loop
+    tasks:
+    - id: HO-005
+      name: Self-Review Changed Guidance
+      inputs:
+      - modules/AgenticGuidance/assets/guidelines/testing.yml
+      - modules/AgenticGuidance/assets/guidelines/strategy-validation.yml
+      - modules/AgenticGuidance/assets/definitions/testing-types.yml
+      - modules/AgenticGuidance/assets/definitions/self-review-criteria.yml
+      target_files: []
+      guidance: 'Run `agent-self-review` on the modified files to ensure they meet
+
+        consistency and quality standards.
+
+        '
+      acceptance_criteria:
+      - All modified files pass self-review
+      status: completed
+success_criteria:
+- honeycomb_testing definition added to testing-types.yml
+- honeycomb strategy is default in strategy-validation.yml
+- UAT marked as core success criterion in testing.yml
+- agent-loops.yml phase_ordering reflects UAT-core priority
+- All modified files pass self-review validation
+validation_steps:
+- step: Verify honeycomb definition exists
+  command: grep -q 'honeycomb_testing' modules/AgenticGuidance/assets/definitions/testing-types.yml
+- step: Verify UAT core language
+  command: grep -qi 'core' modules/AgenticGuidance/assets/guidelines/testing.yml
+- step: Run self-review loop
+  command: agentic context bootstrap --role guidance-self-review -j
+loop_structure:
+  type: guidance-self-review-loop
+  trigger: Completion of guidance updates
+  exit_criteria:
+    success: All criteria in self-review-criteria.yml met
+    max_iterations: 3
+    escalation: Escalate to user for conflict resolution
+  participants:
+  - agent: teacher-update-assets
+    role: executor
+  - agent: planner-reviewer
+    role: validator

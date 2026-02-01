@@ -1,0 +1,395 @@
+# EN-P5-002: Tmux Plans Pattern Review
+# Task: Review completed/deferred tmux plans for relevant patterns
+# Created: 2026-02-01
+# Status: completed
+
+task:
+  id: EN-P5-002
+  name: Review completed/deferred tmux plans for relevant patterns
+  status: completed
+  completed_at: "2026-02-01T08:15:00Z"
+
+# =============================================================================
+# SUMMARY
+# =============================================================================
+# Reviewed 3 tmux-related plans for orchestration enforcement patterns:
+#   1. 260126AT_agentictmux (completed) - Base tmux session management
+#   2. 260130TE_tmux_remote_terminal (completed) - Mobile access workflow
+#   3. 260130MA_multi_agent_tmux_coordination (deferred) - Multi-agent patterns
+#
+# Key findings relevant to orchestration enforcement:
+#   - Session role-based identification patterns (supervisor/worker/observer)
+#   - File-based messaging patterns for inter-agent communication
+#   - Terminal capture patterns for session observation
+#   - Quality gate patterns for phase approval workflows
+# =============================================================================
+
+plans_reviewed:
+
+  - plan_id: 260126AT
+    name: AgenticTmux Module
+    status: completed
+    location: /home/code/AgenticEngineering/docs/plans/completed/260126AT_agentictmux/
+
+    summary: |
+      Foundation module for tmux session management. Establishes the
+      SessionService in AgenticGuidance as the core business logic layer,
+      with AgenticTmux as a thin presentation layer.
+
+    relevant_patterns:
+      session_lifecycle_management:
+        description: |
+          SessionService manages session create/attach/list/kill operations
+          with a clear lifecycle state model (SessionState enum).
+        files:
+          - modules/AgenticGuidance/src/agenticguidance/services/session.py
+          - modules/AgenticGuidance/src/agenticguidance/services/session_config.py
+        applicability: |
+          The SessionService patterns could be extended to include orchestration
+          role information (builder, tester, orchestrator) for enforcement.
+
+      layered_architecture:
+        description: |
+          Clean separation between service layer (AgenticGuidance) and
+          presentation layer (AgenticTmux). Business logic centralized.
+        pattern_type: architectural
+        applicability: |
+          Similar pattern could be used for orchestration enforcement -
+          a core EnforcementService with CLI commands as thin wrappers.
+
+      configuration_schema:
+        description: |
+          SessionNamingConvention and SessionConfigLoader provide structured
+          configuration management with validation.
+        files:
+          - modules/AgenticGuidance/src/agenticguidance/services/session_config.py
+        applicability: |
+          Could inform how orchestration role configuration is stored and loaded.
+
+  - plan_id: 260130TE
+    name: tmux Remote Terminal Access
+    status: completed
+    location: /home/code/AgenticEngineering/docs/plans/completed/260130TE_implement_tmux_for_remote_terminal_access_to_claud/
+
+    summary: |
+      Enables mobile access to Claude Code sessions via tmux + Tailscale + SSH.
+      Builds on AgenticTmux foundation with remote-optimized configurations.
+
+    relevant_patterns:
+      network_status_introspection:
+        description: |
+          Network status command provides session connection information
+          including Tailscale IP and SSH connection strings.
+        files:
+          - modules/AgenticTmux/src/agentictmux/commands/remote.py
+        applicability: |
+          Similar introspection could show current session's orchestration
+          role, assigned tasks, and restrictions.
+
+      session_templates:
+        description: |
+          Pre-configured session layouts (claude-session.yml template)
+          with named windows and initial commands.
+        files:
+          - modules/AgenticTmux/templates/claude-session.yml
+          - modules/AgenticTmux/src/agentictmux/commands/shortcuts.py
+        applicability: |
+          Template concept could extend to orchestration-aware templates
+          that pre-configure sessions with appropriate role context.
+
+      context_bootstrap_integration:
+        description: |
+          Remote access info injected into agentic context bootstrap,
+          providing session-aware information at startup.
+        files:
+          - modules/AgenticCLI/src/agenticcli/commands/context.py
+        applicability: |
+          Direct relevance - orchestration role could be added to context
+          bootstrap for enforcement awareness at session start.
+
+    orchestration_diagram_patterns:
+      loop_definitions:
+        description: "test-fix loops with max 3 iterations, escalate on failure"
+        mmd_header: "LOOP_DEFINITIONS: test-fix: Max 3 iterations per task"
+
+      feedback_triggers:
+        description: "TEST_FAILURE -> TestFixLoop, BUILD_ERROR -> BuildFixLoop"
+        mmd_header: "FEEDBACK_TRIGGERS: TEST_FAILURE -> TestFixLoop"
+
+      agent_routing:
+        description: "Phase-to-agent mapping for task delegation"
+        mmd_header: "AGENT_ROUTING: TmuxConfig -> build-python"
+
+  - plan_id: 260130MA
+    name: Multi-Agent tmux Coordination
+    status: deferred
+    location: /home/code/AgenticEngineering/docs/plans/deferred/260130MA_multi_agent_tmux_coordination/
+    deferred_reason: "Pending complexity review - 18 tasks across 6 phases"
+
+    summary: |
+      Comprehensive multi-agent coordination system using tmux. Defines
+      Supervisor/Worker and Quality Gate patterns for agent coordination.
+      Most relevant to orchestration enforcement due to explicit role design.
+
+    relevant_patterns:
+
+      session_role_enum:
+        description: |
+          Explicit SessionRole enum with values: standalone, supervisor,
+          worker, observer. Role-tagged sessions enable filtering and
+          role-appropriate behavior.
+        design_location: proposal_supervisor_worker.md
+        proposed_file: modules/AgenticGuidance/src/agenticguidance/services/session.py
+        code_example: |
+          class SessionRole(Enum):
+              STANDALONE = "standalone"  # Independent session
+              SUPERVISOR = "supervisor"  # Coordinates workers
+              WORKER = "worker"          # Executes tasks
+              OBSERVER = "observer"      # Read-only monitoring
+        applicability: HIGH
+        enforcement_relevance: |
+          This pattern directly applies to orchestration enforcement.
+          Extend SessionRole or create parallel OrchestrationRole enum
+          with: orchestrator, builder, tester, reviewer.
+
+      extended_session_info:
+        description: |
+          SessionInfo extended with role, supervisor_session, worker_sessions,
+          inbox_path, task_id, and last_heartbeat fields.
+        design_location: proposal_supervisor_worker.md
+        applicability: HIGH
+        enforcement_relevance: |
+          Pattern for adding orchestration metadata to sessions:
+          - orchestration_role: OrchestrationRole
+          - assigned_plan: Optional[str]
+          - current_phase: Optional[str]
+          - task_scope: List[str] (allowed task IDs)
+
+      coordination_service:
+        description: |
+          CoordinationService wraps SessionService with supervisor/worker
+          operations: create_supervisor, spawn_worker, list_workers,
+          monitor_workers.
+        design_location: proposal_supervisor_worker.md
+        proposed_file: modules/AgenticGuidance/src/agenticguidance/services/coordination.py
+        applicability: MEDIUM
+        enforcement_relevance: |
+          Could inform EnforcementService design that wraps SessionService
+          with orchestration-aware operations.
+
+      terminal_capture:
+        description: |
+          capture_terminal() method using `tmux capture-pane -p -J -t session:pane -S -lines`
+          Returns TerminalSnapshot with content, timestamp, line_count.
+        design_location: proposal_supervisor_worker.md
+        applicability: MEDIUM
+        enforcement_relevance: |
+          Could be used by orchestrator to observe builder/tester sessions
+          for progress monitoring and enforcement validation.
+
+      file_based_messaging:
+        description: |
+          Inbox pattern at ~/.agentic/coordination/inbox/{session}/
+          Message schema: id, from_session, to_session, type, payload, timestamp
+          Types: task, status, query, response, heartbeat
+        design_location: proposal_supervisor_worker.md
+        applicability: MEDIUM
+        enforcement_relevance: |
+          Could be adapted for orchestration enforcement messaging:
+          - Orchestrator sends task assignments with scope restrictions
+          - Builders/testers report completion for validation
+
+      quality_gate_pattern:
+        description: |
+          ReviewService manages review requests and verdicts.
+          Plan phases can specify requires_approval: true.
+          Phase transition blocked until approval received.
+        design_location: proposal_quality_gate.md
+        proposed_file: modules/AgenticGuidance/src/agenticguidance/services/review.py
+        applicability: HIGH
+        enforcement_relevance: |
+          Direct pattern for phase-level enforcement gates:
+          - Builder completes task -> requests review
+          - Orchestrator/reviewer must approve before phase completion
+          - Rejection triggers rework loop
+
+        review_status_enum:
+          values:
+            - PENDING
+            - IN_REVIEW
+            - APPROVED
+            - REJECTED
+            - TIMED_OUT
+
+        cli_commands:
+          - "agentic review request --phase <id> --reviewer <session>"
+          - "agentic review approve --review-id <id>"
+          - "agentic review reject --review-id <id> --reason <text>"
+          - "agentic review status"
+
+        plan_integration: |
+          Plan CLI extended with approval gate checking:
+          - cmd_phase_update checks is_phase_approved() before allowing completion
+          - Unauthorized completion attempts blocked with guidance message
+
+      audit_trail:
+        description: |
+          All review actions logged to audit trail at ~/.agentic/reviews/audit/
+          Log format: timestamp, action, review_id, phase_id, worker, reviewer, verdict
+        design_location: proposal_quality_gate.md
+        applicability: HIGH
+        enforcement_relevance: |
+          Audit pattern directly applicable to enforcement logging:
+          - Log all task assignments
+          - Log scope violations
+          - Log approvals/rejections
+          - Enable compliance reporting
+
+# =============================================================================
+# PATTERNS APPLICABLE TO ORCHESTRATION ENFORCEMENT
+# =============================================================================
+
+applicable_patterns:
+
+  high_applicability:
+    - name: Session Role Enum
+      source: 260130MA (proposal_supervisor_worker.md)
+      description: |
+        SessionRole enum pattern with STANDALONE, SUPERVISOR, WORKER, OBSERVER.
+        Extend or parallel with OrchestrationRole: orchestrator, builder, tester.
+      implementation_suggestion: |
+        Create OrchestrationRole enum in agenticguidance/services/session.py
+        or new orchestration.py service file.
+
+    - name: Extended Session Metadata
+      source: 260130MA (proposal_supervisor_worker.md)
+      description: |
+        SessionInfo extended with role and coordination fields.
+        Add orchestration_role, assigned_plan, current_phase, task_scope.
+      implementation_suggestion: |
+        Extend existing SessionInfo dataclass with orchestration fields,
+        or create OrchestrationContext dataclass linked to sessions.
+
+    - name: Quality Gate Pattern
+      source: 260130MA (proposal_quality_gate.md)
+      description: |
+        ReviewService with request/approve/reject workflow.
+        Phase transitions blocked until approved.
+      implementation_suggestion: |
+        Apply to plan phase transitions - builder must pass orchestrator
+        gate before phase marked complete.
+
+    - name: Audit Trail
+      source: 260130MA (proposal_quality_gate.md)
+      description: |
+        Structured logging of all enforcement-relevant actions.
+        Enables compliance verification and debugging.
+      implementation_suggestion: |
+        Create ~/.agentic/enforcement/audit/ with enforcement event logging.
+
+  medium_applicability:
+    - name: File-Based Messaging
+      source: 260130MA (proposal_supervisor_worker.md)
+      description: |
+        Inbox pattern for inter-session communication.
+        Could communicate task scope restrictions.
+      implementation_suggestion: |
+        Adapt for enforcement: orchestrator sends task with allowed scope,
+        builder operates within scope, reports completion.
+
+    - name: Terminal Capture
+      source: 260130MA (proposal_supervisor_worker.md)
+      description: |
+        Capture session terminal output for observation.
+      implementation_suggestion: |
+        Orchestrator could observe builder/tester sessions for
+        enforcement validation (optional, advanced feature).
+
+    - name: Context Bootstrap Integration
+      source: 260130TE (plan_build.yml)
+      description: |
+        Session info injected at bootstrap time.
+      implementation_suggestion: |
+        Inject orchestration role and scope at session start.
+
+# =============================================================================
+# RECOMMENDATIONS FOR ORCHESTRATION ENFORCEMENT
+# =============================================================================
+
+recommendations:
+
+  immediate_actions:
+    - action: Define OrchestrationRole enum
+      based_on: 260130MA SessionRole pattern
+      description: |
+        Create enum with: orchestrator, builder, tester, reviewer, standalone.
+        Each role has defined permissions and restrictions.
+
+    - action: Extend SessionInfo with orchestration context
+      based_on: 260130MA SessionInfo extension pattern
+      description: |
+        Add fields: orchestration_role, assigned_plan, current_phase, task_scope.
+        Enables role-aware behavior throughout the system.
+
+    - action: Implement phase completion gates
+      based_on: 260130MA Quality Gate pattern
+      description: |
+        Prevent phase completion without orchestrator approval.
+        Apply requires_approval: true pattern from review proposal.
+
+  future_considerations:
+    - action: Multi-agent coordination
+      based_on: Full 260130MA implementation
+      description: |
+        Once orchestration enforcement established, revisit 260130MA
+        for full supervisor/worker patterns with tmux coordination.
+
+    - action: Terminal observation
+      based_on: 260130MA capture_terminal pattern
+      description: |
+        Allow orchestrator to observe builder/tester sessions for
+        real-time progress monitoring.
+
+# =============================================================================
+# KEY INSIGHTS
+# =============================================================================
+
+key_insights:
+  - insight: |
+      The 260130MA plan has already designed comprehensive multi-agent
+      coordination patterns that directly inform orchestration enforcement.
+      Rather than designing from scratch, adapt these patterns.
+
+  - insight: |
+      File-based state (inbox pattern, review files) provides persistence
+      across session restarts and clear debugging visibility.
+
+  - insight: |
+      The Quality Gate pattern from proposal_quality_gate.md is exactly
+      what orchestration enforcement needs for phase-level control.
+
+  - insight: |
+      Session role identification via enum + metadata extension is the
+      foundation for any role-based enforcement system.
+
+  - insight: |
+      Audit trails are critical for enforcement - both for debugging
+      and for demonstrating compliance with orchestration rules.
+
+# =============================================================================
+# FILES REVIEWED
+# =============================================================================
+
+files_reviewed:
+  - /home/code/AgenticEngineering/docs/plans/completed/260126AT_agentictmux/README.md
+  - /home/code/AgenticEngineering/docs/plans/completed/260126AT_agentictmux/plan_build.yml
+  - /home/code/AgenticEngineering/docs/plans/completed/260126AT_agentictmux/orchestration_agentictmux.mmd
+  - /home/code/AgenticEngineering/docs/plans/completed/260130TE_implement_tmux_for_remote_terminal_access_to_claud/README.md
+  - /home/code/AgenticEngineering/docs/plans/completed/260130TE_implement_tmux_for_remote_terminal_access_to_claud/plan_build.yml
+  - /home/code/AgenticEngineering/docs/plans/completed/260130TE_implement_tmux_for_remote_terminal_access_to_claud/plan_test.yml
+  - /home/code/AgenticEngineering/docs/plans/completed/260130TE_implement_tmux_for_remote_terminal_access_to_claud/orchestration_tmux_remote.mmd
+  - /home/code/AgenticEngineering/docs/plans/deferred/260130MA_multi_agent_tmux_coordination/README.md
+  - /home/code/AgenticEngineering/docs/plans/deferred/260130MA_multi_agent_tmux_coordination/plan_build.yml
+  - /home/code/AgenticEngineering/docs/plans/deferred/260130MA_multi_agent_tmux_coordination/orchestration_multi_agent.mmd
+  - /home/code/AgenticEngineering/docs/plans/deferred/260130MA_multi_agent_tmux_coordination/proposal_supervisor_worker.md
+  - /home/code/AgenticEngineering/docs/plans/deferred/260130MA_multi_agent_tmux_coordination/proposal_quality_gate.md

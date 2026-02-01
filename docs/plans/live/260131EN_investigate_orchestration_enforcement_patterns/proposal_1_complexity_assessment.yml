@@ -1,0 +1,920 @@
+# Complexity Assessment: Tasklist-based Orchestration (P1)
+# Plan ID: 260131EN
+# Task ID: EN-P1-003
+# Type: Implementation Complexity Assessment
+# Created: 2026-01-31
+# Based on: EN-P1-002 Gaps Analysis
+
+_document_metadata:
+  task_id: EN-P1-003
+  depends_on: EN-P1-002
+  agent_type: planner
+  status: completed
+  assessment_date: "2026-01-31"
+
+# =============================================================================
+# EXECUTIVE SUMMARY
+# =============================================================================
+
+executive_summary: |
+  This document assesses the implementation complexity of leveraging the CLI
+  tasklist infrastructure for orchestration enforcement, as analyzed in the
+  gaps analysis (EN-P1-002).
+
+  OVERALL VERDICT: VIABLE WITH CAVEATS
+
+  Total Effort Estimate: 8-12 weeks for full implementation
+  Minimum Viable Implementation: 3-4 weeks (quick wins + critical gaps)
+
+  The tasklist-based approach is viable for orchestration enforcement, but
+  requires addressing 7 identified gaps. The approach offers the advantage
+  of building on existing CLI infrastructure rather than creating new systems.
+
+  Key Findings:
+  - 2 quick wins can be implemented immediately (1-2 weeks)
+  - 4 medium-complexity solutions form the core implementation (4-6 weeks)
+  - 1 high-complexity item (state machine) should be deferred or simplified
+  - No blocking technical risks identified
+
+# =============================================================================
+# EFFORT SIZING METHODOLOGY
+# =============================================================================
+
+sizing_methodology:
+  scale: "T-Shirt with Story Point Equivalents"
+  definitions:
+    XS:
+      story_points: 1-2
+      duration: "1-2 days"
+      characteristics:
+        - "Single file change"
+        - "Clear implementation path"
+        - "No external dependencies"
+        - "Minimal testing required"
+    S:
+      story_points: 3-5
+      duration: "3-5 days"
+      characteristics:
+        - "2-3 file changes"
+        - "Well-understood pattern"
+        - "Minor integration work"
+        - "Standard testing"
+    M:
+      story_points: 5-8
+      duration: "1-2 weeks"
+      characteristics:
+        - "Multiple file changes"
+        - "Some design decisions required"
+        - "Moderate integration complexity"
+        - "Comprehensive testing"
+    L:
+      story_points: 8-13
+      duration: "2-3 weeks"
+      characteristics:
+        - "Significant code changes"
+        - "Design spikes may be needed"
+        - "Cross-module integration"
+        - "Integration testing required"
+    XL:
+      story_points: 13-21
+      duration: "3-5 weeks"
+      characteristics:
+        - "Major feature development"
+        - "Schema changes required"
+        - "Multi-codebase changes"
+        - "Extensive testing and validation"
+
+# =============================================================================
+# GAP-BY-GAP COMPLEXITY ASSESSMENT
+# =============================================================================
+
+gap_assessments:
+
+  - gap_id: GAP-001
+    name: "No Real-time Agent Progress Tracking"
+    severity: HIGH
+
+    recommended_solution:
+      name: "Activity Heartbeat System"
+      complexity_rating: M
+      story_points: 5-8
+      duration: "1-2 weeks"
+
+    implementation_breakdown:
+      components:
+        - name: "Heartbeat CLI command"
+          effort: S
+          description: |
+            Add `agentic task heartbeat` command that records timestamp
+            to task metadata. Simple YAML update operation.
+          files_affected:
+            - modules/AgenticCLI/src/agenticcli/commands/task.py
+
+        - name: "Heartbeat storage schema"
+          effort: XS
+          description: |
+            Add last_activity_timestamp field to task schema.
+            Minimal schema extension.
+          files_affected:
+            - Task YAML schema (if formalized)
+
+        - name: "Stale task detection"
+          effort: S
+          description: |
+            Add `agentic task stale` command that lists tasks with
+            heartbeat older than threshold.
+          files_affected:
+            - modules/AgenticCLI/src/agenticcli/commands/task.py
+
+      dependencies:
+        - "Existing task command infrastructure"
+
+      prerequisites:
+        - "Task schema supports arbitrary metadata fields"
+
+      risks:
+        - risk: "Agent forgets to call heartbeat"
+          likelihood: MEDIUM
+          impact: MEDIUM
+          mitigation: "Include heartbeat in standard guidance patterns"
+
+        - risk: "CLI overhead affects performance"
+          likelihood: LOW
+          impact: LOW
+          mitigation: "Heartbeat is lightweight YAML update"
+
+    alternative_solutions:
+      - name: "Progress Milestones"
+        complexity_rating: M
+        story_points: 8-13
+        trade_off: "More granular but requires task schema changes"
+
+      - name: "File-based Activity Log"
+        complexity_rating: S
+        story_points: 3-5
+        trade_off: "Simpler but not queryable via CLI"
+
+  - gap_id: GAP-002
+    name: "No Orchestration State Machine"
+    severity: CRITICAL
+
+    recommended_solution:
+      name: "Gate Validation Commands"
+      complexity_rating: M
+      story_points: 8
+      duration: "2 weeks"
+      rationale: |
+        The full phase-aware schema (HIGH complexity) is overkill for MVP.
+        Gate validation commands provide enforcement where it matters most
+        (phase transitions) without requiring full schema redesign.
+
+    implementation_breakdown:
+      components:
+        - name: "Gate check command"
+          effort: M
+          description: |
+            Add `agentic plan gate check <phase>` that validates gate
+            requirements are met. Returns pass/fail with reasons.
+          files_affected:
+            - modules/AgenticCLI/src/agenticcli/commands/plan.py
+            - modules/AgenticGuidance/src/ (if using Guidance CLI backend)
+
+        - name: "Gate require command"
+          effort: S
+          description: |
+            Add `agentic plan gate require <phase>` that errors if gate
+            not met. Wraps gate check with exit code.
+          files_affected:
+            - modules/AgenticCLI/src/agenticcli/commands/plan.py
+
+        - name: "Gate definition schema"
+          effort: M
+          description: |
+            Define gate requirements in plan YAML or separate file.
+            Example: mmd_exists, tasks_complete, approval_received.
+          files_affected:
+            - Plan YAML schema
+            - Gate definition file (new)
+
+        - name: "Built-in gate validators"
+          effort: M
+          description: |
+            Implement common gate validators:
+            - mmd_exists: Check for MMD file presence
+            - tasks_complete: Check phase tasks all completed
+            - file_exists: Generic file presence check
+          files_affected:
+            - New validator module
+
+      dependencies:
+        - "Plan YAML parsing infrastructure"
+        - "File system access"
+
+      prerequisites:
+        - "Gate definitions can be stored in plan files"
+        - "MMD file paths are discoverable"
+
+      risks:
+        - risk: "Agent bypasses gate commands"
+          likelihood: MEDIUM
+          impact: HIGH
+          mitigation: "Integrate with bootstrap to require gate checks"
+
+        - risk: "Gate definitions vary per orchestration type"
+          likelihood: HIGH
+          impact: MEDIUM
+          mitigation: "Support gate definition overrides in plan files"
+
+    alternative_solutions:
+      - name: "Phase-aware Tasklist Schema"
+        complexity_rating: XL
+        story_points: 21+
+        trade_off: "Full enforcement but major schema redesign"
+
+      - name: "Separate Orchestration State File"
+        complexity_rating: L
+        story_points: 13
+        trade_off: "Isolated concerns but two files to sync"
+
+  - gap_id: GAP-003
+    name: "No Cross-Agent Task Dependencies"
+    severity: HIGH
+
+    recommended_solution:
+      name: "Enforced Task Dependencies"
+      complexity_rating: M
+      story_points: 5-8
+      duration: "1-2 weeks"
+
+    implementation_breakdown:
+      components:
+        - name: "Dependency check on task start"
+          effort: M
+          description: |
+            Modify `agentic plan task start` to check depends_on field.
+            If any dependency task is not completed, refuse to start.
+          files_affected:
+            - modules/AgenticCLI/src/agenticcli/commands/task.py
+
+        - name: "Dependency status query"
+          effort: S
+          description: |
+            Add `agentic plan task deps <task-id>` to show dependency
+            status and ready/not-ready determination.
+          files_affected:
+            - modules/AgenticCLI/src/agenticcli/commands/task.py
+
+        - name: "Next available task query"
+          effort: S
+          description: |
+            Add `agentic plan task next` that returns first pending
+            task with all dependencies satisfied.
+          files_affected:
+            - modules/AgenticCLI/src/agenticcli/commands/task.py
+
+      dependencies:
+        - "Existing depends_on field in task schema"
+        - "Task status tracking"
+
+      prerequisites:
+        - "Task IDs are unique within plan"
+        - "depends_on field uses task IDs"
+
+      risks:
+        - risk: "Circular dependencies cause deadlock"
+          likelihood: LOW
+          impact: HIGH
+          mitigation: "Validate dependency graph at plan load time"
+
+        - risk: "Agents manually edit YAML to bypass"
+          likelihood: LOW
+          impact: MEDIUM
+          mitigation: "Audit agent checks for manual edits"
+
+    alternative_solutions:
+      - name: "Dependency Status Query Only"
+        complexity_rating: S
+        story_points: 3-5
+        trade_off: "Lighter but still relies on agent discipline"
+
+      - name: "Task Queue with Dependency Resolution"
+        complexity_rating: XL
+        story_points: 21+
+        trade_off: "Full automation but major architectural change"
+
+  - gap_id: GAP-004
+    name: "No Agent Session Correlation"
+    severity: MEDIUM
+
+    recommended_solution:
+      name: "Session ID Field in Task"
+      complexity_rating: M
+      story_points: 5-8
+      duration: "1 week"
+
+    implementation_breakdown:
+      components:
+        - name: "Session ID capture"
+          effort: S
+          description: |
+            Capture session ID when task is started. Use tmux session
+            name, process ID, or generated UUID.
+          files_affected:
+            - modules/AgenticCLI/src/agenticcli/commands/task.py
+
+        - name: "Session ID storage"
+          effort: XS
+          description: |
+            Add session_id field to task when claimed.
+          files_affected:
+            - Task YAML schema
+
+        - name: "Session-based queries"
+          effort: S
+          description: |
+            Add `agentic plan task by-session <session-id>` and
+            `agentic plan task orphaned` commands.
+          files_affected:
+            - modules/AgenticCLI/src/agenticcli/commands/task.py
+
+      dependencies:
+        - "Reliable session ID source"
+
+      prerequisites:
+        - "Session ID available to CLI (env var or tmux query)"
+
+      risks:
+        - risk: "Session IDs not stable across restarts"
+          likelihood: MEDIUM
+          impact: MEDIUM
+          mitigation: "Generate plan-scoped session IDs"
+
+        - risk: "Orphan detection false positives"
+          likelihood: LOW
+          impact: LOW
+          mitigation: "Require explicit orphan claim process"
+
+    alternative_solutions:
+      - name: "Session Registry File"
+        complexity_rating: M
+        story_points: 5-8
+        trade_off: "Centralized but additional file maintenance"
+
+      - name: "Tmux Session Name Encoding"
+        complexity_rating: S
+        story_points: 3-5
+        trade_off: "Uses existing tmux but only works in tmux"
+
+  - gap_id: GAP-005
+    name: "Manual Status Updates Required"
+    severity: HIGH
+    category: QUICK_WIN
+
+    recommended_solution:
+      name: "Simplified Status Commands"
+      complexity_rating: S
+      story_points: 3-5
+      duration: "3-5 days"
+
+    implementation_breakdown:
+      components:
+        - name: "Task done command"
+          effort: XS
+          description: |
+            Add `agentic task done` that marks current task complete.
+            Shorthand for `agentic plan task complete <current-task-id>`.
+          files_affected:
+            - modules/AgenticCLI/src/agenticcli/commands/task.py
+
+        - name: "Task next command"
+          effort: S
+          description: |
+            Add `agentic task next` that completes current task and
+            starts the next available task.
+          files_affected:
+            - modules/AgenticCLI/src/agenticcli/commands/task.py
+
+        - name: "Current task context"
+          effort: XS
+          description: |
+            Store current task ID in session context for done/next
+            commands to reference.
+          files_affected:
+            - Session context storage
+
+      dependencies:
+        - "Current task concept already exists"
+
+      prerequisites:
+        - "Task current command functional"
+
+      risks:
+        - risk: "Agents still forget to call commands"
+          likelihood: MEDIUM
+          impact: MEDIUM
+          mitigation: "Lower friction makes compliance easier"
+
+    alternative_solutions:
+      - name: "Activity-based Status Inference"
+        complexity_rating: XL
+        story_points: 21+
+        trade_off: "Automatic but complex to implement reliably"
+
+      - name: "Bootstrap Integration"
+        complexity_rating: M
+        story_points: 8
+        trade_off: "Natural lifecycle but requires bootstrap changes"
+
+  - gap_id: GAP-006
+    name: "No Orchestration Validation at Task Completion"
+    severity: HIGH
+
+    recommended_solution:
+      name: "Completion Hooks"
+      complexity_rating: M
+      story_points: 8
+      duration: "1-2 weeks"
+
+    implementation_breakdown:
+      components:
+        - name: "Hook definition schema"
+          effort: S
+          description: |
+            Allow tasks to define completion_hook field with command
+            to run. Non-zero exit blocks completion.
+          files_affected:
+            - Task YAML schema
+
+        - name: "Hook execution"
+          effort: M
+          description: |
+            Modify `agentic plan task complete` to run hook before
+            allowing completion. Capture and display output on failure.
+          files_affected:
+            - modules/AgenticCLI/src/agenticcli/commands/task.py
+
+        - name: "Built-in hook commands"
+          effort: M
+          description: |
+            Create reusable hook commands:
+            - `agentic validate file-exists <path>`
+            - `agentic validate tests-pass <test-pattern>`
+            - `agentic validate mmd-present`
+          files_affected:
+            - New validate command group
+
+        - name: "Hook bypass flag"
+          effort: XS
+          description: |
+            Add `--force` flag to complete command for legitimate
+            bypass cases (with warning logged).
+          files_affected:
+            - modules/AgenticCLI/src/agenticcli/commands/task.py
+
+      dependencies:
+        - "Shell command execution capability"
+
+      prerequisites:
+        - "Hook commands are idempotent and fast"
+
+      risks:
+        - risk: "Slow hooks block completion"
+          likelihood: MEDIUM
+          impact: MEDIUM
+          mitigation: "Add timeout to hook execution"
+
+        - risk: "Agents use --force habitually"
+          likelihood: LOW
+          impact: MEDIUM
+          mitigation: "Audit agent checks for force usage"
+
+    alternative_solutions:
+      - name: "Completion Criteria Schema"
+        complexity_rating: L
+        story_points: 13
+        trade_off: "Declarative but requires schema changes"
+
+      - name: "Two-phase Completion"
+        complexity_rating: M
+        story_points: 8
+        trade_off: "Explicit review but adds latency"
+
+  - gap_id: GAP-007
+    name: "Limited Instrumentation"
+    severity: MEDIUM
+    category: QUICK_WIN
+
+    recommended_solution:
+      name: "Event-based Logging"
+      complexity_rating: S
+      story_points: 3-5
+      duration: "3-5 days"
+
+    implementation_breakdown:
+      components:
+        - name: "Event logger module"
+          effort: S
+          description: |
+            Create simple event logger that appends structured JSON
+            events to a log file in the plan folder.
+          files_affected:
+            - New event_logger module
+
+        - name: "Task state change events"
+          effort: XS
+          description: |
+            Emit events on task start, complete, heartbeat.
+            Include: timestamp, task_id, old_state, new_state, session.
+          files_affected:
+            - modules/AgenticCLI/src/agenticcli/commands/task.py
+
+        - name: "Event query command"
+          effort: S
+          description: |
+            Add `agentic plan events` to list recent events with
+            filtering by task, session, or time range.
+          files_affected:
+            - modules/AgenticCLI/src/agenticcli/commands/plan.py
+
+      dependencies:
+        - "File system access"
+
+      prerequisites:
+        - "Plan folder is writable"
+
+      risks:
+        - risk: "Log file grows unbounded"
+          likelihood: LOW
+          impact: LOW
+          mitigation: "Rotate logs or limit to recent events"
+
+    alternative_solutions:
+      - name: "Metrics Collection"
+        complexity_rating: M
+        story_points: 8
+        trade_off: "Quantitative but requires metrics backend"
+
+      - name: "Honeycomb/LangSmith Integration"
+        complexity_rating: M
+        story_points: 8
+        trade_off: "Integrated observability but external dependency"
+
+# =============================================================================
+# SUMMARY: QUICK WINS
+# =============================================================================
+
+quick_wins:
+  description: |
+    These solutions can be implemented quickly with high value-to-effort ratio.
+    Combined effort: ~1-2 weeks.
+
+  items:
+    - gap_id: GAP-005
+      solution: "Simplified Status Commands"
+      effort: S (3-5 days)
+      value: HIGH
+      rationale: |
+        Reduces friction for the most common operations (done, next).
+        Immediately improves agent compliance by making the right thing
+        easier than the wrong thing.
+      implementation_priority: 1
+
+    - gap_id: GAP-007
+      solution: "Event-based Logging"
+      effort: S (3-5 days)
+      value: MEDIUM
+      rationale: |
+        Provides foundation for observability without complex infrastructure.
+        Enables post-hoc analysis and debugging of orchestration issues.
+      implementation_priority: 2
+
+  total_quick_win_effort:
+    story_points: 6-10
+    duration: "1-2 weeks"
+    risk_level: LOW
+
+# =============================================================================
+# SUMMARY: CORE IMPLEMENTATION
+# =============================================================================
+
+core_implementation:
+  description: |
+    These solutions form the essential capability for tasklist-based
+    orchestration enforcement. Combined effort: ~4-6 weeks.
+
+  items:
+    - gap_id: GAP-002
+      solution: "Gate Validation Commands"
+      effort: M (2 weeks)
+      priority: CRITICAL
+      rationale: |
+        Addresses the CRITICAL severity gap. Without phase transition
+        enforcement, tasklist approach lacks teeth.
+      implementation_priority: 3
+
+    - gap_id: GAP-003
+      solution: "Enforced Task Dependencies"
+      effort: M (1-2 weeks)
+      priority: HIGH
+      rationale: |
+        Enables proper sequencing of multi-agent work. Essential for
+        preventing race conditions and out-of-order execution.
+      implementation_priority: 4
+
+    - gap_id: GAP-006
+      solution: "Completion Hooks"
+      effort: M (1-2 weeks)
+      priority: HIGH
+      rationale: |
+        Ensures tasks are actually done before being marked complete.
+        Prevents quality gate bypassing.
+      implementation_priority: 5
+
+    - gap_id: GAP-001
+      solution: "Activity Heartbeat System"
+      effort: M (1-2 weeks)
+      priority: HIGH
+      rationale: |
+        Enables detection of stalled agents. Important for orchestrator
+        visibility and timeout-based escalation.
+      implementation_priority: 6
+
+  total_core_effort:
+    story_points: 23-34
+    duration: "4-6 weeks"
+    risk_level: MEDIUM
+
+# =============================================================================
+# SUMMARY: DEFERRED ITEMS
+# =============================================================================
+
+deferred_items:
+  description: |
+    These items can be addressed after core implementation is proven.
+
+  items:
+    - gap_id: GAP-004
+      solution: "Session ID Field in Task"
+      effort: M (1 week)
+      rationale: |
+        Nice-to-have for multi-agent scenarios but not blocking for
+        initial orchestration enforcement. Can be added when multi-agent
+        patterns are more common.
+      defer_until: "Multi-agent orchestration patterns in production"
+
+    - solution: "Full Phase-aware Schema (GAP-002 alternative)"
+      effort: XL (3-5 weeks)
+      rationale: |
+        Gate validation commands provide 80% of value for 20% of effort.
+        Full schema redesign should only be pursued if gates prove
+        insufficient.
+      defer_until: "Gate validation approach proves inadequate"
+
+# =============================================================================
+# RISK ASSESSMENT
+# =============================================================================
+
+risk_assessment:
+  high_risk_items:
+    - risk: "Agent bypass through YAML edits"
+      gap_affected: [GAP-002, GAP-003, GAP-006]
+      probability: MEDIUM
+      impact: HIGH
+      description: |
+        Agents can bypass enforcement by directly editing plan YAML files
+        rather than using CLI commands. This is a fundamental limitation
+        of the tasklist approach.
+      mitigation:
+        - "Audit agent validates YAML integrity"
+        - "Checksums on task state changes"
+        - "Guidance emphasizes CLI usage"
+      residual_risk: MEDIUM
+
+    - risk: "Enforcement depends on agent discipline"
+      gap_affected: [GAP-001, GAP-002, GAP-005]
+      probability: HIGH
+      impact: MEDIUM
+      description: |
+        All enforcement mechanisms require agents to call CLI commands.
+        Agents that don't follow guidance can still violate patterns.
+      mitigation:
+        - "Make CLI commands simpler than alternatives"
+        - "Bootstrap integration prompts for CLI usage"
+        - "Positive reinforcement in guidance"
+      residual_risk: MEDIUM
+
+  medium_risk_items:
+    - risk: "CLI overhead affects context efficiency"
+      gap_affected: ALL
+      probability: MEDIUM
+      impact: MEDIUM
+      description: |
+        Each CLI call consumes context window space for the command
+        invocation and output. Many CLI calls could crowd out actual
+        work context.
+      mitigation:
+        - "Minimize command output verbosity"
+        - "Batch operations where possible"
+        - "Cache results client-side"
+      residual_risk: LOW
+
+    - risk: "Schema changes break existing plans"
+      gap_affected: [GAP-002, GAP-004, GAP-006]
+      probability: MEDIUM
+      impact: MEDIUM
+      description: |
+        Adding new fields to task/plan schema could break parsing of
+        existing plan files or require migration.
+      mitigation:
+        - "Make new fields optional with defaults"
+        - "Version schema if needed"
+        - "Provide migration tooling"
+      residual_risk: LOW
+
+  low_risk_items:
+    - risk: "Performance degradation with large plans"
+      probability: LOW
+      impact: LOW
+      mitigation: "Optimize YAML parsing for large files"
+
+    - risk: "File locking conflicts with parallel agents"
+      probability: LOW
+      impact: MEDIUM
+      mitigation: "Implement file locking or atomic updates"
+
+# =============================================================================
+# VIABILITY ASSESSMENT
+# =============================================================================
+
+viability_assessment:
+  overall_verdict: VIABLE_WITH_CAVEATS
+
+  viability_score: 7/10
+
+  strengths:
+    - strength: "Builds on existing infrastructure"
+      description: |
+        CLI tasklist commands already exist and are functional. This
+        approach extends rather than replaces existing capability.
+
+    - strength: "Incremental implementation possible"
+      description: |
+        Quick wins provide immediate value. Core features can be
+        added progressively without big-bang deployment.
+
+    - strength: "File-based state survives session restart"
+      description: |
+        Unlike memory-based approaches, tasklist state in YAML files
+        persists across session boundaries.
+
+    - strength: "Human-readable and debuggable"
+      description: |
+        YAML files can be inspected manually. Easier to diagnose
+        issues than opaque runtime state.
+
+  weaknesses:
+    - weakness: "Enforcement is opt-in"
+      description: |
+        Agents must choose to use CLI commands. Determined agents
+        can bypass enforcement by editing files directly.
+      severity: HIGH
+
+    - weakness: "No true state machine"
+      description: |
+        Gates provide checkpoints but not continuous enforcement.
+        An agent could technically be in invalid state between gates.
+      severity: MEDIUM
+
+    - weakness: "CLI overhead"
+      description: |
+        Every orchestration action requires CLI call. Adds latency
+        and context consumption.
+      severity: MEDIUM
+
+  caveats:
+    - caveat: "Requires agent guidance updates"
+      description: |
+        Agents must be taught to use new CLI commands. Guidance
+        documents need revision.
+
+    - caveat: "Best suited for trust-but-verify model"
+      description: |
+        This approach works well when agents generally follow rules
+        and audit catches violations. Not suitable for adversarial
+        scenarios.
+
+    - caveat: "Multi-codebase implementation"
+      description: |
+        Changes span AgenticCLI and possibly AgenticGuidance CLI
+        backend. Coordination required.
+
+# =============================================================================
+# RECOMMENDATIONS
+# =============================================================================
+
+recommendations:
+  primary_recommendation: |
+    PROCEED with tasklist-based orchestration enforcement as the
+    primary approach for P1 investigation.
+
+    Implementation should follow a phased approach:
+    1. Quick Wins (Week 1-2): Simplified commands + logging
+    2. Core Enforcement (Week 3-6): Gates, dependencies, hooks
+    3. Observability (Week 7-8): Heartbeats, session correlation
+
+  secondary_recommendations:
+    - recommendation: "Combine with P3/P4 for role identification"
+      rationale: |
+        Session spawn context injection (P3) and role detection (P4)
+        complement tasklist enforcement. Agents know their role AND
+        have persistent state tracking.
+
+    - recommendation: "Defer full state machine for later"
+      rationale: |
+        Gate validation provides most value. Full phase-aware schema
+        is high effort and should only be pursued if gates prove
+        insufficient.
+
+    - recommendation: "Prototype quick wins immediately"
+      rationale: |
+        Simplified status commands (done, next) can be added quickly
+        and provide immediate value. Good proof-of-concept for the
+        approach.
+
+# =============================================================================
+# IMPLEMENTATION ROADMAP
+# =============================================================================
+
+implementation_roadmap:
+  phase_1:
+    name: "Quick Wins"
+    duration: "1-2 weeks"
+    items:
+      - "Simplified status commands (done, next)"
+      - "Event-based logging"
+    success_criteria:
+      - "`agentic task done` marks current task complete"
+      - "`agentic task next` advances to next available task"
+      - "Task state changes emit events to log file"
+
+  phase_2:
+    name: "Core Enforcement"
+    duration: "4-6 weeks"
+    items:
+      - "Gate validation commands"
+      - "Enforced task dependencies"
+      - "Completion hooks"
+      - "Activity heartbeat"
+    success_criteria:
+      - "Gate check prevents phase transition without requirements"
+      - "Task start fails if dependencies not satisfied"
+      - "Completion hooks run and can block completion"
+      - "Stale tasks detectable via heartbeat timeout"
+
+  phase_3:
+    name: "Observability & Polish"
+    duration: "1-2 weeks"
+    items:
+      - "Session ID correlation"
+      - "Event query commands"
+      - "Documentation updates"
+    success_criteria:
+      - "Tasks track which session is working on them"
+      - "Events queryable by task, session, time range"
+      - "Guidance updated for new CLI commands"
+
+  total_duration: "8-12 weeks"
+
+# =============================================================================
+# CROSS-REFERENCES
+# =============================================================================
+
+cross_references:
+  input_documents:
+    - path: "proposal_1_gaps_analysis.yml"
+      task_id: EN-P1-002
+      relationship: "This assessment is based on the gaps identified"
+
+    - path: "friction_analysis.yml"
+      relationship: "Root causes inform gap prioritization"
+
+  related_proposals:
+    - id: P3
+      relationship: "Session spawn context provides role identification"
+      synergy: HIGH
+
+    - id: P4
+      relationship: "Role detection enables role-based enforcement"
+      synergy: HIGH
+
+    - id: P6
+      relationship: "Bootstrap generation could pre-populate tasklists"
+      synergy: MEDIUM
+
+  output_to:
+    - path: "EN-SYNTH-001 (comparison matrix)"
+      data_provided:
+        - "Total effort estimate"
+        - "Viability score"
+        - "Quick wins list"
+        - "Risk assessment"

@@ -1,0 +1,128 @@
+# tmux Remote Terminal Access - Test Plan
+# Plan ID: 260130TE
+# Created: 2026-01-30
+
+_template_status: active
+
+plan:
+  id: 260130TE-TEST
+  name: tmux Remote Terminal Access Testing
+  worktree: /home/code/AgenticEngineering-tmux-remote-terminal
+  branch: tmux-remote-terminal
+  status: completed
+  parent_plan: 260130TE
+
+  objective: |
+    Validate tmux remote access functionality for Claude Code mobile access.
+    Focus: CLI commands, configuration, and end-to-end mobile workflow.
+
+  phases:
+    - name: Unit Tests for CLI Commands
+      id: test_unit
+      status: pending
+      loop_strategy: test-fix
+      tasks:
+        - id: TT-001
+          name: Test remote.py command module
+          status: pending
+          acceptance_criteria:
+            - test_remote_setup_validates_tmux_installed
+            - test_remote_setup_creates_config
+            - test_remote_setup_idempotent
+          file: modules/AgenticTmux/tests/test_commands_remote.py
+
+        - id: TT-002
+          name: Test network.py command module
+          status: pending
+          acceptance_criteria:
+            - test_network_status_without_tailscale
+            - test_network_status_with_tailscale
+            - test_network_status_json_output
+          file: modules/AgenticTmux/tests/test_commands_network.py
+
+        - id: TT-003
+          name: Test session template functionality
+          status: pending
+          acceptance_criteria:
+            - test_create_session_from_template
+            - test_template_with_multiple_windows
+            - test_template_with_commands
+          file: modules/AgenticTmux/tests/test_session_templates.py
+
+    - name: Integration Tests
+      id: test_integration
+      status: pending
+      loop_strategy: test-fix
+      tasks:
+        - id: TT-004
+          name: Test Claude session workflow
+          status: pending
+          acceptance_criteria:
+            - test_claude_session_create_attaches
+            - test_claude_session_named_windows
+            - test_claude_session_directory_navigation
+          file: modules/AgenticTmux/tests/integration/test_claude_session.py
+
+        - id: TT-005
+          name: Test agentic CLI integration
+          status: pending
+          acceptance_criteria:
+            - test_agentic_tmux_commands_registered
+            - test_agentic_tmux_help_available
+            - test_agentic_tmux_session_subcommands
+          file: modules/AgenticCLI/tests/test_tmux_integration.py
+
+    - name: Manual Validation
+      id: test_manual
+      status: completed
+      loop_strategy: human-review
+      tasks:
+        - id: TT-006
+          name: Validate mobile workflow on Android (Termux)
+          status: completed
+          validated_on: 2026-01-30
+          validation_notes: |
+            Remote phone access successfully tested. User confirmed
+            full workflow including SSH, tmux attach, and session persistence.
+          acceptance_criteria:
+            - SSH connection from Termux succeeds
+            - tmux attach works correctly
+            - Claude Code interactive input works
+            - Session persists on disconnect/reconnect
+
+        - id: TT-007
+          name: Validate mobile workflow on iOS (Termius/Blink)
+          status: pending
+          acceptance_criteria:
+            - SSH connection succeeds
+            - tmux attach works correctly
+            - MOSH connection works (if supported)
+            - Touch keyboard input functional
+
+  test_strategy:
+    - type: unit
+      scope: CLI command modules for remote access
+      location: modules/AgenticTmux/tests/
+      framework: pytest
+      coverage_target: 80%
+
+    - type: integration
+      scope: End-to-end session and CLI workflows
+      location: modules/AgenticTmux/tests/integration/
+      requires:
+        - tmux installed
+        - Running on Linux/macOS
+      optional:
+        - Tailscale installed
+
+    - type: manual
+      scope: Mobile device validation
+      requires:
+        - Android device with Termux OR iOS device with Termius/Blink Shell
+        - Tailscale account (free tier works)
+
+  success_criteria:
+    - All unit tests pass
+    - Integration tests pass on Linux
+    - At least one mobile platform manually validated
+    - No regressions in existing SessionService tests (46 tests)

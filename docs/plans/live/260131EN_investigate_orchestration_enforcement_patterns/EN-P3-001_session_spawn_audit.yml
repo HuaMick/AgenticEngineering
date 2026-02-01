@@ -1,0 +1,453 @@
+# EN-P3-001: Session Spawn Command and Context Injection Audit
+# Task: Audit session spawn command and context injection
+# Agent: explore
+# Status: completed
+# Date: 2026-01-31
+
+task_id: EN-P3-001
+task_description: "Audit session spawn command and context injection"
+investigator: builder-agent
+status: completed
+
+# =============================================================================
+# EXECUTIVE SUMMARY
+# =============================================================================
+
+summary: |
+  The session spawn infrastructure in AgenticCLI provides minimal context
+  injection at spawn time. Sessions are spawned via subprocess calling the
+  `claude` CLI directly with a prompt. There is NO orchestration context,
+  role identification, or task assignment injected into spawned sessions.
+
+  Key Finding: The current implementation is a thin wrapper around `claude --print`
+  with no orchestration awareness. This represents a significant extension point
+  for implementing P3 (Session Spawn Context Injection).
+
+# =============================================================================
+# AUDIT SCOPE
+# =============================================================================
+
+files_reviewed:
+  - path: modules/AgenticCLI/src/agenticcli/commands/session.py
+    purpose: "Primary session spawn implementation"
+    lines: 501
+
+  - path: modules/AgenticCLI/src/agenticcli/commands/loop.py
+    purpose: "Ralph Loop implementation (alternative spawn pattern)"
+    lines: 603
+
+  - path: modules/AgenticCLI/src/agenticcli/commands/context.py
+    purpose: "CCI context commands (potential integration point)"
+    lines: 372
+
+  - path: modules/AgenticCLI/src/agenticcli/commands/entrypoint.py
+    purpose: "Entrypoint execution (prompt source for loops)"
+    lines: 633
+
+  - path: modules/AgenticCLI/src/agenticcli/cli.py
+    purpose: "CLI argument parsing and routing"
+    lines: 2326
+
+  - path: modules/AgenticCLI/src/agenticcli/context.py
+    purpose: "CLIContext definition"
+    lines: 208
+
+# =============================================================================
+# SESSION SPAWN MECHANISM ANALYSIS
+# =============================================================================
+
+session_spawn_mechanism:
+
+  command: "agentic session spawn"
+
+  implementation_file: modules/AgenticCLI/src/agenticcli/commands/session.py
+
+  spawn_flow:
+    1_command_build: |
+      The cmd_spawn() function builds a claude command:
+      ```python
+      cmd = ["claude", "--print"]
+      if max_turns:
+          cmd.extend(["--max-turns", str(max_turns)])
+      cmd.append(prompt)
+      ```
+
+    2_background_spawn: |
+      For background sessions, uses Popen with start_new_session=True:
+      ```python
+      process = subprocess.Popen(
+          cmd,
+          cwd=working_dir,
+          stdin=subprocess.DEVNULL,
+          stdout=stdout_log,
+          stderr=stderr_log,
+          start_new_session=True,  # Detaches from parent process group
+      )
+      ```
+
+    3_foreground_spawn: |
+      For foreground sessions, uses subprocess.run:
+      ```python
+      result = subprocess.run(
+          cmd,
+          cwd=working_dir,
+          capture_output=True,
+          text=True,
+      )
+      ```
+
+    4_session_tracking: |
+      Session metadata stored in ~/.agentic/sessions/<uuid>.json:
+      - session_id: UUID
+      - pid: Process ID
+      - prompt: The user-provided prompt
+      - max_turns: Turn limit if specified
+      - status: running/completed/failed/stopped
+      - working_dir: Working directory
+      - command: Full command string
+      - stdout_log/stderr_log: Log file paths (background only)
+
+  current_context_injection:
+    environment_variables: "NONE - no env vars are set"
+    session_metadata: "NONE - no orchestration metadata"
+    role_identification: "NONE - sessions don't know if they're orchestrator or subagent"
+    task_assignment: "NONE - no task ID or phase passed"
+    plan_context: "NONE - no plan folder reference"
+
+# =============================================================================
+# LOOP SPAWN MECHANISM ANALYSIS
+# =============================================================================
+
+loop_spawn_mechanism:
+
+  command: "agentic loop start"
+
+  implementation_file: modules/AgenticCLI/src/agenticcli/commands/loop.py
+
+  prompt_sources:
+    - type: "direct"
+      flag: "--prompt, -p"
+      description: "Inline prompt string"
+
+    - type: "file"
+      flag: "--prompt-file, -f"
+      description: "Read prompt from file"
+
+    - type: "entrypoint"
+      flag: "--entrypoint, -e"
+      description: "Load from entrypoint file (e.g., _orchestrate)"
+      uses: modules/AgenticCLI/src/agenticcli/commands/entrypoint.py
+
+  spawn_flow: |
+    Similar to session spawn but with iteration tracking:
+    - Uses --prompt flag instead of positional argument
+    - Tracks current_iteration and max_iterations
+    - Same subprocess.Popen/run pattern
+
+  context_injection: "IDENTICAL TO SESSION - NO CONTEXT INJECTED"
+
+# =============================================================================
+# CONTEXT COMMANDS (CCI) ANALYSIS
+# =============================================================================
+
+cci_context_system:
+
+  command: "agentic context bootstrap"
+
+  implementation_file: modules/AgenticCLI/src/agenticcli/commands/context.py
+
+  current_capabilities:
+    bootstrap: |
+      Returns:
+      - role: Agent role ID
+      - objective: From active plan
+      - plan_folder: Active plan path
+      - plan_path: Full path to plan
+      - main_worktree: Main worktree path
+      - current_task: Task details from plan
+      - process: Role-specific process guidelines
+      - essential_inputs: Input file references
+      - cli_commands: Helpful CLI command hints
+
+    role: "Get role-specific process.yml content"
+    task: "Get active task from plan"
+    inputs: "Get input file manifest for role"
+    generate_agent: "Generate thin-client agent file"
+
+  integration_opportunity: |
+    The CCI bootstrap system already aggregates the exact context that should
+    be injected at spawn time. The cmd_bootstrap() function returns:
+    - Active plan and task information
+    - Role-specific guidance
+    - Essential inputs
+
+    This could be pre-computed and injected at session spawn time.
+
+# =============================================================================
+# EXTENSION POINTS FOR ORCHESTRATION CONTEXT
+# =============================================================================
+
+extension_points:
+
+  point_1_environment_variables:
+    location: session.py:cmd_spawn() line 186
+    mechanism: "Add env dict to Popen/run calls"
+    example: |
+      env = os.environ.copy()
+      env["AGENTIC_SESSION_ROLE"] = "subagent"
+      env["AGENTIC_PARENT_SESSION"] = parent_session_id
+      env["AGENTIC_TASK_ID"] = task_id
+      env["AGENTIC_PLAN_FOLDER"] = plan_folder
+
+      process = subprocess.Popen(
+          cmd,
+          cwd=working_dir,
+          env=env,  # <-- ADD THIS
+          ...
+      )
+    effort: "LOW - simple addition"
+
+  point_2_prompt_prefix:
+    location: session.py:cmd_spawn() line 162
+    mechanism: "Prepend orchestration context to prompt"
+    example: |
+      orchestration_context = f"""
+      [ORCHESTRATION CONTEXT]
+      Role: {role}
+      Task: {task_id}
+      Plan: {plan_folder}
+      Parent Session: {parent_session_id}
+      [END ORCHESTRATION CONTEXT]
+
+      """
+      prompt = orchestration_context + user_prompt
+    effort: "LOW - string manipulation"
+    drawback: "Consumes context window tokens"
+
+  point_3_system_prompt_file:
+    location: session.py:cmd_spawn() line 159
+    mechanism: "Pass --system-prompt file to claude CLI"
+    example: |
+      # Generate temporary system prompt file with orchestration context
+      system_prompt = generate_orchestration_system_prompt(role, task, plan)
+      system_prompt_file = Path(tempfile.mktemp(suffix='.md'))
+      system_prompt_file.write_text(system_prompt)
+
+      cmd = ["claude", "--print", "--system-prompt", str(system_prompt_file)]
+    effort: "MEDIUM - requires file management"
+    benefit: "Doesn't consume user context tokens"
+
+  point_4_spawn_command_extension:
+    location: cli.py:_add_session_parser() line 1553
+    mechanism: "Add new arguments to session spawn"
+    example: |
+      spawn_parser.add_argument(
+          "--role", "-r",
+          choices=["orchestrator", "subagent"],
+          help="Role for this session"
+      )
+      spawn_parser.add_argument(
+          "--task", "-t",
+          help="Task ID this session is working on"
+      )
+      spawn_parser.add_argument(
+          "--plan",
+          help="Plan folder path for orchestration context"
+      )
+      spawn_parser.add_argument(
+          "--parent-session",
+          help="Parent session ID (marks this as a subagent)"
+      )
+    effort: "LOW - argument additions"
+
+  point_5_session_registry_enhancement:
+    location: session.py:_save_session() line 55
+    mechanism: "Add orchestration fields to session JSON"
+    example: |
+      session_data = {
+          "session_id": session_id,
+          "pid": process.pid,
+          # ... existing fields ...
+
+          # NEW: Orchestration fields
+          "role": role,  # "orchestrator" or "subagent"
+          "task_id": task_id,
+          "plan_folder": plan_folder,
+          "parent_session": parent_session_id,
+          "orchestration_phase": phase,
+      }
+    effort: "LOW - dict additions"
+    benefit: "Enables session list to show orchestration hierarchy"
+
+# =============================================================================
+# CURRENT GAPS
+# =============================================================================
+
+gaps:
+
+  gap_1_no_role_identification:
+    description: "Sessions cannot identify themselves as orchestrator vs subagent"
+    impact: "Agents don't know their scope, may exceed authority"
+    severity: HIGH
+
+  gap_2_no_task_assignment:
+    description: "Sessions don't know what task they're working on"
+    impact: "Cannot enforce task boundaries or track completion"
+    severity: HIGH
+
+  gap_3_no_plan_context:
+    description: "Sessions don't have plan folder reference"
+    impact: "Cannot access orchestration MMD or plan files"
+    severity: MEDIUM
+
+  gap_4_no_parent_tracking:
+    description: "No parent-child relationship between sessions"
+    impact: "Cannot trace session hierarchy or enforce spawn limits"
+    severity: MEDIUM
+
+  gap_5_no_phase_awareness:
+    description: "Sessions don't know what orchestration phase they're in"
+    impact: "Cannot enforce phase-specific gates or behaviors"
+    severity: MEDIUM
+
+# =============================================================================
+# POTENTIAL SOLUTIONS (HIGH-LEVEL)
+# =============================================================================
+
+potential_solutions:
+
+  solution_1_minimal_env_injection:
+    description: "Add minimal environment variables at spawn time"
+    effort: LOW
+    variables:
+      - "AGENTIC_SESSION_ROLE: orchestrator|subagent"
+      - "AGENTIC_TASK_ID: task identifier"
+      - "AGENTIC_PLAN_FOLDER: path to plan folder"
+    pros:
+      - Minimal code changes
+      - Sessions can detect role via os.environ
+      - Works with existing claude CLI
+    cons:
+      - Environment can be overwritten
+      - Requires agent cooperation to check vars
+
+  solution_2_full_context_injection:
+    description: "Pre-compute CCI bootstrap and inject via system prompt"
+    effort: MEDIUM
+    mechanism: |
+      1. Call cmd_bootstrap() equivalent to get full context
+      2. Generate orchestration system prompt
+      3. Pass to claude via --system-prompt
+    pros:
+      - Complete context available to agent
+      - Consistent with CCI bootstrap pattern
+      - Role guidance embedded at start
+    cons:
+      - Increases spawn time
+      - Requires system prompt file management
+      - May conflict with existing system prompts
+
+  solution_3_hybrid_approach:
+    description: "Env vars for detection + prompt injection for context"
+    effort: MEDIUM
+    mechanism: |
+      1. Set env vars for role detection
+      2. Prepend minimal context block to prompt
+      3. Store full context in session registry
+    pros:
+      - Detection is reliable (env vars)
+      - Context is explicit (prompt prefix)
+      - Full details queryable (session registry)
+    cons:
+      - Multiple mechanisms to maintain
+      - Prompt prefix consumes tokens
+
+# =============================================================================
+# RECOMMENDATIONS FOR P3-002 and P3-003
+# =============================================================================
+
+recommendations:
+
+  for_EN_P3_002_document_context_flow:
+    - "Map the full lifecycle: spawn -> execute -> complete"
+    - "Document how context could flow from parent to child"
+    - "Identify what context is REQUIRED vs OPTIONAL"
+    - "Review how --resume sessions would receive context"
+
+  for_EN_P3_003_design_approach:
+    - "Recommend hybrid approach (env vars + prompt prefix)"
+    - "Design session hierarchy tracking in registry"
+    - "Define new spawn arguments (--role, --task, --plan, --parent-session)"
+    - "Consider how orchestrator marks itself at startup"
+
+  quick_wins:
+    - "Add environment variables at spawn (minimal effort, immediate value)"
+    - "Enhance session list to show task assignment"
+    - "Add --role flag to session spawn for explicit role setting"
+
+# =============================================================================
+# OPEN QUESTIONS FOR FOLLOW-UP TASKS
+# =============================================================================
+
+open_questions_remaining:
+
+  - question: "How should the main session mark itself as orchestrator?"
+    context: |
+      The main session is started manually by the user, not via `agentic session spawn`.
+      It cannot receive injected context through spawn. Options:
+      1. User provides --role flag at manual start
+      2. First `agentic context bootstrap --role orchestrator` sets env
+      3. Presence of orchestration MMD in plan folder implies orchestrator role
+    assigned_to: EN-P3-002
+
+  - question: "Should spawned sessions inherit ALL parent environment vars?"
+    context: |
+      Currently, spawned sessions inherit process environment implicitly.
+      If parent sets AGENTIC_* vars, they propagate. But is this sufficient?
+      Should there be explicit inheritance vs fresh start?
+    assigned_to: EN-P3-002
+
+  - question: "How does this interact with --resume sessions?"
+    context: |
+      Resumed sessions restore conversation history but may lose env context.
+      Need to understand Claude CLI's --resume behavior.
+    assigned_to: EN-P3-002
+
+  - question: "What is the acceptable overhead for context injection?"
+    context: |
+      System prompt generation, file I/O for prompts, CCI bootstrap calls
+      all add latency. What's acceptable for spawn-time overhead?
+    assigned_to: EN-P3-003
+
+# =============================================================================
+# CONCLUSION
+# =============================================================================
+
+conclusion: |
+  The session spawn infrastructure provides clear extension points for
+  orchestration context injection. The current implementation is minimal
+  but well-structured, making it relatively easy to enhance.
+
+  Recommended Approach: Hybrid injection using:
+  1. Environment variables for role detection (AGENTIC_SESSION_ROLE)
+  2. Session registry enhancement for hierarchy tracking
+  3. Optional prompt prefix for critical context
+  4. New spawn arguments (--role, --task, --plan, --parent-session)
+
+  This investigation confirms P3 (Session Spawn Context Injection) is
+  FEASIBLE with LOW-to-MEDIUM implementation effort. The extension points
+  are well-defined and the existing CLI infrastructure supports the changes.
+
+# =============================================================================
+# METADATA
+# =============================================================================
+
+metadata:
+  investigation_date: "2026-01-31"
+  investigator: "builder-agent"
+  task_id: "EN-P3-001"
+  proposal: "P3 - Session Spawn Context Injection"
+  files_analyzed: 6
+  extension_points_identified: 5
+  gaps_documented: 5
+  recommendations_made: 3

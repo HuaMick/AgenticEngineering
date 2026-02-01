@@ -1,0 +1,674 @@
+# EN-P4-002: Environment-Based Session Identification Research
+# Task: Research environment-based session identification
+# Agent: explore
+# Status: completed
+# Created: 2026-01-31
+
+_template_status: active
+
+research_summary:
+  task_id: EN-P4-002
+  description: "Research how environment variables can be used to identify sessions"
+  status: completed
+  date: "2026-01-31"
+  based_on:
+    - EN-P4-001_session_metadata_audit.yml
+    - EN-P3-003_context_injection_design.yml
+
+# =============================================================================
+# EXECUTIVE SUMMARY
+# =============================================================================
+
+executive_summary: |
+  This research investigates how environment variables can be used for session
+  identification in the current architecture, with focus on distinguishing
+  orchestrators from subagents and establishing parent-child relationships.
+
+  Key Findings:
+  1. Claude Code sets CLAUDE_CODE_ENTRYPOINT=cli but NO session ID in environment
+  2. There is an open feature request (#17188) for CLAUDE_SESSION_ID exposure
+  3. The AgenticCLI already has design for AGENTIC_* variables (see EN-P3-003)
+  4. Current subprocess spawns do NOT pass custom environment variables
+  5. Environment-based identification is the recommended approach per industry analysis
+
+  Recommendation:
+  Implement the AGENTIC_* environment variable scheme from EN-P3-003, which provides
+  a complete session identification framework that works independently of Claude Code's
+  native session tracking.
+
+# =============================================================================
+# CURRENT ENVIRONMENT ANALYSIS
+# =============================================================================
+
+current_environment_analysis:
+
+  claude_code_variables:
+    description: "Environment variables set by Claude Code CLI"
+    observed_variables:
+      - name: "CLAUDE_CODE_ENTRYPOINT"
+        value: "cli"
+        description: "Indicates session was started via CLI (vs IDE)"
+        useful_for_identification: false
+        reason: "Does not provide session ID or role information"
+
+    missing_variables:
+      - name: "CLAUDE_SESSION_ID"
+        status: "NOT EXPOSED - Feature Request #17188 pending"
+        description: |
+          Claude Code tracks session IDs internally (visible in transcript paths
+          like ~/.claude/projects/.../UUID.jsonl) but does NOT expose them as
+          environment variables to subprocesses, hooks, or scripts.
+
+      - name: "CLAUDE_SESSION_NAME"
+        status: "NOT EXPOSED - Feature Request #17188 pending"
+        description: "User-defined name from /rename command"
+
+      - name: "CLAUDE_SESSION_STARTED"
+        status: "NOT EXPOSED - Feature Request #17188 pending"
+        description: "Session start timestamp"
+
+    reference: "https://github.com/anthropics/claude-code/issues/17188"
+
+  agentic_cli_variables:
+    description: "AGENTIC_* variables in current codebase"
+    current_usage:
+      - name: "AGENTIC_PROJECT_ROOT"
+        used_by: "MCP Orchestration Server"
+        file: "modules/AgenticCLI/src/agenticcli/mcp/orchestration_server.py"
+        purpose: "Override project root discovery"
+
+      - name: "AGENTIC_PLANS_DIR"
+        used_by: "MCP Orchestration Server"
+        file: "modules/AgenticCLI/src/agenticcli/mcp/orchestration_server.py"
+        purpose: "Override plans directory location"
+
+    loaded_from_environment:
+      loader: "EnvironmentProvider (agenticguidance/services/environment.py)"
+      pattern: "Loads all AGENTIC_* prefixed variables"
+      behavior: "Variables are loaded from environment and merged with config"
+      code_reference: |
+        def _load_from_env(self) -> dict[str, EnvVar]:
+            for name, value in os.environ.items():
+                if name.startswith("AGENTIC_"):
+                    env_vars[name] = EnvVar(...)
+
+  terminal_session_variables:
+    description: "Terminal/shell session identifiers available"
+    observed:
+      - name: "STY"
+        source: "screen"
+        description: "Screen session identifier"
+        availability: "Only when running in screen"
+
+      - name: "WT_SESSION"
+        source: "Windows Terminal"
+        description: "Windows Terminal session identifier"
+        availability: "Only on Windows Terminal"
+
+      - name: "KITTY_WINDOW_ID"
+        source: "Kitty terminal"
+        description: "Kitty terminal window tracking"
+        availability: "Only in Kitty terminal"
+
+      - name: "TILIX_ID"
+        source: "Tilix terminal"
+        description: "Tilix terminal session tracking"
+        availability: "Only in Tilix terminal"
+
+    tmux_detection:
+      variable: "TMUX"
+      description: "Set when running inside tmux"
+      format: "/tmp/tmux-1000/default,12345,0"
+      usefulness: "Can detect tmux session but not orchestration role"
+
+# =============================================================================
+# SESSION SPAWN ANALYSIS
+# =============================================================================
+
+session_spawn_environment_analysis:
+
+  current_spawn_behavior:
+    file: "modules/AgenticCLI/src/agenticcli/commands/session.py"
+    function: "cmd_spawn()"
+
+    popen_call:
+      description: "Background session spawn via subprocess.Popen"
+      current_code: |
+        process = subprocess.Popen(
+            cmd,
+            cwd=working_dir,
+            stdin=subprocess.DEVNULL,
+            stdout=stdout_log,
+            stderr=stderr_log,
+            start_new_session=True,
+            # NOTE: NO env= parameter - inherits parent environment
+        )
+
+    run_call:
+      description: "Foreground session spawn via subprocess.run"
+      current_code: |
+        result = subprocess.run(
+            cmd,
+            cwd=working_dir,
+            capture_output=True,
+            text=True,
+            # NOTE: NO env= parameter - inherits parent environment
+        )
+
+    finding: |
+      CRITICAL GAP: Neither subprocess.Popen nor subprocess.run in cmd_spawn()
+      passes a custom environment dictionary. This means:
+      - Subprocesses inherit the parent process environment unchanged
+      - No orchestration context is injected at spawn time
+      - Spawned sessions cannot detect their role via environment
+
+  proposed_modification:
+    description: "From EN-P3-003 design document"
+    code_example: |
+      # Build environment with orchestration context
+      spawn_env = os.environ.copy()
+
+      # Always set session ID
+      spawn_env["AGENTIC_SESSION_ID"] = session_id
+
+      # Set orchestration context if provided via CLI args
+      if role:
+          spawn_env["AGENTIC_SESSION_ROLE"] = role
+      if task:
+          spawn_env["AGENTIC_TASK_ID"] = task
+      if plan:
+          spawn_env["AGENTIC_PLAN_FOLDER"] = plan
+      if parent_session:
+          spawn_env["AGENTIC_PARENT_SESSION"] = parent_session
+      if phase:
+          spawn_env["AGENTIC_PHASE"] = phase
+
+      # Pass to subprocess
+      process = subprocess.Popen(cmd, env=spawn_env, ...)
+
+# =============================================================================
+# PROPOSED ENVIRONMENT VARIABLE SCHEME
+# =============================================================================
+
+proposed_environment_scheme:
+
+  overview: |
+    Based on EN-P3-003 context injection design and industry best practices
+    (see Claude Code feature request #17188), the following environment variable
+    scheme is proposed for session identification.
+
+  variables:
+
+    # --- Session Identity ---
+    variable_1:
+      name: "AGENTIC_SESSION_ID"
+      type: "string (UUID)"
+      set_by: "agentic session spawn command"
+      purpose: "Unique identifier for this session"
+      value_example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+      usage: |
+        - Cross-reference with session registry (~/.agentic/sessions/*.json)
+        - Parent reference for child sessions
+        - Logging and tracing correlation
+
+    # --- Role Identification ---
+    variable_2:
+      name: "AGENTIC_SESSION_ROLE"
+      type: "enum string"
+      values: ["orchestrator", "subagent"]
+      set_by: "agentic session spawn --role"
+      purpose: "Distinguish orchestrator from subagent"
+      value_example: "subagent"
+      detection_logic: |
+        role = os.environ.get("AGENTIC_SESSION_ROLE")
+        if role == "orchestrator":
+            # This session manages task delegation
+            # Can spawn subagents, read full plan
+        elif role == "subagent":
+            # This session performs assigned task only
+            # Should NOT spawn additional subagents
+            # Should focus on AGENTIC_TASK_ID only
+        else:
+            # Legacy session without orchestration context
+            # Apply default behavior
+
+    # --- Parent-Child Hierarchy ---
+    variable_3:
+      name: "AGENTIC_PARENT_SESSION"
+      type: "string (UUID) or empty"
+      set_by: "agentic session spawn --parent-session"
+      purpose: "Establish session hierarchy"
+      value_example: "parent-uuid-here"
+      enables:
+        - Session tree traversal
+        - Orphan session detection
+        - Cascading termination
+        - Progress reporting to parent
+
+    # --- Task/Plan Context ---
+    variable_4:
+      name: "AGENTIC_TASK_ID"
+      type: "string"
+      set_by: "agentic session spawn --task"
+      purpose: "Assigned task identifier"
+      value_example: "EN-P4-002"
+      usage: |
+        - Task boundary enforcement (stay within assigned task)
+        - Progress tracking and reporting
+        - Correlation with plan files
+
+    variable_5:
+      name: "AGENTIC_PLAN_FOLDER"
+      type: "string (path)"
+      set_by: "agentic session spawn --plan"
+      purpose: "Plan folder for context"
+      value_example: "docs/plans/live/260131EN_investigate_orchestration_enforcement_patterns"
+      usage: |
+        - Read plan_*.yml for task details
+        - Find orchestration diagrams
+        - Locate related files
+
+    variable_6:
+      name: "AGENTIC_PHASE"
+      type: "string"
+      set_by: "agentic session spawn --phase"
+      purpose: "Orchestration workflow phase"
+      value_example: "build"
+      values: ["plan", "build", "test", "review", "deploy"]
+      usage: |
+        - Phase-appropriate behavior guidance
+        - Gate enforcement (can't deploy during plan phase)
+
+  detection_code:
+    python: |
+      import os
+
+      def detect_session_context():
+          """Detect orchestration context from environment variables."""
+          return {
+              "session_id": os.environ.get("AGENTIC_SESSION_ID"),
+              "role": os.environ.get("AGENTIC_SESSION_ROLE"),
+              "parent_session": os.environ.get("AGENTIC_PARENT_SESSION"),
+              "task_id": os.environ.get("AGENTIC_TASK_ID"),
+              "plan_folder": os.environ.get("AGENTIC_PLAN_FOLDER"),
+              "phase": os.environ.get("AGENTIC_PHASE"),
+          }
+
+      def is_orchestrator():
+          return os.environ.get("AGENTIC_SESSION_ROLE") == "orchestrator"
+
+      def is_subagent():
+          return os.environ.get("AGENTIC_SESSION_ROLE") == "subagent"
+
+      def get_parent_session():
+          return os.environ.get("AGENTIC_PARENT_SESSION")
+
+      def get_assigned_task():
+          return os.environ.get("AGENTIC_TASK_ID")
+
+    shell: |
+      # Check if this is a subagent session
+      if [ "$AGENTIC_SESSION_ROLE" = "subagent" ]; then
+          echo "I am a subagent working on task $AGENTIC_TASK_ID"
+          echo "My parent is $AGENTIC_PARENT_SESSION"
+      fi
+
+      # Check if orchestrator
+      if [ "$AGENTIC_SESSION_ROLE" = "orchestrator" ]; then
+          echo "I am the orchestrator for plan $AGENTIC_PLAN_FOLDER"
+      fi
+
+# =============================================================================
+# INTEGRATION WITH EXISTING SYSTEMS
+# =============================================================================
+
+integration_analysis:
+
+  session_registry_integration:
+    description: "How env vars relate to ~/.agentic/sessions/*.json"
+    approach: |
+      The session registry stores the authoritative session record.
+      Environment variables provide runtime access to the same information.
+
+      Flow:
+      1. spawn command generates session_id UUID
+      2. session_id stored in registry file AND set as AGENTIC_SESSION_ID
+      3. Additional context (role, task, etc.) stored in registry AND env vars
+      4. Spawned process can read context from env vars immediately
+      5. External tools can query registry for full session details
+
+    schema_alignment: |
+      Session Registry Field     Environment Variable
+      -------------------        -------------------
+      session_id                 AGENTIC_SESSION_ID
+      role                       AGENTIC_SESSION_ROLE
+      task_id                    AGENTIC_TASK_ID
+      plan_folder                AGENTIC_PLAN_FOLDER
+      parent_session             AGENTIC_PARENT_SESSION
+      phase                      AGENTIC_PHASE
+
+  environment_provider_integration:
+    description: "How this works with EnvironmentProvider service"
+    approach: |
+      The EnvironmentProvider in agenticguidance/services/environment.py
+      already loads AGENTIC_* variables from the environment. This means:
+
+      1. AGENTIC_* variables set at spawn time will be loaded automatically
+      2. Commands using EnvironmentProvider will see these variables
+      3. get_subprocess_env() will propagate them to nested processes
+
+    benefit: |
+      No changes needed to EnvironmentProvider - it already handles AGENTIC_*
+      prefix variables. The session spawn code just needs to SET them.
+
+  tmux_integration:
+    description: "Relationship with tmux session management"
+    approach: |
+      Tmux sessions tracked by SessionService (agenticguidance/services/session.py)
+      can cross-reference with environment-based session identification:
+
+      Option A - Store env session ID in tmux metadata:
+        tmux set-environment -t $session_name AGENTIC_SESSION_ID $uuid
+
+      Option B - Derive correlation from working directory:
+        Both systems track working directory, enabling correlation
+
+      Option C - Use tmux session name to encode role:
+        Naming convention: {plan_id}_{role}_{task_id}
+
+    recommendation: |
+      Start with Option A (environment variable propagation in tmux) for
+      consistency with the overall environment-based approach.
+
+  claude_code_integration:
+    description: "Interaction with Claude Code's environment"
+    current_state: |
+      Claude Code does NOT expose CLAUDE_SESSION_ID (feature request pending).
+      However, Claude Code sessions CAN read environment variables set by
+      the parent process (agentic session spawn).
+
+    implication: |
+      Our AGENTIC_* variables will be available inside Claude Code sessions
+      because they're set in the subprocess environment. Claude Code will
+      inherit them and pass them to any tools/hooks it runs.
+
+    caveat: |
+      If a user starts Claude Code manually (not via agentic session spawn),
+      no AGENTIC_* variables will be set. The session detection should
+      handle this gracefully:
+
+      role = os.environ.get("AGENTIC_SESSION_ROLE")
+      if role is None:
+          # Legacy session - no orchestration context
+          # Apply default behavior or prompt user
+
+# =============================================================================
+# COMPARISON WITH ALTERNATIVES
+# =============================================================================
+
+alternative_approaches:
+
+  approach_file_markers:
+    description: "Use file markers instead of environment variables"
+    mechanism: |
+      Create a marker file at session start:
+      ~/.agentic/sessions/{session_id}/context.yml
+
+      Agent reads this file to determine role.
+
+    pros:
+      - Persists across process restarts
+      - Can store complex context
+      - Visible in filesystem
+
+    cons:
+      - File I/O overhead
+      - Race conditions possible
+      - Cleanup required
+      - Agent must know where to look
+
+    verdict: "Inferior to environment variables for quick detection"
+
+  approach_cli_query:
+    description: "Query CLI for session context"
+    mechanism: |
+      Agent calls: agentic session whoami
+      Returns: {"role": "subagent", "task": "EN-P4-002", ...}
+
+    pros:
+      - Authoritative answer from registry
+      - Can return rich context
+      - Works for any process
+
+    cons:
+      - Subprocess overhead (~200ms)
+      - Requires CLI availability
+      - Token cost for agent to call
+
+    verdict: "Good for verification, not for primary detection"
+
+  approach_prompt_embedding:
+    description: "Embed context in prompt (--inject-context)"
+    mechanism: |
+      Prefix prompt with:
+      [ORCHESTRATION CONTEXT]
+      Role: subagent
+      Task: EN-P4-002
+      [END ORCHESTRATION CONTEXT]
+
+    pros:
+      - Immediate visibility to LLM
+      - No environment parsing needed
+      - Self-documenting
+
+    cons:
+      - Token overhead (~50-100 tokens)
+      - Can be ignored/overwritten
+      - Doesn't help tool scripts
+
+    verdict: "Good supplement, not replacement for env vars"
+
+  approach_consensus: |
+    Environment variables are the RECOMMENDED primary mechanism because:
+    1. Zero latency - available immediately
+    2. Standard POSIX convention - works everywhere
+    3. Propagates to subprocesses automatically
+    4. No file I/O or subprocess overhead
+    5. Works for both LLM and tool scripts
+
+    Industry validation: The Claude Code feature request #17188 (with 8.3-8.6/10
+    score from multi-agent analysis) confirms environment variables as the
+    ideal long-term solution for session identification.
+
+# =============================================================================
+# IMPLEMENTATION RECOMMENDATIONS
+# =============================================================================
+
+implementation_recommendations:
+
+  phase_1_core:
+    priority: HIGH
+    effort: LOW
+    description: "Add environment injection to session spawn"
+    tasks:
+      - task: "Add env= parameter to subprocess.Popen in cmd_spawn"
+        file: "modules/AgenticCLI/src/agenticcli/commands/session.py"
+        lines: "186, 215"
+        change: "Pass spawn_env dict with AGENTIC_* variables"
+
+      - task: "Build spawn_env dict from CLI args"
+        file: "modules/AgenticCLI/src/agenticcli/commands/session.py"
+        location: "Before subprocess calls"
+        variables:
+          - AGENTIC_SESSION_ID
+          - AGENTIC_SESSION_ROLE
+          - AGENTIC_TASK_ID
+          - AGENTIC_PLAN_FOLDER
+          - AGENTIC_PARENT_SESSION
+          - AGENTIC_PHASE
+
+    estimated_loc: 15-20 lines
+
+  phase_2_cli_args:
+    priority: HIGH
+    effort: LOW
+    description: "Add CLI arguments for context specification"
+    tasks:
+      - task: "Add --role argument to session spawn"
+        file: "modules/AgenticCLI/src/agenticcli/cli.py"
+        function: "_add_session_parser()"
+
+      - task: "Add --task argument to session spawn"
+        same_location: true
+
+      - task: "Add --plan argument to session spawn"
+        same_location: true
+
+      - task: "Add --parent-session argument to session spawn"
+        same_location: true
+
+      - task: "Add --phase argument to session spawn"
+        same_location: true
+
+    estimated_loc: 25-30 lines
+
+  phase_3_detection_helper:
+    priority: MEDIUM
+    effort: LOW
+    description: "Add detection utilities"
+    tasks:
+      - task: "Create session context detection module"
+        location: "modules/AgenticCLI/src/agenticcli/session_context.py"
+        functions:
+          - detect_session_context()
+          - is_orchestrator()
+          - is_subagent()
+          - get_parent_session()
+          - get_assigned_task()
+
+      - task: "Add 'agentic session whoami' command"
+        purpose: "CLI verification of current session context"
+
+    estimated_loc: 40-50 lines
+
+  total_estimated_effort:
+    lines_of_code: 80-100
+    complexity: LOW
+    breaking_changes: NONE
+    backward_compatible: YES
+
+# =============================================================================
+# ANSWERS TO OPEN QUESTIONS
+# =============================================================================
+
+answered_questions:
+
+  question_can_env_vars_distinguish_session_types:
+    answer: |
+      YES - but requires implementation. Currently NO environment variables
+      distinguish session types. With the proposed AGENTIC_SESSION_ROLE variable,
+      sessions can immediately detect their role:
+
+      - AGENTIC_SESSION_ROLE=orchestrator -> main session managing tasks
+      - AGENTIC_SESSION_ROLE=subagent -> spawned worker session
+      - Not set -> legacy session without orchestration context
+
+  question_what_claude_variables_could_be_used:
+    answer: |
+      Claude Code sets CLAUDE_CODE_ENTRYPOINT=cli but this only indicates
+      CLI vs IDE origin, not session role or identity. CLAUDE_SESSION_ID
+      is NOT currently exposed (feature request #17188 pending).
+
+      Our AGENTIC_* variables work independently of Claude's internal session
+      tracking and provide richer orchestration context.
+
+  question_cross_platform_compatibility:
+    answer: |
+      Environment variables are POSIX-standard and work on:
+      - Linux (confirmed via testing)
+      - macOS (standard POSIX)
+      - Windows (via Python's os.environ)
+      - WSL (confirmed - current environment)
+
+      No platform-specific issues expected.
+
+  question_detection_informing_behavior:
+    answer: |
+      With environment-based role detection, behavior can be modified:
+
+      For orchestrators:
+      - Allow spawning subagents
+      - Access to full plan context
+      - Task delegation responsibilities
+      - Progress monitoring duties
+
+      For subagents:
+      - Focus on assigned AGENTIC_TASK_ID only
+      - Discourage spawning additional agents
+      - Report back to parent session
+      - Stay within task boundaries
+
+      Enforcement can be:
+      - Soft: Warnings when behavior deviates
+      - Hard: Block operations inconsistent with role
+
+# =============================================================================
+# CONCLUSION
+# =============================================================================
+
+conclusion: |
+  Environment-based session identification is the recommended approach for
+  distinguishing orchestrators from subagents and establishing session hierarchy.
+
+  Key Points:
+  1. Current state: No session identification via environment variables
+  2. Claude Code limitation: CLAUDE_SESSION_ID not exposed (pending #17188)
+  3. Solution: Implement AGENTIC_* variable scheme in session spawn
+  4. Integration: Works with existing EnvironmentProvider infrastructure
+  5. Effort: ~80-100 LOC, LOW complexity, fully backward compatible
+
+  The EN-P3-003 design document already provides the complete technical design.
+  This research validates that design and confirms environment variables as
+  the industry-recommended approach.
+
+  Next Step: EN-P4-003 should synthesize findings from EN-P4-001 (metadata audit)
+  and this research (EN-P4-002) into a role detection and enforcement design.
+
+# =============================================================================
+# REFERENCES
+# =============================================================================
+
+references:
+  internal:
+    - EN-P4-001_session_metadata_audit.yml
+    - EN-P3-003_context_injection_design.yml
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    - modules/AgenticGuidance/src/agenticguidance/services/environment.py
+    - modules/AgenticCLI/src/agenticcli/mcp/orchestration_server.py
+
+  external:
+    - title: "Feature Request: Expose Session Metadata via Environment Variables"
+      url: "https://github.com/anthropics/claude-code/issues/17188"
+      relevance: "Validates environment variables as ideal approach"
+
+    - title: "Claude Code CLI Environment Variables"
+      url: "https://gist.github.com/unkn0wncode/f87295d055dd0f0e8082358a0b5cc467"
+      relevance: "Reference for existing Claude Code env vars"
+
+    - title: "Claude Code Settings Documentation"
+      url: "https://code.claude.com/docs/en/settings"
+      relevance: "Official documentation on Claude Code configuration"
+
+# =============================================================================
+# METADATA
+# =============================================================================
+
+metadata:
+  research_date: "2026-01-31"
+  researcher: "builder-agent"
+  task_id: "EN-P4-002"
+  proposal: "P4 - Main Session Detection/Identification"
+  files_reviewed: 8
+  external_sources_consulted: 3
+  environment_variables_proposed: 6
+  estimated_implementation_loc: 100

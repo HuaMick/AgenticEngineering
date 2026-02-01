@@ -1,0 +1,720 @@
+# =============================================================================
+# EN-P2-003: Design MMD-to-Tasklist Transformation Approach
+# =============================================================================
+# Task: Design a transformation approach for converting MMD orchestration files
+#       to tasklists based on EN-P2-001 and EN-P2-002 findings
+# Generated: 2026-01-31
+# Agent: builder (design mode)
+# Plan: 260131EN_investigate_orchestration_enforcement_patterns
+# =============================================================================
+
+metadata:
+  task_id: EN-P2-003
+  task_name: "Design MMD-to-tasklist transformation approach"
+  status: completed
+  design_date: "2026-01-31"
+  based_on:
+    - EN-P2-001_plan_start_analysis.yml
+    - EN-P2-002_mmd_format_analysis.yml
+
+# =============================================================================
+# EXECUTIVE SUMMARY
+# =============================================================================
+summary:
+  description: |
+    This document specifies a transformation approach for converting Mermaid
+    (MMD) orchestration files into structured tasklists. The design leverages
+    the consistent patterns identified in EN-P2-002 and targets the extension
+    points identified in EN-P2-001.
+
+  approach: "Dual-layer parsing with metadata extraction and structural analysis"
+
+  key_decisions:
+    - decision: "Parse metadata header comments first for reliable extraction"
+      rationale: "Header comments are controlled by our generation tooling and highly consistent (95%+ presence rate for GOAL field)"
+
+    - decision: "Use regex-based structural parsing for node and edge extraction"
+      rationale: "Avoids external dependencies while handling the consistent MMD patterns in this codebase"
+
+    - decision: "Generate output compatible with existing plan YAML task schema"
+      rationale: "Enables seamless integration with cmd_task_list, cmd_task_current, and other task commands"
+
+# =============================================================================
+# TRANSFORMATION PIPELINE
+# =============================================================================
+transformation_pipeline:
+
+  overview: |
+    The transformation proceeds through five stages, each building on the previous.
+    The pipeline is designed to handle both simple (orchestration_auto_archive.mmd)
+    and complex (orchestration_orchestration_enforcement.mmd) MMD formats.
+
+  stages:
+
+    # -------------------------------------------------------------------------
+    # STAGE 1: METADATA EXTRACTION
+    # -------------------------------------------------------------------------
+    stage_1_metadata:
+      name: "Metadata Extraction"
+      input: "Raw MMD file content"
+      output: "PlanMetadata object"
+
+      description: |
+        Extract structured metadata from the %% comment header block.
+        This provides plan-level context for the tasklist.
+
+      extraction_rules:
+
+        comment_block:
+          pattern: "Lines starting with %%"
+          scope: "From first %% to first non-comment line"
+          note: "Contiguous comment block at file start"
+
+        field_patterns:
+          - name: "GOAL"
+            pattern: '%% GOAL: (.+)'
+            required: true
+            maps_to: "plan_description"
+
+          - name: "PLAN_ID"
+            pattern: '%% PLAN_ID: (\w+)'
+            required: false
+            maps_to: "plan_id"
+            fallback: "Extract from folder name (YYMMDDXX pattern)"
+
+          - name: "PLAN_FOLDER"
+            pattern: '%% PLAN_FOLDER: (.+)'
+            required: false
+            maps_to: "plan_folder"
+
+          - name: "PROFILE"
+            pattern: '%% PROFILE: (.+)'
+            required: false
+            maps_to: "profile"
+
+          - name: "PHASES"
+            pattern: '%% PHASES: (.+)'
+            required: false
+            maps_to: "phases_list"
+            parser: "comma_separated_list"
+
+          - name: "AGENT_ROUTING"
+            pattern: '%% AGENT_ROUTING: (.+)'
+            required: false
+            maps_to: "phase_agent_mapping"
+            parser: "arrow_mapping_list"
+            example: "BuildPhase -> builder, TestPhase -> test-runner"
+
+          - name: "STATUS"
+            pattern: '%% STATUS: (.+)'
+            required: false
+            maps_to: "phase_status_mapping"
+            parser: "equals_mapping_list"
+            example: "Phase1=pending, Phase2=completed"
+
+          - name: "LOOP_DEFINITION"
+            pattern: '%% LOOP_DEFINITION: (.+)'
+            required: false
+            maps_to: "loop_definition_path"
+
+          - name: "MAX_ITERATIONS"
+            pattern: '%% MAX_ITERATIONS: (\d+)'
+            required: false
+            maps_to: "max_iterations"
+            parser: "integer"
+
+          - name: "ESCALATION"
+            pattern: '%% ESCALATION: (.+)'
+            required: false
+            maps_to: "escalation_policy"
+
+          - name: "INPUT_PATH"
+            pattern: '%% INPUT_PATH: (.+)'
+            required: false
+            maps_to: "input_path"
+
+      output_schema:
+        type: "PlanMetadata"
+        fields:
+          - name: plan_id
+            type: string
+            example: "260131EN"
+          - name: plan_description
+            type: string
+            example: "Orchestrate investigation of orchestration enforcement patterns"
+          - name: profile
+            type: string
+            example: "Orchestration-Investigation"
+          - name: phases
+            type: list[PhaseMetadata]
+          - name: loop_definition
+            type: string | null
+          - name: max_iterations
+            type: int
+            default: 5
+          - name: escalation_policy
+            type: string | null
+
+    # -------------------------------------------------------------------------
+    # STAGE 2: PHASE EXTRACTION
+    # -------------------------------------------------------------------------
+    stage_2_phases:
+      name: "Phase Extraction"
+      input: "MMD content + PlanMetadata"
+      output: "List of Phase objects with boundaries"
+
+      description: |
+        Identify phases from subgraph declarations. Phases provide the
+        primary grouping structure for tasks.
+
+      extraction_rules:
+
+        subgraph_pattern:
+          pattern: 'subgraph (\w+) \["([^"]+)"\]'
+          captures:
+            - name: "subgraph_id"
+              example: "P1_SG"
+            - name: "display_name"
+              example: "P1 - CLI Tasklist Investigation"
+
+        subgraph_end:
+          pattern: '^\s*end\s*$'
+          note: "Marks end of subgraph scope"
+
+        phase_detection_heuristics:
+          - heuristic: "Subgraph ID ends with _SG suffix"
+            confidence: "High"
+          - heuristic: "Display name contains 'Phase' or 'P1/P2/P3' pattern"
+            confidence: "Medium"
+          - heuristic: "Contains task nodes with task ID patterns"
+            confidence: "High"
+
+        non_phase_subgraphs:
+          description: "Some subgraphs are structural, not phases"
+          examples:
+            - "Investigation_SG (wrapper for multiple P1-P6 phases)"
+            - "HumanApproval_SG (gate, not a work phase)"
+            - "Output_SG (finalization, often not a task phase)"
+          handling: |
+            Mark as is_work_phase=false if no task nodes are found,
+            or if subgraph is purely decision/gate nodes.
+
+      output_schema:
+        type: "Phase"
+        fields:
+          - name: id
+            type: string
+            example: "P1"
+          - name: name
+            type: string
+            example: "CLI Tasklist Investigation"
+          - name: subgraph_id
+            type: string
+            example: "P1_SG"
+          - name: agent_type
+            type: string | null
+            example: "explore"
+          - name: status
+            type: enum[pending, in_progress, completed, blocked]
+            default: "pending"
+          - name: is_work_phase
+            type: bool
+            default: true
+          - name: line_start
+            type: int
+          - name: line_end
+            type: int
+
+    # -------------------------------------------------------------------------
+    # STAGE 3: TASK EXTRACTION
+    # -------------------------------------------------------------------------
+    stage_3_tasks:
+      name: "Task Extraction"
+      input: "MMD content + List of Phases"
+      output: "List of Task objects with phase associations"
+
+      description: |
+        Extract tasks from nodes that contain task ID patterns.
+        Tasks are the primary work items in the orchestration.
+
+      extraction_rules:
+
+        task_node_patterns:
+          - name: "Standard task pattern"
+            pattern: '(\w+)\[([A-Z]+-[A-Z0-9-]+):\s*([^\]]+)\]'
+            captures:
+              - node_id
+              - task_id
+              - description
+            examples:
+              - "P1_Audit[EN-P1-001: Audit CLI commands]"
+              - "Task001[AG-RL-001: Create MMDGeneratorService base]"
+
+          - name: "Phase-prefixed task pattern"
+            pattern: '(\w+)\[([A-Z]+-P\d+-\d+):\s*([^\]]+)\]'
+            captures:
+              - node_id
+              - task_id
+              - description
+            examples:
+              - "P2_MMD[EN-P2-002: Analyze MMD formats]"
+
+          - name: "Simple task prefix pattern"
+            pattern: '(\w+)\[([A-Z]{2,}-\d{3}):\s*([^\]]+)\]'
+            captures:
+              - node_id
+              - task_id
+              - description
+            examples:
+              - "RLM001[RLM-001: Update process.yml STEP 2]"
+
+        task_id_normalization:
+          rules:
+            - "Preserve original case"
+            - "Ensure hyphen separators"
+            - "Validate format: PREFIX-[PHASE-]NUMBER"
+
+        phase_association:
+          method: |
+            Determine which phase a task belongs to by:
+            1. Check if node is within a subgraph boundary (line_start to line_end)
+            2. If in nested subgraphs, use innermost phase subgraph
+            3. If not in any subgraph, mark as phase: null (orphan task)
+
+      output_schema:
+        type: "Task"
+        fields:
+          - name: id
+            type: string
+            example: "EN-P2-003"
+          - name: node_id
+            type: string
+            example: "P2_Design"
+          - name: description
+            type: string
+            example: "Design transformation"
+          - name: phase_id
+            type: string | null
+            example: "P2"
+          - name: status
+            type: enum[pending, in_progress, completed]
+            default: "pending"
+          - name: agent_type
+            type: string | null
+            note: "Inherited from phase or overridden by spawn node"
+          - name: line_number
+            type: int
+          - name: blocked_by
+            type: list[string]
+            default: []
+
+    # -------------------------------------------------------------------------
+    # STAGE 4: DEPENDENCY EXTRACTION
+    # -------------------------------------------------------------------------
+    stage_4_dependencies:
+      name: "Dependency Extraction"
+      input: "MMD content + List of Tasks"
+      output: "Task objects updated with blocked_by relationships"
+
+      description: |
+        Derive task dependencies from edges between task nodes.
+        Dependencies determine execution order.
+
+      extraction_rules:
+
+        edge_patterns:
+          - name: "Standard edge"
+            pattern: '(\w+)\s*-->\s*(\w+)'
+            captures:
+              - source_node_id
+              - target_node_id
+            dependency_meaning: "target depends on source"
+
+          - name: "Labeled edge"
+            pattern: '(\w+)\s*--\s*"[^"]*"\s*-->\s*(\w+)'
+            captures:
+              - source_node_id
+              - target_node_id
+
+          - name: "Dashed edge (feedback)"
+            pattern: '(\w+)\s*-\.->(?:\|[^|]*\|)?\s*(\w+)'
+            captures:
+              - source_node_id
+              - target_node_id
+            note: "Represents feedback loops, may not create hard dependency"
+            is_feedback: true
+
+        dependency_resolution:
+          algorithm: |
+            1. Build node_id -> task_id mapping from extracted tasks
+            2. For each edge (source -> target):
+               a. Look up source_node_id in mapping
+               b. Look up target_node_id in mapping
+               c. If both are task nodes:
+                  - Add source task_id to target.blocked_by
+            3. Handle phase completion nodes:
+               - Edges from "PhaseNComplete" to Phase(N+1) tasks
+                 imply all Phase N tasks must complete first
+            4. Ignore edges to non-task nodes (decisions, gates)
+
+        phase_boundary_dependencies:
+          description: |
+            Tasks in Phase N+1 are implicitly blocked by all tasks in Phase N
+            when there's a PhaseNComplete -> Phase(N+1) edge pattern.
+          handling: |
+            Option A: Add all Phase N task IDs to Phase N+1 tasks' blocked_by
+            Option B: Add single "phase:N" dependency marker
+            Recommendation: Option B for cleaner representation
+
+      output_update:
+        updated_field: "blocked_by"
+        example:
+          task_id: "EN-P2-003"
+          blocked_by: ["EN-P2-002", "EN-P2-001"]
+
+    # -------------------------------------------------------------------------
+    # STAGE 5: TASKLIST GENERATION
+    # -------------------------------------------------------------------------
+    stage_5_generation:
+      name: "Tasklist Generation"
+      input: "PlanMetadata + Phases + Tasks (with dependencies)"
+      output: "Tasklist YAML document"
+
+      description: |
+        Generate the final tasklist in a format compatible with the existing
+        plan YAML task schema used by cmd_task_list and related commands.
+
+      output_format:
+        schema_version: "1.0"
+        compatible_with: "plan_*.yml task structure"
+
+        structure: |
+          orchestration_tasklist:
+            generated_at: <timestamp>
+            source_mmd: <mmd_file_path>
+            plan_id: <plan_id>
+            plan_description: <goal>
+
+            phases:
+              - id: <phase_id>
+                name: <phase_name>
+                status: pending|in_progress|completed|blocked
+                agent_type: <agent_type>
+                tasks:
+                  - id: <task_id>
+                    description: <description>
+                    status: pending
+                    blocked_by: [<task_ids>]
+
+            summary:
+              total_phases: <count>
+              total_tasks: <count>
+              pending_tasks: <count>
+              in_progress_tasks: <count>
+              completed_tasks: <count>
+
+      example_output: |
+        orchestration_tasklist:
+          generated_at: "2026-01-31T10:00:00Z"
+          source_mmd: "orchestration_orchestration_enforcement.mmd"
+          plan_id: "260131EN"
+          plan_description: "Orchestrate investigation of orchestration enforcement patterns"
+
+          phases:
+            - id: P1
+              name: "CLI Tasklist Investigation"
+              status: pending
+              agent_type: explore
+              tasks:
+                - id: EN-P1-001
+                  description: "Audit CLI commands"
+                  status: pending
+                  blocked_by: []
+                - id: EN-P1-002
+                  description: "Document gaps"
+                  status: pending
+                  blocked_by: [EN-P1-001]
+                - id: EN-P1-003
+                  description: "Assess complexity"
+                  status: pending
+                  blocked_by: [EN-P1-002]
+
+            - id: P2
+              name: "Preloaded Tasklists Investigation"
+              status: blocked
+              agent_type: explore
+              blocked_by_phases: [P1]
+              tasks:
+                - id: EN-P2-001
+                  description: "Review plan start command"
+                  status: pending
+                  blocked_by: []
+                - id: EN-P2-002
+                  description: "Analyze MMD formats"
+                  status: pending
+                  blocked_by: [EN-P2-001]
+                - id: EN-P2-003
+                  description: "Design transformation"
+                  status: pending
+                  blocked_by: [EN-P2-002]
+
+          summary:
+            total_phases: 8
+            total_tasks: 24
+            pending_tasks: 24
+            in_progress_tasks: 0
+            completed_tasks: 0
+
+# =============================================================================
+# IMPLEMENTATION APPROACH
+# =============================================================================
+implementation:
+
+  recommended_location:
+    primary: "modules/AgenticCLI/src/agenticcli/services/"
+    file_name: "mmd_parser_service.py"
+    rationale: |
+      Create as a new service to maintain separation of concerns.
+      The MMDParserService can be used by:
+      - cmd_execute (entrypoint.py) for preloading on compile
+      - cmd_orchestration_generate (plan.py) for validation
+      - New cmd_tasklist_generate if desired
+
+  service_interface:
+    class_name: "MMDParserService"
+    methods:
+      - name: "parse_mmd"
+        signature: "parse_mmd(mmd_content: str) -> ParsedMMD"
+        description: "Full parsing of MMD content into structured representation"
+
+      - name: "extract_metadata"
+        signature: "extract_metadata(mmd_content: str) -> PlanMetadata"
+        description: "Extract only metadata header"
+
+      - name: "extract_tasks"
+        signature: "extract_tasks(mmd_content: str) -> List[Task]"
+        description: "Extract tasks with dependencies"
+
+      - name: "generate_tasklist"
+        signature: "generate_tasklist(parsed: ParsedMMD, output_path: Path = None) -> str"
+        description: "Generate tasklist YAML, optionally write to file"
+
+  integration_points:
+
+    entrypoint_execute:
+      location: "cmd_execute() in entrypoint.py, line ~605"
+      trigger: "When --compile flag is used"
+      changes: |
+        After _compile_context() returns:
+        1. Check if orchestration MMD exists in compiled context
+        2. Parse MMD using MMDParserService
+        3. Generate tasklist structure
+        4. Add to compiled output under 'orchestration_tasklist' key
+
+    plan_orchestration_generate:
+      location: "cmd_orchestration_generate() in plan.py, line ~2588"
+      trigger: "When generating new orchestration MMD"
+      changes: |
+        After MMD generation:
+        1. Parse generated MMD for validation
+        2. Optionally generate tasklist file alongside MMD
+
+    new_command_option:
+      command: "agentic plan orchestration parse"
+      description: |
+        New command to parse existing MMD and output tasklist.
+        Useful for debugging and manual tasklist generation.
+      implementation: |
+        parser = subparsers.add_parser('parse', help='Parse MMD to tasklist')
+        parser.add_argument('--mmd', required=True, help='Path to MMD file')
+        parser.add_argument('--output', help='Output tasklist path')
+
+  error_handling:
+
+    parse_errors:
+      - error: "No metadata header found"
+        handling: "Warning + continue with empty metadata"
+        severity: "low"
+
+      - error: "No task nodes found"
+        handling: "Warning + generate phase-only tasklist"
+        severity: "medium"
+
+      - error: "Circular dependency detected"
+        handling: "Error + fail transformation"
+        severity: "high"
+
+      - error: "Invalid task ID format"
+        handling: "Warning + include task with original node_id as fallback"
+        severity: "low"
+
+    validation_checks:
+      - "All tasks referenced in blocked_by exist"
+      - "No orphan tasks (tasks not in any phase)"
+      - "Phase order matches subgraph order in file"
+      - "Task IDs are unique across all phases"
+
+# =============================================================================
+# HANDLING VARIATIONS
+# =============================================================================
+format_variations:
+
+  simple_format:
+    example_file: "orchestration_auto_archive.mmd"
+    characteristics:
+      - "Minimal or no metadata header"
+      - "No subgraphs or basic subgraphs"
+      - "May not have task IDs in node names"
+    handling: |
+      1. Generate phase IDs from subgraph order (Phase1, Phase2, ...)
+      2. Generate task IDs from node IDs if no embedded ID
+      3. Use node label as task description
+      4. Infer dependencies from edge order
+
+    task_id_generation:
+      pattern: "AUTO-<phase>-<sequence>"
+      example: "AUTO-P1-001"
+
+  complex_format:
+    example_file: "orchestration_orchestration_enforcement.mmd"
+    characteristics:
+      - "Rich metadata header"
+      - "Nested subgraphs (Investigation_SG containing P1_SG through P6_SG)"
+      - "Task IDs with phase prefix (EN-P1-001)"
+      - "Multiple feedback loops"
+    handling: |
+      1. Use embedded task IDs directly
+      2. Handle nested subgraphs by tracking nesting depth
+      3. Resolve innermost phase for task association
+      4. Distinguish feedback edges (dashed) from hard dependencies
+
+  legacy_format:
+    example_file: "orchestration_agenticguidance.mmd"
+    characteristics:
+      - "Uses 'graph TD' instead of 'flowchart TD/LR'"
+      - "Older node naming conventions"
+      - "May lack structured metadata"
+    handling: |
+      Treat 'graph' same as 'flowchart' for parsing purposes.
+      Apply same extraction rules.
+
+# =============================================================================
+# PERFORMANCE CONSIDERATIONS
+# =============================================================================
+performance:
+
+  typical_file_size:
+    range: "50-300 lines"
+    largest_observed: "~700 lines"
+    note: "Performance is not a concern for these sizes"
+
+  optimization_notes:
+    - "Single-pass regex extraction is sufficient"
+    - "No need for streaming or chunked processing"
+    - "Compile regex patterns once at service initialization"
+
+# =============================================================================
+# TESTING STRATEGY
+# =============================================================================
+testing:
+
+  unit_tests:
+    - name: "test_metadata_extraction"
+      description: "Verify all metadata fields are correctly parsed"
+      fixtures:
+        - "Simple header (GOAL only)"
+        - "Full header (all fields)"
+        - "Multi-line metadata"
+
+    - name: "test_phase_extraction"
+      description: "Verify phases are extracted from subgraphs"
+      fixtures:
+        - "No subgraphs"
+        - "Single subgraph"
+        - "Nested subgraphs"
+
+    - name: "test_task_extraction"
+      description: "Verify tasks are extracted from nodes"
+      fixtures:
+        - "Standard task format"
+        - "Phase-prefixed format"
+        - "No task ID (generate)"
+
+    - name: "test_dependency_extraction"
+      description: "Verify blocked_by relationships"
+      fixtures:
+        - "Sequential dependencies"
+        - "Phase boundary dependencies"
+        - "Feedback loops"
+
+    - name: "test_full_transformation"
+      description: "End-to-end transformation tests"
+      fixtures:
+        - "orchestration_auto_archive.mmd (simple)"
+        - "orchestration_agent_loop.mmd (complex build)"
+        - "orchestration_orchestration_enforcement.mmd (investigation)"
+
+  integration_tests:
+    - name: "test_entrypoint_compile_with_tasklist"
+      description: "Verify tasklist is included in compiled output"
+
+    - name: "test_tasklist_compatibility"
+      description: "Verify generated tasklist works with cmd_task_list"
+
+# =============================================================================
+# RECOMMENDATIONS
+# =============================================================================
+recommendations:
+
+  immediate_actions:
+    - id: "REC-TF-001"
+      title: "Implement MMDParserService"
+      priority: "high"
+      estimated_effort: "4-6 hours"
+      description: |
+        Create the core parsing service with the five-stage pipeline.
+        Start with metadata and task extraction, then add dependencies.
+
+    - id: "REC-TF-002"
+      title: "Add --tasklist flag to entrypoint execute --compile"
+      priority: "high"
+      estimated_effort: "1-2 hours"
+      description: |
+        Integrate tasklist generation into the compile workflow.
+        This enables preloading when sessions are started.
+
+  future_enhancements:
+    - id: "REC-TF-003"
+      title: "Standardize MMD generation to include tasklist-friendly markers"
+      priority: "medium"
+      description: |
+        Modify cmd_orchestration_generate to emit markers that make
+        parsing more reliable. For example:
+        %% @TASK: EN-P2-003: Design transformation
+        %% @PHASE_START: P2
+        %% @PHASE_END: P2
+
+    - id: "REC-TF-004"
+      title: "Add bidirectional sync"
+      priority: "low"
+      description: |
+        Allow tasklist updates (status changes) to be synced back to
+        plan YAML files. This enables full orchestration tracking.
+
+# =============================================================================
+# VALIDATION STATUS
+# =============================================================================
+validation:
+  design_review_status: "complete"
+  based_on_analysis:
+    - "EN-P2-001: Plan start command review"
+    - "EN-P2-002: MMD format analysis"
+  mmd_files_considered: 50
+  pattern_coverage: |
+    The design covers all major patterns identified in EN-P2-002:
+    - Flowchart LR/TD and graph TD formats
+    - All metadata header fields
+    - Node naming conventions
+    - Edge patterns (standard, conditional, feedback)
+    - Subgraph patterns (phases, nested, non-phase)
+    - Task ID formats (3 variations)

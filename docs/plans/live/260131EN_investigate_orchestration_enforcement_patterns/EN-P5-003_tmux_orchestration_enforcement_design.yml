@@ -1,0 +1,855 @@
+# EN-P5-003: Tmux-Based Orchestration Enforcement Design
+# Task: Design tmux-based orchestration enforcement approach
+# Created: 2026-02-01
+# Status: completed
+
+task:
+  id: EN-P5-003
+  name: Design tmux-based orchestration enforcement approach
+  status: completed
+  completed_at: "2026-02-01T10:30:00Z"
+  based_on:
+    - EN-P5-001_agentictmux_audit.yml
+    - EN-P5-002_tmux_patterns_review.yml
+
+# =============================================================================
+# EXECUTIVE SUMMARY
+# =============================================================================
+executive_summary: |
+  This document presents a comprehensive design for tmux-based orchestration
+  enforcement that builds on the existing AgenticTmux/SessionService infrastructure.
+
+  The design introduces:
+  1. OrchestrationRole enum for role-based session identification
+  2. Extended SessionInfo with orchestration context fields
+  3. OrchestrationEnforcementService wrapping SessionService
+  4. Environment variable injection for session-level role awareness
+  5. Quality gate integration for phase approval workflows
+  6. Session hierarchy management for orchestrator/builder relationships
+
+  Implementation complexity: MEDIUM
+  Estimated effort: 2-3 development cycles
+  Prerequisites: None (builds on existing infrastructure)
+
+# =============================================================================
+# DESIGN PRINCIPLES
+# =============================================================================
+design_principles:
+  - name: Build on existing infrastructure
+    description: |
+      Extend SessionService and SessionInfo rather than replacing them.
+      Use existing metadata dict for orchestration state initially.
+
+  - name: Environment-first enforcement
+    description: |
+      Sessions declare their role via environment variables.
+      Role information available to all processes in the session.
+      No file reading needed for role detection.
+
+  - name: Graceful degradation
+    description: |
+      Sessions without orchestration context behave as "standalone".
+      Enforcement only activates when orchestration context present.
+
+  - name: Audit everything
+    description: |
+      All orchestration events logged to audit trail.
+      Enables compliance verification and debugging.
+
+  - name: Convention over configuration
+    description: |
+      Sensible defaults for naming, roles, and behaviors.
+      Optional configuration for advanced use cases.
+
+# =============================================================================
+# CORE DATA MODELS
+# =============================================================================
+data_models:
+
+  OrchestrationRole:
+    type: enum
+    location: modules/AgenticGuidance/src/agenticguidance/services/orchestration.py
+    values:
+      - name: STANDALONE
+        value: "standalone"
+        description: Independent session, no orchestration
+        permissions: [all]
+
+      - name: ORCHESTRATOR
+        value: "orchestrator"
+        description: Coordinates plan execution, spawns builders/testers
+        permissions:
+          - spawn_sessions
+          - assign_tasks
+          - approve_phases
+          - observe_sessions
+          - kill_sessions
+
+      - name: BUILDER
+        value: "builder"
+        description: Implements tasks assigned by orchestrator
+        permissions:
+          - execute_assigned_tasks
+          - request_review
+        restrictions:
+          - cannot_spawn_sessions
+          - cannot_approve_own_work
+          - scope_limited_to_assigned_tasks
+
+      - name: TESTER
+        value: "tester"
+        description: Tests/validates work from builders
+        permissions:
+          - execute_tests
+          - report_results
+        restrictions:
+          - cannot_modify_implementation
+          - cannot_spawn_sessions
+
+      - name: REVIEWER
+        value: "reviewer"
+        description: Reviews and approves phase completion
+        permissions:
+          - observe_sessions
+          - approve_phases
+          - reject_phases
+        restrictions:
+          - cannot_implement
+          - read_only_access
+
+  OrchestrationContext:
+    type: dataclass
+    location: modules/AgenticGuidance/src/agenticguidance/services/orchestration.py
+    description: Orchestration state attached to a session
+    fields:
+      - name: role
+        type: OrchestrationRole
+        description: Session's orchestration role
+        default: STANDALONE
+
+      - name: plan_id
+        type: Optional[str]
+        description: Plan this session is working on (e.g., "260131EN")
+        default: null
+
+      - name: parent_session
+        type: Optional[str]
+        description: Name of orchestrator session that spawned this session
+        default: null
+
+      - name: assigned_tasks
+        type: List[str]
+        description: Task IDs this session is authorized to work on
+        default: []
+
+      - name: current_phase
+        type: Optional[str]
+        description: Current orchestration phase (e.g., "P5-Build")
+        default: null
+
+      - name: scope_pattern
+        type: Optional[str]
+        description: Regex pattern for allowed file operations
+        default: null
+
+      - name: created_by
+        type: str
+        description: Entity that created this context (manual/orchestrator)
+        default: "manual"
+
+      - name: created_at
+        type: str
+        description: ISO timestamp of context creation
+
+    methods:
+      - name: to_environment
+        description: Convert context to environment variables dict
+        returns: Dict[str, str]
+
+      - name: from_environment
+        description: Reconstruct context from environment variables
+        returns: OrchestrationContext
+
+      - name: to_dict
+        description: Serialize for JSON storage
+        returns: dict
+
+      - name: from_dict
+        description: Deserialize from JSON
+        returns: OrchestrationContext
+
+  ExtendedSessionInfo:
+    type: description
+    description: |
+      Rather than modifying SessionInfo dataclass, store OrchestrationContext
+      in the existing metadata dict. This maintains backward compatibility.
+    storage_pattern: |
+      SessionInfo.metadata = {
+        "orchestration": {
+          "role": "builder",
+          "plan_id": "260131EN",
+          "parent_session": "orch-260131EN",
+          "assigned_tasks": ["EN-P5-001", "EN-P5-002"],
+          "current_phase": "P5-Build",
+          "scope_pattern": "docs/plans/live/260131EN.*",
+          "created_by": "orchestrator",
+          "created_at": "2026-02-01T09:00:00Z"
+        }
+      }
+
+# =============================================================================
+# ENVIRONMENT VARIABLE INJECTION
+# =============================================================================
+environment_injection:
+
+  description: |
+    When a session is created with orchestration context, environment variables
+    are set in the tmux session. These persist for the session lifetime and are
+    available to all processes (including Claude Code) running in the session.
+
+  variables:
+    AGENTIC_SESSION_ROLE:
+      description: Session's orchestration role
+      example: "builder"
+      source: OrchestrationContext.role.value
+
+    AGENTIC_SESSION_NAME:
+      description: This session's name
+      example: "build-260131EN-EN-P5-001"
+      source: SessionInfo.name
+
+    AGENTIC_PLAN_ID:
+      description: Plan ID being worked on
+      example: "260131EN"
+      source: OrchestrationContext.plan_id
+
+    AGENTIC_PARENT_SESSION:
+      description: Orchestrator session that spawned this one
+      example: "orch-260131EN"
+      source: OrchestrationContext.parent_session
+
+    AGENTIC_ASSIGNED_TASKS:
+      description: Comma-separated list of assigned task IDs
+      example: "EN-P5-001,EN-P5-002"
+      source: OrchestrationContext.assigned_tasks (joined)
+
+    AGENTIC_CURRENT_PHASE:
+      description: Current orchestration phase
+      example: "P5-Build"
+      source: OrchestrationContext.current_phase
+
+    AGENTIC_SCOPE_PATTERN:
+      description: Regex pattern for allowed file paths
+      example: "docs/plans/live/260131EN.*"
+      source: OrchestrationContext.scope_pattern
+
+  implementation:
+    method: tmux set-environment
+    timing: At session creation, after tmux new-session
+    code_example: |
+      # In SessionService.create() or OrchestrationEnforcementService.spawn_session()
+      for key, value in context.to_environment().items():
+          subprocess.run([
+              "tmux", "set-environment", "-t", session_name, key, value
+          ], check=True)
+
+    querying:
+      method: tmux show-environment -t <session>
+      description: |
+        Can query session environment to determine role without
+        needing to access file-based registry.
+
+  persistence:
+    session_restart: |
+      Environment variables persist for tmux session lifetime.
+      If session is killed and recreated, variables must be re-injected.
+      Registry stores context for recreation.
+
+# =============================================================================
+# SESSION HIERARCHY MANAGEMENT
+# =============================================================================
+session_hierarchy:
+
+  description: |
+    Orchestration creates a hierarchy of sessions:
+    - One orchestrator session per plan
+    - Multiple builder/tester sessions spawned by orchestrator
+    - Optional reviewer sessions for quality gates
+
+  naming_convention:
+    pattern: "{role}-{plan_id}[-{task_id}]"
+    examples:
+      orchestrator: "orch-260131EN"
+      builder: "build-260131EN-EN-P5-001"
+      tester: "test-260131EN-EN-P5-TT1"
+      reviewer: "review-260131EN"
+    validation: |
+      Use existing SessionNamingConvention with role prefix awareness.
+
+  hierarchy_operations:
+
+    spawn_builder:
+      description: Orchestrator creates a builder session for tasks
+      prerequisites:
+        - Caller must be orchestrator role
+        - Plan must be specified
+        - Tasks must be from the plan
+      steps:
+        1: Validate caller is orchestrator
+        2: Generate session name from convention
+        3: Create tmux session
+        4: Inject environment variables
+        5: Store context in registry
+        6: Return session info to orchestrator
+      code_example: |
+        result = enforcement_service.spawn_builder(
+            plan_id="260131EN",
+            assigned_tasks=["EN-P5-001"],
+            start_directory="/home/code/AgenticEngineering"
+        )
+
+    spawn_tester:
+      description: Orchestrator creates a tester session
+      similar_to: spawn_builder
+      differences:
+        - Role is TESTER
+        - scope_pattern typically includes test directories
+
+    spawn_reviewer:
+      description: Orchestrator creates a reviewer session
+      prerequisites:
+        - Caller must be orchestrator role
+      permissions:
+        - Can observe any session in the plan
+        - Can approve/reject phases
+
+    list_hierarchy:
+      description: Get all sessions in an orchestration hierarchy
+      method: |
+        def get_hierarchy(plan_id: str) -> OrchestrationHierarchy:
+            """Get all sessions working on a plan."""
+            sessions = session_service.list()
+            return OrchestrationHierarchy(
+                orchestrator=find_by_role_and_plan(sessions, ORCHESTRATOR, plan_id),
+                builders=find_by_role_and_plan(sessions, BUILDER, plan_id),
+                testers=find_by_role_and_plan(sessions, TESTER, plan_id),
+                reviewers=find_by_role_and_plan(sessions, REVIEWER, plan_id),
+            )
+
+    terminate_hierarchy:
+      description: Kill all sessions in a plan hierarchy
+      safety:
+        - Requires orchestrator role or force flag
+        - Warns about attached sessions
+        - Option to spare orchestrator session
+
+  orphan_handling:
+    description: |
+      When orchestrator session dies, child sessions become orphans.
+    detection: |
+      Parent session no longer exists in tmux.
+    behavior_options:
+      - Continue independently (become standalone)
+      - Self-terminate after timeout
+      - Await new orchestrator attachment
+    default: Continue as standalone with warning
+
+# =============================================================================
+# QUALITY GATE INTEGRATION
+# =============================================================================
+quality_gate_integration:
+
+  description: |
+    Integrate ReviewService quality gates with tmux-based orchestration.
+    Phase completion requires approval from reviewer session.
+
+  workflow:
+    1_builder_completes_work:
+      actor: Builder session
+      action: |
+        agentic review request \
+          --plan $AGENTIC_PLAN_ID \
+          --phase $AGENTIC_CURRENT_PHASE \
+          --worker $AGENTIC_SESSION_NAME
+      effect: Creates review request in inbox
+
+    2_reviewer_observes:
+      actor: Reviewer session
+      action: |
+        # List pending reviews
+        agentic review status
+
+        # Observe builder's terminal
+        agentic review observe --review-id <id>
+
+        # Or capture directly
+        tmux capture-pane -p -J -t build-260131EN-EN-P5-001 -S -200
+      effect: Reviewer can see builder's work output
+
+    3_reviewer_decides:
+      actor: Reviewer session
+      action_approve: |
+        agentic review approve --review-id <id>
+      action_reject: |
+        agentic review reject --review-id <id> \
+          --reason "Tests not passing"
+      effect: Updates review status, notifies builder
+
+    4_phase_transition:
+      actor: Orchestrator or builder
+      condition: Review approved
+      action: |
+        agentic plan phase update --phase P5-Build --status completed
+      blocking: |
+        If requires_approval: true and not approved, command fails
+
+  plan_integration:
+    phase_configuration:
+      example: |
+        phases:
+          - name: P5-Build
+            id: P5-Build
+            requires_approval: true  # Quality gate enabled
+            allowed_reviewers:       # Optional: restrict reviewers
+              - "review-260131EN"
+            tasks:
+              - id: EN-P5-001
+              - id: EN-P5-002
+              - id: EN-P5-003
+
+    enforcement_hook:
+      location: modules/AgenticCLI/src/agenticcli/commands/plan.py
+      description: |
+        The existing cmd_phase_update checks is_phase_approved()
+        before allowing phase completion. This already exists in
+        the quality gate proposal - no changes needed.
+
+  orchestrator_dashboard:
+    description: |
+      Orchestrator can view status of all reviews and phases.
+    command: |
+      agentic orchestration status --plan 260131EN
+    output: |
+      Plan: 260131EN - Orchestration Enforcement Investigation
+
+      Session Hierarchy:
+        [ORCH] orch-260131EN (attached)
+        [BUILD] build-260131EN-EN-P5-001 (running)
+        [BUILD] build-260131EN-EN-P5-002 (running)
+        [REVIEW] review-260131EN (detached)
+
+      Phase Status:
+        P1-Analysis    [COMPLETED] approved by review-260131EN
+        P2-Design      [COMPLETED] approved by review-260131EN
+        P3-Build       [IN_PROGRESS]
+          EN-P5-001    completed
+          EN-P5-002    in_progress
+          EN-P5-003    pending
+        P4-Test        [PENDING]
+        P5-Review      [PENDING]
+
+      Pending Reviews:
+        None
+
+# =============================================================================
+# ORCHESTRATION ENFORCEMENT SERVICE
+# =============================================================================
+orchestration_enforcement_service:
+
+  description: |
+    Central service that wraps SessionService with orchestration-aware
+    operations. This is the primary integration point.
+
+  location: modules/AgenticGuidance/src/agenticguidance/services/orchestration.py
+
+  class_definition: |
+    class OrchestrationEnforcementService:
+        """Service for orchestration-aware session management.
+
+        Wraps SessionService with role-based operations, environment
+        injection, and hierarchy management.
+        """
+
+        def __init__(
+            self,
+            session_service: Optional[SessionService] = None,
+            review_service: Optional[ReviewService] = None,
+            audit_path: Optional[Path] = None,
+        ):
+            self.session_service = session_service or SessionService()
+            self.review_service = review_service or ReviewService()
+            self.audit_path = audit_path or Path.home() / ".agentic" / "enforcement" / "audit"
+
+  methods:
+
+    create_orchestrator:
+      description: Create an orchestrator session for a plan
+      signature: |
+        def create_orchestrator(
+            self,
+            plan_id: str,
+            plan_folder: str,
+            start_directory: Optional[str] = None,
+        ) -> SessionResult:
+      behavior:
+        1: Validate no existing orchestrator for plan
+        2: Generate session name "orch-{plan_id}"
+        3: Create session via SessionService
+        4: Create OrchestrationContext with ORCHESTRATOR role
+        5: Inject environment variables
+        6: Store context in registry metadata
+        7: Audit log the creation
+
+    spawn_builder:
+      description: Spawn a builder session (orchestrator only)
+      signature: |
+        def spawn_builder(
+            self,
+            plan_id: str,
+            assigned_tasks: List[str],
+            start_directory: Optional[str] = None,
+            scope_pattern: Optional[str] = None,
+        ) -> SessionResult:
+      behavior:
+        1: Validate caller is orchestrator
+        2: Validate tasks exist in plan
+        3: Generate session name
+        4: Create session
+        5: Create context with BUILDER role
+        6: Inject environment
+        7: Audit log
+
+    spawn_tester:
+      description: Spawn a tester session (orchestrator only)
+      similar_to: spawn_builder
+
+    spawn_reviewer:
+      description: Spawn a reviewer session (orchestrator only)
+      permissions: Can observe, cannot implement
+
+    get_session_context:
+      description: Get OrchestrationContext for a session
+      signature: |
+        def get_session_context(
+            self,
+            session_name: str,
+        ) -> Optional[OrchestrationContext]:
+      sources:
+        - First: Query tmux environment (AGENTIC_SESSION_ROLE, etc.)
+        - Fallback: Load from registry metadata
+
+    validate_operation:
+      description: Check if session is allowed to perform operation
+      signature: |
+        def validate_operation(
+            self,
+            session_name: str,
+            operation: str,
+            target: Optional[str] = None,
+        ) -> EnforcementResult:
+      operations:
+        - "spawn_session"
+        - "kill_session"
+        - "modify_plan"
+        - "complete_task"
+        - "approve_phase"
+        - "modify_file"
+      returns: |
+        EnforcementResult(
+            allowed=True/False,
+            reason="...",
+            role=OrchestrationRole,
+        )
+
+    get_hierarchy:
+      description: Get all sessions in plan hierarchy
+      signature: |
+        def get_hierarchy(
+            self,
+            plan_id: str,
+        ) -> OrchestrationHierarchy:
+
+    terminate_hierarchy:
+      description: Kill all sessions for a plan
+      signature: |
+        def terminate_hierarchy(
+            self,
+            plan_id: str,
+            include_orchestrator: bool = False,
+            force: bool = False,
+        ) -> List[SessionResult]:
+
+# =============================================================================
+# CLI INTEGRATION
+# =============================================================================
+cli_integration:
+
+  new_commands:
+    orchestration:
+      description: Top-level orchestration commands
+      location: modules/AgenticCLI/src/agenticcli/commands/orchestration.py
+      subcommands:
+
+        init:
+          usage: "agentic orchestration init --plan <plan_folder>"
+          description: Create orchestrator session for a plan
+          action: |
+            Creates orch-{plan_id} session with orchestrator role.
+            Sets environment variables.
+            Links to plan folder.
+
+        spawn:
+          usage: "agentic orchestration spawn builder --task <task_id> [--task <task_id>...]"
+          description: Spawn a builder session for tasks
+          action: |
+            Validates caller is orchestrator.
+            Creates build-{plan_id}-{task_id} session.
+            Assigns tasks to builder.
+
+        status:
+          usage: "agentic orchestration status [--plan <plan_id>]"
+          description: Show orchestration hierarchy and status
+          output: |
+            Shows all sessions, their roles, and states.
+            Shows phase status and pending reviews.
+
+        validate:
+          usage: "agentic orchestration validate --operation <op> [--target <target>]"
+          description: Check if current session can perform operation
+          action: |
+            Reads AGENTIC_SESSION_ROLE from environment.
+            Returns allowed/denied with reason.
+
+        hierarchy:
+          usage: "agentic orchestration hierarchy [--plan <plan_id>]"
+          description: Show session hierarchy tree
+          output: |
+            orch-260131EN (ORCHESTRATOR)
+            ├── build-260131EN-EN-P5-001 (BUILDER)
+            ├── build-260131EN-EN-P5-002 (BUILDER)
+            └── review-260131EN (REVIEWER)
+
+        terminate:
+          usage: "agentic orchestration terminate --plan <plan_id> [--force]"
+          description: Kill all sessions in hierarchy
+          safety: Confirms before killing attached sessions
+
+  existing_command_extensions:
+
+    session_create:
+      extension: |
+        Add --role flag to agentic-tmux session create:
+
+        agentic-tmux session create my-session \
+          --role builder \
+          --plan 260131EN \
+          --task EN-P5-001
+
+      implementation: |
+        Pass role/plan/task to SessionService.create() in metadata,
+        then inject environment variables.
+
+    session_list:
+      extension: |
+        Show role column in session list:
+
+        NAME                   ROLE         STATE     PLAN
+        orch-260131EN         orchestrator running   260131EN
+        build-260131EN-001    builder      running   260131EN
+        my-dev-session        standalone   running   -
+
+    context_bootstrap:
+      extension: |
+        Include orchestration context in agentic context:
+
+        ## Orchestration Context
+        - Role: builder
+        - Plan: 260131EN
+        - Tasks: EN-P5-001, EN-P5-002
+        - Phase: P5-Build
+        - Orchestrator: orch-260131EN
+
+# =============================================================================
+# AUDIT TRAIL
+# =============================================================================
+audit_trail:
+
+  description: |
+    All orchestration events are logged for compliance and debugging.
+
+  location: ~/.agentic/enforcement/audit/
+
+  file_structure:
+    daily_log: "{YYYYMMDD}_orchestration.log"
+    format: JSON lines
+
+  events_logged:
+    - orchestrator_created
+    - session_spawned
+    - task_assigned
+    - task_completed
+    - phase_approval_requested
+    - phase_approved
+    - phase_rejected
+    - operation_denied
+    - session_terminated
+    - hierarchy_terminated
+
+  log_entry_schema:
+    timestamp: ISO format
+    event: Event type
+    session: Session that triggered event
+    role: Session's role
+    plan_id: Associated plan
+    details: Event-specific data
+
+  example_entries: |
+    {"timestamp":"2026-02-01T09:00:00Z","event":"orchestrator_created","session":"orch-260131EN","role":"orchestrator","plan_id":"260131EN","details":{"plan_folder":"260131EN_investigate..."}}
+    {"timestamp":"2026-02-01T09:05:00Z","event":"session_spawned","session":"build-260131EN-001","role":"builder","plan_id":"260131EN","details":{"spawned_by":"orch-260131EN","tasks":["EN-P5-001"]}}
+    {"timestamp":"2026-02-01T10:30:00Z","event":"operation_denied","session":"build-260131EN-001","role":"builder","plan_id":"260131EN","details":{"operation":"spawn_session","reason":"builders cannot spawn sessions"}}
+
+# =============================================================================
+# IMPLEMENTATION PLAN
+# =============================================================================
+implementation_plan:
+
+  phase_1_foundation:
+    name: Core Data Models and Service
+    estimated_effort: 1 development cycle
+    deliverables:
+      - OrchestrationRole enum
+      - OrchestrationContext dataclass
+      - OrchestrationEnforcementService (basic structure)
+      - Unit tests for models
+    files:
+      - modules/AgenticGuidance/src/agenticguidance/services/orchestration.py (NEW)
+      - modules/AgenticGuidance/tests/test_services_orchestration.py (NEW)
+
+  phase_2_session_integration:
+    name: Session Creation with Orchestration
+    estimated_effort: 1 development cycle
+    deliverables:
+      - create_orchestrator() method
+      - spawn_builder() method
+      - Environment variable injection
+      - Session hierarchy tracking
+    files:
+      - modules/AgenticGuidance/src/agenticguidance/services/orchestration.py (EXTEND)
+      - modules/AgenticGuidance/tests/test_services_orchestration.py (EXTEND)
+
+  phase_3_cli_commands:
+    name: CLI Commands
+    estimated_effort: 1 development cycle
+    deliverables:
+      - orchestration command group
+      - init, spawn, status, hierarchy subcommands
+      - session list role column
+    files:
+      - modules/AgenticCLI/src/agenticcli/commands/orchestration.py (NEW)
+      - modules/AgenticCLI/src/agenticcli/entry.py (MODIFY)
+      - modules/AgenticTmux/src/agentictmux/commands/session.py (MODIFY)
+
+  phase_4_quality_gates:
+    name: Quality Gate Integration
+    estimated_effort: 0.5 development cycles
+    deliverables:
+      - Integration with ReviewService
+      - Phase approval validation
+      - Orchestration status display
+    files:
+      - modules/AgenticGuidance/src/agenticguidance/services/orchestration.py (EXTEND)
+      - modules/AgenticCLI/src/agenticcli/commands/orchestration.py (EXTEND)
+
+  phase_5_context_bootstrap:
+    name: Context Bootstrap Integration
+    estimated_effort: 0.5 development cycles
+    deliverables:
+      - Orchestration context in agentic context command
+      - Role-aware guidance in bootstrap
+    files:
+      - modules/AgenticCLI/src/agenticcli/commands/context.py (MODIFY)
+
+# =============================================================================
+# INTEGRATION WITH EXISTING SYSTEMS
+# =============================================================================
+integration_points:
+
+  session_service:
+    integration: Composition (wraps SessionService)
+    changes_required: None (uses existing API)
+
+  session_config:
+    integration: Uses existing naming conventions
+    extension: Add role-prefix awareness to validation
+
+  review_service:
+    integration: Composition
+    usage: Quality gate phase approval
+
+  plan_cli:
+    integration: Existing requires_approval hook
+    changes_required: None (already implemented in proposal)
+
+  context_command:
+    integration: Extend bootstrap output
+    changes_required: Add orchestration section
+
+# =============================================================================
+# RISK ASSESSMENT
+# =============================================================================
+risks:
+
+  environment_variable_conflicts:
+    description: AGENTIC_* variables might conflict with user env
+    mitigation: Use specific prefix, document clearly
+    severity: LOW
+
+  tmux_availability:
+    description: Non-tmux environments won't work
+    mitigation: Graceful fallback to standalone mode
+    severity: LOW (target environment is tmux)
+
+  session_name_collision:
+    description: Manual sessions might use orchestration naming pattern
+    mitigation: Validate role consistency, warn on mismatch
+    severity: MEDIUM
+
+  orphan_sessions:
+    description: Orchestrator death leaves orphan builders
+    mitigation: Orphan detection, configurable behavior
+    severity: MEDIUM
+
+  performance:
+    description: Environment queries add overhead
+    mitigation: Cache context, batch queries
+    severity: LOW
+
+# =============================================================================
+# SUCCESS CRITERIA
+# =============================================================================
+success_criteria:
+
+  functional:
+    - Can create orchestrator session for a plan
+    - Can spawn builder/tester sessions from orchestrator
+    - Environment variables correctly injected and queryable
+    - Session hierarchy correctly tracked
+    - Quality gates block unauthorized phase completion
+    - Audit trail captures all orchestration events
+
+  non_functional:
+    - Session creation adds < 100ms overhead
+    - No breaking changes to existing SessionService API
+    - Works with existing tmux configurations
+    - Clear error messages for enforcement violations
+
+# =============================================================================
+# REFERENCES
+# =============================================================================
+references:
+  - EN-P5-001_agentictmux_audit.yml (existing infrastructure)
+  - EN-P5-002_tmux_patterns_review.yml (patterns from deferred plans)
+  - proposal_quality_gate.md (ReviewService design)
+  - proposal_supervisor_worker.md (SessionRole patterns)
+  - session.py (current SessionService implementation)
+  - session_config.py (current naming conventions)

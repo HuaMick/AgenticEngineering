@@ -1,0 +1,528 @@
+# EN-P4-001: SessionService Metadata and Capabilities Audit
+# Task: Audit SessionService metadata and capabilities
+# Agent: explore
+# Status: completed
+# Created: 2026-01-31
+
+_template_status: active
+
+audit_summary:
+  task_id: EN-P4-001
+  description: "Audit SessionService metadata and capabilities for main session detection"
+  status: completed
+  date: "2026-01-31"
+  files_reviewed:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    - modules/AgenticCLI/src/agenticcli/commands/loop.py
+    - modules/AgenticCLI/src/agenticcli/commands/state.py
+    - modules/AgenticGuidance/src/agenticguidance/services/session.py
+    - modules/AgenticGuidance/src/agenticguidance/services/claude_session.py
+    - modules/AgenticGuidance/src/agenticguidance/services/session_config.py
+    - modules/AgenticGuidance/src/agenticguidance/services/state.py
+
+# =============================================================================
+# FINDINGS: THREE DISTINCT SESSION MANAGEMENT SYSTEMS
+# =============================================================================
+
+session_systems:
+
+  # -------------------------------------------------------------------------
+  # SYSTEM 1: AgenticCLI Session Commands (CLI-level, file-based)
+  # -------------------------------------------------------------------------
+  - name: "AgenticCLI Session Commands"
+    location: "modules/AgenticCLI/src/agenticcli/commands/session.py"
+    purpose: "Spawn and manage Claude Code sessions via CLI"
+    storage: "~/.agentic/sessions/*.json (individual files per session)"
+
+    metadata_schema:
+      session_id:
+        type: "string (UUID)"
+        description: "Unique identifier for the session"
+        generated: "At spawn time via uuid.uuid4()"
+      pid:
+        type: "int"
+        description: "Process ID of the Claude Code process"
+        populated: "After subprocess.Popen() or current process"
+      prompt:
+        type: "string"
+        description: "The prompt/task given to Claude Code"
+      max_turns:
+        type: "int | None"
+        description: "Maximum number of agentic turns"
+      status:
+        type: "string enum"
+        values: ["starting", "running", "completed", "failed", "stopped"]
+        description: "Current session lifecycle state"
+      started_at:
+        type: "string (ISO timestamp)"
+        description: "When the session started"
+      ended_at:
+        type: "string (ISO timestamp) | None"
+        description: "When the session ended"
+      background:
+        type: "bool"
+        description: "Whether running in background mode"
+      working_dir:
+        type: "string (path)"
+        description: "Working directory for the session"
+      command:
+        type: "string"
+        description: "Full command line used to invoke claude"
+      stdout_log:
+        type: "string (path) | None"
+        description: "Path to stdout log file (background mode only)"
+      stderr_log:
+        type: "string (path) | None"
+        description: "Path to stderr log file (background mode only)"
+      error:
+        type: "string | None"
+        description: "Error message if session failed"
+      exit_code:
+        type: "int | None"
+        description: "Exit code from the process"
+
+    lifecycle_events:
+      - event: "spawn"
+        triggers:
+          - "Session record created with status 'starting'"
+          - "Background: subprocess.Popen creates process"
+          - "Foreground: subprocess.run waits for completion"
+          - "Status updated to 'running' after successful start"
+      - event: "list"
+        triggers:
+          - "All session files read from ~/.agentic/sessions/"
+          - "Status updated based on process liveness check"
+      - event: "stop"
+        triggers:
+          - "SIGTERM (or SIGKILL with --force) sent to PID"
+          - "Status updated to 'stopped'"
+          - "ended_at timestamp recorded"
+      - event: "status"
+        triggers:
+          - "Session file loaded"
+          - "Process liveness verified"
+          - "Status auto-updated if process died"
+
+    gaps_for_role_detection:
+      - "NO role field (main vs subagent)"
+      - "NO parent_session_id for spawn hierarchy"
+      - "NO orchestration_context field"
+      - "NO plan_folder or task_id linkage"
+      - "Metadata dict exists but is unused"
+
+  # -------------------------------------------------------------------------
+  # SYSTEM 2: AgenticCLI Loop Commands (CLI-level, Ralph Loops)
+  # -------------------------------------------------------------------------
+  - name: "AgenticCLI Loop Commands"
+    location: "modules/AgenticCLI/src/agenticcli/commands/loop.py"
+    purpose: "Manage iterative Ralph Loop executions"
+    storage: "~/.agentic/loops/*.json (individual files per loop)"
+
+    metadata_schema:
+      loop_id:
+        type: "string (UUID)"
+        description: "Unique identifier for the loop"
+      pid:
+        type: "int"
+        description: "Process ID of the loop process"
+      prompt:
+        type: "string"
+        description: "The prompt being executed in the loop"
+      prompt_source:
+        type: "string"
+        values: ["string", "file:<path>", "entrypoint:<name>"]
+        description: "Source of the prompt"
+      max_iterations:
+        type: "int"
+        description: "Maximum loop iterations allowed"
+      completion_promise:
+        type: "string | None"
+        description: "Text pattern that signals completion"
+      current_iteration:
+        type: "int"
+        description: "Current iteration number"
+      status:
+        type: "string enum"
+        values: ["starting", "running", "completed", "failed", "stopped"]
+      started_at:
+        type: "string (ISO timestamp)"
+      ended_at:
+        type: "string (ISO timestamp) | None"
+      background:
+        type: "bool"
+      working_dir:
+        type: "string (path)"
+      output_file:
+        type: "string (path) | None"
+      command:
+        type: "string"
+      iterations:
+        type: "list[dict]"
+        description: "History of each iteration with status/timestamps"
+
+    gaps_for_role_detection:
+      - "Loop is always the 'main' session by design"
+      - "Spawned Claude sessions inside loop are not tracked"
+      - "No linkage between loop and child sessions"
+
+  # -------------------------------------------------------------------------
+  # SYSTEM 3: AgenticGuidance SessionService (Tmux-based)
+  # -------------------------------------------------------------------------
+  - name: "AgenticGuidance SessionService (Tmux)"
+    location: "modules/AgenticGuidance/src/agenticguidance/services/session.py"
+    purpose: "Manage tmux session lifecycle with worktree/plan integration"
+    storage: "~/.config/agenticcli/sessions.json (single registry file)"
+
+    metadata_schema:
+      name:
+        type: "string"
+        description: "Tmux session name (unique)"
+        constraints: "Must match naming pattern, max 50 chars"
+      state:
+        type: "enum"
+        values: ["running", "detached", "dead"]
+        description: "Tmux session state"
+      created_at:
+        type: "float (timestamp)"
+      attached:
+        type: "bool"
+        description: "Whether session has attached clients"
+      worktree:
+        type: "string (path) | None"
+        description: "Linked worktree path"
+        note: "This provides plan context!"
+      plan_folder:
+        type: "string | None"
+        description: "Linked plan folder"
+        note: "This provides orchestration context!"
+      windows:
+        type: "int"
+        description: "Number of tmux windows"
+      metadata:
+        type: "dict"
+        description: "Arbitrary metadata (currently unused)"
+
+    capabilities:
+      - "Links sessions to worktrees (worktree auto-link configurable)"
+      - "Links sessions to plan folders (plan auto-link configurable)"
+      - "Naming conventions enforce structure"
+      - "Registry persists across process boundaries"
+      - "Automatic dead session cleanup"
+
+    gaps_for_role_detection:
+      - "NO role field (orchestrator vs subagent)"
+      - "NO parent_session for spawn hierarchy"
+      - "Metadata dict exists but is unused"
+      - "No integration with AgenticCLI session commands"
+
+  # -------------------------------------------------------------------------
+  # SYSTEM 4: AgenticGuidance SessionStateService (Claude Sessions)
+  # -------------------------------------------------------------------------
+  - name: "AgenticGuidance SessionStateService"
+    location: "modules/AgenticGuidance/src/agenticguidance/services/claude_session.py"
+    purpose: "Backend service for Claude Code session state"
+    storage: "~/.agentic/sessions/*.json (same as CLI commands)"
+
+    note: |
+      This is the SERVICE LAYER that the CLI commands SHOULD use but
+      currently the CLI commands implement their own file operations
+      directly. This is a duplication that should be consolidated.
+
+    metadata_schema:
+      session_id:
+        type: "string (UUID)"
+      pid:
+        type: "int"
+      prompt:
+        type: "string"
+      max_turns:
+        type: "int | None"
+      status:
+        type: "string enum (ClaudeSessionStatus)"
+        values: ["starting", "running", "completed", "failed", "stopped"]
+      started_at:
+        type: "string (ISO timestamp)"
+      ended_at:
+        type: "string (ISO timestamp) | None"
+      background:
+        type: "bool"
+      working_dir:
+        type: "string (path)"
+      command:
+        type: "string"
+      error:
+        type: "string | None"
+      exit_code:
+        type: "int | None"
+      metadata:
+        type: "dict"
+        description: "Arbitrary metadata (AVAILABLE but unused)"
+
+    capabilities:
+      - "File locking for concurrent access"
+      - "list_all() and list_active() queries"
+      - "update_status() for state transitions"
+      - "cleanup_dead_processes() for stale entries"
+      - "get_by_pid() for process lookup"
+      - "Metadata dict available for extension"
+
+  # -------------------------------------------------------------------------
+  # SYSTEM 5: AgenticGuidance StateRegistry (Process-level)
+  # -------------------------------------------------------------------------
+  - name: "AgenticGuidance StateRegistry"
+    location: "modules/AgenticGuidance/src/agenticguidance/services/state.py"
+    purpose: "Generic process state tracking"
+    storage: "~/.config/agenticguidance/state.json (single file)"
+
+    metadata_schema:
+      pid:
+        type: "int"
+      name:
+        type: "string"
+      command:
+        type: "string"
+      started_at:
+        type: "float (timestamp)"
+      state:
+        type: "enum (ProcessState)"
+        values: ["running", "completed", "failed", "stale"]
+      ended_at:
+        type: "float | None"
+      metadata:
+        type: "dict"
+        description: "Arbitrary metadata (AVAILABLE)"
+
+    note: |
+      This is a GENERIC process registry. It's used by the CLI `agentic state`
+      command but is NOT integrated with session management. Could be used
+      for role detection if we register sessions with role metadata.
+
+# =============================================================================
+# CAPABILITIES FOR SESSION IDENTIFICATION
+# =============================================================================
+
+existing_capabilities:
+
+  session_identification_methods:
+    - method: "UUID-based session_id"
+      system: "AgenticCLI session commands, SessionStateService"
+      strength: "Globally unique identification"
+      weakness: "No semantic meaning (random)"
+
+    - method: "PID tracking"
+      system: "All systems"
+      strength: "Ties to actual OS process"
+      weakness: "PIDs can be reused, doesn't indicate role"
+
+    - method: "Tmux session naming"
+      system: "SessionService (tmux)"
+      strength: "Human-readable, naming conventions enforced"
+      weakness: "Not all sessions run in tmux"
+
+    - method: "Worktree linkage"
+      system: "SessionService (tmux)"
+      strength: "Provides project context"
+      weakness: "Only available in tmux sessions"
+
+    - method: "Plan folder linkage"
+      system: "SessionService (tmux)"
+      strength: "Provides orchestration context"
+      weakness: "Only available in tmux sessions, not used by CLI sessions"
+
+  queryable_state:
+    - "session list via CLI commands"
+    - "session status via CLI commands"
+    - "SessionStateService.list_all() / list_active()"
+    - "SessionService.list() / get()"
+    - "StateRegistry.list_all() / list_active()"
+
+  metadata_extension_points:
+    - location: "SessionEntry.metadata (claude_session.py)"
+      status: "Available but unused"
+      could_store: "role, parent_session_id, task_id, orchestration_context"
+
+    - location: "SessionInfo.metadata (session.py)"
+      status: "Available but unused"
+      could_store: "role, orchestration_state"
+
+    - location: "ProcessEntry.metadata (state.py)"
+      status: "Available but unused"
+      could_store: "role, session_id cross-reference"
+
+# =============================================================================
+# GAPS ANALYSIS FOR ROLE DETECTION
+# =============================================================================
+
+critical_gaps:
+
+  gap_1_no_role_field:
+    description: "No session system has a 'role' field"
+    impact: "Cannot distinguish main orchestrator from subagent"
+    recommendation: |
+      Add 'role' field to SessionEntry and SessionInfo:
+      - Values: "orchestrator", "subagent", "standalone"
+      - Set at spawn time based on spawn context
+    complexity: "Low - add field to schema, populate at creation"
+
+  gap_2_no_spawn_hierarchy:
+    description: "No parent-child relationship between sessions"
+    impact: "Cannot trace which session spawned which"
+    recommendation: |
+      Add 'parent_session_id' field:
+      - Set when session is spawned by another session
+      - Enables tree traversal of session hierarchy
+    complexity: "Medium - need to pass parent context at spawn"
+
+  gap_3_disconnected_systems:
+    description: "CLI session commands don't use SessionStateService"
+    impact: "Duplicate code, inconsistent behavior potential"
+    recommendation: |
+      Refactor CLI commands to use SessionStateService:
+      - session.py should import and use claude_session.py
+      - Centralizes session management logic
+    complexity: "Medium - refactoring, but improves maintainability"
+
+  gap_4_no_plan_context_in_cli_sessions:
+    description: "CLI session spawn doesn't capture plan/task context"
+    impact: "Sessions are not linked to orchestration context"
+    recommendation: |
+      Add optional --plan and --task flags to session spawn:
+      - Store in metadata or dedicated fields
+      - Allow querying sessions by plan/task
+    complexity: "Low - add CLI args and store in metadata"
+
+  gap_5_tmux_cli_session_disconnect:
+    description: "Tmux SessionService and CLI sessions are separate"
+    impact: "Claude sessions in tmux aren't cross-referenced"
+    recommendation: |
+      Either:
+      - Integrate: Store CLI session_id in tmux session metadata
+      - Or: Use environment variables to pass tmux session name to CLI session
+    complexity: "Medium - requires design decision on integration approach"
+
+# =============================================================================
+# EXISTING CAPABILITIES THAT COULD ENABLE DETECTION
+# =============================================================================
+
+leverageable_capabilities:
+
+  capability_1_metadata_dicts:
+    description: "All services have metadata dicts"
+    current_state: "Unused in all systems"
+    potential: |
+      Could store:
+      - role: "orchestrator" | "subagent" | "standalone"
+      - parent_session_id: UUID of spawning session
+      - task_id: Current task being worked on
+      - plan_folder: Plan context
+      - spawn_time_context: Full context at spawn
+    implementation: "Add to spawn-time initialization"
+
+  capability_2_environment_variables:
+    description: "Sessions can read environment"
+    current_state: "Not used for session identification"
+    potential: |
+      Set at spawn time:
+      - AGENTIC_SESSION_ROLE=orchestrator|subagent
+      - AGENTIC_PARENT_SESSION=<uuid>
+      - AGENTIC_CURRENT_TASK=<task_id>
+      - AGENTIC_PLAN_FOLDER=<path>
+    implementation: "Add to Popen env parameter"
+
+  capability_3_working_dir_convention:
+    description: "Sessions have working_dir field"
+    current_state: "Just stores the path"
+    potential: |
+      Working directory can encode context:
+      - If in plan folder: session is related to that plan
+      - Convention: main orchestrator works from plan root
+      - Convention: subagents work from module/test directories
+    implementation: "Add convention documentation, optional validation"
+
+  capability_4_prompt_pattern_detection:
+    description: "Sessions store their prompt"
+    current_state: "Just stores the string"
+    potential: |
+      Analyze prompt for role indicators:
+      - Contains "orchestrat*" -> likely orchestrator
+      - Contains "You are a build agent" -> subagent
+      - Contains task ID patterns -> task-specific subagent
+    implementation: "Add role detection heuristic (low reliability)"
+
+# =============================================================================
+# RECOMMENDATIONS FOR P4 (ROLE DETECTION)
+# =============================================================================
+
+recommendations_for_p4:
+
+  immediate_wins:
+    - action: "Use metadata dict in SessionEntry"
+      effort: "Low"
+      impact: "High - enables role storage without schema change"
+
+    - action: "Add environment variables at spawn time"
+      effort: "Low"
+      impact: "High - sessions can self-identify via env"
+
+    - action: "Document working directory conventions"
+      effort: "Low"
+      impact: "Medium - provides inference signal"
+
+  medium_term:
+    - action: "Add role field to SessionEntry schema"
+      effort: "Medium"
+      impact: "High - explicit role identification"
+
+    - action: "Refactor CLI to use SessionStateService"
+      effort: "Medium"
+      impact: "Medium - consolidates session management"
+
+    - action: "Add parent_session_id for spawn tracking"
+      effort: "Medium"
+      impact: "High - enables session hierarchy"
+
+  requires_investigation:
+    - action: "Integrate tmux and CLI session systems"
+      effort: "High"
+      impact: "High but complex - needs design"
+      question: "Should they be unified or cross-referenced?"
+
+# =============================================================================
+# ANSWERS TO OPEN QUESTIONS
+# =============================================================================
+
+answered_questions:
+
+  question_what_metadata_exists:
+    answer: |
+      Multiple overlapping systems with similar but not identical schemas:
+      1. CLI session: session_id, pid, prompt, status, working_dir, etc.
+      2. Loop: loop_id, iterations, completion_promise, etc.
+      3. Tmux: name, state, worktree, plan_folder, etc.
+      4. StateRegistry: pid, name, command, state, etc.
+
+      All have metadata dicts that are UNUSED.
+
+  question_can_sessions_identify_role:
+    answer: |
+      Currently NO. No system has a role field or parent reference.
+
+      However, capabilities exist to add this:
+      - Metadata dicts can store role
+      - Environment variables can be set at spawn
+      - Working directory provides inference signal
+      - Tmux session naming could encode role
+
+  question_session_lifecycle_events:
+    answer: |
+      Lifecycle events tracked:
+      - spawn/start: Creates session record
+      - status transitions: starting -> running -> completed/failed/stopped
+      - process death detection: Automatic via PID checks
+      - cleanup: Manual cleanup commands available
+
+      NOT tracked:
+      - Role assignment
+      - Parent-child relationships
+      - Task assignment
+      - Orchestration state changes

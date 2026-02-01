@@ -1,0 +1,634 @@
+# Gaps Analysis: CLI Tasklist vs Orchestration Needs
+# Plan ID: 260131EN
+# Task ID: EN-P1-002
+# Type: Gap Analysis Document
+# Created: 2026-01-31
+# Based on: EN-P1-001 Audit Findings
+
+_document_metadata:
+  task_id: EN-P1-002
+  depends_on: EN-P1-001
+  agent_type: explore
+  status: completed
+  analysis_date: "2026-01-31"
+
+# =============================================================================
+# EXECUTIVE SUMMARY
+# =============================================================================
+
+executive_summary: |
+  This document formally analyzes the gaps between the existing CLI tasklist
+  functionality and the orchestration enforcement needs identified in the
+  investigation plan 260131EN.
+
+  The audit (EN-P1-001) revealed that while the CLI has robust task management
+  capabilities (create, list, update, current), these features were designed
+  for human-driven task tracking rather than automated orchestration enforcement.
+
+  Seven critical gaps were identified that would need to be addressed to leverage
+  the tasklist infrastructure for orchestration state machine purposes.
+
+# =============================================================================
+# GAP ANALYSIS
+# =============================================================================
+
+gaps:
+
+  - id: GAP-001
+    name: "No Real-time Agent Progress Tracking"
+    category: observability
+    severity: HIGH
+
+    description: |
+      The current CLI tasklist provides point-in-time status queries but lacks
+      the ability to track agent progress in real-time. When an agent is executing
+      a task, there is no mechanism to observe intermediate progress, detect stalls,
+      or monitor execution patterns.
+
+      Current State:
+      - `agentic plan task list` shows task status at query time
+      - `agentic plan task current` returns the current task
+      - No streaming or push-based progress updates
+      - No heartbeat or activity tracking
+
+      Required for Orchestration:
+      - Real-time visibility into subagent execution
+      - Detection of stalled or stuck agents
+      - Progress percentage or milestone tracking
+      - Activity timestamps for monitoring
+
+    impact_on_orchestration:
+      - Orchestrators cannot monitor subagent health during execution
+      - Stalled subagents are not detected until manual check
+      - No early warning for tasks taking longer than expected
+      - Cannot implement timeout-based escalation patterns
+
+    potential_solutions:
+      - solution_1:
+          name: "Activity Heartbeat System"
+          description: |
+            Implement a heartbeat mechanism where agents periodically report
+            activity. CLI command like `agentic task heartbeat` called every
+            N minutes to indicate the agent is still active.
+          complexity: MEDIUM
+          trade_offs:
+            - pro: "Simple to implement"
+            - pro: "Low overhead per heartbeat"
+            - con: "Requires agent discipline to call heartbeat"
+            - con: "Adds CLI call overhead to agent operations"
+
+      - solution_2:
+          name: "Progress Milestones"
+          description: |
+            Allow tasks to define milestones and agents to report milestone
+            completion. Example: `agentic task progress --milestone "tests-passing"`
+          complexity: MEDIUM
+          trade_offs:
+            - pro: "More granular than binary complete/incomplete"
+            - pro: "Enables percentage-based progress reporting"
+            - con: "Requires schema changes to task definition"
+            - con: "Milestone definitions add planning overhead"
+
+      - solution_3:
+          name: "File-based Activity Log"
+          description: |
+            Agents append to a standardized activity log file in the plan folder.
+            External monitoring can watch this file for updates.
+          complexity: LOW
+          trade_offs:
+            - pro: "Simplest implementation"
+            - pro: "Human-readable audit trail"
+            - con: "Not queryable via CLI"
+            - con: "File I/O overhead"
+
+  - id: GAP-002
+    name: "No Orchestration State Machine"
+    category: enforcement
+    severity: CRITICAL
+
+    description: |
+      The tasklist is a flat list of tasks with status flags (pending, in_progress,
+      completed). It does not model orchestration as a state machine with defined
+      transitions, gates, and validation requirements.
+
+      Current State:
+      - Tasks have status: pending -> in_progress -> completed
+      - No concept of phases or hierarchical grouping
+      - No transition validation (any task can be started at any time)
+      - No gate conditions (prerequisites not enforced)
+
+      Required for Orchestration:
+      - Phases with defined entry/exit criteria
+      - Transition validation (cannot enter Build without Planning approved)
+      - Gate conditions enforced by the system
+      - State machine that matches process.mmd flowchart
+
+    impact_on_orchestration:
+      - Agents can skip phases without system detection
+      - No enforcement of gate validations (MMD presence, approvals)
+      - Orchestration process is guidance-only, not enforced
+      - Compliance cannot be verified programmatically
+
+    potential_solutions:
+      - solution_1:
+          name: "Phase-aware Tasklist Schema"
+          description: |
+            Extend the tasklist schema to include phases as first-class entities.
+            Tasks belong to phases, and phase transitions require validation.
+            Example schema:
+              phases:
+                - id: planning
+                  gate_requirements: [mmd_exists]
+                  tasks: [...]
+                - id: build
+                  requires_phase: planning
+                  tasks: [...]
+          complexity: HIGH
+          trade_offs:
+            - pro: "Full orchestration state machine support"
+            - pro: "Programmatic enforcement possible"
+            - con: "Significant schema redesign"
+            - con: "Requires migration of existing tasklists"
+
+      - solution_2:
+          name: "Separate Orchestration State File"
+          description: |
+            Keep tasklists simple, but introduce a separate orchestration state
+            file (orchestration_state.yml) that tracks phase and gate status.
+            CLI commands operate on both files.
+          complexity: MEDIUM
+          trade_offs:
+            - pro: "Preserves existing tasklist functionality"
+            - pro: "Orchestration concerns isolated"
+            - con: "Two files to keep in sync"
+            - con: "Adds complexity to CLI commands"
+
+      - solution_3:
+          name: "Gate Validation Commands"
+          description: |
+            Add new CLI commands specifically for gate validation:
+            `agentic plan gate check planning` - returns pass/fail
+            `agentic plan gate require planning` - fails if gate not met
+            Orchestration process calls these before phase transitions.
+          complexity: MEDIUM
+          trade_offs:
+            - pro: "Targeted solution for gate enforcement"
+            - pro: "Can be added incrementally"
+            - con: "Relies on agent calling the commands"
+            - con: "Doesn't prevent skipping gates"
+
+  - id: GAP-003
+    name: "No Cross-Agent Task Dependencies"
+    category: coordination
+    severity: HIGH
+
+    description: |
+      When multiple agents are working on a plan, there is no mechanism to express
+      or enforce dependencies between tasks assigned to different agents. Agent A
+      cannot declare that Task X is blocked by Agent B completing Task Y.
+
+      Current State:
+      - Tasks can have `depends_on` field in YAML (as seen in plan_teach.yml)
+      - Dependency is informational, not enforced by CLI
+      - No CLI command to check if dependencies are satisfied
+      - No mechanism to notify when blocking task completes
+
+      Required for Orchestration:
+      - Cross-agent dependency declaration
+      - Dependency enforcement (cannot start blocked task)
+      - Notification when blocking tasks complete
+      - Dependency graph visualization
+
+    impact_on_orchestration:
+      - Parallel agents may work on dependent tasks simultaneously
+      - No automated coordination between builder and tester
+      - Manual orchestrator intervention required for sequencing
+      - Race conditions possible in multi-agent scenarios
+
+    potential_solutions:
+      - solution_1:
+          name: "Enforced Task Dependencies"
+          description: |
+            Enhance `agentic plan task start` to check dependencies before
+            allowing task to transition to in_progress. If dependencies not
+            satisfied, command fails with clear error.
+          complexity: MEDIUM
+          trade_offs:
+            - pro: "Hard enforcement of dependencies"
+            - pro: "Uses existing depends_on field"
+            - con: "Requires all agents to use CLI for task transitions"
+            - con: "May block legitimate parallel work"
+
+      - solution_2:
+          name: "Dependency Status Query"
+          description: |
+            Add `agentic plan task deps <task-id>` to show dependency status:
+            - List of blocking tasks
+            - Status of each blocking task
+            - Ready/not-ready determination
+            Enforcement remains soft (informational).
+          complexity: LOW
+          trade_offs:
+            - pro: "Minimal changes to existing behavior"
+            - pro: "Agents can check before starting"
+            - con: "Still relies on agent discipline"
+            - con: "No notification mechanism"
+
+      - solution_3:
+          name: "Task Queue with Dependency Resolution"
+          description: |
+            Implement a task queue that automatically manages dependencies.
+            Agents pull next available task from queue rather than selecting
+            tasks themselves. Queue only offers tasks with satisfied deps.
+          complexity: HIGH
+          trade_offs:
+            - pro: "Fully automated dependency management"
+            - pro: "Simplifies agent task selection"
+            - con: "Significant architectural change"
+            - con: "May reduce agent flexibility"
+
+  - id: GAP-004
+    name: "No Agent Session Correlation"
+    category: observability
+    severity: MEDIUM
+
+    description: |
+      When a task is being worked on, there is no way to correlate which agent
+      session is responsible for that task. The tasklist tracks task status but
+      not which session/agent is executing it.
+
+      Current State:
+      - Tasks have owner field but it's agent type (e.g., "builder"), not session
+      - No session ID recorded when task is started
+      - Cannot query "which session is working on task X"
+      - Cannot query "what task is session Y working on"
+
+      Required for Orchestration:
+      - Session ID recorded when task is claimed
+      - Bidirectional lookup: task->session and session->task
+      - Historical record of which sessions worked on which tasks
+      - Orphan detection (tasks claimed by dead sessions)
+
+    impact_on_orchestration:
+      - Cannot identify responsible agent for follow-up
+      - Orphaned tasks not automatically detected
+      - Audit trail incomplete (who did what)
+      - Orchestrator cannot direct queries to right subagent
+
+    potential_solutions:
+      - solution_1:
+          name: "Session ID Field in Task"
+          description: |
+            Add session_id field to task schema. When agent calls
+            `agentic plan task start`, the CLI captures current session ID
+            and records it. Add commands to query by session.
+          complexity: MEDIUM
+          trade_offs:
+            - pro: "Clear ownership tracking"
+            - pro: "Enables session-based queries"
+            - con: "Requires session ID to be available to CLI"
+            - con: "Session IDs may not be stable across restarts"
+
+      - solution_2:
+          name: "Session Registry File"
+          description: |
+            Maintain a separate session registry file that maps active sessions
+            to their current tasks. Sessions register on start, deregister on
+            end. Enables orphan detection.
+          complexity: MEDIUM
+          trade_offs:
+            - pro: "Centralized session tracking"
+            - pro: "Can detect stale sessions"
+            - con: "Registry can become stale if sessions crash"
+            - con: "Additional file to maintain"
+
+      - solution_3:
+          name: "Tmux Session Name Encoding"
+          description: |
+            Encode task assignment in tmux session name or environment.
+            Example: session name "260131EN-builder-TASK001"
+            External tools can query tmux for session-task mapping.
+          complexity: LOW
+          trade_offs:
+            - pro: "Uses existing tmux infrastructure"
+            - pro: "Visible in terminal management"
+            - con: "Only works in tmux environment"
+            - con: "Name length limitations"
+
+  - id: GAP-005
+    name: "Manual Status Updates Required"
+    category: usability
+    severity: HIGH
+
+    description: |
+      Task status must be explicitly updated by agents via CLI commands. There
+      is no automatic status inference based on agent activity. This creates
+      overhead and relies on agent discipline to keep status accurate.
+
+      Current State:
+      - Agent must call `agentic plan task start <id>` to begin
+      - Agent must call `agentic plan task complete <id>` when done
+      - If agent forgets, task status is stale
+      - No validation that task work was actually performed
+
+      Required for Orchestration:
+      - Automatic status inference where possible
+      - Validation that task work matches completion claim
+      - Reduced overhead for common status transitions
+      - Graceful handling of forgotten updates
+
+    impact_on_orchestration:
+      - Task status frequently out of sync with reality
+      - Orchestrators make decisions based on stale status
+      - Additional CLI overhead reduces agent efficiency
+      - Context window consumed by status management
+
+    potential_solutions:
+      - solution_1:
+          name: "Activity-based Status Inference"
+          description: |
+            Infer task status from agent activity. If agent is modifying files
+            in task scope, infer in_progress. If no activity for N minutes,
+            prompt for status update.
+          complexity: HIGH
+          trade_offs:
+            - pro: "Reduces manual status updates"
+            - pro: "Status more likely to be accurate"
+            - con: "Complex to implement reliably"
+            - con: "May misinterpret activity"
+
+      - solution_2:
+          name: "Simplified Status Commands"
+          description: |
+            Streamline status updates: `agentic task done` (marks current task
+            complete), `agentic task next` (completes current, starts next).
+            Reduce friction of status management.
+          complexity: LOW
+          trade_offs:
+            - pro: "Lower friction for common operations"
+            - pro: "Encourages status updates"
+            - con: "Still requires agent to call commands"
+            - con: "Doesn't address forgotten updates"
+
+      - solution_3:
+          name: "Bootstrap Integration"
+          description: |
+            Integrate task status with bootstrap. When session starts for a
+            task, status auto-transitions to in_progress. When session ends
+            gracefully, prompt for completion status.
+          complexity: MEDIUM
+          trade_offs:
+            - pro: "Ties status to session lifecycle"
+            - pro: "Natural integration point"
+            - con: "Requires bootstrap changes"
+            - con: "Crash scenarios complicate logic"
+
+  - id: GAP-006
+    name: "No Orchestration Validation at Task Completion"
+    category: enforcement
+    severity: HIGH
+
+    description: |
+      When a task is marked complete, there is no validation that orchestration
+      requirements were met. The completion is trusted without verification.
+      For example, a builder task can be marked complete without the CLI verifying
+      that tests pass or that required files exist.
+
+      Current State:
+      - `agentic plan task complete` accepts completion without validation
+      - No concept of completion criteria in task schema
+      - No hooks for custom validation at completion time
+      - Audit agent checks compliance post-hoc, not at completion
+
+      Required for Orchestration:
+      - Completion criteria defined per task
+      - Validation executed when completion attempted
+      - Failed validation blocks completion with clear error
+      - Integration with orchestration gates
+
+    impact_on_orchestration:
+      - Tasks marked complete before criteria met
+      - Quality gates bypassed
+      - Downstream tasks start on incomplete foundation
+      - Compliance issues discovered late (at audit)
+
+    potential_solutions:
+      - solution_1:
+          name: "Completion Criteria Schema"
+          description: |
+            Add completion_criteria field to task schema. CLI validates
+            criteria before allowing completion. Example criteria:
+            - files_exist: [path/to/file]
+            - command_succeeds: "pytest tests/"
+            - approval_received: true
+          complexity: HIGH
+          trade_offs:
+            - pro: "Hard enforcement of quality gates"
+            - pro: "Criteria documented and trackable"
+            - con: "Significant schema and CLI changes"
+            - con: "Criteria definition adds planning overhead"
+
+      - solution_2:
+          name: "Completion Hooks"
+          description: |
+            Allow plan files to define completion hooks - scripts or commands
+            run when completion is attempted. Non-zero exit blocks completion.
+          complexity: MEDIUM
+          trade_offs:
+            - pro: "Flexible validation mechanism"
+            - pro: "Can run arbitrary checks"
+            - con: "Hooks must be written and maintained"
+            - con: "Hook failures may be cryptic"
+
+      - solution_3:
+          name: "Two-phase Completion"
+          description: |
+            Split completion into request and confirm. Agent requests
+            completion, orchestrator (or automated check) confirms it.
+            Unconfirmed completions visible but not blocking downstream.
+          complexity: MEDIUM
+          trade_offs:
+            - pro: "Explicit review step for completion"
+            - pro: "Orchestrator retains control"
+            - con: "Adds latency to completion flow"
+            - con: "Requires orchestrator attention"
+
+  - id: GAP-007
+    name: "Limited Instrumentation"
+    category: observability
+    severity: MEDIUM
+
+    description: |
+      The CLI tasklist operations are not instrumented for monitoring, alerting,
+      or analytics. There is no telemetry on task state changes, no alerting on
+      anomalies, and no analytics on task execution patterns.
+
+      Current State:
+      - CLI commands execute and return results
+      - No logging of task state transitions
+      - No metrics collected (duration, attempt count, etc.)
+      - No integration with external monitoring systems
+
+      Required for Orchestration:
+      - Structured logging of all state transitions
+      - Metrics on task duration, success rate, retries
+      - Alerting on anomalies (long-running tasks, repeated failures)
+      - Integration with observability stack (Honeycomb, etc.)
+
+    impact_on_orchestration:
+      - No visibility into orchestration health
+      - Performance issues not detected proactively
+      - No data for process improvement
+      - Debugging requires manual log inspection
+
+    potential_solutions:
+      - solution_1:
+          name: "Event-based Logging"
+          description: |
+            Add structured event logging for all task state changes. Events
+            include timestamp, task_id, old_state, new_state, session_id.
+            Log to file and/or observability backend.
+          complexity: LOW
+          trade_offs:
+            - pro: "Fundamental observability building block"
+            - pro: "Enables post-hoc analysis"
+            - con: "Log storage and management overhead"
+            - con: "Not real-time alerting"
+
+      - solution_2:
+          name: "Metrics Collection"
+          description: |
+            Instrument CLI to emit metrics: task_duration, tasks_completed,
+            tasks_failed, etc. Emit to Prometheus/OpenTelemetry endpoint
+            or file-based metrics.
+          complexity: MEDIUM
+          trade_offs:
+            - pro: "Quantitative performance data"
+            - pro: "Standard metrics formats"
+            - con: "Metrics backend required"
+            - con: "Aggregation complexity"
+
+      - solution_3:
+          name: "Honeycomb/LangSmith Integration"
+          description: |
+            Integrate with existing observability tools (Honeycomb, LangSmith)
+            already used in the codebase. Emit orchestration events as spans
+            or traces.
+          complexity: MEDIUM
+          trade_offs:
+            - pro: "Uses existing tooling"
+            - pro: "Correlated with other traces"
+            - con: "Dependency on external services"
+            - con: "May add latency to CLI operations"
+
+# =============================================================================
+# SUMMARY MATRIX
+# =============================================================================
+
+summary_matrix:
+  header:
+    - gap_id
+    - name
+    - severity
+    - category
+    - recommended_solution
+    - complexity
+
+  rows:
+    - gap_id: GAP-001
+      name: "No Real-time Agent Progress Tracking"
+      severity: HIGH
+      category: observability
+      recommended_solution: "Activity Heartbeat System"
+      complexity: MEDIUM
+
+    - gap_id: GAP-002
+      name: "No Orchestration State Machine"
+      severity: CRITICAL
+      category: enforcement
+      recommended_solution: "Gate Validation Commands"
+      complexity: MEDIUM
+
+    - gap_id: GAP-003
+      name: "No Cross-Agent Task Dependencies"
+      severity: HIGH
+      category: coordination
+      recommended_solution: "Enforced Task Dependencies"
+      complexity: MEDIUM
+
+    - gap_id: GAP-004
+      name: "No Agent Session Correlation"
+      severity: MEDIUM
+      category: observability
+      recommended_solution: "Session ID Field in Task"
+      complexity: MEDIUM
+
+    - gap_id: GAP-005
+      name: "Manual Status Updates Required"
+      severity: HIGH
+      category: usability
+      recommended_solution: "Simplified Status Commands"
+      complexity: LOW
+
+    - gap_id: GAP-006
+      name: "No Orchestration Validation at Task Completion"
+      severity: HIGH
+      category: enforcement
+      recommended_solution: "Completion Hooks"
+      complexity: MEDIUM
+
+    - gap_id: GAP-007
+      name: "Limited Instrumentation"
+      severity: MEDIUM
+      category: observability
+      recommended_solution: "Event-based Logging"
+      complexity: LOW
+
+# =============================================================================
+# RECOMMENDATIONS FOR EN-P1-003
+# =============================================================================
+
+recommendations_for_next_task: |
+  The EN-P1-003 task (Assess implementation complexity for tasklist-based
+  orchestration) should use this gap analysis to:
+
+  1. Evaluate which gaps MUST be addressed for viable orchestration support
+  2. Estimate total implementation effort based on recommended solutions
+  3. Identify quick wins (LOW complexity solutions) for immediate value
+  4. Determine if tasklist approach is viable or if alternative proposals
+     (P2-P6) should be prioritized
+
+  Key considerations:
+  - GAP-002 (State Machine) is CRITICAL and most complex to address
+  - GAP-005 (Manual Updates) and GAP-007 (Instrumentation) are quick wins
+  - GAP-001 and GAP-006 are important for orchestration reliability
+  - GAP-003 and GAP-004 support multi-agent scenarios
+
+# =============================================================================
+# CROSS-REFERENCES
+# =============================================================================
+
+cross_references:
+  related_proposals:
+    - id: P2
+      relevance: "Preloaded tasklists could auto-populate orchestration phases"
+      gaps_addressed: [GAP-002, GAP-005]
+
+    - id: P3
+      relevance: "Session spawn could inject session ID for correlation"
+      gaps_addressed: [GAP-004]
+
+    - id: P4
+      relevance: "Session detection enables role-based validation"
+      gaps_addressed: [GAP-006]
+
+    - id: P6
+      relevance: "Bootstrap-time generation addresses initialization gaps"
+      gaps_addressed: [GAP-002, GAP-005]
+
+  related_documents:
+    - path: "friction_analysis.yml"
+      relevance: "Root cause analysis that informed gap identification"
+
+    - path: "plan_teach.yml"
+      relevance: "Contains open questions that gaps help answer"
