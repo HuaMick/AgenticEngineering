@@ -1,0 +1,200 @@
+%% =============================================================================
+%% GOAL: Execute plan tasks
+%% =============================================================================
+%% PROFILE: Orchestration-260205TY_migrate_cli_to_typer_and_enable_autocomplete
+%% INPUT_PATH: docs/plans/live/260205TY_migrate_cli_to_typer_and_enable_autocomplete/plan_build.yml
+%%
+%% PHASES:
+%%   P1: Infrastructure & Dependencies
+%%   P2: Core Refactor
+%%   P3: Feature Parity & Global Flags
+%%   P4: Auto-Completion & Installation
+%%   P5: Verification
+%%   L1: Documentation
+%%   T1: Functional Testing
+%%   T2: Completion Testing
+%%
+%% AGENT_ROUTING: P1 -> builder, P2 -> builder, P3 -> builder, P4 -> builder, P5 -> builder, L1 -> builder, T1 -> test-builder, T2 -> test-builder
+%% STATUS: P1=pending, P2=pending, P3=pending, P4=pending, P5=pending, L1=pending, T1=pending, T2=pending
+%% FEEDBACK_TRIGGERS: TEST_FAILURE -> test-fix-loop, BUILD_FAILURE -> escalate
+%% =============================================================================
+
+flowchart LR
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    LoadInputs --> ReviewInputs[Review All Listed Inputs]
+    ReviewInputs --> CheckInputs{All Inputs Found?}
+
+    CheckInputs -- "No: Missing" --> SearchInputs[Search for Missing Inputs]
+    SearchInputs --> Found{Found?}
+    Found -- "Yes: Update paths" --> UpdateRefs[Update References]
+    UpdateRefs --> ReviewInputs
+    Found -- "No: Stop" --> AskUser((Ask User for Clarification))
+
+    CheckInputs -- "Yes: Verified" --> Phase1
+
+    %% ========================================
+    %% PHASE 1: INFRASTRUCTURE & DEPENDENCIES
+    %% ========================================
+    %% AGENT_ROUTING: builder agent
+    %% Tasks: TY-001
+
+    subgraph P1_SG ["Infrastructure & Dependencies"]
+        Phase1[Enter Infrastructure & Dependencies] --> SpawnAgent1[Spawn builder Agent]
+        SpawnAgent1 --> Task_P1_1[TY-001: Add Typer and Rich to dependencies]
+        Task_P1_1 --> Phase1Complete[Infrastructure & Dependencies Complete]
+    end
+
+    Phase1Complete --> Phase2
+
+    %% ========================================
+    %% PHASE 2: CORE REFACTOR
+    %% ========================================
+    %% AGENT_ROUTING: builder agent
+    %% Tasks: TY-002, TY-003
+
+    subgraph P2_SG ["Core Refactor"]
+        Phase2[Enter Core Refactor] --> SpawnAgent2[Spawn builder Agent]
+        SpawnAgent2 --> Task_P2_1[TY-002: Refactor main parser to Typer]
+        Task_P2_1 --> Task_P2_2[TY-003: Update subcommand handlers]
+        Task_P2_2 --> Phase2Complete[Core Refactor Complete]
+    end
+
+    Phase2Complete --> Phase3
+
+    %% ========================================
+    %% PHASE 3: FEATURE PARITY & GLOBAL FLAGS
+    %% ========================================
+    %% AGENT_ROUTING: builder agent
+    %% Tasks: TY-004, TY-005
+
+    subgraph P3_SG ["Feature Parity & Global Flags"]
+        Phase3[Enter Feature Parity & Global Flags] --> SpawnAgent3[Spawn builder Agent]
+        SpawnAgent3 --> Task_P3_1[TY-004: Implement Global Flags (--json, --debug)]
+        Task_P3_1 --> Task_P3_2[TY-005: Ensure Agent Name shortcuts work]
+        Task_P3_2 --> Phase3Complete[Feature Parity & Global Flags Complete]
+    end
+
+    Phase3Complete --> Phase4
+
+    %% ========================================
+    %% PHASE 4: AUTO-COMPLETION & INSTALLATION
+    %% ========================================
+    %% AGENT_ROUTING: builder agent
+    %% Tasks: TY-006, TY-007
+
+    subgraph P4_SG ["Auto-Completion & Installation"]
+        Phase4[Enter Auto-Completion & Installation] --> SpawnAgent4[Spawn builder Agent]
+        SpawnAgent4 --> Task_P4_1[TY-006: Configure Shell Completion]
+        Task_P4_1 --> Task_P4_2[TY-007: Update Setup Wizard]
+        Task_P4_2 --> Phase4Complete[Auto-Completion & Installation Complete]
+    end
+
+    Phase4Complete --> Phase5
+
+    %% ========================================
+    %% PHASE 5: VERIFICATION
+    %% ========================================
+    %% AGENT_ROUTING: builder agent
+    %% Tasks: TY-008, TY-009
+
+    subgraph P5_SG ["Verification"]
+        Phase5[Enter Verification] --> SpawnAgent5[Spawn builder Agent]
+        SpawnAgent5 --> Task_P5_1[TY-008: Verify migration with existing tests]
+        Task_P5_1 --> Task_P5_2[TY-009: Manual UAT for Tab Completion]
+        Task_P5_2 --> Phase5Complete[Verification Complete]
+    end
+
+    Phase5Complete --> Phase6
+
+    %% ========================================
+    %% PHASE 6: DOCUMENTATION
+    %% ========================================
+    %% AGENT_ROUTING: builder agent
+    %% Tasks: LEARN-001, LEARN-002
+
+    subgraph L1_SG ["Documentation"]
+        Phase6[Enter Documentation] --> SpawnAgent6[Spawn builder Agent]
+        SpawnAgent6 --> Task_L1_1[LEARN-001: Update README with new CLI structure]
+        Task_L1_1 --> Task_L1_2[LEARN-002: Document completion installation]
+        Task_L1_2 --> Phase6Complete[Documentation Complete]
+    end
+
+    Phase6Complete --> Phase7
+
+    %% ========================================
+    %% PHASE 7: FUNCTIONAL TESTING
+    %% ========================================
+    %% AGENT_ROUTING: test-builder agent with test-fix loop
+    %% LOOP_DEFINITION: test-fix-loop
+    %% MAX_ITERATIONS: 5
+
+    subgraph Testing7_SG ["Functional Testing (Test-Fix-Loop)"]
+        Phase7[Enter Functional Testing] --> SpawnTestBuilder7[Spawn test-builder Agent]
+        SpawnTestBuilder7 --> RunTests7[Run Tests]
+        RunTests7 --> TestsPassed7{Tests Passed?}
+
+        %% Test-Fix Loop: retry path
+        TestsPassed7 -- "No: Fix in Iteration" --> SpawnBuilderFix7[Spawn builder Agent for Fixes]
+        SpawnBuilderFix7 --> ApplyFixes7[Apply Implementation Fixes]
+        ApplyFixes7 --> RunTests7
+
+        %% Success path
+        TestsPassed7 -- "Yes: All Pass" --> Phase7Complete[Functional Testing Complete]
+    end
+
+    %% Escalation path for persistent test failures
+    TestsPassed7 -- "No: Escalate" --> CheckIterations7{Max Iterations Reached?}
+    CheckIterations7 -- "No" --> SpawnTestBuilder7
+    CheckIterations7 -- "Yes" --> EscalateTests7((Ask User: Test Failures Persist))
+
+    Phase7Complete --> Phase8
+
+    %% ========================================
+    %% PHASE 8: COMPLETION TESTING
+    %% ========================================
+    %% AGENT_ROUTING: test-builder agent with test-fix loop
+    %% LOOP_DEFINITION: test-fix-loop
+    %% MAX_ITERATIONS: 5
+
+    subgraph Testing8_SG ["Completion Testing (Test-Fix-Loop)"]
+        Phase8[Enter Completion Testing] --> SpawnTestBuilder8[Spawn test-builder Agent]
+        SpawnTestBuilder8 --> RunTests8[Run Tests]
+        RunTests8 --> TestsPassed8{Tests Passed?}
+
+        %% Test-Fix Loop: retry path
+        TestsPassed8 -- "No: Fix in Iteration" --> SpawnBuilderFix8[Spawn builder Agent for Fixes]
+        SpawnBuilderFix8 --> ApplyFixes8[Apply Implementation Fixes]
+        ApplyFixes8 --> RunTests8
+
+        %% Success path
+        TestsPassed8 -- "Yes: All Pass" --> Phase8Complete[Completion Testing Complete]
+    end
+
+    %% Escalation path for persistent test failures
+    TestsPassed8 -- "No: Escalate" --> CheckIterations8{Max Iterations Reached?}
+    CheckIterations8 -- "No" --> SpawnTestBuilder8
+    CheckIterations8 -- "Yes" --> EscalateTests8((Ask User: Test Failures Persist))
+
+
+    %% ========================================
+    %% FINALIZATION
+    %% ========================================
+    Phase8Complete --> UpdatePlanStatus[Update Plan Status: completed]
+    %% agentic plan move folder --plan <path>
+    UpdatePlanStatus --> ArchivePlan[Archive to docs/plans/completed/]
+    ArchivePlan --> End((End: Plan Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef entrypoint fill:#90EE90,stroke:#228B22
+    classDef exitpoint fill:#FFB6C1,stroke:#DC143C
+    classDef userpoint fill:#87CEEB,stroke:#4682B4
+    classDef keyaction fill:#FFD700,stroke:#DAA520
+    class Start entrypoint
+    class End exitpoint
+    class AskUser,EscalateTests7,EscalateTests8 userpoint

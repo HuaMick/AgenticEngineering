@@ -1,0 +1,88 @@
+plan:
+  name: Guidance Phase - CLI Remediation
+  worktree: /home/code/AgenticEngineering
+  branch: main
+  status: planning
+  created: '2026-02-01'
+  objective: |
+    Document the CLI issues discovered during plan execution and establish
+    requirements for remediation.
+
+  scope:
+    includes:
+      - modules/AgenticCLI/src/agenticcli/cli.py
+      - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    excludes: []
+
+  phases:
+    - id: P1
+      name: Issue Documentation
+      status: pending
+      tasks:
+        - id: '01'
+          name: Document global flags regression
+          description: |
+            Document that the fix for global flags ordering introduced a regression.
+            Before: agentic --json plan list worked
+            After: agentic --json plan list fails with "unrecognized arguments"
+            Required: Both positions should work (before AND after subcommand)
+          status: pending
+
+        - id: '02'
+          name: Document task ID disambiguation issue
+          description: |
+            Document that duplicate task IDs across phases cannot be distinguished.
+            Current: agentic plan task complete 01 completes first match
+            Required: Support phase-qualified IDs like P2-01 or P2.01
+          status: pending
+
+    - id: P2
+      name: Requirements Analysis
+      status: pending
+      tasks:
+        - id: '01'
+          name: Define global flags parsing requirements
+          description: |
+            Specify that global flags must work in BOTH positions:
+            - agentic --json plan list (original behavior)
+            - agentic plan list --json (new behavior)
+            Approach: Pre-parse args to extract global flags from any position
+          status: pending
+
+        - id: '02'
+          name: Define task ID qualification requirements
+          description: |
+            Specify supported formats for phase-qualified task IDs:
+            - Unqualified: agentic plan task complete 01 (current behavior, first match)
+            - Phase-qualified: agentic plan task complete P2-01 (new behavior)
+            - Alternative format: agentic plan task complete P2.01 (optional)
+          status: pending
+
+    - id: P3
+      name: Technical Approach
+      status: pending
+      tasks:
+        - id: '01'
+          name: Design global flags pre-parsing
+          description: |
+            Design approach to extract global flags from any position:
+            1. Parse sys.argv manually to extract --json, --debug, -j, -d
+            2. Remove extracted flags from argv
+            3. Pass cleaned argv to argparse
+            4. Merge extracted flags with argparse results
+          status: pending
+
+        - id: '02'
+          name: Design task ID parsing
+          description: |
+            Design approach to parse phase-qualified task IDs:
+            1. Check if task_id matches pattern "P\d+-\d+" or "P\d+\.\d+"
+            2. If matched, extract phase_id and task_id components
+            3. Filter search to only specified phase
+            4. If unqualified, use existing first-match behavior
+          status: pending
+
+  validation_criteria:
+    - Requirements documented with specific examples
+    - Technical approach validated against both issues
+    - No additional regressions introduced

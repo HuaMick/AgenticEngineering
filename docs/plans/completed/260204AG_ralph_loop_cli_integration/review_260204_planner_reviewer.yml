@@ -1,0 +1,414 @@
+# Plan Review Report
+# Reviewer: planner-reviewer
+# Review Date: 2026-02-03T20:36:07Z
+# Plan ID: 260204AG_ralph_loop_cli_integration
+
+# ========================================
+# REVIEW DECISION
+# ========================================
+decision: "REJECT"
+status: "needs_revision"
+
+# ========================================
+# EXECUTIVE SUMMARY
+# ========================================
+summary: |
+  Plan 260204AG_ralph_loop_cli_integration is REJECTED due to multiple blocking issues:
+
+  1. CRITICAL: MMD file missing required AGENT_ROUTING, GOAL, and PHASES metadata
+  2. CRITICAL: Plan references "builder" agent which does NOT exist (should be "build-python")
+  3. BLOCKING: Agent references in loop_structures use non-existent "builder" agent
+
+  The plan structure is otherwise well-designed with good task decomposition, proper
+  layering (Domain -> Workflow -> Entrypoint), and comprehensive test strategy. However,
+  the infrastructure violations and incorrect agent references are blocking issues that
+  must be resolved before approval.
+
+# ========================================
+# DETAILED FINDINGS
+# ========================================
+findings:
+  critical:
+    - id: "CF-001"
+      category: "mmd_presence"
+      severity: "CRITICAL"
+      description: |
+        Orchestration MMD file missing required metadata headers for orchestration-executor.
+
+        Current state:
+        - File exists: orchestration_ralph_loop_cli_integration.mmd
+        - Missing: GOAL header comment
+        - Missing: AGENT_ROUTING header comment or metadata
+        - Missing: PHASES list
+
+        The MMD file is a valid flowchart but lacks the metadata that orchestration-executor
+        requires to parse agent routing decisions and phase boundaries.
+
+      location: "docs/plans/live/260204AG_ralph_loop_cli_integration/orchestration_ralph_loop_cli_integration.mmd"
+
+      remediation: |
+        Add the following metadata to the top of the MMD file:
+
+        %% GOAL: Implement Ralph Loop CLI Integration
+        %% AGENT_ROUTING: This orchestration routes tasks to build-python, test-builder, test-audit
+        %% PHASES:
+        %%   - Phase 1: Core Service Implementation
+        %%   - Phase 2: CLI Command Integration
+        %%   - Phase 3: Loop Execution Engine
+        %%   - Phase 4: Integration and Testing
+
+        Reference: modules/AgenticGuidance/assets/examples/orchestration/mmd_reference_examples/
+
+      blocking: true
+
+    - id: "CF-002"
+      category: "infrastructure_implementation"
+      severity: "CRITICAL"
+      description: |
+        Plan references "builder" agent which does NOT exist in the implemented agent taxonomy.
+
+        Violations found:
+        - Line 105: agent: "builder" (in loop_implementation.participants)
+        - Line 126: agent: "builder" (in loop_audit.participants)
+
+        Current agent taxonomy:
+        - Build category agents: build-python, build-flutter
+        - No generic "builder" agent exists
+
+        This violates the infrastructure implementation fence: plans must not reference
+        agents that lack actual guidance files (process.yml, inputs.yml).
+
+      location: "docs/plans/live/260204AG_ralph_loop_cli_integration/plan_build.yml"
+      lines: [105, 126]
+
+      remediation: |
+        Replace all references to "builder" with "build-python":
+
+        Line 105:
+          - agent: "build-python"
+            role: "Implements RalphLoopService and CLI commands"
+
+        Line 126:
+          - agent: "build-python"
+            role: "Fixes implementation issues revealed by audit"
+
+        Verify: /home/code/AgenticEngineering/modules/AgenticGuidance/agents/build/build-python/
+
+      blocking: true
+
+  high:
+    - id: "HF-001"
+      category: "task_structure"
+      severity: "HIGH"
+      description: |
+        Task AG_001 guidance references "builder" agent but does not specify which build
+        agent will execute this task. The guidance should reference "build-python" patterns.
+
+      location: "plan_build.yml - task AG_001"
+
+      remediation: |
+        Clarify in task guidance:
+        "Follow Domain -> Workflow -> Entrypoint pattern (build-python agent will execute)."
+
+      blocking: false
+
+    - id: "HF-002"
+      category: "context_quality"
+      severity: "HIGH"
+      description: |
+        Plan inputs reference "modules/AgenticGuidance/docs/ARCHITECTURE.md" but this file
+        describes the module architecture, not specifically the Domain -> Workflow ->
+        Entrypoint pattern for implementation tasks.
+
+        More specific reference would be:
+        - modules/AgenticGuidance/assets/guidelines/layering.yml (if exists)
+        - Or inline the pattern guidance in the plan
+
+      location: "plan_build.yml - inputs section, line 73"
+
+      remediation: |
+        Verify ARCHITECTURE.md contains the layering pattern, OR:
+        - Reference a more specific guideline file
+        - Add inline guidance about the layering pattern in Phase 1 context
+
+      blocking: false
+
+  informational:
+    - id: "IF-001"
+      category: "plan_structure"
+      severity: "INFO"
+      description: |
+        README.md provides excellent context and is well-structured. Plan structure follows
+        all required patterns:
+        - Unique name at root level
+        - Absolute worktree path
+        - Clear objective statement
+        - Proper task dependencies
+        - Comprehensive success criteria
+
+      note: "This is a positive finding - plan structure is exemplary."
+
+    - id: "IF-002"
+      category: "loop_structure"
+      severity: "INFO"
+      description: |
+        Loop structures are well-defined with:
+        - test-fix-loop for Phase 4 (Implementation)
+        - audit-test-fix-loop for Validation (MANDATORY)
+        - Clear exit criteria and max iterations
+        - Proper escalation paths
+
+        This follows best practices from modules/AgenticGuidance/assets/definitions/agent-loops.yml
+
+      note: "This is a positive finding - loop structure is comprehensive."
+
+    - id: "IF-003"
+      category: "success_criteria"
+      severity: "INFO"
+      description: |
+        Success criteria are measurable and verifiable:
+        - Functional: CLI commands, completion detection, iteration logging
+        - Quality: 80%+ test coverage, integration tests, manual test plan
+        - User Experience: Clear output, JSON mode, helpful errors
+
+        All criteria are observable outcomes, not implementation details.
+
+      note: "This is a positive finding - success criteria are well-defined."
+
+# ========================================
+# CHECKLIST RESULTS
+# ========================================
+checklist_results:
+  plan_structure:
+    status: "PASS"
+    notes: "All required root fields present and correctly formatted"
+    items:
+      - "Plan has unique name at root level (plan_name field)": PASS
+      - "Worktree path is absolute and correct (worktree field)": PASS
+      - "Plan folder follows YYMMDDXX_description naming": PASS
+      - "Plan objective clearly states what will be improved": PASS
+
+  inputs:
+    status: "PASS"
+    notes: "Context references are specific and files exist"
+    items:
+      - "Context references are at file-level or directory-level": PASS
+      - "Each input has location and description fields": PASS
+      - "Referenced files exist in the repository or worktree": PASS
+
+  success_criteria:
+    status: "PASS"
+    notes: "Success criteria are measurable and user-focused"
+    items:
+      - "Each phase has measurable success criteria": PASS
+      - "Success criteria include user-focused validation": PASS
+      - "Technical validation criteria are verifiable": PASS
+      - "Criteria define observable outcomes, not implementation details": PASS
+
+  task_structure:
+    status: "PASS"
+    notes: "Tasks are well-defined with specific targets and guidance"
+    items:
+      - "Each task specifies exact target file(s) to edit": PASS
+      - "Agent types are correctly allocated by category": FAIL (see CF-002)
+      - "Operations are properly ordered (CREATE before UPDATE)": PASS
+      - "Each task has concrete acceptance criteria": PASS
+
+  pattern_alignment:
+    status: "PASS"
+    notes: "Plan follows Domain -> Workflow -> Entrypoint pattern"
+    items:
+      - "Tasks follow Domain -> Workflow -> Entrypoint patterns where applicable": PASS
+      - "Phase dependencies are explicitly declared": PASS
+      - "All mandatory loops included (audit-test-fix after cleanup, etc.)": PASS
+
+  context_quality:
+    status: "PASS"
+    notes: "Inputs follow context quality principles"
+    items:
+      - "No inline definitions that duplicate shared assets": PASS
+      - "No duplicate definitions across files": PASS
+      - "Layer references use transitive loading": PASS
+      - "File references resolve to existing targets": PASS
+
+# ========================================
+# FENCE RESULTS
+# ========================================
+fence_results:
+  mmd_presence:
+    status: "FAIL"
+    blocking: true
+    finding_ref: "CF-001"
+    note: |
+      MMD file exists but missing required metadata headers.
+      orchestration-executor requires GOAL, AGENT_ROUTING, and PHASES metadata.
+
+  infrastructure_implementation:
+    status: "FAIL"
+    blocking: true
+    finding_ref: "CF-002"
+    note: |
+      Plan references "builder" agent which does not exist.
+      Build category only has: build-python, build-flutter.
+
+      Verification:
+      - Searched for: **/builder/manifest.yml
+      - Result: Not found
+      - Verified: build-python exists at agents/build/build-python/manifest.yml
+
+  file_placement:
+    status: "PASS"
+    note: "All files correctly placed in live/ folder"
+
+  codebase_verification:
+    status: "PASS"
+    note: |
+      Verified infrastructure files exist:
+      - modules/AgenticCLI/src/agenticcli/commands/loop.py ✓
+      - modules/AgenticCLI/src/agenticcli/commands/session.py ✓
+      - modules/AgenticCLI/src/agenticcli/commands/plan.py ✓
+      - modules/AgenticGuidance/src/agenticguidance/services/session.py ✓
+      - docs/plans/deferred/260130MA_multi_agent_tmux_coordination/plan_build.yml ✓
+
+  self_review_validation:
+    status: "PASS"
+    note: |
+      Validated against self-review criteria:
+      - No duplicate definitions found
+      - All file references resolve
+      - No circular references detected
+      - Path resolution follows semantics
+
+  rlm_usage:
+    status: "SKIP"
+    note: "Plan does not reference RLM patterns - fence not applicable"
+
+# ========================================
+# RECOMMENDATIONS
+# ========================================
+recommendations:
+  immediate_actions:
+    - action: "Add MMD metadata headers"
+      priority: "CRITICAL"
+      description: |
+        Add GOAL, AGENT_ROUTING, and PHASES metadata comments to the top of
+        orchestration_ralph_loop_cli_integration.mmd
+
+    - action: "Replace 'builder' with 'build-python'"
+      priority: "CRITICAL"
+      description: |
+        Search and replace all references to "builder" agent with "build-python"
+        in loop_structures section (lines 105, 126)
+
+  quality_improvements:
+    - action: "Clarify ARCHITECTURE.md reference"
+      priority: "MEDIUM"
+      description: |
+        Verify modules/AgenticGuidance/docs/ARCHITECTURE.md contains layering pattern,
+        or reference a more specific guideline file
+
+    - action: "Add agent execution notes to tasks"
+      priority: "LOW"
+      description: |
+        Consider adding "agent: build-python" field to each task for clarity,
+        even though it can be inferred from task category
+
+# ========================================
+# POSITIVE OBSERVATIONS
+# ========================================
+positive_observations:
+  - "Excellent task decomposition with logical phasing (Core -> CLI -> Execution -> Test)"
+  - "Comprehensive test strategy with unit, integration, and manual test coverage"
+  - "Well-defined loop structures with proper exit criteria and escalation paths"
+  - "Clear success criteria that are measurable and verifiable"
+  - "Good use of dependencies between tasks (depends_on field)"
+  - "README.md provides excellent context and usage examples"
+  - "State management design is robust (file-based, with iterations/ subfolder)"
+  - "Plan-aware completion detection is a strong pattern (queries actual task status)"
+  - "Proper separation of concerns: Domain (RalphLoopService) -> Entrypoint (CLI commands)"
+
+# ========================================
+# REVIEW METADATA
+# ========================================
+review_metadata:
+  reviewer_agent: "planner-reviewer"
+  review_date: "2026-02-03T20:36:07Z"
+  plan_folder: "/home/code/AgenticEngineering/docs/plans/live/260204AG_ralph_loop_cli_integration"
+  files_reviewed:
+    - "plan_build.yml"
+    - "orchestration_ralph_loop_cli_integration.mmd"
+    - "README.md"
+
+  infrastructure_verification:
+    - agent: "build-python"
+      status: "IMPLEMENTED"
+      location: "modules/AgenticGuidance/agents/build/build-python/"
+
+    - agent: "test-builder"
+      status: "IMPLEMENTED"
+      location: "modules/AgenticGuidance/agents/test/test-builder/"
+
+    - agent: "test-audit"
+      status: "IMPLEMENTED"
+      location: "modules/AgenticGuidance/agents/test/test-audit/"
+
+    - agent: "builder"
+      status: "NOT_FOUND"
+      note: "Referenced by plan but does not exist in agent taxonomy"
+
+  checklists_applied:
+    - "plan_structure"
+    - "inputs"
+    - "success_criteria"
+    - "task_structure"
+    - "pattern_alignment"
+    - "context_quality"
+
+  fences_applied:
+    - "mmd_presence"
+    - "infrastructure_implementation"
+    - "file_placement"
+    - "codebase_verification"
+    - "self_review_validation"
+
+  critical_findings_count: 2
+  high_findings_count: 2
+  informational_findings_count: 3
+  blocking_issues: true
+
+# ========================================
+# NEXT STEPS FOR PLANNER
+# ========================================
+next_steps:
+  - step: 1
+    action: "Update orchestration_ralph_loop_cli_integration.mmd"
+    details: "Add GOAL, AGENT_ROUTING, and PHASES metadata comments at top of file"
+
+  - step: 2
+    action: "Update plan_build.yml loop_structures section"
+    details: "Replace 'builder' with 'build-python' on lines 105 and 126"
+
+  - step: 3
+    action: "Re-submit for review"
+    details: "Once blocking issues resolved, re-submit plan to planner-reviewer"
+
+# ========================================
+# APPROVAL CONDITIONS
+# ========================================
+approval_conditions:
+  description: "Plan will be APPROVED when the following conditions are met"
+
+  conditions:
+    - condition: "MMD metadata headers added"
+      status: "PENDING"
+      fence: "mmd_presence"
+
+    - condition: "All 'builder' references changed to 'build-python'"
+      status: "PENDING"
+      fence: "infrastructure_implementation"
+
+    - condition: "All checklists pass"
+      status: "PENDING (1 fail due to CF-002)"
+      checklist: "task_structure"
+
+  resubmission_required: true

@@ -1,0 +1,544 @@
+# EN-P6-002: MMD-to-Task-Plan Transformation Prototype
+# Task: Prototype MMD-to-Task-Plan transformation logic
+# Status: Completed
+# Date: 2026-02-01
+
+task_id: EN-P6-002
+task_name: Prototype MMD-to-Task-Plan transformation logic
+status: completed
+agent_type: explore
+
+# =============================================================================
+# EXECUTIVE SUMMARY
+# =============================================================================
+executive_summary:
+  finding: |
+    The MMD-to-task transformation is FEASIBLE and LOW-MEDIUM complexity.
+    Existing CLI infrastructure in agent_help.py and plan.py provides parsing
+    patterns that can be extended. The consistent MMD format from internal
+    generation tools enables regex-based parsing.
+
+  key_insights:
+    - CLI already parses MMD files (agent_help.py lines 221-245)
+    - Task schema in plan_example.yml is well-defined and reusable
+    - A 5-stage transformation pipeline aligns with EN-P2-003 design
+    - Extension points exist at cmd_orchestration_generate()
+
+  complexity: LOW-MEDIUM
+  estimated_effort: "25-40 hours for full implementation"
+
+# =============================================================================
+# EXISTING INFRASTRUCTURE ANALYSIS
+# =============================================================================
+existing_infrastructure_analysis:
+
+  agent_help_py:
+    file: modules/AgenticCLI/src/agenticcli/commands/agent_help.py
+    mmd_parsing:
+      location: "lines 221-245"
+      capabilities:
+        - Extracts GOAL from comment headers
+        - Extracts node labels from flowchart
+        - Uses regex pattern matching
+        - Pattern: "-->" edge detection, "[Label]" node extraction
+      limitations:
+        - Only extracts first 8 steps
+        - Designed for summary, not complete plan generation
+
+  plan_py:
+    file: modules/AgenticCLI/src/agenticcli/commands/plan.py
+    capabilities:
+      - Full task management suite (task/list, task/status, task/update)
+      - Phase operations (phase/add, phase/list, phase/update)
+      - Orchestration command stubs (generate, validate)
+      - _get_phases_from_content() utility (lines 16-29)
+    extension_points:
+      - cmd_orchestration_generate() - already stubbed
+      - Dispatched from lines 164-170
+
+  task_schema:
+    source: plan_example.yml and definitions
+    structure:
+      id: "phase_001 (string, unique)"
+      name: "Description (string)"
+      status: "pending|in_progress|completed|blocked (enum)"
+      description: "Actionable description (string)"
+      phase: "phase_name (string)"
+      loop: "loop-type (optional)"
+      success_criteria: "[list of strings] (optional)"
+
+# =============================================================================
+# EXTENSION POINTS
+# =============================================================================
+extension_points:
+
+  service_creation:
+    location: modules/AgenticCLI/src/agenticcli/
+    proposed_structure:
+      agenticcli:
+        commands:
+          plan.py: "(existing)"
+          orchestration.py: "(NEW - MMD-specific operations)"
+        services:
+          mmd_parser_service.py: "(NEW - MMD parsing logic)"
+        parsers:
+          mmd_transformer.py: "(NEW - MMD->Task transformation)"
+
+  cli_integration:
+    primary_file: plan.py
+    function: cmd_orchestration_generate()
+    stub_location: "lines 164-170"
+    behavior:
+      input: "--mmd <path-to-mmd> --plan <plan-folder>"
+      output: "plan_*.yml file with extracted tasks"
+
+  reusable_components:
+    from_agent_help_py:
+      - Comment header extraction pattern
+      - Node label regex
+      - Phase/step counting logic
+    from_plan_py:
+      - _get_phases_from_content()
+      - Phase validation patterns
+      - Task status enum validation
+
+# =============================================================================
+# TRANSFORMATION PSEUDOCODE
+# =============================================================================
+transformation_pseudocode:
+
+  class_design: |
+    class MMDParserService:
+        """Transform orchestration MMD files into task-plan YAML structures."""
+
+        def parse_mmd_to_tasks(self, mmd_path: Path, plan_folder: Path) -> dict:
+            """
+            Entry point: MMD file -> structured tasklist
+
+            Returns: {
+                "plan_metadata": {...},
+                "phases": [...],
+                "tasks": [...],
+                "orchestration_info": {...}
+            }
+            """
+            content = mmd_path.read_text()
+
+            # Stage 1: Extract metadata from comment header
+            metadata = self._extract_metadata(content)
+
+            # Stage 2: Extract phase information
+            phases = self._extract_phases(content, metadata)
+
+            # Stage 3: Extract task nodes from flowchart
+            nodes = self._extract_flowchart_nodes(content)
+
+            # Stage 4: Determine dependencies
+            dependencies = self._extract_task_dependencies(content, nodes)
+
+            # Stage 5: Generate task list structure
+            tasks = self._generate_tasklist(nodes, phases, dependencies)
+
+            return {
+                "plan_metadata": metadata,
+                "phases": phases,
+                "tasks": tasks
+            }
+
+  metadata_extraction: |
+    def _extract_metadata(self, content: str) -> dict:
+        """Extract %% comment header metadata."""
+        patterns = {
+            "GOAL": r'%% GOAL: (.+)',
+            "PROFILE": r'%% PROFILE: (.+)',
+            "PHASES": r'%% PHASES: (.+)',
+            "AGENT_ROUTING": r'%% AGENT_ROUTING: (.+)',
+            "STATUS": r'%% STATUS: (.+)',
+            "INPUT_PATH": r'%% INPUT_PATH: (.+)',
+        }
+        metadata = {}
+        for name, pattern in patterns.items():
+            match = re.search(pattern, content)
+            if match:
+                metadata[name.lower()] = match.group(1).strip()
+        return metadata
+
+  phase_extraction: |
+    def _extract_phases(self, content: str, metadata: dict) -> list:
+        phases = []
+
+        # Try metadata first (%%PHASES: phase1, phase2)
+        if "phases" in metadata:
+            phase_list = [p.strip() for p in metadata["phases"].split(",")]
+            phases = [{"id": f"phase_{i+1}", "name": p, "order": i}
+                     for i, p in enumerate(phase_list)]
+        else:
+            # Extract from subgraph definitions
+            subgraph_pattern = r'subgraph (\w+) \["([^"]+)"\]'
+            for match in re.finditer(subgraph_pattern, content):
+                phases.append({
+                    "id": match.group(1),
+                    "name": match.group(2),
+                    "order": len(phases)
+                })
+        return phases
+
+  node_extraction: |
+    def _extract_flowchart_nodes(self, content: str) -> list:
+        node_pattern = r'\[([^\]]+)\]'
+        nodes = []
+
+        for match in re.finditer(node_pattern, content):
+            label = match.group(1)
+            if not label or len(label) < 3:
+                continue
+
+            # Parse task ID if present (TASK-ID: description)
+            if ":" in label:
+                task_id, description = label.split(":", 1)
+                task_id = task_id.strip()
+                description = description.strip()
+            else:
+                task_id = self._generate_task_id(label)
+                description = label
+
+            nodes.append({
+                "node_id": task_id,
+                "label": label,
+                "description": description,
+                "type": "task"
+            })
+        return nodes
+
+  dependency_extraction: |
+    def _extract_task_dependencies(self, content: str, nodes: list) -> dict:
+        dependencies = {}
+        edge_pattern = r'(\w+)\s*(?:---|-->|-.->)\s*(\w+)'
+
+        for match in re.finditer(edge_pattern, content):
+            from_node = match.group(1)
+            to_node = match.group(2)
+
+            if to_node not in dependencies:
+                dependencies[to_node] = []
+            dependencies[to_node].append(from_node)
+
+        return dependencies
+
+  tasklist_generation: |
+    def _generate_tasklist(self, nodes: list, phases: list,
+                          dependencies: dict) -> list:
+        tasks = []
+
+        for i, node in enumerate(nodes):
+            task = {
+                "id": node["node_id"],
+                "name": node["description"][:100],
+                "description": node["description"],
+                "status": "pending",
+                "sequence": i + 1,
+                "depends_on": dependencies.get(node["node_id"], [])
+            }
+
+            # Infer phase from node ID prefix
+            for phase in phases:
+                if node["node_id"].startswith(phase["id"]):
+                    task["phase"] = phase["id"]
+                    break
+            else:
+                task["phase"] = phases[0]["id"] if phases else "phase_1"
+
+            tasks.append(task)
+
+        return tasks
+
+# =============================================================================
+# IMPLEMENTATION ROADMAP
+# =============================================================================
+implementation_roadmap:
+
+  phase_1_service_creation:
+    complexity: LOW
+    effort: "6-10 hours"
+    deliverables:
+      - /agenticcli/services/mmd_parser.py
+      - /agenticcli/parsers/mmd_transformer.py
+      - /agenticcli/commands/orchestration.py (optional, or extend plan.py)
+    integration:
+      - Wire into plan.py handler
+      - Implement cmd_orchestration_generate()
+      - Reuse _get_phases_from_content() pattern
+
+  phase_2_cli_enhancement:
+    complexity: LOW-MEDIUM
+    effort: "4-6 hours"
+    deliverables:
+      - Implemented cmd_orchestration_generate()
+      - MMD input -> task output mapping
+      - YAML output compatible with existing task schema
+    cli_interface: |
+      agentic plan orchestration generate --mmd <path> --plan <folder>
+      # Outputs: plan_*.yml with extracted tasks
+
+  phase_3_agent_specific_generation:
+    complexity: MEDIUM
+    effort: "8-12 hours"
+    deliverables:
+      - Map MMD nodes to agent-specific task files
+      - Create per-agent task lists (filtered by agent routing)
+      - Output to .claude/task-lists/<agent-name>.yml
+    example_output: |
+      # Input: orchestration_build.mmd with agents [builder, test-runner]
+      # Output 1: .claude/task-lists/build-python.yml
+      # Output 2: .claude/task-lists/test-runner.yml
+
+  phase_4_testing_validation:
+    complexity: MEDIUM
+    effort: "6-10 hours"
+    deliverables:
+      - Unit tests for each parsing stage
+      - Integration tests with real MMD files
+      - Validation against existing plan YAML files
+
+# =============================================================================
+# COMPLEXITY ASSESSMENT
+# =============================================================================
+complexity_assessment:
+
+  component_breakdown:
+    - component: "MMD metadata extraction"
+      complexity: LOW
+      effort: "2-4 hours"
+      risks: "Regex robustness, missing fields"
+
+    - component: "Flowchart node parsing"
+      complexity: LOW
+      effort: "2-3 hours"
+      risks: "Node format variations, special characters"
+
+    - component: "Phase extraction"
+      complexity: LOW
+      effort: "2 hours"
+      risks: "Metadata vs. subgraph conflicts"
+
+    - component: "Dependency mapping"
+      complexity: LOW-MEDIUM
+      effort: "3-4 hours"
+      risks: "Complex edge syntax, feedback loops"
+
+    - component: "Task schema generation"
+      complexity: LOW
+      effort: "1-2 hours"
+      risks: "Schema validation, field mapping"
+
+    - component: "CLI integration"
+      complexity: MEDIUM
+      effort: "3-4 hours"
+      risks: "Argument parsing, error handling"
+
+    - component: "Agent-specific routing"
+      complexity: MEDIUM
+      effort: "4-6 hours"
+      risks: "Agent category mapping, filtering"
+
+    - component: "Testing & validation"
+      complexity: MEDIUM
+      effort: "4-8 hours"
+      risks: "Edge cases, real MMD file coverage"
+
+    - component: "Bootstrap integration"
+      complexity: MEDIUM
+      effort: "3-5 hours"
+      risks: "Context injection, agent_help updates"
+
+  total_estimate:
+    range: "25-40 hours"
+    confidence: HIGH
+    rationale: |
+      Existing parsing patterns in agent_help.py reduce learning curve.
+      Consistent MMD format from internal tools simplifies regex design.
+      Task schema is already defined in plan_example.yml.
+
+# =============================================================================
+# FILE STRUCTURE RECOMMENDATION
+# =============================================================================
+recommended_file_structure:
+  base_path: modules/AgenticCLI/src/agenticcli/
+
+  files:
+    services/__init__.py: "(update exports)"
+    services/mmd_parser.py: "MMDParserService class"
+
+    parsers/__init__.py: "(new directory)"
+    parsers/mmd_metadata_extractor.py: "Stage 1 metadata extraction"
+    parsers/mmd_node_extractor.py: "Stage 2-3 phase/node extraction"
+    parsers/mmd_task_generator.py: "Stage 5 task list generation"
+    parsers/mmd_transformer.py: "Orchestration class combining stages"
+
+    commands/plan.py: "(MODIFIED - implement cmd_orchestration_generate)"
+
+    templates/task_schema.yml: "Task YAML schema template (optional)"
+
+# =============================================================================
+# KEY DESIGN DECISIONS
+# =============================================================================
+key_design_decisions:
+
+  regex_based_parsing:
+    decision: "Use regex-based parsing (vs. external Mermaid library)"
+    rationale: |
+      - Existing codebase patterns use regex
+      - Avoids new dependencies
+      - Sufficient for controlled MMD generation
+    constraint: "Assumes well-formed MMD from internal generation tools"
+
+  reuse_existing_task_schema:
+    decision: "Reuse existing task schema (vs. creating new format)"
+    rationale: |
+      - Seamless integration with plan.py task commands
+      - No schema duplication
+      - Agents already understand this format
+    benefit: "cmd_task_list, cmd_task_update work immediately"
+
+  two_stage_parsing:
+    decision: "Metadata + structural parsing (vs. monolithic)"
+    rationale: |
+      - Metadata provides authoritative context
+      - Structure provides granular tasks
+    benefit: "Handles both auto-generated and manually-edited MMD files"
+
+  phase_first_organization:
+    decision: "Phase-first organization (vs. task-first)"
+    rationale: |
+      - Plans are phase-organized
+      - Tasks belong to phases
+    mapping: "Node IDs often contain phase prefix (build_001, test_001)"
+
+# =============================================================================
+# BOOTSTRAP FLOW INTEGRATION
+# =============================================================================
+bootstrap_integration:
+
+  current_flow: |
+    agent_help.py -> extracts GOAL + first 8 steps from process.mmd
+
+  proposed_flow_option_a: |
+    MMD-to-Tasks Direct Transformation:
+
+    orchestration.yml -> MMD file
+        |
+        v
+    agentic plan orchestration generate --mmd <path>
+        |
+        v
+    plan_*.yml (task list with full task extraction)
+        |
+        v
+    agentic context bootstrap --role <agent>
+        |
+        v
+    Enhanced context with full tasklist (not just first 8 steps)
+
+  proposed_flow_option_b: |
+    Plan-First Approach:
+
+    orchestration.yml -> MMD file
+        |
+        v
+    planner agents generate plan_*.yml files
+        |
+        v
+    agentic plan orchestration validate (validates MMD matches plans)
+        |
+        v
+    executor agents use task lists from plan_*.yml
+
+# =============================================================================
+# VALIDATION APPROACH
+# =============================================================================
+validation_approach:
+
+  cmd_orchestration_validate:
+    purpose: "Validate MMD matches plan YAML files"
+    steps:
+      - Parse MMD metadata and task extraction
+      - Load plan YAML files from plan folder
+      - Verify MMD nodes map to plan tasks
+      - Check for orphaned tasks or missing nodes
+      - Validate agent routing consistency
+    output: "Validation report with discrepancies"
+
+# =============================================================================
+# RISKS AND MITIGATIONS
+# =============================================================================
+risks_and_mitigations:
+
+  - risk: "MMD format variations from manual editing"
+    likelihood: MEDIUM
+    impact: HIGH
+    mitigation: |
+      - Schema validation in cmd_orchestration_validate()
+      - Graceful fallbacks for missing fields
+      - Warning messages for non-standard patterns
+
+  - risk: "Circular dependencies in edge parsing"
+    likelihood: LOW
+    impact: MEDIUM
+    mitigation: |
+      - Dependency cycle detection
+      - Clear error messages identifying cycles
+
+  - risk: "Agent routing mismatch"
+    likelihood: MEDIUM
+    impact: MEDIUM
+    mitigation: |
+      - Validate AGENT_ROUTING against known agent list
+      - Cross-reference with KNOWN_AGENTS in agent_help.py
+
+# =============================================================================
+# RECOMMENDATIONS FOR EN-P6-003
+# =============================================================================
+recommendations_for_next_task:
+
+  - |
+    EN-P6-003 should focus on agent-specific plan generation design,
+    building on this prototype to define how agent-specific task files
+    are discovered and loaded at bootstrap time.
+
+  - |
+    Consider the session ID availability question: Should task files be
+    generated at plan start time or session spawn time?
+
+  - |
+    Design the agents/ subfolder structure for agent-specific task files:
+    - Option A: <plan_folder>/agents/<session_id>_<role>.yml
+    - Option B: .claude/task-lists/<role>.yml (global to session)
+
+  - |
+    Define the lifecycle for agent-specific task files:
+    - Auto-delete on plan completion?
+    - Archive to completed/ subfolder?
+    - Keep indefinitely for audit trail?
+
+# =============================================================================
+# CONCLUSION
+# =============================================================================
+conclusion:
+  feasibility: HIGH
+  complexity: LOW-MEDIUM
+  recommendation: PROCEED
+
+  summary: |
+    The MMD-to-task transformation is feasible because:
+
+    1. EXISTING INFRASTRUCTURE - agent_help.py and plan.py demonstrate parsing patterns
+    2. CONSISTENT FORMAT - Internal MMD generation tools produce predictable format
+    3. COMPATIBLE SCHEMA - plan_example.yml task schema is already defined
+    4. CLEAR EXTENSION POINTS - cmd_orchestration_generate() is ready for implementation
+    5. REUSABLE COMPONENTS - Phase extraction, node parsing can be adapted
+
+    The main risk is MMD format robustness if manual editing introduces variations,
+    but this can be mitigated with schema validation in cmd_orchestration_validate().
+
+    Total implementation effort is estimated at 25-40 hours, with the core
+    transformation logic (stages 1-5) achievable in 10-15 hours.

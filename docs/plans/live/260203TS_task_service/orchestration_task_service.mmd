@@ -1,0 +1,137 @@
+graph TD
+    Start([Start: TaskService Implementation]) --> Phase1
+
+    %% ========================================
+    %% PHASE 1: Service Implementation
+    %% AGENT_ROUTING: builder
+    %% ========================================
+    Phase1{Phase 1: Service Implementation} --> TS_001
+
+    TS_001[TS_001: Create TaskService class structure<br/>Agent: builder<br/>Target: services/task.py] --> TS_001_Check{Success?}
+    TS_001_Check -->|Yes| TS_002
+    TS_001_Check -->|No| TS_001_Fix[Fix Issues]
+    TS_001_Fix --> TS_001
+
+    TS_002[TS_002: Implement task retrieval methods<br/>Agent: builder<br/>Target: services/task.py] --> TS_002_Check{Success?}
+    TS_002_Check -->|Yes| TS_003
+    TS_002_Check -->|No| TS_002_Fix[Fix Issues]
+    TS_002_Fix --> TS_002
+
+    TS_003[TS_003: Implement task update methods<br/>Agent: builder<br/>Target: services/task.py] --> TS_003_Check{Success?}
+    TS_003_Check -->|Yes| TS_004
+    TS_003_Check -->|No| TS_003_Fix[Fix Issues]
+    TS_003_Fix --> TS_003
+
+    TS_004[TS_004: Export TaskService in __init__.py<br/>Agent: builder<br/>Target: services/__init__.py] --> TS_004_Check{Success?}
+    TS_004_Check -->|Yes| Phase2
+    TS_004_Check -->|No| TS_004_Fix[Fix Issues]
+    TS_004_Fix --> TS_004
+
+    %% ========================================
+    %% PHASE 2: Test Implementation
+    %% AGENT_ROUTING: builder
+    %% LOOP: test-fix-loop (max 5 iterations)
+    %% ========================================
+    Phase2{Phase 2: Test Implementation} --> TS_101
+
+    TS_101[TS_101: Create test file structure<br/>Agent: builder<br/>Target: tests/test_services_task.py] --> TS_101_Check{Success?}
+    TS_101_Check -->|Yes| TS_102
+    TS_101_Check -->|No| TS_101_Fix[Fix Issues]
+    TS_101_Fix --> TS_101
+
+    TS_102[TS_102: Implement task retrieval tests<br/>Agent: builder<br/>Target: tests/test_services_task.py] --> TS_102_Check{Success?}
+    TS_102_Check -->|Yes| TS_103
+    TS_102_Check -->|No| TS_102_Fix[Fix Issues]
+    TS_102_Fix --> TS_102
+
+    TS_103[TS_103: Implement task update tests<br/>Agent: builder<br/>Target: tests/test_services_task.py] --> TS_103_Check{Success?}
+    TS_103_Check -->|Yes| TS_104
+    TS_103_Check -->|No| TS_103_Fix[Fix Issues]
+    TS_103_Fix --> TS_103
+
+    TS_104[TS_104: Implement edge case tests<br/>Agent: builder<br/>Target: tests/test_services_task.py] --> TS_104_Check{Success?}
+    TS_104_Check -->|Yes| TS_105
+    TS_104_Check -->|No| TS_104_Fix[Fix Issues]
+    TS_104_Fix --> TS_104
+
+    TS_105[TS_105: Run full test suite<br/>Agent: builder<br/>Target: Execute pytest with coverage] --> TestFixLoop
+
+    %% ========================================
+    %% LOOP: Test-Fix Loop
+    %% MAX_ITERATIONS: 5
+    %% ========================================
+    TestFixLoop{Test-Fix Loop<br/>Iteration Counter}
+    TestFixLoop -->|All Pass & >90% Coverage| Phase3
+    TestFixLoop -->|Failures Found| TestFix[Builder fixes failures]
+    TestFix --> TS_105
+    TestFixLoop -->|Max 5 Iterations| Escalate1[Escalate to User:<br/>Test failures persist]
+
+    %% ========================================
+    %% PHASE 3: Integration Validation
+    %% AGENT_ROUTING: builder
+    %% ========================================
+    Phase3{Phase 3: Integration Validation} --> TS_201
+
+    TS_201[TS_201: Test with real plan files<br/>Agent: builder<br/>Target: Validate against actual YAML] --> TS_201_Check{Success?}
+    TS_201_Check -->|Yes| Phase4
+    TS_201_Check -->|No| TS_201_Fix[Fix Issues]
+    TS_201_Fix --> TS_201
+
+    %% ========================================
+    %% PHASE 4: Quality Validation (MANDATORY)
+    %% AGENT_ROUTING: test-audit
+    %% LOOP: audit-test-fix-loop (max 3 iterations)
+    %% ========================================
+    Phase4{Phase 4: Quality Validation<br/>MANDATORY} --> TS_301
+
+    TS_301[TS_301: Test quality audit<br/>Agent: test-audit<br/>Target: Review tests for reward hacking] --> AuditLoop
+
+    %% ========================================
+    %% LOOP: Audit-Test-Fix Loop (MANDATORY)
+    %% MAX_ITERATIONS: 3
+    %% ========================================
+    AuditLoop{Audit-Test-Fix Loop<br/>Iteration Counter}
+    AuditLoop -->|First Run| Audit[Test Auditor:<br/>Check for reward hacking]
+    Audit --> AuditCheck{Audit Pass?}
+    AuditCheck -->|Yes & Tests Pass| Complete
+    AuditCheck -->|Issues Found| TS_302[TS_302: Fix audit findings<br/>Agent: builder]
+    TS_302 --> TS_105
+    AuditLoop -->|Max 3 Iterations| Escalate2[BLOCK Completion:<br/>Test quality issues must be resolved]
+
+    %% ========================================
+    %% COMPLETION
+    %% ========================================
+    Complete([Complete: TaskService Ready<br/>Domain service layer implemented])
+
+    %% ========================================
+    %% SUCCESS CRITERIA
+    %% ========================================
+    %% - TaskService class with all 6 required methods
+    %% - Task dataclass supports all plan task fields
+    %% - TaskStatus enum: pending/in_progress/completed
+    %% - All unit tests pass (>90% coverage)
+    %% - Integration tests validate against real plan files
+    %% - Test audit passes with no reward hacking detected
+    %% - TaskService exported from agenticguidance.services
+    %% - Both nested and flat task structures supported
+    %% - File locking prevents concurrent modification
+    %% - YAML formatting preserved after updates
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef phaseStyle fill:#e1f5ff,stroke:#01579b,stroke-width:2px
+    classDef taskStyle fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+    classDef loopStyle fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    classDef checkStyle fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
+    classDef escalateStyle fill:#ffebee,stroke:#b71c1c,stroke-width:2px
+    classDef completeStyle fill:#c8e6c9,stroke:#2e7d32,stroke-width:3px
+    classDef mandatoryStyle fill:#ffe0b2,stroke:#e65100,stroke-width:3px
+
+    class Phase1,Phase2,Phase3,Phase4 phaseStyle
+    class TS_001,TS_002,TS_003,TS_004,TS_101,TS_102,TS_103,TS_104,TS_105,TS_201,TS_301,TS_302 taskStyle
+    class TestFixLoop,AuditLoop loopStyle
+    class TS_001_Check,TS_002_Check,TS_003_Check,TS_004_Check,TS_101_Check,TS_102_Check,TS_103_Check,TS_104_Check,TS_201_Check,AuditCheck checkStyle
+    class Escalate1,Escalate2 escalateStyle
+    class Complete completeStyle
+    class Phase4 mandatoryStyle

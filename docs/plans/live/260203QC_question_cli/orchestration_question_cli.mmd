@@ -1,0 +1,86 @@
+%% Orchestration: Question CLI Commands
+%% Plan ID: 260203QC
+%% AGENT_ROUTING: P1 -> builder, P2 -> builder, P3 -> builder, P4 -> builder, P5 -> test-builder
+%% STATUS: P1=pending, P2=pending, P3=pending, P4=pending, P5=pending
+%% DEPENDENCIES: 260203QF (QuestionQueue service)
+
+graph TD
+    Start([Start: Question CLI Implementation]) --> CheckDep
+
+    CheckDep{260203QF Complete?}
+    CheckDep -->|No| WaitDep[Wait for Question Foundation]
+    WaitDep --> CheckDep
+    CheckDep -->|Yes| Phase1
+
+    %% Phase 1: Command Module Setup
+    Phase1{Phase 1: Command Module Setup} --> QC_001
+    QC_001[QC-001: Create question.py module<br/>Agent: builder] --> QC_001_Check{Success?}
+    QC_001_Check -->|Yes| QC_002
+    QC_001_Check -->|No| QC_001_Fix[Fix Issues] --> QC_001
+
+    QC_002[QC-002: Integrate into CLI router<br/>Agent: builder] --> QC_002_Check{Success?}
+    QC_002_Check -->|Yes| Phase2
+    QC_002_Check -->|No| QC_002_Fix[Fix Issues] --> QC_002
+
+    %% Phase 2: List & Show Commands
+    Phase2{Phase 2: List & Show Commands} --> QC_003
+    QC_003[QC-003: Implement list command<br/>Agent: builder] --> QC_003_Check{Success?}
+    QC_003_Check -->|Yes| QC_004
+    QC_003_Check -->|No| QC_003_Fix[Fix Issues] --> QC_003
+
+    QC_004[QC-004: Implement show command<br/>Agent: builder] --> QC_004_Check{Success?}
+    QC_004_Check -->|Yes| Phase3
+    QC_004_Check -->|No| QC_004_Fix[Fix Issues] --> QC_004
+
+    %% Phase 3: Answer & Ask Commands
+    Phase3{Phase 3: Answer & Ask Commands} --> QC_005
+    QC_005[QC-005: Implement answer command<br/>Agent: builder] --> QC_005_Check{Success?}
+    QC_005_Check -->|Yes| QC_006
+    QC_005_Check -->|No| QC_005_Fix[Fix Issues] --> QC_005
+
+    QC_006[QC-006: Implement ask command<br/>Agent: builder] --> QC_006_Check{Success?}
+    QC_006_Check -->|Yes| Phase4
+    QC_006_Check -->|No| QC_006_Fix[Fix Issues] --> QC_006
+
+    %% Phase 4: Management Commands
+    Phase4{Phase 4: Management Commands} --> QC_007
+    QC_007[QC-007: Implement defer command<br/>Agent: builder] --> QC_007_Check{Success?}
+    QC_007_Check -->|Yes| QC_008
+    QC_007_Check -->|No| QC_007_Fix[Fix Issues] --> QC_007
+
+    QC_008[QC-008: Add plan path detection<br/>Agent: builder] --> QC_008_Check{Success?}
+    QC_008_Check -->|Yes| Phase5
+    QC_008_Check -->|No| QC_008_Fix[Fix Issues] --> QC_008
+
+    %% Phase 5: Integration Tests
+    Phase5{Phase 5: Integration Tests} --> QC_009
+    QC_009[QC-009: Create integration tests<br/>Agent: test-builder] --> QC_009_Check{Success?}
+    QC_009_Check -->|Yes| QC_010
+    QC_009_Check -->|No| QC_009_Fix[Fix Issues] --> QC_009
+
+    QC_010[QC-010: Add CLI documentation<br/>Agent: builder] --> TestFixLoop
+
+    %% Test-Fix Loop
+    TestFixLoop{Test-Fix Loop<br/>Max 5 iterations}
+    TestFixLoop -->|Pass & >80% Coverage| AuditLoop
+    TestFixLoop -->|Failures| TestFix[Fix failures] --> QC_009
+    TestFixLoop -->|Max Reached| Escalate1[Escalate to User]
+
+    %% Audit-Test-Fix Loop (MANDATORY)
+    AuditLoop{Audit-Test-Fix Loop<br/>Max 3 iterations}
+    AuditLoop -->|First Run| Audit[Test Auditor: Check quality]
+    Audit --> AuditCheck{Audit Pass?}
+    AuditCheck -->|Yes| Complete
+    AuditCheck -->|Issues| AuditFix[Fix audit issues] --> QC_009
+    AuditLoop -->|Max Reached| Escalate2[BLOCK: Audit failures]
+
+    Complete([Complete: Question CLI Ready<br/>Hand off to 260203QG & 260203QT])
+
+    %% Styling
+    classDef phase fill:#e1f5ff,stroke:#01579b
+    classDef task fill:#fff9c4,stroke:#f57f17
+    classDef check fill:#e8f5e9,stroke:#1b5e20
+    classDef loop fill:#f3e5f5,stroke:#4a148c
+    class Phase1,Phase2,Phase3,Phase4,Phase5 phase
+    class QC_001,QC_002,QC_003,QC_004,QC_005,QC_006,QC_007,QC_008,QC_009,QC_010 task
+    class TestFixLoop,AuditLoop loop

@@ -1,0 +1,93 @@
+flowchart LR
+    %% GOAL: Orchestrate fix for CLI task ID type mismatch bug preventing task commands from finding tasks
+    %% PROFILE: Orchestration-Builder
+    %% INPUT_PATH: docs/plans/live/260202TF_fix_task_id_type_mismatch/plan_build.yml
+    %% OUTPUT: Fixed task ID comparison logic in AgenticCLI with comprehensive tests
+    %% GUIDELINE: BUILD FOCUS policy - code implementation and testing, not guidance-only changes
+
+    %% AGENT_ROUTING: RootCauseAnalysis -> build-python, Implementation -> build-python, Testing -> test-runner, Audit -> test-final-output
+    %% STATUS: RootCauseAnalysis=pending, Implementation=pending, Testing=pending, Audit=pending
+
+    Start((Start)) --> LoadPlan[Load Plan Files]
+
+    %% ========================================
+    %% ROOT CAUSE ANALYSIS PHASE
+    %% ========================================
+    %% Analyze all task ID comparison locations and YAML parsing behavior
+
+    LoadPlan --> RootCausePhaseStart((Root Cause Analysis Phase))
+
+    subgraph RootCauseAnalysis_SG ["Root Cause Analysis Subgraph"]
+        RootCausePhaseStart --> SpawnBuilderAnalysis[Spawn build-python Agent]
+        SpawnBuilderAnalysis --> AnalysisTasks[Execute P1 Tasks: Audit comparisons, verify YAML parsing, review output]
+        AnalysisTasks --> AnalysisComplete{Analysis Complete?}
+        AnalysisComplete -- "No: Issues Found" --> AskUser((Ask User for Clarification))
+        AnalysisComplete -- "Yes: Root Cause Identified" --> ImplementationPhaseStart
+    end
+
+    %% ========================================
+    %% IMPLEMENTATION PHASE
+    %% ========================================
+    %% Implement type-safe task ID normalization
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.test-fix-loop
+    %% MAX_ITERATIONS: 3 (per test-fix-loop definition)
+    %% ESCALATION: If max iterations reached without passing tests, stop and Ask User
+
+    subgraph Implementation_SG ["Implementation Subgraph"]
+        ImplementationPhaseStart((Implementation Phase)) --> SpawnBuilderImpl[Spawn build-python Agent]
+        SpawnBuilderImpl --> ImplTasks[Execute P2 Tasks: Create helper, update comparisons, fix list output]
+        ImplTasks --> ImplComplete{Implementation Complete?}
+        ImplComplete -- "No: Blocked" --> AskUser
+        ImplComplete -- "Yes: Code Changed" --> TestingPhaseStart
+    end
+
+    %% ========================================
+    %% TESTING PHASE
+    %% ========================================
+    %% Run unit, integration, and regression tests
+
+    subgraph Testing_SG ["Testing Subgraph"]
+        TestingPhaseStart((Testing Phase)) --> CreateTests[Spawn build-python to create tests]
+        CreateTests --> RunTests[Spawn test-runner Agent]
+        RunTests --> TestResults{Tests Passed?}
+        TestResults -- "No: Fix in Iteration" --> SpawnBuilderImpl
+        TestResults -- "No: Escalate" --> CategorizeFailure[Categorize Test Failure]
+        CategorizeFailure --> UpdatePlan[Update Plan with Test Failure Context]
+        UpdatePlan -.->|Re-plan with TEST_FAILURE| AskUser
+        TestResults -- "Yes: All Passed" --> AuditPhaseStart
+    end
+
+    %% FEEDBACK_TRIGGER: TEST_FAILURE -> SpawnBuilderImpl (iteration) or AskUser (escalation)
+
+    %% ========================================
+    %% AUDIT PHASE
+    %% ========================================
+    %% Code quality, plan validation, cleanup
+
+    subgraph Audit_SG ["Audit & Cleanup Subgraph"]
+        AuditPhaseStart((Audit Phase)) --> SpawnAudit[Spawn test-final-output Audit]
+        SpawnAudit --> CodeQuality[Check code quality and documentation]
+        CodeQuality --> PlanValidation[Validate plan folder structure]
+        PlanValidation --> Cleanup[Execute cleanup tasks]
+        Cleanup --> AuditResults{Audit Passed?}
+        AuditResults -- "No: Issues Found" --> AskUser
+        AuditResults -- "Yes: Ready" --> OutputPhase
+    end
+
+    %% ========================================
+    %% OUTPUT PHASE
+    %% ========================================
+
+    subgraph Output_SG ["Output Subgraph"]
+        OutputPhase[Generate Completion Report] --> ReportArtifacts[Document key artifacts and lessons]
+        ReportArtifacts --> MarkComplete[Mark plan as completed]
+    end
+
+    MarkComplete --> End((End: Fix Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    %% Feedback loop styling for re-planning paths
+    classDef dashedstroke stroke-dasharray: 5 5;
+    linkStyle 8,17,18 stroke:#888,stroke-width:2px,stroke-dasharray: 5 5;

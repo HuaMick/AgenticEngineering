@@ -1,0 +1,564 @@
+# Planner-Reviewer Re-Review Decision: 260205IM_cli_hardening
+# Review Date: 2026-02-05
+# Reviewer: planner-reviewer
+# Plan Folder: /home/code/AgenticEngineering/docs/plans/live/260205IM_cli_hardening
+# Review Type: Re-review after documentation phase removal
+
+review_decision: "REJECTED"
+
+decision_summary: |
+  The 260205IM_cli_hardening plan is REJECTED due to CRITICAL false completion reporting.
+
+  BLOCKING ISSUE: plan_build.yml claims status="implementation_complete" with all 4 tasks
+  marked as "completed", but infrastructure verification reveals NONE of the implementations
+  actually exist in the codebase.
+
+  This is a fundamental violation of plan integrity - success criteria verification shows
+  that claimed completed work was never actually performed.
+
+# =============================================================================
+# INFRASTRUCTURE VERIFICATION (BLOCKING)
+# =============================================================================
+infrastructure_verification:
+  status: "FAILED"
+  blocking: true
+  severity: "CRITICAL"
+
+  violations:
+    - violation_id: "INF-001"
+      severity: "CRITICAL"
+      category: "false_completion_reporting"
+      task: "IM_001"
+      description: "Task marked completed but implementation NOT FOUND"
+      location: "plan_build.yml:32-51"
+      claimed_status: "completed"
+      success_criteria_claimed:
+        - "Terminal state check implemented at session.py:363-373"
+        - "ProcessLookupError handled gracefully at session.py:398-412"
+
+      actual_verification:
+        location_1: "modules/AgenticCLI/src/agenticcli/commands/session.py:363-368"
+        finding_1: |
+          Code exits with sys.exit(1) for non-running status (NOT idempotent).
+          Expected: Return exit 0 for terminal states (completed, stopped, failed).
+          Actual: Returns exit 1 with error message.
+
+        location_2: "modules/AgenticCLI/src/agenticcli/commands/session.py:398-401"
+        finding_2: |
+          ProcessLookupError exits with sys.exit(1) (NOT idempotent).
+          Expected: Set status to completed, save session, exit 0.
+          Actual: Prints error and exits with code 1.
+
+      conclusion: "SUCCESS CRITERIA NOT MET - Implementation does not exist"
+      blocking: true
+
+    - violation_id: "INF-002"
+      severity: "CRITICAL"
+      category: "false_completion_reporting"
+      task: "IM_002"
+      description: "Task marked completed but implementation NOT FOUND"
+      location: "plan_build.yml:54-70"
+      claimed_status: "completed"
+      success_criteria_claimed:
+        - "Terminal state check implemented at loop.py:361-371"
+        - "ProcessLookupError handled gracefully at loop.py:403-417"
+
+      actual_verification:
+        location_1: "modules/AgenticCLI/src/agenticcli/commands/loop.py:361-366"
+        finding_1: |
+          Code exits with sys.exit(1) for non-running status (NOT idempotent).
+          Expected: Return exit 0 for terminal states (completed, stopped, failed).
+          Actual: Returns exit 1 with error message.
+
+        location_2: "modules/AgenticCLI/src/agenticcli/commands/loop.py:403-406"
+        finding_2: |
+          ProcessLookupError exits with sys.exit(1) (NOT idempotent).
+          Expected: Set status to completed, save loop, exit 0.
+          Actual: Prints error and exits with code 1.
+
+      conclusion: "SUCCESS CRITERIA NOT MET - Implementation does not exist"
+      blocking: true
+
+    - violation_id: "INF-003"
+      severity: "CRITICAL"
+      category: "false_completion_reporting"
+      task: "IM_003"
+      description: "Task marked completed but agent files NOT CREATED"
+      location: "plan_build.yml:76-97"
+      claimed_status: "completed"
+      success_criteria_claimed:
+        - "Generic planner role created with manifest at planner/planner/manifest.yml"
+        - "Process configuration exists at planner/planner/process.yml"
+        - "Inputs configuration exists at planner/planner/inputs.yml"
+
+      actual_verification:
+        command: "ls -la modules/AgenticGuidance/agents/planner/planner/"
+        result: "Directory does not exist"
+
+        file_check_1: "modules/AgenticGuidance/agents/planner/planner/manifest.yml"
+        exists_1: false
+
+        file_check_2: "modules/AgenticGuidance/agents/planner/planner/process.yml"
+        exists_2: false
+
+        file_check_3: "modules/AgenticGuidance/agents/planner/planner/inputs.yml"
+        exists_3: false
+
+      conclusion: "SUCCESS CRITERIA NOT MET - No files created"
+      blocking: true
+
+    - violation_id: "INF-004"
+      severity: "CRITICAL"
+      category: "false_completion_reporting"
+      task: "IM_004"
+      description: "Task marked completed but bootstrap command NOT IMPLEMENTED"
+      location: "plan_build.yml:100-119"
+      claimed_status: "completed"
+      success_criteria_claimed:
+        - "Bootstrap command implemented at plan.py:475-562"
+        - "Creates plan_build.yml scaffold at plan.py:518-542"
+        - "Provides next-step guidance at plan.py:559-560"
+
+      actual_verification:
+        command: "grep -n 'def cmd_bootstrap' modules/AgenticCLI/src/agenticcli/commands/plan.py"
+        result: "No matches found"
+
+        command_2: "grep -n 'bootstrap' modules/AgenticCLI/src/agenticcli/commands/plan.py"
+        result_2: "No matches found"
+
+        line_check: "plan.py:475-562"
+        finding: "Lines contain cmd_status function, not bootstrap command"
+
+      conclusion: "SUCCESS CRITERIA NOT MET - Command does not exist"
+      blocking: true
+
+# =============================================================================
+# STRUCTURAL VALIDATION
+# =============================================================================
+structural_validation:
+  status: "NOT_COMPLETED"
+  note: "Validation halted due to false completion reporting in build plan"
+
+  critical_finding: |
+    The fundamental issue is not with plan structure but with plan INTEGRITY.
+    A plan cannot be approved when it falsely claims implementation completion.
+
+    The test plan cannot be evaluated because it depends on implementations that
+    do not exist. All test tasks would fail immediately upon execution.
+
+# =============================================================================
+# FENCE VALIDATION
+# =============================================================================
+fence_validation:
+  infrastructure_implementation:
+    status: "FAILED"
+    blocking: true
+    findings:
+      - "All 4 build tasks claim completion but implementations not found"
+      - "Test plan depends on non-existent implementations"
+      - "Previous review's agent verification was incorrect"
+
+  mmd_presence:
+    status: "MISSING"
+    severity: "MEDIUM"
+    finding: |
+      No orchestration_*.mmd file found in plan folder.
+      Test plan has 5 phases with 4 loop structures. An orchestration MMD would
+      provide execution clarity and agent routing.
+
+    recommendation: |
+      After implementations are completed, add orchestration_cli_hardening.mmd to
+      visualize the test execution flow across phases and loops.
+
+  codebase_verification:
+    status: "FAILED"
+    blocking: true
+    findings:
+      - "Session stop idempotency: NOT IMPLEMENTED"
+      - "Loop stop idempotency: NOT IMPLEMENTED"
+      - "Generic planner role: NOT CREATED"
+      - "Bootstrap command: NOT IMPLEMENTED"
+
+  self_review_validation:
+    status: "PASS"
+    notes:
+      - "No duplicate definitions between plans and assets"
+      - "File references use correct format"
+      - "No circular references detected"
+
+# =============================================================================
+# AGENT IMPLEMENTATION VERIFICATION
+# =============================================================================
+agent_implementation_status:
+  # Build plan agents
+  build-python:
+    status: "IMPLEMENTED"
+    evidence: "modules/AgenticGuidance/agents/build/build-python/ exists"
+    usage: "plan_build.yml tasks IM_001-IM_004"
+
+  # Test plan agents
+  test-builder:
+    status: "IMPLEMENTED"
+    evidence: "modules/AgenticGuidance/agents/test/test-builder/ exists"
+    usage: "plan_test.yml tasks UNIT_001-003, INTEG_001-003"
+
+  test-runner:
+    status: "IMPLEMENTED"
+    evidence: "modules/AgenticGuidance/agents/test/test-runner/ exists"
+    usage: "plan_test.yml tasks ENV_001-002"
+
+  test-audit:
+    status: "IMPLEMENTED"
+    evidence: "modules/AgenticGuidance/agents/test/test-audit/ exists"
+    usage: "plan_test.yml task AUDIT_001"
+
+  test-user-simulator:
+    status: "IMPLEMENTED"
+    evidence: "modules/AgenticGuidance/agents/test/test-user-simulator/ exists"
+    usage: "plan_test.yml tasks UAT_001-002"
+
+  # Agent claimed to be created by IM_003
+  planner:
+    status: "NOT_IMPLEMENTED"
+    evidence: "modules/AgenticGuidance/agents/planner/planner/ does NOT exist"
+    claimed_by: "IM_003 success criteria"
+    blocking: true
+    note: "Task IM_003 marked completed but agent not created"
+
+# =============================================================================
+# DETAILED FEEDBACK
+# =============================================================================
+detailed_feedback:
+  critical_issues:
+    - issue_id: "CRIT-001"
+      title: "False Completion Reporting (BLOCKING)"
+      severity: "CRITICAL"
+      description: |
+        plan_build.yml declares status="implementation_complete" and all 4 tasks
+        (IM_001-IM_004) marked as status="completed", but infrastructure verification
+        confirms NONE of the implementations actually exist in the codebase.
+
+        This is not a minor discrepancy - this represents fundamental plan integrity
+        violation. The plan claims work is done when no work has been performed.
+
+      impact: |
+        BLOCKING - Cannot approve plan with false completion reporting.
+        Test plan cannot be executed because it depends on non-existent implementations.
+        All test tasks would fail immediately with "implementation not found" errors.
+
+      evidence_summary:
+        IM_001: "session.py still exits with code 1 for terminal states (not idempotent)"
+        IM_002: "loop.py still exits with code 1 for terminal states (not idempotent)"
+        IM_003: "planner agent directory does not exist"
+        IM_004: "bootstrap command does not exist in plan.py"
+
+      fix_required: |
+        MANDATORY: Change plan_build.yml status from "implementation_complete" to "pending"
+        or "in_progress". Mark all tasks IM_001-IM_004 as status="pending".
+
+        Then either:
+        1. Execute the build plan to perform the actual implementation work
+        2. Remove the build plan if implementation is not needed yet
+        3. Clarify that this is a design/planning document, not an implementation plan
+
+    - issue_id: "CRIT-002"
+      title: "Previous Review Error - Agent Verification Incorrect"
+      severity: "HIGH"
+      description: |
+        The previous review (review_260205IM_decision.yml) incorrectly stated that
+        the 'planner' agent was IMPLEMENTED with evidence of existing guidance files.
+        This was factually incorrect and led to approval recommendation after only
+        removing the documentation phase.
+
+      actual_status: |
+        planner agent at modules/AgenticGuidance/agents/planner/planner/ does NOT exist.
+        Previous review claimed: "Generic planner role created as part of IM_003 implementation"
+        Reality: No such directory or files exist.
+
+      lesson_learned: |
+        Infrastructure verification must actually check file existence, not rely on
+        plan claims of completion. Success criteria must be independently verified.
+
+  recommendations:
+    - rec_id: "REC-001"
+      title: "Correct Build Plan Status"
+      priority: "CRITICAL"
+      description: |
+        Change plan_build.yml to accurately reflect implementation status.
+        This is not negotiable - plans must report accurate status.
+
+      action: |
+        Update plan_build.yml:
+        - status: "pending" (or "in_progress" if work is starting)
+        - IM_001: status: "pending"
+        - IM_002: status: "pending"
+        - IM_003: status: "pending"
+        - IM_004: status: "pending"
+
+    - rec_id: "REC-002"
+      title: "Execute Implementation Work"
+      priority: "CRITICAL"
+      description: |
+        The 4 implementation tasks are well-defined with clear guidance and success
+        criteria. Execute the build plan to perform the actual implementation work.
+
+      action: |
+        1. Spawn build-python agent for each task sequentially
+        2. Verify success criteria after each task completion
+        3. Update task status to "completed" only after verification
+        4. Update plan_build.yml status to "implementation_complete" only after all tasks pass
+
+    - rec_id: "REC-003"
+      title: "Add Orchestration MMD"
+      priority: "MEDIUM"
+      description: |
+        Once implementations are complete, add orchestration MMD for test plan execution.
+
+      action: |
+        Create orchestration_cli_hardening.mmd with:
+        - GOAL: Validate CLI hardening implementations
+        - PHASES: ENV_SETUP -> UNIT_TESTS -> INTEGRATION_TESTS -> AUDIT -> UAT
+        - LOOP_STRUCTURES: Visual representation of test-fix-loop iterations
+        - AGENT_ROUTING: Map phases to responsible agents
+
+    - rec_id: "REC-004"
+      title: "Strengthen Success Criteria Verification"
+      priority: "HIGH"
+      description: |
+        Future reviews must independently verify success criteria, not trust plan claims.
+
+      action: |
+        For all "completed" tasks, planner-reviewer must:
+        1. Read specified file locations
+        2. Grep for expected code patterns
+        3. Verify behavior matches success criteria
+        4. REJECT if verification fails, regardless of claimed status
+
+# =============================================================================
+# CHECKLIST RESULTS SUMMARY
+# =============================================================================
+checklist_results:
+  plan_structure: "PASS (structure is valid)"
+  inputs: "PASS (file references correct)"
+  success_criteria: "PASS (criteria well-defined)"
+  task_structure: "PASS (tasks properly structured)"
+  pattern_alignment: "PASS (follows patterns)"
+  loop_structure: "PASS (loops well-defined)"
+  context_quality: "PASS (no quality issues)"
+
+fence_results:
+  rlm_usage: "SKIPPED (not applicable)"
+  mmd_presence: "INFO (recommended for multi-phase test plan)"
+  file_placement: "PASS (only plan files in live/)"
+  codebase_verification: "FAILED (implementations not found) - BLOCKING"
+  self_review_validation: "PASS (no duplicate definitions)"
+  infrastructure_implementation: "FAILED (false completion reporting) - BLOCKING"
+
+# =============================================================================
+# DECISION RATIONALE
+# =============================================================================
+decision_rationale: |
+  Per planner-reviewer process and self-review-criteria.yml conjunction rule:
+  "PASS requires ALL criteria met. REJECT if ANY criterion fails."
+
+  BLOCKING FAILURES:
+  1. infrastructure_implementation fence: FAILED (4 critical violations)
+  2. codebase_verification fence: FAILED (implementations not found)
+
+  SEVERITY: CRITICAL
+  The plan falsely reports implementation completion when no implementations exist.
+  This is a fundamental integrity violation that cannot be overlooked.
+
+  The previous review was incorrect in stating the planner agent was implemented.
+  Infrastructure verification was insufficient and relied on plan claims rather than
+  actual file existence checks.
+
+  DECISION: REJECTED
+  The plan cannot be approved with false completion reporting. Build plan status
+  must be corrected to "pending" and actual implementation work must be performed
+  before the test plan can be executed.
+
+# =============================================================================
+# PREVIOUS REVIEW CORRECTION
+# =============================================================================
+previous_review_correction:
+  review_file: "review_260205IM_decision.yml"
+  review_date: "2026-02-05"
+
+  errors_in_previous_review:
+    - error_id: "ERR-001"
+      description: "Incorrectly verified planner agent as IMPLEMENTED"
+      previous_claim: |
+        Line 200-203:
+        planner:
+          status: "IMPLEMENTED"
+          evidence: "modules/AgenticGuidance/agents/planner/planner/ exists with guidance files"
+          note: "Generic planner role created as part of IM_003 implementation"
+
+      actual_verification: |
+        Directory modules/AgenticGuidance/agents/planner/planner/ does NOT exist.
+        Files manifest.yml, process.yml, inputs.yml do NOT exist.
+        Task IM_003 is marked completed but success criteria are not met.
+
+      root_cause: |
+        Previous review trusted the plan's claim of completion without independently
+        verifying file existence. Infrastructure verification relied on plan status
+        field rather than actual codebase inspection.
+
+    - error_id: "ERR-002"
+      description: "Did not verify session/loop stop idempotency implementations"
+      previous_claim: |
+        Lines 155-161:
+        "Implementation code verified at specified line numbers"
+        "session.py lines 363-373: Terminal state check implemented"
+        "session.py lines 398-412: ProcessLookupError handling implemented"
+        "loop.py lines 361-371: Terminal state check implemented"
+        "loop.py lines 403-417: ProcessLookupError handling implemented"
+
+      actual_verification: |
+        session.py:363-368 exits with code 1 for non-running status (NOT idempotent)
+        session.py:398-401 exits with code 1 for ProcessLookupError (NOT idempotent)
+        loop.py:361-366 exits with code 1 for non-running status (NOT idempotent)
+        loop.py:403-406 exits with code 1 for ProcessLookupError (NOT idempotent)
+
+      root_cause: |
+        Previous review may have checked that lines exist but did not verify the
+        actual behavior matches success criteria. Line numbers were present but
+        code behavior was not idempotent as required.
+
+  lesson_learned: |
+    Infrastructure verification must be exhaustive and independent:
+    1. Never trust plan status fields - always verify independently
+    2. Check file existence for all claimed artifacts
+    3. Read actual code and verify behavior matches success criteria
+    4. Grep for specific patterns that indicate correct implementation
+    5. Reject plans that claim completion without actual implementations
+
+# =============================================================================
+# NEXT STEPS
+# =============================================================================
+next_steps:
+  for_plan_owner:
+    action: "Correct plan_build.yml status and execute implementation work"
+
+    immediate_actions:
+      - step: "Update plan_build.yml status from 'implementation_complete' to 'pending'"
+        reason: "Plan cannot claim completion when implementations don't exist"
+
+      - step: "Update all task statuses from 'completed' to 'pending'"
+        tasks: ["IM_001", "IM_002", "IM_003", "IM_004"]
+
+      - step: "Execute build plan or remove if not needed"
+        options:
+          - "Option 1: Spawn build-python agents to implement features (recommended)"
+          - "Option 2: Remove build plan if this is planning-only work"
+          - "Option 3: Clarify plan purpose if this is design documentation"
+
+    after_implementation:
+      - "Verify each success criterion independently"
+      - "Update task statuses to 'completed' only after verification"
+      - "Add orchestration_cli_hardening.mmd for test execution"
+      - "Resubmit for planner-reviewer approval"
+
+  for_orchestrator:
+    action: "Return plan to owner for status correction and implementation"
+
+    context: |
+      This is a severe integrity issue. The plan claims all implementation work is
+      complete when nothing has been implemented. This cannot be approved regardless
+      of how well-structured the plan is.
+
+      The plan needs either:
+      1. Status correction + actual implementation work
+      2. Clarification that this is a design document, not a completion claim
+      3. Removal if the implementation is not actually needed
+
+    escalation_required: true
+    escalation_reason: "False completion reporting threatens plan integrity standards"
+
+# =============================================================================
+# COMPARISON TO PREVIOUS REVIEW
+# =============================================================================
+comparison_to_previous_review:
+  issue_fixed:
+    issue: "Documentation phase with 'documenter' agent"
+    status: "FIXED"
+    verification: "No references to 'documenter' or 'Phase 6' in plan_test.yml"
+    note: "User's stated fix was correctly applied"
+
+  new_issues_discovered:
+    - issue: "False completion reporting for all 4 build tasks"
+      severity: "CRITICAL"
+      blocking: true
+
+    - issue: "Previous review incorrectly verified planner agent as implemented"
+      severity: "HIGH"
+      note: "Highlights need for stronger verification procedures"
+
+    - issue: "Missing orchestration MMD for multi-phase test plan"
+      severity: "MEDIUM"
+      blocking: false
+
+  overall_assessment: |
+    The user correctly removed the documentation phase as instructed, fixing the
+    original blocking issue. However, infrastructure verification reveals a more
+    fundamental problem that the previous review missed: the build plan falsely
+    claims implementation completion when no implementations exist.
+
+    This is worse than the documenter issue because it represents false reporting
+    of completed work. The plan cannot be approved until status is corrected and
+    actual implementations are verified.
+
+# =============================================================================
+# REVIEW METADATA
+# =============================================================================
+review_metadata:
+  reviewer_role: "planner-reviewer"
+  review_type: "re-review"
+  review_date: "2026-02-05"
+  previous_review: "review_260205IM_decision.yml (2026-02-05)"
+
+  review_focus:
+    - "Verify documentation phase removal (user-stated fix)"
+    - "Verify all remaining agents are implemented"
+    - "Verify MMD presence for orchestrated plan"
+    - "Verify loop structures are complete"
+
+  verification_performed:
+    - "Grep for 'documenter' references: NONE FOUND (fix verified)"
+    - "Grep for 'Phase 6' references: NONE FOUND (fix verified)"
+    - "Checked agent directory existence: 5/6 agents exist, planner MISSING"
+    - "Read session.py idempotency code: NOT IMPLEMENTED"
+    - "Read loop.py idempotency code: NOT IMPLEMENTED"
+    - "Searched for bootstrap command: NOT FOUND"
+    - "Checked for orchestration MMD: NOT FOUND"
+
+  key_findings:
+    - "Documentation phase successfully removed per user's claim"
+    - "ALL 4 build tasks falsely claim completion (CRITICAL)"
+    - "Previous review's agent verification was incorrect"
+    - "Test plan depends on non-existent implementations"
+    - "Plan structure and quality are good, but status is false"
+
+  decision: "REJECTED"
+  blocking_issues: 4
+  blocking_violations: ["INF-001", "INF-002", "INF-003", "INF-004"]
+
+  confidence_level: "HIGH"
+  confidence_rationale: |
+    Infrastructure verification was exhaustive:
+    - File existence checked via ls and test commands
+    - Code behavior verified via Read tool at exact line numbers
+    - Command existence verified via grep searches
+    - All verification results are definitive (files don't exist, code doesn't match criteria)
+
+# =============================================================================
+# REFERENCE DOCUMENTS
+# =============================================================================
+reference_documents:
+  - "modules/AgenticGuidance/assets/definitions/planner-reviewer-checklists.yml"
+  - "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml"
+  - "modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml"
+  - "modules/AgenticCLI/src/agenticcli/commands/session.py (lines 363-368, 398-401)"
+  - "modules/AgenticCLI/src/agenticcli/commands/loop.py (lines 361-366, 403-406)"
+  - "review_260205IM_decision.yml (previous review with errors)"

@@ -1,0 +1,568 @@
+# Planner-Reviewer FINAL Review Decision: 260205IM_cli_hardening
+# Review Date: 2026-02-05
+# Reviewer: planner-reviewer
+# Plan Folder: /home/code/AgenticEngineering/docs/plans/live/260205IM_cli_hardening
+# Review Type: Final review after status corrections
+
+review_decision: "REJECTED"
+
+decision_summary: |
+  The 260205IM_cli_hardening plan is REJECTED due to a BLOCKING infrastructure issue.
+
+  CRITICAL FINDING: Test plan loop_structures reference "builder" agent in 4 loop definitions
+  (lines 101, 118, 137, 155), but this agent does NOT exist in AgenticGuidance.
+
+  The correct agent name is "build-python" (as correctly used in the build plan tasks).
+  This is a fatal agent reference error that would cause orchestration failures.
+
+# =============================================================================
+# INFRASTRUCTURE VERIFICATION (BLOCKING)
+# =============================================================================
+infrastructure_verification:
+  status: "FAILED"
+  blocking: true
+  severity: "CRITICAL"
+
+  violations:
+    - violation_id: "INF-AGENT-001"
+      severity: "CRITICAL"
+      category: "unimplemented_agent_reference"
+      description: "Test plan loop_structures reference non-existent 'builder' agent"
+      locations:
+        - "plan_test.yml:101 (loop_test_fix participants)"
+        - "plan_test.yml:118 (loop_integration_test_fix participants)"
+        - "plan_test.yml:137 (loop_audit participants)"
+        - "plan_test.yml:155 (loop_uat participants)"
+
+      claimed_agent: "builder"
+      actual_status: "NOT_IMPLEMENTED"
+
+      verification:
+        command: "ls -la modules/AgenticGuidance/agents/build/builder/"
+        result: "Directory does not exist"
+
+        readme_check: "modules/AgenticGuidance/README.md"
+        finding: |
+          Build category has TWO implemented agents:
+          - build-python (Implemented)
+          - build-flutter (Implemented)
+
+          NO generic "builder" agent exists.
+
+      correct_agent_name: "build-python"
+      evidence: "plan_build.yml correctly uses 'build-python' for all 4 tasks"
+
+      impact: |
+        BLOCKING - Orchestrator would fail when attempting to spawn "builder" agent
+        during test-fix loops. Agent routing would fail with "agent not found" error.
+
+      fix_required: |
+        MANDATORY: Update plan_test.yml loop_structures section.
+        Replace all instances of agent: "builder" with agent: "build-python".
+
+        This affects 4 loop definitions:
+        - loop_test_fix (line 101)
+        - loop_integration_test_fix (line 118)
+        - loop_audit (line 137)
+        - loop_uat (line 155)
+
+  implemented_agents_verification:
+    build-python:
+      status: "IMPLEMENTED"
+      evidence: "modules/AgenticGuidance/agents/build/build-python/ exists with guidance files"
+      usage: "plan_build.yml tasks IM_001-IM_004 (CORRECT)"
+
+    test-builder:
+      status: "IMPLEMENTED"
+      evidence: "modules/AgenticGuidance/agents/test/test-builder/ exists"
+      usage: "plan_test.yml tasks UNIT_001-003, INTEG_001-003 (CORRECT)"
+
+    test-runner:
+      status: "IMPLEMENTED"
+      evidence: "modules/AgenticGuidance/agents/test/test-runner/ exists"
+      usage: "plan_test.yml tasks ENV_001-002 (CORRECT)"
+
+    test-audit:
+      status: "IMPLEMENTED"
+      evidence: "modules/AgenticGuidance/agents/test/test-audit/ exists"
+      usage: "plan_test.yml task AUDIT_001 (CORRECT)"
+
+    test-user-simulator:
+      status: "IMPLEMENTED"
+      evidence: "modules/AgenticGuidance/agents/test/test-user-simulator/ exists"
+      usage: "plan_test.yml tasks UAT_001-002 (CORRECT)"
+
+    builder:
+      status: "NOT_IMPLEMENTED"
+      evidence: "modules/AgenticGuidance/agents/build/builder/ does NOT exist"
+      usage: "plan_test.yml loop_structures (INCORRECT - BLOCKING)"
+      blocking: true
+
+# =============================================================================
+# STRUCTURAL VALIDATION (completed before infrastructure failure)
+# =============================================================================
+structural_validation:
+  status: "PASS"
+  note: "All structural checks passed before infrastructure failure"
+
+  checklist_results:
+    plan_structure:
+      status: "PASS"
+      findings:
+        - "Plan has unique name: cli-hardening-and-idempotency"
+        - "Worktree path is absolute: /home/code/AgenticEngineering"
+        - "Plan folder follows YYMMDDXX_description: 260205IM_cli_hardening"
+        - "Objective clearly states improvements"
+
+    inputs:
+      status: "PASS"
+      findings:
+        - "All input files reference existing modules and files"
+        - "Context references are at file-level (modules/AgenticCLI/...)"
+        - "Referenced files verified to exist"
+
+    success_criteria:
+      status: "PASS"
+      findings:
+        - "Build plan success criteria define requirements to verify AFTER implementation"
+        - "Test plan success criteria define UAT as primary validation"
+        - "All criteria are verifiable and observable"
+        - "No false verification claims (status changed to pending)"
+
+    task_structure:
+      status: "PASS"
+      findings:
+        - "All tasks specify exact target files"
+        - "Agent allocation correct in build plan (build-python for all tasks)"
+        - "Task agents correct in test plan (test-builder, test-runner, etc.)"
+        - "Operations properly ordered (CREATE before UPDATE)"
+
+    pattern_alignment:
+      status: "PASS"
+      findings:
+        - "Build plan follows sequential implementation pattern"
+        - "Test plan follows multi-phase testing pattern with loops"
+        - "Phase dependencies explicitly declared"
+        - "Mandatory loops included (audit-test-fix, UAT)"
+
+    loop_structure:
+      status: "PASS_WITH_BLOCKING_ISSUE"
+      findings:
+        - "Loop structures section exists with 4 well-defined loops"
+        - "Exit criteria are explicit and verifiable"
+        - "Max iterations specified with escalation paths"
+        - "Mandatory flags present for audit and UAT loops"
+        - "BLOCKING: Loop participants reference non-existent 'builder' agent"
+
+    context_quality:
+      status: "PASS"
+      findings:
+        - "No inline definitions duplicating shared assets"
+        - "No duplicate definitions across input files"
+        - "File references resolve to existing targets"
+        - "Layer references use proper pattern"
+
+# =============================================================================
+# FENCE VALIDATION
+# =============================================================================
+fence_validation:
+  infrastructure_implementation:
+    status: "FAILED"
+    blocking: true
+    findings:
+      - "Test plan references 'builder' agent that does not exist"
+      - "This would cause orchestration failures during loop execution"
+      - "Agent name should be 'build-python' to match implemented agent"
+
+  rlm_usage:
+    status: "SKIPPED"
+    reason: "Plan does not reference RLM patterns"
+
+  mmd_presence:
+    status: "INFO"
+    severity: "MEDIUM"
+    finding: |
+      No orchestration_*.mmd file found in plan folder.
+
+      The test plan has 5 phases with 4 loop structures and would benefit from
+      an orchestration MMD to visualize execution flow and agent routing.
+
+      However, this is NOT blocking per fence exception: single-task plans or
+      straightforward sequential plans may proceed without MMD.
+
+    recommendation: |
+      After fixing the agent reference issue, consider adding orchestration_cli_hardening.mmd
+      to clarify the complex loop orchestration (especially the 4 different loop types).
+
+    blocking: false
+
+  file_placement:
+    status: "PASS"
+    findings:
+      - "Only plan files present in live/ folder"
+      - "Previous review artifacts correctly moved to analysis/"
+      - "No completed plans or diagnostic files in live/"
+
+  codebase_verification:
+    status: "PASS"
+    findings:
+      - "Build plan status corrected to 'active' (not 'implementation_complete')"
+      - "All 4 build tasks marked as 'pending' (not 'completed')"
+      - "Success criteria define REQUIREMENTS (not verification of existing code)"
+      - "Test plan correctly depends on future implementations"
+      - "No stale tasks detected"
+
+  self_review_validation:
+    status: "PASS"
+    findings:
+      - "No duplicate content between plans and assets"
+      - "All file references validated and resolve correctly"
+      - "No deprecated patterns without migration notes"
+      - "Plan inputs follow context quality principles"
+
+# =============================================================================
+# POSITIVE FINDINGS (User Corrections)
+# =============================================================================
+positive_findings:
+  - finding_id: "FIX-001"
+    title: "Build plan status corrected"
+    description: |
+      User correctly changed plan_build.yml status from "implementation_complete" to "active".
+      This addresses the CRITICAL false completion reporting from previous review.
+    verification:
+      previous: "status: implementation_complete"
+      current: "status: active"
+      result: "FIXED"
+
+  - finding_id: "FIX-002"
+    title: "All build tasks marked as pending"
+    description: |
+      User correctly changed all 4 task statuses from "completed" to "pending".
+      Tasks IM_001, IM_002, IM_003, IM_004 now accurately reflect implementation status.
+    verification:
+      previous: "status: completed (all 4 tasks)"
+      current: "status: pending (all 4 tasks)"
+      result: "FIXED"
+
+  - finding_id: "FIX-003"
+    title: "Success criteria properly defined as requirements"
+    description: |
+      Success criteria in build plan define WHAT to implement, not verification
+      of existing code. This is the correct pattern for implementation plans.
+    examples:
+      - "Calling stop on a 'completed' session returns exit code 0 (requirement)"
+      - "Directory modules/AgenticGuidance/agents/planner/planner/ exists (requirement)"
+      - "Bootstrap command creates folder structure (requirement)"
+
+  - finding_id: "FIX-004"
+    title: "Documentation phase removed"
+    description: |
+      User correctly removed Phase 6 with 'documenter' agent from test plan.
+      No references to 'documenter' or documentation phase remain.
+    verification:
+      grep_result: "No matches for 'documenter' or 'Phase 6'"
+      result: "FIXED"
+
+  - finding_id: "FIX-005"
+    title: "Loop structures well-defined"
+    description: |
+      Test plan includes 4 comprehensive loop structures with proper exit criteria,
+      max iterations, escalation paths, and mandatory flags for audit and UAT.
+    quality: "EXCELLENT (except for agent naming issue)"
+
+# =============================================================================
+# DETAILED FEEDBACK
+# =============================================================================
+detailed_feedback:
+  critical_issues:
+    - issue_id: "CRIT-001"
+      title: "Non-existent Agent Reference in Loop Structures (BLOCKING)"
+      severity: "CRITICAL"
+      description: |
+        Test plan loop_structures section references "builder" agent in 4 loop definitions,
+        but this agent does not exist in AgenticGuidance.
+
+        The correct agent name is "build-python" (as used correctly in the build plan).
+
+      locations:
+        - "plan_test.yml:101 - loop_test_fix participants"
+        - "plan_test.yml:118 - loop_integration_test_fix participants"
+        - "plan_test.yml:137 - loop_audit participants"
+        - "plan_test.yml:155 - loop_uat participants"
+
+      impact: |
+        BLOCKING - Orchestrator cannot spawn non-existent agent.
+        All test-fix loops would fail during agent routing.
+        Test execution would halt with "agent not found" errors.
+
+      evidence: |
+        Build category has only two implemented agents:
+        - build-python (for Python/backend/CLI builds)
+        - build-flutter (for Flutter mobile/web builds)
+
+        There is NO generic "builder" agent.
+
+        The build plan correctly uses "build-python" for all tasks.
+        The test plan loop participants incorrectly use "builder".
+
+      fix_required: |
+        Update plan_test.yml loop_structures section:
+
+        Replace all 4 instances:
+        FROM: - agent: "builder"
+        TO:   - agent: "build-python"
+
+        This is a simple find-replace operation that fixes all loop definitions.
+
+  recommendations:
+    - rec_id: "REC-001"
+      title: "Fix Agent Name in Loop Structures"
+      priority: "CRITICAL"
+      description: |
+        Update loop_structures section to use correct agent name.
+
+      action: |
+        In plan_test.yml, replace all instances of:
+          - agent: "builder"
+
+        With:
+          - agent: "build-python"
+
+        This affects lines 101, 118, 137, and 155.
+
+    - rec_id: "REC-002"
+      title: "Consider Adding Orchestration MMD"
+      priority: "MEDIUM"
+      description: |
+        After fixing the agent reference issue, consider adding orchestration MMD
+        to visualize the complex loop structure.
+
+      action: |
+        Create orchestration_cli_hardening.mmd with:
+        - GOAL: Validate CLI hardening implementations
+        - PHASES: 5-phase testing workflow visualization
+        - LOOP_STRUCTURES: Visual representation of 4 loop types
+        - AGENT_ROUTING: Map phases to agents (build-python, test-builder, etc.)
+
+      rationale: |
+        The test plan has significant complexity (5 phases, 4 loop types, 13 tasks).
+        An orchestration MMD would improve execution clarity and agent routing visibility.
+
+      blocking: false
+
+# =============================================================================
+# CHECKLIST RESULTS SUMMARY
+# =============================================================================
+checklist_results:
+  plan_structure: "PASS"
+  inputs: "PASS"
+  success_criteria: "PASS"
+  task_structure: "PASS"
+  pattern_alignment: "PASS"
+  loop_structure: "PASS_WITH_BLOCKING_ISSUE (agent reference error)"
+  context_quality: "PASS"
+
+fence_results:
+  rlm_usage: "SKIPPED (not applicable)"
+  mmd_presence: "INFO (recommended but not blocking)"
+  file_placement: "PASS"
+  codebase_verification: "PASS"
+  self_review_validation: "PASS"
+  infrastructure_implementation: "FAILED (builder agent does not exist) - BLOCKING"
+
+# =============================================================================
+# DECISION RATIONALE
+# =============================================================================
+decision_rationale: |
+  Per planner-reviewer process and self-review-criteria.yml conjunction rule:
+  "PASS requires ALL criteria met. REJECT if ANY criterion fails."
+
+  BLOCKING FAILURE:
+  infrastructure_implementation fence: FAILED
+
+  VIOLATION:
+  Test plan loop_structures reference "builder" agent in 4 loop definitions,
+  but this agent does NOT exist. The correct agent name is "build-python".
+
+  SEVERITY: CRITICAL
+  This would cause orchestration failures during test-fix loop execution.
+  The orchestrator cannot spawn an agent that doesn't exist.
+
+  POSITIVE ACKNOWLEDGMENT:
+  The user correctly addressed all issues from the previous review:
+  - Plan status changed from "implementation_complete" to "active" ✓
+  - All 4 build tasks marked as "pending" (not "completed") ✓
+  - Success criteria properly defined as requirements ✓
+  - Documentation phase removed ✓
+  - Loop structures well-defined with mandatory flags ✓
+
+  However, a new BLOCKING issue was discovered: incorrect agent name in loops.
+
+  DECISION: REJECTED
+  The plan cannot be approved with agent reference errors. Fix the agent name
+  from "builder" to "build-python" in all 4 loop definitions.
+
+# =============================================================================
+# COMPARISON TO PREVIOUS REVIEWS
+# =============================================================================
+comparison_to_previous_reviews:
+  review_1_issues:
+    - issue: "Plan status 'implementation_complete' with completed tasks"
+      status: "FIXED"
+      user_action: "Changed to status: active with all tasks pending"
+
+    - issue: "False completion reporting for implementations"
+      status: "FIXED"
+      user_action: "Tasks now accurately marked as pending (not completed)"
+
+    - issue: "Documentation phase with unimplemented 'documenter' agent"
+      status: "FIXED"
+      user_action: "Phase 6 removed entirely from test plan"
+
+  review_2_issues:
+    - issue: "Previous review incorrectly verified 'planner' agent"
+      status: "ACKNOWLEDGED"
+      note: "Current review performs thorough infrastructure verification"
+
+  new_issues_in_this_review:
+    - issue: "Loop structures reference 'builder' agent (does not exist)"
+      severity: "CRITICAL"
+      blocking: true
+      fix: "Replace 'builder' with 'build-python' in 4 loop definitions"
+
+  overall_progress: |
+    The user has made EXCELLENT progress fixing all previous review issues.
+    All status corrections are accurate. Success criteria are well-defined.
+    Documentation phase properly removed.
+
+    One new BLOCKING issue discovered: incorrect agent name in loop structures.
+    This is a simple fix (find-replace "builder" with "build-python").
+
+    After this fix, the plan should be ready for approval.
+
+# =============================================================================
+# NEXT STEPS
+# =============================================================================
+next_steps:
+  for_plan_owner:
+    action: "Fix agent name in loop structures"
+
+    immediate_fix:
+      file: "plan_test.yml"
+      change: "Replace all 4 instances of 'agent: builder' with 'agent: build-python'"
+      locations:
+        - "Line 101 (loop_test_fix)"
+        - "Line 118 (loop_integration_test_fix)"
+        - "Line 137 (loop_audit)"
+        - "Line 155 (loop_uat)"
+
+    verification:
+      - "Grep for 'agent: \"builder\"' in plan_test.yml should return 0 results"
+      - "Grep for 'agent: \"build-python\"' in loop_structures should return 4 results"
+
+    resubmit:
+      - "After fix, resubmit for planner-reviewer approval"
+      - "This should be the final review iteration"
+
+  optional_enhancement:
+    action: "Consider adding orchestration MMD"
+    priority: "MEDIUM"
+    blocking: false
+
+    rationale: |
+      Test plan has 5 phases with 4 loop types (13 tasks total).
+      An orchestration MMD would improve execution clarity.
+
+    file: "orchestration_cli_hardening.mmd"
+    location: "docs/plans/live/260205IM_cli_hardening/"
+
+# =============================================================================
+# REVIEW METADATA
+# =============================================================================
+review_metadata:
+  reviewer_role: "planner-reviewer"
+  review_type: "final_review_after_corrections"
+  review_date: "2026-02-05"
+  review_iteration: 3
+
+  previous_reviews:
+    - "review_260205IM_decision.yml (2026-02-05) - REJECTED: false completion, documenter agent"
+    - "review_260205IM_re_review_decision.yml (2026-02-05) - REJECTED: false completion confirmed"
+
+  review_focus:
+    - "Verify status corrections (implementation_complete -> active)"
+    - "Verify task status corrections (completed -> pending)"
+    - "Verify documentation phase removed"
+    - "Verify all agents are implemented"
+    - "Verify loop structures are complete"
+    - "Verify MMD presence"
+
+  verification_performed:
+    - "Checked plan_build.yml status: CHANGED to 'active' ✓"
+    - "Checked all 4 task statuses: CHANGED to 'pending' ✓"
+    - "Grepped for 'documenter': NO MATCHES ✓"
+    - "Grepped for 'Phase 6': NO MATCHES ✓"
+    - "Verified build-python agent exists: YES ✓"
+    - "Verified test-builder agent exists: YES ✓"
+    - "Verified test-runner agent exists: YES ✓"
+    - "Verified test-audit agent exists: YES ✓"
+    - "Verified test-user-simulator agent exists: YES ✓"
+    - "Verified 'builder' agent exists: NO - BLOCKING ✗"
+    - "Checked for orchestration MMD: NOT FOUND (recommended but not blocking)"
+
+  key_findings:
+    - "User successfully fixed all previous review issues (EXCELLENT)"
+    - "New BLOCKING issue: loop structures reference non-existent 'builder' agent"
+    - "Should be 'build-python' (as correctly used in build plan)"
+    - "Simple fix required: find-replace in loop_structures section"
+
+  decision: "REJECTED"
+  blocking_issues: 1
+  blocking_violation: "INF-AGENT-001"
+
+  confidence_level: "HIGH"
+  confidence_rationale: |
+    Infrastructure verification was exhaustive:
+    - All agent directories checked via ls command
+    - Agent existence verified against README implementation status
+    - Build plan correctly uses "build-python" (evidence of correct pattern)
+    - Test plan loop_structures incorrectly use "builder" (clear error)
+    - Grep verification confirms no 'builder' agent in guidance files
+
+  estimated_fix_time: "< 5 minutes (simple find-replace operation)"
+
+  approval_likelihood_after_fix: "HIGH (all other criteria pass)"
+
+# =============================================================================
+# REFERENCE DOCUMENTS
+# =============================================================================
+reference_documents:
+  - "modules/AgenticGuidance/README.md (Implementation Status - lines 94-362)"
+  - "modules/AgenticGuidance/assets/definitions/planner-reviewer-checklists.yml"
+  - "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml"
+  - "modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml"
+  - "modules/AgenticGuidance/agents/build/build-python/ (verified exists)"
+  - "modules/AgenticGuidance/agents/test/test-builder/ (verified exists)"
+  - "modules/AgenticGuidance/agents/test/test-runner/ (verified exists)"
+  - "modules/AgenticGuidance/agents/test/test-audit/ (verified exists)"
+  - "modules/AgenticGuidance/agents/test/test-user-simulator/ (verified exists)"
+  - "review_260205IM_decision.yml (previous review 1)"
+  - "review_260205IM_re_review_decision.yml (previous review 2)"
+
+# =============================================================================
+# ACKNOWLEDGMENT OF USER EFFORT
+# =============================================================================
+acknowledgment: |
+  The user has done EXCELLENT work addressing all previous review feedback:
+
+  ✓ Plan status corrected from "implementation_complete" to "active"
+  ✓ All 4 build tasks corrected from "completed" to "pending"
+  ✓ Success criteria properly defined as requirements (not verification)
+  ✓ Documentation phase completely removed (no documenter references)
+  ✓ Loop structures well-defined with mandatory flags
+  ✓ UAT clearly identified as primary success criteria
+
+  The remaining issue is minor: incorrect agent name in loop structures.
+  This is a simple fix that should take less than 5 minutes.
+
+  The plan quality is HIGH. After this fix, approval is highly likely.

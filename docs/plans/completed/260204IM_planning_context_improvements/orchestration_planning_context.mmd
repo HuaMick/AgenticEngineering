@@ -1,0 +1,116 @@
+graph TD
+    Start([Start: Planning Context Improvements]) --> Phase1
+
+    %% ========================================
+    %% PHASE 1: Schema Enhancement
+    %% ========================================
+    Phase1{Phase 1: Schema Enhancement} --> IM_001
+
+    IM_001[IM_001: Define impacted_files schema<br/>Agent: teacher-update-assets<br/>Target: specifications/plan-schema.yml] --> IM_001_Check{Success?}
+    IM_001_Check -->|Yes| IM_002
+    IM_001_Check -->|No| IM_001_Fix[Fix Issues]
+    IM_001_Fix --> IM_001
+
+    IM_002[IM_002: Define impacted_artifacts schema<br/>Agent: teacher-update-assets<br/>Target: specifications/plan-schema.yml] --> IM_002_Check{Success?}
+    IM_002_Check -->|Yes| Phase2
+    IM_002_Check -->|No| IM_002_Fix[Fix Issues]
+    IM_002_Fix --> IM_002
+
+    %% ========================================
+    %% PHASE 2: Template Updates
+    %% ========================================
+    Phase2{Phase 2: Template Updates} --> IM_003
+
+    IM_003[IM_003: Update planning templates<br/>Agent: teacher-update-assets<br/>Target: assets/examples/planner/] --> IM_003_Check{Success?}
+    IM_003_Check -->|Yes| IM_004
+    IM_003_Check -->|No| IM_003_Fix[Fix Issues]
+    IM_003_Fix --> IM_003
+
+    IM_004[IM_004: Update CLI template generation<br/>Agent: build-python<br/>Target: commands/plan.py] --> IM_004_Check{Success?}
+    IM_004_Check -->|Yes| Phase3
+    IM_004_Check -->|No| IM_004_Fix[Fix Issues]
+    IM_004_Fix --> IM_004
+
+    %% ========================================
+    %% PHASE 3: Agent Guidance Updates
+    %% ========================================
+    Phase3{Phase 3: Agent Guidance Updates} --> IM_005
+
+    IM_005[IM_005: Update planner-build guidance<br/>Agent: teacher-update-guidance<br/>Target: planner-build/process.yml] --> IM_005_Check{Success?}
+    IM_005_Check -->|Yes| IM_006
+    IM_005_Check -->|No| IM_005_Fix[Fix Issues]
+    IM_005_Fix --> IM_005
+
+    IM_006[IM_006: Update planner-guidance process<br/>Agent: teacher-update-guidance<br/>Target: planner-guidance/process.yml] --> IM_006_Check{Success?}
+    IM_006_Check -->|Yes| IM_007
+    IM_006_Check -->|No| IM_006_Fix[Fix Issues]
+    IM_006_Fix --> IM_006
+
+    IM_007[IM_007: Update planner-test guidance<br/>Agent: teacher-update-guidance<br/>Target: planner-test/process.yml] --> IM_007_Check{Success?}
+    IM_007_Check -->|Yes| Phase4
+    IM_007_Check -->|No| IM_007_Fix[Fix Issues]
+    IM_007_Fix --> IM_007
+
+    %% ========================================
+    %% PHASE 4: Example Updates
+    %% ========================================
+    Phase4{Phase 4: Example Updates} --> IM_008
+
+    IM_008[IM_008: Create example with impacted_files<br/>Agent: teacher-update-assets<br/>Target: assets/examples/planner/] --> IM_008_Check{Success?}
+    IM_008_Check -->|Yes| IM_009
+    IM_008_Check -->|No| IM_008_Fix[Fix Issues]
+    IM_008_Fix --> IM_008
+
+    IM_009[IM_009: Create example with impacted_artifacts<br/>Agent: teacher-update-assets<br/>Target: assets/examples/planner/] --> IM_009_Check{Success?}
+    IM_009_Check -->|Yes| TestPhase
+    IM_009_Check -->|No| IM_009_Fix[Fix Issues]
+    IM_009_Fix --> IM_009
+
+    %% ========================================
+    %% TEST PHASE: Validation
+    %% ========================================
+    TestPhase{Test Phase: Validation} --> RunTests
+
+    RunTests[Run validation tests<br/>Agent: test-runner<br/>Target: Verify templates and guidance] --> TestFixLoop
+
+    %% ========================================
+    %% LOOP: Test-Fix Loop
+    %% ========================================
+    TestFixLoop{Test-Fix Loop<br/>Iteration Counter}
+    TestFixLoop -->|All Pass| AuditLoop
+    TestFixLoop -->|Failures Found| TestFix[Fix test failures]
+    TestFix --> RunTests
+    TestFixLoop -->|Max 5 Iterations| Escalate1[Escalate to User:<br/>Test failures persist]
+
+    %% ========================================
+    %% LOOP: Audit-Test-Fix Loop (MANDATORY)
+    %% ========================================
+    AuditLoop{Audit-Test-Fix Loop<br/>Iteration Counter}
+    AuditLoop -->|First Run| Audit[Test Auditor:<br/>Verify completeness]
+    Audit --> AuditCheck{Audit Pass?}
+    AuditCheck -->|Yes & Tests Pass| Complete
+    AuditCheck -->|Issues Found| AuditFix[Fix audit issues]
+    AuditFix --> RunTests
+    AuditLoop -->|Max 3 Iterations| Escalate2[BLOCK Completion:<br/>Audit failures must be resolved]
+
+    %% ========================================
+    %% COMPLETION
+    %% ========================================
+    Complete([Complete: Planning Context Improvements Done])
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef phaseStyle fill:#e1f5ff,stroke:#01579b,stroke-width:2px
+    classDef taskStyle fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+    classDef loopStyle fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    classDef checkStyle fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
+    classDef escalateStyle fill:#ffebee,stroke:#b71c1c,stroke-width:2px
+    classDef completeStyle fill:#c8e6c9,stroke:#2e7d32,stroke-width:3px
+
+    class Phase1,Phase2,Phase3,Phase4,TestPhase phaseStyle
+    class IM_001,IM_002,IM_003,IM_004,IM_005,IM_006,IM_007,IM_008,IM_009,RunTests taskStyle
+    class TestFixLoop,AuditLoop loopStyle
+    class IM_001_Check,IM_002_Check,IM_003_Check,IM_004_Check,IM_005_Check,IM_006_Check,IM_007_Check,IM_008_Check,IM_009_Check,AuditCheck checkStyle
+    class Escalate1,Escalate2 escalateStyle
+    class Complete completeStyle

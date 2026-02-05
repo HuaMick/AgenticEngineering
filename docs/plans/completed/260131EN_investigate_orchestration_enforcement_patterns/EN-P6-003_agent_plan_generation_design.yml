@@ -1,0 +1,602 @@
+# EN-P6-003: Agent-Specific Plan Generation and Discovery Design
+# Task: Design agent-specific plan generation and discovery approach
+# Status: Completed
+# Date: 2026-02-01
+
+task_id: EN-P6-003
+task_name: Design agent-specific plan generation and discovery approach
+status: completed
+agent_type: explore
+
+# =============================================================================
+# EXECUTIVE SUMMARY
+# =============================================================================
+executive_summary:
+  finding: |
+    Agent-specific plan file generation and discovery at bootstrap time is
+    HIGHLY FEASIBLE with LOW-MEDIUM complexity. The existing CLI infrastructure
+    in agent_help.py and context.py provides natural extension points.
+
+  key_insights:
+    - Bootstrap flow has two entry points: agent_help.py (basic), context.py (full)
+    - Session IDs are available at spawn time from session.py
+    - Optimal file location: .claude/task-lists/<role>.yml (global, role-indexed)
+    - Discovery mechanism: Extend cmd_bootstrap() to auto-generate/load task files
+    - Clear lifecycle: create at spawn → update during execution → archive on complete
+
+  recommended_approach: |
+    Hybrid generation model:
+    - At Plan Start: Generate role-indexed master task lists from plan_*.yml
+    - At Session Spawn: Create session-specific task subsets from role-indexed lists
+    - Integration Point: cmd_bootstrap() with optional --generate-task-file flag
+
+  complexity: LOW-MEDIUM
+  estimated_effort: "18-28 hours total"
+
+# =============================================================================
+# BOOTSTRAP FLOW ANALYSIS
+# =============================================================================
+bootstrap_flow_analysis:
+
+  agent_help_py:
+    file: modules/AgenticCLI/src/agenticcli/commands/agent_help.py
+    flow: |
+      Agent Name → _find_agent_directory() → Load process.yml
+          ↓
+      _load_agent_context() [basic] OR _load_agent_bootstrap_context() [full]
+
+    capabilities:
+      basic_mode:
+        function: _load_agent_context()
+        extracts: "goal, first 10 process steps, inputs"
+        limitation: "Limited to summary information"
+
+      full_mode:
+        function: _load_agent_bootstrap_context()
+        extracts: "all process steps, detailed inputs, layers"
+        includes: "current task from MainFirstPlanResolver"
+
+    key_patterns:
+      step_extraction: "lines 210-217, 433-440"
+      process_loading: "lines 201-219, 420-459"
+      path_resolution: "lines 263-292"
+      agent_discovery: "lines 651-692"
+
+  context_py:
+    file: modules/AgenticCLI/src/agenticcli/commands/context.py
+    primary_entry: cmd_bootstrap()
+    flow: |
+      Agent Role Request → cmd_bootstrap()
+          ↓
+      Fetches:
+        1. Active plan info (MainFirstPlanResolver)
+        2. Role process (get_role_process)
+        3. Essential inputs (get_role_inputs_manifest)
+        4. Current task from plan
+
+    returns:
+      - role
+      - objective
+      - current_task
+      - process_steps
+      - essential_inputs
+      - plan_folder
+      - cli_commands
+
+    gap_identified: |
+      cmd_bootstrap() does NOT generate agent-specific task files.
+      It only returns context data.
+
+  integration_points:
+    immediate: "Extend cmd_bootstrap() to generate task file as side effect"
+    alternative: "New command agentic context generate-agent --role <role>"
+    recommended: "Extend cmd_bootstrap() with --generate-task-file parameter"
+
+# =============================================================================
+# FILE STRUCTURE DESIGN
+# =============================================================================
+file_structure_design:
+
+  option_a_plan_folder:
+    location: "docs/plans/live/<plan>/agents/<session_id>_<role>.yml"
+    structure: |
+      docs/plans/live/260131EN_plan/
+      ├── plan_build.yml
+      ├── orchestration_enforcement.mmd
+      └── agents/
+          ├── abc123def_build-python.yml
+          └── xyz789_test-runner.yml
+
+    cons:
+      - Session ID required at plan start (not available if pre-created)
+      - Mixes session-scoped with plan-scoped data
+      - Harder to share across concurrent sessions
+
+    recommended: false
+
+  option_b_global_directory:
+    location: ".claude/task-lists/<role>.yml"
+    structure: |
+      .claude/task-lists/
+      ├── build-python.yml
+      ├── test-runner.yml
+      ├── orchestration-executor.yml
+      └── completed/
+          ├── build-python_session-abc123.yml
+          └── test-runner_session-xyz789.yml
+
+    pros:
+      - Session ID not required for creation
+      - Clear role→task mapping at bootstrap
+      - Natural archive structure for completed sessions
+      - Easy discovery: ls ~/.claude/task-lists/<role>.yml
+
+    recommended: true
+
+  proposed_file_schema:
+    metadata:
+      role: "build-python"
+      session_id: "abc123def-xyz789"
+      session_timestamp: "2026-02-01T10:30:00Z"
+      source_process: "/path/to/process.yml"
+      generated_at: "2026-02-01T10:35:00Z"
+      parent_plan: "260131EN_orchestration_enforcement"
+
+    context:
+      objective: "Build and test Python feature implementation"
+      current_phase: "build"
+      phase_count: 3
+
+    tasks:
+      - id: "step_1"
+        name: "CCI Bootstrap"
+        description: "Execute context initialization commands..."
+        status: "pending"
+        sequence: 1
+        depends_on: []
+        started_at: null
+        completed_at: null
+
+      - id: "step_2"
+        name: "Validate Required Inputs"
+        description: "Verify all inputs from inputs.yml..."
+        status: "pending"
+        sequence: 2
+        depends_on: ["step_1"]
+
+    guidance:
+      process_goal: "Implement Python feature with tests"
+      guidelines: "[list of behavioral guidelines]"
+      success_criteria:
+        - "All unit tests pass"
+        - "Code coverage >80%"
+
+    performance:
+      started_at: null
+      completed_at: null
+      current_task_index: 0
+      completion_percentage: 0
+
+# =============================================================================
+# DISCOVERY MECHANISM
+# =============================================================================
+discovery_mechanism:
+
+  primary_discovery_path: |
+    Agent at Bootstrap
+        ↓
+    agentic context bootstrap --role build-python
+        ↓
+    cmd_bootstrap() detects role (AGENTIC_ROLE env or --role param)
+        ↓
+    Check for .claude/task-lists/build-python.yml
+        ↓
+    If exists: Load and return (with file path in context)
+    If not exists: Generate from process.yml → Save → Return
+
+  environment_variables:
+    AGENTIC_ROLE: "Agent role (e.g., build-python)"
+    AGENTIC_SESSION_ID: "Optional session identifier"
+    AGENTIC_PLAN_FOLDER: "Optional active plan path"
+    AGENTIC_TASK_LIST_SEARCH_PATH: "Optional override for task list directory"
+
+  generation_triggers:
+
+    option_1_at_plan_start:
+      trigger: "agentic plan init <plan-folder>"
+      flow: |
+        Generate plan_*.yml files
+            ↓
+        FOR EACH agent in plan:
+            Generate .claude/task-lists/<role>.yml
+      benefits:
+        - Tasks available before any session spawns
+        - Consistent across all sessions
+        - Planners can validate task generation
+      recommended: true
+
+    option_2_at_session_spawn:
+      trigger: "agentic session spawn --role <role>"
+      flow: |
+        Check .claude/task-lists/<role>.yml
+            ↓
+        If missing: Generate from process.yml
+      benefits:
+        - Just-in-time generation
+        - Handles missed plans gracefully
+        - Session isolation if needed
+
+    recommended: |
+      Hybrid approach: Plan-start generation creates role-indexed master lists.
+      Session spawn adds session-specific metadata if list exists.
+
+  cli_commands:
+    generate_agent: |
+      agentic context generate-agent --role build-python \
+        [--plan /path/to/plan] \
+        [--session-id abc123] \
+        [--output .claude/task-lists/build-python.yml]
+
+    bootstrap_with_generation: |
+      agentic context bootstrap --role build-python \
+        [--generate-task-file] \
+        [--plan /path/to/plan] \
+        [-j]
+
+    list_agent_tasks: |
+      agentic context list-agent-tasks [--role build-python]
+
+    validate_agent_tasks: |
+      agentic context validate-agent-tasks --role build-python \
+        [--process /path/to/process.yml]
+
+# =============================================================================
+# LIFECYCLE MANAGEMENT
+# =============================================================================
+lifecycle_management:
+
+  creation_phase:
+    when: "Session spawn or plan start"
+    who: "CLI command or planner agent"
+    what: "Generate task list from process.yml"
+
+    pseudocode: |
+      def generate_agent_task_file(role: str, session_id: str = None) -> Path:
+          process_yml = find_process_yml(role)
+          process_data = load_process_yml(process_yml)
+
+          # Extract steps
+          tasks = []
+          for i, step in enumerate(process_data["process"]["steps"]):
+              task = {
+                  "id": f"step_{i+1}",
+                  "name": extract_name(step),
+                  "description": extract_description(step),
+                  "status": "pending",
+                  "sequence": i + 1,
+                  "depends_on": [f"step_{i}"] if i > 0 else []
+              }
+              tasks.append(task)
+
+          # Build and save file
+          output_path = Path.home() / ".claude" / "task-lists" / f"{role}.yml"
+          output_path.parent.mkdir(parents=True, exist_ok=True)
+          output_path.write_text(yaml.dump(task_file))
+          return output_path
+
+  execution_phase:
+    updates: "As agent works through tasks"
+    fields_updated:
+      - status: "pending → in_progress → completed/blocked/skipped"
+      - started_at: "When agent starts task"
+      - completed_at: "When agent finishes"
+      - notes: "Optional agent notes during execution"
+
+    update_methods:
+      - "agentic plan agent-task update step_1 --status in_progress"
+      - "Direct YAML edit (if appropriate)"
+
+  archival_phase:
+
+    option_1_auto_archive:
+      when: "Session completes (success or error)"
+      action: |
+        If task file exists and status = completed:
+            Move to .claude/task-lists/completed/
+            Filename: <role>_session-<session_id>_<timestamp>.yml
+      benefits:
+        - Audit trail preserved
+        - Doesn't clutter active task lists
+        - Can query historical sessions
+      recommended: true
+
+    option_2_keep_indefinitely:
+      action: "Files remain, use last_updated for stale detection"
+      benefits: "Simpler lifecycle, good for diagnostics"
+      cons: "Directory grows unbounded"
+
+    option_3_cleanup_after_expiry:
+      action: |
+        Keep active files (updated < 7 days)
+        Archive older files
+        Delete archived after 30 days
+
+  lifecycle_commands:
+    list: "agentic context list-agent-tasks [--status pending|in_progress|completed]"
+    archive: "agentic context archive-agent-tasks --role <role> --session-id <id>"
+    cleanup: "agentic context cleanup-agent-tasks --older-than 30d"
+    restore: "agentic context restore-agent-tasks --session-id <id>"
+
+# =============================================================================
+# INTEGRATION DESIGN
+# =============================================================================
+integration_design:
+
+  bootstrap_integration:
+    current_flow: |
+      cmd_bootstrap():
+          role_id = getattr(args, "role", None)
+          plan_info = resolver.resolve_active_plan()
+          current_task = resolver.extract_current_task(...)
+          role_process = get_role_process(role_id)
+          bootstrap_context = {...}
+          return bootstrap_context
+
+    proposed_enhancement: |
+      cmd_bootstrap():
+          # ... existing code ...
+
+          # NEW: Generate or load agent-specific task file
+          if generate_task_file or should_auto_generate(role_id):
+              task_file_path = generate_or_load_agent_task_file(role_id)
+              bootstrap_context["task_file_path"] = str(task_file_path)
+              task_file_data = load_yaml(task_file_path)
+              bootstrap_context["agent_tasks"] = task_file_data.get("tasks", [])
+
+          return bootstrap_context
+
+    new_argument: |
+      bootstrap_parser.add_argument(
+          "--generate-task-file",
+          action="store_true",
+          help="Generate or load agent-specific task file at bootstrap"
+      )
+
+  orchestration_mmd_integration:
+    source: "From EN-P6-002 findings"
+    integration_point: |
+      orchestration_build.mmd
+          ↓
+      Extract AGENT_ROUTING metadata
+          ↓
+      FOR EACH agent in routing:
+          Extract tasks assigned to that agent
+          Generate .claude/task-lists/<agent-role>.yml
+
+    mmd_metadata_example: |
+      %% AGENT_ROUTING: [build-python, test-runner, orchestration-executor]
+
+    implementation: |
+      def cmd_orchestration_generate(args, ctx=None):
+          # ... existing MMD parsing ...
+
+          # NEW: Extract and generate agent-specific task files
+          agent_routing = metadata.get("AGENT_ROUTING", [])
+          for agent_role in agent_routing:
+              agent_tasks = extract_tasks_for_agent(tasks, agent_role)
+              task_file = build_task_file(agent_role, agent_tasks, metadata)
+              save_task_file(task_file, agent_role)
+
+  session_spawn_integration:
+    source: "From EN-P3-003 findings"
+    enhancement: |
+      def cmd_session_spawn(args, ctx=None):
+          role = getattr(args, "role", None)
+          session_id = generate_session_id()
+
+          # NEW: Ensure agent task file exists for this role
+          if role and not task_file_exists(role):
+              generate_agent_task_file(role, session_id)
+
+          # Set environment for discovery
+          env_vars = {
+              "AGENTIC_ROLE": role,
+              "AGENTIC_SESSION_ID": session_id,
+              "AGENTIC_TASK_LIST_DIR": str(Path.home() / ".claude" / "task-lists")
+          }
+
+  agent_help_integration:
+    enhancement: |
+      def show_agent_help(agent_name, json_output=False, bootstrap=False):
+          context = _load_agent_context(agent_name)
+
+          # NEW: Add task file info
+          task_file_path = Path.home() / ".claude" / "task-lists" / f"{agent_name}.yml"
+          if task_file_path.exists():
+              context["task_file"] = {
+                  "path": str(task_file_path),
+                  "exists": True,
+                  "tasks_count": count_tasks_in_file(task_file_path)
+              }
+
+# =============================================================================
+# IMPLEMENTATION COMPLEXITY
+# =============================================================================
+implementation_complexity:
+
+  phase_1_core_generation:
+    effort: "8-10 hours"
+    complexity: LOW
+    dependencies: None
+    risk: "Low - straightforward YAML manipulation"
+    deliverables:
+      - services/agent_task_generator.py
+      - Task schema validation
+      - File I/O and caching
+
+  phase_2_cli_integration:
+    effort: "4-6 hours"
+    complexity: LOW
+    dependencies: "Phase 1"
+    risk: "Low - follows existing CLI patterns"
+    deliverables:
+      - context generate-agent command
+      - Extend context bootstrap with --generate-task-file
+      - Argument parsing and validation
+
+  phase_3_bootstrap_integration:
+    effort: "3-5 hours"
+    complexity: LOW-MEDIUM
+    dependencies: "Phase 1, 2"
+    risk: "Medium - must maintain backward compatibility"
+    deliverables:
+      - Modify cmd_bootstrap() to load/generate task file
+      - Add task context to bootstrap output
+      - Environment variable support
+
+  phase_4_lifecycle_management:
+    effort: "2-4 hours"
+    complexity: LOW
+    dependencies: "Phase 1, 2"
+    risk: "Low - optional features"
+    deliverables:
+      - Archive/cleanup commands
+      - Session completion hooks
+      - Audit logging
+
+  phase_5_testing:
+    effort: "1-3 hours"
+    complexity: LOW-MEDIUM
+    dependencies: "All phases"
+    risk: "Low"
+    deliverables:
+      - Unit tests for task generation
+      - Integration tests with real process.yml files
+      - Bootstrap context validation
+
+  total_estimate:
+    range: "18-28 hours"
+    confidence: HIGH
+
+# =============================================================================
+# RECOMMENDATIONS
+# =============================================================================
+recommendations:
+
+  immediate_actions:
+    - action: "Add task file generation to cmd_bootstrap()"
+      effort: "2-3 hours"
+      value: HIGH
+      notes: "Minimal changes, backward compatible"
+
+    - action: "Create .claude/task-lists/ directory structure"
+      effort: "0.5 hours"
+      value: MEDIUM
+      notes: "Just documentation needed"
+
+    - action: "Update agent_help.py to show task file location"
+      effort: "1 hour"
+      value: MEDIUM
+      notes: "Guide agents to bootstrap command"
+
+  phase_1_implementation_path:
+    - step: "Implement services/agent_task_generator.py"
+      notes: "Reuse step extraction from agent_help.py"
+
+    - step: "Extend context.py with cmd_generate_agent()"
+      notes: "Argument validation, error handling"
+
+    - step: "Modify cmd_bootstrap()"
+      notes: "Add --generate-task-file parameter"
+
+    - step: "Document file schema"
+      notes: "Update guidance artifacts, add examples"
+
+  critical_design_decisions:
+    session_id_timing:
+      choice: "Optional at generation, added at spawn time"
+      rationale: "Allows pre-generation at plan start without session ID"
+
+    file_location:
+      choice: ".claude/task-lists/<role>.yml (not plan-folder)"
+      rationale: "Cleaner separation, easier discovery, supports concurrent sessions"
+
+    update_strategy:
+      choice: "Agent updates via CLI command or direct YAML edit"
+      rationale: "Flexibility - CLI more structured, YAML edit more immediate"
+
+    archival_strategy:
+      choice: "Auto-archive to completed/ folder on session end"
+      rationale: "Preserves audit trail, cleans up active directory"
+
+# =============================================================================
+# RISKS AND MITIGATIONS
+# =============================================================================
+risks_and_mitigations:
+
+  - risk: "Process step dependencies - no explicit depends_on"
+    current_state: "Steps are sequential"
+    mitigation:
+      - Extract from step descriptions (heuristic)
+      - Add optional depends_on field to process.yml step dicts
+      - Use phase structure to infer parallelizable tasks
+
+  - risk: "Agent type inference - no explicit mapping"
+    current_state: "No process.yml to agent role mapping"
+    mitigation:
+      - Require agent category in process.yml metadata
+      - Validate against KNOWN_AGENTS
+      - Fail loudly if role cannot be determined
+
+  - risk: "Stale task files - process.yml changes not reflected"
+    current_state: "No auto-update mechanism"
+    mitigation:
+      - Add generation timestamp to files
+      - Check if process.yml is newer
+      - Warn agent if stale
+      - Implement refresh command
+
+  - risk: "Session ID collision"
+    likelihood: "Extremely low (UUID4 = 2^122 values)"
+    mitigation:
+      - Use UUID4
+      - Validation before archiving
+      - Include timestamp in filename
+
+# =============================================================================
+# CONCLUSION
+# =============================================================================
+conclusion:
+  feasibility: HIGH
+  complexity: LOW-MEDIUM
+  risk: LOW
+  recommendation: PROCEED
+
+  implementation_timeline:
+    mvp: "4-6 hours (core generation + bootstrap integration)"
+    full_feature: "18-28 hours"
+
+  phased_approach:
+    phase_1:
+      name: "MVP"
+      scope: "Core generation + bootstrap integration"
+      effort: "8-10 hours"
+
+    phase_2:
+      name: "CLI Commands"
+      scope: "CLI commands and session spawn integration"
+      effort: "4-6 hours"
+
+    phase_3:
+      name: "Lifecycle"
+      scope: "Lifecycle management and cleanup"
+      effort: "2-4 hours"
+
+  summary: |
+    Agent-specific plan generation is highly feasible. The existing CLI
+    infrastructure in agent_help.py and context.py provides natural extension
+    points. The recommended approach uses .claude/task-lists/<role>.yml for
+    storage with hybrid generation (at plan start + session spawn enhancement).
+
+    Total implementation is estimated at 18-28 hours, with an MVP achievable
+    in 8-10 hours that provides immediate value to agents at bootstrap time.

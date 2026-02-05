@@ -1,0 +1,78 @@
+%% Orchestration: Question Tmux Integration
+%% Plan ID: 260203QT
+%% AGENT_ROUTING: P1 -> builder, P2 -> builder, P3 -> builder, P4 -> builder, P5 -> test
+%% STATUS: P1=pending, P2=pending, P3=pending, P4=pending, P5=pending
+%% DEPENDENCIES: 260203QF, 260203QC, 260203QG
+
+graph TD
+    Start([Start: Question Tmux Integration]) --> CheckDeps
+
+    CheckDeps{Dependencies Complete?<br/>QF + QC + QG}
+    CheckDeps -->|No| WaitDeps[Wait for dependencies]
+    WaitDeps --> CheckDeps
+    CheckDeps -->|Yes| Phase1
+
+    %% Phase 1: Tmux Detection
+    Phase1{Phase 1: Tmux Detection} --> QT_001
+    QT_001[QT-001: Create Tmux Detection Utility<br/>Agent: builder] --> QT_001_Check{Success?}
+    QT_001_Check -->|Yes| QT_002
+    QT_001_Check -->|No| QT_001_Fix[Fix Issues] --> QT_001
+
+    QT_002[QT-002: Create Tmux Pane Management<br/>Agent: builder] --> QT_002_Check{Success?}
+    QT_002_Check -->|Yes| Phase2
+    QT_002_Check -->|No| QT_002_Fix[Fix Issues] --> QT_002
+
+    %% Phase 2: Notification Pane
+    Phase2{Phase 2: Notification Pane} --> QT_003
+    QT_003[QT-003: Question Notification Formatter<br/>Agent: builder] --> QT_003_Check{Success?}
+    QT_003_Check -->|Yes| QT_004
+    QT_003_Check -->|No| QT_003_Fix[Fix Issues] --> QT_003
+
+    QT_004[QT-004: Tmux Notification Display<br/>Agent: builder] --> QT_004_Check{Success?}
+    QT_004_Check -->|Yes| Phase3
+    QT_004_Check -->|No| QT_004_Fix[Fix Issues] --> QT_004
+
+    %% Phase 3: File Watcher
+    Phase3{Phase 3: File Watcher} --> QT_005
+    QT_005[QT-005: Question Folder File Watcher<br/>Agent: builder] --> QT_005_Check{Success?}
+    QT_005_Check -->|Yes| QT_006
+    QT_005_Check -->|No| QT_005_Fix[Fix Issues] --> QT_005
+
+    QT_006[QT-006: Question Watcher CLI Command<br/>Agent: builder] --> QT_006_Check{Success?}
+    QT_006_Check -->|Yes| Phase4
+    QT_006_Check -->|No| QT_006_Fix[Fix Issues] --> QT_006
+
+    %% Phase 4: Agent Integration
+    Phase4{Phase 4: Agent Integration} --> QT_007
+    QT_007[QT-007: Integrate Tmux Notifications<br/>Agent: builder] --> QT_007_Check{Success?}
+    QT_007_Check -->|Yes| QT_008
+    QT_007_Check -->|No| QT_007_Fix[Fix Issues] --> QT_007
+
+    QT_008[QT-008: Update Agent Guidance<br/>Agent: builder] --> QT_008_Check{Success?}
+    QT_008_Check -->|Yes| Phase5
+    QT_008_Check -->|No| QT_008_Fix[Fix Issues] --> QT_008
+
+    %% Phase 5: Integration Tests
+    Phase5{Phase 5: Integration Tests} --> QT_009
+    QT_009[QT-009: Create Tmux Integration Tests<br/>Agent: test] --> QT_009_Check{Success?}
+    QT_009_Check -->|Yes| QT_010
+    QT_009_Check -->|No| QT_009_Fix[Fix Issues] --> QT_009
+
+    QT_010[QT-010: E2E Workflow Documentation<br/>Agent: builder] --> TestFixLoop
+
+    %% Test-Fix Loop
+    TestFixLoop{Test-Fix Loop<br/>Max 5 iterations}
+    TestFixLoop -->|All Pass| Complete
+    TestFixLoop -->|Failures| TestFix[Fix failures] --> QT_009
+    TestFixLoop -->|Max Reached| Escalate[Escalate to User]
+
+    Complete([Complete: Tmux Question Integration Ready])
+
+    %% Styling
+    classDef phase fill:#e1f5ff,stroke:#01579b
+    classDef task fill:#fff9c4,stroke:#f57f17
+    classDef check fill:#e8f5e9,stroke:#1b5e20
+    classDef loop fill:#f3e5f5,stroke:#4a148c
+    class Phase1,Phase2,Phase3,Phase4,Phase5 phase
+    class QT_001,QT_002,QT_003,QT_004,QT_005,QT_006,QT_007,QT_008,QT_009,QT_010 task
+    class TestFixLoop loop

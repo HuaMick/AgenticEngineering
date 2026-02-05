@@ -1,0 +1,78 @@
+graph TD
+    Start([Start: Ralph Loop Remediation]) --> Phase1
+
+    %% ========================================
+    %% PHASE 1: Diagnosis and Fix
+    %% ========================================
+    Phase1{Phase 1: Diagnosis and Fix} --> RE_001
+
+    RE_001[RE_001: Fix claude command syntax<br/>Agent: build-python<br/>Target: commands/ralph.py] --> RE_001_Check{Success?}
+    RE_001_Check -->|Yes| RE_002
+    RE_001_Check -->|No| RE_001_Fix[Fix Issues]
+    RE_001_Fix --> RE_001
+
+    RE_002[RE_002: Add session status verification<br/>Agent: build-python<br/>Target: commands/ralph.py] --> RE_002_Check{Success?}
+    RE_002_Check -->|Yes| Phase2
+    RE_002_Check -->|No| RE_002_Fix[Fix Issues]
+    RE_002_Fix --> RE_002
+
+    %% ========================================
+    %% PHASE 2: Validation via User Stories
+    %% ========================================
+    Phase2{Phase 2: Validation} --> RE_003
+
+    RE_003[RE_003: Define User Stories<br/>Agent: test-builder<br/>Target: user_stories/] --> RE_003_Check{Success?}
+    RE_003_Check -->|Yes| RE_004
+    RE_003_Check -->|No| RE_003_Fix[Fix Issues]
+    RE_003_Fix --> RE_003
+
+    RE_004[RE_004: Execute blind testing<br/>Agent: test-user-simulator<br/>Target: Walk through each story] --> TestFixLoop
+
+    %% ========================================
+    %% LOOP: Test-Fix Loop
+    %% ========================================
+    TestFixLoop{Test-Fix Loop<br/>Iteration Counter}
+    TestFixLoop -->|All Pass| AuditLoop
+    TestFixLoop -->|Failures Found| TestFix[Builder fixes failures]
+    TestFix --> RE_004
+    TestFixLoop -->|Max 5 Iterations| Escalate1[Escalate to User:<br/>Test failures persist]
+
+    %% ========================================
+    %% LOOP: Audit-Test-Fix Loop (MANDATORY)
+    %% ========================================
+    AuditLoop{Audit-Test-Fix Loop<br/>Iteration Counter}
+    AuditLoop -->|First Run| Audit[Test Auditor:<br/>Verify Ralph spawns correctly]
+    Audit --> AuditCheck{Audit Pass?}
+    AuditCheck -->|Yes & Tests Pass| Complete
+    AuditCheck -->|Issues Found| AuditFix[Fix audit issues]
+    AuditFix --> RE_004
+    AuditLoop -->|Max 3 Iterations| Escalate2[BLOCK Completion:<br/>Audit failures must be resolved]
+
+    %% ========================================
+    %% COMPLETION
+    %% ========================================
+    Complete([Complete: Ralph Loop Fixed])
+
+    %% ========================================
+    %% SUCCESS CRITERIA
+    %% ========================================
+    %% - agentic ralph start spawns a working Claude session in tmux
+    %% - Claude session runs unattended without permission prompts
+    %% - All remediation user stories pass validation
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef phaseStyle fill:#e1f5ff,stroke:#01579b,stroke-width:2px
+    classDef taskStyle fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+    classDef loopStyle fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    classDef checkStyle fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
+    classDef escalateStyle fill:#ffebee,stroke:#b71c1c,stroke-width:2px
+    classDef completeStyle fill:#c8e6c9,stroke:#2e7d32,stroke-width:3px
+
+    class Phase1,Phase2 phaseStyle
+    class RE_001,RE_002,RE_003,RE_004 taskStyle
+    class TestFixLoop,AuditLoop loopStyle
+    class RE_001_Check,RE_002_Check,RE_003_Check,AuditCheck checkStyle
+    class Escalate1,Escalate2 escalateStyle
+    class Complete completeStyle

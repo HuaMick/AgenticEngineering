@@ -1,0 +1,1334 @@
+name: 260202CT_comprehensive_cli_command_test_suite
+status: active
+priority: high
+plan_file: docs/plans/live/260202CT_comprehensive_cli_command_test_suite/live/plan_test.yml
+context: 'This plan creates a comprehensive test suite for AgenticCLI after the MCP
+  GUI
+
+  dashboard feature was removed. The goal is to ensure all remaining CLI commands
+
+  work correctly in both unit and integration contexts.
+
+
+  The test plan covers:
+
+  - All CLI command groups (plan, worktree, context, session, loop, etc.)
+
+  - JSON output mode for automation
+
+  - Error handling and helpful error messages
+
+  - Real user workflows and scenarios
+
+
+  Testing layers: Local + Docker (recommended baseline)
+
+  - Local: Tests developer workflow with installed CLI
+
+  - Docker: Tests CI/CD parity with shared pre-built image
+
+
+  UAT validation is the primary success criteria for this plan.
+
+  '
+inputs:
+- location: /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
+  description: Main CLI structure with all command groups
+- location: /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/entry.py
+  description: CLI entry point handling --version and agent help
+- location: /home/code/AgenticEngineering/modules/AgenticCLI/pyproject.toml
+  description: Package configuration with entry points and dependencies
+- location: /home/code/AgenticEngineering/modules/AgenticCLI/tests/
+  description: Existing test suite patterns and fixtures
+- location: /home/code/AgenticEngineering/modules/AgenticGuidance/userstories/MyAgents/
+  description: User stories for CLI workflows
+loop_structures:
+- id: loop_test_fix
+  type: test-fix-loop
+  applies_to_phase: Component Testing
+  trigger: After environment setup
+  description: 'Iterative testing where tests validate CLI commands work correctly.
+
+    Each iteration runs tests, identifies failures, and fixes issues
+
+    until all tests pass or max iterations reached.
+
+    '
+  exit_criteria:
+    success: All CLI command tests pass in local and Docker environments
+    max_iterations: 5
+    escalation: Escalate with test results and remaining failures
+  participants:
+  - agent: test-runner
+    role: Executes CLI tests via smoke-test strategy
+  - agent: builder
+    role: Fixes CLI issues identified by tests
+- id: loop_audit
+  type: audit-test-fix-loop
+  applies_to_phase: Test Quality Audit
+  trigger: After initial test-fix-loop completes
+  description: 'MANDATORY validation to detect reward hacking and verify test quality.
+
+    Auditor examines tests for shortcuts, missing edge cases, and false positives.
+
+    '
+  exit_criteria:
+    success: Audit passes AND all tests still pass after corrections
+    max_iterations: 3
+    escalation: BLOCK completion - audit failures must be resolved
+  participants:
+  - agent: test-audit
+    role: Audits test quality and detects reward hacking
+  - agent: test-runner
+    role: Fixes audit-identified test issues
+  - agent: builder
+    role: Fixes implementation issues revealed by audit
+  mandatory: true
+- id: loop_uat
+  type: user-story-validation-loop
+  applies_to_phase: UAT Validation
+  trigger: After audit-test-fix-loop passes
+  description: 'UAT validation is PRIMARY SUCCESS CRITERIA. Uses test-user-simulator
+
+    to validate complete CLI user journeys match real-world usage.
+
+    '
+  exit_criteria:
+    success: All user story scenarios pass validation
+    max_iterations: 3
+    escalation: User stories not validated - implementation incomplete
+  participants:
+  - agent: test-user-simulator
+    role: Simulates real user executing CLI workflows
+  - agent: builder
+    role: Fixes workflow issues identified during UAT
+phases:
+- name: Environment Setup
+  execution: sequential
+  description: Set up test environments (Local + Docker) before running tests
+  status: pending
+  tasks:
+  - id: setup_001
+    name: Local Environment Setup
+    description: 'Install latest AgenticCLI version in local environment.
+
+      Ensures UAT tests latest code, not stale installed version.
+
+
+      Steps:
+
+      1. Navigate to /home/code/AgenticEngineering/modules/AgenticCLI
+
+      2. Run: uv pip install -e .
+
+      3. Verify: agentic --version
+
+      4. Verify: uv pip show agenticcli (version matches source)
+
+      '
+    status: completed
+    agent_type: test-runner
+    success_criteria:
+    - CLI accessible via 'agentic' command
+    - Version matches source (0.1.0)
+    - All dependencies installed correctly
+    target_files: []
+  - id: setup_002
+    name: Docker Environment Setup
+    description: 'Build shared Docker test image for CI/CD parity testing.
+
+
+      Steps:
+
+      1. Check if Dockerfile.test exists in AgenticCLI module
+
+      2. Build image: docker build -f Dockerfile.test -t agenticcli-test .
+
+      3. Verify image: docker run agenticcli-test agentic --version
+
+      '
+    status: completed
+    agent_type: test-runner
+    success_criteria:
+    - Docker image agenticcli-test built successfully
+    - CLI works inside container
+    - Container has all dependencies
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/Dockerfile.test
+- name: Component Testing
+  execution: sequential
+  description: Test individual CLI command groups with smoke-test strategy
+  status: pending
+  loop:
+    type: test-fix-loop
+    maximum_iterations: 5
+    exit_conditions:
+      success: All component tests pass
+      max_iterations: Escalate with test failures
+  tasks:
+  - id: test_001
+    name: Core Commands Testing
+    description: 'Test core CLI commands that work globally.
+
+
+      Commands to test:
+
+      - agentic --version
+
+      - agentic --help
+
+      - agentic -j health (JSON mode)
+
+      - agentic --debug health (debug mode)
+
+
+      Test both success and error cases:
+
+      - Valid command execution
+
+      - Invalid flag combinations
+
+      - Missing required arguments
+
+      - JSON output format validation
+
+
+      Strategy: smoke-test (entry point testing)
+
+      Layers: Local + Docker
+
+      '
+    status: completed
+    agent_type: test-runner
+    inputs:
+    - location: /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_cli.py
+      description: Existing CLI test patterns
+    - location: /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/entry.py
+      description: Entry point implementation
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_core_commands.py
+    success_criteria:
+    - All core commands execute without errors
+    - JSON output is valid JSON format
+    - Error messages are helpful and actionable
+    - Help text shows all available commands
+    - Tests pass in both local and Docker environments
+  - id: test_002
+    name: Plan Commands Testing
+    description: 'Test ''agentic plan'' command group.
+
+
+      Commands to test:
+
+      - agentic plan init
+
+      - agentic plan scaffold
+
+      - agentic plan status
+
+      - agentic plan validate
+
+      - agentic plan list
+
+      - agentic plan archive
+
+      - agentic plan unarchive
+
+      - agentic plan move
+
+
+      Test scenarios:
+
+      - Create new plan folder
+
+      - Validate plan structure
+
+      - List all plans
+
+      - Archive/unarchive workflow
+
+      - JSON output for all commands
+
+      - Error handling (invalid paths, missing folders)
+
+
+      Strategy: smoke-test
+
+      Layers: Local + Docker
+
+      '
+    status: completed
+    agent_type: test-runner
+    inputs:
+    - location: /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_plan.py
+      description: Existing plan command tests
+    - location: /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/plan.py
+      description: Plan command implementation
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_plan_commands_comprehensive.py
+    success_criteria:
+    - All plan commands work correctly
+    - Plan folder structure created properly
+    - Validation catches common errors
+    - Archive/unarchive preserves plan data
+    - Tests pass in both environments
+  - id: test_003
+    name: Plan Task Commands Testing
+    description: 'Test ''agentic plan task'' subcommand group.
+
+
+      Commands to test:
+
+      - agentic plan task list
+
+      - agentic plan task start
+
+      - agentic plan task complete
+
+      - agentic plan task current
+
+      - agentic plan task add
+
+      - agentic plan task update
+
+      - agentic plan task prefill
+
+      - agentic plan task status
+
+
+      Test scenarios:
+
+      - List tasks with filters (status, phase)
+
+      - Start/complete task workflow
+
+      - Get current task
+
+      - Add new tasks
+
+      - Update task status
+
+      - Prefill from preset
+
+      - JSON output for automation
+
+
+      Strategy: smoke-test
+
+      Layers: Local + Docker
+
+      '
+    status: completed
+    agent_type: test-runner
+    inputs:
+    - location: /home/code/AgenticEngineering/modules/AgenticCLI/tests/integration/test_task_commands.py
+      description: Existing task command integration tests
+    - location: /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_cli_task.py
+      description: Task CLI tests
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_plan_task_commands_full.py
+    success_criteria:
+    - All task commands execute correctly
+    - Task status transitions work properly
+    - Filters return correct results
+    - Prefill from preset creates tasks
+    - JSON output is valid and complete
+  - id: test_004
+    name: Plan Phase Commands Testing
+    description: 'Test ''agentic plan phase'' subcommand group.
+
+
+      Commands to test:
+
+      - agentic plan phase add
+
+      - agentic plan phase list
+
+      - agentic plan phase update
+
+
+      Test scenarios:
+
+      - Add new phase to plan
+
+      - List phases with details
+
+      - Update phase status
+
+      - Phase ordering and dependencies
+
+      - JSON output
+
+
+      Strategy: smoke-test
+
+      Layers: Local + Docker
+
+      '
+    status: completed
+    agent_type: test-runner
+    inputs:
+    - location: /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_plan_phase.py
+      description: Existing phase tests
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_plan_phase_commands.py
+    success_criteria:
+    - Phase commands work correctly
+    - Phase ordering maintained
+    - Phase updates persist
+    - JSON output valid
+  - id: test_005
+    name: Plan Orchestration Commands Testing
+    description: 'Test ''agentic plan orchestration'' subcommand group.
+
+      Note: dashboard subcommand was removed, test only generate/validate.
+
+
+      Commands to test:
+
+      - agentic plan orchestration generate
+
+      - agentic plan orchestration validate
+
+
+      Test scenarios:
+
+      - Generate MMD from plan YAML
+
+      - Validate MMD against plan
+
+      - Strict validation mode
+
+      - Error handling for invalid MMD
+
+      - JSON output
+
+
+      IMPORTANT: Verify dashboard command is NOT accessible.
+
+
+      Strategy: smoke-test
+
+      Layers: Local + Docker
+
+      '
+    status: completed
+    agent_type: test-runner
+    inputs:
+    - location: /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_plan_orchestration.py
+      description: Orchestration command tests
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_plan_orchestration_commands.py
+    success_criteria:
+    - Generate creates valid MMD files
+    - Validate detects mismatches
+    - Dashboard command NOT available
+    - Error messages are clear
+    - JSON output valid
+  - id: test_006
+    name: Plan Stories Commands Testing
+    description: 'Test ''agentic plan stories'' subcommand group.
+
+
+      Commands to test:
+
+      - agentic plan stories list
+
+      - agentic plan stories test
+
+
+      Test scenarios:
+
+      - List user stories for project
+
+      - Test stories against implementation
+
+      - Filter stories by status
+
+      - JSON output
+
+
+      Strategy: smoke-test
+
+      Layers: Local + Docker
+
+      '
+    status: completed
+    agent_type: test-runner
+    inputs:
+    - location: /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_stories.py
+      description: Stories command tests
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_plan_stories_commands.py
+    success_criteria:
+    - List shows available stories
+    - Test validates stories correctly
+    - JSON output valid
+  - id: test_007
+    name: Worktree Commands Testing
+    description: 'Test ''agentic worktree'' (alias: wt) command group.
+
+
+      Commands to test:
+
+      - agentic worktree create
+
+      - agentic worktree list
+
+      - agentic worktree delete
+
+      - agentic worktree switch
+
+      - agentic wt (alias)
+
+
+      Test scenarios:
+
+      - Create worktree with plan integration
+
+      - List worktrees
+
+      - Switch between worktrees
+
+      - Delete worktree
+
+      - Alias functionality
+
+      - JSON output
+
+
+      Strategy: smoke-test
+
+      Layers: Local + Docker
+
+      '
+    status: completed
+    agent_type: test-runner
+    inputs:
+    - location: /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_worktree.py
+      description: Worktree command tests
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_worktree_commands.py
+    success_criteria:
+    - Worktree operations work correctly
+    - Alias 'wt' functions properly
+    - Plan integration maintained
+    - JSON output valid
+  - id: test_008
+    name: Context Commands Testing
+    description: 'Test ''agentic context'' (alias: ctx) command group.
+
+
+      Commands to test:
+
+      - agentic context bootstrap
+
+      - agentic context seed
+
+      - agentic ctx (alias)
+
+
+      Test scenarios:
+
+      - Bootstrap context for role
+
+      - Seed context for agent
+
+      - JSON output (critical for automation)
+
+      - Role detection
+
+      - Plan folder resolution
+
+
+      Strategy: smoke-test
+
+      Layers: Local + Docker
+
+      '
+    status: completed
+    agent_type: test-runner
+    inputs:
+    - location: /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_context_commands.py
+      description: Context command tests
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_context_commands_full.py
+    success_criteria:
+    - Bootstrap returns structured context
+    - Seed provides agent guidance
+    - JSON output is valid and complete
+    - Alias works correctly
+  - id: test_009
+    name: Session Commands Testing
+    description: 'Test ''agentic session'' command group.
+
+
+      Commands to test:
+
+      - agentic session list
+
+      - agentic session spawn
+
+      - agentic session status
+
+
+      Test scenarios:
+
+      - List active sessions
+
+      - Spawn new session
+
+      - Check session status
+
+      - JSON output
+
+
+      Strategy: smoke-test
+
+      Layers: Local + Docker
+
+      '
+    status: completed
+    agent_type: test-runner
+    inputs:
+    - location: /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_session_commands.py
+      description: Session command tests
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_session_commands_full.py
+    success_criteria:
+    - Session operations work correctly
+    - Spawn creates valid session
+    - Status shows accurate info
+    - JSON output valid
+  - id: test_010
+    name: Loop Commands Testing
+    description: 'Test ''agentic loop'' command group.
+
+
+      Commands to test:
+
+      - agentic loop start
+
+      - agentic loop status
+
+      - agentic loop history
+
+
+      Test scenarios:
+
+      - Start loop execution
+
+      - Check loop status
+
+      - View loop history
+
+      - JSON output
+
+
+      Strategy: smoke-test
+
+      Layers: Local + Docker
+
+      '
+    status: completed
+    agent_type: test-runner
+    inputs:
+    - location: /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_loop_integration.py
+      description: Loop integration tests
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_loop_commands.py
+    success_criteria:
+    - Loop commands execute correctly
+    - Status shows loop progress
+    - History preserved properly
+    - JSON output valid
+  - id: test_011
+    name: Template Commands Testing
+    description: 'Test ''agentic template'' (alias: tpl) command group.
+
+
+      Commands to test:
+
+      - agentic template generate
+
+      - agentic template list
+
+      - agentic tpl (alias)
+
+
+      Test scenarios:
+
+      - Generate plan from template
+
+      - List available templates
+
+      - Template variables substitution
+
+      - Alias functionality
+
+      - JSON output
+
+
+      Strategy: smoke-test
+
+      Layers: Local + Docker
+
+      '
+    status: completed
+    agent_type: test-runner
+    inputs:
+    - location: /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_template.py
+      description: Template command tests
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_template_commands.py
+    success_criteria:
+    - Template generation works
+    - List shows templates
+    - Variables substituted correctly
+    - Alias works
+    - JSON output valid
+  - id: test_012
+    name: Inputs Commands Testing
+    description: 'Test ''agentic inputs'' command group.
+
+
+      Commands to test:
+
+      - agentic inputs validate
+
+      - agentic inputs resolve
+
+
+      Test scenarios:
+
+      - Validate inputs.yml structure
+
+      - Resolve file references
+
+      - Detect missing files
+
+      - JSON output
+
+
+      Strategy: smoke-test
+
+      Layers: Local + Docker
+
+      '
+    status: completed
+    agent_type: test-runner
+    inputs:
+    - location: /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_inputs.py
+      description: Inputs command tests
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_inputs_commands.py
+    success_criteria:
+    - Validation detects errors
+    - Resolution finds all files
+    - Error messages helpful
+    - JSON output valid
+  - id: test_013
+    name: Entrypoint Commands Testing
+    description: 'Test ''agentic entrypoint'' (alias: ep) command group.
+
+
+      Commands to test:
+
+      - agentic entrypoint list
+
+      - agentic entrypoint execute
+
+      - agentic ep (alias)
+
+
+      Test scenarios:
+
+      - List workflow entrypoints
+
+      - Execute entrypoint
+
+      - Pass arguments to entrypoint
+
+      - Alias functionality
+
+      - JSON output
+
+
+      Strategy: smoke-test
+
+      Layers: Local + Docker
+
+      '
+    status: completed
+    agent_type: test-runner
+    inputs:
+    - location: /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_entrypoint_commands.py
+      description: Entrypoint command tests
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_entrypoint_commands_full.py
+    success_criteria:
+    - List shows entrypoints
+    - Execute runs successfully
+    - Arguments passed correctly
+    - Alias works
+    - JSON output valid
+  - id: test_014
+    name: Agent Help Commands Testing
+    description: 'Test agent name detection and help system.
+
+
+      Commands to test:
+
+      - agentic <agent-name> --help
+
+      - agentic <agent-name> --bootstrap
+
+      - agentic <agent-name> -j (JSON mode)
+
+
+      Test scenarios:
+
+      - Agent name detection
+
+      - Help output for valid agent
+
+      - Bootstrap context mode
+
+      - JSON output
+
+      - Error for invalid agent names
+
+
+      Strategy: smoke-test
+
+      Layers: Local + Docker
+
+      '
+    status: completed
+    agent_type: test-runner
+    inputs:
+    - location: /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_agent_help.py
+      description: Agent help tests
+    - location: /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/agent_help.py
+      description: Agent help implementation
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_agent_help_commands.py
+    success_criteria:
+    - Agent names detected correctly
+    - Help shows agent guidance
+    - Bootstrap returns full context
+    - JSON output valid
+    - Invalid names show helpful error
+  - id: test_015
+    name: Additional Commands Testing
+    description: 'Test remaining CLI commands.
+
+
+      Commands to test:
+
+      - agentic setup (interactive wizard)
+
+      - agentic preferences / prefs / pref
+
+      - agentic health
+
+      - agentic config / cfg
+
+      - agentic update
+
+      - agentic rebuild
+
+      - agentic langsmith / ls
+
+      - agentic manifest / mf
+
+      - agentic cicd
+
+      - agentic state
+
+      - agentic env
+
+
+      Test scenarios:
+
+      - Setup wizard (non-interactive mode)
+
+      - Preferences management
+
+      - Health check reporting
+
+      - Config operations
+
+      - Update/rebuild (dry-run mode)
+
+      - LangSmith queries (if available)
+
+      - Command aliases work
+
+      - JSON output where applicable
+
+
+      Strategy: smoke-test
+
+      Layers: Local + Docker
+
+      '
+    status: completed
+    agent_type: test-runner
+    inputs:
+    - location: /home/code/AgenticEngineering/modules/AgenticCLI/tests/
+      description: All existing test files
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_additional_commands.py
+    success_criteria:
+    - All commands accessible
+    - Aliases work correctly
+    - Health check accurate
+    - JSON output valid where supported
+- name: Integration Testing
+  execution: sequential
+  description: Test realistic CLI workflow sequences
+  status: pending
+  loop:
+    type: test-fix-loop
+    maximum_iterations: 5
+    exit_conditions:
+      success: All integration workflows pass
+      max_iterations: Escalate with workflow failures
+  tasks:
+  - id: integ_001
+    name: Plan Creation Workflow
+    description: 'Test complete plan creation and management workflow.
+
+
+      Workflow:
+
+      1. agentic worktree create feature/test-plan
+
+      2. agentic plan init --name 260202TE_test_plan
+
+      3. agentic plan scaffold
+
+      4. agentic plan task add "Test task"
+
+      5. agentic plan phase add "Test Phase"
+
+      6. agentic plan status
+
+      7. agentic plan validate
+
+      8. agentic plan orchestration generate
+
+      9. agentic plan archive
+
+
+      Verify each step succeeds and state transitions correctly.
+
+
+      Strategy: agent-blind-test (user flow testing)
+
+      Layers: Local + Docker
+
+      '
+    status: completed
+    agent_type: test-user-simulator
+    inputs:
+    - location: /home/code/AgenticEngineering/modules/AgenticGuidance/userstories/MyAgents/02_cli_basics.yml
+      description: CLI basics user stories
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/integration/test_plan_creation_full_workflow.py
+    success_criteria:
+    - Complete workflow executes without errors
+    - Plan created with correct structure
+    - State persists between commands
+    - Archive preserves plan data
+  - id: integ_002
+    name: Task Management Workflow
+    description: 'Test complete task management workflow.
+
+
+      Workflow:
+
+      1. agentic plan task prefill --preset builder
+
+      2. agentic plan task list
+
+      3. agentic plan task current
+
+      4. agentic plan task start <task-id>
+
+      5. agentic plan task status <task-id>
+
+      6. agentic plan task complete <task-id>
+
+      7. agentic plan task list --status completed
+
+
+      Verify task lifecycle and status transitions.
+
+
+      Strategy: agent-blind-test
+
+      Layers: Local + Docker
+
+      '
+    status: completed
+    agent_type: test-user-simulator
+    inputs:
+    - location: /home/code/AgenticEngineering/modules/AgenticGuidance/userstories/MyAgents/02_cli_basics.yml
+      description: CLI task workflow stories
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/integration/test_task_lifecycle_workflow.py
+    success_criteria:
+    - Task states transition correctly
+    - Current task detection works
+    - Status persists between commands
+    - Filters work correctly
+  - id: integ_003
+    name: Context Injection Workflow
+    description: 'Test CCI (CLI Context Injection) workflow for agents.
+
+
+      Workflow:
+
+      1. agentic context bootstrap --role builder -j
+
+      2. Parse JSON output for context
+
+      3. agentic plan task current -j
+
+      4. Verify task details in output
+
+      5. agentic context seed --agent builder -j
+
+      6. Verify guidance files referenced
+
+
+      Verify JSON output is valid and complete for automation.
+
+
+      Strategy: agent-blind-test
+
+      Layers: Local + Docker
+
+      '
+    status: completed
+    agent_type: test-user-simulator
+    inputs:
+    - location: /home/code/AgenticEngineering/modules/AgenticGuidance/userstories/MyAgents/04_cli_context.yml
+      description: CCI workflow user stories
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/integration/test_cci_workflow.py
+    success_criteria:
+    - Bootstrap returns complete context
+    - JSON output is valid and parseable
+    - Task current provides full task details
+    - Seed returns guidance file paths
+  - id: integ_004
+    name: JSON Automation Workflow
+    description: 'Test JSON output mode for automation scripts.
+
+
+      Test commands with -j flag:
+
+      1. agentic -j health
+
+      2. agentic -j plan status
+
+      3. agentic -j plan task list
+
+      4. agentic -j worktree list
+
+      5. agentic -j context bootstrap --role test
+
+
+      Verify all JSON outputs are valid, complete, and consistent.
+
+
+      Strategy: agent-blind-test
+
+      Layers: Local + Docker
+
+      '
+    status: completed
+    agent_type: test-user-simulator
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/integration/test_json_automation_workflow.py
+    success_criteria:
+    - All JSON outputs valid
+    - Structure consistent across commands
+    - All expected fields present
+    - Error responses also valid JSON
+- name: Cleanup
+  execution: sequential
+  description: Clean up test artifacts and temporary files
+  status: pending
+  tasks:
+  - id: clean_001
+    name: Remove Test Plans
+    description: 'Clean up test plan folders created during testing.
+
+      Remove temporary worktrees and test data.
+
+      '
+    status: completed
+    agent_type: cleaner
+    success_criteria:
+    - Test artifacts removed
+    - Worktrees cleaned up
+    - No test pollution in live plans
+  - id: clean_002
+    name: Verify Test Suite Structure
+    description: 'Verify test files are properly organized and documented.
+
+      Check for unused imports, debug code, or hardcoded paths.
+
+      '
+    status: completed
+    agent_type: cleaner
+    success_criteria:
+    - Tests well organized
+    - No debug code left
+    - No hardcoded paths
+    - Documentation complete
+- name: Test Quality Audit
+  execution: sequential
+  description: MANDATORY audit to detect reward hacking and verify test quality
+  status: pending
+  loop:
+    type: audit-test-fix-loop
+    maximum_iterations: 3
+    mandatory: true
+    exit_conditions:
+      success: Audit passes with no quality issues
+      max_iterations: BLOCK - audit failures must be resolved
+  tasks:
+  - id: audit_001
+    name: Test Quality Review
+    description: 'Audit all tests for quality issues and reward hacking patterns.
+
+
+      Focus areas:
+
+      - Tests verify actual behavior, not just success=True
+
+      - Edge cases covered (empty input, invalid args, missing files)
+
+      - Error conditions tested properly
+
+      - No hardcoded paths or environment assumptions
+
+      - Mocking used appropriately (not excessively)
+
+      - Test isolation (no dependencies between tests)
+
+      - JSON validation thorough
+
+      - Docker tests actually use container
+
+
+      Review skipped tests and validate skip justifications.
+
+
+      Reference: modules/AgenticGuidance/assets/guidelines/reward-hacking-prevention.yml
+
+      '
+    status: completed
+    agent_type: test-audit
+    inputs:
+    - location: /home/code/AgenticEngineering/modules/AgenticCLI/tests/
+      description: All test files to audit
+    - location: /home/code/AgenticEngineering/modules/AgenticGuidance/assets/guidelines/reward-hacking-prevention.yml
+      description: Reward hacking detection guidelines
+    success_criteria:
+    - No reward hacking detected
+    - All edge cases covered
+    - Error handling tested
+    - No hardcoded assumptions
+    - Skip justifications valid
+  - id: audit_002
+    name: Fix Audit Issues
+    description: 'Fix any issues identified during audit.
+
+      Re-run tests to ensure fixes don''t break existing tests.
+
+      '
+    status: completed
+    agent_type: test-runner
+    depends_on:
+    - audit_001
+    success_criteria:
+    - All audit issues resolved
+    - Tests still pass after fixes
+    - No new issues introduced
+- name: UAT Validation
+  execution: sequential
+  description: PRIMARY SUCCESS CRITERIA - Validate CLI against real user workflows
+  status: pending
+  loop:
+    type: user-story-validation-loop
+    maximum_iterations: 3
+    exit_conditions:
+      success: All user story scenarios validated
+      max_iterations: User stories not validated - implementation incomplete
+  tasks:
+  - id: uat_001
+    name: Basic CLI Usage Validation
+    description: 'Validate user can perform basic CLI operations.
+
+
+      User stories to validate:
+
+      - New user installs CLI and checks version
+
+      - User gets help for unknown command
+
+      - User creates first plan
+
+      - User manages tasks
+
+      - User uses JSON mode for scripting
+
+
+      Use test-user-simulator to execute real workflows.
+
+
+      Reference: modules/AgenticGuidance/userstories/MyAgents/02_cli_basics.yml
+
+      '
+    status: completed
+    agent_type: test-user-simulator
+    inputs:
+    - location: /home/code/AgenticEngineering/modules/AgenticGuidance/userstories/MyAgents/02_cli_basics.yml
+      description: Basic CLI user stories
+    success_criteria:
+    - All basic workflows complete successfully
+    - User can accomplish tasks intuitively
+    - Error messages guide user to solution
+    - Help text is accurate and useful
+  - id: uat_002
+    name: Context Injection Validation
+    description: 'Validate CCI workflow for agent bootstrapping.
+
+
+      User stories to validate:
+
+      - Agent bootstraps context via CLI
+
+      - Agent receives complete task details
+
+      - Agent gets guidance file paths
+
+      - JSON output is parseable by scripts
+
+
+      Reference: modules/AgenticGuidance/userstories/MyAgents/04_cli_context.yml
+
+      '
+    status: completed
+    agent_type: test-user-simulator
+    inputs:
+    - location: /home/code/AgenticEngineering/modules/AgenticGuidance/userstories/MyAgents/04_cli_context.yml
+      description: CCI user stories
+    success_criteria:
+    - CCI workflow works end-to-end
+    - Context complete and accurate
+    - JSON structure matches expectations
+    - Agents can bootstrap successfully
+  - id: uat_003
+    name: Advanced Workflow Validation
+    description: 'Validate complex multi-command workflows.
+
+
+      Scenarios:
+
+      - Complete plan lifecycle (create, work, archive)
+
+      - Worktree + plan integration
+
+      - Task prefill and management
+
+      - Orchestration generation and validation
+
+      - Session and loop management
+
+
+      Validate real-world usage patterns.
+
+      '
+    status: completed
+    agent_type: test-user-simulator
+    success_criteria:
+    - Complex workflows execute smoothly
+    - State consistent across commands
+    - No unexpected errors
+    - Performance acceptable
+- name: Documentation Review
+  execution: sequential
+  description: Ensure CLI documentation is accurate and complete
+  status: pending
+  tasks:
+  - id: doc_001
+    name: Update CLI Documentation
+    description: 'Update README and docs to reflect all CLI commands tested.
+
+
+      Verify:
+
+      - All commands documented
+
+      - Examples match actual CLI behavior
+
+      - JSON output examples accurate
+
+      - Error messages documented
+
+      - Removed features (dashboard) not mentioned
+
+      '
+    status: completed
+    agent_type: reviewer
+    inputs:
+    - location: /home/code/AgenticEngineering/modules/AgenticCLI/README.md
+      description: CLI documentation
+    success_criteria:
+    - Documentation complete and accurate
+    - Examples work as shown
+    - No references to removed features
+    - JSON output documented
+success_criteria:
+- All CLI commands tested and working
+- Unit tests pass in local and Docker environments
+- Integration workflows validated
+- Audit finds no reward hacking or quality issues
+- UAT validation passes for all user stories
+- JSON output mode works for all applicable commands
+- Error messages are helpful and actionable
+- Documentation accurate and complete
+- No references to removed dashboard feature
+- Test coverage comprehensive
+testing_layers:
+  recommended: Local + Docker
+  rationale: '- Local: Validates developer workflow (installed CLI)
+
+    - Docker: Validates CI/CD parity (shared pre-built image)
+
+
+    Cloud Build NOT required because:
+
+    - Changes are test-only, not infrastructure
+
+    - pyproject.toml not modified
+
+    - Dockerfile.test not modified
+
+    - CI/CD pipeline not affected
+
+    '
+mandatory_user_stories:
+  note: No US-INSTALL-* stories required - no packaging changes
+  relevant_stories:
+  - location: /home/code/AgenticEngineering/modules/AgenticGuidance/userstories/MyAgents/02_cli_basics.yml
+    description: Basic CLI usage workflows
+  - location: /home/code/AgenticEngineering/modules/AgenticGuidance/userstories/MyAgents/04_cli_context.yml
+    description: CCI context injection workflows

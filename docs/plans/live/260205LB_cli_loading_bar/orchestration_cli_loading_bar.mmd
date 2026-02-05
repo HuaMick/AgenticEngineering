@@ -1,0 +1,76 @@
+%% =============================================================================
+%% GOAL: Implement CLI Loading Bar and Context Metrics for plan 260205LB
+%% =============================================================================
+
+flowchart LR
+    Start((Start)) --> LoadInputs[Load Plan Context]
+
+    %% ========================================
+    %% SETUP PHASE
+    %% ========================================
+    LoadInputs --> SetupPhase[Enter Setup Phase]
+    SetupPhase --> VerifyWorktree[Verify Project Structure]
+    VerifyWorktree --> SetupComplete[Setup Complete]
+
+    %% ========================================
+    %% BUILD PHASE
+    %% ========================================
+    SetupComplete --> BuildPhase[Enter Build Phase]
+
+    subgraph Build_SG ["Build Phase Subgraph"]
+        BuildPhase --> Task_LB001[LB_001: Progress in console.py]
+        Task_LB001 --> SpawnBuilder1[Spawn build-python Agent]
+        SpawnBuilder1 --> Task_LB002[LB_002: Token Estimation Utility]
+        Task_LB002 --> SpawnBuilder2[Spawn build-python Agent]
+        SpawnBuilder2 --> Task_LB003[LB_003: Stream Session Spawn]
+        Task_LB003 --> SpawnBuilder3[Spawn build-python Agent]
+        SpawnBuilder3 --> Task_LB004[LB_004: Context Metrics Bar]
+        Task_LB004 --> SpawnBuilder4[Spawn build-python Agent]
+        SpawnBuilder4 --> BuildComplete{Build Complete?}
+    end
+
+    %% ========================================
+    %% TEST PHASE
+    %% ========================================
+    BuildComplete -- "Yes" --> TestPhase[Enter Test Phase]
+    BuildComplete -- "No" --> BuildPhase
+
+    subgraph Test_SG ["Test Phase Subgraph"]
+        TestPhase --> UnitTests[Unit Tests: UNIT_001]
+        UnitTests --> SpawnRunner1[Spawn test-runner Agent]
+        SpawnRunner1 --> FuncTests[Functional Tests: FUNC_001-002]
+        FuncTests --> SpawnRunner2[Spawn test-runner Agent]
+        SpawnRunner2 --> TestsPassed{Tests Passed?}
+    end
+
+    %% ========================================
+    %% UAT PHASE
+    %% ========================================
+    TestsPassed -- "Yes" --> UATPhase[Enter UAT Phase]
+    TestsPassed -- "No" --> BuildPhase
+
+    subgraph UAT_SG ["UAT Phase Subgraph"]
+        UATPhase --> Task_LB005[LB_005: Manual UAT]
+        Task_LB005 --> SpawnSimulator[Spawn test-user-simulator Agent]
+        SpawnSimulator --> UATComplete{UAT Success?}
+    end
+
+    UATComplete -- "Yes" --> Phase4[Enter Documentation Phase]
+    UATComplete -- "No" --> BuildPhase
+
+    subgraph Doc_SG ["Documentation Phase Subgraph"]
+        Phase4 --> Task_LB006[LB_006: Update User Stories]
+        Task_LB006 --> SpawnBuilder5[Spawn build-python Agent]
+        SpawnBuilder5 --> Phase4Complete[Documentation Complete]
+    end
+
+    Phase4Complete --> Finalize[Mark Plan Complete]
+    Finalize --> End((End))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef entrypoint fill:#90EE90,stroke:#228B22
+    classDef exitpoint fill:#FFB6C1,stroke:#DC143C
+    class Start entrypoint
+    class End exitpoint

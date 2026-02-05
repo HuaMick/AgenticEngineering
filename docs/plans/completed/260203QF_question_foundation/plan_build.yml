@@ -1,0 +1,720 @@
+name: question-foundation
+worktree_path: /home/code/AgenticEngineering
+branch: main
+status: active
+priority: high
+worktree: /home/code/AgenticEngineering
+plan_file: docs/plans/live/260203QF_question_foundation/plan_build.yml
+context: 'This plan implements the foundational data models and queue service for
+  the Question/Answer workflow.
+
+  This is the FOUNDATION layer of the CLI-First HITL strategy.
+
+
+  ARCHITECTURE DECISION (CLI-First Strategy):
+
+  - Question/Answer data models with YAML serialization
+
+  - QuestionQueue service for CRUD operations
+
+  - Plan-scoped storage: docs/plans/live/{plan_id}/questions/
+
+  - No dependencies on CLI or voice (foundation layer)
+
+
+  This foundation will be consumed by:
+
+  - 260203QC (Question CLI) - Primary text-mode interface
+
+  - 260203VP (Voice PersonaPlex) - Optional voice interface
+
+  - 260203QG (Question Guidance) - Agent integration
+
+
+  UPDATE 2026-02-03: Initial plan created with 4 phases covering data models,
+
+  queue service, file system operations, and comprehensive unit tests.
+
+  '
+dependencies:
+  depends_on: []
+  required_by:
+  - plan_id: 260203QC
+    description: Question CLI uses QuestionQueue service
+  - plan_id: 260203QG
+    description: Agent guidance uses data model schema
+  - plan_id: 260203VP
+    description: Voice interface uses QuestionQueue service
+inputs:
+- location: modules/AgenticGuidance/src/agenticguidance/services/plan.py
+  description: Reference patterns for YAML serialization and file locking
+- location: modules/AgenticGuidance/src/agenticguidance/services/state.py
+  description: FileLock implementation pattern for atomic operations
+- location: modules/AgenticGuidance/tests/test_services_plan.py
+  description: Test patterns for service validation
+- location: modules/AgenticGuidance/docs/ARCHITECTURE.md
+  description: Architecture patterns and service design guidelines
+objective: 'Implement Question and Answer data models with YAML serialization, and
+  QuestionQueue service
+
+  for creating, listing, and answering questions. Storage is plan-scoped in questions/
+  folders.
+
+
+  Foundation layer has ZERO dependencies on CLI or voice modules - it provides pure
+
+  Python APIs that will be consumed by higher-level interfaces.
+
+  '
+loop_structures:
+- id: loop_implementation
+  type: test-fix-loop
+  applies_to_phase: 'Phase 4: Unit Tests'
+  trigger: After all implementation tasks complete
+  description: 'Iterative testing pattern where implementation is validated against
+
+    unit tests. Each iteration runs tests, identifies failures, and
+
+    fixes issues until all tests pass or max iterations reached.
+
+    '
+  exit_criteria:
+    success: All unit tests pass with >90% coverage
+    max_iterations: 5
+    escalation: Escalate to user with test results and coverage report
+  participants:
+  - agent: test-builder
+    role: Creates comprehensive unit tests
+  - agent: builder
+    role: Fixes failures identified by tests
+- id: loop_audit
+  type: audit-test-fix-loop
+  applies_to_phase: 'Phase 4: Unit Tests'
+  trigger: After test-fix-loop completes
+  description: 'MANDATORY validation loop to detect reward hacking and verify test
+    quality.
+
+    Auditor examines tests for shortcuts, mocking issues, and false positives.
+
+    '
+  exit_criteria:
+    success: Audit passes AND all tests still pass after audit corrections
+    max_iterations: 3
+    escalation: BLOCK completion - audit failures must be resolved
+  participants:
+  - agent: test-audit
+    role: Audits test quality and detects reward hacking
+  - agent: test-builder
+    role: Fixes audit-identified test issues
+  - agent: builder
+    role: Fixes implementation issues revealed by audit
+  mandatory: true
+phases:
+- name: 'Phase 1: Data Models'
+  execution: sequential
+  description: Implement Question and Answer dataclasses with YAML serialization
+  tasks:
+  - id: QF_001
+    name: Create Question dataclass
+    description: Implement Question model with id, text, context, severity, asked_by,
+      created_at, status fields
+    status: completed
+    agent: builder
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+    - modules/AgenticGuidance/src/agenticguidance/services/state.py
+    - modules/AgenticGuidance/src/agenticguidance/models/__init__.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/models/question.py
+    guidance: 'Create Question dataclass in models/question.py with these fields:
+
+
+      Fields:
+
+      - id: str (unique identifier, format: Q-YYYYMMDD-HHMMSS-RAND)
+
+      - text: str (the question being asked)
+
+      - context: str (contextual information about where/why the question arose)
+
+      - severity: str (enum: "blocking", "high", "medium", "low")
+
+      - asked_by: str (agent role or "human")
+
+      - created_at: float (timestamp using time.time())
+
+      - status: str (enum: "pending", "answered", "deferred")
+
+
+      Implementation requirements:
+
+      - Use @dataclass decorator from dataclasses
+
+      - Add type hints for all fields
+
+      - Implement to_dict() method for YAML serialization
+
+      - Implement from_dict() classmethod for deserialization
+
+      - Add QuestionSeverity and QuestionStatus enums
+
+      - Follow patterns from services/state.py ProcessEntry dataclass
+
+
+      File header should include module docstring explaining the model''s purpose.
+
+      '
+    success_criteria:
+    - Question dataclass defined with all required fields
+    - to_dict() and from_dict() methods implemented
+    - QuestionSeverity enum has all 4 severity levels
+    - QuestionStatus enum has pending, answered, deferred states
+    - Type hints present for all fields
+    - No dependencies on CLI or voice modules
+  - id: QF_002
+    name: Create Answer dataclass
+    description: Implement Answer model with question_id, answer_text, answered_by,
+      answered_at, confidence fields
+    status: completed
+    agent: builder
+    depends_on:
+    - QF_001
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/models/question.py
+    - modules/AgenticGuidance/src/agenticguidance/services/state.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/models/question.py
+    guidance: 'Add Answer dataclass to models/question.py (same file as Question):
+
+
+      Fields:
+
+      - question_id: str (references Question.id)
+
+      - answer_text: str (the answer provided)
+
+      - answered_by: str (who answered: agent role or "human")
+
+      - answered_at: float (timestamp using time.time())
+
+      - confidence: Optional[str] (enum: "high", "medium", "low", None)
+
+
+      Implementation requirements:
+
+      - Use @dataclass decorator from dataclasses
+
+      - Add type hints for all fields (confidence is Optional)
+
+      - Implement to_dict() method for YAML serialization
+
+      - Implement from_dict() classmethod for deserialization
+
+      - Add AnswerConfidence enum with high/medium/low
+
+      - Follow same patterns as Question dataclass
+
+
+      Update models/__init__.py to export Question, Answer, and enums.
+
+      '
+    success_criteria:
+    - Answer dataclass defined with all required fields
+    - to_dict() and from_dict() methods implemented
+    - AnswerConfidence enum has 3 confidence levels
+    - confidence field is Optional (can be None)
+    - Type hints present for all fields
+    - Models exported from models/__init__.py
+    completed_at: '2026-02-03T22:48:55.420123'
+  - id: QF_003
+    name: Implement YAML serialization helpers
+    description: Add utility functions for converting Question/Answer to/from YAML
+      format
+    status: completed
+    agent: builder
+    depends_on:
+    - QF_002
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/models/question.py
+    - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/models/question.py
+    guidance: "Add YAML serialization helper functions to models/question.py:\n\n\
+      Functions to implement:\n1. question_to_yaml(question: Question) -> str\n  \
+      \ - Convert Question to YAML string\n   - Use yaml.safe_dump() with default_flow_style=False\n\
+      \   - Include metadata comment header with question ID\n\n2. yaml_to_question(yaml_str:\
+      \ str) -> Question\n   - Parse YAML string to Question\n   - Use yaml.safe_load()\n\
+      \   - Call Question.from_dict() on parsed data\n   - Handle parse errors with\
+      \ clear exception messages\n\n3. answer_to_yaml(answer: Answer, question: Question)\
+      \ -> str\n   - Convert Answer to YAML string\n   - Include original question\
+      \ text in comment header\n   - Use yaml.safe_dump() with default_flow_style=False\n\
+      \n4. yaml_to_answer(yaml_str: str) -> Answer\n   - Parse YAML string to Answer\n\
+      \   - Use yaml.safe_load()\n   - Call Answer.from_dict() on parsed data\n\n\
+      Reference services/plan.py for YAML handling patterns.\nAll functions should\
+      \ have docstrings and type hints.\n"
+    success_criteria:
+    - question_to_yaml() produces valid YAML with metadata header
+    - yaml_to_question() successfully parses Question YAML
+    - answer_to_yaml() includes original question in header
+    - yaml_to_answer() successfully parses Answer YAML
+    - Round-trip serialization preserves all data (Question -> YAML -> Question)
+    - Parse errors include helpful messages
+    completed_at: '2026-02-03T22:50:41.635918'
+- name: 'Phase 2: Queue Service'
+  execution: sequential
+  description: Implement QuestionQueue service with CRUD operations
+  tasks:
+  - id: QF_004
+    name: Create QuestionQueue service class
+    description: Implement QuestionQueue with initialization and path management
+    status: completed
+    agent: builder
+    depends_on:
+    - QF_003
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/models/question.py
+    - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+    - modules/AgenticGuidance/src/agenticguidance/services/state.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/question.py
+    guidance: "Create QuestionQueue service in services/question.py:\n\nClass structure:\n\
+      ```python\nclass QuestionQueue:\n    def __init__(self, plan_path: Path):\n\
+      \        \"\"\"Initialize queue for a specific plan.\n\n        Args:\n    \
+      \        plan_path: Path to plan folder (e.g., docs/plans/live/260203QF_feature)\n\
+      \        \"\"\"\n        self.plan_path = plan_path\n        self.questions_dir\
+      \ = plan_path / \"questions\"\n        self.pending_dir = self.questions_dir\
+      \ / \"pending\"\n        self.answered_dir = self.questions_dir / \"answered\"\
+      \n\n        # Create directories if they don't exist\n        self.pending_dir.mkdir(parents=True,\
+      \ exist_ok=True)\n        self.answered_dir.mkdir(parents=True, exist_ok=True)\n\
+      ```\n\nAlso implement these helper methods:\n- _generate_question_id() -> str:\
+      \ Generate unique Q-YYYYMMDD-HHMMSS-RAND ID\n- _get_question_path(question_id:\
+      \ str, status: str) -> Path: Get file path for question\n\nReference services/plan.py\
+      \ PlanMovementWorkflow for initialization patterns.\nAdd comprehensive module\
+      \ docstring explaining the service's purpose.\n"
+    success_criteria:
+    - QuestionQueue class defined with __init__ method
+    - Directories created on initialization (pending/, answered/)
+    - _generate_question_id() produces unique IDs with correct format
+    - _get_question_path() returns correct paths for pending/answered
+    - Module docstring explains service purpose
+    - No dependencies on CLI or voice modules
+    completed_at: '2026-02-03T22:52:27.670902'
+  - id: QF_005
+    name: Implement create_question method
+    description: Add method to create and persist new questions to pending queue
+    status: completed
+    agent: builder
+    depends_on:
+    - QF_004
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/question.py
+    - modules/AgenticGuidance/src/agenticguidance/models/question.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/question.py
+    guidance: "Add create_question method to QuestionQueue:\n\n```python\ndef create_question(\n\
+      \    self,\n    text: str,\n    context: str,\n    severity: str,\n    asked_by:\
+      \ str = \"agent\"\n) -> Question:\n    \"\"\"Create and persist a new question.\n\
+      \n    Args:\n        text: The question text\n        context: Contextual information\n\
+      \        severity: Question severity (blocking/high/medium/low)\n        asked_by:\
+      \ Who asked the question (default: \"agent\")\n\n    Returns:\n        Created\
+      \ Question object\n\n    Raises:\n        ValueError: If severity is invalid\n\
+      \    \"\"\"\n```\n\nImplementation steps:\n1. Validate severity against QuestionSeverity\
+      \ enum\n2. Generate unique question ID\n3. Create Question object with status=\"\
+      pending\"\n4. Convert to YAML using question_to_yaml()\n5. Write to pending/{question_id}.yml\n\
+      6. Return Question object\n\nFile writing should be atomic (write to temp file,\
+      \ then rename).\n"
+    success_criteria:
+    - create_question() creates Question with all fields populated
+    - Question written to pending/{question_id}.yml
+    - YAML file is valid and parseable
+    - Invalid severity raises ValueError
+    - File write is atomic (temp file + rename)
+    - Returns created Question object
+    completed_at: '2026-02-03T22:54:31.071406'
+  - id: QF_006
+    name: Implement list_pending_questions method
+    description: Add method to retrieve all pending questions
+    status: completed
+    agent: builder
+    depends_on:
+    - QF_005
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/question.py
+    - modules/AgenticGuidance/src/agenticguidance/models/question.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/question.py
+    guidance: "Add list_pending_questions method to QuestionQueue:\n\n```python\n\
+      def list_pending_questions(self, severity_filter: Optional[str] = None) -> list[Question]:\n\
+      \    \"\"\"List all pending questions.\n\n    Args:\n        severity_filter:\
+      \ Optional severity filter (e.g., \"blocking\")\n\n    Returns:\n        List\
+      \ of Question objects, sorted by created_at (oldest first)\n    \"\"\"\n```\n\
+      \nImplementation steps:\n1. Scan pending/ directory for *.yml files\n2. Read\
+      \ and parse each file using yaml_to_question()\n3. Filter by severity if severity_filter\
+      \ provided\n4. Sort by created_at (oldest questions first)\n5. Return list of\
+      \ Question objects\n\nHandle file read errors gracefully (skip corrupted files,\
+      \ log warning).\n"
+    success_criteria:
+    - list_pending_questions() returns all pending questions
+    - Results sorted by created_at (oldest first)
+    - severity_filter correctly filters results
+    - Corrupted files are skipped (not raised as errors)
+    - Returns empty list when no pending questions
+    - Type hints match return type
+    completed_at: '2026-02-03T22:56:13.888280'
+  - id: QF_007
+    name: Implement get_question method
+    description: Add method to retrieve a specific question by ID
+    status: completed
+    agent: builder
+    depends_on:
+    - QF_006
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/question.py
+    - modules/AgenticGuidance/src/agenticguidance/models/question.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/question.py
+    guidance: "Add get_question method to QuestionQueue:\n\n```python\ndef get_question(self,\
+      \ question_id: str) -> Optional[Question]:\n    \"\"\"Get a specific question\
+      \ by ID.\n\n    Args:\n        question_id: Question ID to retrieve\n\n    Returns:\n\
+      \        Question object if found, None otherwise\n    \"\"\"\n```\n\nImplementation\
+      \ steps:\n1. Check pending/{question_id}.yml first\n2. If not found, check answered/{question_id}.yml\n\
+      3. Read and parse file using yaml_to_question()\n4. Return Question object or\
+      \ None if not found\n\nHandle file read errors (return None for corrupted files).\n"
+    success_criteria:
+    - get_question() returns Question when found in pending/
+    - get_question() returns Question when found in answered/
+    - get_question() returns None when not found
+    - Corrupted files return None (not raised as errors)
+    - Type hints match return type (Optional[Question])
+    completed_at: '2026-02-03T22:57:46.670191'
+  - id: QF_008
+    name: Implement answer_question method
+    description: Add method to answer a question and move it to answered/
+    status: completed
+    agent: builder
+    depends_on:
+    - QF_007
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/question.py
+    - modules/AgenticGuidance/src/agenticguidance/models/question.py
+    - modules/AgenticGuidance/src/agenticguidance/services/state.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/question.py
+    guidance: "Add answer_question method to QuestionQueue:\n\n```python\ndef answer_question(\n\
+      \    self,\n    question_id: str,\n    answer_text: str,\n    answered_by: str\
+      \ = \"human\",\n    confidence: Optional[str] = None\n) -> tuple[Question, Answer]:\n\
+      \    \"\"\"Answer a pending question.\n\n    Args:\n        question_id: ID\
+      \ of question to answer\n        answer_text: The answer text\n        answered_by:\
+      \ Who answered (default: \"human\")\n        confidence: Answer confidence (high/medium/low,\
+      \ optional)\n\n    Returns:\n        Tuple of (updated Question, Answer)\n\n\
+      \    Raises:\n        FileNotFoundError: If question not found in pending/\n\
+      \        ValueError: If confidence is invalid\n    \"\"\"\n```\n\nImplementation\
+      \ steps:\n1. Read question from pending/{question_id}.yml\n2. Validate confidence\
+      \ if provided\n3. Create Answer object\n4. Update Question status to \"answered\"\
+      \n5. Write Answer to answered/{question_id}.yml using answer_to_yaml()\n6. Move\
+      \ Question to answered/{question_id}_question.yml (atomic move)\n7. Delete pending/{question_id}.yml\n\
+      8. Return (Question, Answer) tuple\n\nUse FileLock from services/state.py for\
+      \ atomic move operation.\nReference plan.py for atomic file operations.\n"
+    success_criteria:
+    - answer_question() creates Answer with all fields
+    - Question moved from pending/ to answered/
+    - Answer written to answered/{question_id}.yml
+    - Original question available in answered/{question_id}_question.yml
+    - File operations are atomic (using FileLock)
+    - FileNotFoundError raised when question not in pending/
+    - ValueError raised for invalid confidence
+    - Returns (Question, Answer) tuple
+    completed_at: '2026-02-03T22:59:29.283991'
+- name: 'Phase 3: File System Layer'
+  execution: sequential
+  description: Atomic YAML read/write with file locking
+  tasks:
+  - id: QF_009
+    name: Add atomic file write operation
+    description: Implement helper for atomic file writes with temp file + rename pattern
+    status: completed
+    agent: builder
+    depends_on:
+    - QF_008
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/question.py
+    - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/question.py
+    guidance: "Add _atomic_write helper method to QuestionQueue:\n\n```python\ndef\
+      \ _atomic_write(self, path: Path, content: str) -> None:\n    \"\"\"Write content\
+      \ to file atomically.\n\n    Args:\n        path: Target file path\n       \
+      \ content: Content to write\n\n    Uses temp file + rename pattern for atomicity.\n\
+      \    \"\"\"\n```\n\nImplementation:\n1. Create temp file in same directory (path.with_suffix('.tmp'))\n\
+      2. Write content to temp file\n3. fsync to ensure write is on disk\n4. Rename\
+      \ temp file to target path (atomic operation)\n\nHandle errors: clean up temp\
+      \ file on failure.\nReference plan.py for atomic file operation patterns.\n"
+    success_criteria:
+    - _atomic_write() uses temp file + rename pattern
+    - fsync called before rename to ensure data on disk
+    - Temp file cleaned up on errors
+    - Operation is truly atomic (no partial writes visible)
+    - Docstring explains atomicity guarantee
+    completed_at: '2026-02-03T23:01:22.783011'
+  - id: QF_010
+    name: Add file locking for concurrent access
+    description: Integrate FileLock for thread-safe queue operations
+    status: completed
+    agent: builder
+    depends_on:
+    - QF_009
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/question.py
+    - modules/AgenticGuidance/src/agenticguidance/services/state.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/question.py
+    guidance: "Add file locking to critical operations in QuestionQueue:\n\nOperations\
+      \ that need locking:\n1. create_question() - prevent concurrent ID collisions\n\
+      2. answer_question() - prevent concurrent move operations\n\nImplementation\
+      \ pattern:\n```python\nfrom agenticguidance.services.state import FileLock\n\
+      \ndef create_question(...):\n    lock = FileLock(self.pending_dir / \".lock\"\
+      )\n    try:\n        if not lock.acquire():\n            raise TimeoutError(\"\
+      Could not acquire lock\")\n        # ... create question logic ...\n    finally:\n\
+      \        lock.release()\n```\n\nUse FileLock from services/state.py (already\
+      \ implemented).\nLock file should be {directory}/.lock (e.g., pending/.lock).\n\
+      Always release lock in finally block.\n"
+    success_criteria:
+    - create_question() uses FileLock for pending directory
+    - answer_question() uses FileLock for both directories
+    - Locks released in finally blocks
+    - TimeoutError raised if lock acquisition fails
+    - No deadlocks possible (lock ordering consistent)
+    - Concurrent operations are thread-safe
+    completed_at: '2026-02-03T23:04:18.422289'
+  - id: QF_011
+    name: Add error handling and logging
+    description: Add comprehensive error handling and logging throughout service
+    status: completed
+    agent: builder
+    depends_on:
+    - QF_010
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/question.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/question.py
+    guidance: "Add error handling and logging to QuestionQueue:\n\n1. Import logging\
+      \ and create logger:\n   ```python\n   import logging\n   logger = logging.getLogger(__name__)\n\
+      \   ```\n\n2. Add logging for key operations:\n   - DEBUG: Question created,\
+      \ question answered\n   - WARNING: Corrupted file skipped, lock timeout\n  \
+      \ - ERROR: File operation failures\n\n3. Error handling patterns:\n   - Corrupted\
+      \ YAML: log warning, skip file, continue\n   - Lock timeout: log error, raise\
+      \ TimeoutError\n   - File not found: raise FileNotFoundError with helpful message\n\
+      \   - Invalid enum values: raise ValueError with valid options\n\n4. Add validation:\n\
+      \   - Validate severity in create_question\n   - Validate confidence in answer_question\n\
+      \   - Validate question_id format in get_question\n\nAll error messages should\
+      \ be actionable (tell user what to fix).\n"
+    success_criteria:
+    - Logger configured using logging.getLogger(__name__)
+    - DEBUG logging for successful operations
+    - WARNING logging for recoverable errors
+    - ERROR logging for operation failures
+    - ValueError messages include valid enum values
+    - FileNotFoundError messages include helpful context
+    - All errors have actionable messages
+    completed_at: '2026-02-03T23:08:13.176983'
+- name: 'Phase 4: Unit Tests'
+  execution: sequential
+  description: Comprehensive test coverage for all operations
+  tasks:
+  - id: QF_012
+    name: Create data model tests
+    description: Unit tests for Question and Answer dataclasses
+    status: completed
+    agent: test-builder
+    depends_on:
+    - QF_011
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/models/question.py
+    - modules/AgenticGuidance/tests/test_services_plan.py
+    target_files:
+    - modules/AgenticGuidance/tests/test_models_question.py
+    guidance: "Create test_models_question.py with comprehensive tests for data models:\n\
+      \nTest classes:\n1. TestQuestionDataclass\n   - test_create_question: Create\
+      \ Question with all fields\n   - test_to_dict: Verify to_dict() output\n   -\
+      \ test_from_dict: Verify from_dict() reconstruction\n   - test_round_trip: Question\
+      \ -> dict -> Question preserves data\n\n2. TestAnswerDataclass\n   - test_create_answer:\
+      \ Create Answer with all fields\n   - test_to_dict: Verify to_dict() output\n\
+      \   - test_from_dict: Verify from_dict() reconstruction\n   - test_round_trip:\
+      \ Answer -> dict -> Answer preserves data\n   - test_optional_confidence: confidence=None\
+      \ handled correctly\n\n3. TestQuestionSeverity\n   - test_severity_values: All\
+      \ 4 severities present\n   - test_invalid_severity: Invalid value raises error\n\
+      \n4. TestQuestionStatus\n   - test_status_values: All 3 statuses present\n\n\
+      5. TestAnswerConfidence\n   - test_confidence_values: All 3 confidence levels\
+      \ present\n\n6. TestYAMLSerialization\n   - test_question_to_yaml: Valid YAML\
+      \ produced\n   - test_yaml_to_question: YAML parsed correctly\n   - test_answer_to_yaml:\
+      \ Valid YAML with question header\n   - test_yaml_to_answer: YAML parsed correctly\n\
+      \   - test_question_round_trip: Question -> YAML -> Question\n   - test_answer_round_trip:\
+      \ Answer -> YAML -> Answer\n   - test_invalid_yaml: Parse errors handled gracefully\n\
+      \nUse pytest fixtures for sample Question/Answer objects.\nReference test_services_plan.py\
+      \ for test patterns.\n"
+    success_criteria:
+    - All dataclass fields tested
+    - to_dict() and from_dict() round-trips verified
+    - Enum values validated
+    - YAML serialization round-trips tested
+    - Invalid input handling tested
+    - Test coverage >95% for models/question.py
+    - All tests pass
+  - id: QF_013
+    name: Create queue service tests
+    description: Unit tests for QuestionQueue CRUD operations
+    status: completed
+    agent: test-builder
+    depends_on:
+    - QF_012
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/question.py
+    - modules/AgenticGuidance/tests/test_services_plan.py
+    target_files:
+    - modules/AgenticGuidance/tests/test_services_question.py
+    guidance: "Create test_services_question.py with comprehensive service tests:\n\
+      \nTest classes:\n1. TestQuestionQueueInit\n   - test_init_creates_directories:\
+      \ pending/ and answered/ created\n   - test_init_with_existing_directories:\
+      \ No errors if dirs exist\n\n2. TestCreateQuestion\n   - test_create_question_success:\
+      \ Question created and persisted\n   - test_create_question_file_exists: YAML\
+      \ file written correctly\n   - test_create_question_unique_ids: Multiple questions\
+      \ have unique IDs\n   - test_create_question_invalid_severity: ValueError raised\n\
+      \n3. TestListPendingQuestions\n   - test_list_empty: Returns empty list when\
+      \ no questions\n   - test_list_multiple: Returns all pending questions\n   -\
+      \ test_list_sorted: Questions sorted by created_at (oldest first)\n   - test_list_severity_filter:\
+      \ Filter by severity works\n   - test_list_skips_corrupted: Corrupted files\
+      \ skipped gracefully\n\n4. TestGetQuestion\n   - test_get_from_pending: Finds\
+      \ question in pending/\n   - test_get_from_answered: Finds question in answered/\n\
+      \   - test_get_not_found: Returns None when not found\n   - test_get_corrupted_file:\
+      \ Returns None for corrupted files\n\n5. TestAnswerQuestion\n   - test_answer_question_success:\
+      \ Question answered and moved\n   - test_answer_creates_answer_file: Answer\
+      \ YAML written\n   - test_answer_moves_question: Question moved to answered/\n\
+      \   - test_answer_deletes_pending: Pending file removed\n   - test_answer_not_found:\
+      \ FileNotFoundError raised\n   - test_answer_invalid_confidence: ValueError\
+      \ raised\n   - test_answer_returns_tuple: Returns (Question, Answer)\n\n6. TestAtomicOperations\n\
+      \   - test_atomic_write: Temp file pattern used\n   - test_concurrent_create:\
+      \ Multiple threads don't collide\n   - test_concurrent_answer: Multiple threads\
+      \ don't corrupt\n\nUse pytest fixtures for temporary directories and sample\
+      \ data.\nUse tmp_path fixture for isolated test directories.\nMock time.time()\
+      \ for deterministic timestamps.\nReference test_services_plan.py for patterns.\n"
+    success_criteria:
+    - All CRUD operations tested
+    - Edge cases covered (empty queue, not found, etc.)
+    - Error conditions tested (invalid input, corrupted files)
+    - Atomic operations verified
+    - Concurrent access tested
+    - Test coverage >90% for services/question.py
+    - All tests pass
+  - id: QF_014
+    name: Create integration tests
+    description: End-to-end tests for complete question/answer workflow
+    status: completed
+    agent: test-builder
+    depends_on:
+    - QF_013
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/question.py
+    - modules/AgenticGuidance/src/agenticguidance/models/question.py
+    target_files:
+    - modules/AgenticGuidance/tests/test_integration_question_workflow.py
+    guidance: "Create test_integration_question_workflow.py with end-to-end tests:\n\
+      \nTest scenarios:\n1. test_complete_workflow_single_question\n   - Create question\n\
+      \   - List pending (verify present)\n   - Get question by ID\n   - Answer question\n\
+      \   - List pending (verify absent)\n   - Verify answer file exists\n\n2. test_complete_workflow_multiple_questions\n\
+      \   - Create 3 questions (different severities)\n   - List pending (verify all\
+      \ 3)\n   - Answer first question\n   - List pending (verify 2 remaining)\n \
+      \  - Filter by severity\n   - Answer remaining questions\n\n3. test_workflow_with_blocking_question\n\
+      \   - Create blocking question\n   - List with severity filter\n   - Verify\
+      \ blocking question prioritized\n   - Answer and verify workflow completes\n\
+      \n4. test_persistence_across_instances\n   - Create question with queue1\n \
+      \  - Create new QuestionQueue instance (queue2)\n   - List with queue2 (verify\
+      \ question visible)\n   - Answer with queue2\n   - Create queue3 and verify\
+      \ answer persisted\n\n5. test_error_recovery\n   - Create question\n   - Simulate\
+      \ corrupted pending file\n   - List pending (corrupted file skipped)\n   - Create\
+      \ new question (still works)\n\nThese tests verify the complete user journey\
+      \ through the question/answer workflow.\nUse tmp_path for isolated test environments.\n"
+    success_criteria:
+    - Complete create -> list -> answer workflow tested
+    - Multiple questions in workflow tested
+    - Persistence across instances verified
+    - Error recovery tested
+    - Test coverage includes real-world scenarios
+    - All integration tests pass
+  - id: QF_015
+    name: Run test suite and verify coverage
+    description: Execute all tests and verify >90% coverage
+    status: completed
+    agent: test-runner
+    depends_on:
+    - QF_014
+    inputs:
+    - modules/AgenticGuidance/tests/test_models_question.py
+    - modules/AgenticGuidance/tests/test_services_question.py
+    - modules/AgenticGuidance/tests/test_integration_question_workflow.py
+    guidance: 'Execute test suite and verify coverage:
+
+
+      Commands to run:
+
+      1. pytest modules/AgenticGuidance/tests/test_models_question.py -v
+
+      2. pytest modules/AgenticGuidance/tests/test_services_question.py -v
+
+      3. pytest modules/AgenticGuidance/tests/test_integration_question_workflow.py
+      -v
+
+      4. pytest modules/AgenticGuidance/tests/ -k question --cov=agenticguidance.models.question
+      --cov=agenticguidance.services.question --cov-report=term-missing
+
+
+      Success criteria:
+
+      - All tests pass (100% pass rate)
+
+      - Coverage >90% for models/question.py
+
+      - Coverage >90% for services/question.py
+
+      - No missing critical code paths
+
+
+      If coverage <90%:
+
+      - Identify uncovered lines
+
+      - Add tests to cover missing paths
+
+      - Re-run until >90% achieved
+
+
+      Generate coverage report and include in task completion notes.
+
+      '
+    success_criteria:
+    - All unit tests pass
+    - All integration tests pass
+    - Coverage >90% for models/question.py
+    - Coverage >90% for services/question.py
+    - No critical code paths uncovered
+    - Coverage report generated and reviewed
+success_criteria:
+- Question and Answer dataclasses defined with full type hints
+- YAML serialization/deserialization working correctly
+- QuestionQueue service can create, list, and answer questions
+- File operations are atomic and thread-safe
+- Unit tests achieve >90% coverage for models and services
+- Integration tests verify complete question/answer workflow
+- No dependencies on CLI or voice modules
+- All tests pass in test suite
+- Error handling is comprehensive with actionable messages
+- Logging provides visibility into operations
+affected_stories:
+- 'US-HITL-001: Agent asks blocking question and waits for answer'
+- 'US-HITL-002: Human lists pending questions and provides answers'
+- 'US-HITL-003: Question/answer history persisted for audit trail'
+next_steps:
+- Spawn builder agent for Phase 1 (Data Models)
+- After Phase 1 complete, spawn builder for Phase 2 (Queue Service)
+- After Phase 2 complete, spawn builder for Phase 3 (File System)
+- After Phase 3 complete, spawn test-builder for Phase 4 (Unit Tests)
+- Hand off to 260203QC for CLI integration

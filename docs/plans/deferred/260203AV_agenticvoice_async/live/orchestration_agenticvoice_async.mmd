@@ -1,0 +1,202 @@
+flowchart LR
+    %% ========================================
+    %% HEADER METADATA
+    %% ========================================
+    %% GOAL: Orchestrate implementation of AgenticVoice async voice-in-the-loop module.
+    %% PROFILE: Orchestration-Builder
+    %% PLAN_FOLDER: docs/plans/live/260203AV_agenticvoice_async/
+    %% INPUT_PATH: docs/plans/live/260203AV_agenticvoice_async/live/plan_build.yml
+    %% OUTPUT_PATH: orchestration_agenticvoice_async.mmd
+    %% GUIDELINE: Domain -> Workflow -> Entrypoint architecture pattern
+    %% GUIDELINE: modules/AgenticGuidance/assets/guidelines/testing.yml - Testing strategies and validation
+    %% PHASES: Module_Setup, Queue_Monitor, PersonaPlex_Integration, Parakeet_Integration, Answer_Synthesis, CLI_Integration, Config_Documentation, Integration_Test, Final_Audit
+    %% AGENT_ROUTING: Module_Setup -> build-python, Queue_Monitor -> build-python, PersonaPlex_Integration -> build-python, Parakeet_Integration -> build-python, Answer_Synthesis -> build-python, CLI_Integration -> build-python, Config_Documentation -> build-python, Integration_Test -> test-runner, Final_Audit -> test-final-output
+    %% FEEDBACK_TRIGGER: TEST_FAILURE -> TestFixLoop
+    %% FEEDBACK_TRIGGER: AUDIT_FAILURE -> AuditFixLoop
+    %% STATUS: Module_Setup=pending, Queue_Monitor=pending, PersonaPlex_Integration=pending, Parakeet_Integration=pending, Answer_Synthesis=pending, CLI_Integration=pending, Config_Documentation=pending, Integration_Test=pending, Final_Audit=pending
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.test-fix-loop
+    %% MAX_ITERATIONS: 5 (per test-fix-loop definition)
+    %% ESCALATION: If max iterations reached without resolution, stop and Ask User
+
+    %% ========================================
+    %% START NODE
+    %% ========================================
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    subgraph InputValidation_SG ["Input Validation Subgraph"]
+        LoadInputs --> ReviewInputs[Review All Listed Inputs]
+        ReviewInputs --> CheckInputs{All Inputs Found?}
+        CheckInputs -- "No: Missing" --> SearchInputs[Search for Missing Inputs]
+        SearchInputs --> FoundInputs{Found?}
+        FoundInputs -- "Yes: Update paths" --> ReviewInputs
+        FoundInputs -- "No: Stop" --> AskUser((Ask User for Clarification))
+        CheckInputs -- "Yes: Verified" --> ResolveQuestions
+    end
+
+    %% ========================================
+    %% RESOLVE OPEN QUESTIONS
+    %% ========================================
+    subgraph ResolveQuestions_SG ["Resolve Open Questions Subgraph"]
+        ResolveQuestions[Check Open Questions] --> HasOpenQuestions{Open Questions Exist?}
+        HasOpenQuestions -- "Yes: QUESTION-001/002/003" --> PresentQuestions[Present Questions to User]
+        PresentQuestions --> WaitForAnswers[Wait for User Answers]
+        WaitForAnswers --> UpdatePlan[Update Plan with Answers]
+        UpdatePlan --> Phase1
+        HasOpenQuestions -- "No: All Answered" --> Phase1
+    end
+
+    %% ========================================
+    %% PHASE 1: MODULE SETUP
+    %% ========================================
+    %% Agent: build-python
+    subgraph Phase1_SG ["Phase 1: Module Setup"]
+        Phase1[Module Structure Setup] --> SpawnSetup[Spawn build-python Agent]
+        SpawnSetup --> SetupComplete{Setup Complete?}
+        SetupComplete -- "No: Retry" --> SpawnSetup
+        SetupComplete -- "Yes: Ready" --> Phase2
+    end
+
+    %% ========================================
+    %% PHASE 2: QUESTION QUEUE MONITOR
+    %% ========================================
+    %% Agent: build-python
+    subgraph Phase2_SG ["Phase 2: Queue Monitor"]
+        Phase2[Question Queue Monitor] --> SpawnQueueBuilder[Spawn build-python Agent]
+        SpawnQueueBuilder --> QueueTests[Run Queue Unit Tests]
+        QueueTests --> QueuePassed{Queue Tests Passed?}
+        QueuePassed -- "No: Fix" --> SpawnQueueBuilder
+        QueuePassed -- "Yes: Ready" --> Phase3
+    end
+
+    %% ========================================
+    %% PHASE 3: PERSONAPLEX INTEGRATION
+    %% ========================================
+    %% Agent: build-python
+    subgraph Phase3_SG ["Phase 3: PersonaPlex Integration"]
+        Phase3[PersonaPlex Integration] --> SpawnPersonaBuilder[Spawn build-python Agent]
+        SpawnPersonaBuilder --> PersonaTests[Run PersonaPlex Unit Tests]
+        PersonaTests --> PersonaPassed{PersonaPlex Tests Passed?}
+        PersonaPassed -- "No: Fix" --> SpawnPersonaBuilder
+        PersonaPassed -- "Yes: Ready" --> Phase4
+    end
+
+    %% ========================================
+    %% PHASE 4: PARAKEET INTEGRATION
+    %% ========================================
+    %% Agent: build-python
+    subgraph Phase4_SG ["Phase 4: Parakeet Integration"]
+        Phase4[Parakeet Transcription] --> SpawnParakeetBuilder[Spawn build-python Agent]
+        SpawnParakeetBuilder --> ParakeetTests[Run Parakeet Unit Tests]
+        ParakeetTests --> ParakeetPassed{Parakeet Tests Passed?}
+        ParakeetPassed -- "No: Fix" --> SpawnParakeetBuilder
+        ParakeetPassed -- "Yes: Ready" --> Phase5
+    end
+
+    %% ========================================
+    %% PHASE 5: ANSWER SYNTHESIS
+    %% ========================================
+    %% Agent: build-python
+    subgraph Phase5_SG ["Phase 5: Answer Synthesis"]
+        Phase5[Answer Synthesis Workflow] --> SpawnAnswerBuilder[Spawn build-python Agent]
+        SpawnAnswerBuilder --> AnswerTests[Run Answer Workflow Unit Tests]
+        AnswerTests --> AnswerPassed{Answer Tests Passed?}
+        AnswerPassed -- "No: Fix" --> SpawnAnswerBuilder
+        AnswerPassed -- "Yes: Ready" --> Phase6
+    end
+
+    %% ========================================
+    %% PHASE 6: CLI INTEGRATION
+    %% ========================================
+    %% Agent: build-python
+    subgraph Phase6_SG ["Phase 6: CLI Integration"]
+        Phase6[CLI Commands] --> SpawnCLIBuilder[Spawn build-python Agent]
+        SpawnCLIBuilder --> CLITests[Run CLI Unit Tests]
+        CLITests --> CLIPassed{CLI Tests Passed?}
+        CLIPassed -- "No: Fix" --> SpawnCLIBuilder
+        CLIPassed -- "Yes: Ready" --> Phase7
+    end
+
+    %% ========================================
+    %% PHASE 7: CONFIG AND DOCUMENTATION
+    %% ========================================
+    %% Agent: build-python
+    subgraph Phase7_SG ["Phase 7: Config & Documentation"]
+        Phase7[Configuration and Docs] --> SpawnConfigBuilder[Spawn build-python Agent]
+        SpawnConfigBuilder --> ConfigComplete{Config Complete?}
+        ConfigComplete -- "No: Retry" --> SpawnConfigBuilder
+        ConfigComplete -- "Yes: Ready" --> Phase8
+    end
+
+    %% ========================================
+    %% PHASE 8: INTEGRATION TESTING
+    %% ========================================
+    %% Agent: test-runner
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.test-fix-loop
+    %% MAX_ITERATIONS: 5 (per test-fix-loop definition)
+    %% ESCALATION: If max iterations reached, categorize failure and re-plan or Ask User
+    subgraph Phase8_SG ["Phase 8: Integration Testing"]
+        Phase8[Integration Testing] --> SpawnTester[Spawn test-runner Agent]
+        SpawnTester --> IntegrationTests[Run Integration Tests]
+        IntegrationTests --> IntegrationPassed{Integration Tests Passed?}
+        IntegrationPassed -- "No: Fix in Iteration" --> SpawnTester
+    end
+
+    %% Test failure escalation - feedback loop
+    IntegrationPassed -- "No: Escalate" --> CategorizeTestFailure[Categorize Test Failure]
+    CategorizeTestFailure --> PackageTestContext[Package TEST_FAILURE Context]
+    PackageTestContext -.->|Re-plan with TEST_FAILURE| Phase1
+
+    %% Success path continues
+    IntegrationPassed -- "Yes: Passed" --> Phase9
+
+    %% ========================================
+    %% PHASE 9: FINAL AUDIT
+    %% ========================================
+    %% Agent: test-final-output
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.audit-test-fix-loop
+    %% MAX_ITERATIONS: 3 (per audit-test-fix-loop definition)
+    %% ESCALATION: If max iterations reached, stop and Ask User with audit findings
+    subgraph Phase9_SG ["Phase 9: Final Audit"]
+        Phase9[Final Audit] --> SpawnAuditor[Spawn test-final-output Agent]
+        SpawnAuditor --> AuditCheck[Audit Quality & Completeness]
+        AuditCheck --> AuditPassed{Audit Passed?}
+        AuditPassed -- "No: Issues Found" --> AuditRemediation[Identify Remediation]
+        AuditRemediation --> SpawnAuditor
+    end
+
+    %% Audit failure escalation - feedback loop
+    AuditPassed -- "No: Escalate" --> PackageAuditContext[Package AUDIT_FAILURE Context]
+    PackageAuditContext -.->|Re-plan with AUDIT_FAILURE| Phase1
+
+    %% ========================================
+    %% SUCCESS PATH
+    %% ========================================
+    AuditPassed -- "Yes: Verified" --> UpdateReadme[Update Plan README]
+    UpdateReadme --> MarkComplete[Mark Plan as Complete]
+    MarkComplete --> End((End))
+
+    %% ========================================
+    %% ESCALATION PATHS
+    %% ========================================
+    SetupComplete -- "No: Escalate" --> AskUser
+    QueuePassed -- "No: Escalate" --> AskUser
+    PersonaPassed -- "No: Escalate" --> AskUser
+    ParakeetPassed -- "No: Escalate" --> AskUser
+    AnswerPassed -- "No: Escalate" --> AskUser
+    CLIPassed -- "No: Escalate" --> AskUser
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    %% Phase status styling classes
+    classDef completed fill:#90EE90,stroke:#228B22
+    classDef inprogress fill:#FFFF99,stroke:#DAA520
+    classDef failed fill:#FFB6C1,stroke:#DC143C
+    classDef pending fill:#E8E8E8,stroke:#808080
+
+    %% Feedback loop styling (dashed lines for re-planning paths)
+    classDef dashedstroke stroke-dasharray: 5 5;
+    linkStyle 29,31 stroke:#888,stroke-width:2px,stroke-dasharray: 5 5;

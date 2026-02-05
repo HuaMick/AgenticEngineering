@@ -1,0 +1,95 @@
+---
+PLAN_NAME: CLI Remediation
+PLAN_FOLDER: /home/code/AgenticEngineering/docs/plans/live/260201CR_cli_remediation
+PHASES:
+  - teach
+  - build
+  - test
+  - audit_clean
+AGENT_ROUTING:
+  teach: orchestration-teaching
+  build: orchestration-build
+  test: orchestration-test
+  audit_clean: orchestration-cleaning
+FEEDBACK_TRIGGERS:
+  - Test failures in P2 (Global Flags Validation)
+  - Test failures in P2 (Phase-Qualified Task ID Validation)
+  - Review feedback on technical approach
+STATUS: planning
+CREATED: 2026-02-01
+---
+
+graph TD
+    Start([Start CLI Remediation]) --> TeachPhaseStart
+
+    %% Teach Phase
+    TeachPhaseStart((Teach Phase)) --> SpawnTeachingAgent[Spawn orchestration-teaching Agent]
+    SpawnTeachingAgent --> TeachLoop_Start
+
+    subgraph TeachLoop_SG ["Teaching Loop"]
+        TeachLoop_Start[Document Issues] --> TeachP1[P1: Issue Documentation]
+        TeachP1 --> TeachP2[P2: Requirements Analysis]
+        TeachP2 --> TeachP3[P3: Technical Approach]
+        TeachP3 --> TeachLoop_End
+    end
+
+    TeachLoop_End --> TeachReview{Requirements Clear?}
+    TeachReview -->|No| TeachLoop_Start
+    TeachReview -->|Yes| BuildPhaseStart
+
+    %% Build Phase
+    BuildPhaseStart((Build Phase)) --> SpawnBuildAgent[Spawn orchestration-build Agent]
+    SpawnBuildAgent --> BuildLoop_Start
+
+    subgraph BuildLoop_SG ["Build-Test-Fix Loop"]
+        BuildLoop_Start[Implement Fixes] --> BuildP1[P1: Investigation]
+        BuildP1 --> BuildP2[P2: Fix Global Flags Regression]
+        BuildP2 --> BuildP3[P3: Fix Phase-Qualified Task IDs]
+        BuildP3 --> BuildP4[P4: Documentation Updates]
+        BuildP4 --> BuildLoop_End
+    end
+
+    BuildLoop_End --> TestPhaseStart
+
+    %% Test Phase
+    TestPhaseStart((Test Phase)) --> SpawnTestAgent[Spawn orchestration-test Agent]
+    SpawnTestAgent --> TestLoop_Start
+
+    subgraph TestLoop_SG ["Test-Fix Loop"]
+        TestLoop_Start[Run Validation] --> TestP1[P1: Global Flags Validation]
+        TestP1 --> TestP2[P2: Phase-Qualified Task ID Validation]
+        TestP2 --> TestP3[P3: Integration Testing]
+        TestP3 --> TestLoop_End
+    end
+
+    TestLoop_End --> TestPassed{All Tests Pass?}
+    TestPassed -->|No| BuildLoop_Start
+    TestPassed -->|Yes| AuditPhaseStart
+
+    %% Audit & Cleanup Phase
+    AuditPhaseStart((Audit & Cleanup Phase)) --> SpawnCleaningAgent[Spawn orchestration-cleaning Agent]
+    SpawnCleaningAgent --> AuditLoop_Start
+
+    subgraph AuditLoop_SG ["Audit Loop"]
+        AuditLoop_Start[Audit Implementation] --> AuditP1[P1: Code Quality Audit]
+        AuditP1 --> AuditP2[P2: Update Related Documentation]
+        AuditP2 --> AuditP3[P3: Cleanup]
+        AuditP3 --> AuditLoop_End
+    end
+
+    AuditLoop_End --> AuditReview{Audit Pass?}
+    AuditReview -->|No| AuditLoop_Start
+    AuditReview -->|Yes| Complete
+
+    Complete([Remediation Complete]) --> End([End])
+
+    %% Styling
+    classDef phaseNode fill:#e1f5ff,stroke:#333,stroke-width:2px
+    classDef loopNode fill:#fff4e1,stroke:#333,stroke-width:2px
+    classDef decisionNode fill:#ffe1e1,stroke:#333,stroke-width:2px
+    classDef agentNode fill:#e1ffe1,stroke:#333,stroke-width:2px
+
+    class TeachPhaseStart,BuildPhaseStart,TestPhaseStart,AuditPhaseStart phaseNode
+    class TeachLoop_SG,BuildLoop_SG,TestLoop_SG,AuditLoop_SG loopNode
+    class TeachReview,TestPassed,AuditReview decisionNode
+    class SpawnTeachingAgent,SpawnBuildAgent,SpawnTestAgent,SpawnCleaningAgent agentNode

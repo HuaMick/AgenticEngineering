@@ -1,0 +1,88 @@
+graph TD
+    Start([Start: User Story Testing Infrastructure]) --> Phase1
+
+    %% ========================================
+    %% PHASE 1: CLI Enhancements
+    %% ========================================
+    Phase1{Phase 1: CLI Enhancements} --> US_001
+
+    US_001[US_001: Update stories find for plan-local<br/>Agent: build-python<br/>Target: commands/stories.py] --> US_001_Check{Success?}
+    US_001_Check -->|Yes| US_002
+    US_001_Check -->|No| US_001_Fix[Fix Issues]
+    US_001_Fix --> US_001
+
+    US_002[US_002: Implement agentic stories init<br/>Agent: build-python<br/>Target: commands/stories.py] --> US_002_Check{Success?}
+    US_002_Check -->|Yes| US_003
+    US_002_Check -->|No| US_002_Fix[Fix Issues]
+    US_002_Fix --> US_002
+
+    US_003[US_003: Implement agentic stories cat<br/>Agent: build-python<br/>Target: commands/stories.py] --> US_003_Check{Success?}
+    US_003_Check -->|Yes| Phase2
+    US_003_Check -->|No| US_003_Fix[Fix Issues]
+    US_003_Fix --> US_003
+
+    %% ========================================
+    %% PHASE 2: Agent Guidance Integration
+    %% ========================================
+    Phase2{Phase 2: Agent Guidance Integration} --> US_004
+
+    US_004[US_004: Update test-audit agent guidance<br/>Agent: teacher-update-guidance<br/>Target: test-audit/process.yml] --> US_004_Check{Success?}
+    US_004_Check -->|Yes| TestPhase
+    US_004_Check -->|No| US_004_Fix[Fix Issues]
+    US_004_Fix --> US_004
+
+    %% ========================================
+    %% TEST PHASE: Validation
+    %% ========================================
+    TestPhase{Test Phase: Validation} --> RunTests
+
+    RunTests[Run CLI tests<br/>Agent: test-runner<br/>Target: pytest commands] --> TestFixLoop
+
+    %% ========================================
+    %% LOOP: Test-Fix Loop
+    %% ========================================
+    TestFixLoop{Test-Fix Loop<br/>Iteration Counter}
+    TestFixLoop -->|All Pass| AuditLoop
+    TestFixLoop -->|Failures Found| TestFix[Builder fixes failures]
+    TestFix --> RunTests
+    TestFixLoop -->|Max 5 Iterations| Escalate1[Escalate to User:<br/>Test failures persist]
+
+    %% ========================================
+    %% LOOP: Audit-Test-Fix Loop (MANDATORY)
+    %% ========================================
+    AuditLoop{Audit-Test-Fix Loop<br/>Iteration Counter}
+    AuditLoop -->|First Run| Audit[Test Auditor:<br/>Verify stories commands work]
+    Audit --> AuditCheck{Audit Pass?}
+    AuditCheck -->|Yes & Tests Pass| Complete
+    AuditCheck -->|Issues Found| AuditFix[Fix audit issues]
+    AuditFix --> RunTests
+    AuditLoop -->|Max 3 Iterations| Escalate2[BLOCK Completion:<br/>Audit failures must be resolved]
+
+    %% ========================================
+    %% COMPLETION
+    %% ========================================
+    Complete([Complete: User Story Infrastructure Ready])
+
+    %% ========================================
+    %% SUCCESS CRITERIA
+    %% ========================================
+    %% - agentic stories find discovers stories in global and plan-local directories
+    %% - agentic stories init creates a valid YAML template
+    %% - test-audit agent can walk through a user story as a blind test
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef phaseStyle fill:#e1f5ff,stroke:#01579b,stroke-width:2px
+    classDef taskStyle fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+    classDef loopStyle fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    classDef checkStyle fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
+    classDef escalateStyle fill:#ffebee,stroke:#b71c1c,stroke-width:2px
+    classDef completeStyle fill:#c8e6c9,stroke:#2e7d32,stroke-width:3px
+
+    class Phase1,Phase2,TestPhase phaseStyle
+    class US_001,US_002,US_003,US_004,RunTests taskStyle
+    class TestFixLoop,AuditLoop loopStyle
+    class US_001_Check,US_002_Check,US_003_Check,US_004_Check,AuditCheck checkStyle
+    class Escalate1,Escalate2 escalateStyle
+    class Complete completeStyle

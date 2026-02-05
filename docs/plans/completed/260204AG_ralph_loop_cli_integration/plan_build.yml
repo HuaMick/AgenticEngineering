@@ -1,0 +1,869 @@
+# Ralph Loop CLI Integration - Build Plan
+# Plan ID: 260204AG
+# Created: 2026-02-04
+# Strategy: Self-directing orchestration loop with CLI-side intelligence
+
+# ========================================
+# ROOT-LEVEL PLAN METADATA
+# ========================================
+name: "ralph-loop-cli-integration"
+worktree_path: "/home/code/AgenticEngineering"
+branch: "main"
+status: "completed"
+priority: "high"
+
+# ========================================
+# CONTEXT
+# ========================================
+context: |
+  This plan implements a smart, self-directing Ralph Loop in the agentic CLI.
+
+  KEY DESIGN DECISIONS:
+  1. Ralph is a SESSION-LEVEL orchestrator, not tied to a single plan
+  2. CLI handles discovery, prioritization, and completion verification
+  3. Agent focuses on execution, not decision-making about what to do next
+  4. No config required - discovers work from docs/plans/live/ automatically
+  5. Completion is VERIFIED by CLI, not trusted from agent claims
+
+  ARCHITECTURE:
+  - RalphLoopService: Discovery, prioritization, state management
+  - CLI commands: ralph start/stop/status/next
+  - Simplified prompt: Agent just asks "what's next?" and executes
+
+  OFFLOADED FROM PROMPT TO CLI:
+  - Plan discovery and listing
+  - Priority calculation (dependencies, action_required status)
+  - Completion verification (checks actual plan states)
+  - Session spawning and iteration management
+
+# ========================================
+# DEPENDENCIES
+# ========================================
+dependencies:
+  depends_on: []
+  required_by: []
+
+# ========================================
+# INPUTS
+# ========================================
+inputs:
+  - location: "modules/AgenticCLI/src/agenticcli/commands/loop.py"
+    description: "Existing loop tracking infrastructure"
+
+  - location: "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+    description: "Plan CLI with task management"
+
+  - location: "modules/AgenticGuidance/src/agenticguidance/services/session.py"
+    description: "SessionService for tmux operations"
+
+  - location: "docs/plans/deferred/260130MA_multi_agent_tmux_coordination/proposal_supervisor_worker.md"
+    description: "Tmux coordination patterns reference"
+
+  - location: "docs/prompts/loop1.txt"
+    description: "Current orchestration prompt to simplify"
+
+# ========================================
+# OBJECTIVE
+# ========================================
+objective: |
+  Implement a self-directing Ralph Loop that:
+  1. Discovers all plans in docs/plans/live/ automatically
+  2. Prioritizes based on dependencies and action_required status
+  3. Spawns Claude sessions to execute work
+  4. Verifies completion by checking actual plan states (not trusting agent)
+  5. Continues until no actionable plans remain
+
+  The agent prompt becomes simple: "Ask CLI what's next, execute it, repeat."
+
+# ========================================
+# LOOP STRUCTURES
+# ========================================
+loop_structures:
+  - id: "loop_implementation"
+    type: "test-fix-loop"
+    applies_to_phase: "All implementation phases"
+    trigger: "After each phase completes"
+    exit_criteria:
+      success: "All tests pass, CLI commands work end-to-end"
+      max_iterations: 5
+      escalation: "Escalate to human with test results"
+    participants:
+      - agent: "build-python"
+        role: "Implements RalphLoopService and CLI commands"
+      - agent: "test-builder"
+        role: "Creates tests for new functionality"
+
+  - id: "loop_audit"
+    type: "audit-test-fix-loop"
+    applies_to_phase: "Final validation"
+    trigger: "After all implementation complete"
+    exit_criteria:
+      success: "Audit passes, no reward hacking detected"
+      max_iterations: 3
+      escalation: "BLOCK - audit failures must be resolved"
+    participants:
+      - agent: "test-audit"
+        role: "Audits test quality"
+      - agent: "build-python"
+        role: "Fixes issues found by audit"
+    mandatory: true
+
+# ========================================
+# PHASES AND TASKS
+# ========================================
+phases:
+  # ----------------------------------------
+  # PHASE 1: Core Service - Discovery & Priority
+  # ----------------------------------------
+  - name: "Phase 1: Discovery and Priority Engine"
+    execution: sequential
+    description: "Implement the brain of Ralph - plan discovery and prioritization"
+    tasks:
+      - id: "AG_001"
+        name: "Create RalphLoopService with plan discovery"
+        description: "Service that discovers and analyzes all live plans"
+        status: "completed"
+        agent: "build-python"
+        inputs:
+          - modules/AgenticCLI/src/agenticcli/commands/plan.py
+          - modules/AgenticGuidance/src/agenticguidance/services/session.py
+        target_files:
+          - modules/AgenticGuidance/src/agenticguidance/services/ralph.py
+        guidance: |
+          Create RalphLoopService in services/ralph.py:
+
+          ```python
+          class RalphLoopService:
+              def __init__(self, plans_dir: Path = None):
+                  self.plans_dir = plans_dir or Path("docs/plans/live")
+                  self.state_dir = Path.home() / ".agentic" / "ralph"
+
+              def discover_plans(self) -> list[PlanInfo]:
+                  """Discover all plans in live/ directory.
+
+                  Returns list of PlanInfo with:
+                  - name, path, status
+                  - has_orchestration (bool)
+                  - action_required (execute/needs_planning/blocked)
+                  - dependencies (list of plan names)
+                  - pending_tasks, completed_tasks counts
+                  """
+
+              def get_priority_queue(self) -> list[PlanAction]:
+                  """Build prioritized queue of actions.
+
+                  Priority order:
+                  1. Plans with action_required='execute' (has MMD, ready to run)
+                  2. Plans with action_required='needs_planning' (needs MMD created)
+                  3. Blocked plans (dependencies not met) - skip
+
+                  Returns list of PlanAction:
+                  - action: 'execute' | 'plan' | 'blocked'
+                  - plan_name, plan_path
+                  - reason (why this action)
+                  - current_task (if executing)
+                  """
+
+              def get_next_action(self) -> Optional[PlanAction]:
+                  """Get the single highest-priority action to take.
+
+                  Returns None if all plans complete.
+                  """
+
+              def check_all_complete(self) -> bool:
+                  """Verify all plans are genuinely complete.
+
+                  Returns True only if:
+                  - No plans with action_required='execute'
+                  - No plans with action_required='needs_planning'
+                  - All plans either completed or explicitly blocked
+                  """
+          ```
+
+          Use subprocess to call `agentic plan list -j` and `agentic plan status --plan X -j`
+          for reliable plan state information.
+        success_criteria:
+          - "discover_plans() returns all plans from docs/plans/live/"
+          - "get_priority_queue() orders by action_required status"
+          - "get_next_action() returns highest priority actionable plan"
+          - "check_all_complete() verifies actual plan states"
+          - "Dependencies are respected in priority ordering"
+
+      - id: "AG_002"
+        name: "Implement dependency resolution"
+        description: "Parse plan dependencies and block plans with unmet dependencies"
+        status: "completed"
+        agent: "build-python"
+        depends_on: ["AG_001"]
+        inputs:
+          - modules/AgenticGuidance/src/agenticguidance/services/ralph.py
+        target_files:
+          - modules/AgenticGuidance/src/agenticguidance/services/ralph.py
+        guidance: |
+          Add dependency resolution to RalphLoopService:
+
+          ```python
+          def _parse_dependencies(self, plan_path: Path) -> list[str]:
+              """Parse depends_on from plan YAML files.
+
+              Looks for:
+              - dependencies.depends_on in plan_build.yml
+              - Returns list of plan IDs that must complete first
+              """
+
+          def _dependencies_met(self, plan_name: str, completed_plans: set[str]) -> bool:
+              """Check if all dependencies for a plan are satisfied."""
+
+          def _build_dependency_graph(self) -> dict[str, list[str]]:
+              """Build graph of plan dependencies for topological ordering."""
+          ```
+
+          Plans with unmet dependencies get action='blocked' with reason explaining
+          which dependency is missing.
+        success_criteria:
+          - "Dependencies parsed from plan YAML files"
+          - "Plans with unmet dependencies marked as blocked"
+          - "Dependency cycles detected and reported"
+          - "Completed plans tracked to unblock dependents"
+
+      - id: "AG_003"
+        name: "Add loop state management"
+        description: "Track iteration state, history, and session info"
+        status: "completed"
+        agent: "build-python"
+        depends_on: ["AG_002"]
+        inputs:
+          - modules/AgenticGuidance/src/agenticguidance/services/ralph.py
+          - modules/AgenticCLI/src/agenticcli/commands/loop.py
+        target_files:
+          - modules/AgenticGuidance/src/agenticguidance/services/ralph.py
+        guidance: |
+          Add state management to RalphLoopService:
+
+          ```python
+          @dataclass
+          class RalphState:
+              loop_id: str
+              started_at: float
+              current_iteration: int
+              max_iterations: int
+              status: str  # running, completed, stopped, failed
+              prompt_file: Optional[str]
+              tmux_session: Optional[str]
+              iterations: list[IterationRecord]
+
+          @dataclass
+          class IterationRecord:
+              number: int
+              started_at: float
+              ended_at: Optional[float]
+              action_taken: str  # execute:plan_name, plan:plan_name, none
+              result: str  # success, failure, skipped
+              plans_completed: list[str]
+              output_file: Optional[str]
+
+          def start_loop(self, prompt_file: str = None, max_iterations: int = 20) -> RalphState:
+              """Initialize a new Ralph loop."""
+
+          def record_iteration(self, action: PlanAction, result: str) -> None:
+              """Record what happened in this iteration."""
+
+          def get_state(self) -> Optional[RalphState]:
+              """Get current loop state."""
+
+          def stop_loop(self, reason: str = "user_requested") -> None:
+              """Stop the running loop."""
+          ```
+
+          State stored in ~/.agentic/ralph/state.json
+          Iteration logs in ~/.agentic/ralph/iterations/{n}/
+        success_criteria:
+          - "Loop state persisted to ~/.agentic/ralph/"
+          - "Iteration history tracked with timestamps"
+          - "State survives process restarts"
+          - "Multiple loops prevented (only one active at a time)"
+
+  # ----------------------------------------
+  # PHASE 2: CLI Commands
+  # ----------------------------------------
+  - name: "Phase 2: CLI Commands"
+    execution: sequential
+    description: "Implement ralph CLI commands"
+    tasks:
+      - id: "AG_004"
+        name: "Create ralph CLI command group"
+        description: "Set up ralph command structure with Typer"
+        status: "completed"
+        agent: "build-python"
+        depends_on: ["AG_003"]
+        inputs:
+          - modules/AgenticCLI/src/agenticcli/commands/loop.py
+          - modules/AgenticCLI/src/agenticcli/cli.py
+        target_files:
+          - modules/AgenticCLI/src/agenticcli/commands/ralph.py
+        guidance: |
+          Create ralph.py with Typer command group:
+
+          ```python
+          import typer
+          from agenticguidance.services.ralph import RalphLoopService
+
+          app = typer.Typer(help="Ralph Loop - self-directing orchestration")
+
+          @app.command()
+          def start(
+              prompt_file: str = typer.Option(None, "--prompt-file", "-p"),
+              max_iterations: int = typer.Option(20, "--max-iterations", "-n"),
+              background: bool = typer.Option(False, "--background", "-b"),
+          ):
+              """Start Ralph loop to process all live plans."""
+
+          @app.command()
+          def stop():
+              """Stop the running Ralph loop."""
+
+          @app.command()
+          def status():
+              """Show Ralph loop status and progress."""
+
+          @app.command()
+          def next(json_output: bool = typer.Option(False, "-j", "--json")):
+              """Get the next recommended action (used by agent)."""
+
+          @app.command()
+          def history():
+              """Show iteration history."""
+          ```
+        success_criteria:
+          - "ralph command group created with Typer"
+          - "All subcommands defined with proper options"
+          - "Help text clear and complete"
+
+      - id: "AG_005"
+        name: "Implement 'ralph next' command"
+        description: "The key command that tells the agent what to do"
+        status: "completed"
+        agent: "build-python"
+        depends_on: ["AG_004"]
+        inputs:
+          - modules/AgenticCLI/src/agenticcli/commands/ralph.py
+          - modules/AgenticGuidance/src/agenticguidance/services/ralph.py
+        target_files:
+          - modules/AgenticCLI/src/agenticcli/commands/ralph.py
+        guidance: |
+          Implement the 'next' command - this is the brain that tells agents what to do:
+
+          ```python
+          @app.command()
+          def next(json_output: bool = typer.Option(False, "-j", "--json")):
+              """Get the next recommended action.
+
+              Returns JSON with:
+              - action: 'execute' | 'plan' | 'complete' | 'blocked'
+              - plan: plan folder name (if action is execute/plan)
+              - task: current task ID (if action is execute)
+              - reason: explanation of why this action
+
+              Examples:
+                {"action": "execute", "plan": "260203QC", "task": "QC_001", "reason": "Ready to execute"}
+                {"action": "plan", "plan": "260203QG", "reason": "Needs orchestration MMD"}
+                {"action": "complete", "reason": "All plans finished"}
+                {"action": "blocked", "reason": "All remaining plans have unmet dependencies"}
+              """
+              service = RalphLoopService()
+
+              if service.check_all_complete():
+                  output = {"action": "complete", "reason": "All plans finished"}
+              else:
+                  action = service.get_next_action()
+                  if action is None:
+                      output = {"action": "blocked", "reason": "No actionable plans"}
+                  else:
+                      output = action.to_dict()
+
+              if json_output:
+                  print(json.dumps(output))
+              else:
+                  # Pretty print for humans
+                  console.print(f"[cyan]Action:[/cyan] {output['action']}")
+                  if 'plan' in output:
+                      console.print(f"[cyan]Plan:[/cyan] {output['plan']}")
+                  console.print(f"[cyan]Reason:[/cyan] {output['reason']}")
+          ```
+
+          This command is called by the agent at the start of each iteration.
+        success_criteria:
+          - "Returns correct action based on plan states"
+          - "JSON output works with -j flag"
+          - "Human-readable output without -j"
+          - "Returns 'complete' when all plans done"
+          - "Returns 'blocked' when nothing actionable"
+
+      - id: "AG_006"
+        name: "Implement 'ralph start' command"
+        description: "Start the Ralph loop with tmux session"
+        status: "completed"
+        agent: "build-python"
+        depends_on: ["AG_005"]
+        inputs:
+          - modules/AgenticCLI/src/agenticcli/commands/ralph.py
+          - modules/AgenticGuidance/src/agenticguidance/services/ralph.py
+        target_files:
+          - modules/AgenticCLI/src/agenticcli/commands/ralph.py
+        guidance: |
+          Implement 'ralph start':
+
+          ```python
+          @app.command()
+          def start(
+              prompt_file: str = typer.Option(None, "--prompt-file", "-p"),
+              max_iterations: int = typer.Option(20, "--max-iterations", "-n"),
+              background: bool = typer.Option(False, "--background", "-b"),
+          ):
+              """Start Ralph loop.
+
+              If no prompt_file specified, uses default orchestration prompt.
+
+              Process:
+              1. Check no other Ralph loop running
+              2. Initialize state in ~/.agentic/ralph/
+              3. Spawn tmux session with Claude
+              4. In foreground mode, attach to session
+              5. In background mode, return immediately
+              """
+              service = RalphLoopService()
+
+              # Check for existing loop
+              if service.get_state() and service.get_state().status == 'running':
+                  console.print("[red]Ralph loop already running[/red]")
+                  raise typer.Exit(1)
+
+              # Initialize loop
+              state = service.start_loop(
+                  prompt_file=prompt_file,
+                  max_iterations=max_iterations
+              )
+
+              # Spawn tmux session
+              session_name = f"ralph-{state.loop_id[:8]}"
+              prompt = prompt_file or get_default_ralph_prompt()
+
+              subprocess.run([
+                  "tmux", "new-session", "-d", "-s", session_name,
+                  "claude", "--print", "--prompt", f"@{prompt}"
+              ])
+
+              state.tmux_session = session_name
+              service._save_state(state)
+
+              if background:
+                  console.print(f"[green]Ralph started in background[/green]")
+                  console.print(f"Session: {session_name}")
+                  console.print(f"Attach: tmux attach -t {session_name}")
+              else:
+                  # Attach to session
+                  subprocess.run(["tmux", "attach", "-t", session_name])
+          ```
+        success_criteria:
+          - "Prevents multiple concurrent loops"
+          - "Spawns tmux session with Claude"
+          - "Background mode returns immediately"
+          - "Foreground mode attaches to session"
+          - "State initialized and persisted"
+
+      - id: "AG_007"
+        name: "Implement 'ralph stop' and 'ralph status'"
+        description: "Commands to stop and check loop status"
+        status: "completed"
+        agent: "build-python"
+        depends_on: ["AG_006"]
+        inputs:
+          - modules/AgenticCLI/src/agenticcli/commands/ralph.py
+        target_files:
+          - modules/AgenticCLI/src/agenticcli/commands/ralph.py
+        guidance: |
+          Implement stop and status commands:
+
+          ```python
+          @app.command()
+          def stop(force: bool = typer.Option(False, "--force", "-f")):
+              """Stop the running Ralph loop.
+
+              Gracefully stops by:
+              1. Setting state to 'stopping'
+              2. Sending SIGTERM to tmux session
+              3. Waiting for clean exit (or SIGKILL if --force)
+              """
+
+          @app.command()
+          def status(json_output: bool = typer.Option(False, "-j")):
+              """Show Ralph loop status.
+
+              Displays:
+              - Loop status (running/stopped/completed)
+              - Current iteration number
+              - Plans progress (completed/total)
+              - Current action being executed
+              - Time elapsed
+              """
+          ```
+        success_criteria:
+          - "stop gracefully terminates loop"
+          - "stop --force kills immediately"
+          - "status shows comprehensive loop info"
+          - "status works when no loop running"
+
+      - id: "AG_008"
+        name: "Implement 'ralph history'"
+        description: "Show iteration history"
+        status: "completed"
+        agent: "build-python"
+        depends_on: ["AG_007"]
+        inputs:
+          - modules/AgenticCLI/src/agenticcli/commands/ralph.py
+        target_files:
+          - modules/AgenticCLI/src/agenticcli/commands/ralph.py
+        guidance: |
+          Implement history command:
+
+          ```python
+          @app.command()
+          def history(
+              limit: int = typer.Option(20, "--limit", "-n"),
+              json_output: bool = typer.Option(False, "-j"),
+          ):
+              """Show iteration history.
+
+              Displays table with:
+              - Iteration #
+              - Action taken (execute:plan, plan:plan)
+              - Result (success/failure)
+              - Duration
+              - Plans completed
+              """
+          ```
+        success_criteria:
+          - "Shows iteration history in table format"
+          - "JSON output with -j flag"
+          - "Limit option works"
+
+      - id: "AG_009"
+        name: "Register ralph command in CLI"
+        description: "Wire up ralph commands to main CLI"
+        status: "completed"
+        agent: "build-python"
+        depends_on: ["AG_008"]
+        inputs:
+          - modules/AgenticCLI/src/agenticcli/cli.py
+          - modules/AgenticCLI/src/agenticcli/commands/ralph.py
+        target_files:
+          - modules/AgenticCLI/src/agenticcli/cli.py
+        guidance: |
+          Register ralph command group in cli.py:
+
+          ```python
+          from agenticcli.commands import ralph
+
+          app.add_typer(ralph.app, name="ralph")
+          ```
+
+          Verify with: agentic ralph --help
+        success_criteria:
+          - "agentic ralph --help shows all commands"
+          - "All subcommands accessible"
+
+  # ----------------------------------------
+  # PHASE 3: Simplified Prompt
+  # ----------------------------------------
+  - name: "Phase 3: Simplified Agent Prompt"
+    execution: sequential
+    description: "Create the new simplified prompt that uses ralph next"
+    tasks:
+      - id: "AG_010"
+        name: "Create simplified Ralph orchestration prompt"
+        description: "New prompt that offloads decision-making to CLI"
+        status: "completed"
+        agent: "build-python"
+        depends_on: ["AG_009"]
+        inputs:
+          - docs/prompts/loop1.txt
+        target_files:
+          - docs/prompts/ralph.txt
+        guidance: |
+          Create simplified prompt at docs/prompts/ralph.txt:
+
+          ```markdown
+          # Ralph Orchestration Agent
+
+          You are the Ralph orchestration agent. Your job is simple:
+          1. Ask the CLI what to do next
+          2. Do it
+          3. Repeat
+
+          ## Each Iteration
+
+          ### Step 1: Get Next Action
+          ```bash
+          agentic ralph next -j
+          ```
+
+          This returns one of:
+          - `{"action": "execute", "plan": "...", "task": "...", ...}` → Execute the task
+          - `{"action": "plan", "plan": "...", ...}` → Create orchestration MMD
+          - `{"action": "complete", ...}` → Output completion promise and exit
+          - `{"action": "blocked", ...}` → Report blocked state and exit
+
+          ### Step 2: Take Action
+
+          **If action is "execute":**
+          - Run: `agentic plan task start <task_id> --plan <plan> -j`
+          - Spawn the appropriate subagent (from plan's AGENT_ROUTING)
+          - Run: `agentic plan task complete <task_id> --plan <plan> -j`
+
+          **If action is "plan":**
+          - Spawn orchestration-planning agent for the indicated plan
+          - The planner will create the orchestration MMD
+
+          **If action is "complete":**
+          - Output: <promise>All plans complete. Ralph loop finished.</promise>
+
+          **If action is "blocked":**
+          - Report the blocked state to user
+          - Exit iteration (loop will retry or escalate)
+
+          ## Rules
+
+          - NEVER decide what plan to work on yourself - trust `agentic ralph next`
+          - NEVER claim completion - only output promise when CLI says "complete"
+          - ALWAYS use CLI for task start/complete tracking
+          - ONE action per iteration - do it and exit cleanly
+
+          ## Begin
+
+          Run `agentic ralph next -j` and take the indicated action.
+          ```
+        success_criteria:
+          - "Prompt is significantly simpler than loop1.txt"
+          - "All decision logic delegated to CLI"
+          - "Clear action mapping for each response type"
+          - "Completion only when CLI says complete"
+
+      - id: "AG_011"
+        name: "Create default prompt loader"
+        description: "Function to get default Ralph prompt if none specified"
+        status: "completed"
+        agent: "build-python"
+        depends_on: ["AG_010"]
+        inputs:
+          - modules/AgenticCLI/src/agenticcli/commands/ralph.py
+          - docs/prompts/ralph.txt
+        target_files:
+          - modules/AgenticCLI/src/agenticcli/commands/ralph.py
+        guidance: |
+          Add function to get default prompt:
+
+          ```python
+          def get_default_ralph_prompt() -> Path:
+              """Get path to default Ralph prompt.
+
+              Looks in order:
+              1. ./docs/prompts/ralph.txt (project-local)
+              2. ~/.agentic/prompts/ralph.txt (user config)
+              3. Package default (bundled with CLI)
+              """
+          ```
+        success_criteria:
+          - "Default prompt found without --prompt-file"
+          - "Fallback order works correctly"
+
+  # ----------------------------------------
+  # PHASE 4: Testing
+  # ----------------------------------------
+  - name: "Phase 4: Testing and Validation"
+    execution: sequential
+    description: "Comprehensive testing of Ralph Loop"
+    tasks:
+      - id: "AG_012"
+        name: "Create unit tests for RalphLoopService"
+        description: "Test discovery, priority, and state management"
+        status: "completed"
+        agent: "test-builder"
+        depends_on: ["AG_011"]
+        inputs:
+          - modules/AgenticGuidance/src/agenticguidance/services/ralph.py
+          - modules/AgenticGuidance/tests/test_services_plan.py
+        target_files:
+          - modules/AgenticGuidance/tests/test_services_ralph.py
+        guidance: |
+          Create comprehensive unit tests:
+
+          Test classes:
+          1. TestPlanDiscovery
+             - test_discover_empty_dir
+             - test_discover_multiple_plans
+             - test_discover_with_orchestration
+             - test_discover_without_orchestration
+
+          2. TestPriorityQueue
+             - test_execute_before_plan
+             - test_blocked_plans_excluded
+             - test_dependencies_respected
+             - test_empty_queue_when_all_complete
+
+          3. TestDependencyResolution
+             - test_parse_dependencies
+             - test_dependencies_met
+             - test_cycle_detection
+
+          4. TestStateManagement
+             - test_start_loop
+             - test_record_iteration
+             - test_state_persistence
+             - test_prevent_multiple_loops
+
+          Use tmp_path for isolated test directories.
+          Mock subprocess calls to agentic CLI.
+        success_criteria:
+          - "80%+ coverage for ralph.py"
+          - "All discovery scenarios tested"
+          - "Priority logic thoroughly tested"
+          - "State persistence verified"
+
+      - id: "AG_013"
+        name: "Create CLI integration tests"
+        description: "Test ralph CLI commands"
+        status: "completed"
+        agent: "test-builder"
+        depends_on: ["AG_012"]
+        inputs:
+          - modules/AgenticCLI/src/agenticcli/commands/ralph.py
+          - modules/AgenticCLI/tests/test_plan_commands.py
+        target_files:
+          - modules/AgenticCLI/tests/test_ralph_commands.py
+        guidance: |
+          Create CLI integration tests:
+
+          Test classes:
+          1. TestRalphNext
+             - test_next_returns_execute_action
+             - test_next_returns_plan_action
+             - test_next_returns_complete
+             - test_next_returns_blocked
+             - test_next_json_output
+
+          2. TestRalphStart
+             - test_start_creates_state
+             - test_start_prevents_duplicate
+             - test_start_with_prompt_file
+             - test_start_background_mode
+
+          3. TestRalphStop
+             - test_stop_graceful
+             - test_stop_force
+             - test_stop_when_not_running
+
+          4. TestRalphStatus
+             - test_status_running
+             - test_status_completed
+             - test_status_no_loop
+
+          Use CLI runner for isolated testing.
+        success_criteria:
+          - "All CLI commands tested"
+          - "JSON output verified"
+          - "Error cases handled"
+
+      - id: "AG_014"
+        name: "Create end-to-end test scenario"
+        description: "Test full Ralph loop with mock plans"
+        status: "completed"
+        agent: "test-builder"
+        depends_on: ["AG_013"]
+        inputs:
+          - modules/AgenticGuidance/tests/test_services_ralph.py
+          - modules/AgenticCLI/tests/test_ralph_commands.py
+        target_files:
+          - modules/AgenticGuidance/tests/test_integration_ralph_loop.py
+        guidance: |
+          Create end-to-end integration test:
+
+          ```python
+          def test_ralph_loop_full_cycle(tmp_path):
+              """Test complete Ralph loop execution.
+
+              Setup:
+              1. Create mock plans in tmp_path/docs/plans/live/
+                 - Plan A: has orchestration, ready to execute
+                 - Plan B: needs planning (no MMD)
+                 - Plan C: depends on Plan A
+
+              Test:
+              1. ralph next → returns execute:PlanA
+              2. Simulate task completion for Plan A
+              3. ralph next → returns plan:PlanB (or execute:PlanC now unblocked)
+              4. Continue until ralph next → complete
+
+              Verify:
+              - Correct action sequence
+              - Dependencies respected
+              - State properly tracked
+              - Completion detected correctly
+              """
+          ```
+        success_criteria:
+          - "Full loop cycle tested"
+          - "Dependencies work correctly"
+          - "Completion detection accurate"
+          - "State tracking verified"
+
+      - id: "AG_015"
+        name: "Run test suite and verify coverage"
+        description: "Execute all tests, verify coverage targets"
+        status: "completed"
+        agent: "test-runner"
+        depends_on: ["AG_014"]
+        inputs:
+          - modules/AgenticGuidance/tests/test_services_ralph.py
+          - modules/AgenticCLI/tests/test_ralph_commands.py
+          - modules/AgenticGuidance/tests/test_integration_ralph_loop.py
+        guidance: |
+          Run test suite:
+
+          ```bash
+          pytest modules/AgenticGuidance/tests/test_services_ralph.py -v
+          pytest modules/AgenticCLI/tests/test_ralph_commands.py -v
+          pytest modules/AgenticGuidance/tests/test_integration_ralph_loop.py -v
+
+          # Coverage
+          pytest -k ralph --cov=agenticguidance.services.ralph --cov=agenticcli.commands.ralph --cov-report=term-missing
+          ```
+
+          Coverage targets:
+          - services/ralph.py: 80%+
+          - commands/ralph.py: 80%+
+        success_criteria:
+          - "All tests pass"
+          - "Coverage 80%+ for both modules"
+          - "No critical paths uncovered"
+
+# ========================================
+# SUCCESS CRITERIA
+# ========================================
+success_criteria:
+  - "agentic ralph next -j returns correct action based on plan states"
+  - "agentic ralph start spawns tmux session with Claude"
+  - "Loop continues until no actionable plans remain"
+  - "Completion verified by CLI, not trusted from agent"
+  - "Dependencies between plans respected"
+  - "State persists across process restarts"
+  - "80%+ test coverage"
+  - "Simplified prompt offloads decision logic to CLI"
+
+# ========================================
+# USER STORIES AFFECTED
+# ========================================
+affected_stories:
+  - "US-RALPH-001: User starts Ralph and it processes all live plans automatically"
+  - "US-RALPH-002: Ralph respects plan dependencies and processes in correct order"
+  - "US-RALPH-003: Ralph cannot be fooled by agent claiming false completion"
+  - "US-RALPH-004: User can check Ralph status and history at any time"

@@ -1,0 +1,96 @@
+graph TD
+    Start([Start: Worktree Planning Alignment]) --> Phase1
+
+    %% ========================================
+    %% PHASE 1: CLI Worktree Commands
+    %% ========================================
+    Phase1{Phase 1: CLI Worktree Commands} --> AL_001
+
+    AL_001[AL_001: Create worktree.py module<br/>Agent: build-python<br/>Target: commands/worktree.py] --> AL_001_Check{Success?}
+    AL_001_Check -->|Yes| AL_002
+    AL_001_Check -->|No| AL_001_Fix[Fix Issues]
+    AL_001_Fix --> AL_001
+
+    AL_002[AL_002: Implement workspace auto-update<br/>Agent: build-python<br/>Target: commands/worktree.py] --> AL_002_Check{Success?}
+    AL_002_Check -->|Yes| AL_003
+    AL_002_Check -->|No| AL_002_Fix[Fix Issues]
+    AL_002_Fix --> AL_002
+
+    AL_003[AL_003: Register worktree commands<br/>Agent: build-python<br/>Target: cli.py] --> AL_003_Check{Success?}
+    AL_003_Check -->|Yes| Phase2
+    AL_003_Check -->|No| AL_003_Fix[Fix Issues]
+    AL_003_Fix --> AL_003
+
+    %% ========================================
+    %% PHASE 2: Plan Command Enforcement
+    %% ========================================
+    Phase2{Phase 2: Plan Command Enforcement} --> AL_004
+
+    AL_004[AL_004: Add required --branch parameter<br/>Agent: build-python<br/>Target: commands/plan.py] --> AL_004_Check{Success?}
+    AL_004_Check -->|Yes| AL_005
+    AL_004_Check -->|No| AL_004_Fix[Fix Issues]
+    AL_004_Fix --> AL_004
+
+    AL_005[AL_005: Add 1:1 relationship validation<br/>Agent: build-python<br/>Target: services/plan.py] --> AL_005_Check{Success?}
+    AL_005_Check -->|Yes| Phase3
+    AL_005_Check -->|No| AL_005_Fix[Fix Issues]
+    AL_005_Fix --> AL_005
+
+    %% ========================================
+    %% PHASE 3: Tests and Validation
+    %% ========================================
+    Phase3{Phase 3: Tests and Validation} --> AL_006
+
+    AL_006[AL_006: Create worktree command tests<br/>Agent: test-builder<br/>Target: test_worktree_commands.py] --> AL_006_Check{Success?}
+    AL_006_Check -->|Yes| AL_007
+    AL_006_Check -->|No| AL_006_Fix[Fix Issues]
+    AL_006_Fix --> AL_006
+
+    AL_007[AL_007: Create plan enforcement tests<br/>Agent: test-builder<br/>Target: test_plan_enforcement.py] --> AL_007_Check{Success?}
+    AL_007_Check -->|Yes| AL_008
+    AL_007_Check -->|No| AL_007_Fix[Fix Issues]
+    AL_007_Fix --> AL_007
+
+    AL_008[AL_008: Run full test suite<br/>Agent: test-runner<br/>Target: pytest modules/AgenticCLI/] --> TestFixLoop
+
+    %% ========================================
+    %% LOOP: Test-Fix Loop
+    %% ========================================
+    TestFixLoop{Test-Fix Loop<br/>Iteration Counter}
+    TestFixLoop -->|All Pass| AuditLoop
+    TestFixLoop -->|Failures Found| TestFix[Builder fixes failures]
+    TestFix --> AL_008
+    TestFixLoop -->|Max 5 Iterations| Escalate1[Escalate to User:<br/>Test failures persist]
+
+    %% ========================================
+    %% LOOP: Audit-Test-Fix Loop (MANDATORY)
+    %% ========================================
+    AuditLoop{Audit-Test-Fix Loop<br/>Iteration Counter}
+    AuditLoop -->|First Run| Audit[Test Auditor:<br/>Verify CLI commands work]
+    Audit --> AuditCheck{Audit Pass?}
+    AuditCheck -->|Yes & Tests Pass| Complete
+    AuditCheck -->|Issues Found| AuditFix[Fix audit issues]
+    AuditFix --> AL_008
+    AuditLoop -->|Max 3 Iterations| Escalate2[BLOCK Completion:<br/>Audit failures must be resolved]
+
+    %% ========================================
+    %% COMPLETION
+    %% ========================================
+    Complete([Complete: Worktree Alignment Done])
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef phaseStyle fill:#e1f5ff,stroke:#01579b,stroke-width:2px
+    classDef taskStyle fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+    classDef loopStyle fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    classDef checkStyle fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
+    classDef escalateStyle fill:#ffebee,stroke:#b71c1c,stroke-width:2px
+    classDef completeStyle fill:#c8e6c9,stroke:#2e7d32,stroke-width:3px
+
+    class Phase1,Phase2,Phase3 phaseStyle
+    class AL_001,AL_002,AL_003,AL_004,AL_005,AL_006,AL_007,AL_008 taskStyle
+    class TestFixLoop,AuditLoop loopStyle
+    class AL_001_Check,AL_002_Check,AL_003_Check,AL_004_Check,AL_005_Check,AL_006_Check,AL_007_Check,AuditCheck checkStyle
+    class Escalate1,Escalate2 escalateStyle
+    class Complete completeStyle

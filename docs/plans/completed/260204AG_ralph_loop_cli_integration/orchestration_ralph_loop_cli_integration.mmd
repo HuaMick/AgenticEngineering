@@ -1,0 +1,142 @@
+%% ========================================
+%% ORCHESTRATION METADATA
+%% ========================================
+%% GOAL: Implement self-directing Ralph Loop with CLI-side intelligence
+%% PROFILE: orchestrator
+%% AGENT_ROUTING:
+%%   - Phase 1 (Discovery Engine) -> build-python
+%%   - Phase 2 (CLI Commands) -> build-python
+%%   - Phase 3 (Simplified Prompt) -> build-python
+%%   - Phase 4 (Testing) -> test-builder, test-runner, test-audit
+%% PHASES:
+%%   - Phase 1: Discovery and Priority Engine (AG_001-003)
+%%   - Phase 2: CLI Commands (AG_004-009)
+%%   - Phase 3: Simplified Agent Prompt (AG_010-011)
+%%   - Phase 4: Testing and Validation (AG_012-015)
+%% STATUS:
+%%   - Phase_1: completed
+%%   - Phase_2: completed
+%%   - Phase_3: completed
+%%   - Phase_4: completed
+%% MAX_ITERATIONS: 5
+%% FEEDBACK_TRIGGERS:
+%%   - TEST_FAILURE -> retry with build-python fix
+%%   - AUDIT_FAILURE -> retry with test-builder fix
+%% ========================================
+
+graph TD
+    Start([Start: Ralph Loop CLI Integration]) --> Phase1
+
+    %% ========================================
+    %% PHASE 1: Discovery and Priority Engine
+    %% ========================================
+    Phase1{Phase 1: Discovery Engine}
+    Phase1 --> AG_001[AG_001: Create RalphLoopService<br/>Agent: build-python<br/>Target: services/ralph.py]
+
+    AG_001 --> AG_001_Check{Success?}
+    AG_001_Check -->|Yes| AG_002
+    AG_001_Check -->|No| AG_001_Fix[Fix Issues]
+    AG_001_Fix --> AG_001
+
+    AG_002[AG_002: Implement dependency resolution<br/>Agent: build-python] --> AG_002_Check{Success?}
+    AG_002_Check -->|Yes| AG_003
+    AG_002_Check -->|No| AG_002_Fix[Fix Issues]
+    AG_002_Fix --> AG_002
+
+    AG_003[AG_003: Add loop state management<br/>Agent: build-python] --> AG_003_Check{Success?}
+    AG_003_Check -->|Yes| Phase2
+    AG_003_Check -->|No| AG_003_Fix[Fix Issues]
+    AG_003_Fix --> AG_003
+
+    %% ========================================
+    %% PHASE 2: CLI Commands
+    %% ========================================
+    Phase2{Phase 2: CLI Commands}
+    Phase2 --> AG_004[AG_004: Create ralph CLI group<br/>Agent: build-python<br/>Target: commands/ralph.py]
+
+    AG_004 --> AG_004_Check{Success?}
+    AG_004_Check -->|Yes| AG_005
+    AG_004_Check -->|No| AG_004_Fix[Fix Issues]
+    AG_004_Fix --> AG_004
+
+    AG_005[AG_005: Implement ralph next<br/>THE KEY COMMAND<br/>Agent: build-python] --> AG_005_Check{Success?}
+    AG_005_Check -->|Yes| AG_006
+    AG_005_Check -->|No| AG_005_Fix[Fix Issues]
+    AG_005_Fix --> AG_005
+
+    AG_006[AG_006: Implement ralph start<br/>Agent: build-python] --> AG_006_Check{Success?}
+    AG_006_Check -->|Yes| AG_007
+    AG_006_Check -->|No| AG_006_Fix[Fix Issues]
+    AG_006_Fix --> AG_006
+
+    AG_007[AG_007: Implement stop & status<br/>Agent: build-python] --> AG_007_Check{Success?}
+    AG_007_Check -->|Yes| AG_008
+    AG_007_Check -->|No| AG_007_Fix[Fix Issues]
+    AG_007_Fix --> AG_007
+
+    AG_008[AG_008: Implement history<br/>Agent: build-python] --> AG_008_Check{Success?}
+    AG_008_Check -->|Yes| AG_009
+    AG_008_Check -->|No| AG_008_Fix[Fix Issues]
+    AG_008_Fix --> AG_008
+
+    AG_009[AG_009: Register in CLI<br/>Agent: build-python] --> AG_009_Check{Success?}
+    AG_009_Check -->|Yes| Phase3
+    AG_009_Check -->|No| AG_009_Fix[Fix Issues]
+    AG_009_Fix --> AG_009
+
+    %% ========================================
+    %% PHASE 3: Simplified Prompt
+    %% ========================================
+    Phase3{Phase 3: Simplified Prompt}
+    Phase3 --> AG_010[AG_010: Create ralph.txt prompt<br/>Agent: build-python<br/>Target: docs/prompts/ralph.txt]
+
+    AG_010 --> AG_010_Check{Success?}
+    AG_010_Check -->|Yes| AG_011
+    AG_010_Check -->|No| AG_010_Fix[Fix Issues]
+    AG_010_Fix --> AG_010
+
+    AG_011[AG_011: Default prompt loader<br/>Agent: build-python] --> AG_011_Check{Success?}
+    AG_011_Check -->|Yes| Phase4
+    AG_011_Check -->|No| AG_011_Fix[Fix Issues]
+    AG_011_Fix --> AG_011
+
+    %% ========================================
+    %% PHASE 4: Testing
+    %% ========================================
+    Phase4{Phase 4: Testing}
+    Phase4 --> AG_012[AG_012: Unit tests<br/>Agent: test-builder<br/>Target: test_services_ralph.py]
+
+    AG_012 --> TestFixLoop1{Test-Fix Loop}
+    TestFixLoop1 -->|Tests Pass| AG_013
+    TestFixLoop1 -->|Tests Fail| AG_012
+    TestFixLoop1 -->|Max Iterations| Escalate1[Escalate: Unit Test Failures]
+
+    AG_013[AG_013: CLI integration tests<br/>Agent: test-builder] --> TestFixLoop2{Test-Fix Loop}
+    TestFixLoop2 -->|Tests Pass| AG_014
+    TestFixLoop2 -->|Tests Fail| AG_013
+    TestFixLoop2 -->|Max Iterations| Escalate2[Escalate: Integration Failures]
+
+    AG_014[AG_014: E2E test scenario<br/>Agent: test-builder] --> AG_015
+
+    AG_015[AG_015: Run suite & verify coverage<br/>Agent: test-runner] --> AuditLoop{Audit-Test-Fix Loop<br/>MANDATORY}
+
+    AuditLoop -->|Audit Pass| Complete([Complete: Ralph Loop CLI Ready])
+    AuditLoop -->|Issues Found| AG_012
+    AuditLoop -->|Max Iterations| Escalate3[BLOCK: Audit failures<br/>must be resolved]
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef phaseStyle fill:#e1f5ff,stroke:#01579b,stroke-width:2px
+    classDef taskStyle fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+    classDef keyTaskStyle fill:#c8e6c9,stroke:#2e7d32,stroke-width:3px
+    classDef loopStyle fill:#ffccbc,stroke:#bf360c,stroke-width:2px
+    classDef escalateStyle fill:#ffcdd2,stroke:#c62828,stroke-width:2px
+    classDef completeStyle fill:#c8e6c9,stroke:#2e7d32,stroke-width:3px
+
+    class Phase1,Phase2,Phase3,Phase4 phaseStyle
+    class AG_001,AG_002,AG_003,AG_004,AG_006,AG_007,AG_008,AG_009,AG_010,AG_011,AG_012,AG_013,AG_014,AG_015 taskStyle
+    class AG_005 keyTaskStyle
+    class TestFixLoop1,TestFixLoop2,AuditLoop loopStyle
+    class Escalate1,Escalate2,Escalate3 escalateStyle
+    class Complete completeStyle

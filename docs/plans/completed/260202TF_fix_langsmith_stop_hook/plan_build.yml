@@ -1,0 +1,57 @@
+plan:
+  name: "Fix LangSmith Stop Hook JQ Errors"
+  objective: "Refactor stop_hook.sh to handle JSON concatenation robustly and fix the jq type mismatch error"
+  status: "pending"
+
+phases:
+  - id: "fix"
+    name: "Implementation"
+    description: "Fix the stop_hook.sh script"
+    tasks:
+      - id: "01"
+        name: "Backup existing hook"
+        description: "Create a backup of stop_hook.sh before modification"
+        status: "pending"
+        target_files:
+          - "~/.claude/hooks/stop_hook.sh"
+        success_criteria:
+          - "Backup file exists"
+
+      - id: "02"
+        name: "Refactor concatenation logic"
+        description: |
+          Replace fragile `printf | jq -n 'input + [input]'` patterns with more robust alternatives.
+          Use `jq -s 'add'` or `--argjson` and ensure type consistency.
+          Fix specific locations identified:
+          - Building `posts_batch` and `patches_batch`
+          - Building `all_outputs`
+          - Merging assistant parts
+        status: "pending"
+        target_files:
+          - "~/.claude/hooks/stop_hook.sh"
+        success_criteria:
+          - "All input + [input] patterns replaced"
+          - "Script passes basic JSON validation"
+
+      - id: "03"
+        name: "Improve large trace handling"
+        description: |
+          Switch from `echo "$massive_json"` to `printf "%s" "$massive_json"` or use temporary files
+          where necessary to avoid shell limits.
+        status: "pending"
+        target_files:
+          - "~/.claude/hooks/stop_hook.sh"
+        success_criteria:
+          - "Large JSON payloads handled safely"
+
+  - id: "verify"
+    name: "Verification"
+    description: "Verify the fix"
+    tasks:
+      - id: "04"
+        name: "Dry run verification"
+        description: "Run the hook with a sample transcript to verify it no longer errors"
+        status: "pending"
+        success_criteria:
+          - "No jq errors in log"
+          - "Trace data produced is valid"

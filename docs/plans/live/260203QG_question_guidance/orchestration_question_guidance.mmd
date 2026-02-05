@@ -1,0 +1,181 @@
+graph TD
+    Start([Start: Question Guidance Updates]) --> Phase1
+
+    %% ========================================
+    %% PHASE 1: Guideline Asset Creation
+    %% AGENT_ROUTING: teacher-update-assets
+    %% ========================================
+    Phase1{Phase 1: Guideline Asset Creation} --> guide_001
+
+    guide_001[guide_001: Create question-workflow.yml guideline<br/>Agent: teacher-update-assets<br/>Target: assets/guidelines/question-workflow.yml] --> guide_001_Check{Success?}
+    guide_001_Check -->|Yes| Phase2
+    guide_001_Check -->|No| guide_001_Fix[Fix Issues]
+    guide_001_Fix --> guide_001
+
+    %% ========================================
+    %% PHASE 2: Orchestration Agent Updates
+    %% AGENT_ROUTING: teacher-update-guidance
+    %% EXECUTION: Sequential (inputs before process)
+    %% ========================================
+    Phase2{Phase 2: Orchestration Agent Updates} --> orch_001
+
+    orch_001[orch_001: Update orchestration-planning inputs.yml<br/>Agent: teacher-update-guidance<br/>Target: orchestration-planning/inputs.yml] --> orch_001_Check{Success?}
+    orch_001_Check -->|Yes| orch_002
+    orch_001_Check -->|No| orch_001_Fix[Fix Issues]
+    orch_001_Fix --> orch_001
+
+    orch_002[orch_002: Update orchestration-planning process.yml<br/>Agent: teacher-update-guidance<br/>Target: orchestration-planning/process.yml] --> orch_002_Check{Success?}
+    orch_002_Check -->|Yes| orch_003
+    orch_002_Check -->|No| orch_002_Fix[Fix Issues]
+    orch_002_Fix --> orch_002
+
+    orch_003[orch_003: Update orchestration-executor inputs.yml<br/>Agent: teacher-update-guidance<br/>Target: orchestration-executor/inputs.yml] --> orch_003_Check{Success?}
+    orch_003_Check -->|Yes| Phase3
+    orch_003_Check -->|No| orch_003_Fix[Fix Issues]
+    orch_003_Fix --> orch_003
+
+    %% ========================================
+    %% PHASE 3: Planner Agent Updates
+    %% AGENT_ROUTING: teacher-update-guidance
+    %% EXECUTION: Parallel (all planner updates independent)
+    %% ========================================
+    Phase3{Phase 3: Planner Agent Updates} --> PlannerSplit
+
+    PlannerSplit[Parallel Execution Start] --> plan_001
+    PlannerSplit --> plan_003
+    PlannerSplit --> plan_005
+
+    plan_001[plan_001: Update planner-build inputs.yml<br/>Agent: teacher-update-guidance<br/>Target: planner-build/inputs.yml] --> plan_001_Check{Success?}
+    plan_001_Check -->|Yes| plan_002
+    plan_001_Check -->|No| plan_001_Fix[Fix Issues]
+    plan_001_Fix --> plan_001
+
+    plan_002[plan_002: Update planner-build process.yml<br/>Agent: teacher-update-guidance<br/>Target: planner-build/process.yml] --> plan_002_Check{Success?}
+    plan_002_Check -->|Yes| PlannerJoin
+    plan_002_Check -->|No| plan_002_Fix[Fix Issues]
+    plan_002_Fix --> plan_002
+
+    plan_003[plan_003: Update planner-test inputs.yml<br/>Agent: teacher-update-guidance<br/>Target: planner-test/inputs.yml] --> plan_003_Check{Success?}
+    plan_003_Check -->|Yes| plan_004
+    plan_003_Check -->|No| plan_003_Fix[Fix Issues]
+    plan_003_Fix --> plan_003
+
+    plan_004[plan_004: Update planner-test process.yml<br/>Agent: teacher-update-guidance<br/>Target: planner-test/process.yml] --> plan_004_Check{Success?}
+    plan_004_Check -->|Yes| PlannerJoin
+    plan_004_Check -->|No| plan_004_Fix[Fix Issues]
+    plan_004_Fix --> plan_004
+
+    plan_005[plan_005: Update planner-reviewer inputs.yml<br/>Agent: teacher-update-guidance<br/>Target: planner-reviewer/inputs.yml] --> plan_005_Check{Success?}
+    plan_005_Check -->|Yes| plan_006
+    plan_005_Check -->|No| plan_005_Fix[Fix Issues]
+    plan_005_Fix --> plan_005
+
+    plan_006[plan_006: Update planner-reviewer process.yml<br/>Agent: teacher-update-guidance<br/>Target: planner-reviewer/process.yml] --> plan_006_Check{Success?}
+    plan_006_Check -->|Yes| PlannerJoin
+    plan_006_Check -->|No| plan_006_Fix[Fix Issues]
+    plan_006_Fix --> plan_006
+
+    PlannerJoin[Parallel Execution Complete] --> Phase4
+
+    %% ========================================
+    %% PHASE 4: Builder and Test Agent Updates
+    %% AGENT_ROUTING: teacher-update-guidance, teacher-update-assets
+    %% EXECUTION: Parallel (all updates independent)
+    %% ========================================
+    Phase4{Phase 4: Builder and Test Agent Updates} --> BuilderSplit
+
+    BuilderSplit[Parallel Execution Start] --> build_001
+    BuilderSplit --> build_002
+    BuilderSplit --> test_001
+
+    build_001[build_001: Update shared builder inputs<br/>Agent: teacher-update-guidance<br/>Target: assets/inputs/build-shared.yml] --> build_001_Check{Success?}
+    build_001_Check -->|Yes| BuilderJoin
+    build_001_Check -->|No| build_001_Fix[Fix Issues]
+    build_001_Fix --> build_001
+
+    build_002[build_002: Create builder question generation example<br/>Agent: teacher-update-assets<br/>Target: assets/examples/builder/question-example.yml] --> build_002_Check{Success?}
+    build_002_Check -->|Yes| BuilderJoin
+    build_002_Check -->|No| build_002_Fix[Fix Issues]
+    build_002_Fix --> build_002
+
+    test_001[test_001: Update test-builder inputs.yml<br/>Agent: teacher-update-guidance<br/>Target: test-builder/inputs.yml] --> test_001_Check{Success?}
+    test_001_Check -->|Yes| test_002
+    test_001_Check -->|No| test_001_Fix[Fix Issues]
+    test_001_Fix --> test_001
+
+    test_002[test_002: Update test-builder process.yml<br/>Agent: teacher-update-guidance<br/>Target: test-builder/process.yml] --> test_002_Check{Success?}
+    test_002_Check -->|Yes| BuilderJoin
+    test_002_Check -->|No| test_002_Fix[Fix Issues]
+    test_002_Fix --> test_002
+
+    BuilderJoin[Parallel Execution Complete] --> Phase5
+
+    %% ========================================
+    %% PHASE 5: Workflow Example Creation
+    %% AGENT_ROUTING: teacher-update-assets
+    %% EXECUTION: Sequential (examples build on each other)
+    %% ========================================
+    Phase5{Phase 5: Workflow Example Creation} --> example_001
+
+    example_001[example_001: Create planner workflow example<br/>Agent: teacher-update-assets<br/>Target: assets/examples/planner/question-workflow-example.yml] --> example_001_Check{Success?}
+    example_001_Check -->|Yes| example_002
+    example_001_Check -->|No| example_001_Fix[Fix Issues]
+    example_001_Fix --> example_001
+
+    example_002[example_002: Create builder workflow example<br/>Agent: teacher-update-assets<br/>Target: assets/examples/builder/question-workflow-complete.yml] --> example_002_Check{Success?}
+    example_002_Check -->|Yes| example_003
+    example_002_Check -->|No| example_002_Fix[Fix Issues]
+    example_002_Fix --> example_002
+
+    example_003[example_003: Create tester workflow example<br/>Agent: teacher-update-assets<br/>Target: assets/examples/test/question-workflow-example.yml] --> example_003_Check{Success?}
+    example_003_Check -->|Yes| Phase6
+    example_003_Check -->|No| example_003_Fix[Fix Issues]
+    example_003_Fix --> example_003
+
+    %% ========================================
+    %% PHASE 6: Validation and Review
+    %% AGENT_ROUTING: planner-reviewer, teacher-update-assets
+    %% LOOP: guidance-self-review-loop (max 3 iterations)
+    %% ========================================
+    Phase6{Phase 6: Validation and Review} --> val_001
+
+    val_001[val_001: Self-review guidance updates<br/>Agent: planner-reviewer<br/>LOOP: guidance-self-review-loop] --> ValidationLoop
+
+    %% ========================================
+    %% LOOP: Guidance Self-Review Loop
+    %% MAX ITERATIONS: 3
+    %% ========================================
+    ValidationLoop{Guidance Self-Review Loop<br/>Iteration Counter}
+    ValidationLoop -->|Pass: All checklist items| val_002
+    ValidationLoop -->|Issues Found| ValidationFix[Fix guidance gaps]
+    ValidationFix --> val_001
+    ValidationLoop -->|Max 3 Iterations| Escalate1[Escalate to User:<br/>Guidance gaps remain]
+
+    val_002[val_002: Spot-check example validity<br/>Agent: teacher-update-assets<br/>Target: Validate YAML examples] --> val_002_Check{Success?}
+    val_002_Check -->|Yes| Complete
+    val_002_Check -->|No| val_002_Fix[Fix Example Issues]
+    val_002_Fix --> val_002
+
+    %% ========================================
+    %% COMPLETION
+    %% ========================================
+    Complete([Complete: Question Guidance Ready<br/>Hand off to 260203QT])
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef phaseStyle fill:#e1f5ff,stroke:#01579b,stroke-width:2px
+    classDef taskStyle fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+    classDef loopStyle fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    classDef checkStyle fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
+    classDef escalateStyle fill:#ffebee,stroke:#b71c1c,stroke-width:2px
+    classDef completeStyle fill:#c8e6c9,stroke:#2e7d32,stroke-width:3px
+    classDef splitJoinStyle fill:#e0e0e0,stroke:#424242,stroke-width:1px
+
+    class Phase1,Phase2,Phase3,Phase4,Phase5,Phase6 phaseStyle
+    class guide_001,orch_001,orch_002,orch_003,plan_001,plan_002,plan_003,plan_004,plan_005,plan_006,build_001,build_002,test_001,test_002,example_001,example_002,example_003,val_001,val_002 taskStyle
+    class ValidationLoop loopStyle
+    class guide_001_Check,orch_001_Check,orch_002_Check,orch_003_Check,plan_001_Check,plan_002_Check,plan_003_Check,plan_004_Check,plan_005_Check,plan_006_Check,build_001_Check,build_002_Check,test_001_Check,test_002_Check,example_001_Check,example_002_Check,example_003_Check,val_002_Check checkStyle
+    class Escalate1 escalateStyle
+    class Complete completeStyle
+    class PlannerSplit,PlannerJoin,BuilderSplit,BuilderJoin splitJoinStyle

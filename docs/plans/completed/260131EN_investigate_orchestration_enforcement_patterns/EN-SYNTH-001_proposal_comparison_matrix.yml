@@ -1,0 +1,1492 @@
+# EN-SYNTH-001: Proposal Comparison Matrix
+# Synthesizing investigation findings across all proposals
+# Created: 2026-02-01
+# Status: completed
+
+_document_metadata:
+  task_id: EN-SYNTH-001
+  investigation_id: 260131EN
+  synthesis_type: proposal_comparison_matrix
+  proposals_analyzed: 6
+  date: "2026-02-01"
+  basis:
+    - P1 (EN-P1-002, EN-P1-003)
+    - P2 (EN-P2-001, EN-P2-002, EN-P2-003)
+    - P3 (EN-P3-001, EN-P3-002, EN-P3-003)
+    - P4 (EN-P4-001, EN-P4-002, EN-P4-003)
+    - P5 (EN-P5-001, EN-P5-002, EN-P5-003)
+    - P6 (EN-P6-001, EN-P6-002, EN-P6-003)
+
+# =============================================================================
+# EXECUTIVE SUMMARY
+# =============================================================================
+
+executive_summary: |
+  This matrix compares six proposals for orchestration enforcement, synthesizing
+  findings from 18 investigation tasks. All proposals are technically feasible.
+
+  KEY FINDINGS:
+  - P3 (Session Spawn Context) and P4 (Role Detection) are foundational
+  - P2 (Preloaded Tasklists) and P6 (Bootstrap Plan Generation) are complementary
+  - P5 (Tmux Patterns) builds on P3/P4 with session-level enforcement
+  - P1 (CLI Tasklist) addresses gaps but has enforcement weaknesses
+
+  RECOMMENDED APPROACH:
+  Phase 1: P3 + P4 (environment-based context injection and role detection)
+  Phase 2: P2 (MMD-to-tasklist transformation for plan structure)
+  Phase 3: P5 (tmux-based session hierarchy enforcement)
+  Phase 4: P6 (agent-specific plan files for granular guidance)
+
+# =============================================================================
+# MATRIX SUMMARY: HIGH-LEVEL COMPARISON
+# =============================================================================
+
+matrix_summary:
+  header:
+    - Proposal
+    - Complexity
+    - Effort (hours)
+    - Risk
+    - Value
+    - Infrastructure Readiness
+    - Dependencies
+
+  rows:
+    - proposal: "P1: CLI Tasklist Orchestration"
+      complexity: MEDIUM
+      effort_range: "80-100"
+      effort_detail: "25-40 hours (Phase 1: 10-20h, Phase 2: 20-40h, Phase 3: 8-12h)"
+      risk: MEDIUM
+      risk_detail: "Enforcement depends on agent discipline; bypass via YAML edits"
+      value: MEDIUM-HIGH
+      infrastructure_readiness: 70%
+      infrastructure_detail: "Tasklist commands exist; enforcement logic needed"
+      dependencies: "None (standalone)"
+
+    - proposal: "P2: Preloaded Tasklists at Plan Start"
+      complexity: MEDIUM
+      effort_range: "40-60"
+      effort_detail: "Phase 1: 10-15h, Phase 2: 10-15h, Phase 3: 8-12h, Phase 4: 6-10h"
+      risk: LOW
+      risk_detail: "MMD parsing relies on consistent format; low failure risk"
+      value: HIGH
+      infrastructure_readiness: 75%
+      infrastructure_detail: "entrypoint execute exists; MMD parsing is extension"
+      dependencies: "None (optional: P1 for task status tracking)"
+
+    - proposal: "P3: Session Spawn Context Injection"
+      complexity: LOW-MEDIUM
+      effort_range: "80-100"
+      effort_detail: "Phase 1: 50h (core), Phase 2: 20h (prompt), Phase 3: 30h (registry)"
+      risk: LOW
+      risk_detail: "Environment variables are standard; minimal technical risk"
+      value: HIGH
+      infrastructure_readiness: 60%
+      infrastructure_detail: "Session spawn exists; env injection is straightforward"
+      dependencies: "None (foundational)"
+
+    - proposal: "P4: Main Session Detection/Identification"
+      complexity: MEDIUM
+      effort_range: "280"
+      effort_detail: "Phase 1: 100h (detection), Phase 2: 80h (CLI), Phase 3: 60h (whoami), Phase 4: 40h (env)"
+      risk: MEDIUM
+      risk_detail: "Role tampering possible; enforcement is advisory"
+      value: HIGH
+      infrastructure_readiness: 55%
+      infrastructure_detail: "Session metadata exists; role field is extension"
+      dependencies: "P3 (environment injection for role awareness)"
+
+    - proposal: "P5: Tmux Session Management Patterns"
+      complexity: MEDIUM-HIGH
+      effort_range: "250-350"
+      effort_detail: "Phase 1: 1 cycle, Phase 2: 1 cycle, Phase 3: 1 cycle, Phase 4: 0.5 cycle (total: 3.5 cycles)"
+      risk: MEDIUM
+      risk_detail: "Tmux-specific; orphan sessions; session name collisions"
+      value: HIGH
+      infrastructure_readiness: 85%
+      infrastructure_detail: "SessionService and AgenticTmux fully implemented"
+      dependencies: "P3 (context injection), P4 (role detection)"
+
+    - proposal: "P6: Bootstrap-time Plan Auto-generation"
+      complexity: LOW-MEDIUM
+      effort_range: "43-68"
+      effort_detail: "Phase 1: 8-10h, Phase 2: 4-6h, Phase 3: 3-5h, Phase 4: 2-4h (EN-P6-003: 18-28h total)"
+      risk: LOW
+      risk_detail: "Process.yml schema is consistent; step extraction straightforward"
+      value: MEDIUM-HIGH
+      infrastructure_readiness: 80%
+      infrastructure_detail: "agent_help.py parses process.yml; extension needed"
+      dependencies: "None (optional: P2 for MMD-based generation)"
+
+# =============================================================================
+# DETAILED PROPOSAL ANALYSIS
+# =============================================================================
+
+proposal_details:
+
+  # ---------------------------------------------------------------------------
+  # P1: CLI TASKLIST ORCHESTRATION TRACKING
+  # ---------------------------------------------------------------------------
+
+  proposal_1_cli_tasklist:
+    title: "CLI Tasklist Orchestration Tracking"
+    description: |
+      Extend the existing CLI tasklist infrastructure (agentic plan task commands)
+      to support orchestration enforcement through gates, dependencies, and validation.
+
+    investigation_tasks:
+      - EN-P1-002: "Gaps analysis (7 gaps identified)"
+      - EN-P1-003: "Implementation complexity assessment"
+
+    implementation_complexity: MEDIUM
+
+    estimated_effort:
+      total_hours: "80-100"
+      breakdown:
+        quick_wins:
+          effort: "10-20 hours"
+          items:
+            - "Simplified status commands (done, next): 3-5 days"
+            - "Event-based logging: 3-5 days"
+        core_implementation:
+          effort: "40-60 hours"
+          items:
+            - "Gate validation commands: 2 weeks"
+            - "Enforced task dependencies: 1-2 weeks"
+            - "Completion hooks: 1-2 weeks"
+            - "Activity heartbeat system: 1-2 weeks"
+        deferred_items:
+          effort: "20-40 hours"
+          items:
+            - "Session ID field in task: 1 week"
+            - "Full phase-aware schema: 3-5 weeks (deferred)"
+
+    risk_level: MEDIUM
+    risk_factors:
+      - factor: "Agent bypass through YAML edits"
+        probability: MEDIUM
+        impact: HIGH
+        mitigation: "Audit agent validates YAML integrity; checksums on state changes"
+
+      - factor: "Enforcement depends on agent discipline"
+        probability: HIGH
+        impact: MEDIUM
+        mitigation: "Make CLI commands simpler than alternatives; bootstrap prompts"
+
+      - factor: "CLI overhead affects context efficiency"
+        probability: MEDIUM
+        impact: MEDIUM
+        mitigation: "Minimize command output verbosity; batch operations"
+
+    value_impact: MEDIUM-HIGH
+    value_rationale: |
+      - Builds on existing infrastructure (CLI commands already exist)
+      - Incremental implementation provides immediate value (quick wins)
+      - File-based state persists across session restarts
+      - Human-readable and debuggable (YAML files)
+      WEAKNESS: Enforcement is opt-in, not hard boundaries
+
+    infrastructure_readiness: 70%
+    infrastructure_assessment:
+      existing:
+        - "agentic plan task list/current/start/complete commands"
+        - "Plan YAML parsing and manipulation"
+        - "Task status tracking (pending, in_progress, completed)"
+      needed:
+        - "Gate validation logic"
+        - "Dependency enforcement in task start"
+        - "Completion hooks framework"
+        - "Heartbeat system"
+
+    integration_points:
+      cli_commands:
+        - "modules/AgenticCLI/src/agenticcli/commands/plan.py (task management)"
+        - "New: agentic plan gate check/require"
+        - "New: agentic task done/next (simplified)"
+        - "New: agentic task heartbeat"
+
+    key_deliverables:
+      - "Gate validation commands (check/require)"
+      - "Enforced task dependencies (blocks task start)"
+      - "Completion hooks (validation at completion)"
+      - "Simplified status commands (done/next)"
+      - "Event-based logging infrastructure"
+      - "Activity heartbeat for stall detection"
+
+    gaps_identified:
+      - gap_id: GAP-001
+        name: "No Real-time Agent Progress Tracking"
+        severity: HIGH
+        solution: "Activity Heartbeat System"
+
+      - gap_id: GAP-002
+        name: "No Orchestration State Machine"
+        severity: CRITICAL
+        solution: "Gate Validation Commands"
+
+      - gap_id: GAP-003
+        name: "No Cross-Agent Task Dependencies"
+        severity: HIGH
+        solution: "Enforced Task Dependencies"
+
+      - gap_id: GAP-005
+        name: "Manual Status Updates Required"
+        severity: HIGH
+        solution: "Simplified Status Commands (quick win)"
+
+      - gap_id: GAP-007
+        name: "Limited Instrumentation"
+        severity: MEDIUM
+        solution: "Event-based Logging (quick win)"
+
+    viability_score: "7/10"
+    viability_summary: |
+      VIABLE WITH CAVEATS. The tasklist-based approach works well for
+      trust-but-verify models. Enforcement is opt-in, which is both a strength
+      (backward compatible) and weakness (agents can bypass). Best suited
+      for scenarios where agents generally follow rules and audit catches violations.
+
+  # ---------------------------------------------------------------------------
+  # P2: PRELOADED TASKLISTS AT PLAN START
+  # ---------------------------------------------------------------------------
+
+  proposal_2_preloaded_tasklists:
+    title: "Preloaded Tasklists at Plan Start"
+    description: |
+      Parse orchestration MMD files at plan start to generate structured tasklists
+      that are preloaded into orchestrator and agent contexts. Provides plan structure
+      visibility without manual task tracking.
+
+    investigation_tasks:
+      - EN-P2-001: "Plan start command and extension points"
+      - EN-P2-002: "MMD file format analysis (50 files)"
+      - EN-P2-003: "MMD-to-tasklist transformation design"
+
+    implementation_complexity: MEDIUM
+
+    estimated_effort:
+      total_hours: "40-60"
+      breakdown:
+        phase_1_metadata_extraction:
+          effort: "2-4 hours"
+          description: "Extract %% comment headers (GOAL, PHASES, AGENT_ROUTING)"
+
+        phase_2_phase_extraction:
+          effort: "2 hours"
+          description: "Extract phases from subgraph declarations"
+
+        phase_3_task_extraction:
+          effort: "2-3 hours"
+          description: "Extract task nodes from flowchart"
+
+        phase_4_dependency_extraction:
+          effort: "3-4 hours"
+          description: "Derive task dependencies from edges"
+
+        phase_5_tasklist_generation:
+          effort: "1-2 hours"
+          description: "Generate tasklist YAML from parsed data"
+
+        cli_integration:
+          effort: "3-4 hours"
+          description: "Wire into entrypoint execute --compile"
+
+        agent_routing:
+          effort: "4-6 hours"
+          description: "Generate agent-specific task subsets"
+
+        testing_validation:
+          effort: "4-8 hours"
+          description: "Unit and integration tests with real MMD files"
+
+        bootstrap_integration:
+          effort: "3-5 hours"
+          description: "Include tasklist in context bootstrap"
+
+    risk_level: LOW
+    risk_factors:
+      - factor: "MMD format variations from manual editing"
+        probability: MEDIUM
+        impact: HIGH
+        mitigation: "Schema validation; graceful fallbacks; warning messages"
+
+      - factor: "Circular dependencies in edge parsing"
+        probability: LOW
+        impact: MEDIUM
+        mitigation: "Dependency cycle detection; clear error messages"
+
+      - factor: "Agent routing mismatch"
+        probability: MEDIUM
+        impact: MEDIUM
+        mitigation: "Validate against KNOWN_AGENTS list"
+
+    value_impact: HIGH
+    value_rationale: |
+      - Provides immediate plan structure visibility to orchestrators
+      - Agents know their assigned tasks without manual tracking
+      - Enables progress reporting (X of Y tasks complete)
+      - Foundation for other proposals (P1 can consume these tasklists)
+      - Natural extension point at entrypoint execute --compile
+
+    infrastructure_readiness: 75%
+    infrastructure_assessment:
+      existing:
+        - "entrypoint execute --compile (bundles context)"
+        - "MMD files generated with consistent format (90%+ consistency)"
+        - "Metadata headers in MMD comments (GOAL, PHASES, AGENT_ROUTING)"
+        - "Plan YAML schema well-defined"
+      needed:
+        - "MMD parsing service (5-stage pipeline)"
+        - "Task schema mapping logic"
+        - "Integration with _compile_context()"
+
+    integration_points:
+      primary:
+        file: "modules/AgenticCLI/src/agenticcli/commands/entrypoint.py"
+        function: "cmd_execute()"
+        extension: "Add tasklist generation after _compile_context() (line 605)"
+
+      service:
+        file: "modules/AgenticCLI/src/agenticcli/services/mmd_parser_service.py (NEW)"
+        description: "5-stage MMD parsing pipeline"
+
+      validation:
+        command: "agentic plan orchestration validate"
+        description: "Validate MMD matches plan YAML files"
+
+    key_deliverables:
+      - "MMDParserService with 5-stage transformation pipeline"
+      - "Tasklist YAML output compatible with plan_*.yml schema"
+      - "CLI integration at entrypoint execute --compile"
+      - "Agent-specific task filtering by AGENT_ROUTING"
+      - "Tasklist validation command"
+
+    mmd_format_analysis:
+      files_analyzed: 50
+      consistency_score: "90%+"
+      common_patterns:
+        - "Metadata headers with GOAL, PROFILE, PHASES, AGENT_ROUTING, STATUS"
+        - "Subgraph-based phase organization (Phase_SG pattern)"
+        - "Task nodes with ID patterns (TASK-ID: description)"
+        - "Edge patterns for dependencies (-->, ---, -.->)"
+      node_naming_conventions:
+        entry_exit: "((NodeName)) for Start/End"
+        process: "[NodeName] for actions"
+        decision: "{Question?} for decision points"
+        task: "[TASK-ID: Description] for task nodes"
+
+    recommended_priority: HIGH
+    recommendation: |
+      P2 should be implemented in Phase 1 (alongside P3/P4) because it provides
+      foundational plan structure that other proposals can leverage. The MMD parsing
+      infrastructure is reusable for P6 and complements P1's task tracking.
+
+  # ---------------------------------------------------------------------------
+  # P3: SESSION SPAWN CONTEXT INJECTION
+  # ---------------------------------------------------------------------------
+
+  proposal_3_session_context_injection:
+    title: "Session Spawn Context Injection"
+    description: |
+      Inject orchestration context (role, task, plan, parent session) into spawned
+      Claude Code sessions via environment variables and optional prompt prefixes.
+      Foundational for all role-based enforcement.
+
+    investigation_tasks:
+      - EN-P3-001: "Session spawn audit (no context currently)"
+      - EN-P3-002: "Session context flow lifecycle (5 stages)"
+      - EN-P3-003: "Context injection design (hybrid approach)"
+
+    implementation_complexity: LOW-MEDIUM
+
+    estimated_effort:
+      total_hours: "80-100"
+      breakdown:
+        phase_1_core_infrastructure:
+          effort: "50 hours"
+          loc: 50
+          tasks:
+            - "Add CLI arguments to session spawn parser"
+            - "Implement environment variable injection"
+            - "Update session record schema"
+
+        phase_2_context_prompt_injection:
+          effort: "20 hours"
+          loc: 20
+          tasks:
+            - "Implement --inject-context flag handling"
+            - "Add context block formatting"
+
+        phase_3_session_registry_enhancement:
+          effort: "30 hours"
+          loc: 30
+          tasks:
+            - "Update session list to show role/task"
+            - "Update session status to show orchestration context"
+            - "Add parent/child relationship display"
+
+        phase_4_auto_resolution:
+          effort: "40 hours (FUTURE)"
+          loc: 40
+          tasks:
+            - "Integrate MainFirstPlanResolver"
+            - "Implement fallback when explicit values not provided"
+
+    risk_level: LOW
+    risk_factors:
+      - factor: "Environment variables can be overwritten by agent"
+        probability: LOW
+        impact: MEDIUM
+        mitigation: "Session registry is authoritative; prompt prefix provides redundancy"
+
+      - factor: "Subagent ignores orchestration context"
+        probability: MEDIUM
+        impact: MEDIUM
+        mitigation: "Context is advisory initially; future enforcement layer adds hard limits"
+
+      - factor: "Token overhead from prompt prefix"
+        probability: LOW
+        impact: LOW
+        mitigation: "Prompt prefix is opt-in via --inject-context (50-100 tokens)"
+
+    value_impact: HIGH
+    value_rationale: |
+      FOUNDATIONAL PROPOSAL. All other role-based enforcement proposals depend
+      on sessions being able to identify their role. Environment variable injection
+      is the industry-recommended approach (validated by Claude Code feature request
+      #17188). Provides:
+      - Zero-latency role detection
+      - Propagates to all subprocess tools
+      - Works for both LLM and tool scripts
+      - No file I/O overhead
+
+    infrastructure_readiness: 60%
+    infrastructure_assessment:
+      existing:
+        - "session spawn command (subprocess.Popen/run)"
+        - "Session registry (~/.agentic/sessions/*.json)"
+        - "CLIContext with project metadata"
+      needed:
+        - "Environment dict construction"
+        - "env= parameter to subprocess calls"
+        - "Session record schema extension (role, task_id, plan_folder, parent_session)"
+        - "CLI arguments for context specification"
+
+    integration_points:
+      session_spawn:
+        file: "modules/AgenticCLI/src/agenticcli/commands/session.py"
+        function: "cmd_spawn()"
+        changes:
+          - "Build spawn_env dict with AGENTIC_* variables (line 186, 215)"
+          - "Add CLI arguments (--role, --task, --plan, --parent-session, --phase)"
+          - "Update session_data dict with orchestration fields"
+
+      cli_parser:
+        file: "modules/AgenticCLI/src/agenticcli/cli.py"
+        function: "_add_session_parser()"
+        changes:
+          - "Add --role, --task, --plan, --parent-session, --phase arguments"
+          - "Add --inject-context flag"
+
+    key_deliverables:
+      - "AGENTIC_SESSION_ROLE, AGENTIC_TASK_ID, AGENTIC_PLAN_FOLDER, AGENTIC_PARENT_SESSION, AGENTIC_PHASE environment variables"
+      - "CLI arguments for explicit context specification"
+      - "Session record schema with orchestration fields"
+      - "Optional prompt prefix injection (--inject-context)"
+      - "Session registry with parent/child relationships"
+
+    environment_variables:
+      - name: AGENTIC_SESSION_ID
+        value: "UUID"
+        purpose: "Unique identifier for this session"
+
+      - name: AGENTIC_SESSION_ROLE
+        value: "orchestrator | subagent"
+        purpose: "Role of this session in orchestration hierarchy"
+
+      - name: AGENTIC_TASK_ID
+        value: "Task identifier (e.g., EN-P3-003)"
+        purpose: "Task this session is assigned to complete"
+
+      - name: AGENTIC_PLAN_FOLDER
+        value: "Plan folder path"
+        purpose: "Path to plan folder containing orchestration files"
+
+      - name: AGENTIC_PARENT_SESSION
+        value: "Parent session UUID"
+        purpose: "ID of the session that spawned this one"
+
+      - name: AGENTIC_PHASE
+        value: "Current orchestration phase"
+        purpose: "Which phase of workflow this session operates in"
+
+    context_flow:
+      current_state: "FRAGMENTED - context only at Stage 1 (user prompt)"
+      desired_state: "INTEGRATED - context at spawn, available throughout lifecycle"
+
+    lifecycle_stages:
+      - stage: "User Invocation"
+        gap_severity: HIGH
+        missing: "No --role, --task, --plan flags"
+
+      - stage: "Session Creation"
+        gap_severity: HIGH
+        missing: "Session record lacks orchestration fields"
+
+      - stage: "Session Runs"
+        gap_severity: HIGH
+        missing: "No env vars set; no context in prompt"
+
+      - stage: "Session Completes"
+        gap_severity: MEDIUM
+        missing: "No task completion status; no work summary"
+
+      - stage: "Metadata Recorded"
+        gap_severity: MEDIUM
+        missing: "No parent-child relationships; no plan correlation"
+
+    recommended_priority: CRITICAL
+    recommendation: |
+      P3 is FOUNDATIONAL and should be implemented in Phase 1. All role-based
+      enforcement proposals (P4, P5) depend on sessions being able to identify
+      their role. The implementation is straightforward (50-100 LOC) and the
+      approach is industry-validated.
+
+  # ---------------------------------------------------------------------------
+  # P4: MAIN SESSION DETECTION/IDENTIFICATION
+  # ---------------------------------------------------------------------------
+
+  proposal_4_role_detection:
+    title: "Main Session Detection/Identification"
+    description: |
+      Detect session roles (orchestrator vs subagent) and enforce role-appropriate
+      behaviors through CLI command restrictions and guidance. Builds on P3's
+      context injection with enforcement logic.
+
+    investigation_tasks:
+      - EN-P4-001: "Session metadata audit (5 systems identified)"
+      - EN-P4-002: "Environment-based session identification"
+      - EN-P4-003: "Role detection and enforcement design"
+
+    implementation_complexity: MEDIUM
+
+    estimated_effort:
+      total_hours: "280"
+      breakdown:
+        phase_1_core_detection:
+          effort: "100 hours"
+          loc: 100
+          tasks:
+            - "Create orchestration/enforcement.py module"
+            - "Implement RoleEnforcer class with detection logic"
+            - "Add environment variable detection"
+
+        phase_2_cli_integration:
+          effort: "80 hours"
+          loc: 80
+          tasks:
+            - "Add enforcement to session spawn"
+            - "Add enforcement to plan archive/move"
+            - "Add enforcement to task complete"
+            - "Add --force flag to session spawn"
+
+        phase_3_whoami_command:
+          effort: "60 hours"
+          loc: 60
+          tasks:
+            - "Implement cmd_whoami()"
+            - "Add CLI parser for 'agentic session whoami'"
+            - "Add JSON output support"
+
+        phase_4_environment_injection:
+          effort: "40 hours"
+          loc: 40
+          tasks:
+            - "Add AGENTIC_* env injection to session spawn"
+            - "Add new CLI args (--role, --task, --plan, --parent-session, --phase)"
+            - "Store context in session registry"
+
+    risk_level: MEDIUM
+    risk_factors:
+      - factor: "Environment variable tampering"
+        probability: LOW
+        impact: MEDIUM
+        mitigation: "Session registry is authoritative; enforcement is defense-in-depth"
+
+      - factor: "Subagent escape via --force"
+        probability: LOW
+        impact: MEDIUM
+        mitigation: "--force only overrides WARNING level, not BLOCKING"
+
+      - factor: "Inheritance attacks"
+        probability: LOW
+        impact: MEDIUM
+        mitigation: "Each spawn explicitly sets AGENTIC_SESSION_ROLE for child"
+
+    value_impact: HIGH
+    value_rationale: |
+      Provides the enforcement layer for orchestration boundaries. Without role
+      detection, sessions can perform any action. With P4:
+      - Orchestrators can spawn subagents
+      - Subagents are restricted to assigned tasks
+      - Plan archive/move operations require orchestrator role
+      - Clear error messages guide agents to correct behaviors
+
+    infrastructure_readiness: 55%
+    infrastructure_assessment:
+      existing:
+        - "Session registry (~/.agentic/sessions/*.json)"
+        - "Session metadata with arbitrary dict"
+        - "CLI session commands (spawn, list, status, kill)"
+      needed:
+        - "Role field in session metadata"
+        - "RoleEnforcer service with detection logic"
+        - "Enforcement hooks in CLI commands"
+        - "whoami command for role introspection"
+
+    integration_points:
+      enforcement_module:
+        file: "modules/AgenticCLI/src/agenticcli/orchestration/enforcement.py (NEW)"
+        classes:
+          - "Role(Enum): ORCHESTRATOR, SUBAGENT, LEGACY"
+          - "EnforcementLevel(Enum): ADVISORY, WARNING, BLOCKING"
+          - "RoleContext(dataclass): role, source, confidence, session_id, task_id, parent_session, plan_folder, phase"
+          - "EnforcementResult(dataclass): allowed, level, message, requires_force"
+          - "RoleEnforcer: Centralized role detection and enforcement logic"
+
+      cli_commands:
+        session_spawn:
+          enforcement: "Check spawn permission based on current role"
+          blocks: "Subagent spawning orchestrator"
+          warns: "Subagent spawning additional agents (--force to override)"
+
+        plan_archive:
+          enforcement: "Only orchestrator can archive plans"
+          blocks: "Subagent archive attempts"
+
+        task_complete:
+          enforcement: "Subagent can only complete assigned task"
+          blocks: "Completing unassigned tasks"
+
+    key_deliverables:
+      - "RoleEnforcer service with multi-layer detection (env vars, registry, inference)"
+      - "Enforcement hooks at spawn, archive, move, task complete"
+      - "Graduated enforcement levels (advisory, warning, blocking)"
+      - "agentic session whoami command"
+      - "Role permissions matrix (orchestrator vs subagent)"
+
+    detection_strategy:
+      layer_1_environment:
+        priority: PRIMARY
+        mechanism: "Check AGENTIC_SESSION_ROLE environment variable"
+        confidence: HIGH
+
+      layer_2_registry:
+        priority: SECONDARY
+        mechanism: "Load from ~/.agentic/sessions/{session_id}.json"
+        confidence: MEDIUM
+
+      layer_3_inference:
+        priority: FALLBACK
+        mechanism: "Heuristics (working dir, prompt patterns, task ID presence)"
+        confidence: LOW
+
+    enforcement_levels:
+      advisory:
+        indicator: "[ADVISORY]"
+        behavior: "Log warning but allow action to proceed"
+        example: "Subagents typically don't read full plan"
+
+      warning:
+        indicator: "[WARNING]"
+        behavior: "Display prominent warning, require --force to proceed"
+        example: "Spawning additional agents as a subagent may confuse orchestration"
+
+      blocking:
+        indicator: "[ERROR]"
+        behavior: "Reject action with error. No override available"
+        example: "Subagents cannot claim orchestrator role"
+
+    role_permissions:
+      orchestrator:
+        allowed:
+          - "Read full plan files"
+          - "Spawn subagent sessions with context injection"
+          - "Monitor subagent session status"
+          - "Update plan task status"
+          - "Archive/move plans"
+        restricted:
+          - "Claim subagent role after starting as orchestrator (blocked)"
+
+      subagent:
+        allowed:
+          - "Read assigned task details from plan"
+          - "Update assigned task status"
+          - "Query own session status"
+          - "Create output/deliverables for assigned task"
+        restricted:
+          - "Spawn new sessions (warning, --force to override)"
+          - "Read full orchestration plan (advisory)"
+          - "Mark unassigned tasks as completed (blocked)"
+          - "Archive or move plans (blocked)"
+          - "Claim orchestrator role (blocked)"
+
+    recommended_priority: CRITICAL
+    recommendation: |
+      P4 is CRITICAL and should be implemented in Phase 1 (immediately after P3).
+      Without role detection, there is no enforcement boundary. P4 provides the
+      enforcement hooks that make orchestration boundaries real.
+
+  # ---------------------------------------------------------------------------
+  # P5: TMUX SESSION MANAGEMENT PATTERNS
+  # ---------------------------------------------------------------------------
+
+  proposal_5_tmux_patterns:
+    title: "Tmux Session Management Patterns"
+    description: |
+      Leverage tmux session infrastructure for role-based orchestration enforcement.
+      Extends SessionService with OrchestrationRole enum, session hierarchy tracking,
+      and quality gate integration.
+
+    investigation_tasks:
+      - EN-P5-001: "AgenticTmux infrastructure audit"
+      - EN-P5-002: "Tmux plans pattern review (3 plans)"
+      - EN-P5-003: "Tmux-based orchestration enforcement design"
+
+    implementation_complexity: MEDIUM-HIGH
+
+    estimated_effort:
+      total_hours: "250-350 (3.5 development cycles)"
+      breakdown:
+        phase_1_foundation:
+          effort: "1 development cycle"
+          deliverables:
+            - "OrchestrationRole enum"
+            - "OrchestrationContext dataclass"
+            - "OrchestrationEnforcementService (basic structure)"
+
+        phase_2_session_integration:
+          effort: "1 development cycle"
+          deliverables:
+            - "create_orchestrator() method"
+            - "spawn_builder() method"
+            - "Environment variable injection"
+            - "Session hierarchy tracking"
+
+        phase_3_cli_commands:
+          effort: "1 development cycle"
+          deliverables:
+            - "orchestration command group"
+            - "init, spawn, status, hierarchy subcommands"
+            - "session list role column"
+
+        phase_4_quality_gates:
+          effort: "0.5 development cycles"
+          deliverables:
+            - "Integration with ReviewService"
+            - "Phase approval validation"
+            - "Orchestration status display"
+
+    risk_level: MEDIUM
+    risk_factors:
+      - factor: "Environment variable conflicts"
+        probability: LOW
+        impact: LOW
+        mitigation: "Use specific AGENTIC_* prefix; document clearly"
+
+      - factor: "Tmux availability"
+        probability: LOW
+        impact: LOW
+        mitigation: "Graceful fallback to standalone mode"
+
+      - factor: "Session name collision"
+        probability: MEDIUM
+        impact: MEDIUM
+        mitigation: "Validate role consistency; warn on mismatch"
+
+      - factor: "Orphan sessions"
+        probability: MEDIUM
+        impact: MEDIUM
+        mitigation: "Orphan detection; configurable behavior"
+
+    value_impact: HIGH
+    value_rationale: |
+      Builds on existing AgenticTmux/SessionService infrastructure (85% ready).
+      Provides session-level enforcement with:
+      - Session role identification (orchestrator, builder, tester, reviewer)
+      - Session hierarchy management (parent-child relationships)
+      - Quality gate integration (phase approval workflows)
+      - Environment variable persistence in tmux sessions
+      - Audit trail for all orchestration events
+
+    infrastructure_readiness: 85%
+    infrastructure_assessment:
+      existing:
+        - "SessionService with create/attach/list/kill operations"
+        - "SessionInfo dataclass with metadata dict"
+        - "Naming conventions and validation"
+        - "Plan and worktree linking capabilities"
+        - "62 unit tests for session functionality"
+      needed:
+        - "OrchestrationRole enum and OrchestrationContext"
+        - "OrchestrationEnforcementService wrapper"
+        - "Environment variable injection via tmux set-environment"
+        - "Session hierarchy queries and management"
+
+    integration_points:
+      orchestration_service:
+        file: "modules/AgenticGuidance/src/agenticguidance/services/orchestration.py (NEW)"
+        wraps: "SessionService"
+        methods:
+          - "create_orchestrator(plan_id, plan_folder)"
+          - "spawn_builder(plan_id, assigned_tasks)"
+          - "spawn_tester(plan_id)"
+          - "spawn_reviewer(plan_id)"
+          - "get_session_context(session_name)"
+          - "validate_operation(session_name, operation)"
+          - "get_hierarchy(plan_id)"
+          - "terminate_hierarchy(plan_id)"
+
+      cli_commands:
+        file: "modules/AgenticCLI/src/agenticcli/commands/orchestration.py (NEW)"
+        subcommands:
+          - "agentic orchestration init --plan <plan_folder>"
+          - "agentic orchestration spawn builder --task <task_id>"
+          - "agentic orchestration status [--plan <plan_id>]"
+          - "agentic orchestration hierarchy [--plan <plan_id>]"
+          - "agentic orchestration terminate --plan <plan_id>"
+
+    key_deliverables:
+      - "OrchestrationRole enum (STANDALONE, ORCHESTRATOR, BUILDER, TESTER, REVIEWER)"
+      - "OrchestrationContext dataclass with role, plan_id, parent_session, assigned_tasks, current_phase"
+      - "OrchestrationEnforcementService wrapping SessionService"
+      - "Environment variable injection via tmux set-environment"
+      - "Session hierarchy management and queries"
+      - "Quality gate integration with ReviewService"
+      - "Audit trail at ~/.agentic/enforcement/audit/"
+      - "CLI orchestration command group"
+
+    session_hierarchy:
+      naming_convention: "{role}-{plan_id}[-{task_id}]"
+      examples:
+        - "orch-260131EN (orchestrator)"
+        - "build-260131EN-EN-P5-001 (builder)"
+        - "test-260131EN-EN-P5-TT1 (tester)"
+        - "review-260131EN (reviewer)"
+
+    environment_variables:
+      - AGENTIC_SESSION_ROLE: "Session's orchestration role"
+      - AGENTIC_SESSION_NAME: "This session's name"
+      - AGENTIC_PLAN_ID: "Plan ID being worked on"
+      - AGENTIC_PARENT_SESSION: "Orchestrator session that spawned this"
+      - AGENTIC_ASSIGNED_TASKS: "Comma-separated list of assigned task IDs"
+      - AGENTIC_CURRENT_PHASE: "Current orchestration phase"
+      - AGENTIC_SCOPE_PATTERN: "Regex pattern for allowed file paths"
+
+    quality_gate_workflow:
+      1_builder_completes: "Request review via agentic review request"
+      2_reviewer_observes: "View pending reviews, observe builder terminal"
+      3_reviewer_decides: "Approve or reject with reason"
+      4_phase_transition: "Phase completion blocked until approved"
+
+    patterns_from_deferred_plans:
+      source: "260130MA_multi_agent_tmux_coordination"
+      applicable_patterns:
+        - "SessionRole enum (SUPERVISOR, WORKER, OBSERVER)"
+        - "Extended SessionInfo with coordination fields"
+        - "Terminal capture for session observation"
+        - "File-based messaging (inbox pattern)"
+        - "Quality gate pattern (ReviewService)"
+        - "Audit trail for all enforcement actions"
+
+    recommended_priority: MEDIUM-HIGH
+    recommendation: |
+      P5 should be implemented in Phase 3 (after P3/P4 foundation). It builds
+      on environment-based context injection with session-level enforcement.
+      The infrastructure is 85% ready, making this a natural next step.
+
+  # ---------------------------------------------------------------------------
+  # P6: BOOTSTRAP-TIME PLAN AUTO-GENERATION
+  # ---------------------------------------------------------------------------
+
+  proposal_6_bootstrap_generation:
+    title: "Bootstrap-time Plan Auto-generation"
+    description: |
+      Generate agent-specific task files from process.yml at bootstrap time,
+      providing granular step-by-step guidance. Also supports MMD-to-task
+      transformation for plan structure.
+
+    investigation_tasks:
+      - EN-P6-001: "Process.yml structure audit (54 files)"
+      - EN-P6-002: "MMD-to-task transformation prototype"
+      - EN-P6-003: "Agent-specific plan generation design"
+
+    implementation_complexity: LOW-MEDIUM
+
+    estimated_effort:
+      total_hours: "43-68 (process.yml) + 18-28 (agent-specific) = 61-96 total"
+      breakdown:
+        en_p6_001_process_audit:
+          effort: "4-8 hours (completed)"
+          finding: "Process.yml schema is consistent; step extraction is straightforward"
+
+        en_p6_002_mmd_transformation:
+          effort: "25-40 hours"
+          phases:
+            - "Service creation: 6-10 hours"
+            - "CLI enhancement: 4-6 hours"
+            - "Agent-specific generation: 8-12 hours"
+            - "Testing/validation: 6-10 hours"
+
+        en_p6_003_agent_specific:
+          effort: "18-28 hours"
+          phases:
+            - "Core generation: 8-10 hours"
+            - "CLI integration: 4-6 hours"
+            - "Bootstrap integration: 3-5 hours"
+            - "Lifecycle management: 2-4 hours"
+            - "Testing: 1-3 hours"
+
+    risk_level: LOW
+    risk_factors:
+      - factor: "Process step dependencies - no explicit depends_on"
+        probability: MEDIUM
+        impact: LOW
+        mitigation: "Steps are sequential; use phase structure for parallelization"
+
+      - factor: "Agent type inference - no explicit mapping"
+        probability: LOW
+        impact: MEDIUM
+        mitigation: "Require agent category in process.yml metadata"
+
+      - factor: "Stale task files - process.yml changes not reflected"
+        probability: MEDIUM
+        impact: MEDIUM
+        mitigation: "Add generation timestamp; check if process.yml is newer; refresh command"
+
+    value_impact: MEDIUM-HIGH
+    value_rationale: |
+      Provides agent-specific granular guidance from process.yml steps. Agents
+      see their full workflow at bootstrap without needing to read process.yml
+      manually. Complements P2 (which provides plan-level structure) with
+      agent-level step-by-step instructions.
+
+    infrastructure_readiness: 80%
+    infrastructure_assessment:
+      existing:
+        - "agent_help.py parses process.yml (lines 210-217, 433-440)"
+        - "context.py provides bootstrap infrastructure"
+        - "Process.yml schema is consistent (54 files reviewed)"
+        - "Task schema defined in plan_example.yml"
+      needed:
+        - "Agent task generation service"
+        - "CLI command for agent task file creation"
+        - "Bootstrap integration with --generate-task-file"
+        - "Lifecycle management (create, update, archive)"
+
+    integration_points:
+      process_yml_parsing:
+        source: "modules/AgenticCLI/src/agenticcli/commands/agent_help.py"
+        reusable: "_load_agent_context(), _load_agent_bootstrap_context()"
+
+      bootstrap_command:
+        file: "modules/AgenticCLI/src/agenticcli/commands/context.py"
+        function: "cmd_bootstrap()"
+        enhancement: "Add --generate-task-file parameter"
+
+      task_file_location:
+        recommended: ".claude/task-lists/<role>.yml"
+        rationale: "Global, role-indexed; session ID not required"
+
+      mmd_parsing:
+        source: "EN-P2-003 MMD transformation design"
+        integration: "MMDParserService for orchestration-level task extraction"
+
+    key_deliverables:
+      - "services/agent_task_generator.py (extract steps from process.yml)"
+      - "Task file schema (.claude/task-lists/<role>.yml)"
+      - "agentic context generate-agent command"
+      - "agentic context bootstrap --generate-task-file enhancement"
+      - "Lifecycle commands (list, archive, cleanup, restore)"
+      - "MMDParserService for plan-level task extraction (from P2)"
+
+    file_structure:
+      location: ".claude/task-lists/<role>.yml"
+      schema:
+        metadata:
+          - role: "build-python"
+          - session_id: "abc123def-xyz789"
+          - source_process: "/path/to/process.yml"
+          - generated_at: "2026-02-01T10:35:00Z"
+          - parent_plan: "260131EN_orchestration_enforcement"
+        tasks:
+          - id: "step_1"
+          - name: "CCI Bootstrap"
+          - description: "Execute context initialization commands..."
+          - status: "pending"
+          - sequence: 1
+          - depends_on: []
+
+    discovery_mechanism:
+      trigger: "agentic context bootstrap --role build-python"
+      flow: |
+        cmd_bootstrap() detects role
+            ↓
+        Check for .claude/task-lists/build-python.yml
+            ↓
+        If exists: Load and return (with file path in context)
+        If not exists: Generate from process.yml → Save → Return
+
+    lifecycle:
+      creation: "Session spawn or plan start"
+      execution: "Agent updates status as working through tasks"
+      archival: "Auto-archive to .claude/task-lists/completed/ on session end"
+
+    step_formats:
+      format_1_string:
+        prevalence: "95%"
+        extraction: "First line becomes task name; full text becomes description"
+
+      format_2_dict:
+        prevalence: "5% (orchestration-executor)"
+        extraction: "step.id becomes task.id; step.name becomes task.name"
+
+    recommended_priority: MEDIUM
+    recommendation: |
+      P6 should be implemented in Phase 4 (after P2, P3, P4, P5 foundation).
+      It provides agent-level granularity that complements plan-level structure
+      from P2. The process.yml parsing is straightforward (80% infrastructure
+      ready) and provides immediate value for agent guidance.
+
+# =============================================================================
+# CROSS-PROPOSAL DEPENDENCIES
+# =============================================================================
+
+cross_proposal_dependencies:
+
+  foundational_proposals:
+    - proposal: P3
+      title: "Session Spawn Context Injection"
+      dependents: [P4, P5]
+      rationale: "All role-based enforcement depends on sessions knowing their role"
+
+    - proposal: P4
+      title: "Role Detection/Identification"
+      dependents: [P5]
+      rationale: "Session-level enforcement requires role detection logic"
+
+  complementary_pairs:
+    - pair: [P2, P6]
+      relationship: "Plan-level vs Agent-level task structure"
+      integration: "P2 provides orchestration structure; P6 provides agent steps"
+
+    - pair: [P1, P2]
+      relationship: "Task tracking vs Task preloading"
+      integration: "P2 generates tasklists; P1 tracks their status"
+
+    - pair: [P4, P5]
+      relationship: "Role detection vs Session enforcement"
+      integration: "P4 detects roles; P5 enforces session hierarchy"
+
+  dependency_graph: |
+    P3 (Session Context Injection) ─── foundational for ──→ P4 (Role Detection)
+                                                                   │
+                                                                   └──→ P5 (Tmux Patterns)
+
+    P2 (Preloaded Tasklists) ──── complements ──→ P1 (CLI Tasklist Tracking)
+           │
+           └──── complements ──→ P6 (Bootstrap Plan Generation)
+
+  implementation_sequence:
+    phase_1_foundation:
+      proposals: [P3, P4]
+      rationale: "Establish environment-based context and role detection"
+
+    phase_2_structure:
+      proposals: [P2]
+      rationale: "Add plan-level task structure from MMD parsing"
+
+    phase_3_enforcement:
+      proposals: [P5]
+      rationale: "Session-level hierarchy enforcement with tmux"
+
+    phase_4_granularity:
+      proposals: [P6]
+      rationale: "Agent-level step-by-step guidance"
+
+    phase_5_optional:
+      proposals: [P1]
+      rationale: "Enhanced task tracking and gates (if needed after P2)"
+
+# =============================================================================
+# RECOMMENDED PRIORITY ORDER
+# =============================================================================
+
+recommended_priority_order:
+
+  critical_path:
+    tier_1_foundation:
+      priority: CRITICAL
+      proposals:
+        - id: P3
+          title: "Session Spawn Context Injection"
+          reason: "Foundational for all role-based enforcement"
+          effort: "80-100 hours"
+
+        - id: P4
+          title: "Role Detection/Identification"
+          reason: "Enforcement layer for orchestration boundaries"
+          effort: "280 hours"
+
+      total_effort: "360-380 hours"
+      dependencies: None
+
+    tier_2_structure:
+      priority: HIGH
+      proposals:
+        - id: P2
+          title: "Preloaded Tasklists at Plan Start"
+          reason: "Plan structure visibility for orchestrators and agents"
+          effort: "40-60 hours"
+
+      total_effort: "40-60 hours"
+      dependencies: "None (optional: P3/P4 for enhanced context)"
+
+    tier_3_enforcement:
+      priority: MEDIUM-HIGH
+      proposals:
+        - id: P5
+          title: "Tmux Session Management Patterns"
+          reason: "Session hierarchy enforcement with quality gates"
+          effort: "250-350 hours"
+
+      total_effort: "250-350 hours"
+      dependencies: "P3, P4"
+
+    tier_4_granularity:
+      priority: MEDIUM
+      proposals:
+        - id: P6
+          title: "Bootstrap-time Plan Auto-generation"
+          reason: "Agent-level step-by-step guidance"
+          effort: "61-96 hours"
+
+      total_effort: "61-96 hours"
+      dependencies: "None (optional: P2 for MMD-based generation)"
+
+    tier_5_optional:
+      priority: LOW
+      proposals:
+        - id: P1
+          title: "CLI Tasklist Orchestration Tracking"
+          reason: "Enhanced task tracking (redundant if P2 implemented)"
+          effort: "80-100 hours"
+
+      total_effort: "80-100 hours"
+      dependencies: "None"
+
+  implementation_roadmap:
+    phase_1:
+      name: "Foundation (P3 + P4)"
+      duration: "8-12 weeks"
+      effort: "360-380 hours"
+      deliverables:
+        - "Environment-based context injection"
+        - "Role detection and enforcement"
+        - "Session hierarchy tracking"
+        - "CLI enforcement hooks"
+
+    phase_2:
+      name: "Structure (P2)"
+      duration: "2-3 weeks"
+      effort: "40-60 hours"
+      deliverables:
+        - "MMD-to-tasklist transformation"
+        - "Plan structure preloading"
+        - "Agent-specific task filtering"
+
+    phase_3:
+      name: "Session Enforcement (P5)"
+      duration: "6-8 weeks"
+      effort: "250-350 hours"
+      deliverables:
+        - "Tmux-based session management"
+        - "Session hierarchy enforcement"
+        - "Quality gate integration"
+        - "Audit trail"
+
+    phase_4:
+      name: "Agent Guidance (P6)"
+      duration: "3-4 weeks"
+      effort: "61-96 hours"
+      deliverables:
+        - "Agent task file generation"
+        - "Bootstrap integration"
+        - "Lifecycle management"
+
+    phase_5:
+      name: "Optional Enhancement (P1)"
+      duration: "2-3 weeks (if needed)"
+      effort: "80-100 hours"
+      deliverables:
+        - "Enhanced task tracking"
+        - "Gate validation commands"
+        - "Completion hooks"
+
+  total_timeline:
+    minimum_viable: "Phase 1 + Phase 2: 10-15 weeks"
+    recommended: "Phase 1-4: 19-27 weeks"
+    comprehensive: "Phase 1-5: 21-30 weeks"
+
+# =============================================================================
+# INTEGRATION STRATEGY
+# =============================================================================
+
+integration_strategy:
+
+  parallel_implementation:
+    group_1:
+      proposals: [P3, P4]
+      can_develop_in_parallel: false
+      reason: "P4 depends on P3's environment variables"
+      sequence: "P3 first, then P4"
+
+    group_2:
+      proposals: [P2, P6]
+      can_develop_in_parallel: true
+      reason: "Both parse different sources (MMD vs process.yml)"
+      coordination: "Share task schema format"
+
+  integration_points:
+    session_spawn:
+      proposals_integrating: [P3, P4]
+      file: "modules/AgenticCLI/src/agenticcli/commands/session.py"
+      changes:
+        - "P3: Environment variable injection"
+        - "P4: Role-based enforcement checks"
+
+    context_bootstrap:
+      proposals_integrating: [P2, P6]
+      file: "modules/AgenticCLI/src/agenticcli/commands/context.py"
+      changes:
+        - "P2: Include preloaded tasklist from MMD"
+        - "P6: Generate agent task file from process.yml"
+
+    session_service:
+      proposals_integrating: [P5]
+      file: "modules/AgenticGuidance/src/agenticguidance/services/session.py"
+      changes:
+        - "P5: Wrap with OrchestrationEnforcementService"
+
+  shared_components:
+    task_schema:
+      used_by: [P1, P2, P6]
+      location: "plan_example.yml task structure"
+
+    environment_variables:
+      used_by: [P3, P4, P5]
+      prefix: "AGENTIC_*"
+
+    session_registry:
+      used_by: [P3, P4, P5]
+      location: "~/.agentic/sessions/*.json"
+
+# =============================================================================
+# SUCCESS CRITERIA
+# =============================================================================
+
+success_criteria:
+
+  functional:
+    - criterion: "Sessions can identify their role (orchestrator vs subagent)"
+      proposals: [P3, P4]
+      validation: "agentic session whoami shows role correctly"
+
+    - criterion: "Orchestrators can spawn subagent sessions with context"
+      proposals: [P3, P4, P5]
+      validation: "Spawned session sees AGENTIC_SESSION_ROLE=subagent"
+
+    - criterion: "Subagents are blocked from orchestrator-only operations"
+      proposals: [P4, P5]
+      validation: "Subagent cannot archive plan; receives blocking error"
+
+    - criterion: "Plans have preloaded tasklists from MMD"
+      proposals: [P2]
+      validation: "entrypoint execute --compile includes tasklist"
+
+    - criterion: "Agents receive step-by-step task files at bootstrap"
+      proposals: [P6]
+      validation: "agentic context bootstrap includes agent task file"
+
+    - criterion: "Session hierarchy is tracked and queryable"
+      proposals: [P5]
+      validation: "agentic orchestration hierarchy shows parent-child tree"
+
+  non_functional:
+    - criterion: "Session spawn adds < 100ms overhead"
+      proposals: [P3, P4]
+
+    - criterion: "MMD parsing completes in < 500ms for typical files"
+      proposals: [P2]
+
+    - criterion: "No breaking changes to existing CLI commands"
+      proposals: [P1, P2, P3, P4, P5, P6]
+
+    - criterion: "Clear error messages for enforcement violations"
+      proposals: [P4, P5]
+
+    - criterion: "Backward compatibility for sessions without orchestration context"
+      proposals: [P3, P4, P5]
+
+# =============================================================================
+# RISK MATRIX
+# =============================================================================
+
+risk_matrix:
+  header:
+    - Proposal
+    - Technical Risk
+    - Implementation Risk
+    - Adoption Risk
+    - Overall Risk
+
+  rows:
+    - proposal: P1
+      technical_risk: MEDIUM
+      technical_detail: "Enforcement bypass via YAML edits"
+      implementation_risk: LOW
+      implementation_detail: "Extends existing infrastructure"
+      adoption_risk: MEDIUM
+      adoption_detail: "Requires agent discipline"
+      overall_risk: MEDIUM
+
+    - proposal: P2
+      technical_risk: LOW
+      technical_detail: "MMD parsing robust with consistent format"
+      implementation_risk: LOW
+      implementation_detail: "Clear extension point at entrypoint execute"
+      adoption_risk: LOW
+      adoption_detail: "Transparent to agents; no behavior change"
+      overall_risk: LOW
+
+    - proposal: P3
+      technical_risk: LOW
+      technical_detail: "Environment variables are standard"
+      implementation_risk: LOW
+      implementation_detail: "Straightforward subprocess env injection"
+      adoption_risk: LOW
+      adoption_detail: "Transparent to agents; opt-in context"
+      overall_risk: LOW
+
+    - proposal: P4
+      technical_risk: MEDIUM
+      technical_detail: "Role tampering possible; enforcement advisory"
+      implementation_risk: MEDIUM
+      implementation_detail: "Enforcement hooks in multiple CLI commands"
+      adoption_risk: MEDIUM
+      adoption_detail: "Requires agent awareness of role restrictions"
+      overall_risk: MEDIUM
+
+    - proposal: P5
+      technical_risk: MEDIUM
+      technical_detail: "Tmux-specific; orphan sessions; name collisions"
+      implementation_risk: MEDIUM
+      implementation_detail: "Complex session hierarchy management"
+      adoption_risk: MEDIUM
+      adoption_detail: "Requires tmux environment; new workflows"
+      overall_risk: MEDIUM
+
+    - proposal: P6
+      technical_risk: LOW
+      technical_detail: "Process.yml schema consistent; parsing straightforward"
+      implementation_risk: LOW
+      implementation_detail: "Reuses agent_help.py patterns"
+      adoption_risk: LOW
+      adoption_detail: "Transparent; enhances existing bootstrap"
+      overall_risk: LOW
+
+# =============================================================================
+# CONCLUSION
+# =============================================================================
+
+conclusion:
+
+  overall_assessment: |
+    All six proposals are technically feasible. The recommended approach is
+    a phased implementation starting with foundational proposals (P3, P4),
+    adding structure (P2), then session enforcement (P5) and agent guidance (P6).
+    P1 becomes optional if P2 is implemented.
+
+  critical_decisions:
+    - decision: "Implement P3 + P4 first (environment-based context and role detection)"
+      rationale: "Foundational for all other enforcement proposals"
+
+    - decision: "Implement P2 for plan structure visibility"
+      rationale: "High value, low risk, complements other proposals"
+
+    - decision: "Defer P1 unless P2 is insufficient"
+      rationale: "P2 provides similar task structure without enforcement gaps"
+
+    - decision: "Implement P5 after P3/P4 foundation"
+      rationale: "Builds on environment-based context with session hierarchy"
+
+    - decision: "Implement P6 for agent-level granularity"
+      rationale: "Complements P2's plan-level structure with agent steps"
+
+  minimum_viable_product:
+    proposals: [P3, P4, P2]
+    effort: "400-440 hours"
+    timeline: "10-15 weeks"
+    deliverables:
+      - "Environment-based context injection"
+      - "Role detection and enforcement"
+      - "Preloaded tasklists from MMD"
+      - "Session hierarchy tracking"
+      - "CLI enforcement hooks"
+
+  recommended_full_implementation:
+    proposals: [P3, P4, P2, P5, P6]
+    effort: "711-886 hours"
+    timeline: "19-27 weeks"
+    deliverables: "All MVP deliverables plus:"
+    additional:
+      - "Tmux-based session management"
+      - "Quality gate integration"
+      - "Agent task file generation"
+      - "Audit trail"
+
+  next_steps:
+    1: "Review and approve this comparison matrix"
+    2: "Prioritize P3 + P4 for Phase 1 implementation"
+    3: "Create implementation plans for P3 and P4"
+    4: "Schedule P2 for Phase 2 (parallel with P3/P4 if resources allow)"
+    5: "Plan P5 and P6 for subsequent phases"
+
+# =============================================================================
+# REFERENCES
+# =============================================================================
+
+references:
+  investigation_documents:
+    - proposal_1_gaps_analysis.yml
+    - proposal_1_complexity_assessment.yml
+    - EN-P2-001_plan_start_analysis.yml
+    - EN-P2-002_mmd_format_analysis.yml
+    - EN-P2-003_mmd_transformation_design.yml
+    - EN-P3-001_session_spawn_audit.yml
+    - EN-P3-002_session_context_flow_lifecycle.yml
+    - EN-P3-003_context_injection_design.yml
+    - EN-P4-001_session_metadata_audit.yml
+    - EN-P4-002_environment_session_identification.yml
+    - EN-P4-003_role_detection_enforcement_design.yml
+    - EN-P5-001_agentictmux_audit.yml
+    - EN-P5-002_tmux_patterns_review.yml
+    - EN-P5-003_tmux_orchestration_enforcement_design.yml
+    - EN-P6-001_process_yml_audit.yml
+    - EN-P6-002_mmd_task_transformation_prototype.yml
+    - EN-P6-003_agent_plan_generation_design.yml
+
+  plan_documents:
+    - orchestration_orchestration_enforcement.mmd
+    - plan_teach.yml
+    - friction_analysis.yml

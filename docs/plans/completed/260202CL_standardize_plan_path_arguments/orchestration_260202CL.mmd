@@ -1,0 +1,110 @@
+flowchart LR
+    %% GOAL: Orchestrate standardization of plan path arguments across all agentic CLI plan subcommands.
+    %% PROFILE: Orchestration-Executor
+    %% INPUT_PATH: docs/plans/live/260202CL_standardize_plan_path_arguments/plan_build.yml
+    %% OUTPUT: Updated CLI with consistent --plan/-p flag support across all plan subcommands
+    %% GUIDELINE: BUILD FOCUS policy - code implementation and testing for CLI argument consistency
+
+    %% AGENT_ROUTING: BuildPhase -> build-python, ManualTest -> test-runner, AutomatedTest -> test-runner, Audit -> test-final-output
+    %% STATUS: BuildPhase=pending, ManualTest=pending, AutomatedTest=pending, Audit=pending
+
+    Start((Start)) --> LoadPlan[Load Plan Files]
+
+    %% ========================================
+    %% BUILD PHASE
+    %% ========================================
+    %% Implement consistent --plan/-p flags across plan subcommands
+
+    LoadPlan --> BuildPhaseStart((Build Phase Start))
+
+    subgraph BuildPhase_SG ["Build Phase Subgraph"]
+        BuildPhaseStart --> SpawnBuilder[Spawn build-python Agent]
+        SpawnBuilder --> AuditSubcommands[Execute build-01-01: Audit plan subcommands]
+        AuditSubcommands --> UpdateStatusParser[Execute build-01-02: Update status parser]
+        UpdateStatusParser --> UpdateValidateParser[Execute build-01-03: Update validate parser]
+        UpdateValidateParser --> UpdateArchiveParser[Execute build-01-04: Update archive parser]
+        UpdateArchiveParser --> UpdateHandlers[Execute build-01-05: Update command handlers]
+        UpdateHandlers --> VerifyConsistency[Execute build-01-06: Verify consistency]
+        VerifyConsistency --> BuildComplete{Build Phase Complete?}
+        BuildComplete -- "No: Blocked" --> AskUser((Ask User for Clarification))
+        BuildComplete -- "Yes: Implementation Done" --> ManualTestPhaseStart
+    end
+
+    %% ========================================
+    %% MANUAL TEST PHASE
+    %% ========================================
+    %% Verify new flag behavior with manual testing
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.test-fix-loop
+    %% MAX_ITERATIONS: 3 (per test-fix-loop definition)
+    %% ESCALATION: If max iterations reached without passing tests, stop and Ask User
+
+    subgraph ManualTest_SG ["Manual Test Subgraph"]
+        ManualTestPhaseStart((Manual Test Phase Start)) --> SpawnManualTester[Spawn test-runner Agent]
+        SpawnManualTester --> TestStatusWithFlag[Execute test-01-01: Test plan status --plan]
+        TestStatusWithFlag --> TestStatusPositional[Execute test-01-02: Test plan status positional]
+        TestStatusPositional --> TestValidateWithFlag[Execute test-01-03: Test plan validate --plan]
+        TestValidateWithFlag --> TestArchiveWithFlag[Execute test-01-04: Test plan archive --plan]
+        TestArchiveWithFlag --> ManualTestResults{Manual Tests Passed?}
+        ManualTestResults -- "No: Fix in Iteration" --> SpawnBuilder
+        ManualTestResults -- "No: Escalate" --> CategorizeFailure[Categorize Test Failure]
+        CategorizeFailure --> UpdatePlanTests[Update Plan with Test Failure Context]
+        UpdatePlanTests -.->|Re-plan with TEST_FAILURE| AskUser
+        ManualTestResults -- "Yes: All Manual Tests Passed" --> AutomatedTestPhaseStart
+    end
+
+    %% FEEDBACK_TRIGGER: TEST_FAILURE -> SpawnBuilder (iteration) or AskUser (escalation)
+
+    %% ========================================
+    %% AUTOMATED TEST PHASE
+    %% ========================================
+    %% Add integration tests for new argument patterns
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.test-fix-loop
+    %% MAX_ITERATIONS: 3 (per test-fix-loop definition)
+    %% ESCALATION: If max iterations reached without passing tests, stop and Ask User
+
+    subgraph AutomatedTest_SG ["Automated Test Subgraph"]
+        AutomatedTestPhaseStart((Automated Test Phase Start)) --> SpawnTestBuilder[Spawn build-python Agent for Test Creation]
+        SpawnTestBuilder --> AddIntegrationTests[Execute test-02-01: Add integration tests]
+        AddIntegrationTests --> RunIntegrationTests[Spawn test-runner to Execute Tests]
+        RunIntegrationTests --> AutomatedTestResults{Integration Tests Passed?}
+        AutomatedTestResults -- "No: Fix in Iteration" --> SpawnTestBuilder
+        AutomatedTestResults -- "No: Escalate" --> CategorizeAutomatedFailure[Categorize Test Failure]
+        CategorizeAutomatedFailure --> UpdatePlanAutomated[Update Plan with Test Failure Context]
+        UpdatePlanAutomated -.->|Re-plan with TEST_FAILURE| AskUser
+        AutomatedTestResults -- "Yes: All Tests Passed" --> AuditPhaseStart
+    end
+
+    %% FEEDBACK_TRIGGER: TEST_FAILURE -> SpawnTestBuilder (iteration) or AskUser (escalation)
+
+    %% ========================================
+    %% AUDIT PHASE
+    %% ========================================
+    %% Code quality, documentation, and plan validation
+
+    subgraph Audit_SG ["Audit & Cleanup Subgraph"]
+        AuditPhaseStart((Audit Phase Start)) --> SpawnAudit[Spawn test-final-output Audit]
+        SpawnAudit --> CodeQuality[Check code quality and consistency]
+        CodeQuality --> HelpTextValidation[Validate help text consistency]
+        HelpTextValidation --> PlanValidation[Validate plan folder structure]
+        PlanValidation --> AuditResults{Audit Passed?}
+        AuditResults -- "No: Issues Found" --> AskUser
+        AuditResults -- "Yes: Ready for Completion" --> OutputPhase
+    end
+
+    %% ========================================
+    %% OUTPUT PHASE
+    %% ========================================
+
+    subgraph Output_SG ["Output Subgraph"]
+        OutputPhase[Generate Completion Report] --> ReportChanges[Document CLI changes and usage patterns]
+        ReportChanges --> MarkComplete[Mark plan as completed]
+    end
+
+    MarkComplete --> End((End: Standardization Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    %% Feedback loop styling for re-planning paths
+    classDef dashedstroke stroke-dasharray: 5 5;
+    linkStyle 17,18,23,24 stroke:#888,stroke-width:2px,stroke-dasharray: 5 5;

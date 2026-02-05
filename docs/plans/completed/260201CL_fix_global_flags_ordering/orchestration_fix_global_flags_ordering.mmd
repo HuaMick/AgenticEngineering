@@ -1,0 +1,154 @@
+%% =============================================================================
+%% GOAL: Execute plan tasks
+%% =============================================================================
+%% PROFILE: Orchestration-260201CL_fix_global_flags_ordering
+%% INPUT_PATH: docs/plans/live/260201CL_fix_global_flags_ordering/plan_build.yml
+%%
+%% PHASES:
+%%   P1: Audit
+%%   P2: Implement
+%%   P3: Verify
+%%   test-01: Position Validation
+%%   test-02: Conflict Validation
+%%
+%% AGENT_ROUTING: P1 -> builder, P2 -> builder, P3 -> test-builder, test-01 -> test-builder, test-02 -> test-builder
+%% STATUS: P1=pending, P2=pending, P3=pending, test-01=pending, test-02=pending
+%% FEEDBACK_TRIGGERS: TEST_FAILURE -> test-fix-loop, BUILD_FAILURE -> escalate
+%% =============================================================================
+
+flowchart LR
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    LoadInputs --> ReviewInputs[Review All Listed Inputs]
+    ReviewInputs --> CheckInputs{All Inputs Found?}
+
+    CheckInputs -- "No: Missing" --> SearchInputs[Search for Missing Inputs]
+    SearchInputs --> Found{Found?}
+    Found -- "Yes: Update paths" --> UpdateRefs[Update References]
+    UpdateRefs --> ReviewInputs
+    Found -- "No: Stop" --> AskUser((Ask User for Clarification))
+
+    CheckInputs -- "Yes: Verified" --> Phase1
+
+    %% ========================================
+    %% PHASE 1: AUDIT
+    %% ========================================
+    %% AGENT_ROUTING: builder agent
+    %% Tasks: 01, 02
+
+    subgraph P1_SG ["Audit"]
+        Phase1[Enter Audit] --> SpawnAgent1[Spawn builder Agent]
+        SpawnAgent1 --> Task_P1_1[01: Audit all existing commands for flag conflicts]
+        Task_P1_1 --> Task_P1_2[02: Verify flag parsing behavior with deep nesting]
+        Task_P1_2 --> Phase1Complete[Audit Complete]
+    end
+
+    Phase1Complete --> Phase2
+
+    %% ========================================
+    %% PHASE 2: IMPLEMENT
+    %% ========================================
+    %% AGENT_ROUTING: builder agent
+    %% Tasks: 01, 02, 03
+
+    subgraph P2_SG ["Implement"]
+        Phase2[Enter Implement] --> SpawnAgent2[Spawn builder Agent]
+        SpawnAgent2 --> Task_P2_1[01: Define GlobalParentParser]
+        Task_P2_1 --> Task_P2_2[02: Implement SubparserWrapper]
+        Task_P2_2 --> Task_P2_3[03: Handle flag conflicts]
+        Task_P2_3 --> Phase2Complete[Implement Complete]
+    end
+
+    Phase2Complete --> Phase3
+
+    %% ========================================
+    %% PHASE 3: VERIFY
+    %% ========================================
+    %% AGENT_ROUTING: test-builder agent
+    %% Tasks: 01, 02
+
+    subgraph P3_SG ["Verify"]
+        Phase3[Enter Verify] --> SpawnAgent3[Spawn test-builder Agent]
+        SpawnAgent3 --> Task_P3_1[01: Run verification tests]
+        Task_P3_1 --> Task_P3_2[02: Check help output]
+        Task_P3_2 --> Phase3Complete[Verify Complete]
+    end
+
+    Phase3Complete --> Phase4
+
+    %% ========================================
+    %% PHASE 4: POSITION VALIDATION
+    %% ========================================
+    %% AGENT_ROUTING: test-builder agent with test-fix loop
+    %% LOOP_DEFINITION: test-fix-loop
+    %% MAX_ITERATIONS: 5
+
+    subgraph Testing4_SG ["Position Validation (Test-Fix-Loop)"]
+        Phase4[Enter Position Validation] --> SpawnTestBuilder4[Spawn test-builder Agent]
+        SpawnTestBuilder4 --> RunTests4[Run Tests]
+        RunTests4 --> TestsPassed4{Tests Passed?}
+
+        %% Test-Fix Loop: retry path
+        TestsPassed4 -- "No: Fix in Iteration" --> SpawnBuilderFix4[Spawn builder Agent for Fixes]
+        SpawnBuilderFix4 --> ApplyFixes4[Apply Implementation Fixes]
+        ApplyFixes4 --> RunTests4
+
+        %% Success path
+        TestsPassed4 -- "Yes: All Pass" --> Phase4Complete[Position Validation Complete]
+    end
+
+    %% Escalation path for persistent test failures
+    TestsPassed4 -- "No: Escalate" --> CheckIterations4{Max Iterations Reached?}
+    CheckIterations4 -- "No" --> SpawnTestBuilder4
+    CheckIterations4 -- "Yes" --> EscalateTests4((Ask User: Test Failures Persist))
+
+    Phase4Complete --> Phase5
+
+    %% ========================================
+    %% PHASE 5: CONFLICT VALIDATION
+    %% ========================================
+    %% AGENT_ROUTING: test-builder agent with test-fix loop
+    %% LOOP_DEFINITION: test-fix-loop
+    %% MAX_ITERATIONS: 5
+
+    subgraph Testing5_SG ["Conflict Validation (Test-Fix-Loop)"]
+        Phase5[Enter Conflict Validation] --> SpawnTestBuilder5[Spawn test-builder Agent]
+        SpawnTestBuilder5 --> RunTests5[Run Tests]
+        RunTests5 --> TestsPassed5{Tests Passed?}
+
+        %% Test-Fix Loop: retry path
+        TestsPassed5 -- "No: Fix in Iteration" --> SpawnBuilderFix5[Spawn builder Agent for Fixes]
+        SpawnBuilderFix5 --> ApplyFixes5[Apply Implementation Fixes]
+        ApplyFixes5 --> RunTests5
+
+        %% Success path
+        TestsPassed5 -- "Yes: All Pass" --> Phase5Complete[Conflict Validation Complete]
+    end
+
+    %% Escalation path for persistent test failures
+    TestsPassed5 -- "No: Escalate" --> CheckIterations5{Max Iterations Reached?}
+    CheckIterations5 -- "No" --> SpawnTestBuilder5
+    CheckIterations5 -- "Yes" --> EscalateTests5((Ask User: Test Failures Persist))
+
+
+    %% ========================================
+    %% FINALIZATION
+    %% ========================================
+    Phase5Complete --> UpdatePlanStatus[Update Plan Status: completed]
+    %% agentic plan move folder --plan <path>
+    UpdatePlanStatus --> ArchivePlan[Archive to docs/plans/completed/]
+    ArchivePlan --> End((End: Plan Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef entrypoint fill:#90EE90,stroke:#228B22
+    classDef exitpoint fill:#FFB6C1,stroke:#DC143C
+    classDef userpoint fill:#87CEEB,stroke:#4682B4
+    classDef keyaction fill:#FFD700,stroke:#DAA520
+    class Start entrypoint
+    class End exitpoint
+    class AskUser,EscalateTests4,EscalateTests5 userpoint

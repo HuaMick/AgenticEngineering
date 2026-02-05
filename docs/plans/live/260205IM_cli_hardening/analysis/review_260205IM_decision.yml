@@ -1,0 +1,359 @@
+# Planner-Reviewer Decision: 260205IM_cli_hardening
+# Review Date: 2026-02-05
+# Reviewer: planner-reviewer
+# Plan Folder: /home/code/AgenticEngineering/docs/plans/live/260205IM_cli_hardening
+
+review_decision: "REJECTED"
+
+decision_summary: |
+  The 260205IM_cli_hardening plan is REJECTED due to a BLOCKING infrastructure violation.
+  The test plan references the 'documenter' agent which belongs to the 'documentation'
+  category - a category that is explicitly marked as NOT YET IMPLEMENTED in the
+  infrastructure status documentation.
+
+# =============================================================================
+# INFRASTRUCTURE VERIFICATION (BLOCKING)
+# =============================================================================
+infrastructure_verification:
+  status: "FAILED"
+  blocking: true
+
+  violations:
+    - violation_id: "INF-001"
+      severity: "CRITICAL"
+      category: "unimplemented_agent"
+      description: "Test plan references 'documenter' agent (task DOC_001)"
+      location: "plan_test.yml:717 (task DOC_001)"
+      evidence: |
+        Line 717: agent: "documenter"
+
+        Infrastructure Status Check:
+        - modules/AgenticGuidance/README.md does NOT list 'documenter' as implemented
+        - modules/AgenticGuidance/assets/definitions/agent-categories.yml line 19 states:
+          "NOT YET IMPLEMENTED: cleaner/*, explore/*, documentation/*"
+        - Directory check: modules/AgenticGuidance/agents/documentation/ does NOT EXIST
+
+      rejection_reason: |
+        Per planner-reviewer process step 3 (INFRASTRUCTURE VERIFICATION):
+        "REJECT if plan includes tasks targeting documentation/* agents
+        (documentation category not migrated)"
+
+        The documentation category and all documentation/* agents are placeholder
+        entries in the taxonomy but lack implementation. Plans cannot target
+        unimplemented infrastructure.
+
+      remediation: |
+        Option 1 (Recommended): Remove Documentation Phase
+        - Delete Phase 6 (Documentation Phase) from plan_test.yml
+        - This is optional documentation work, not critical for CLI hardening validation
+        - Documentation can be handled separately once documentation/* agents are implemented
+
+        Option 2: Use teacher-update-assets Agent
+        - Change task DOC_001 agent from "documenter" to "teacher-update-assets"
+        - teacher-update-assets is IMPLEMENTED and can update documentation
+        - Update guidance to reflect teacher agent's documentation update process
+        - Note: teacher agents are for guidance/documentation improvements
+
+      recommended_action: "Remove Documentation Phase (Option 1)"
+
+# =============================================================================
+# STRUCTURAL VALIDATION (Conditional - Passed but not evaluated fully due to INF-001)
+# =============================================================================
+structural_validation:
+  status: "NOT_COMPLETED"
+  note: "Structural validation halted after infrastructure verification failure"
+
+  preliminary_findings:
+    plan_structure:
+      status: "PASS"
+      notes:
+        - "Plan has unique name: cli-hardening-and-idempotency"
+        - "Worktree path is absolute: /home/code/AgenticEngineering"
+        - "Plan folder follows YYMMDDXX_description: 260205IM_cli_hardening"
+        - "Objective clearly states CLI hardening goals"
+
+    inputs:
+      status: "PASS"
+      notes:
+        - "Build plan inputs reference existing files (session.py, loop.py, plan.py)"
+        - "Test plan inputs reference existing agent guidance directories"
+        - "All referenced implementation files verified to exist"
+
+    success_criteria:
+      status: "PASS"
+      notes:
+        - "Build plan has specific code location success criteria"
+        - "Test plan has measurable UAT success criteria"
+        - "Success criteria specify observable outcomes"
+
+    task_structure:
+      status: "PASS"
+      notes:
+        - "All build tasks specify exact target files"
+        - "All tasks completed in build plan (IM_001-IM_004)"
+        - "Test tasks properly specify test file locations"
+        - "Agent assignments are appropriate (except DOC_001)"
+
+    pattern_alignment:
+      status: "PASS"
+      notes:
+        - "Test plan follows proper phase ordering"
+        - "Environment setup phase included"
+        - "UAT phase marked as MANDATORY"
+
+    loop_structure:
+      status: "PASS"
+      notes:
+        - "Test plan includes loop_structures section"
+        - "Four loop types defined: test-fix, integration-test-fix, audit, uat"
+        - "All loops have max_iterations and escalation paths"
+        - "audit-test-fix-loop marked as mandatory"
+        - "user-story-validation-loop marked as mandatory"
+
+    context_quality:
+      status: "PASS"
+      notes:
+        - "No inline definitions duplicating shared assets detected"
+        - "File references validated and resolve correctly"
+        - "No circular references detected"
+
+# =============================================================================
+# FENCE VALIDATION
+# =============================================================================
+fence_validation:
+  rlm_usage:
+    status: "SKIPPED"
+    reason: "Plan does not reference RLM patterns"
+
+  mmd_presence:
+    status: "INFO"
+    finding: "No orchestration_*.mmd file found"
+    severity: "LOW"
+    assessment: |
+      The plan has 6 phases (2 in build, 4 in test). Per checklist exception:
+      "Single-task plans (1 phase with 1 task) may be approved without MMD"
+
+      This is a multi-phase plan, but:
+      - Build plan is marked "implementation_complete" (not under review for execution)
+      - Test plan is the active execution target
+      - Test plan has clear phase ordering and loop structures
+
+      Recommendation: Consider adding orchestration MMD for test plan execution clarity,
+      but not blocking since loop structures are well-defined.
+
+  file_placement:
+    status: "PASS"
+    notes:
+      - "Only plan_build.yml and plan_test.yml in live/ folder"
+      - "No completed plans in live/"
+      - "No audit reports in live/"
+      - "No analysis/documentation files in live/ (except this review)"
+
+  codebase_verification:
+    status: "PASS"
+    notes:
+      - "Implementation code verified at specified line numbers"
+      - "session.py lines 363-373: Terminal state check implemented"
+      - "session.py lines 398-412: ProcessLookupError handling implemented"
+      - "loop.py lines 361-371: Terminal state check implemented"
+      - "loop.py lines 403-417: ProcessLookupError handling implemented"
+      - "plan.py lines 475-562: Bootstrap command implemented"
+      - "planner role files exist: manifest.yml, process.yml, inputs.yml"
+
+  self_review_validation:
+    status: "PASS"
+    notes:
+      - "No duplicate definitions detected between plans and assets"
+      - "All file references validated and resolve"
+      - "No circular references detected"
+      - "Path references use repository-root-relative format"
+
+  infrastructure_implementation:
+    status: "FAILED"
+    finding: "INF-001 (documenter agent not implemented)"
+    blocking: true
+
+# =============================================================================
+# AGENT IMPLEMENTATION VERIFICATION
+# =============================================================================
+agent_implementation_status:
+  build-python:
+    status: "IMPLEMENTED"
+    evidence: "modules/AgenticGuidance/agents/build/build-python/ exists with full guidance"
+
+  test-builder:
+    status: "IMPLEMENTED"
+    evidence: "modules/AgenticGuidance/agents/test/test-builder/ exists with full guidance"
+
+  test-runner:
+    status: "IMPLEMENTED"
+    evidence: "modules/AgenticGuidance/agents/test/test-runner/ exists with full guidance"
+
+  test-audit:
+    status: "IMPLEMENTED"
+    evidence: "modules/AgenticGuidance/agents/test/test-audit/ exists with full guidance"
+
+  test-user-simulator:
+    status: "IMPLEMENTED"
+    evidence: "modules/AgenticGuidance/agents/test/test-user-simulator/ exists with full guidance"
+
+  planner:
+    status: "IMPLEMENTED"
+    evidence: "modules/AgenticGuidance/agents/planner/planner/ exists with guidance files"
+    note: "Generic planner role created as part of IM_003 implementation"
+
+  documenter:
+    status: "NOT_IMPLEMENTED"
+    evidence: "modules/AgenticGuidance/agents/documentation/ does NOT exist"
+    category_status: "NOT YET IMPLEMENTED per agent-categories.yml line 19"
+    blocking: true
+
+# =============================================================================
+# DETAILED FEEDBACK
+# =============================================================================
+detailed_feedback:
+  critical_issues:
+    - issue_id: "CRIT-001"
+      title: "Unimplemented Agent Reference (BLOCKING)"
+      description: |
+        Task DOC_001 in Phase 6 (Documentation Phase) assigns work to the 'documenter'
+        agent, which does not exist. The entire 'documentation' category is marked as
+        "NOT YET IMPLEMENTED" in the infrastructure status documentation.
+
+      impact: "BLOCKING - Plan cannot execute Phase 6"
+
+      fix_required: |
+        Remove Phase 6 from plan_test.yml OR change agent assignment to an implemented
+        agent (teacher-update-assets). Recommended approach: Remove the phase entirely
+        since documentation updates are not critical for CLI hardening validation.
+
+  recommendations:
+    - rec_id: "REC-001"
+      title: "Remove Optional Documentation Phase"
+      priority: "HIGH"
+      description: |
+        Phase 6 (Documentation Phase) is nice-to-have but not essential for validating
+        CLI hardening features. The test plan's primary success criteria are the UAT
+        user stories in Phase 5, which thoroughly validate the implementations.
+
+      action: |
+        Delete lines 707-748 from plan_test.yml (entire Documentation Phase).
+        This removes the dependency on the unimplemented 'documenter' agent.
+        Documentation can be updated separately in a follow-up task if needed.
+
+    - rec_id: "REC-002"
+      title: "Consider Adding Orchestration MMD"
+      priority: "MEDIUM"
+      description: |
+        The test plan has 5 phases with multiple loop structures. An orchestration MMD
+        would provide visual clarity for execution flow and agent routing.
+
+      action: |
+        Optional: Create orchestration_cli_hardening_test.mmd in live/ folder with:
+        - GOAL: Validate CLI hardening implementations
+        - PHASES: ENV_SETUP -> UNIT_TESTS -> INTEGRATION_TESTS -> AUDIT -> UAT
+        - AGENT_ROUTING: Map each phase to responsible agents
+        - LOOP_STRUCTURES: Visual representation of test-fix-loop iterations
+
+      note: "This is a quality improvement, not a blocking requirement"
+
+    - rec_id: "REC-003"
+      title: "UAT Phase Well-Structured"
+      priority: "INFO"
+      description: |
+        Excellent work on the UAT phase (Phase 5). The user stories are well-defined
+        with clear personas, starting states, journey steps, and success criteria.
+        This is the correct primary success criteria for the plan.
+
+      strengths:
+        - "Two user stories cover both orchestrator and developer personas"
+        - "Testing layers specified: local and Docker"
+        - "Strategy correctly set to 'agent-blind-test'"
+        - "Mandatory flag ensures UAT cannot be skipped"
+
+# =============================================================================
+# CHECKLIST RESULTS SUMMARY
+# =============================================================================
+checklist_results:
+  plan_structure: "PASS"
+  inputs: "PASS"
+  success_criteria: "PASS"
+  task_structure: "PASS (with exception DOC_001)"
+  pattern_alignment: "PASS"
+  loop_structure: "PASS"
+  context_quality: "PASS"
+
+fence_results:
+  rlm_usage: "SKIPPED (not applicable)"
+  mmd_presence: "INFO (recommended but not blocking)"
+  file_placement: "PASS"
+  codebase_verification: "PASS"
+  self_review_validation: "PASS"
+  infrastructure_implementation: "FAILED (BLOCKING)"
+
+# =============================================================================
+# DECISION RATIONALE
+# =============================================================================
+decision_rationale: |
+  Per the planner-reviewer process and self-review-criteria.yml conjunction rule:
+  "PASS requires ALL criteria met. REJECT if ANY criterion fails."
+
+  The infrastructure_implementation fence FAILED due to the unimplemented 'documenter'
+  agent reference in task DOC_001. This is a BLOCKING failure per the process guidelines:
+
+  "REJECT if plan includes tasks targeting documentation/* agents
+  (documentation category not migrated)"
+
+  Even though all structural validation items passed and the implementation work is
+  complete and verified, the plan cannot be APPROVED while it contains tasks that
+  target unimplemented infrastructure.
+
+  The fix is straightforward: Remove Phase 6 (Documentation Phase) from plan_test.yml.
+  This phase is optional work that does not affect the primary success criteria (UAT).
+
+# =============================================================================
+# NEXT STEPS
+# =============================================================================
+next_steps:
+  for_planner_guidance:
+    action: "Update plan_test.yml to remove Documentation Phase"
+    specific_changes:
+      - "Delete lines 707-748 (Phase 6: Documentation Phase)"
+      - "Update execution_notes if needed to reflect phase removal"
+      - "Optionally add note explaining documentation will be handled separately"
+
+    resubmit: |
+      After making changes, resubmit for review. The plan is structurally sound
+      and implementation is verified. Only the unimplemented agent reference needs
+      to be resolved.
+
+  for_orchestrator:
+    action: "Return plan to planner-guidance for remediation"
+    context: |
+      This is a straightforward fix. The plan is high quality overall - the only
+      issue is a reference to infrastructure that doesn't exist yet. Once Phase 6
+      is removed, the plan should be ready for approval.
+
+# =============================================================================
+# HISTORICAL CONTEXT
+# =============================================================================
+review_context:
+  reviewer_role: "planner-reviewer"
+  review_date: "2026-02-05"
+  plan_objective: "Make CLI stop operations idempotent and standardize planning spawning"
+  plan_status_at_review:
+    build_plan: "implementation_complete (all 4 tasks completed)"
+    test_plan: "active (ready for test execution)"
+
+  key_observations:
+    - "Implementation verified at exact code locations specified in success criteria"
+    - "All referenced agents are implemented EXCEPT 'documenter'"
+    - "Test plan structure is excellent with comprehensive phases and loops"
+    - "UAT phase is properly structured as primary success criteria"
+    - "Loop structures are well-defined with max_iterations and escalation"
+
+  reference_documents:
+    - "modules/AgenticGuidance/README.md (Implementation Status section)"
+    - "modules/AgenticGuidance/assets/definitions/agent-categories.yml (line 19)"
+    - "modules/AgenticGuidance/assets/definitions/planner-reviewer-checklists.yml"
+    - "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml"

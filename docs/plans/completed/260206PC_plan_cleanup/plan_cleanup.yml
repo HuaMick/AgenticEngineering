@@ -1,0 +1,411 @@
+# Plan Folder Cleanup Plan
+# Plan ID: 260206PC
+# Created: 2026-02-06
+# Agent: planner-cleaning
+
+# ========================================
+# ROOT-LEVEL PLAN METADATA (Required)
+# ========================================
+name: "plan-folder-cleanup"
+worktree_path: "/home/code/AgenticEngineering"
+branch: "main"
+status: "active"
+priority: "high"
+
+worktree: "/home/code/AgenticEngineering"
+plan_file: "docs/plans/live/260206PC_plan_cleanup/plan_cleanup.yml"
+
+# ========================================
+# CONTEXT
+# ========================================
+context: |
+  This plan addresses structural violations in live planning folders identified during
+  planner-cleaning review on 2026-02-06.
+
+  PROBLEM: Multiple plan folders have nested live/ subdirectories containing plan files,
+  violating the flat folder structure documented in the example plan.
+
+  CORRECT STRUCTURE (per plan_example.yml):
+  - Plan files live at plan folder root: docs/plans/live/YYMMDDXX_description/plan_*.yml
+  - Orchestration diagrams at root: orchestration_*.mmd
+  - Optional subdirectories: reference/, analysis/ (for supporting docs)
+  - NO nested live/ folders
+
+  VIOLATIONS IDENTIFIED:
+  1. 260205BO_bootstrap_test - Has nested live/ with plan files, has plan_completed.yml
+  2. 260203AV_agenticvoice_async - Has nested live/, explicitly REPLACED by 260203VP
+  3. 260203TS_task_service - Has nested live/ with plan files
+  4. 260205IM_cli_hardening - Has nested live/ with plan files
+  5. 260205LB_cli_loading_bar - Has nested live/ with plan files
+
+  This cleanup is METADATA work - no code changes, just plan folder organization.
+
+# ========================================
+# DEPENDENCIES
+# ========================================
+dependencies:
+  depends_on: []
+  required_by: []
+
+# ========================================
+# OBJECTIVE
+# ========================================
+objective: |
+  Restore correct plan folder structure for all live plans by:
+  1. Flattening nested live/ folders (move plan files to root)
+  2. Archiving replaced/completed plans to appropriate folders
+  3. Documenting the correct structure to prevent future violations
+  4. Cleaning up structural noise from the live/ folder
+
+# ========================================
+# HIGH-LEVEL PHASES
+# ========================================
+phases:
+  - name: "Phase 1: Cleaner Dependency Loop"
+    description: "Identify dependencies and validate cleanup safety"
+    status: "pending"
+
+  - name: "Phase 2: Archive Replaced/Completed Plans"
+    description: "Move 260205BO and 260203AV to appropriate archives"
+    status: "pending"
+
+  - name: "Phase 3: Flatten Active Plan Structures"
+    description: "Fix nested live/ folders in active plans"
+    status: "pending"
+
+  - name: "Phase 4: Validation"
+    description: "Verify all plans follow correct structure"
+    status: "pending"
+
+# ========================================
+# PHASES AND TASKS
+# ========================================
+
+# ----------------------------------------
+# PHASE 1: CLEANER DEPENDENCY LOOP
+# ----------------------------------------
+# Pattern: Cleaner identifies files -> Explorer checks dependencies -> Decision
+# Purpose: Ensure no critical files are removed, no active work blocked
+
+- name: "Phase 1: Dependency Analysis"
+  id: "P1"
+  execution: sequential
+  description: "Analyze dependencies before cleanup using cleaner-dependency-loop"
+  loop: "cleaner-dependency-loop"
+  tasks:
+    - id: "clean_001"
+      name: "Identify nested live/ folders"
+      description: "List all plan folders with nested live/ subdirectories"
+      status: "pending"
+      agent: "cleaner"
+      guidance: |
+        Find all nested live/ folders under docs/plans/live/*/
+        Expected violations:
+        - docs/plans/live/260205BO_bootstrap_test/live/
+        - docs/plans/live/260203AV_agenticvoice_async/live/
+        - docs/plans/live/260203TS_task_service/live/
+        - docs/plans/live/260205IM_cli_hardening/live/
+        - docs/plans/live/260205LB_cli_loading_bar/live/
+      target_files:
+        - "docs/plans/live/260205BO_bootstrap_test/live/"
+        - "docs/plans/live/260203AV_agenticvoice_async/live/"
+        - "docs/plans/live/260203TS_task_service/live/"
+        - "docs/plans/live/260205IM_cli_hardening/live/"
+        - "docs/plans/live/260205LB_cli_loading_bar/live/"
+
+    - id: "explore_001"
+      name: "Check plan dependencies and status"
+      description: "Verify no active agents/sessions depend on nested structure"
+      status: "pending"
+      agent: "explorer"
+      guidance: |
+        For each plan with nested live/:
+        1. Check if plan has active tasks (status: in_progress)
+        2. Check if plan is referenced by other plans
+        3. Check if nested files differ from root files (version conflict)
+        4. Determine if plan should be archived vs flattened
+
+        ARCHIVE candidates:
+        - 260205BO_bootstrap_test: Has plan_completed.yml (empty but signals completion)
+        - 260203AV_agenticvoice_async: Explicitly REPLACED by 260203VP per plan_build.yml
+
+        FLATTEN candidates:
+        - 260203TS_task_service: Active plan, needs structure fix
+        - 260205IM_cli_hardening: Active plan, needs structure fix
+        - 260205LB_cli_loading_bar: Active plan, needs structure fix
+      inputs:
+        - "docs/plans/live/260203VP_voice_personaplex/plan_build.yml"
+        - "docs/plans/live/260205BO_bootstrap_test/plan_completed.yml"
+        - "docs/plans/live/260203AV_agenticvoice_async/README.md"
+        - "docs/plans/live/260203TS_task_service/README.md"
+
+    - id: "decide_001"
+      name: "Create cleanup action plan"
+      description: "Decide archive vs flatten for each plan"
+      status: "pending"
+      agent: "decision"
+      guidance: |
+        Generate cleanup action plan with specific git operations:
+
+        ARCHIVE ACTIONS:
+        1. 260205BO_bootstrap_test -> completed/
+           - Reason: plan_completed.yml signals completion
+           - Action: git mv docs/plans/live/260205BO_bootstrap_test docs/plans/completed/
+
+        2. 260203AV_agenticvoice_async -> deferred/
+           - Reason: REPLACED by 260203VP (not completed, superseded)
+           - Action: git mv docs/plans/live/260203AV_agenticvoice_async docs/plans/deferred/
+
+        FLATTEN ACTIONS:
+        3. 260203TS_task_service
+           - Action: git mv docs/plans/live/260203TS_task_service/live/* docs/plans/live/260203TS_task_service/
+           - Action: git rm -r docs/plans/live/260203TS_task_service/live/
+
+        4. 260205IM_cli_hardening
+           - Action: git mv docs/plans/live/260205IM_cli_hardening/live/* docs/plans/live/260205IM_cli_hardening/
+           - Action: git rm -r docs/plans/live/260205IM_cli_hardening/live/
+
+        5. 260205LB_cli_loading_bar
+           - Action: git mv docs/plans/live/260205LB_cli_loading_bar/live/* docs/plans/live/260205LB_cli_loading_bar/
+           - Action: git rm -r docs/plans/live/260205LB_cli_loading_bar/live/
+      target_files:
+        - "docs/plans/live/260206PC_plan_cleanup/cleanup_actions.yml"
+
+# ----------------------------------------
+# PHASE 2: ARCHIVE REPLACED/COMPLETED PLANS
+# ----------------------------------------
+
+- name: "Phase 2: Archive Operations"
+  id: "P2"
+  execution: sequential
+  description: "Move replaced/completed plans to appropriate archives"
+  tasks:
+    - id: "archive_001"
+      name: "Archive 260205BO_bootstrap_test to completed/"
+      description: "Move bootstrap test plan to completed (has plan_completed.yml)"
+      status: "pending"
+      agent: "cleaner"
+      guidance: |
+        Execute git operations to archive 260205BO_bootstrap_test:
+
+        RATIONALE:
+        - Has plan_completed.yml (even though empty, signals completion intent)
+        - Nested live/ structure suggests incomplete migration to new format
+        - Should be in completed/ folder, not live/
+
+        OPERATIONS:
+        1. git mv docs/plans/live/260205BO_bootstrap_test docs/plans/completed/
+        2. Verify no broken references in other plans
+        3. Update this cleanup plan with completion status
+      target_files:
+        - "docs/plans/completed/260205BO_bootstrap_test/"
+
+    - id: "archive_002"
+      name: "Archive 260203AV_agenticvoice_async to deferred/"
+      description: "Move replaced voice async plan to deferred"
+      status: "pending"
+      agent: "cleaner"
+      guidance: |
+        Execute git operations to archive 260203AV_agenticvoice_async:
+
+        RATIONALE:
+        - Explicitly REPLACED by 260203VP_voice_personaplex
+        - 260203VP plan_build.yml states: "This plan REPLACES 260203AV"
+        - Not completed, but superseded by new architecture
+        - Should be in deferred/ folder (like 260126AV predecessor)
+
+        OPERATIONS:
+        1. git mv docs/plans/live/260203AV_agenticvoice_async docs/plans/deferred/
+        2. Verify 260203VP has no hard dependencies on 260203AV location
+        3. Update this cleanup plan with completion status
+      inputs:
+        - "docs/plans/live/260203VP_voice_personaplex/plan_build.yml"
+      target_files:
+        - "docs/plans/deferred/260203AV_agenticvoice_async/"
+
+# ----------------------------------------
+# PHASE 3: FLATTEN ACTIVE PLAN STRUCTURES
+# ----------------------------------------
+
+- name: "Phase 3: Flatten Operations"
+  id: "P3"
+  execution: sequential
+  description: "Fix nested live/ folders in active plans"
+  tasks:
+    - id: "flatten_001"
+      name: "Flatten 260203TS_task_service"
+      description: "Move plan files from nested live/ to root"
+      status: "pending"
+      agent: "cleaner"
+      guidance: |
+        Fix nested live/ structure for 260203TS_task_service:
+
+        FILES TO MOVE:
+        - live/plan_build.yml -> plan_build.yml
+        - live/orchestration_task_service_implementation.mmd -> (check if differs from root version)
+
+        OPERATIONS:
+        1. Check if orchestration_task_service.mmd at root differs from live/ version
+        2. If nested version is newer, git mv live/orchestration_*.mmd to root (overwrite)
+        3. git mv live/plan_build.yml to root
+        4. git rm -r live/
+        5. Verify plan still loads correctly
+      target_files:
+        - "docs/plans/live/260203TS_task_service/plan_build.yml"
+        - "docs/plans/live/260203TS_task_service/orchestration_task_service_implementation.mmd"
+
+    - id: "flatten_002"
+      name: "Flatten 260205IM_cli_hardening"
+      description: "Move plan files from nested live/ to root"
+      status: "pending"
+      agent: "cleaner"
+      guidance: |
+        Fix nested live/ structure for 260205IM_cli_hardening:
+
+        FILES TO MOVE:
+        - live/plan_build.yml -> plan_build.yml
+        - live/plan_test.yml -> plan_test.yml
+
+        OPERATIONS:
+        1. git mv live/plan_build.yml to root
+        2. git mv live/plan_test.yml to root
+        3. git rm -r live/
+        4. Keep analysis/ subfolder (legitimate supporting docs)
+        5. Verify plan still loads correctly
+      target_files:
+        - "docs/plans/live/260205IM_cli_hardening/plan_build.yml"
+        - "docs/plans/live/260205IM_cli_hardening/plan_test.yml"
+
+    - id: "flatten_003"
+      name: "Flatten 260205LB_cli_loading_bar"
+      description: "Move plan files from nested live/ to root"
+      status: "pending"
+      agent: "cleaner"
+      guidance: |
+        Fix nested live/ structure for 260205LB_cli_loading_bar:
+
+        FILES TO MOVE:
+        - live/plan_build.yml -> plan_build.yml
+        - live/plan_test.yml -> plan_test.yml
+
+        OPERATIONS:
+        1. git mv live/plan_build.yml to root
+        2. git mv live/plan_test.yml to root
+        3. git rm -r live/
+        4. Verify plan still loads correctly
+      target_files:
+        - "docs/plans/live/260205LB_cli_loading_bar/plan_build.yml"
+        - "docs/plans/live/260205LB_cli_loading_bar/plan_test.yml"
+
+# ----------------------------------------
+# PHASE 4: VALIDATION
+# ----------------------------------------
+
+- name: "Phase 4: Validation"
+  id: "P4"
+  execution: sequential
+  description: "Verify all plans follow correct structure"
+  tasks:
+    - id: "validate_001"
+      name: "Verify no nested live/ folders remain"
+      description: "Scan all live plans for nested live/ violations"
+      status: "pending"
+      agent: "test"
+      guidance: |
+        Validation checks:
+
+        1. Run: find docs/plans/live -type d -name "live" | grep -v "^docs/plans/live$"
+           Expected: No output (no nested live/ folders)
+
+        2. Verify archived plans:
+           - docs/plans/completed/260205BO_bootstrap_test exists
+           - docs/plans/deferred/260203AV_agenticvoice_async exists
+
+        3. Verify flattened plans have files at root:
+           - docs/plans/live/260203TS_task_service/plan_build.yml exists
+           - docs/plans/live/260205IM_cli_hardening/plan_build.yml exists
+           - docs/plans/live/260205LB_cli_loading_bar/plan_build.yml exists
+
+        4. Verify no broken references:
+           - Search for "260205BO_bootstrap_test" in live/ plans (should be zero)
+           - Search for "260203AV" in live/ plans (only in 260203VP as historical ref)
+      success_criteria:
+        - "No nested live/ folders under docs/plans/live/"
+        - "All plan files at correct locations"
+        - "No broken cross-plan references"
+
+    - id: "validate_002"
+      name: "Update plan documentation"
+      description: "Document correct structure in relevant guidelines"
+      status: "pending"
+      agent: "documenter"
+      guidance: |
+        Check if plan structure documentation needs updates:
+
+        1. Review modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/README.md
+        2. Check if planner guidance mentions folder structure
+        3. If needed, add explicit guidance:
+           - Plan files live at plan folder root
+           - NO nested live/ subdirectories
+           - Optional subdirectories: reference/, analysis/, questions/
+
+        NO new documentation files created unless gap is found.
+
+# ========================================
+# SUCCESS CRITERIA
+# ========================================
+success_criteria:
+  - "No nested live/ folders remain in docs/plans/live/"
+  - "260205BO_bootstrap_test moved to docs/plans/completed/"
+  - "260203AV_agenticvoice_async moved to docs/plans/deferred/"
+  - "260203TS_task_service has flat structure with plan files at root"
+  - "260205IM_cli_hardening has flat structure with plan files at root"
+  - "260205LB_cli_loading_bar has flat structure with plan files at root"
+  - "All plans follow structure documented in plan_example.yml"
+  - "No broken cross-plan references"
+  - "Git history preserves file lineage (use git mv, not cp+rm)"
+
+# ========================================
+# LOOP STRUCTURES
+# ========================================
+loop_structures:
+  - id: "loop_cleaner_dependency"
+    type: "cleaner-dependency-loop"
+    applies_to_phase: "Phase 1: Dependency Analysis"
+    trigger: "Before any file removal/movement"
+    description: |
+      Cleaner-dependency-loop pattern ensures safe cleanup:
+      1. Cleaner identifies files for removal/movement
+      2. Explorer checks dependencies and active usage
+      3. Decision agent creates specific action plan
+      4. Exit when action plan is validated (no iteration needed - single pass)
+    exit_criteria:
+      success: "Action plan created with specific git operations"
+      max_iterations: 1
+      escalation: "Escalate if dependencies block cleanup"
+    participants:
+      - agent: "cleaner"
+        role: "Identifies structural violations"
+      - agent: "explorer"
+        role: "Checks dependencies and status"
+      - agent: "decision"
+        role: "Creates validated action plan"
+
+# ========================================
+# NOTES
+# ========================================
+notes: |
+  DECOMMISSIONING OVER DEPRECATION:
+  - No DEPRECATED.md files should be created
+  - Plans are either active (in live/) or archived (in completed/deferred/)
+  - Nested live/ folders are structural violations, not deprecations
+
+  COPY-AND-SYNC PATTERN NOT APPLICABLE:
+  - This is not gradual migration work
+  - Cleanup is atomic: git mv operations in single session
+  - No partial completion states
+
+  FILE-LEVEL INPUTS:
+  - All tasks specify exact files/directories
+  - No ambiguous "clean up the plans" tasks
+  - Each git operation explicit and traceable

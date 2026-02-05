@@ -1,0 +1,1984 @@
+# EN-SYNTH-002: Quick Wins and Immediate Actions
+# Identifying actionable items from orchestration enforcement investigation
+# Created: 2026-02-01
+# Status: completed
+
+_document_metadata:
+  task_id: EN-SYNTH-002
+  investigation_id: 260131EN
+  synthesis_type: quick_wins_immediate_actions
+  basis: EN-SYNTH-001_proposal_comparison_matrix.yml
+  proposals_analyzed: [P1, P2, P3, P4, P5, P6]
+  date: "2026-02-01"
+
+# =============================================================================
+# EXECUTIVE SUMMARY
+# =============================================================================
+
+executive_summary: |
+  This document identifies actionable quick wins (<8 hours) and immediate actions
+  (8-40 hours) based on analysis of 6 orchestration enforcement proposals.
+
+  KEY FINDINGS:
+  - 5 Quick Wins identified (total: 20-32 hours)
+  - 7 Immediate Actions identified (total: 115-175 hours)
+  - 3 proposals should be deferred or skipped
+  - Clear implementation sequence emerges: P3 → P4 (core) → P2 (structure)
+
+  RECOMMENDED APPROACH:
+  1. Start with Quick Wins from P1 (simplified commands, event logging)
+  2. Implement P3 environment injection (foundational, 50h core)
+  3. Build P2 MMD parsing (high value, low complexity, 40-60h)
+  4. Add P4 role detection (enforcement layer, 100h core detection)
+  5. Defer P5, P6, and full P1 until foundation proves value
+
+  RATIONALE:
+  Quick wins provide immediate value while validating patterns. P3+P4 create
+  the enforcement foundation. P2 adds structure visibility. Full P5/P6 are
+  deferred until core patterns prove effective.
+
+# =============================================================================
+# QUICK WINS (< 8 HOURS)
+# =============================================================================
+
+quick_wins:
+
+  # ---------------------------------------------------------------------------
+  # QW-001: SIMPLIFIED STATUS COMMANDS
+  # ---------------------------------------------------------------------------
+
+  - id: QW-001
+    title: "Simplified Task Status Commands"
+    source: P1
+    effort_hours: 3-5
+    value: HIGH
+    complexity: LOW
+
+    what: |
+      Add convenience commands for common task status updates:
+      - `agentic task done` - Mark current task as completed
+      - `agentic task next` - Complete current, start next task
+      These wrap existing `agentic plan task complete/start` commands with
+      smarter defaults (infer task ID from context, auto-advance sequence).
+
+    why: |
+      - Reduces friction for agents updating task status
+      - Makes task tracking simpler than manual YAML edits
+      - Encourages adoption of status tracking patterns
+      - Provides foundation for later enforcement patterns
+
+    where:
+      files:
+        - modules/AgenticCLI/src/agenticcli/commands/plan.py
+      commands:
+        - "agentic task done [task_id]"
+        - "agentic task next"
+      dependencies:
+        - Existing task start/complete infrastructure
+
+    implementation:
+      approach: |
+        1. Add cmd_task_done() that wraps task complete
+        2. Add cmd_task_next() that completes current + starts next
+        3. Infer task_id from plan context if not specified
+        4. Add --plan flag to specify plan folder
+
+      code_changes: |
+        # In plan.py, add new commands:
+
+        @click.command("done")
+        @click.argument("task_id", required=False)
+        @click.option("--plan", help="Plan folder path")
+        def cmd_task_done(task_id, plan):
+            """Mark task as completed (convenience wrapper)"""
+            if not task_id:
+                task_id = infer_current_task(plan)
+            # Call existing task complete logic
+            complete_task(plan, task_id)
+
+        @click.command("next")
+        @click.option("--plan", help="Plan folder path")
+        def cmd_task_next(plan):
+            """Complete current task and start next"""
+            current_task = infer_current_task(plan)
+            next_task_id = get_next_task_in_sequence(plan, current_task)
+            complete_task(plan, current_task)
+            start_task(plan, next_task_id)
+
+      testing: |
+        - Test with existing plan YAML files
+        - Verify task status transitions correctly
+        - Test error handling for missing task_id
+
+    success_criteria:
+      - Commands execute in < 100ms
+      - Correctly update task status in YAML
+      - Clear error messages if task ID cannot be inferred
+      - Works with existing plan folder structure
+
+    dependencies: []
+    blocks: []
+
+  # ---------------------------------------------------------------------------
+  # QW-002: EVENT-BASED LOGGING
+  # ---------------------------------------------------------------------------
+
+  - id: QW-002
+    title: "Event-Based Logging Infrastructure"
+    source: P1
+    effort_hours: 4-6
+    value: MEDIUM-HIGH
+    complexity: LOW
+
+    what: |
+      Add structured event logging for orchestration actions:
+      - Task status changes (start, complete, skip)
+      - Session spawn/kill events
+      - Plan lifecycle events (create, archive, move)
+      Creates ~/.agentic/logs/orchestration_events.jsonl log file.
+
+    why: |
+      - Provides audit trail for orchestration actions
+      - Enables debugging of orchestration workflows
+      - Foundation for future analytics and monitoring
+      - Low complexity, high long-term value
+
+    where:
+      files:
+        - modules/AgenticCLI/src/agenticcli/utils/logging.py (NEW)
+        - modules/AgenticCLI/src/agenticcli/commands/plan.py
+        - modules/AgenticCLI/src/agenticcli/commands/session.py
+      log_location:
+        - ~/.agentic/logs/orchestration_events.jsonl
+      dependencies:
+        - Python logging module (stdlib)
+
+    implementation:
+      approach: |
+        1. Create logging.py utility module
+        2. Define log_orchestration_event(event_type, metadata)
+        3. Add calls at key orchestration points
+        4. Use JSONL format for easy parsing
+
+      event_schema: |
+        {
+          "timestamp": "2026-02-01T10:35:00Z",
+          "event_type": "task_started",
+          "session_id": "abc123",
+          "plan_folder": "docs/plans/live/260131EN_...",
+          "task_id": "EN-P3-001",
+          "metadata": {
+            "agent_role": "build",
+            "phase": "investigation"
+          }
+        }
+
+      integration_points:
+        - Task start/complete commands
+        - Session spawn/kill commands
+        - Plan create/archive/move commands
+
+      testing: |
+        - Verify log file is created at correct path
+        - Validate JSONL format
+        - Test log rotation if file grows large
+
+    success_criteria:
+      - Log events written synchronously (no data loss)
+      - JSONL format parseable by standard tools
+      - Minimal performance overhead (< 10ms per event)
+      - Log rotation prevents unbounded growth
+
+    dependencies: []
+    blocks: []
+
+  # ---------------------------------------------------------------------------
+  # QW-003: WHOAMI COMMAND
+  # ---------------------------------------------------------------------------
+
+  - id: QW-003
+    title: "Session Role Introspection Command"
+    source: P4
+    effort_hours: 4-6
+    value: MEDIUM
+    complexity: LOW
+
+    what: |
+      Add `agentic session whoami` command that displays current session's
+      orchestration context:
+      - Session ID
+      - Role (orchestrator, subagent, or unspecified)
+      - Assigned task ID
+      - Plan folder
+      - Parent session (if spawned by another session)
+      - Current phase
+
+    why: |
+      - Agents can discover their orchestration context
+      - Debugging tool for session hierarchy
+      - Foundation for role-based enforcement
+      - Quick validation of context injection
+
+    where:
+      files:
+        - modules/AgenticCLI/src/agenticcli/commands/session.py
+      commands:
+        - "agentic session whoami [--json]"
+      dependencies:
+        - Session registry (~/.agentic/sessions/*.json)
+        - Environment variable reading (AGENTIC_*)
+
+    implementation:
+      approach: |
+        1. Read AGENTIC_SESSION_ID from environment
+        2. Load session record from registry
+        3. Check AGENTIC_* environment variables
+        4. Display context in human-readable format
+        5. Support --json flag for programmatic use
+
+      detection_logic: |
+        def get_session_context():
+            session_id = os.getenv("AGENTIC_SESSION_ID")
+            role = os.getenv("AGENTIC_SESSION_ROLE", "unspecified")
+            task_id = os.getenv("AGENTIC_TASK_ID")
+            plan_folder = os.getenv("AGENTIC_PLAN_FOLDER")
+            parent_session = os.getenv("AGENTIC_PARENT_SESSION")
+            phase = os.getenv("AGENTIC_PHASE")
+
+            # Also check session registry for metadata
+            session_data = load_session_record(session_id)
+
+            return {
+                "session_id": session_id,
+                "role": role,
+                "task_id": task_id,
+                "plan_folder": plan_folder,
+                "parent_session": parent_session,
+                "phase": phase,
+                "source": "environment" if role else "unknown"
+            }
+
+      output_format: |
+        Session: abc123def-xyz789
+        Role: subagent
+        Task: EN-P3-001
+        Plan: docs/plans/live/260131EN_investigate_orchestration_enforcement_patterns/
+        Parent: xyz789abc-def123
+        Phase: investigation
+        Source: environment variables
+
+      testing: |
+        - Test with AGENTIC_* env vars set
+        - Test without env vars (should show "unspecified")
+        - Test --json output format
+        - Validate against session registry data
+
+    success_criteria:
+      - Command executes in < 50ms
+      - Correctly reads environment variables
+      - Graceful handling of missing context
+      - JSON output is valid and parseable
+
+    dependencies: []
+    blocks: [IA-002]  # Role detection depends on whoami logic
+
+  # ---------------------------------------------------------------------------
+  # QW-004: MMD METADATA EXTRACTION
+  # ---------------------------------------------------------------------------
+
+  - id: QW-004
+    title: "MMD Metadata Header Extraction"
+    source: P2
+    effort_hours: 2-4
+    value: MEDIUM
+    complexity: LOW
+
+    what: |
+      Create utility function to extract metadata from MMD comment headers:
+      - GOAL: Plan objective
+      - PHASES: Comma-separated phase list
+      - AGENT_ROUTING: Agent assignments
+      - STATUS: Plan status
+      Provides foundation for full MMD parsing without implementing
+      the entire transformation pipeline.
+
+    why: |
+      - Quick value: Extract plan metadata from MMD files
+      - Low complexity: Simple regex pattern matching
+      - Foundation for P2 full implementation
+      - Enables validation commands
+
+    where:
+      files:
+        - modules/AgenticCLI/src/agenticcli/utils/mmd_utils.py (NEW)
+      dependencies:
+        - Python re module (stdlib)
+
+    implementation:
+      approach: |
+        1. Read MMD file
+        2. Extract %% comment block
+        3. Parse key-value pairs (KEY: value)
+        4. Return dict of metadata
+
+      code_sketch: |
+        import re
+
+        def extract_mmd_metadata(mmd_path: Path) -> dict:
+            """Extract metadata from MMD comment header."""
+            with open(mmd_path) as f:
+                content = f.read()
+
+            metadata = {}
+            # Match %% KEY: value patterns
+            for match in re.finditer(r'%%\s+(\w+):\s+(.+)', content):
+                key = match.group(1)
+                value = match.group(2).strip()
+                metadata[key] = value
+
+            return metadata
+
+      testing: |
+        - Test with 5-10 real MMD files
+        - Verify all metadata keys extracted
+        - Handle missing metadata gracefully
+
+    success_criteria:
+      - Extracts metadata from 90%+ of MMD files
+      - Returns empty dict for files without metadata
+      - Execution time < 10ms for typical files
+
+    dependencies: []
+    blocks: [IA-003]  # Full MMD parsing depends on metadata extraction
+
+  # ---------------------------------------------------------------------------
+  # QW-005: SESSION REGISTRY QUERY UTILITIES
+  # ---------------------------------------------------------------------------
+
+  - id: QW-005
+    title: "Session Registry Query Utilities"
+    source: P3, P4
+    effort_hours: 3-5
+    value: MEDIUM
+    complexity: LOW
+
+    what: |
+      Create utility functions for common session registry queries:
+      - get_session_by_id(session_id) -> session_data
+      - get_sessions_by_role(role) -> list[session_data]
+      - get_sessions_by_plan(plan_folder) -> list[session_data]
+      - get_child_sessions(parent_id) -> list[session_data]
+      Centralizes session registry access patterns.
+
+    why: |
+      - Reduces code duplication
+      - Foundation for session hierarchy queries
+      - Makes session management easier
+      - Enables role-based filtering
+
+    where:
+      files:
+        - modules/AgenticCLI/src/agenticcli/utils/session_registry.py (NEW)
+      dependencies:
+        - Session registry (~/.agentic/sessions/*.json)
+
+    implementation:
+      approach: |
+        1. Create session_registry.py utility module
+        2. Implement query functions
+        3. Add caching for performance
+        4. Handle missing/malformed session files
+
+      code_sketch: |
+        def get_sessions_by_role(role: str) -> list[dict]:
+            """Get all sessions with specified role."""
+            sessions_dir = Path.home() / ".agentic" / "sessions"
+            sessions = []
+
+            for session_file in sessions_dir.glob("*.json"):
+                data = json.loads(session_file.read_text())
+                if data.get("role") == role:
+                    sessions.append(data)
+
+            return sessions
+
+      testing: |
+        - Test with mock session registry
+        - Verify filtering logic
+        - Test graceful handling of corrupted JSON
+
+    success_criteria:
+      - Query functions return correct results
+      - Handles missing orchestration fields (backward compatibility)
+      - Performance acceptable for 100+ session files
+
+    dependencies: []
+    blocks: [IA-002, IA-004]  # Role detection and hierarchy queries
+
+# =============================================================================
+# IMMEDIATE ACTIONS (8-40 HOURS)
+# =============================================================================
+
+immediate_actions:
+
+  # ---------------------------------------------------------------------------
+  # IA-001: ENVIRONMENT VARIABLE INJECTION (P3 CORE)
+  # ---------------------------------------------------------------------------
+
+  - id: IA-001
+    title: "Environment Variable Injection at Session Spawn"
+    source: P3
+    effort_hours: 20-30
+    value: CRITICAL
+    complexity: MEDIUM
+    priority: 1
+
+    what: |
+      Implement environment variable injection when spawning Claude Code sessions.
+      Add CLI arguments and inject AGENTIC_* environment variables:
+      - AGENTIC_SESSION_ID
+      - AGENTIC_SESSION_ROLE (orchestrator, subagent)
+      - AGENTIC_TASK_ID
+      - AGENTIC_PLAN_FOLDER
+      - AGENTIC_PARENT_SESSION
+      - AGENTIC_PHASE
+      Update session registry to store orchestration context.
+
+    why: |
+      FOUNDATIONAL for all role-based enforcement. Without environment-based
+      context injection, sessions cannot identify their role. This is the
+      critical enabler for P4 (role detection) and P5 (session hierarchy).
+
+      Industry-validated approach (Claude Code feature request #17188).
+      Low technical risk, high strategic value.
+
+    where:
+      files:
+        - modules/AgenticCLI/src/agenticcli/commands/session.py (cmd_spawn)
+        - modules/AgenticCLI/src/agenticcli/cli.py (_add_session_parser)
+      commands:
+        - "agentic session spawn --role <role> --task <task_id> --plan <folder>"
+      dependencies:
+        - Session spawn infrastructure (existing)
+        - Session registry (existing)
+
+    implementation:
+      phases:
+        - phase: 1
+          name: "CLI Argument Parsing"
+          effort: 4-6h
+          deliverables:
+            - Add --role, --task, --plan, --parent-session, --phase arguments
+            - Add --inject-context flag for prompt prefix
+          files:
+            - modules/AgenticCLI/src/agenticcli/cli.py
+
+        - phase: 2
+          name: "Environment Variable Injection"
+          effort: 8-12h
+          deliverables:
+            - Build spawn_env dict with AGENTIC_* variables
+            - Pass env dict to subprocess.Popen/run
+            - Handle env inheritance correctly
+          files:
+            - modules/AgenticCLI/src/agenticcli/commands/session.py
+
+        - phase: 3
+          name: "Session Registry Schema Extension"
+          effort: 6-8h
+          deliverables:
+            - Add orchestration fields to session record
+            - Update session list/status to show context
+            - Backward compatibility for old records
+          files:
+            - modules/AgenticCLI/src/agenticcli/commands/session.py
+
+        - phase: 4
+          name: "Testing and Validation"
+          effort: 2-4h
+          deliverables:
+            - Unit tests for env injection
+            - Integration tests with spawned sessions
+            - Verify env vars visible in spawned session
+
+      code_changes: |
+        # In cli.py, add arguments to session spawn parser:
+
+        session_spawn_parser.add_argument(
+            "--role",
+            choices=["orchestrator", "subagent"],
+            help="Orchestration role for this session"
+        )
+        session_spawn_parser.add_argument("--task", help="Task ID assigned")
+        session_spawn_parser.add_argument("--plan", help="Plan folder path")
+        session_spawn_parser.add_argument("--parent-session", help="Parent session ID")
+        session_spawn_parser.add_argument("--phase", help="Current orchestration phase")
+        session_spawn_parser.add_argument(
+            "--inject-context",
+            action="store_true",
+            help="Inject orchestration context into prompt"
+        )
+
+        # In session.py cmd_spawn(), build environment:
+
+        spawn_env = os.environ.copy()
+        spawn_env["AGENTIC_SESSION_ID"] = session_id
+        if role := getattr(args, "role", None):
+            spawn_env["AGENTIC_SESSION_ROLE"] = role
+        if task := getattr(args, "task", None):
+            spawn_env["AGENTIC_TASK_ID"] = task
+        # ... etc
+
+        # Pass to subprocess:
+        process = subprocess.Popen(cmd, env=spawn_env, ...)
+
+      testing: |
+        1. Spawn session with --role orchestrator
+        2. In spawned session, run: echo $AGENTIC_SESSION_ROLE
+        3. Verify output shows "orchestrator"
+        4. Check session registry has orchestration fields
+        5. Test backward compatibility (spawn without --role)
+
+    success_criteria:
+      - Environment variables visible in spawned session
+      - Session registry stores orchestration context
+      - Backward compatible with existing spawn usage
+      - No breaking changes to session list/status
+
+    dependencies: []
+    blocks: [IA-002, IA-004]  # Enables role detection and hierarchy
+    prerequisite_for: [P4, P5]
+
+  # ---------------------------------------------------------------------------
+  # IA-002: ROLE DETECTION LOGIC (P4 CORE)
+  # ---------------------------------------------------------------------------
+
+  - id: IA-002
+    title: "Role Detection and Enforcement Logic"
+    source: P4
+    effort_hours: 30-40
+    value: CRITICAL
+    complexity: MEDIUM-HIGH
+    priority: 2
+
+    what: |
+      Implement RoleEnforcer service with multi-layer role detection:
+      1. Environment variables (primary)
+      2. Session registry (secondary)
+      3. Heuristic inference (fallback)
+      Provides get_current_role() and validate_operation(role, operation)
+      methods for enforcement.
+
+    why: |
+      Creates the enforcement layer for orchestration boundaries. Without
+      role detection, there is no way to enforce role-based restrictions.
+      This is the second foundational piece after P3.
+
+    where:
+      files:
+        - modules/AgenticCLI/src/agenticcli/orchestration/enforcement.py (NEW)
+      dependencies:
+        - IA-001 (environment variable injection)
+        - QW-003 (whoami command logic reusable)
+
+    implementation:
+      phases:
+        - phase: 1
+          name: "Role Enforcement Module"
+          effort: 12-16h
+          deliverables:
+            - Create orchestration/enforcement.py
+            - Define Role enum (ORCHESTRATOR, SUBAGENT, LEGACY)
+            - Define EnforcementLevel enum (ADVISORY, WARNING, BLOCKING)
+            - Implement RoleEnforcer class
+          files:
+            - modules/AgenticCLI/src/agenticcli/orchestration/enforcement.py
+
+        - phase: 2
+          name: "Detection Logic"
+          effort: 10-14h
+          deliverables:
+            - get_current_role() with 3-layer detection
+            - RoleContext dataclass with confidence scores
+            - Session registry fallback logic
+          files:
+            - modules/AgenticCLI/src/agenticcli/orchestration/enforcement.py
+
+        - phase: 3
+          name: "Enforcement Hooks"
+          effort: 6-8h
+          deliverables:
+            - validate_operation(role, operation) method
+            - Permission matrix (what each role can do)
+            - Graduated enforcement levels
+          files:
+            - modules/AgenticCLI/src/agenticcli/orchestration/enforcement.py
+
+        - phase: 4
+          name: "Testing"
+          effort: 2-2h
+          deliverables:
+            - Unit tests for role detection
+            - Test enforcement logic
+            - Mock session registry for testing
+
+      code_structure: |
+        # orchestration/enforcement.py
+
+        class Role(Enum):
+            ORCHESTRATOR = "orchestrator"
+            SUBAGENT = "subagent"
+            LEGACY = "legacy"  # No orchestration context
+
+        class EnforcementLevel(Enum):
+            ADVISORY = "advisory"
+            WARNING = "warning"
+            BLOCKING = "blocking"
+
+        @dataclass
+        class RoleContext:
+            role: Role
+            source: str  # "environment", "registry", "inferred"
+            confidence: str  # "high", "medium", "low"
+            session_id: str
+            task_id: Optional[str]
+            plan_folder: Optional[str]
+            parent_session: Optional[str]
+            phase: Optional[str]
+
+        @dataclass
+        class EnforcementResult:
+            allowed: bool
+            level: EnforcementLevel
+            message: str
+            requires_force: bool  # True if --force can override
+
+        class RoleEnforcer:
+            def get_current_role(self) -> RoleContext:
+                """Detect current session's role."""
+                # Layer 1: Environment variables (high confidence)
+                if role_str := os.getenv("AGENTIC_SESSION_ROLE"):
+                    return RoleContext(
+                        role=Role(role_str),
+                        source="environment",
+                        confidence="high",
+                        session_id=os.getenv("AGENTIC_SESSION_ID"),
+                        task_id=os.getenv("AGENTIC_TASK_ID"),
+                        plan_folder=os.getenv("AGENTIC_PLAN_FOLDER"),
+                        parent_session=os.getenv("AGENTIC_PARENT_SESSION"),
+                        phase=os.getenv("AGENTIC_PHASE")
+                    )
+
+                # Layer 2: Session registry (medium confidence)
+                # ... registry lookup logic ...
+
+                # Layer 3: Heuristics (low confidence)
+                return RoleContext(role=Role.LEGACY, source="inferred", confidence="low", ...)
+
+            def validate_operation(self, operation: str) -> EnforcementResult:
+                """Check if current role can perform operation."""
+                context = self.get_current_role()
+
+                # Check permission matrix
+                if operation == "spawn_session":
+                    if context.role == Role.SUBAGENT:
+                        return EnforcementResult(
+                            allowed=False,
+                            level=EnforcementLevel.WARNING,
+                            message="Subagents should not spawn additional sessions",
+                            requires_force=True
+                        )
+
+                # ... other operations ...
+
+                return EnforcementResult(allowed=True, level=EnforcementLevel.ADVISORY, ...)
+
+      testing: |
+        1. Test with AGENTIC_SESSION_ROLE=orchestrator
+        2. Test with AGENTIC_SESSION_ROLE=subagent
+        3. Test without env vars (legacy mode)
+        4. Test session registry fallback
+        5. Validate enforcement results for each operation
+
+    success_criteria:
+      - Correctly detects role from environment variables
+      - Falls back to session registry if env vars missing
+      - Returns correct enforcement results for operations
+      - Graduated enforcement levels work as expected
+
+    dependencies: [IA-001, QW-003]
+    blocks: [IA-004]  # Session hierarchy enforcement
+    prerequisite_for: [P4, P5]
+
+  # ---------------------------------------------------------------------------
+  # IA-003: MMD PARSING SERVICE (P2 CORE)
+  # ---------------------------------------------------------------------------
+
+  - id: IA-003
+    title: "MMD-to-Tasklist Parsing Service"
+    source: P2
+    effort_hours: 25-40
+    value: HIGH
+    complexity: MEDIUM
+    priority: 3
+
+    what: |
+      Implement MMDParserService with 5-stage transformation pipeline:
+      1. Metadata extraction (GOAL, PHASES, AGENT_ROUTING)
+      2. Phase extraction (from subgraph declarations)
+      3. Task extraction (from flowchart nodes)
+      4. Dependency extraction (from edges)
+      5. Tasklist generation (output YAML matching plan schema)
+      Enables preloading plan structure at entrypoint execute.
+
+    why: |
+      High value, low risk. Provides immediate plan structure visibility
+      to orchestrators and agents. Enables progress reporting (X of Y tasks).
+      Foundation for P6 agent-specific generation. Complements P1's task
+      tracking without the enforcement gaps.
+
+    where:
+      files:
+        - modules/AgenticCLI/src/agenticcli/services/mmd_parser_service.py (NEW)
+        - modules/AgenticCLI/src/agenticcli/commands/entrypoint.py (integration)
+      dependencies:
+        - QW-004 (MMD metadata extraction utility)
+
+    implementation:
+      phases:
+        - phase: 1
+          name: "Metadata Extraction"
+          effort: 2-4h
+          deliverables:
+            - Extract GOAL, PHASES, AGENT_ROUTING from %% comments
+            - Reuse QW-004 utility
+          files:
+            - modules/AgenticCLI/src/agenticcli/services/mmd_parser_service.py
+
+        - phase: 2
+          name: "Phase Extraction"
+          effort: 4-6h
+          deliverables:
+            - Parse subgraph declarations
+            - Extract phase IDs and names
+            - Handle nested subgraphs
+          files:
+            - modules/AgenticCLI/src/agenticcli/services/mmd_parser_service.py
+
+        - phase: 3
+          name: "Task Extraction"
+          effort: 6-8h
+          deliverables:
+            - Parse node declarations
+            - Extract task IDs from node names
+            - Map tasks to phases (based on subgraph membership)
+          files:
+            - modules/AgenticCLI/src/agenticcli/services/mmd_parser_service.py
+
+        - phase: 4
+          name: "Dependency Extraction"
+          effort: 6-10h
+          deliverables:
+            - Parse edge declarations (-->, ---, -.->)
+            - Build dependency graph
+            - Detect circular dependencies
+          files:
+            - modules/AgenticCLI/src/agenticcli/services/mmd_parser_service.py
+
+        - phase: 5
+          name: "Tasklist Generation"
+          effort: 3-5h
+          deliverables:
+            - Generate YAML matching plan schema
+            - Output to plan folder or temp location
+            - Validate against plan_example.yml schema
+          files:
+            - modules/AgenticCLI/src/agenticcli/services/mmd_parser_service.py
+
+        - phase: 6
+          name: "CLI Integration"
+          effort: 4-7h
+          deliverables:
+            - Wire into entrypoint execute --compile
+            - Include tasklist in context bundle
+            - Add validation command
+          files:
+            - modules/AgenticCLI/src/agenticcli/commands/entrypoint.py
+
+      code_structure: |
+        # services/mmd_parser_service.py
+
+        class MMDParserService:
+            def parse_mmd(self, mmd_path: Path) -> dict:
+                """5-stage transformation pipeline."""
+                content = mmd_path.read_text()
+
+                # Stage 1: Metadata
+                metadata = self._extract_metadata(content)
+
+                # Stage 2: Phases
+                phases = self._extract_phases(content)
+
+                # Stage 3: Tasks
+                tasks = self._extract_tasks(content, phases)
+
+                # Stage 4: Dependencies
+                self._extract_dependencies(content, tasks)
+
+                # Stage 5: Generate tasklist
+                return self._generate_tasklist(metadata, phases, tasks)
+
+            def _extract_metadata(self, content: str) -> dict:
+                """Extract %% comment headers."""
+                # Reuse QW-004 utility
+                pass
+
+            def _extract_phases(self, content: str) -> list[dict]:
+                """Extract subgraph declarations."""
+                # Pattern: subgraph PhaseName_SG ["Phase Label"]
+                pass
+
+            def _extract_tasks(self, content: str, phases: list) -> list[dict]:
+                """Extract task nodes from flowchart."""
+                # Pattern: [TASK-ID: Description]
+                pass
+
+            def _extract_dependencies(self, content: str, tasks: list) -> None:
+                """Parse edges to build dependency graph."""
+                # Pattern: TaskA --> TaskB
+                pass
+
+            def _generate_tasklist(self, metadata, phases, tasks) -> dict:
+                """Generate YAML matching plan schema."""
+                return {
+                    "plan_metadata": metadata,
+                    "phases": phases,
+                    "tasks": tasks
+                }
+
+      testing: |
+        1. Test with 10+ real MMD files from docs/plans/
+        2. Validate extracted metadata, phases, tasks
+        3. Test dependency graph construction
+        4. Verify output YAML matches schema
+        5. Test error handling for malformed MMD
+
+    success_criteria:
+      - Parses 90%+ of MMD files successfully
+      - Extracts all phases and tasks
+      - Correctly builds dependency graph
+      - Output YAML validates against schema
+      - Execution time < 500ms for typical files
+
+    dependencies: [QW-004]
+    blocks: []
+    prerequisite_for: [P2]
+
+  # ---------------------------------------------------------------------------
+  # IA-004: SESSION HIERARCHY TRACKING
+  # ---------------------------------------------------------------------------
+
+  - id: IA-004
+    title: "Parent-Child Session Hierarchy Tracking"
+    source: P3, P4, P5
+    effort_hours: 12-18
+    value: MEDIUM-HIGH
+    complexity: MEDIUM
+    priority: 4
+
+    what: |
+      Track parent-child relationships between sessions:
+      - Store parent_session_id in session record
+      - Update parent's child_sessions list when spawning
+      - Add get_session_hierarchy(plan_folder) query
+      - Add `agentic session hierarchy` command to display tree
+      Enables orchestrators to see all spawned subagents.
+
+    why: |
+      Foundation for session-level orchestration. Orchestrators need to
+      know which subagents they've spawned. Enables cleanup (kill all
+      child sessions), monitoring (track subagent progress), and debugging
+      (visualize session tree).
+
+    where:
+      files:
+        - modules/AgenticCLI/src/agenticcli/commands/session.py
+        - modules/AgenticCLI/src/agenticcli/utils/session_registry.py
+      commands:
+        - "agentic session hierarchy [--plan <folder>]"
+      dependencies:
+        - IA-001 (environment variable injection stores parent_session)
+        - QW-005 (session registry query utilities)
+
+    implementation:
+      phases:
+        - phase: 1
+          name: "Session Record Schema"
+          effort: 2-3h
+          deliverables:
+            - Add parent_session field to session record
+            - Add child_sessions list to session record
+            - Backward compatibility for old records
+          files:
+            - modules/AgenticCLI/src/agenticcli/commands/session.py
+
+        - phase: 2
+          name: "Parent Update on Spawn"
+          effort: 4-6h
+          deliverables:
+            - When spawning, update parent's child_sessions list
+            - Store parent_session in child's record
+            - Handle missing parent gracefully
+          files:
+            - modules/AgenticCLI/src/agenticcli/commands/session.py
+
+        - phase: 3
+          name: "Hierarchy Query"
+          effort: 4-6h
+          deliverables:
+            - get_session_hierarchy(plan_folder) function
+            - Build tree structure from session records
+            - Handle orphan sessions
+          files:
+            - modules/AgenticCLI/src/agenticcli/utils/session_registry.py
+
+        - phase: 4
+          name: "Hierarchy Display Command"
+          effort: 2-3h
+          deliverables:
+            - `agentic session hierarchy` command
+            - Tree visualization with indentation
+            - Filter by plan folder
+          files:
+            - modules/AgenticCLI/src/agenticcli/commands/session.py
+
+      code_structure: |
+        # In session.py cmd_spawn(), update parent:
+
+        parent_session_id = getattr(args, "parent_session", None)
+        if parent_session_id:
+            # Load parent session record
+            parent_record = load_session_record(parent_session_id)
+            if parent_record:
+                # Add this session to parent's child_sessions
+                parent_record.setdefault("child_sessions", []).append(session_id)
+                save_session_record(parent_session_id, parent_record)
+
+        # In utils/session_registry.py:
+
+        def get_session_hierarchy(plan_folder: str = None) -> dict:
+            """Build session hierarchy tree."""
+            sessions = get_all_sessions()
+
+            # Filter by plan if specified
+            if plan_folder:
+                sessions = [s for s in sessions if s.get("plan_folder") == plan_folder]
+
+            # Build tree structure
+            tree = {}
+            for session in sessions:
+                if not session.get("parent_session"):
+                    # Root session
+                    tree[session["session_id"]] = build_subtree(session, sessions)
+
+            return tree
+
+      output_format: |
+        Session Hierarchy for Plan: 260131EN_investigate_orchestration_enforcement_patterns/
+
+        orch-260131EN (orchestrator)
+        ├── build-260131EN-EN-P3-001 (subagent, task: EN-P3-001)
+        ├── build-260131EN-EN-P4-002 (subagent, task: EN-P4-002)
+        └── review-260131EN (subagent, reviewer role)
+
+      testing: |
+        1. Spawn orchestrator session
+        2. From orchestrator, spawn 2 subagent sessions
+        3. Run `agentic session hierarchy --plan <folder>`
+        4. Verify tree structure shows parent-child correctly
+        5. Test with orphan sessions (parent killed)
+
+    success_criteria:
+      - Parent-child relationships stored correctly
+      - Hierarchy query returns accurate tree
+      - Display command shows readable tree structure
+      - Handles orphan sessions gracefully
+
+    dependencies: [IA-001, QW-005]
+    blocks: []
+    prerequisite_for: [P5]
+
+  # ---------------------------------------------------------------------------
+  # IA-005: GATE VALIDATION COMMANDS (P1 SUBSET)
+  # ---------------------------------------------------------------------------
+
+  - id: IA-005
+    title: "Gate Validation Commands"
+    source: P1
+    effort_hours: 12-18
+    value: MEDIUM
+    complexity: MEDIUM
+    priority: 5
+
+    what: |
+      Add CLI commands for orchestration gate validation:
+      - `agentic plan gate check <gate_name>` - Returns pass/fail
+      - `agentic plan gate require <gate_name>` - Fails if gate not met
+      - `agentic plan gate list` - Show all gates and status
+      Enables orchestrators to enforce phase transitions.
+
+    why: |
+      Targeted solution for gate enforcement without full P1 complexity.
+      Orchestrators can call gate validation before phase transitions.
+      Foundation for future orchestration state machine.
+
+    where:
+      files:
+        - modules/AgenticCLI/src/agenticcli/commands/plan.py
+      commands:
+        - "agentic plan gate check <gate_name> --plan <folder>"
+        - "agentic plan gate require <gate_name> --plan <folder>"
+        - "agentic plan gate list --plan <folder>"
+      dependencies:
+        - Plan YAML schema (existing)
+
+    implementation:
+      phases:
+        - phase: 1
+          name: "Gate Definition Schema"
+          effort: 3-4h
+          deliverables:
+            - Define gate schema in plan YAML
+            - Gate types: file_exists, task_completed, review_approved
+            - Gate requirements structure
+          design: |
+            # In plan_*.yml:
+            gates:
+              - id: mmd_exists
+                type: file_exists
+                path: "orchestration_*.mmd"
+              - id: build_complete
+                type: phase_complete
+                phase: build
+              - id: review_approved
+                type: review_status
+                review_id: "build_review"
+
+        - phase: 2
+          name: "Gate Validation Logic"
+          effort: 6-8h
+          deliverables:
+            - Implement gate check logic for each type
+            - Return pass/fail with reason
+            - Support multiple gate types
+          files:
+            - modules/AgenticCLI/src/agenticcli/commands/plan.py
+
+        - phase: 3
+          name: "Gate CLI Commands"
+          effort: 3-4h
+          deliverables:
+            - cmd_gate_check()
+            - cmd_gate_require()
+            - cmd_gate_list()
+          files:
+            - modules/AgenticCLI/src/agenticcli/commands/plan.py
+
+        - phase: 4
+          name: "Testing"
+          effort: 0-2h
+          deliverables:
+            - Test each gate type
+            - Test pass/fail scenarios
+            - Test error handling
+
+      code_structure: |
+        # In plan.py:
+
+        @click.command("check")
+        @click.argument("gate_name")
+        @click.option("--plan", required=True)
+        def cmd_gate_check(gate_name, plan):
+            """Check if gate requirements are met."""
+            plan_data = load_plan_yaml(plan)
+            gates = plan_data.get("gates", [])
+
+            gate = find_gate(gates, gate_name)
+            if not gate:
+                click.echo(f"Gate '{gate_name}' not found", err=True)
+                sys.exit(1)
+
+            result = validate_gate(gate, plan)
+            if result.passed:
+                click.echo(f"PASS: {gate_name}")
+                sys.exit(0)
+            else:
+                click.echo(f"FAIL: {gate_name} - {result.reason}")
+                sys.exit(1)
+
+        def validate_gate(gate: dict, plan_folder: Path) -> GateResult:
+            """Validate gate based on type."""
+            gate_type = gate["type"]
+
+            if gate_type == "file_exists":
+                path = plan_folder / gate["path"]
+                return GateResult(passed=path.exists(), reason=f"File {path}")
+
+            elif gate_type == "phase_complete":
+                phase = gate["phase"]
+                tasks = get_phase_tasks(plan_folder, phase)
+                all_complete = all(t["status"] == "completed" for t in tasks)
+                return GateResult(passed=all_complete, reason=f"Phase {phase}")
+
+            # ... other gate types
+
+      testing: |
+        1. Define gates in test plan YAML
+        2. Test file_exists gate (file present vs absent)
+        3. Test phase_complete gate
+        4. Test gate require (should fail if gate fails)
+
+    success_criteria:
+      - Gate validation returns correct pass/fail
+      - Clear error messages for failed gates
+      - Supports multiple gate types
+      - Integration with existing plan YAML schema
+
+    dependencies: []
+    blocks: []
+
+  # ---------------------------------------------------------------------------
+  # IA-006: ENTRYPOINT EXECUTE TASKLIST INTEGRATION
+  # ---------------------------------------------------------------------------
+
+  - id: IA-006
+    title: "Entrypoint Execute Tasklist Integration"
+    source: P2
+    effort_hours: 8-12
+    value: HIGH
+    complexity: LOW
+    priority: 6
+
+    what: |
+      Integrate MMD parsing into `agentic entrypoint execute --compile`:
+      1. Detect orchestration MMD file in plan folder
+      2. Parse MMD to tasklist using MMDParserService (IA-003)
+      3. Include tasklist in compiled context bundle
+      4. Filter tasklist by agent role (if AGENT_ROUTING present)
+      Orchestrators and agents see plan structure at bootstrap.
+
+    why: |
+      High value extension of P2. Once MMD parsing exists (IA-003), wiring
+      it into entrypoint execute is straightforward. Provides immediate
+      visibility of plan structure to all agents.
+
+    where:
+      files:
+        - modules/AgenticCLI/src/agenticcli/commands/entrypoint.py
+      dependencies:
+        - IA-003 (MMD parsing service)
+
+    implementation:
+      phases:
+        - phase: 1
+          name: "MMD Detection"
+          effort: 2-3h
+          deliverables:
+            - In cmd_execute(), detect orchestration_*.mmd in plan folder
+            - Handle missing MMD gracefully
+          files:
+            - modules/AgenticCLI/src/agenticcli/commands/entrypoint.py
+
+        - phase: 2
+          name: "Tasklist Generation"
+          effort: 3-4h
+          deliverables:
+            - Call MMDParserService.parse_mmd()
+            - Generate tasklist YAML
+            - Save to plan folder or temp location
+          files:
+            - modules/AgenticCLI/src/agenticcli/commands/entrypoint.py
+
+        - phase: 3
+          name: "Agent-Specific Filtering"
+          effort: 2-3h
+          deliverables:
+            - Read AGENT_ROUTING from MMD metadata
+            - Filter tasks by assigned agent
+            - Include only relevant tasks in context
+          files:
+            - modules/AgenticCLI/src/agenticcli/commands/entrypoint.py
+
+        - phase: 4
+          name: "Context Bundle Integration"
+          effort: 1-2h
+          deliverables:
+            - Add tasklist to _compile_context() output
+            - Include in context bundle sent to agent
+          files:
+            - modules/AgenticCLI/src/agenticcli/commands/entrypoint.py
+
+      code_changes: |
+        # In entrypoint.py cmd_execute():
+
+        def cmd_execute(args):
+            # ... existing code ...
+
+            # After _compile_context()
+            context = _compile_context(args)
+
+            # NEW: Parse MMD and add tasklist
+            plan_folder = Path(args.plan_folder) if args.plan_folder else None
+            if plan_folder:
+                mmd_file = find_orchestration_mmd(plan_folder)
+                if mmd_file:
+                    from agenticcli.services.mmd_parser_service import MMDParserService
+
+                    parser = MMDParserService()
+                    tasklist = parser.parse_mmd(mmd_file)
+
+                    # Filter by agent role if specified
+                    if args.role:
+                        tasklist = filter_tasklist_by_agent(tasklist, args.role)
+
+                    # Add to context
+                    context["tasklist"] = tasklist
+
+      testing: |
+        1. Run entrypoint execute --compile with plan that has MMD
+        2. Verify tasklist included in context bundle
+        3. Test agent-specific filtering
+        4. Test without MMD (should work, no tasklist)
+
+    success_criteria:
+      - Tasklist included in context when MMD present
+      - Agent-specific filtering works correctly
+      - Graceful handling when MMD missing
+      - No breaking changes to existing entrypoint execute
+
+    dependencies: [IA-003]
+    blocks: []
+    prerequisite_for: [P2]
+
+  # ---------------------------------------------------------------------------
+  # IA-007: ENFORCEMENT HOOKS IN CLI COMMANDS
+  # ---------------------------------------------------------------------------
+
+  - id: IA-007
+    title: "Role-Based Enforcement Hooks in CLI Commands"
+    source: P4
+    effort_hours: 16-24
+    value: HIGH
+    complexity: MEDIUM
+    priority: 7
+
+    what: |
+      Add enforcement hooks to CLI commands that should be role-restricted:
+      - session spawn: Warn if subagent spawning additional agents
+      - plan archive/move: Block if subagent attempts
+      - task complete: Warn if completing unassigned task
+      Use RoleEnforcer (IA-002) to validate operations.
+
+    why: |
+      Completes P4 core implementation. Without enforcement hooks, role
+      detection (IA-002) is informational only. Enforcement hooks make
+      orchestration boundaries real.
+
+    where:
+      files:
+        - modules/AgenticCLI/src/agenticcli/commands/session.py
+        - modules/AgenticCLI/src/agenticcli/commands/plan.py
+      dependencies:
+        - IA-002 (RoleEnforcer service)
+
+    implementation:
+      phases:
+        - phase: 1
+          name: "Session Spawn Enforcement"
+          effort: 4-6h
+          deliverables:
+            - Check role before spawning session
+            - Block subagent→orchestrator spawns
+            - Warn subagent→subagent spawns (--force to override)
+          files:
+            - modules/AgenticCLI/src/agenticcli/commands/session.py
+
+        - phase: 2
+          name: "Plan Archive/Move Enforcement"
+          effort: 4-6h
+          deliverables:
+            - Check role before archive/move operations
+            - Block subagent archive/move attempts
+            - Clear error message
+          files:
+            - modules/AgenticCLI/src/agenticcli/commands/plan.py
+
+        - phase: 3
+          name: "Task Complete Enforcement"
+          effort: 4-6h
+          deliverables:
+            - Check if task assigned to current session
+            - Warn if completing unassigned task
+            - Advisory level (not blocking)
+          files:
+            - modules/AgenticCLI/src/agenticcli/commands/plan.py
+
+        - phase: 4
+          name: "Testing and Validation"
+          effort: 4-6h
+          deliverables:
+            - Test each enforcement hook
+            - Verify --force override works
+            - Test error messages
+
+      code_structure: |
+        # In session.py cmd_spawn():
+
+        from agenticcli.orchestration.enforcement import RoleEnforcer
+
+        def cmd_spawn(args):
+            enforcer = RoleEnforcer()
+
+            # Check if current role can spawn
+            result = enforcer.validate_operation("spawn_session")
+
+            if not result.allowed:
+                if result.level == EnforcementLevel.BLOCKING:
+                    click.echo(f"[ERROR] {result.message}", err=True)
+                    sys.exit(1)
+
+                elif result.level == EnforcementLevel.WARNING:
+                    click.echo(f"[WARNING] {result.message}", err=True)
+                    if not args.force:
+                        click.echo("Use --force to override.", err=True)
+                        sys.exit(1)
+
+            # ... continue with spawn logic ...
+
+        # In plan.py cmd_archive():
+
+        def cmd_archive(args):
+            enforcer = RoleEnforcer()
+            result = enforcer.validate_operation("archive_plan")
+
+            if not result.allowed and result.level == EnforcementLevel.BLOCKING:
+                click.echo(f"[ERROR] {result.message}", err=True)
+                click.echo("Only orchestrator sessions can archive plans.", err=True)
+                sys.exit(1)
+
+            # ... continue with archive logic ...
+
+      permission_matrix: |
+        Operation          | Orchestrator | Subagent
+        -------------------|--------------|-----------
+        spawn_session      | ALLOW        | WARNING (--force)
+        archive_plan       | ALLOW        | BLOCKING
+        move_plan          | ALLOW        | BLOCKING
+        complete_own_task  | ALLOW        | ALLOW
+        complete_other_task| ADVISORY     | ADVISORY
+
+      testing: |
+        1. Spawn orchestrator, then spawn subagent from it
+        2. From subagent, try to spawn another session (should warn)
+        3. From subagent, try to archive plan (should block)
+        4. From subagent, complete assigned task (should work)
+
+    success_criteria:
+      - Blocking enforcement prevents operation
+      - Warning enforcement requires --force
+      - Advisory enforcement logs but allows
+      - Clear error messages guide users
+
+    dependencies: [IA-002]
+    blocks: []
+    prerequisite_for: [P4]
+
+# =============================================================================
+# DEFERRED ITEMS
+# =============================================================================
+
+deferred_items:
+
+  # ---------------------------------------------------------------------------
+  # DEFER-001: P1 FULL IMPLEMENTATION
+  # ---------------------------------------------------------------------------
+
+  - id: DEFER-001
+    title: "P1: Full CLI Tasklist Orchestration Tracking"
+    source: P1
+    effort_hours: 80-100
+    reason: REDUNDANT_WITH_P2
+
+    rationale: |
+      P1 provides task tracking and enforcement, but has enforcement gaps
+      (agents can bypass via YAML edits). P2 (Preloaded Tasklists) provides
+      similar plan structure visibility without enforcement weaknesses.
+
+      DECISION: Defer P1 until P2 is implemented and evaluated. If P2 proves
+      insufficient for task tracking needs, revisit P1 for enhanced enforcement.
+
+      Quick Wins from P1 (QW-001, QW-002) provide immediate value without
+      committing to full P1 implementation.
+
+    keep_from_p1:
+      - QW-001: Simplified status commands (agentic task done/next)
+      - QW-002: Event-based logging infrastructure
+      - IA-005: Gate validation commands (targeted solution)
+
+    skip_from_p1:
+      - Enforced task dependencies (P2 provides structure)
+      - Completion hooks framework (complex, unclear value)
+      - Activity heartbeat system (low ROI)
+      - Session ID field in task (IA-004 tracks hierarchy better)
+      - Full phase-aware schema (P2 extracts from MMD)
+
+    reconsider_if:
+      - P2 tasklist generation proves insufficient
+      - Need for hard enforcement of task sequencing emerges
+      - Completion hooks provide clear value proposition
+
+  # ---------------------------------------------------------------------------
+  # DEFER-002: P5 TMUX SESSION MANAGEMENT PATTERNS
+  # ---------------------------------------------------------------------------
+
+  - id: DEFER-002
+    title: "P5: Tmux Session Management Patterns"
+    source: P5
+    effort_hours: 250-350
+    reason: BUILD_ON_FOUNDATION
+
+    rationale: |
+      P5 provides sophisticated session hierarchy management with quality gates,
+      but requires P3 (environment injection) and P4 (role detection) as
+      foundation. Effort is substantial (3.5 development cycles).
+
+      DECISION: Defer P5 until P3+P4 foundation is implemented and validated.
+      P5 builds on environment-based context with tmux-specific session
+      enforcement. Implement after foundation proves effective.
+
+      Quick Wins (QW-003, QW-005) and Immediate Actions (IA-001, IA-002, IA-004)
+      provide session hierarchy tracking without full tmux integration.
+
+    prerequisites:
+      - IA-001: Environment variable injection (P3 core)
+      - IA-002: Role detection logic (P4 core)
+      - IA-004: Session hierarchy tracking
+      - IA-007: Enforcement hooks in CLI commands
+
+    implement_after:
+      - P3 and P4 foundation deployed to production
+      - Session hierarchy tracking proves valuable
+      - Need for tmux-specific features emerges
+
+    alternative_approach: |
+      Session hierarchy tracking (IA-004) provides parent-child relationships
+      without requiring tmux. If tmux-specific features (terminal capture,
+      session observation) are not needed, defer P5 indefinitely.
+
+  # ---------------------------------------------------------------------------
+  # DEFER-003: P6 BOOTSTRAP-TIME PLAN AUTO-GENERATION
+  # ---------------------------------------------------------------------------
+
+  - id: DEFER-003
+    title: "P6: Bootstrap-time Plan Auto-generation (Process.yml → Tasks)"
+    source: P6
+    effort_hours: 61-96
+    reason: BUILD_ON_P2
+
+    rationale: |
+      P6 generates agent-specific task files from process.yml at bootstrap.
+      This complements P2 (which generates plan-level tasklists from MMD).
+
+      DECISION: Defer P6 until P2 is implemented. P2 provides plan-level
+      structure; P6 adds agent-level granularity. Implement P6 after P2
+      proves that auto-generated task files are valuable.
+
+      P6's MMD-to-task transformation (18-28 hours) overlaps with P2. If P2
+      is implemented, the MMD parsing infrastructure is reusable for P6.
+
+    prerequisites:
+      - IA-003: MMD parsing service (P2 core)
+      - IA-006: Entrypoint execute tasklist integration
+
+    implement_after:
+      - P2 deployed and evaluated
+      - Agents find plan-level tasklists valuable
+      - Need for agent-specific step-by-step guidance emerges
+
+    alternative_approach: |
+      If P2 tasklists are sufficient for agent guidance, P6 may be unnecessary.
+      Agents already have process.yml available via agent_help.py. Auto-generating
+      task files adds convenience but may not be essential.
+
+# =============================================================================
+# IMPLEMENTATION SEQUENCE
+# =============================================================================
+
+implementation_sequence:
+
+  overview: |
+    Recommended sequence prioritizes foundational work (P3, P4) with quick
+    wins interspersed for immediate value. P2 provides structure visibility.
+    P5, P6, and full P1 are deferred until foundation proves effective.
+
+  phases:
+
+    - phase: 0
+      name: "Quick Wins Sprint"
+      duration: "1-2 weeks"
+      effort: 20-32 hours
+      items: [QW-001, QW-002, QW-003, QW-004, QW-005]
+      deliverables:
+        - Simplified task status commands (done, next)
+        - Event-based logging infrastructure
+        - Session whoami command
+        - MMD metadata extraction utility
+        - Session registry query utilities
+      value: |
+        Immediate value from low-complexity improvements. Validates patterns
+        and infrastructure before committing to larger efforts.
+
+    - phase: 1
+      name: "Foundation: Environment Injection (P3 Core)"
+      duration: "3-4 weeks"
+      effort: 20-30 hours
+      items: [IA-001]
+      deliverables:
+        - AGENTIC_* environment variable injection
+        - CLI arguments for orchestration context
+        - Session registry schema extension
+      value: |
+        FOUNDATIONAL. Enables all role-based enforcement. Without this,
+        sessions cannot identify their role.
+
+    - phase: 2
+      name: "Structure: MMD Parsing (P2 Core)"
+      duration: "4-6 weeks"
+      effort: 25-40 hours (parallel with Phase 3)
+      items: [IA-003, IA-006]
+      deliverables:
+        - MMDParserService with 5-stage pipeline
+        - Tasklist generation from orchestration MMD
+        - Entrypoint execute integration
+      value: |
+        HIGH VALUE, LOW RISK. Provides plan structure visibility to
+        orchestrators and agents. Enables progress reporting.
+
+    - phase: 3
+      name: "Enforcement: Role Detection (P4 Core)"
+      duration: "5-6 weeks"
+      effort: 30-40 hours (parallel with Phase 2)
+      items: [IA-002]
+      deliverables:
+        - RoleEnforcer service with multi-layer detection
+        - Role permissions matrix
+        - Graduated enforcement levels (advisory, warning, blocking)
+      value: |
+        CRITICAL. Provides enforcement layer for orchestration boundaries.
+        Without this, role detection is informational only.
+
+    - phase: 4
+      name: "Session Management"
+      duration: "2-3 weeks"
+      effort: 12-18 hours
+      items: [IA-004]
+      deliverables:
+        - Parent-child session hierarchy tracking
+        - Session hierarchy query and display
+      value: |
+        Enables orchestrators to see spawned subagents. Foundation for
+        session-level orchestration patterns.
+
+    - phase: 5
+      name: "Enforcement Hooks"
+      duration: "3-4 weeks"
+      effort: 16-24 hours
+      items: [IA-007]
+      deliverables:
+        - Role-based enforcement in session spawn
+        - Role-based enforcement in plan archive/move
+        - Advisory enforcement in task complete
+      value: |
+        Completes P4 implementation. Makes orchestration boundaries real
+        with graduated enforcement.
+
+    - phase: 6
+      name: "Gate Validation (P1 Subset)"
+      duration: "2-3 weeks"
+      effort: 12-18 hours
+      items: [IA-005]
+      deliverables:
+        - Gate validation commands (check, require, list)
+        - Gate definition schema in plan YAML
+      value: |
+        Targeted gate enforcement without full P1 complexity. Orchestrators
+        can enforce phase transitions.
+
+    - phase: 7
+      name: "Evaluation and Next Steps"
+      duration: "1-2 weeks"
+      effort: 0 hours (evaluation only)
+      items: []
+      activities:
+        - Deploy Phase 0-6 deliverables to production
+        - Collect feedback from orchestrator usage
+        - Measure adoption of role-based enforcement
+        - Decide on P5 (tmux patterns) implementation
+        - Decide on P6 (bootstrap generation) implementation
+        - Decide on full P1 (tasklist tracking) implementation
+
+  total_effort:
+    quick_wins: 20-32 hours
+    immediate_actions: 115-175 hours
+    total: 135-207 hours
+    timeline: "19-28 weeks (with parallelization)"
+
+  parallelization_opportunities:
+    - group: [IA-003, IA-002]
+      reason: "MMD parsing (P2) and role detection (P4) are independent"
+      savings: "Phases 2-3 can overlap, reducing timeline by 4-6 weeks"
+
+  critical_path:
+    - QW-001, QW-002, QW-003, QW-004, QW-005 (Quick Wins)
+    - IA-001 (Environment injection - enables all role-based work)
+    - IA-002 (Role detection - enables enforcement)
+    - IA-007 (Enforcement hooks - completes P4)
+    - IA-004 (Session hierarchy - enables orchestration patterns)
+
+# =============================================================================
+# SUCCESS METRICS
+# =============================================================================
+
+success_metrics:
+
+  quick_wins_metrics:
+    - metric: "Task status command usage"
+      target: "50%+ of task completions use `agentic task done` vs manual YAML"
+      measurement: "Count done command executions in event log"
+
+    - metric: "Event log coverage"
+      target: "100% of orchestration actions logged"
+      measurement: "Audit event log for all task/session/plan operations"
+
+    - metric: "Whoami command adoption"
+      target: "Agents use whoami to discover context in 80%+ of spawned sessions"
+      measurement: "Count whoami executions in event log"
+
+  foundation_metrics:
+    - metric: "Environment variable injection"
+      target: "100% of spawned sessions have AGENTIC_SESSION_ID set"
+      measurement: "Audit session spawn events for env var presence"
+
+    - metric: "Role detection accuracy"
+      target: "95%+ of sessions correctly identify their role"
+      measurement: "Compare env vars to session registry data"
+
+    - metric: "Enforcement effectiveness"
+      target: "Zero subagent archive/move attempts succeed"
+      measurement: "Audit event log for blocked operations"
+
+  structure_metrics:
+    - metric: "MMD parsing success rate"
+      target: "90%+ of orchestration MMD files parse successfully"
+      measurement: "Count parse successes vs failures"
+
+    - metric: "Tasklist generation coverage"
+      target: "100% of plans with MMD have tasklists in context"
+      measurement: "Audit entrypoint execute context bundles"
+
+    - metric: "Agent-specific filtering accuracy"
+      target: "Agents see only their assigned tasks (no cross-agent leakage)"
+      measurement: "Sample context bundles for role-based filtering"
+
+  hierarchy_metrics:
+    - metric: "Session hierarchy tracking"
+      target: "100% of spawned sessions record parent_session"
+      measurement: "Audit session records for parent field"
+
+    - metric: "Hierarchy query accuracy"
+      target: "Session hierarchy command shows correct tree"
+      measurement: "Manual validation of hierarchy display vs session records"
+
+  enforcement_metrics:
+    - metric: "Spawn enforcement"
+      target: "100% of subagent→orchestrator spawns blocked"
+      measurement: "Audit event log for blocked spawn attempts"
+
+    - metric: "Archive enforcement"
+      target: "100% of subagent archive attempts blocked"
+      measurement: "Audit event log for blocked archive attempts"
+
+    - metric: "Force override usage"
+      target: "< 10% of warnings overridden with --force"
+      measurement: "Count --force usages in event log"
+
+  adoption_metrics:
+    - metric: "Role-based spawn adoption"
+      target: "80%+ of session spawns include --role flag"
+      measurement: "Count spawns with vs without --role"
+
+    - metric: "Plan structure visibility"
+      target: "Orchestrators reference tasklist in 50%+ of plans"
+      measurement: "Survey orchestrator usage patterns"
+
+    - metric: "Gate validation usage"
+      target: "Gate validation used in 80%+ of multi-phase plans"
+      measurement: "Count gate check/require command executions"
+
+  quality_metrics:
+    - metric: "Performance overhead"
+      target: "< 100ms overhead for session spawn with env injection"
+      measurement: "Benchmark spawn time with vs without orchestration context"
+
+    - metric: "Error rate"
+      target: "< 5% of enforcement operations fail with errors"
+      measurement: "Count errors in event log"
+
+    - metric: "Backward compatibility"
+      target: "100% of existing plans work without orchestration context"
+      measurement: "Regression test suite passes"
+
+# =============================================================================
+# RISK MITIGATION
+# =============================================================================
+
+risk_mitigation:
+
+  technical_risks:
+    - risk: "Environment variable injection breaks existing workflows"
+      likelihood: LOW
+      impact: HIGH
+      mitigation:
+        - All new env vars are opt-in (only set if --role etc provided)
+        - Backward compatibility tested
+        - Gradual rollout with monitoring
+
+    - risk: "MMD parsing fails on legacy/manually-edited files"
+      likelihood: MEDIUM
+      impact: MEDIUM
+      mitigation:
+        - Graceful fallbacks for missing metadata
+        - Schema validation with clear error messages
+        - Test with 50+ real MMD files before deployment
+
+    - risk: "Role enforcement blocks legitimate operations"
+      likelihood: LOW
+      impact: MEDIUM
+      mitigation:
+        - Graduated enforcement (advisory → warning → blocking)
+        - --force override for warning-level blocks
+        - Clear error messages guide users to correct approach
+
+  adoption_risks:
+    - risk: "Agents don't use new CLI commands (stick to manual YAML edits)"
+      likelihood: MEDIUM
+      impact: MEDIUM
+      mitigation:
+        - Make CLI commands simpler than alternatives
+        - Update agent process.yml to reference new commands
+        - Event logging tracks adoption rates
+
+    - risk: "Orchestrators bypass role-based enforcement"
+      likelihood: LOW
+      impact: HIGH
+      mitigation:
+        - Audit trail (event logging) detects bypasses
+        - Enforcement hooks cover all sensitive operations
+        - Session registry is authoritative (can't be easily tampered)
+
+  implementation_risks:
+    - risk: "Quick wins don't provide enough value to justify larger efforts"
+      likelihood: LOW
+      impact: MEDIUM
+      mitigation:
+        - Quick wins independently valuable (not just prototypes)
+        - Evaluation phase (Phase 7) before committing to P5/P6/P1
+        - Defer large efforts until foundation proves value
+
+    - risk: "P3+P4 foundation insufficient for orchestration needs"
+      likelihood: LOW
+      impact: HIGH
+      mitigation:
+        - P3+P4 are industry-validated patterns
+        - Session hierarchy tracking (IA-004) complements foundation
+        - P5 (tmux) available as enhancement if needed
+
+# =============================================================================
+# DEPENDENCIES AND BLOCKERS
+# =============================================================================
+
+dependency_graph: |
+  Quick Wins (Phase 0):
+    QW-001 ──→ (no dependencies)
+    QW-002 ──→ (no dependencies)
+    QW-003 ──→ (no dependencies)
+    QW-004 ──→ (no dependencies)
+    QW-005 ──→ (no dependencies)
+
+  Foundation (Phase 1):
+    IA-001 ──→ (no dependencies)
+
+  Structure + Enforcement (Phases 2-3, PARALLEL):
+    IA-003 ──→ QW-004
+    IA-006 ──→ IA-003
+    IA-002 ──→ IA-001, QW-003
+
+  Session Management (Phase 4):
+    IA-004 ──→ IA-001, QW-005
+
+  Enforcement Hooks (Phase 5):
+    IA-007 ──→ IA-002
+
+  Gate Validation (Phase 6):
+    IA-005 ──→ (no dependencies, standalone)
+
+blocking_relationships:
+  - IA-001 blocks: [IA-002, IA-004]
+    reason: "Role detection and hierarchy tracking require env vars"
+
+  - IA-002 blocks: [IA-007]
+    reason: "Enforcement hooks require RoleEnforcer service"
+
+  - QW-004 blocks: [IA-003]
+    reason: "MMD parsing uses metadata extraction utility"
+
+  - IA-003 blocks: [IA-006]
+    reason: "Entrypoint integration uses MMDParserService"
+
+# =============================================================================
+# RECOMMENDATIONS
+# =============================================================================
+
+recommendations:
+
+  immediate_next_steps:
+    - step: 1
+      action: "Implement Quick Wins Sprint (QW-001 through QW-005)"
+      timeline: "1-2 weeks"
+      rationale: "Immediate value, validates patterns, low risk"
+
+    - step: 2
+      action: "Begin IA-001 (Environment Variable Injection)"
+      timeline: "3-4 weeks"
+      rationale: "Foundational for all role-based work"
+
+    - step: 3
+      action: "Parallelize IA-003 (MMD Parsing) and IA-002 (Role Detection)"
+      timeline: "4-6 weeks"
+      rationale: "Both are critical, can develop independently"
+
+    - step: 4
+      action: "Implement IA-004 (Session Hierarchy) and IA-007 (Enforcement Hooks)"
+      timeline: "5-7 weeks"
+      rationale: "Complete P3+P4 foundation"
+
+    - step: 5
+      action: "Implement IA-005 (Gate Validation) and IA-006 (Entrypoint Integration)"
+      timeline: "2-3 weeks"
+      rationale: "Add structure visibility and gate enforcement"
+
+    - step: 6
+      action: "Evaluation Phase: Measure adoption and value"
+      timeline: "1-2 weeks"
+      rationale: "Decide on P5, P6, full P1 based on real usage"
+
+  strategic_decisions:
+    - decision: "Prioritize P3+P4 (environment injection + role detection) over P2 (MMD parsing)"
+      rationale: |
+        P3+P4 are foundational for enforcement. P2 is valuable but not
+        blocking. Can parallelize P2 with P4 if resources available.
+
+    - decision: "Defer P5 (tmux patterns) until P3+P4 foundation validated"
+      rationale: |
+        P5 is substantial effort (250-350h). Session hierarchy tracking (IA-004)
+        provides most value without tmux complexity. Implement P5 only if
+        tmux-specific features prove necessary.
+
+    - decision: "Defer P6 (bootstrap generation) until P2 validated"
+      rationale: |
+        P6 complements P2. If P2 tasklists are valuable, P6 adds agent-level
+        granularity. If P2 proves insufficient, rethink approach.
+
+    - decision: "Defer full P1 (tasklist tracking) indefinitely"
+      rationale: |
+        P2 provides structure visibility without P1's enforcement gaps.
+        Quick Wins from P1 (QW-001, QW-002, IA-005) provide targeted value.
+        Revisit full P1 only if P2 proves insufficient.
+
+  alternatives_considered:
+    - alternative: "Implement P1 first (CLI tasklist tracking)"
+      rejected_because: |
+        P1 has enforcement gaps (agents can bypass via YAML edits). P2 provides
+        similar structure visibility without enforcement weaknesses. Quick Wins
+        from P1 provide immediate value without full P1 commitment.
+
+    - alternative: "Implement P2 before P3+P4"
+      rejected_because: |
+        P2 is valuable but not foundational. P3+P4 enable all role-based
+        enforcement. Better to establish foundation first, then add structure.
+        Can parallelize if resources available.
+
+    - alternative: "Implement all proposals in parallel"
+      rejected_because: |
+        Resource constraints, dependencies between proposals, and risk of
+        over-engineering. Phased approach validates patterns before committing
+        to full implementation.
+
+# =============================================================================
+# CONCLUSION
+# =============================================================================
+
+conclusion: |
+  Quick wins and immediate actions provide a clear path to orchestration
+  enforcement without over-committing to unproven approaches.
+
+  RECOMMENDED APPROACH:
+  1. Quick Wins Sprint (20-32h): Immediate value, pattern validation
+  2. P3 Core (20-30h): Environment injection enables role detection
+  3. P2 Core (25-40h) + P4 Core (30-40h): Structure and enforcement (parallel)
+  4. Session hierarchy (12-18h) + Enforcement hooks (16-24h): Complete foundation
+  5. Gate validation (12-18h) + Entrypoint integration (8-12h): Add capabilities
+  6. Evaluation: Measure, learn, decide on P5/P6/P1
+
+  TOTAL EFFORT: 135-207 hours over 19-28 weeks (with parallelization)
+
+  DEFERRED:
+  - P1 full implementation (80-100h): Redundant with P2, keep Quick Wins only
+  - P5 tmux patterns (250-350h): Build on foundation after validation
+  - P6 bootstrap generation (61-96h): Build on P2 after validation
+
+  This approach delivers orchestration enforcement in manageable increments,
+  validates patterns early, and defers large efforts until foundation proves
+  effective.
+
+# =============================================================================
+# REFERENCES
+# =============================================================================
+
+references:
+  synthesis_documents:
+    - EN-SYNTH-001_proposal_comparison_matrix.yml
+
+  investigation_documents:
+    - proposal_1_gaps_analysis.yml
+    - proposal_1_complexity_assessment.yml
+    - EN-P2-001_plan_start_analysis.yml
+    - EN-P2-002_mmd_format_analysis.yml
+    - EN-P2-003_mmd_transformation_design.yml
+    - EN-P3-001_session_spawn_audit.yml
+    - EN-P3-002_session_context_flow_lifecycle.yml
+    - EN-P3-003_context_injection_design.yml
+    - EN-P4-001_session_metadata_audit.yml
+    - EN-P4-002_environment_session_identification.yml
+    - EN-P4-003_role_detection_enforcement_design.yml
+    - EN-P5-001_agentictmux_audit.yml
+    - EN-P5-002_tmux_patterns_review.yml
+    - EN-P5-003_tmux_orchestration_enforcement_design.yml
+    - EN-P6-001_process_yml_audit.yml
+    - EN-P6-002_mmd_task_transformation_prototype.yml
+    - EN-P6-003_agent_plan_generation_design.yml
+
+  plan_documents:
+    - orchestration_orchestration_enforcement.mmd
+    - plan_teach.yml
+    - friction_analysis.yml

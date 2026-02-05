@@ -1,0 +1,143 @@
+%% =============================================================================
+%% CCI BOOTSTRAP (CLI Context Injection) - EXECUTE FIRST
+%% =============================================================================
+%% Before following this flowchart, run:
+%%   agentic context bootstrap --role orchestration-executor -j
+%%   agentic plan task current -j
+%%
+%% PRINCIPLE: CLI-FIRST CONTEXT
+%% Always use agentic CLI commands for initial context.
+%% =============================================================================
+
+flowchart LR
+    %% GOAL: Execute CLI hardening implementation and testing for plan 260205IM.
+    %% PROFILE: Orchestration-Executor
+    %% GUIDELINE: BUILD FOCUS policy - code implementation and testing.
+    %% INPUT_PATH: modules/AgenticGuidance/agents/orchestration/orchestration-executor/inputs.yml
+    %%
+    %% AGENT_ROUTING: Setup -> deploy-worktree, Build -> build-python, Test -> test-runner, Audit -> test-audit, UAT -> test-user-simulator
+    %% FEEDBACK_TRIGGER: BUILD_FAILURE -> BuildPhase (retry)
+    %% FEEDBACK_TRIGGER: TEST_FAILURE -> BuildPhase (after categorization)
+    %% FEEDBACK_TRIGGER: AUDIT_FAILURE -> TestPhase (re-test)
+    %% STATUS: Setup=pending, Build=pending, Test=pending, Audit=pending, UAT=pending
+
+    Start((Start)) --> LoadInputs[Load Plan Context]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    LoadInputs --> LoadPlan[Load plan_build.yml and plan_test.yml]
+    LoadPlan --> ValidatePlan{Plan Valid?}
+    ValidatePlan -- "No: Invalid" --> AskUser((Ask User for Clarification))
+    ValidatePlan -- "Yes: Valid" --> SetupPhase
+
+    %% ========================================
+    %% SETUP PHASE
+    %% ========================================
+    subgraph Setup_SG ["Setup Subgraph"]
+        SetupPhase[Enter Setup Phase] --> VerifyWorktree[Verify Worktree: /home/code/AgenticEngineering]
+        VerifyWorktree --> WorktreeValid{Worktree Valid?}
+        WorktreeValid -- "No" --> AskUser
+        WorktreeValid -- "Yes" --> SetupComplete[Setup Complete]
+    end
+
+    %% ========================================
+    %% BUILD PHASE
+    %% ========================================
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.test-fix-loop
+    %% MAX_ITERATIONS: 5 (per test-fix-loop definition)
+    %% ESCALATION: If max iterations reached, stop and Ask User
+
+    SetupComplete --> BuildPhase[Enter Build Phase]
+
+    subgraph Build_SG ["Build Phase Subgraph"]
+        BuildPhase --> BuildIM001[IM_001: Session Stop Idempotency]
+        BuildIM001 --> SpawnBuildPython1[Spawn build-python Agent]
+        SpawnBuildPython1 --> BuildIM002[IM_002: Loop Stop Idempotency]
+        BuildIM002 --> SpawnBuildPython2[Spawn build-python Agent]
+        SpawnBuildPython2 --> BuildIM003[IM_003: Generic Planner Role]
+        BuildIM003 --> SpawnBuildPython3[Spawn build-python Agent]
+        SpawnBuildPython3 --> BuildIM004[IM_004: Bootstrap Command]
+        BuildIM004 --> SpawnBuildPython4[Spawn build-python Agent]
+        SpawnBuildPython4 --> BuildComplete{Build Complete?}
+        BuildComplete -- "No: Fix Issues" --> BuildPhase
+        BuildComplete -- "Yes" --> TestPhase
+    end
+
+    %% ========================================
+    %% TEST PHASE
+    %% ========================================
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.test-fix-loop
+    %% MAX_ITERATIONS: 5 (per test-fix-loop definition)
+    %% ESCALATION: If max iterations reached, stop and Ask User
+
+    subgraph Test_SG ["Test Phase Subgraph"]
+        TestPhase[Enter Test Phase] --> EnvSetup[ENV: Environment Setup]
+        EnvSetup --> SpawnTestBuilder1[Spawn test-builder Agent]
+        SpawnTestBuilder1 --> UnitTests[Unit Tests: UNIT_001-004]
+        UnitTests --> SpawnTestRunner1[Spawn test-runner Agent]
+        SpawnTestRunner1 --> UnitsPassed{Unit Tests Passed?}
+        UnitsPassed -- "No: Fix" --> SpawnBuildPythonFix[Spawn build-python Agent]
+        SpawnBuildPythonFix --> SpawnTestRunner1
+        UnitsPassed -- "Yes" --> IntegrationTests[Integration Tests: INTEG_001-003]
+        IntegrationTests --> SpawnTestRunner2[Spawn test-runner Agent]
+        SpawnTestRunner2 --> IntegPassed{Integration Passed?}
+        IntegPassed -- "No: Fix" --> SpawnBuildPythonFix
+        IntegPassed -- "Yes" --> TestComplete[Tests Complete]
+    end
+
+    %% ========================================
+    %% AUDIT PHASE (MANDATORY)
+    %% ========================================
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.audit-test-fix-loop
+    %% MAX_ITERATIONS: 3 (per audit-test-fix-loop definition)
+    %% ESCALATION: BLOCK UAT - audit failures must be resolved
+
+    TestComplete --> AuditPhase[Enter Audit Phase]
+
+    subgraph Audit_SG ["Audit Phase Subgraph"]
+        AuditPhase --> SpawnTestAudit[Spawn test-audit Agent]
+        SpawnTestAudit --> AuditPassed{Audit Passed?}
+        AuditPassed -- "No: Quality Issues" --> FixQuality[Spawn test-builder to fix tests]
+        FixQuality --> SpawnTestRunner3[Spawn test-runner Agent]
+        SpawnTestRunner3 --> AuditPassed
+        AuditPassed -- "Yes: Quality OK" --> AuditComplete[Audit Complete]
+    end
+
+    %% ========================================
+    %% UAT PHASE (MANDATORY - PRIMARY SUCCESS CRITERIA)
+    %% ========================================
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.user-story-validation-loop
+    %% MAX_ITERATIONS: 5 (per user-story-validation-loop definition)
+    %% ESCALATION: Plan failed - user stories not validated
+
+    AuditComplete --> UATPhase[Enter UAT Phase]
+
+    subgraph UAT_SG ["UAT Phase Subgraph - PRIMARY SUCCESS CRITERIA"]
+        UATPhase --> SpawnUATSimulator[Spawn test-user-simulator Agent]
+        SpawnUATSimulator --> UAT001[UAT_001: Orchestrator Stop Idempotency Story]
+        UAT001 --> UAT002[UAT_002: Developer Bootstrap Story]
+        UAT002 --> UATResult{UAT Passed?}
+        UATResult -- "No: User Story Failed" --> AnalyzeFailure[Analyze UAT Failure]
+        AnalyzeFailure -.->|Return to Build with UAT context| BuildPhase
+        UATResult -- "Yes: Stories Pass" --> UATComplete[UAT Complete - SUCCESS]
+    end
+
+    %% ========================================
+    %% COMPLETION PHASE
+    %% ========================================
+    UATComplete --> Finalize[Mark Plan Complete]
+
+    subgraph Output_SG ["Output Subgraph"]
+        Finalize --> ArchivePlan[Archive to docs/plans/completed/]
+        ArchivePlan --> ReportResults[Report Success]
+    end
+
+    ReportResults --> End((End: Plan 260205IM Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    %% Dashed lines for feedback loops
+    classDef dashedstroke stroke-dasharray: 5 5;
+    linkStyle 25,32 stroke:#888,stroke-width:2px,stroke-dasharray: 5 5;

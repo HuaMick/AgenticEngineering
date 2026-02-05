@@ -1,0 +1,117 @@
+issue_analysis:
+  created: '2026-02-01'
+  source_plan: 260201CL_fix_global_flags_ordering
+  discovery_context: Plan execution revealed two critical issues
+
+  issues:
+    - id: ISSUE-001
+      title: Global Flags Regression
+      severity: high
+      type: regression
+
+      description: |
+        The fix for global flags ordering broke the original behavior.
+        Global flags no longer work before the subcommand.
+
+      before_state:
+        - command: agentic --json plan list
+          result: SUCCESS
+        - command: agentic -j plan list
+          result: SUCCESS
+
+      after_state:
+        - command: agentic --json plan list
+          result: FAIL
+          error: "unrecognized arguments: --json"
+        - command: agentic plan list -j
+          result: SUCCESS
+
+      root_cause: |
+        Implementation only added parent parser inheritance for global flags
+        in subcommands. The main parser's handling of global flags was
+        removed, breaking the original position.
+
+      required_fix: |
+        Support BOTH positions:
+        1. Pre-parse sys.argv to extract global flags from any position
+        2. Remove extracted flags from argv
+        3. Pass cleaned argv to argparse
+        4. Merge extracted flags with argparse results
+
+      impact:
+        - Breaks existing scripts using global flags before subcommand
+        - Breaks documentation examples
+        - Requires users to change their workflows
+
+      affected_files:
+        - modules/AgenticCLI/src/agenticcli/cli.py
+
+    - id: ISSUE-002
+      title: Task ID Disambiguation Failure
+      severity: medium
+      type: design_gap
+
+      description: |
+        When multiple phases have tasks with duplicate IDs, the CLI cannot
+        distinguish which task to operate on. It always matches the first
+        occurrence.
+
+      current_behavior:
+        - command: agentic plan task complete 01
+          result: Completes first matching task (from P1)
+          expected: Should allow targeting specific phase
+
+      attempted_solutions:
+        - command: agentic plan task update P2.01 --status completed
+          result: FAIL
+          error: "Task not found"
+        - command: agentic plan task update P2-01 --status completed
+          result: FAIL
+          error: "Task not found"
+
+      root_cause: |
+        The _update_task_status function searches for task_id as a simple
+        string match without considering phase context. No parser exists
+        for phase-qualified task IDs.
+
+      required_fix: |
+        1. Add parser for phase-qualified task IDs (P2-01, P2.01)
+        2. Modify _update_task_status to filter by phase when qualified
+        3. Maintain backward compatibility for unqualified IDs
+
+      impact:
+        - Cannot complete tasks in later phases with duplicate IDs
+        - Leads to incorrect task status tracking
+        - Requires manual YAML editing to work around
+
+      affected_files:
+        - modules/AgenticCLI/src/agenticcli/commands/plan.py
+
+      affected_functions:
+        - _update_task_status
+        - cmd_task_start
+        - cmd_task_complete
+        - cmd_task_update
+
+  mitigation_strategy:
+    approach: Sequential remediation
+    phases:
+      - teach: Document requirements and design approach
+      - build: Implement both fixes
+      - test: Validate fixes and check for regressions
+      - audit_clean: Code quality and documentation cleanup
+
+    validation:
+      - Both global flag positions work
+      - Phase-qualified task IDs work
+      - Backward compatibility maintained
+      - No new regressions introduced
+
+  related_items:
+    - type: plan
+      name: 260201CL_fix_global_flags_ordering
+      relationship: Source of Issue-001
+
+    - type: documentation
+      name: modules/AgenticCLI/README.md
+      relationship: Needs update after fixes

@@ -1,0 +1,688 @@
+# AgenticVoice Async Build Plan
+# Plan ID: 260203AV
+# Created: 2026-02-03
+# Architecture: Async voice-in-the-loop with PersonaPlex + Parakeet
+
+# ========================================
+# ROOT-LEVEL PLAN METADATA (Required)
+# ========================================
+name: "agenticvoice-async-implementation"
+worktree_path: "/home/code/AgenticEngineering"
+branch: "main"
+status: "active"
+priority: "high"
+
+# File paths for plan management
+worktree: "/home/code/AgenticEngineering"
+plan_file: "docs/plans/live/260203AV_agenticvoice_async/live/plan_build.yml"
+
+# ========================================
+# CONTEXT (Narrative Updates)
+# ========================================
+context: |
+  This plan implements AgenticVoice as an async voice interface for the agentic planning system.
+
+  ARCHITECTURE DECISION (User-Approved):
+  - PersonaPlex for voice interaction (full-duplex, natural conversation)
+  - Parakeet TDT for transcription (runs in parallel for answer capture)
+  - Async workflow - agent works, generates questions, voice module pings user
+  - Question/Answer contract via YAML files in questions/ folder
+  - NO real-time Claude intelligence in voice loop - Claude called by agentic system
+
+  This REPLACES the deferred 260126AV plan which required non-existent AgenticGuidance services.
+  New approach is standalone, async, and focused on question-answer workflow.
+
+  UPDATE 2026-02-03 (Session 1): Initial planning completed. Build phases defined.
+
+# ========================================
+# RELATED PLANS (Optional)
+# ========================================
+related_plans:
+  orchestration: "orchestration_agenticvoice_async.mmd"
+
+# ========================================
+# ROOT-LEVEL INPUTS (Pre-gathered Context)
+# ========================================
+inputs:
+  - location: "modules/AgenticCLI/pyproject.toml"
+    description: "Reference for module structure and dependency patterns"
+
+  - location: "modules/AgenticCLI/src/agenticcli/"
+    description: "Reference for Python module organization patterns"
+
+# ========================================
+# OPEN QUESTIONS (Human-Authority Decisions)
+# ========================================
+open_questions:
+  - id: "QUESTION-001"
+    question: "Which PersonaPlex API should we use for voice interaction?"
+    severity: "high"
+    status: "ANSWERED"
+    answer: "WebSocket connection (via Python SDK if available) for low latency and full-duplex support."
+    context: |
+      Need to determine the specific PersonaPlex integration approach.
+      Options: REST API, Python SDK, WebSocket connection.
+
+  - id: "QUESTION-002"
+    question: "Where should the questions/ folder be located?"
+    severity: "medium"
+    status: "ANSWERED"
+    answer: "Plan-scoped (docs/plans/live/{plan_id}/questions/). This ensures isolation and proximity to the active plan."
+    context: |
+      Questions queue location options:
+      - {project_root}/questions/ (per-project)
+      - ~/.agentic/questions/ (global)
+      - docs/plans/live/{plan}/questions/ (plan-scoped)
+    options:
+      - "{project_root}/questions/ (Preferred - plan-scoped isolation)"
+      - "~/.agentic/questions/ (Alternative - global queue)"
+      - "docs/plans/live/{plan}/questions/ (Alternative - plan-specific)"
+
+  - id: "QUESTION-003"
+    question: "Should AgenticVoice run as a daemon or on-demand service?"
+    severity: "medium"
+    status: "ANSWERED"
+    answer: "Daemon with CLI control. Allows for continuous background monitoring and easy management."
+    context: |
+      Deployment model options:
+      - Daemon: Continuously monitors question queue
+      - On-demand: Triggered by CLI command when questions exist
+      - Hybrid: Daemon with CLI control (start/stop/status)
+    options:
+      - "Daemon with CLI control (Preferred - always available)"
+      - "On-demand via CLI (Alternative - resource-efficient)"
+
+# ========================================
+# LOOP STRUCTURES (Required for non-trivial plans)
+# ========================================
+loop_structures:
+  - id: "loop_validation"
+    type: "test-fix-loop"
+    applies_to_phase: "Validation Phase"
+    trigger: "After development tasks complete"
+    description: |
+      Iterative testing pattern where implementation is validated against
+      user stories. Each iteration runs tests, identifies failures, and
+      fixes issues until all tests pass or max iterations reached.
+    exit_criteria:
+      success: "All integration tests pass AND user stories validated"
+      max_iterations: 5
+      escalation: "Escalate to user with test results and remaining failures"
+    participants:
+      - agent: "test-builder"
+        role: "Creates and executes tests"
+      - agent: "builder"
+        role: "Fixes failures identified by tests"
+
+  - id: "loop_audit"
+    type: "audit-test-fix-loop"
+    applies_to_phase: "Validation Phase"
+    trigger: "After initial testing completes"
+    description: |
+      MANDATORY validation loop to detect reward hacking and verify test quality.
+      Auditor examines tests for shortcuts, mocking issues, and false positives.
+    exit_criteria:
+      success: "Audit passes AND all tests still pass after audit corrections"
+      max_iterations: 3
+      escalation: "BLOCK deployment - audit failures must be resolved"
+    participants:
+      - agent: "test-audit"
+        role: "Audits test quality and detects reward hacking"
+      - agent: "test-builder"
+        role: "Fixes audit-identified test issues"
+      - agent: "builder"
+        role: "Fixes implementation issues revealed by audit"
+    mandatory: true
+
+# ========================================
+# PHASES AND TASKS
+# ========================================
+phases:
+  # ----------------------------------------
+  # PHASE 1: Module Structure Setup
+  # ----------------------------------------
+  - name: "Phase 1: Module Structure Setup"
+    execution: sequential
+    description: "Create AgenticVoice module structure and core interfaces"
+    tasks:
+      - id: "setup_001"
+        name: "Create module directory structure"
+        description: |
+          Set up AgenticVoice module with standard Python project layout.
+          Follow AgenticCLI structure as reference.
+        status: "pending"
+        inputs:
+          - modules/AgenticCLI/pyproject.toml
+          - modules/AgenticCLI/src/agenticcli/__init__.py
+        target_files:
+          - modules/AgenticVoice/pyproject.toml
+          - modules/AgenticVoice/README.md
+          - modules/AgenticVoice/src/agenticvoice/__init__.py
+          - modules/AgenticVoice/.gitignore
+        guidance: |
+          Create standard Python module structure:
+          - pyproject.toml with hatchling build system
+          - Dependencies: pyyaml, rich, personaplex-sdk (TBD), parakeet-tdt
+          - Python >=3.11 requirement
+          - src/agenticvoice/ package structure
+          - README.md with module overview
+
+          NO dependencies on agenticguidance or agenticcli services.
+          This is a standalone module.
+        success_criteria:
+          - "Module directory created at modules/AgenticVoice/"
+          - "pyproject.toml includes all required dependencies"
+          - "README.md documents async voice-in-the-loop architecture"
+          - "Package installable via pip install -e ."
+
+      - id: "setup_002"
+        name: "Define core data structures"
+        description: "Create data classes for Question/Answer contract"
+        status: "pending"
+        depends_on: ["setup_001"]
+        inputs:
+          - modules/AgenticVoice/src/agenticvoice/__init__.py
+        target_files:
+          - modules/AgenticVoice/src/agenticvoice/models.py
+        guidance: |
+          Define data models for question-answer workflow:
+
+          Question model:
+          - id: str (unique identifier)
+          - question_text: str (natural language question)
+          - context: dict (optional metadata)
+          - severity: str (high/medium/low)
+          - asked_by: str (agent role/name)
+          - created_at: datetime
+          - status: str (pending/answered/deferred)
+
+          Answer model:
+          - question_id: str (references question)
+          - answer_text: str (transcribed answer)
+          - answered_by: str (always "HUMAN")
+          - answered_at: datetime
+          - confidence: float (transcription confidence)
+
+          Use dataclasses with YAML serialization support.
+        success_criteria:
+          - "Question and Answer dataclasses defined"
+          - "YAML serialization/deserialization methods"
+          - "Type hints for all fields"
+          - "Docstrings for all classes"
+
+  # ----------------------------------------
+  # PHASE 2: Question Queue Monitor
+  # ----------------------------------------
+  - name: "Phase 2: Question Queue Monitor"
+    execution: sequential
+    description: "Implement question queue monitoring and file watcher"
+    tasks:
+      - id: "queue_001"
+        name: "Implement question queue reader"
+        description: "Create service to monitor questions/pending/ folder"
+        status: "pending"
+        depends_on: ["setup_002"]
+        inputs:
+          - modules/AgenticVoice/src/agenticvoice/models.py
+        target_files:
+          - modules/AgenticVoice/src/agenticvoice/queue.py
+        guidance: |
+          Implement QuestionQueue service:
+          - Monitor docs/plans/live/{plan_id}/questions/pending/ directory for new YAML files.
+          - Use watchdog library for filesystem events.
+          - Load Question objects from YAML.
+          - Sort by severity (high -> medium -> low).
+          - Thread-safe queue management.
+
+          File naming convention: {timestamp}_{question_id}.yml
+
+          Handle edge cases:
+          - Malformed YAML files (log error, skip).
+          - Concurrent file writes (retry with backoff).
+          - Directory not found (create on startup).
+        success_criteria:
+          - "QuestionQueue class monitors pending directory"
+          - "New questions trigger callback event"
+          - "Questions sorted by severity"
+          - "Thread-safe queue operations"
+          - "Graceful handling of malformed files"
+
+      - id: "queue_002"
+        name: "Implement answer writer"
+        description: "Create service to write answers to questions/answered/ folder"
+        status: "pending"
+        depends_on: ["queue_001"]
+        inputs:
+          - modules/AgenticVoice/src/agenticvoice/models.py
+          - modules/AgenticVoice/src/agenticvoice/queue.py
+        target_files:
+          - modules/AgenticVoice/src/agenticvoice/queue.py
+        guidance: |
+          Extend QuestionQueue with answer writing:
+          - Write Answer objects to questions/answered/
+          - Atomic file writes (write to temp, then rename)
+          - Move original question from pending/ to answered/
+          - Maintain question-answer linkage via question_id
+
+          File naming: {question_id}_answer.yml
+
+          Ensure AgenticGuidance agents can easily find answered questions.
+        success_criteria:
+          - "Answers written to questions/answered/ atomically"
+          - "Original questions moved from pending/"
+          - "Question-answer linkage preserved"
+          - "No race conditions during file operations"
+
+  # ----------------------------------------
+  # PHASE 3: PersonaPlex Integration
+  # ----------------------------------------
+  - name: "Phase 3: PersonaPlex Integration"
+    execution: sequential
+    description: "Integrate PersonaPlex for voice I/O"
+    tasks:
+      - id: "persona_001"
+        name: "PersonaPlex client setup"
+        description: "Create PersonaPlex API client for voice interaction"
+        status: "pending"
+        depends_on: ["queue_002"]
+        inputs:
+          - modules/AgenticVoice/src/agenticvoice/models.py
+        target_files:
+          - modules/AgenticVoice/src/agenticvoice/personaplex.py
+        guidance: |
+          Implement PersonaPlexClient:
+          - Initialize WebSocket connection to PersonaPlex API (using SDK if available).
+          - Configuration from environment variables or config file.
+          - API key management (never hardcode).
+          - Connection health checks.
+          - Reconnect logic for dropped connections.
+
+          Configuration keys:
+          - PERSONAPLEX_API_URL
+          - PERSONAPLEX_API_KEY
+          - PERSONAPLEX_VOICE_PROFILE (default persona)
+        success_criteria:
+          - "PersonaPlex client connects to API"
+          - "Configuration loaded from environment"
+          - "Connection health monitoring"
+          - "Abstract interface if API not yet determined"
+
+      - id: "persona_002"
+        name: "Voice output implementation"
+        description: "Implement text-to-speech via PersonaPlex"
+        status: "pending"
+        depends_on: ["persona_001"]
+        inputs:
+          - modules/AgenticVoice/src/agenticvoice/personaplex.py
+        target_files:
+          - modules/AgenticVoice/src/agenticvoice/personaplex.py
+        guidance: |
+          Implement voice output (TTS):
+          - Convert question text to speech via PersonaPlex
+          - Stream audio output to user's audio device
+          - Support voice parameters (speed, tone, persona)
+          - Handle audio device errors gracefully
+
+          Voice prompt format:
+          "Hey, I have a question about {context}. {question_text}"
+
+          User-friendly error messages if audio fails.
+        success_criteria:
+          - "Questions spoken via PersonaPlex TTS"
+          - "Audio streams to user's device"
+          - "Voice parameters configurable"
+          - "Graceful fallback if audio unavailable"
+
+      - id: "persona_003"
+        name: "Voice input implementation"
+        description: "Implement speech-to-text via PersonaPlex"
+        status: "pending"
+        depends_on: ["persona_002"]
+        inputs:
+          - modules/AgenticVoice/src/agenticvoice/personaplex.py
+        target_files:
+          - modules/AgenticVoice/src/agenticvoice/personaplex.py
+        guidance: |
+          Implement voice input (STT):
+          - Capture audio from user's microphone
+          - Stream to PersonaPlex STT endpoint
+          - Return transcribed text with confidence score
+          - Support voice activity detection (VAD)
+          - Handle silence timeout (user didn't respond)
+
+          Timeout: 30 seconds of silence = skip question
+
+          VAD helps distinguish speech from noise.
+        success_criteria:
+          - "User speech captured from microphone"
+          - "Audio transcribed via PersonaPlex STT"
+          - "Confidence scores returned"
+          - "Silence timeout implemented"
+          - "VAD for noise filtering"
+
+  # ----------------------------------------
+  # PHASE 4: Parakeet Transcription Pipeline
+  # ----------------------------------------
+  - name: "Phase 4: Parakeet Transcription Pipeline"
+    execution: sequential
+    description: "Integrate Parakeet TDT for parallel transcription"
+    tasks:
+      - id: "parakeet_001"
+        name: "Parakeet TDT integration"
+        description: "Set up Parakeet for high-quality transcription"
+        status: "pending"
+        depends_on: ["persona_003"]
+        inputs:
+          - modules/AgenticVoice/src/agenticvoice/models.py
+        target_files:
+          - modules/AgenticVoice/src/agenticvoice/parakeet.py
+        guidance: |
+          Implement ParakeetTranscriber:
+          - Initialize Parakeet TDT model
+          - Run transcription in parallel with PersonaPlex STT
+          - Use Parakeet for final answer capture (higher quality)
+          - PersonaPlex STT for real-time feedback
+
+          Dual transcription strategy:
+          1. PersonaPlex STT: Fast, real-time, lower accuracy
+          2. Parakeet TDT: Slower, batch, higher accuracy
+
+          Use Parakeet result for Answer objects.
+          Use PersonaPlex for immediate voice feedback.
+
+          Model loading: Load Parakeet model on service startup.
+        success_criteria:
+          - "Parakeet TDT model loads successfully"
+          - "Transcription runs in parallel with PersonaPlex"
+          - "Parakeet results used for final answers"
+          - "Model loaded efficiently on startup"
+
+      - id: "parakeet_002"
+        name: "Transcription quality validation"
+        description: "Implement confidence scoring and validation"
+        status: "pending"
+        depends_on: ["parakeet_001"]
+        inputs:
+          - modules/AgenticVoice/src/agenticvoice/parakeet.py
+          - modules/AgenticVoice/src/agenticvoice/personaplex.py
+        target_files:
+          - modules/AgenticVoice/src/agenticvoice/parakeet.py
+        guidance: |
+          Implement transcription quality checks:
+          - Compare PersonaPlex and Parakeet transcriptions
+          - Flag discrepancies for user review
+          - Confidence threshold: 0.8 (80%)
+          - Low confidence -> ask user to repeat
+
+          Validation logic:
+          - If both transcriptions agree: high confidence
+          - If differ significantly: flag for review
+          - If Parakeet confidence < 0.8: ask user to repeat
+
+          User prompt on low confidence:
+          "I didn't catch that clearly. Could you repeat?"
+        success_criteria:
+          - "Confidence scores computed"
+          - "Discrepancies flagged"
+          - "User prompted to repeat on low confidence"
+          - "Quality validation prevents bad transcriptions"
+
+  # ----------------------------------------
+  # PHASE 5: Answer Synthesis and Callback
+  # ----------------------------------------
+  - name: "Phase 5: Answer Synthesis and Callback"
+    execution: sequential
+    description: "Synthesize answers and notify agentic system"
+    tasks:
+      - id: "answer_001"
+        name: "Answer synthesis workflow"
+        description: "Create workflow to synthesize voice answers into Answer objects"
+        status: "pending"
+        depends_on: ["parakeet_002"]
+        inputs:
+          - modules/AgenticVoice/src/agenticvoice/models.py
+          - modules/AgenticVoice/src/agenticvoice/parakeet.py
+          - modules/AgenticVoice/src/agenticvoice/queue.py
+        target_files:
+          - modules/AgenticVoice/src/agenticvoice/workflow.py
+        guidance: |
+          Implement VoiceAnswerWorkflow:
+          1. Get next question from queue (sorted by severity)
+          2. Speak question via PersonaPlex TTS
+          3. Capture answer via PersonaPlex STT (real-time feedback)
+          4. Transcribe answer via Parakeet TDT (high quality)
+          5. Validate transcription quality
+          6. Create Answer object with Parakeet transcription
+          7. Write Answer to questions/answered/
+          8. Move Question from pending/ to answered/
+
+          Workflow should handle:
+          - User skips question (silence timeout)
+          - User defers question ("ask me later")
+          - Transcription quality too low (retry)
+
+          Loop until queue empty or user stops service.
+        success_criteria:
+          - "Workflow processes questions sequentially"
+          - "Answers synthesized correctly"
+          - "Quality validation integrated"
+          - "Edge cases handled (skip, defer, retry)"
+
+      - id: "answer_002"
+        name: "Callback notification mechanism"
+        description: "Notify agentic system when answers available"
+        status: "pending"
+        depends_on: ["answer_001"]
+        inputs:
+          - modules/AgenticVoice/src/agenticvoice/workflow.py
+        target_files:
+          - modules/AgenticVoice/src/agenticvoice/workflow.py
+        guidance: |
+          Implement callback/notification when answers written:
+
+          Option 1: File watcher signal
+          - Write marker file: questions/.answered_ready
+          - AgenticGuidance watches for this file
+
+          Option 2: Exit code signal
+          - AgenticVoice exits with code 0 when answers ready
+          - Calling process (AgenticGuidance) resumes
+
+          Option 3: Async event (future)
+          - Publish event to message queue
+          - Requires additional infrastructure
+
+          RECOMMENDED: Option 1 (file watcher signal)
+          Simple, no additional dependencies, works with current architecture.
+
+          AgenticGuidance agents should check questions/answered/ after
+          receiving signal and load new Answer objects.
+        success_criteria:
+          - "Callback mechanism implemented"
+          - "AgenticGuidance can detect new answers"
+          - "No polling required (event-driven)"
+          - "Simple, robust signal mechanism"
+
+  # ----------------------------------------
+  # PHASE 6: CLI Integration
+  # ----------------------------------------
+  - name: "Phase 6: CLI Integration"
+    execution: sequential
+    description: "Create CLI commands for AgenticVoice service"
+    tasks:
+      - id: "cli_001"
+        name: "Create agentic voice command group"
+        description: "Add voice command group to AgenticCLI"
+        status: "pending"
+        depends_on: ["answer_002"]
+        inputs:
+          - modules/AgenticCLI/src/agenticcli/cli.py
+          - modules/AgenticCLI/src/agenticcli/commands/plan.py
+        target_files:
+          - modules/AgenticCLI/src/agenticcli/commands/voice.py
+        guidance: |
+          Create voice command group:
+
+          agentic voice start [--daemon]
+          - Start AgenticVoice service
+          - Default: daemon mode (continuous monitoring)
+          - Option: one-shot mode (process pending, then exit)
+
+          agentic voice stop
+          - Stop AgenticVoice daemon
+
+          agentic voice status
+          - Show service status (running/stopped)
+          - Show pending question count
+          - Show last answer timestamp
+
+          agentic voice logs [--tail N]
+          - Show service logs
+
+          Follow AgenticCLI command patterns.
+          Use Typer for CLI framework.
+        success_criteria:
+          - "Voice command group added to CLI"
+          - "Start/stop/status/logs commands implemented"
+          - "Daemon and one-shot modes supported"
+          - "Commands follow AgenticCLI patterns"
+
+      - id: "cli_002"
+        name: "Daemon process management"
+        description: "Implement daemon lifecycle management"
+        status: "pending"
+        depends_on: ["cli_001"]
+        inputs:
+          - modules/AgenticCLI/src/agenticcli/commands/voice.py
+          - modules/AgenticVoice/src/agenticvoice/workflow.py
+        target_files:
+          - modules/AgenticVoice/src/agenticvoice/daemon.py
+        guidance: |
+          Implement daemon management:
+          - PID file: ~/.agentic/agenticvoice.pid
+          - Log file: ~/.agentic/agenticvoice.log
+          - Graceful shutdown on SIGTERM
+          - Restart on crash (max 3 retries)
+
+          Daemon main loop:
+          1. Check for new questions in queue
+          2. Process questions via VoiceAnswerWorkflow
+          3. Sleep for poll_interval (default: 5 seconds)
+          4. Repeat until SIGTERM
+
+          Use standard daemon patterns (fork, setsid, etc.) or
+          third-party library like python-daemon.
+        success_criteria:
+          - "Daemon starts and runs in background"
+          - "PID file created and managed"
+          - "Graceful shutdown on SIGTERM"
+          - "Logs written to file"
+          - "Auto-restart on crash (limited retries)"
+
+  # ----------------------------------------
+  # PHASE 7: Configuration and Documentation
+  # ----------------------------------------
+  - name: "Phase 7: Configuration and Documentation"
+    execution: sequential
+    description: "Create configuration system and documentation"
+    tasks:
+      - id: "config_001"
+        name: "Configuration file structure"
+        description: "Create YAML configuration for AgenticVoice"
+        status: "pending"
+        depends_on: ["cli_002"]
+        inputs:
+          - modules/AgenticCLI/src/agenticcli/commands/config.py
+        target_files:
+          - modules/AgenticVoice/src/agenticvoice/config.py
+          - modules/AgenticVoice/config.example.yml
+        guidance: |
+          Create configuration system:
+          - Config file: ~/.agentic/agenticvoice.yml
+          - Example: config.example.yml in repo
+
+          Configuration keys:
+
+          personaplex:
+            api_url: "https://api.personaplex.ai/v1"
+            api_key: "${PERSONAPLEX_API_KEY}"
+            voice_profile: "default"
+            tts_speed: 1.0
+            stt_language: "en-US"
+
+          parakeet:
+            model_path: "~/.agentic/models/parakeet-tdt"
+            confidence_threshold: 0.8
+
+          queue:
+            pending_dir: "questions/pending"
+            answered_dir: "questions/answered"
+            poll_interval: 5
+
+          daemon:
+            pid_file: "~/.agentic/agenticvoice.pid"
+            log_file: "~/.agentic/agenticvoice.log"
+            auto_restart: true
+            max_retries: 3
+
+          Use environment variable expansion (${VAR}).
+          Validate config on load.
+        success_criteria:
+          - "Configuration loaded from YAML"
+          - "Environment variables expanded"
+          - "Validation errors reported clearly"
+          - "Example config provided in repo"
+
+      - id: "config_002"
+        name: "User documentation"
+        description: "Create comprehensive user documentation"
+        status: "pending"
+        depends_on: ["config_001"]
+        inputs:
+          - modules/AgenticVoice/README.md
+        target_files:
+          - modules/AgenticVoice/README.md
+          - modules/AgenticVoice/docs/QUICKSTART.md
+          - modules/AgenticVoice/docs/ARCHITECTURE.md
+        guidance: |
+          Create documentation:
+
+          README.md:
+          - Overview of async voice-in-the-loop architecture
+          - Installation instructions
+          - Quick start guide
+          - CLI command reference
+
+          docs/QUICKSTART.md:
+          - Step-by-step setup guide
+          - PersonaPlex API key setup
+          - Configuration walkthrough
+          - First question-answer example
+
+          docs/ARCHITECTURE.md:
+          - Architecture diagram (ASCII or Mermaid)
+          - Question/Answer workflow
+          - PersonaPlex + Parakeet integration
+          - Async design decisions
+
+          Include diagrams from user-approved architecture.
+        success_criteria:
+          - "README.md provides clear overview"
+          - "QUICKSTART.md enables first-time setup"
+          - "ARCHITECTURE.md explains design decisions"
+          - "Code examples included where helpful"
+
+# ========================================
+# SUCCESS CRITERIA
+# ========================================
+success_criteria:
+  - "AgenticVoice module installable and functional"
+  - "Question queue monitoring works reliably"
+  - "PersonaPlex integration speaks questions and captures answers"
+  - "Parakeet provides high-quality transcription"
+  - "Answers written to questions/answered/ atomically"
+  - "CLI commands (start/stop/status/logs) work correctly"
+  - "Daemon runs reliably in background"
+  - "Configuration loaded from YAML with validation"
+  - "Documentation enables first-time users to set up"
+  - "User can ask questions via AgenticGuidance, receive answers via voice"

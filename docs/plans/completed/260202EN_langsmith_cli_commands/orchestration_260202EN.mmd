@@ -1,0 +1,141 @@
+flowchart LR
+    %% GOAL: Orchestrate implementation of enhanced LangSmith CLI commands with forensic analysis capabilities and RLM context accessor support.
+    %% PROFILE: Orchestration-Executor
+    %% INPUT_PATH: modules/AgenticGuidance/agents/orchestration/orchestration-executor/inputs.yml
+    %% OUTPUT: Enhanced langsmith.py with new commands, RLM context accessor module, comprehensive tests, and updated documentation.
+    %% GUIDELINE: BUILD FOCUS policy - code implementation and testing, not guidance-only changes.
+
+    %% AGENT_ROUTING: ReviewDesign -> build-python, Implementation -> build-python, RLMSupport -> build-python, Testing -> test-runner, Audit -> test-audit, Documentation -> teacher-update-guidance
+    %% STATUS: ReviewDesign=pending, Implementation=pending, RLMSupport=pending, Testing=pending, Audit=pending, Documentation=pending
+
+    %% PHASES: Review and Design, Implementation (4 commands), RLM Pattern Support, Testing, Finalization
+
+    %% FEEDBACK_TRIGGERS:
+    %% - TEST_FAILURE -> ReturnToImplementation (within loop)
+    %% - TEST_FAILURE (severe) -> AskUser (escalation)
+    %% - AUDIT_FAILURE -> ReturnToImplementation
+
+    Start((Start)) --> LoadContext[Load Plan Context]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    LoadContext --> ValidatePlan{Plan Valid?}
+    ValidatePlan -- "No: Invalid" --> AskUser((Ask User for Clarification))
+    ValidatePlan -- "Yes: Ready" --> ReviewDesignPhase
+
+    %% ========================================
+    %% REVIEW AND DESIGN PHASE
+    %% ========================================
+    subgraph ReviewDesign_SG ["Review and Design Subgraph"]
+        ReviewDesignPhase[Enter Review Phase] --> SpawnReview[Spawn build-python Agent]
+        SpawnReview --> ReviewTask01[Task 01: Audit existing langsmith.py]
+        ReviewTask01 --> ReviewTask02[Task 02: Define command specifications]
+        ReviewTask02 --> ReviewComplete{Review Complete?}
+        ReviewComplete -- "No: Gaps Found" --> AskUser
+        ReviewComplete -- "Yes: Specifications Ready" --> ImplementationPhase
+    end
+
+    %% ========================================
+    %% IMPLEMENTATION PHASE
+    %% ========================================
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.test-fix-loop
+    %% MAX_ITERATIONS: 5 (per test-fix-loop definition)
+    %% ESCALATION: If max iterations reached without success, stop and Ask User
+
+    subgraph Implementation_SG ["Implementation Subgraph"]
+        ImplementationPhase[Enter Implementation Phase] --> SpawnImplementation[Spawn build-python Agent]
+        SpawnImplementation --> ImplTask03[Task 03: Implement session-analyze]
+        ImplTask03 --> ImplTask04[Task 04: Implement batch-search]
+        ImplTask04 --> ImplTask05[Task 05: Enhance run-inspect]
+        ImplTask05 --> ImplTask06[Task 06: Enhance friction-report]
+        ImplTask06 --> ImplementationComplete{Implementation Complete?}
+        ImplementationComplete -- "No: Fix Required" --> SpawnImplementation
+        ImplementationComplete -- "Yes: Commands Ready" --> RLMPhase
+    end
+
+    %% ========================================
+    %% RLM PATTERN SUPPORT PHASE
+    %% ========================================
+    subgraph RLMSupport_SG ["RLM Pattern Support Subgraph"]
+        RLMPhase[Enter RLM Phase] --> SpawnRLM[Spawn build-python Agent]
+        SpawnRLM --> RLMTask11[Task 11: Review RLM specifications]
+        RLMTask11 --> RLMTask12[Task 12: Implement RLM context accessor CLI]
+        RLMTask12 --> RLMTask13[Task 13: Integrate RLM with friction analysis]
+        RLMTask13 --> RLMComplete{RLM Support Complete?}
+        RLMComplete -- "No: Fix Required" --> SpawnRLM
+        RLMComplete -- "Yes: RLM Ready" --> TestingPhase
+    end
+
+    %% ========================================
+    %% TESTING PHASE
+    %% ========================================
+    %% Test-fix loop for iterative testing and fixes
+    %% FEEDBACK_TRIGGER: TEST_FAILURE -> SpawnTestFix (within iteration)
+
+    subgraph Testing_SG ["Testing Subgraph"]
+        TestingPhase[Enter Testing Phase] --> RunUnitTests[Spawn test-runner: Task 07 Unit Tests]
+        RunUnitTests --> UnitTestsPass{Unit Tests Pass?}
+        UnitTestsPass -- "No: Fix in Iteration" --> SpawnTestFix[Spawn build-python for Fixes]
+        SpawnTestFix --> RunUnitTests
+        UnitTestsPass -- "No: Escalate" --> AskUser
+        UnitTestsPass -- "Yes: Passed" --> RunIntegrationTests[Spawn test-runner: Task 08 Integration Tests]
+
+        RunIntegrationTests --> IntegrationTestsPass{Integration Tests Pass?}
+        IntegrationTestsPass -- "No: Fix in Iteration" --> SpawnTestFix
+        IntegrationTestsPass -- "No: Escalate" --> AskUser
+        IntegrationTestsPass -- "Yes: All Tests Passed" --> AuditPhase
+    end
+
+    %% ========================================
+    %% AUDIT PHASE
+    %% ========================================
+    %% FEEDBACK_TRIGGER: AUDIT_FAILURE -> ReturnToImplementation
+
+    subgraph Audit_SG ["Audit Subgraph"]
+        AuditPhase[Enter Audit Phase] --> SpawnAudit[Spawn test-audit Agent]
+        SpawnAudit --> AuditChecks[Verify Code Quality and Coverage]
+        AuditChecks --> AuditPass{Audit Pass?}
+        AuditPass -- "No: Issues Found" --> ReturnToImplementation[Return to Implementation]
+        ReturnToImplementation -.->|Re-fix Issues| SpawnImplementation
+        AuditPass -- "Yes: Quality Verified" --> DocumentationPhase
+    end
+
+    %% ========================================
+    %% DOCUMENTATION PHASE
+    %% ========================================
+    subgraph Documentation_SG ["Documentation Subgraph"]
+        DocumentationPhase[Enter Documentation Phase] --> SpawnTeacher[Spawn teacher-update-guidance Agent]
+        SpawnTeacher --> DocTask09[Task 09: Update CLI documentation]
+        DocTask09 --> DocComplete{Documentation Complete?}
+        DocComplete -- "No: Gaps Found" --> SpawnTeacher
+        DocComplete -- "Yes: Docs Updated" --> FinalReviewPhase
+    end
+
+    %% ========================================
+    %% FINAL REVIEW PHASE
+    %% ========================================
+    subgraph FinalReview_SG ["Final Review Subgraph"]
+        FinalReviewPhase[Enter Final Review] --> FinalChecks[Task 10: Final review and cleanup]
+        FinalChecks --> BackwardCompatCheck[Verify Backward Compatibility]
+        BackwardCompatCheck --> ReviewComplete2{Review Complete?}
+        ReviewComplete2 -- "No: Issues Found" --> AskUser
+        ReviewComplete2 -- "Yes: Ready for Completion" --> GenerateReport
+    end
+
+    %% ========================================
+    %% OUTPUT PHASE
+    %% ========================================
+    subgraph Output_SG ["Output Subgraph"]
+        GenerateReport[Generate Completion Report] --> ReportOutputs[Report Created Files]
+        ReportOutputs --> ArchivePlan[Archive Plan to Completed]
+    end
+
+    ArchivePlan --> End((End: LangSmith CLI Enhanced))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    %% Styling for feedback loops and return paths
+    classDef dashedstroke stroke-dasharray: 5 5;
+    linkStyle 11,27 stroke:#888,stroke-width:2px,stroke-dasharray: 5 5;

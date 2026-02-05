@@ -1,0 +1,258 @@
+%% =============================================================================
+%% CCI BOOTSTRAP (CLI Context Injection) - EXECUTE FIRST
+%% =============================================================================
+%% Before following this flowchart, run:
+%%   agentic context bootstrap --role orchestration-executor -j
+%%   agentic plan task current -j
+%%
+%% This provides structured context more efficiently than file exploration.
+%%
+%% PRINCIPLE: CLI-FIRST CONTEXT
+%% Always use agentic CLI commands for initial context. Agents should not
+%% need Read/Glob/Grep tools during bootstrap phase. All context retrieval
+%% should flow through CCI commands before any file exploration.
+%% =============================================================================
+%%
+%% CLI SESSION/LOOP COMMANDS (for executor handoff):
+%% When plans require iterative workflows, specify CLI loop commands:
+%%   agentic loop start <loop-type> --plan <plan-folder> -j
+%%   agentic loop status <loop-id> -j
+%%   agentic loop history <loop-id> -j
+%%
+%% CLI TASK MANAGEMENT MANDATE:
+%%   - NEVER use Edit tool to change task status in plan YAML files
+%%   - ALWAYS use `agentic plan task start/complete <task_id>` for status updates
+%%   - ALWAYS use `agentic plan move folder --plan <plan_folder>` for archiving
+%% =============================================================================
+
+flowchart LR
+    %% GOAL: Execute comprehensive CLI command test suite for AgenticCLI after MCP GUI dashboard removal
+    %% PROFILE: Orchestration-Executor
+    %% GUIDELINE: BUILD FOCUS policy - test implementation and validation, not guidance-only changes
+    %% GUIDELINE: modules/AgenticGuidance/assets/guidelines/testing.yml - Testing strategies and validation
+    %% GUIDELINE: modules/AgenticGuidance/assets/guidelines/reward-hacking-prevention.yml - Test quality enforcement
+    %% INPUT_PATH: modules/AgenticGuidance/agents/orchestration/orchestration-executor/inputs.yml
+    %%
+    %% OUTPUTS (FENCE: Output must match declared schema before marking complete):
+    %% - Test suite: /home/code/AgenticEngineering/modules/AgenticCLI/tests/
+    %% - All CLI commands tested and passing
+    %% - Component tests: test_*_commands.py files
+    %% - Integration tests: test_*_workflow.py files
+    %% - Test coverage report
+    %% - UAT validation results (PRIMARY SUCCESS CRITERIA)
+    %% - Documentation updates reflecting accurate CLI behavior
+    %%
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.test-fix-loop
+    %% MAX_ITERATIONS: 5 (per test-fix-loop definition)
+    %% ESCALATION: If max iterations reached without tests passing, escalate to user
+    %%
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.audit-test-fix-loop
+    %% MAX_ITERATIONS: 3 (per audit-test-fix-loop definition)
+    %% ESCALATION: MANDATORY - audit failures BLOCK completion
+    %%
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.user-story-validation-loop
+    %% MAX_ITERATIONS: 3 (per user-story-validation-loop definition)
+    %% ESCALATION: PRIMARY SUCCESS CRITERIA - must pass for plan completion
+
+    # AGENT_ROUTING: Setup -> test-runner, ComponentTesting -> test-runner, IntegrationTesting -> test-user-simulator, Cleanup -> planner-cleaning, TestQualityAudit -> test-audit, UATValidation -> test-user-simulator, DocumentationReview -> teacher-update-guidance
+    # STATUS: Setup=pending, ComponentTesting=pending, IntegrationTesting=pending, Cleanup=pending, TestQualityAudit=pending, UATValidation=pending, DocumentationReview=pending
+
+    Start((Start)) --> LoadContext[Load Plan Context via CCI]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    %% Verify plan folder exists and contains plan_test.yml
+    LoadContext --> ValidatePlan[Validate Plan Folder Structure]
+    ValidatePlan --> CheckPlan{Plan Valid?}
+    CheckPlan -- "No: Invalid" --> AskUser((Ask User for Clarification))
+    CheckPlan -- "Yes: Valid" --> EnterSetup[Enter Environment Setup Phase]
+
+    %% ========================================
+    %% PHASE 1: ENVIRONMENT SETUP (MANDATORY)
+    %% ========================================
+    %% Set up Local and Docker test environments before running tests
+    subgraph Setup_SG ["Environment Setup Subgraph"]
+        EnterSetup --> MarkSetupInProgress[CLI: agentic plan task start setup_001]
+        MarkSetupInProgress --> SpawnTestRunner1[Spawn test-runner Agent]
+        SpawnTestRunner1 --> LocalSetup[Execute: Local Environment Setup]
+        LocalSetup --> LocalSetupCheck{Local Setup Success?}
+        LocalSetupCheck -- "No: Failed" --> AskUser
+        LocalSetupCheck -- "Yes: Success" --> CompleteSetup001[CLI: agentic plan task complete setup_001]
+
+        CompleteSetup001 --> MarkSetup002[CLI: agentic plan task start setup_002]
+        MarkSetup002 --> DockerSetup[Execute: Docker Environment Setup]
+        DockerSetup --> DockerSetupCheck{Docker Setup Success?}
+        DockerSetupCheck -- "No: Failed" --> AskUser
+        DockerSetupCheck -- "Yes: Success" --> CompleteSetup002[CLI: agentic plan task complete setup_002]
+    end
+
+    CompleteSetup002 --> EnterComponentTesting[Enter Component Testing Phase]
+
+    %% ========================================
+    %% PHASE 2: COMPONENT TESTING (test-fix-loop)
+    %% ========================================
+    %% Test individual CLI command groups with smoke-test strategy
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.test-fix-loop
+    %% MAX_ITERATIONS: 5 (per test-fix-loop definition)
+    %% ESCALATION: If max iterations reached, escalate with test failures
+    %% # FEEDBACK_TRIGGER: TEST_FAILURE -> ComponentTestLoop (retry in iteration)
+
+    subgraph ComponentTesting_SG ["Component Testing Subgraph"]
+        EnterComponentTesting --> StartComponentLoop[CLI: agentic loop start test-fix-loop --plan 260202CT]
+
+        subgraph ComponentTestLoop_SG ["Component Test-Fix Loop"]
+            StartComponentLoop --> SpawnTestRunner2[Spawn test-runner Agent]
+            SpawnTestRunner2 --> RunComponentTests[Execute: All Component Tests]
+            RunComponentTests --> ComponentTestsPass{All Tests Pass?}
+            ComponentTestsPass -- "No: Fix in Iteration" --> SpawnBuilder1[Spawn build-python Agent]
+            SpawnBuilder1 --> FixComponentIssues[Fix CLI Issues]
+            FixComponentIssues --> CheckIterations1{Max Iterations?}
+            CheckIterations1 -- "No: Continue" --> SpawnTestRunner2
+            CheckIterations1 -- "Yes: Escalate" --> AskUser
+            ComponentTestsPass -- "Yes: Passed" --> CompleteComponentPhase[Mark All Component Tasks Complete]
+        end
+    end
+
+    CompleteComponentPhase --> EnterIntegrationTesting[Enter Integration Testing Phase]
+
+    %% ========================================
+    %% PHASE 3: INTEGRATION TESTING (test-fix-loop)
+    %% ========================================
+    %% Test realistic CLI workflow sequences with agent-blind-test strategy
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.test-fix-loop
+    %% MAX_ITERATIONS: 5 (per test-fix-loop definition)
+    %% ESCALATION: If max iterations reached, escalate with workflow failures
+    %% # FEEDBACK_TRIGGER: TEST_FAILURE -> IntegrationTestLoop (retry in iteration)
+
+    subgraph IntegrationTesting_SG ["Integration Testing Subgraph"]
+        EnterIntegrationTesting --> StartIntegrationLoop[CLI: agentic loop start test-fix-loop --plan 260202CT]
+
+        subgraph IntegrationTestLoop_SG ["Integration Test-Fix Loop"]
+            StartIntegrationLoop --> SpawnUserSimulator1[Spawn test-user-simulator Agent]
+            SpawnUserSimulator1 --> RunIntegrationTests[Execute: All Integration Workflows]
+            RunIntegrationTests --> IntegrationTestsPass{All Workflows Pass?}
+            IntegrationTestsPass -- "No: Fix in Iteration" --> SpawnBuilder2[Spawn build-python Agent]
+            SpawnBuilder2 --> FixIntegrationIssues[Fix Workflow Issues]
+            FixIntegrationIssues --> CheckIterations2{Max Iterations?}
+            CheckIterations2 -- "No: Continue" --> SpawnUserSimulator1
+            CheckIterations2 -- "Yes: Escalate" --> AskUser
+            IntegrationTestsPass -- "Yes: Passed" --> CompleteIntegrationPhase[Mark All Integration Tasks Complete]
+        end
+    end
+
+    CompleteIntegrationPhase --> EnterCleanup[Enter Cleanup Phase]
+
+    %% ========================================
+    %% PHASE 4: CLEANUP
+    %% ========================================
+    %% Clean up test artifacts and temporary files
+
+    subgraph Cleanup_SG ["Cleanup Subgraph"]
+        EnterCleanup --> SpawnCleaner[Spawn planner-cleaning Agent]
+        SpawnCleaner --> RemoveTestArtifacts[Execute: Remove Test Plans and Artifacts]
+        RemoveTestArtifacts --> VerifyTestStructure[Execute: Verify Test Suite Structure]
+        VerifyTestStructure --> CleanupComplete{Cleanup Successful?}
+        CleanupComplete -- "No: Issues Found" --> AskUser
+        CleanupComplete -- "Yes: Clean" --> CompleteCleanupPhase[Mark All Cleanup Tasks Complete]
+    end
+
+    CompleteCleanupPhase --> EnterTestQualityAudit[Enter Test Quality Audit Phase]
+
+    %% ========================================
+    %% PHASE 5: TEST QUALITY AUDIT (MANDATORY - audit-test-fix-loop)
+    %% ========================================
+    %% MANDATORY audit to detect reward hacking and verify test quality
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.audit-test-fix-loop
+    %% MAX_ITERATIONS: 3 (per audit-test-fix-loop definition)
+    %% ESCALATION: BLOCK completion - audit failures must be resolved
+    %% # FEEDBACK_TRIGGER: AUDIT_FAILURE -> TestAuditLoop (fix and re-audit)
+
+    subgraph TestQualityAudit_SG ["Test Quality Audit Subgraph (MANDATORY)"]
+        EnterTestQualityAudit --> StartAuditLoop[CLI: agentic loop start audit-test-fix-loop --plan 260202CT]
+
+        subgraph TestAuditLoop_SG ["Audit-Test-Fix Loop"]
+            StartAuditLoop --> SpawnTestAudit[Spawn test-audit Agent]
+            SpawnTestAudit --> RunAudit[Execute: Test Quality Review]
+            RunAudit --> AuditPassed{Audit Passed?}
+            AuditPassed -- "No: Issues Found" --> SpawnBuilder3[Spawn test-runner Agent]
+            SpawnBuilder3 --> FixAuditIssues[Fix Test Quality Issues]
+            FixAuditIssues --> RerunTests[Re-run Tests After Fixes]
+            RerunTests --> CheckIterations3{Max Iterations?}
+            CheckIterations3 -- "No: Continue" --> SpawnTestAudit
+            CheckIterations3 -- "Yes: BLOCK" --> AskUser
+            AuditPassed -- "Yes: Quality Verified" --> CompleteAuditPhase[Mark All Audit Tasks Complete]
+        end
+    end
+
+    CompleteAuditPhase --> EnterUATValidation[Enter UAT Validation Phase]
+
+    %% ========================================
+    %% PHASE 6: UAT VALIDATION (MANDATORY - PRIMARY SUCCESS CRITERIA)
+    %% ========================================
+    %% UAT validation is PRIMARY SUCCESS CRITERIA - must pass for plan completion
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.user-story-validation-loop
+    %% MAX_ITERATIONS: 3 (per user-story-validation-loop definition)
+    %% ESCALATION: User stories not validated - implementation incomplete
+    %% # FEEDBACK_TRIGGER: UAT_FAILURE -> UATValidationLoop (fix and re-validate)
+
+    subgraph UATValidation_SG ["UAT Validation Subgraph (PRIMARY SUCCESS CRITERIA)"]
+        EnterUATValidation --> StartUATLoop[CLI: agentic loop start user-story-validation-loop --plan 260202CT]
+
+        subgraph UATValidationLoop_SG ["User Story Validation Loop"]
+            StartUATLoop --> SpawnUserSimulator2[Spawn test-user-simulator Agent]
+            SpawnUserSimulator2 --> ValidateBasicCLI[Execute: Basic CLI Usage Validation]
+            ValidateBasicCLI --> BasicCLIPass{Basic CLI Valid?}
+            BasicCLIPass -- "No: Failed" --> FixBasicCLI[Spawn build-python to Fix]
+            FixBasicCLI --> SpawnUserSimulator2
+            BasicCLIPass -- "Yes: Passed" --> ValidateContextInjection[Execute: Context Injection Validation]
+
+            ValidateContextInjection --> ContextInjectionPass{CCI Valid?}
+            ContextInjectionPass -- "No: Failed" --> FixCCI[Spawn build-python to Fix]
+            FixCCI --> SpawnUserSimulator2
+            ContextInjectionPass -- "Yes: Passed" --> ValidateAdvancedWorkflows[Execute: Advanced Workflow Validation]
+
+            ValidateAdvancedWorkflows --> AdvancedWorkflowsPass{Advanced Valid?}
+            AdvancedWorkflowsPass -- "No: Failed" --> CheckIterations4{Max Iterations?}
+            CheckIterations4 -- "No: Continue" --> FixAdvanced[Spawn build-python to Fix]
+            FixAdvanced --> SpawnUserSimulator2
+            CheckIterations4 -- "Yes: Escalate" --> AskUser
+            AdvancedWorkflowsPass -- "Yes: Passed" --> CompleteUATPhase[Mark All UAT Tasks Complete]
+        end
+    end
+
+    CompleteUATPhase --> EnterDocumentationReview[Enter Documentation Review Phase]
+
+    %% ========================================
+    %% PHASE 7: DOCUMENTATION REVIEW
+    %% ========================================
+    %% Ensure CLI documentation is accurate and complete
+
+    subgraph DocumentationReview_SG ["Documentation Review Subgraph"]
+        EnterDocumentationReview --> SpawnTeacher[Spawn teacher-update-guidance Agent]
+        SpawnTeacher --> UpdateCLIDocs[Execute: Update CLI Documentation]
+        UpdateCLIDocs --> VerifyExamples[Verify Examples Match CLI Behavior]
+        VerifyExamples --> RemoveDashboardRefs[Remove Dashboard References]
+        RemoveDashboardRefs --> DocsComplete{Documentation Complete?}
+        DocsComplete -- "No: Issues Found" --> AskUser
+        DocsComplete -- "Yes: Complete" --> CompleteDocsPhase[Mark All Docs Tasks Complete]
+    end
+
+    CompleteDocsPhase --> FinalValidation[Validate All Success Criteria]
+
+    %% ========================================
+    %% FINAL VALIDATION
+    %% ========================================
+    %% Verify all success criteria met before completion
+    FinalValidation --> AllCriteriaMet{All Success Criteria Met?}
+    AllCriteriaMet -- "No: Missing" --> AskUser
+    AllCriteriaMet -- "Yes: Complete" --> GenerateReport[Generate Completion Report]
+    GenerateReport --> ArchivePlan[CLI: agentic plan move folder completed --plan 260202CT]
+    ArchivePlan --> End((End: Test Suite Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    %% Feedback loops styled with dashed lines for clarity
+    classDef dashedstroke stroke-dasharray: 5 5;
+    linkStyle 16,24,32,40,48 stroke:#888,stroke-width:2px,stroke-dasharray: 5 5;

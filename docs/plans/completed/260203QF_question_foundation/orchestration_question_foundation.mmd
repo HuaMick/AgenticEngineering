@@ -1,0 +1,136 @@
+graph TD
+    Start([Start: Question Foundation]) --> Phase1
+
+    %% ========================================
+    %% PHASE 1: Data Models
+    %% ========================================
+    Phase1{Phase 1: Data Models} --> QF_001
+
+    QF_001[QF_001: Create Question dataclass<br/>Agent: builder<br/>Target: models/question.py] --> QF_001_Check{Success?}
+    QF_001_Check -->|Yes| QF_002
+    QF_001_Check -->|No| QF_001_Fix[Fix Issues]
+    QF_001_Fix --> QF_001
+
+    QF_002[QF_002: Create Answer dataclass<br/>Agent: builder<br/>Target: models/question.py] --> QF_002_Check{Success?}
+    QF_002_Check -->|Yes| QF_003
+    QF_002_Check -->|No| QF_002_Fix[Fix Issues]
+    QF_002_Fix --> QF_002
+
+    QF_003[QF_003: Implement YAML serialization<br/>Agent: builder<br/>Target: models/question.py] --> QF_003_Check{Success?}
+    QF_003_Check -->|Yes| Phase2
+    QF_003_Check -->|No| QF_003_Fix[Fix Issues]
+    QF_003_Fix --> QF_003
+
+    %% ========================================
+    %% PHASE 2: Queue Service
+    %% ========================================
+    Phase2{Phase 2: Queue Service} --> QF_004
+
+    QF_004[QF_004: Create QuestionQueue class<br/>Agent: builder<br/>Target: services/question.py] --> QF_004_Check{Success?}
+    QF_004_Check -->|Yes| QF_005
+    QF_004_Check -->|No| QF_004_Fix[Fix Issues]
+    QF_004_Fix --> QF_004
+
+    QF_005[QF_005: Implement create_question<br/>Agent: builder<br/>Target: services/question.py] --> QF_005_Check{Success?}
+    QF_005_Check -->|Yes| QF_006
+    QF_005_Check -->|No| QF_005_Fix[Fix Issues]
+    QF_005_Fix --> QF_005
+
+    QF_006[QF_006: Implement list_pending_questions<br/>Agent: builder<br/>Target: services/question.py] --> QF_006_Check{Success?}
+    QF_006_Check -->|Yes| QF_007
+    QF_006_Check -->|No| QF_006_Fix[Fix Issues]
+    QF_006_Fix --> QF_006
+
+    QF_007[QF_007: Implement get_question<br/>Agent: builder<br/>Target: services/question.py] --> QF_007_Check{Success?}
+    QF_007_Check -->|Yes| QF_008
+    QF_007_Check -->|No| QF_007_Fix[Fix Issues]
+    QF_007_Fix --> QF_007
+
+    QF_008[QF_008: Implement answer_question<br/>Agent: builder<br/>Target: services/question.py] --> QF_008_Check{Success?}
+    QF_008_Check -->|Yes| Phase3
+    QF_008_Check -->|No| QF_008_Fix[Fix Issues]
+    QF_008_Fix --> QF_008
+
+    %% ========================================
+    %% PHASE 3: File System Layer
+    %% ========================================
+    Phase3{Phase 3: File System Layer} --> QF_009
+
+    QF_009[QF_009: Add atomic file write<br/>Agent: builder<br/>Target: services/question.py] --> QF_009_Check{Success?}
+    QF_009_Check -->|Yes| QF_010
+    QF_009_Check -->|No| QF_009_Fix[Fix Issues]
+    QF_009_Fix --> QF_009
+
+    QF_010[QF_010: Add file locking<br/>Agent: builder<br/>Target: services/question.py] --> QF_010_Check{Success?}
+    QF_010_Check -->|Yes| QF_011
+    QF_010_Check -->|No| QF_010_Fix[Fix Issues]
+    QF_010_Fix --> QF_010
+
+    QF_011[QF_011: Add error handling & logging<br/>Agent: builder<br/>Target: services/question.py] --> QF_011_Check{Success?}
+    QF_011_Check -->|Yes| Phase4
+    QF_011_Check -->|No| QF_011_Fix[Fix Issues]
+    QF_011_Fix --> QF_011
+
+    %% ========================================
+    %% PHASE 4: Unit Tests
+    %% ========================================
+    Phase4{Phase 4: Unit Tests} --> QF_012
+
+    QF_012[QF_012: Create data model tests<br/>Agent: test-builder<br/>Target: tests/test_models_question.py] --> QF_012_Check{Success?}
+    QF_012_Check -->|Yes| QF_013
+    QF_012_Check -->|No| QF_012_Fix[Fix Issues]
+    QF_012_Fix --> QF_012
+
+    QF_013[QF_013: Create queue service tests<br/>Agent: test-builder<br/>Target: tests/test_services_question.py] --> QF_013_Check{Success?}
+    QF_013_Check -->|Yes| QF_014
+    QF_013_Check -->|No| QF_013_Fix[Fix Issues]
+    QF_013_Fix --> QF_013
+
+    QF_014[QF_014: Create integration tests<br/>Agent: test-builder<br/>Target: tests/test_integration_question_workflow.py] --> QF_014_Check{Success?}
+    QF_014_Check -->|Yes| QF_015
+    QF_014_Check -->|No| QF_014_Fix[Fix Issues]
+    QF_014_Fix --> QF_014
+
+    QF_015[QF_015: Run test suite & verify coverage<br/>Agent: test-runner<br/>Target: Run pytest with coverage] --> TestFixLoop
+
+    %% ========================================
+    %% LOOP: Test-Fix Loop
+    %% ========================================
+    TestFixLoop{Test-Fix Loop<br/>Iteration Counter}
+    TestFixLoop -->|All Pass & >90% Coverage| AuditLoop
+    TestFixLoop -->|Failures Found| TestFix[Builder fixes failures]
+    TestFix --> QF_015
+    TestFixLoop -->|Max 5 Iterations| Escalate1[Escalate to User:<br/>Test failures persist]
+
+    %% ========================================
+    %% LOOP: Audit-Test-Fix Loop (MANDATORY)
+    %% ========================================
+    AuditLoop{Audit-Test-Fix Loop<br/>Iteration Counter}
+    AuditLoop -->|First Run| Audit[Test Auditor:<br/>Check for reward hacking]
+    Audit --> AuditCheck{Audit Pass?}
+    AuditCheck -->|Yes & Tests Pass| Complete
+    AuditCheck -->|Issues Found| AuditFix[Fix audit issues]
+    AuditFix --> QF_015
+    AuditLoop -->|Max 3 Iterations| Escalate2[BLOCK Completion:<br/>Audit failures must be resolved]
+
+    %% ========================================
+    %% COMPLETION
+    %% ========================================
+    Complete([Complete: Foundation Ready<br/>Hand off to 260203QC])
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef phaseStyle fill:#e1f5ff,stroke:#01579b,stroke-width:2px
+    classDef taskStyle fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+    classDef loopStyle fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    classDef checkStyle fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
+    classDef escalateStyle fill:#ffebee,stroke:#b71c1c,stroke-width:2px
+    classDef completeStyle fill:#c8e6c9,stroke:#2e7d32,stroke-width:3px
+
+    class Phase1,Phase2,Phase3,Phase4 phaseStyle
+    class QF_001,QF_002,QF_003,QF_004,QF_005,QF_006,QF_007,QF_008,QF_009,QF_010,QF_011,QF_012,QF_013,QF_014,QF_015 taskStyle
+    class TestFixLoop,AuditLoop loopStyle
+    class QF_001_Check,QF_002_Check,QF_003_Check,QF_004_Check,QF_005_Check,QF_006_Check,QF_007_Check,QF_008_Check,QF_009_Check,QF_010_Check,QF_011_Check,QF_012_Check,QF_013_Check,QF_014_Check,AuditCheck checkStyle
+    class Escalate1,Escalate2 escalateStyle
+    class Complete completeStyle

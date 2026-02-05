@@ -1,0 +1,629 @@
+# Question Tmux Build Plan
+# Plan ID: 260203QT
+# Created: 2026-02-03
+# Strategy: CLI-First HITL - Remote Session Support
+
+# ========================================
+# ROOT-LEVEL PLAN METADATA (Required)
+# ========================================
+name: "question-tmux"
+worktree_path: "/home/code/AgenticEngineering"
+branch: "main"
+status: "active"
+priority: "medium"
+
+worktree: "/home/code/AgenticEngineering"
+plan_file: "docs/plans/live/260203QT_question_tmux/plan_build.yml"
+
+# ========================================
+# CONTEXT (Narrative Updates)
+# ========================================
+context: |
+  This plan implements Tmux session support for human-in-the-loop (HITL) workflows, enabling
+  remote operators to review and answer agent questions via CLI in a dedicated Tmux pane.
+
+  ARCHITECTURE DECISION (CLI-First Strategy):
+  - Agent runs in Tmux pane 1, generates question
+  - Notification appears in dedicated Tmux pane 2
+  - Operator switches to pane 2, runs CLI commands to answer
+  - Agent detects answer and resumes work
+
+  Tmux Integration:
+  - Tmux session detection via TMUX env var
+  - Dedicated notification pane creation
+  - File watcher updates pane on new questions
+  - CLI commands displayed for answering
+
+# ========================================
+# DEPENDENCIES
+# ========================================
+dependencies:
+  depends_on:
+    - plan_id: "260203QF"
+      description: "QuestionQueue service"
+    - plan_id: "260203QC"
+      description: "CLI commands displayed in notification pane"
+    - plan_id: "260203QG"
+      description: "Agents use updated patterns for question generation"
+  required_by: []
+
+# ========================================
+# OBJECTIVE
+# ========================================
+objective: |
+  Implement Tmux session detection, notification pane creation, and file watcher for question
+  updates. Enable remote operators to answer questions from a dedicated Tmux pane.
+
+# ========================================
+# SUCCESS CRITERIA
+# ========================================
+success_criteria:
+  - "Agent detects when running in Tmux session"
+  - "Dedicated notification pane is created automatically"
+  - "Pending questions displayed with severity and context"
+  - "CLI commands shown for answering questions"
+  - "File watcher updates pane when new questions arrive"
+  - "Graceful fallback when not in Tmux (stderr messages)"
+  - "Operator can answer questions from notification pane"
+  - "Agent resumes work after answer is provided"
+  - "Integration tests validate Tmux workflow"
+
+# ========================================
+# PHASES AND TASKS
+# ========================================
+phases:
+  # ========================================
+  # PHASE 1: Tmux Detection and Environment Utilities
+  # ========================================
+  - name: "Phase 1: Tmux Detection"
+    description: "Detect Tmux environment and session info"
+    status: "pending"
+    execution: sequential
+    tasks:
+      - id: "QT-001"
+        name: "Create Tmux Detection Utility Module"
+        status: "pending"
+        agent_type: "build"
+        description: |
+          Create a tmux utility module in AgenticCLI for detecting tmux environment,
+          getting session information, and checking if agent is running in tmux.
+        inputs:
+          - "/home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/utils/git.py"
+          - "/home/code/AgenticEngineering/modules/AgenticGuidance/src/agenticguidance/services/session.py"
+        target_files:
+          - "/home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/utils/tmux.py"
+        guidance: |
+          Create a tmux.py utility module with the following functions:
+
+          1. is_in_tmux() -> bool
+             - Check TMUX environment variable
+             - Return True if running in tmux session
+
+          2. get_current_session_name() -> Optional[str]
+             - Parse TMUX env var to extract session name
+             - Use tmux display-message -p '#S' as fallback
+             - Return None if not in tmux
+
+          3. get_session_info(session_name: Optional[str] = None) -> Optional[dict]
+             - Get session details (attached, windows, panes)
+             - Use tmux list-sessions and list-windows commands
+             - Return dict with session metadata
+
+          4. session_exists(session_name: str) -> bool
+             - Check if named tmux session exists
+             - Use tmux has-session command
+
+          Follow the pattern from git.py with subprocess.run and error handling.
+          Use typing for all return types. Include docstrings with examples.
+        success_criteria:
+          - "is_in_tmux() returns True when TMUX env var is set"
+          - "get_current_session_name() extracts correct session name from TMUX var"
+          - "get_session_info() returns session metadata dict"
+          - "session_exists() correctly identifies existing/non-existing sessions"
+          - "Functions handle missing tmux binary gracefully"
+          - "Unit tests cover all functions with mocked subprocess calls"
+
+      - id: "QT-002"
+        name: "Create Tmux Pane Management Functions"
+        status: "pending"
+        agent_type: "build"
+        description: |
+          Extend the tmux utility module with pane creation and management functions.
+        inputs:
+          - "/home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/utils/tmux.py"
+          - "/home/code/AgenticEngineering/modules/AgenticGuidance/src/agenticguidance/services/session.py"
+        target_files:
+          - "/home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/utils/tmux.py"
+        guidance: |
+          Add pane management functions to tmux.py:
+
+          1. get_or_create_notification_pane(pane_name: str = "questions") -> str
+             - Check if pane with target_window exists using list-panes
+             - If not exists, create split-window -h -p 30 (right 30%)
+             - Set pane title using select-pane -T
+             - Return pane ID (e.g., "%1")
+
+          2. send_to_pane(pane_id: str, content: str, clear: bool = True)
+             - Clear pane if clear=True using send-keys -t C-l
+             - Send content line-by-line using send-keys -t -l
+             - Handle multi-line content properly
+
+          3. get_pane_by_title(title: str) -> Optional[str]
+             - List all panes with titles using list-panes -F "#{pane_id}:#{pane_title}"
+             - Find pane matching title
+             - Return pane ID or None
+
+          Use subprocess.run for all tmux commands. Handle errors gracefully.
+          Add comprehensive docstrings with usage examples.
+        success_criteria:
+          - "get_or_create_notification_pane() creates pane if not exists"
+          - "get_or_create_notification_pane() reuses existing pane if found"
+          - "send_to_pane() correctly sends multi-line content"
+          - "send_to_pane() clears pane when clear=True"
+          - "get_pane_by_title() finds pane by title"
+          - "Functions handle tmux command errors gracefully"
+          - "Unit tests mock subprocess calls and verify commands"
+
+  # ========================================
+  # PHASE 2: Notification Rendering
+  # ========================================
+  - name: "Phase 2: Notification Pane"
+    description: "Create/update dedicated pane with question list"
+    status: "pending"
+    execution: sequential
+    tasks:
+      - id: "QT-003"
+        name: "Create Question Notification Formatter"
+        status: "pending"
+        agent_type: "build"
+        description: |
+          Create a formatter that renders pending questions into a CLI-friendly notification view.
+        inputs:
+          - "/home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/utils/tmux.py"
+          - "/home/code/AgenticEngineering/docs/plans/live/260203QF_question_foundation/README.md"
+        target_files:
+          - "/home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/utils/question_formatter.py"
+        guidance: |
+          Create question_formatter.py with notification rendering:
+
+          1. format_question_notification(questions: list[dict]) -> str
+             - Create formatted text output for tmux pane
+             - Include header: "PENDING QUESTIONS"
+             - List each question with: [index] question_id (severity)
+             - Show module and truncated question text (first 100 chars)
+             - Add footer with CLI command hints:
+               - "To answer: agentic question answer <question-id>"
+               - "To list all: agentic question list"
+               - "To defer: agentic question defer <question-id>"
+             - Use ASCII art borders for visual separation
+             - Return formatted string
+
+          2. format_question_summary(question: dict) -> str
+             - Single question summary (for focused view)
+             - Show all fields: id, severity, module, question, context
+             - Include timestamp if available
+             - Add CLI command to answer this specific question
+
+          Use textwrap for line wrapping. Keep output under 80 columns.
+          Add ANSI color codes for severity (high=red, medium=yellow, low=green).
+        success_criteria:
+          - "format_question_notification() renders list of questions"
+          - "Output includes question ID, severity, and module"
+          - "CLI command hints are included in footer"
+          - "Severity colors are applied correctly (high/medium/low)"
+          - "Long questions are truncated to 100 chars"
+          - "Output fits within 80 column width"
+          - "Unit tests verify formatting with sample questions"
+
+      - id: "QT-004"
+        name: "Implement Tmux Notification Display Function"
+        status: "pending"
+        agent_type: "build"
+        description: |
+          Create the main function that displays question notifications in a tmux pane.
+        inputs:
+          - "/home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/utils/tmux.py"
+          - "/home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/utils/question_formatter.py"
+          - "/home/code/AgenticEngineering/modules/AgenticGuidance/src/agenticguidance/services/session.py"
+        target_files:
+          - "/home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/utils/tmux_notify.py"
+        guidance: |
+          Create tmux_notify.py with main notification logic:
+
+          1. notify_questions_in_tmux(plan_folder: Path, questions: list[dict]) -> bool
+             - Check if in tmux session using is_in_tmux()
+             - If not in tmux, return False (caller should use stderr fallback)
+             - Get or create notification pane with title "questions"
+             - Format questions using format_question_notification()
+             - Send formatted text to pane using send_to_pane()
+             - Display tmux message in status bar: "X pending questions - check pane"
+             - Return True on success
+
+          2. display_tmux_message(message: str, duration_ms: int = 5000)
+             - Show message in tmux status bar
+             - Use: tmux display-message -d <duration> "<message>"
+             - Handle errors silently (best effort)
+
+          3. clear_notification_pane()
+             - Find questions pane using get_pane_by_title()
+             - Clear content and show "No pending questions"
+             - Use when all questions answered
+
+          Follow defensive programming - gracefully handle tmux not available,
+          pane creation failures, etc. Return success/failure booleans.
+        success_criteria:
+          - "notify_questions_in_tmux() creates/updates notification pane"
+          - "Formatted questions appear in dedicated pane"
+          - "Tmux status message displays question count"
+          - "Returns False when not in tmux (graceful degradation)"
+          - "clear_notification_pane() removes stale notifications"
+          - "Functions handle tmux errors without crashing"
+          - "Integration test validates end-to-end notification flow"
+
+  # ========================================
+  # PHASE 3: File Watcher for Auto-Update
+  # ========================================
+  - name: "Phase 3: File Watcher"
+    description: "Monitor questions/ folder for changes"
+    status: "pending"
+    execution: sequential
+    tasks:
+      - id: "QT-005"
+        name: "Create Question Folder File Watcher"
+        status: "pending"
+        agent_type: "build"
+        description: |
+          Implement a file watcher that monitors the questions/ folder and updates
+          the tmux notification pane when new questions appear.
+        inputs:
+          - "/home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/utils/tmux_notify.py"
+          - "/home/code/AgenticEngineering/modules/AgenticCLI/pyproject.toml"
+        target_files:
+          - "/home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/services/question_watcher.py"
+          - "/home/code/AgenticEngineering/modules/AgenticCLI/pyproject.toml"
+        guidance: |
+          Create question_watcher.py using watchdog library:
+
+          1. QuestionWatcherHandler(FileSystemEventHandler)
+             - Inherit from watchdog.events.FileSystemEventHandler
+             - Override on_created(), on_modified(), on_deleted()
+             - Track questions/pending/ and questions/answered/ folders
+             - On change: reload questions and call notify_questions_in_tmux()
+             - Debounce updates (max 1 update per 2 seconds)
+
+          2. start_question_watcher(plan_folder: Path, daemon: bool = True) -> Observer
+             - Create Observer instance
+             - Set up handler for questions/ folder
+             - Start observer thread (daemon if daemon=True)
+             - Return observer instance for lifecycle management
+
+          3. stop_question_watcher(observer: Observer)
+             - Stop observer thread
+             - Join with timeout
+             - Handle cleanup
+
+          Add watchdog>=3.0 to pyproject.toml dependencies.
+          Use threading.Event for debouncing logic.
+          Add logging for debug visibility.
+        success_criteria:
+          - "QuestionWatcherHandler detects new question files"
+          - "Watcher updates notification pane on file changes"
+          - "Debouncing prevents excessive updates"
+          - "Daemon thread allows background operation"
+          - "stop_question_watcher() cleanly shuts down observer"
+          - "watchdog dependency added to pyproject.toml"
+          - "Integration test validates file detection and notification"
+
+      - id: "QT-006"
+        name: "Create Question Watcher CLI Command"
+        status: "pending"
+        agent_type: "build"
+        description: |
+          Add CLI command to start/stop the question watcher for current plan.
+        inputs:
+          - "/home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/context.py"
+          - "/home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/services/question_watcher.py"
+          - "/home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py"
+        target_files:
+          - "/home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py"
+          - "/home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py"
+        guidance: |
+          Create question.py CLI command module (partial - watcher commands only):
+
+          Commands to implement:
+          1. agentic question watch [--plan PLAN_FOLDER]
+             - Resolve plan folder (use MainFirstPlanResolver if not provided)
+             - Check if in tmux session (warn if not)
+             - Start question watcher in foreground mode
+             - Print status: "Watching for questions in <plan_folder>"
+             - Run until Ctrl+C (KeyboardInterrupt)
+             - Clean up on exit
+
+          2. agentic question watch-daemon [--plan PLAN_FOLDER]
+             - Start watcher in background daemon mode
+             - Save observer PID to ~/.config/agenticcli/question_watcher.pid
+             - Print: "Started question watcher daemon (PID: <pid>)"
+
+          3. agentic question watch-stop
+             - Read PID from question_watcher.pid
+             - Stop watcher gracefully
+             - Remove PID file
+
+          Add question command group to cli.py following existing pattern.
+          Use typer for CLI framework (see other commands for examples).
+          Add --json flag support for automation.
+        success_criteria:
+          - "agentic question watch starts watcher in foreground"
+          - "Watcher updates tmux pane on question file changes"
+          - "Ctrl+C cleanly stops watcher"
+          - "agentic question watch-daemon runs in background"
+          - "agentic question watch-stop terminates daemon"
+          - "Commands warn if not in tmux session"
+          - "Integration test validates CLI commands"
+
+  # ========================================
+  # PHASE 4: Integration with Question CLI
+  # ========================================
+  - name: "Phase 4: Agent Integration"
+    description: "Update workflow to use Tmux notifications"
+    status: "pending"
+    execution: sequential
+    tasks:
+      - id: "QT-007"
+        name: "Integrate Tmux Notifications into Question Workflow"
+        status: "pending"
+        agent_type: "build"
+        description: |
+          Update the question answer workflow to auto-update tmux notifications
+          when questions are answered or created.
+        inputs:
+          - "/home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py"
+          - "/home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/utils/tmux_notify.py"
+          - "/home/code/AgenticEngineering/docs/plans/live/260203QC_question_cli/README.md"
+        target_files:
+          - "/home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py"
+        guidance: |
+          Extend question.py CLI commands to integrate tmux notifications:
+
+          Note: This task assumes 260203QC has implemented:
+          - agentic question list
+          - agentic question answer
+          - agentic question defer
+
+          Enhancements for tmux integration:
+
+          1. After question answer/defer:
+             - Reload question list from questions/ folder
+             - Call notify_questions_in_tmux() to update notification pane
+             - Show success message with updated count
+
+          2. In question list command:
+             - Add --tmux-refresh flag to force pane update
+             - When flag set, update notification pane after listing
+
+          3. Add helper: auto_refresh_tmux_notifications(plan_folder: Path)
+             - Check if in tmux
+             - If yes, refresh notification pane
+             - If no, skip silently
+             - Call from answer, defer, and list commands
+
+          Keep tmux integration optional - commands work fine without tmux.
+          Follow defensive programming for missing tmux.
+        success_criteria:
+          - "Answering question updates tmux notification pane"
+          - "Deferring question updates tmux notification pane"
+          - "question list --tmux-refresh forces pane update"
+          - "Tmux integration is optional (no errors if not in tmux)"
+          - "Updated notification shows reduced question count"
+          - "Integration test validates end-to-end workflow"
+
+      - id: "QT-008"
+        name: "Update Agent Guidance for Tmux Notifications"
+        status: "pending"
+        agent_type: "build"
+        description: |
+          Update agent guidance to teach agents how to use tmux notifications for HITL.
+        inputs:
+          - "/home/code/AgenticEngineering/modules/AgenticGuidance/agents/builder/inputs.yml"
+          - "/home/code/AgenticEngineering/docs/plans/live/260203QG_question_guidance/README.md"
+        target_files:
+          - "/home/code/AgenticEngineering/modules/AgenticGuidance/assets/guidelines/question-workflow.yml"
+          - "/home/code/AgenticEngineering/modules/AgenticGuidance/agents/builder/inputs.yml"
+        guidance: |
+          Create question-workflow.yml guidance document:
+
+          Sections to include:
+
+          1. Tmux Session Detection
+             - Agents should check if running in tmux
+             - Use environment detection (TMUX var exists)
+             - Adapt notification strategy based on context
+
+          2. Question Notification Strategy
+             - If in tmux: Notification pane auto-updates
+             - If not in tmux: Print to stderr with CLI commands
+             - Always include CLI command for answering
+
+          3. Resumption Pattern
+             - Generate question and save to questions/pending/
+             - If in tmux: Notification appears in dedicated pane
+             - Wait for answer file in questions/answered/
+             - Poll every 10 seconds with timeout
+             - Resume work when answer appears
+
+          4. Example Workflow
+             - Builder agent encounters blocker
+             - Generates question YAML
+             - If tmux: Pane updates automatically (or watcher running)
+             - Human switches to pane, runs: agentic question answer <id>
+             - Agent detects answer file and continues
+
+          Update builder/inputs.yml to reference question-workflow.yml.
+          Use clear examples with code snippets.
+        success_criteria:
+          - "question-workflow.yml provides complete tmux integration guidance"
+          - "Detection logic for tmux environment is documented"
+          - "Notification strategies for tmux vs non-tmux are clear"
+          - "Resumption pattern includes polling logic"
+          - "Example workflow shows end-to-end HITL flow"
+          - "builder/inputs.yml references question-workflow.yml"
+
+  # ========================================
+  # PHASE 5: Integration Tests
+  # ========================================
+  - name: "Phase 5: Integration Tests"
+    description: "Validate Tmux workflow end-to-end"
+    status: "pending"
+    execution: sequential
+    tasks:
+      - id: "QT-009"
+        name: "Create Tmux Integration Tests"
+        status: "pending"
+        agent_type: "test"
+        description: |
+          Create integration tests that validate tmux notification workflow end-to-end.
+        inputs:
+          - "/home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/utils/tmux.py"
+          - "/home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/utils/tmux_notify.py"
+          - "/home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py"
+        target_files:
+          - "/home/code/AgenticEngineering/modules/AgenticCLI/tests/integration/test_question_tmux.py"
+        guidance: |
+          Create test_question_tmux.py with integration tests:
+
+          Test scenarios:
+
+          1. test_tmux_detection
+             - Mock TMUX environment variable
+             - Verify is_in_tmux() returns True
+             - Verify get_current_session_name() extracts name
+
+          2. test_notification_pane_creation
+             - Mock tmux commands (list-panes, split-window)
+             - Call get_or_create_notification_pane()
+             - Verify pane creation command called
+             - Verify pane reuse on second call
+
+          3. test_question_notification_rendering
+             - Create sample questions dict
+             - Call format_question_notification()
+             - Assert output contains question IDs
+             - Assert CLI commands in footer
+
+          4. test_notification_update_on_answer
+             - Create temp questions folder
+             - Write pending question YAML
+             - Mock tmux session
+             - Call notify_questions_in_tmux()
+             - Answer question (move to answered/)
+             - Call notify again
+             - Verify notification updated
+
+          5. test_file_watcher_detection
+             - Start question watcher on temp folder
+             - Create new question file
+             - Wait for debounce (3 seconds)
+             - Verify notification callback triggered
+             - Stop watcher
+
+          Use pytest fixtures for temp folders and mocked tmux.
+          Mock subprocess.run for tmux command validation.
+          Mark tests as @pytest.mark.integration.
+        success_criteria:
+          - "test_tmux_detection validates environment checks"
+          - "test_notification_pane_creation validates pane management"
+          - "test_question_notification_rendering validates formatting"
+          - "test_notification_update_on_answer validates workflow"
+          - "test_file_watcher_detection validates auto-update"
+          - "All tests pass with pytest"
+          - "Tests use fixtures for cleanup"
+          - "Tests marked as integration tests"
+
+      - id: "QT-010"
+        name: "Create End-to-End Tmux Workflow Documentation"
+        status: "pending"
+        agent_type: "build"
+        description: |
+          Document the complete tmux HITL workflow for operators and agents.
+        inputs:
+          - "/home/code/AgenticEngineering/modules/AgenticCLI/README.md"
+          - "/home/code/AgenticEngineering/docs/plans/live/260203QT_question_tmux/README.md"
+        target_files:
+          - "/home/code/AgenticEngineering/modules/AgenticCLI/README.md"
+          - "/home/code/AgenticEngineering/docs/plans/live/260203QT_question_tmux/WORKFLOW.md"
+        guidance: |
+          Create WORKFLOW.md with complete tmux integration guide:
+
+          Sections:
+
+          1. Overview
+             - What is tmux HITL workflow
+             - When to use (remote/SSH scenarios)
+             - Prerequisites (tmux installed, agentic CLI)
+
+          2. Setup
+             - Start tmux session: tmux new -s my-work
+             - Start question watcher: agentic question watch-daemon
+             - Verify notification pane created
+
+          3. Agent Workflow
+             - Agent encounters blocker
+             - Generates question YAML
+             - Notification pane updates automatically
+             - Agent waits for answer
+
+          4. Human Workflow
+             - See notification in tmux pane
+             - Switch to notification pane (Ctrl+B, arrow keys)
+             - Read question details
+             - Run: agentic question answer <id>
+             - Provide answer text
+             - Agent resumes automatically
+
+          5. Commands Reference
+             - agentic question watch
+             - agentic question watch-daemon
+             - agentic question watch-stop
+             - agentic question list --tmux-refresh
+
+          6. Troubleshooting
+             - Pane not appearing
+             - Watcher not updating
+             - Tmux not detected
+
+          Update AgenticCLI README.md to link to WORKFLOW.md.
+          Include ASCII art diagrams showing pane layout.
+          Add screenshots if possible (PNG in docs/).
+        success_criteria:
+          - "WORKFLOW.md provides complete setup instructions"
+          - "Agent and human workflows are clearly documented"
+          - "All CLI commands are listed with examples"
+          - "Troubleshooting section addresses common issues"
+          - "ASCII diagrams show pane layout"
+          - "AgenticCLI README.md links to WORKFLOW.md"
+          - "Documentation is ready for user acceptance testing"
+
+# ========================================
+# ITERATION LOOPS
+# ========================================
+loops:
+  test-fix-loop:
+    enabled: true
+    max_iterations: 5
+    trigger_phase: "Phase 5: Integration Tests"
+    description: "Iterate on implementation based on test results"
+
+  audit-test-fix-loop:
+    enabled: false
+    max_iterations: 0
+    description: "Not needed for this plan (no cleanup phase)"
+
+# ========================================
+# NEXT STEPS
+# ========================================
+next_steps:
+  - "Review and approve this plan"
+  - "Create orchestration_question_tmux.mmd diagram"
+  - "Spawn builder agent for QT-001 (tmux detection utilities)"
+  - "Validate QT-001 completion before moving to QT-002"
+  - "Run integration tests after Phase 4 completion"

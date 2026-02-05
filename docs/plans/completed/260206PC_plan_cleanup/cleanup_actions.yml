@@ -1,0 +1,211 @@
+# Cleanup Actions - Execution Reference
+# Generated: 2026-02-06
+# Status: Pending execution
+
+# ========================================
+# PHASE 1: DEPENDENCY ANALYSIS (COMPLETE)
+# ========================================
+dependency_analysis:
+  status: "complete"
+  findings:
+    - plan: "260205BO_bootstrap_test"
+      decision: "archive_to_completed"
+      reason: "Has plan_completed.yml signaling completion"
+      dependencies: []
+
+    - plan: "260203AV_agenticvoice_async"
+      decision: "archive_to_deferred"
+      reason: "Replaced by 260203VP_voice_personaplex per plan_build.yml line 31"
+      dependencies:
+        - referenced_by: "260203VP_voice_personaplex"
+          reference_type: "historical_note"
+          blocking: false
+
+    - plan: "260203TS_task_service"
+      decision: "flatten"
+      reason: "Active plan with nested live/ structure"
+      dependencies: []
+
+    - plan: "260205IM_cli_hardening"
+      decision: "flatten"
+      reason: "Active plan with nested live/ structure"
+      dependencies: []
+
+    - plan: "260205LB_cli_loading_bar"
+      decision: "flatten"
+      reason: "Active plan with nested live/ structure"
+      dependencies: []
+
+# ========================================
+# PHASE 2: ARCHIVE OPERATIONS
+# ========================================
+archive_operations:
+  - operation: "archive_to_completed"
+    plan_id: "260205BO_bootstrap_test"
+    source: "docs/plans/live/260205BO_bootstrap_test"
+    destination: "docs/plans/completed/260205BO_bootstrap_test"
+    commands:
+      - "git mv docs/plans/live/260205BO_bootstrap_test docs/plans/completed/"
+    validation:
+      - "ls docs/plans/completed/260205BO_bootstrap_test/plan_completed.yml"
+      - "! ls docs/plans/live/260205BO_bootstrap_test 2>/dev/null"
+    status: "pending"
+
+  - operation: "archive_to_deferred"
+    plan_id: "260203AV_agenticvoice_async"
+    source: "docs/plans/live/260203AV_agenticvoice_async"
+    destination: "docs/plans/deferred/260203AV_agenticvoice_async"
+    commands:
+      - "git mv docs/plans/live/260203AV_agenticvoice_async docs/plans/deferred/"
+    validation:
+      - "ls docs/plans/deferred/260203AV_agenticvoice_async/README.md"
+      - "! ls docs/plans/live/260203AV_agenticvoice_async 2>/dev/null"
+    notes: |
+      260203VP_voice_personaplex references 260203AV as historical context.
+      No action needed - reference is not a hard dependency on file location.
+    status: "pending"
+
+# ========================================
+# PHASE 3: FLATTEN OPERATIONS
+# ========================================
+flatten_operations:
+  - operation: "flatten_structure"
+    plan_id: "260203TS_task_service"
+    base_path: "docs/plans/live/260203TS_task_service"
+    files_to_move:
+      - source: "live/plan_build.yml"
+        destination: "plan_build.yml"
+      - source: "live/orchestration_task_service_implementation.mmd"
+        destination: "orchestration_task_service_implementation.mmd"
+        conflict_resolution: "check_diff_first"
+        note: "Root has orchestration_task_service.mmd - check if nested version differs"
+    commands:
+      - "cd docs/plans/live/260203TS_task_service"
+      - "# Check if nested orchestration file differs from root"
+      - "diff orchestration_task_service.mmd live/orchestration_task_service_implementation.mmd || true"
+      - "# Move plan files from nested live/ to root"
+      - "git mv live/plan_build.yml ."
+      - "# Only move nested orchestration if it's newer/different"
+      - "# Manual decision needed based on diff above"
+      - "git rm -r live/"
+    validation:
+      - "ls docs/plans/live/260203TS_task_service/plan_build.yml"
+      - "! ls docs/plans/live/260203TS_task_service/live 2>/dev/null"
+    status: "pending"
+
+  - operation: "flatten_structure"
+    plan_id: "260205IM_cli_hardening"
+    base_path: "docs/plans/live/260205IM_cli_hardening"
+    files_to_move:
+      - source: "live/plan_build.yml"
+        destination: "plan_build.yml"
+      - source: "live/plan_test.yml"
+        destination: "plan_test.yml"
+    commands:
+      - "cd docs/plans/live/260205IM_cli_hardening"
+      - "git mv live/plan_build.yml ."
+      - "git mv live/plan_test.yml ."
+      - "git rm -r live/"
+    validation:
+      - "ls docs/plans/live/260205IM_cli_hardening/plan_build.yml"
+      - "ls docs/plans/live/260205IM_cli_hardening/plan_test.yml"
+      - "ls docs/plans/live/260205IM_cli_hardening/analysis/"  # Should still exist
+      - "! ls docs/plans/live/260205IM_cli_hardening/live 2>/dev/null"
+    notes: "Keep analysis/ subfolder - legitimate supporting docs"
+    status: "pending"
+
+  - operation: "flatten_structure"
+    plan_id: "260205LB_cli_loading_bar"
+    base_path: "docs/plans/live/260205LB_cli_loading_bar"
+    files_to_move:
+      - source: "live/plan_build.yml"
+        destination: "plan_build.yml"
+      - source: "live/plan_test.yml"
+        destination: "plan_test.yml"
+    commands:
+      - "cd docs/plans/live/260205LB_cli_loading_bar"
+      - "git mv live/plan_build.yml ."
+      - "git mv live/plan_test.yml ."
+      - "git rm -r live/"
+    validation:
+      - "ls docs/plans/live/260205LB_cli_loading_bar/plan_build.yml"
+      - "ls docs/plans/live/260205LB_cli_loading_bar/plan_test.yml"
+      - "! ls docs/plans/live/260205LB_cli_loading_bar/live 2>/dev/null"
+    status: "pending"
+
+# ========================================
+# PHASE 4: VALIDATION
+# ========================================
+validation_checks:
+  - check: "no_nested_live_folders"
+    command: "find docs/plans/live -type d -name 'live' | grep -v '^docs/plans/live$'"
+    expected_output: ""
+    expected_exit_code: 1
+    description: "No nested live/ folders should exist"
+
+  - check: "archived_plans_exist"
+    commands:
+      - "ls docs/plans/completed/260205BO_bootstrap_test"
+      - "ls docs/plans/deferred/260203AV_agenticvoice_async"
+    description: "Archived plans in correct locations"
+
+  - check: "flattened_plans_valid"
+    commands:
+      - "ls docs/plans/live/260203TS_task_service/plan_build.yml"
+      - "ls docs/plans/live/260205IM_cli_hardening/plan_build.yml"
+      - "ls docs/plans/live/260205LB_cli_loading_bar/plan_build.yml"
+    description: "Flattened plans have files at root"
+
+  - check: "no_broken_references"
+    commands:
+      - "grep -r '260205BO_bootstrap_test' docs/plans/live/ || echo 'No references found (expected)'"
+      - "grep -r '260203AV' docs/plans/live/ | grep -v '260203AV_agenticvoice_async/\\|260203VP\\|QUESTION_PLANS_OVERVIEW' || echo 'Only historical refs (expected)'"
+    description: "No broken cross-plan references"
+
+# ========================================
+# EXECUTION ORDER
+# ========================================
+execution_order:
+  - phase: 2
+    step: 1
+    action: "Archive 260205BO_bootstrap_test to completed/"
+    blocking: false
+
+  - phase: 2
+    step: 2
+    action: "Archive 260203AV_agenticvoice_async to deferred/"
+    blocking: false
+
+  - phase: 3
+    step: 1
+    action: "Flatten 260203TS_task_service"
+    blocking: false
+    note: "Check orchestration file diff first"
+
+  - phase: 3
+    step: 2
+    action: "Flatten 260205IM_cli_hardening"
+    blocking: false
+
+  - phase: 3
+    step: 3
+    action: "Flatten 260205LB_cli_loading_bar"
+    blocking: false
+
+  - phase: 4
+    step: 1
+    action: "Run all validation checks"
+    blocking: true
+    must_pass: true
+
+# ========================================
+# ROLLBACK PLAN
+# ========================================
+rollback:
+  description: "In case cleanup causes issues"
+  commands:
+    - "git reset --hard HEAD  # If not committed yet"
+    - "git revert <commit-hash>  # If already committed"
+  notes: |
+    All operations use git mv which preserves history.
+    Rollback is straightforward since no content changes, only file locations.
