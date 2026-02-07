@@ -1,0 +1,85 @@
+# User Stories: Notification Panes
+# Covers question queue panes and status message displays
+
+stories:
+  - id: "US-TMUX-030"
+    title: "Create Notification Pane"
+    category: "notification_panes"
+    priority: "high"
+    as_a: "agent workflow system"
+    i_want: "to display notifications in a dedicated tmux pane"
+    so_that: "developers see pending questions without interrupting main workflow"
+    acceptance_criteria:
+      - "get_or_create_notification_pane(pane_name) creates or finds pane by title"
+      - "If pane with title exists, returns existing pane ID"
+      - "If pane does not exist, creates vertical split (30% width on right)"
+      - "New pane title is set using tmux select-pane -T"
+      - "Returns pane ID (e.g., '%1') for subsequent operations"
+      - "Raises RuntimeError if not in tmux session"
+      - "Raises RuntimeError if tmux operations fail"
+    related_commands:
+      - "get_or_create_notification_pane('questions')"
+    notes: |
+      This is a utility function in agenticcli.utils.tmux. The 30% vertical
+      split creates a sidebar-style notification area on the right.
+
+  - id: "US-TMUX-031"
+    title: "Display Questions in Notification Pane"
+    category: "notification_panes"
+    priority: "high"
+    as_a: "agent workflow system"
+    i_want: "to display pending questions in a notification pane"
+    so_that: "developers can see and respond to questions without manual checks"
+    acceptance_criteria:
+      - "notify_questions_in_tmux(plan_folder, questions) displays questions"
+      - "Creates or reuses 'questions' notification pane"
+      - "Formats questions using question_formatter utility"
+      - "Clears pane before displaying new content"
+      - "Displays tmux status bar message with question count"
+      - "Returns True if notification succeeded, False otherwise"
+      - "Gracefully degrades if not in tmux (returns False)"
+      - "Does nothing if questions list is empty"
+    related_commands:
+      - "notify_questions_in_tmux(plan_folder, questions)"
+    notes: |
+      Used by question workflow integration. The tmux status bar message
+      duration is 5 seconds by default.
+
+  - id: "US-TMUX-032"
+    title: "Clear Notification Pane"
+    category: "notification_panes"
+    priority: "medium"
+    as_a: "agent workflow system"
+    i_want: "to clear notification pane when all questions are answered"
+    so_that: "developers know there's no action required"
+    acceptance_criteria:
+      - "clear_notification_pane() clears 'questions' pane"
+      - "Displays 'No pending questions' message in pane"
+      - "Shows status bar message: 'All questions answered'"
+      - "Returns True if successful, False if pane not found"
+      - "Gracefully handles case where not in tmux"
+    related_commands:
+      - "clear_notification_pane()"
+    notes: |
+      Uses format_question_notification([]) to generate the "no questions" view.
+
+  - id: "US-TMUX-033"
+    title: "Display Status Bar Messages"
+    category: "notification_panes"
+    priority: "medium"
+    as_a: "agent workflow system"
+    i_want: "to display temporary messages in the tmux status bar"
+    so_that: "developers see status updates without interrupting work"
+    acceptance_criteria:
+      - "display_tmux_message(message, duration_ms) shows status bar message"
+      - "Default duration is 5000ms (5 seconds)"
+      - "Message appears in tmux status line at bottom of terminal"
+      - "Does nothing if not in tmux session"
+      - "Silently ignores errors (best-effort operation)"
+      - "Does not raise exceptions on failure"
+    related_commands:
+      - "display_tmux_message('3 pending questions - check pane', 5000)"
+      - "display_tmux_message('All questions answered')"
+    notes: |
+      Uses tmux display-message -d for temporary status messages. This is
+      non-intrusive compared to notifications in the main pane.

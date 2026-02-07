@@ -1,0 +1,506 @@
+name: task-service-implementation
+worktree_path: /home/code/AgenticEngineering
+branch: main
+status: active
+priority: high
+worktree: /home/code/AgenticEngineering
+plan_file: docs/plans/live/260203TS_task_service/live/plan_build.yml
+context: 'This plan implements TaskService in AgenticGuidance to provide CRUD operations
+
+  for tasks within plan YAML files. Currently, tasks are embedded in plan files
+
+  under phases[].tasks[] with no dedicated service layer for task manipulation.
+
+
+  OBJECTIVE: Create TaskService following existing service patterns (plan.py,
+
+  state.py, config.py) to enable programmatic task access and status updates.
+
+
+  ARCHITECTURE ALIGNMENT: Domain service layer only (no workflow/entrypoint yet).
+
+  Future work may add CLI commands using this service.
+
+
+  UPDATE 2026-02-03 (Session 1): Initial planning. Analyzed existing service
+
+  patterns and test structure. Ready for implementation.
+
+
+  NEXT: Implement TaskService with comprehensive tests, then validate against
+
+  real plan files.
+
+  '
+inputs:
+- location: modules/AgenticGuidance/docs/ARCHITECTURE.md
+  description: Architecture patterns for domain service implementation
+- location: modules/AgenticGuidance/src/agenticguidance/services/plan.py
+  description: Existing plan service showing YAML manipulation patterns
+- location: modules/AgenticGuidance/src/agenticguidance/services/state.py
+  description: Service patterns for dataclasses and enum usage
+- location: modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/plan_example.yml
+  description: Plan structure reference for task location patterns
+open_questions:
+- id: QUESTION-001
+  question: Should TaskService handle nested tasks in phases or flat task lists?
+  severity: high
+  status: ANSWERED
+  answer: Support both patterns. Plan files use phases[].tasks[] while some legacy
+    files use flat plan.tasks[].
+  answered_by: HUMAN
+  context: 'Analysis of existing plan files shows both patterns in use:
+
+    - Modern plans: phases[].tasks[] (nested)
+
+    - Legacy/simple plans: plan.tasks[] (flat)
+
+    TaskService must handle both for backward compatibility.
+
+    '
+- id: QUESTION-002
+  question: How should get_current_task() prioritize when multiple tasks are in_progress?
+  severity: medium
+  status: ANSWERED
+  answer: Return first in_progress task found. If none, return first pending task.
+  answered_by: HUMAN
+  context: 'Single-agent execution model means only one task should be in_progress
+
+    at a time. Multiple in_progress tasks indicates error state - return
+
+    first found and log warning for human review.
+
+    '
+loop_structures:
+- id: loop_implementation
+  type: test-fix-loop
+  applies_to_phase: Implementation Phase
+  trigger: After service implementation completes
+  description: 'Iterative testing pattern where TaskService implementation is validated
+
+    against unit tests. Each iteration runs tests, identifies failures, and
+
+    fixes issues until all tests pass.
+
+    '
+  exit_criteria:
+    success: All unit tests pass AND integration tests with real plan files pass
+    max_iterations: 5
+    escalation: Escalate to user with test results and remaining failures
+  participants:
+  - agent: builder
+    role: Implements TaskService and fixes test failures
+  - agent: test-runner
+    role: Executes pytest suite and reports results
+- id: loop_quality_audit
+  type: audit-test-fix-loop
+  applies_to_phase: Quality Validation Phase
+  trigger: After implementation tests pass
+  description: 'MANDATORY validation loop to verify test quality and prevent reward
+    hacking.
+
+    Auditor examines tests for proper assertions, edge case coverage, and
+
+    real behavior validation.
+
+    '
+  exit_criteria:
+    success: Audit passes with no test quality issues
+    max_iterations: 3
+    escalation: BLOCK deployment - test quality issues must be resolved
+  participants:
+  - agent: test-audit
+    role: Audits test quality and detects reward hacking
+  - agent: builder
+    role: Fixes test quality issues identified by auditor
+  mandatory: true
+phases:
+- name: Service Implementation Phase
+  execution: sequential
+  description: Implement TaskService domain service with CRUD operations
+  tasks:
+  - id: impl_001
+    name: Create TaskService class structure
+    description: Implement TaskService skeleton with core methods and dataclasses
+    status: completed
+    agent: builder
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+    - modules/AgenticGuidance/src/agenticguidance/services/state.py
+    - modules/AgenticGuidance/src/agenticguidance/services/__init__.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/task.py
+    guidance: "Create task.py following patterns from existing services:\n\n1. Import\
+      \ required modules (yaml, pathlib, dataclasses, enum)\n2. Define TaskStatus\
+      \ enum: pending, in_progress, completed\n3. Create Task dataclass with fields:\n\
+      \   - id: str\n   - name: str\n   - description: str\n   - status: TaskStatus\n\
+      \   - agent: Optional[str]\n   - inputs: list[str]\n   - target_files: list[str]\n\
+      \   - guidance: Optional[str]\n   - completed_date: Optional[str]\n4. Create\
+      \ TaskService class with __init__(plan_path: Path)\n5. Add private helper: _load_plan_file()\
+      \ -> dict\n6. Add private helper: _save_plan_file(data: dict) -> None\n\nPATTERN\
+      \ REFERENCE:\n- Follow PlanMovementWorkflow pattern for YAML loading\n- Use\
+      \ FileLock from state.py for atomic writes\n- Support both phases[].tasks[]\
+      \ and plan.tasks[] patterns\n"
+    success_criteria:
+    - TaskService class exists with proper imports
+    - Task dataclass has all required fields
+    - TaskStatus enum has three states
+    - _load_plan_file() and _save_plan_file() helpers implemented
+    - No syntax errors, module imports cleanly
+  - id: impl_002
+    name: Implement task retrieval methods
+    description: Add get_task(), list_tasks(), get_current_task()
+    status: completed
+    agent: builder
+    depends_on:
+    - impl_001
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/task.py
+    - modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/plan_example.yml
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/task.py
+    guidance: "Implement task retrieval methods:\n\n1. get_task(plan_id: str, task_id:\
+      \ str) -> Optional[Task]\n   - Search phases[].tasks[] for matching task_id\n\
+      \   - Fall back to plan.tasks[] if not found in phases\n   - Return Task dataclass\
+      \ or None\n   - Handle YAML parsing errors gracefully\n\n2. list_tasks(plan_id:\
+      \ str, status: Optional[TaskStatus] = None) -> list[Task]\n   - Collect all\
+      \ tasks from phases[].tasks[]\n   - Also check plan.tasks[] for backward compatibility\n\
+      \   - Filter by status if provided\n   - Return list of Task dataclasses\n\n\
+      3. get_current_task(plan_id: str) -> Optional[Task]\n   - Search for first task\
+      \ with status=in_progress\n   - If none in_progress, return first task with\
+      \ status=pending\n   - Return None if no pending or in_progress tasks\n   -\
+      \ Log warning if multiple in_progress tasks found\n\nEDGE CASES:\n- Empty plan\
+      \ files\n- Missing phases key\n- Tasks without required fields\n- Malformed\
+      \ YAML\n"
+    success_criteria:
+    - get_task() returns correct task by ID
+    - get_task() returns None for non-existent task
+    - list_tasks() returns all tasks when status=None
+    - list_tasks() filters correctly by status
+    - get_current_task() prioritizes in_progress over pending
+    - get_current_task() returns None when no actionable tasks
+    - All methods handle missing/malformed data gracefully
+  - id: impl_003
+    name: Implement task update methods
+    description: Add update_task_status(), start_task(), complete_task()
+    status: completed
+    agent: builder
+    depends_on:
+    - impl_002
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/task.py
+    - modules/AgenticGuidance/src/agenticguidance/services/state.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/task.py
+    guidance: "Implement task mutation methods with file locking:\n\n1. update_task_status(plan_id:\
+      \ str, task_id: str, status: TaskStatus) -> bool\n   - Load plan file with FileLock\
+      \ for atomic operation\n   - Find task in phases[].tasks[] or plan.tasks[]\n\
+      \   - Update status field\n   - Add completed_date if status=completed (ISO\
+      \ 8601 format)\n   - Save plan file\n   - Return True on success, False if task\
+      \ not found\n\n2. start_task(plan_id: str, task_id: str) -> bool\n   - Convenience\
+      \ wrapper for update_task_status(status=in_progress)\n   - Validates task exists\
+      \ before updating\n   - Returns boolean success\n\n3. complete_task(plan_id:\
+      \ str, task_id: str) -> bool\n   - Convenience wrapper for update_task_status(status=completed)\n\
+      \   - Automatically adds completed_date timestamp\n   - Returns boolean success\n\
+      \nATOMIC WRITES:\n- Use FileLock(plan_file_path) context manager\n- Load YAML\
+      \ inside lock\n- Modify data\n- Write YAML inside same lock\n- Release lock\
+      \ automatically\n\nVALIDATION:\n- Check task exists before updating\n- Preserve\
+      \ all other task fields during update\n- Maintain YAML formatting (use default_flow_style=False)\n"
+    success_criteria:
+    - update_task_status() changes task status atomically
+    - update_task_status() adds completed_date when status=completed
+    - update_task_status() returns False for non-existent tasks
+    - start_task() sets status to in_progress
+    - complete_task() sets status to completed with timestamp
+    - File locking prevents concurrent modification
+    - YAML formatting preserved after updates
+  - id: impl_004
+    name: Export TaskService in __init__.py
+    description: Add TaskService exports to services package
+    status: completed
+    agent: builder
+    depends_on:
+    - impl_003
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/__init__.py
+    - modules/AgenticGuidance/src/agenticguidance/services/task.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/__init__.py
+    guidance: "Update __init__.py to export TaskService:\n\n1. Add import statement:\n\
+      \   from .task import (\n       Task,\n       TaskService,\n       TaskStatus,\n\
+      \   )\n\n2. Add to __all__ list (alphabetically within \"Task services\" section):\n\
+      \   # Task services\n   \"Task\",\n   \"TaskService\",\n   \"TaskStatus\",\n\
+      \nPATTERN: Follow existing structure with comment sections\n(Config services,\
+      \ Context services, etc.)\n"
+    success_criteria:
+    - TaskService imported in __init__.py
+    - Task and TaskStatus exported
+    - __all__ list updated with new exports
+    - No import errors when importing from agenticguidance.services
+    - Alphabetical ordering maintained within section
+- name: Test Implementation Phase
+  execution: sequential
+  description: Create comprehensive test suite for TaskService
+  loop: test-fix-loop
+  tasks:
+  - id: test_001
+    name: Create test file structure
+    description: Create test_services_task.py with fixtures and test classes
+    status: completed
+    agent: builder
+    depends_on:
+    - impl_004
+    inputs:
+    - modules/AgenticGuidance/tests/test_services_plan.py
+    - modules/AgenticGuidance/tests/test_services_state.py
+    target_files:
+    - modules/AgenticGuidance/tests/test_services_task.py
+    guidance: "Create test file following existing service test patterns:\n\n1. File\
+      \ header and imports:\n   \"\"\"Tests for task service.\"\"\"\n   import pytest\n\
+      \   from pathlib import Path\n   from agenticguidance.services.task import Task,\
+      \ TaskService, TaskStatus\n\n2. Test fixtures (pytest):\n   @pytest.fixture\n\
+      \   def sample_plan_path(tmp_path):\n       \"\"\"Create temporary plan directory\
+      \ with sample YAML.\"\"\"\n       # Create docs/plans/live/test_plan/\n    \
+      \   # Write plan_build.yml with phases and tasks\n       # Return Path to plan\
+      \ folder\n\n   @pytest.fixture\n   def task_service(sample_plan_path):\n   \
+      \    \"\"\"Create TaskService instance.\"\"\"\n       return TaskService(sample_plan_path)\n\
+      \n3. Test class structure:\n   class TestTask:\n       \"\"\"Tests for Task\
+      \ dataclass.\"\"\"\n\n   class TestTaskStatus:\n       \"\"\"Tests for TaskStatus\
+      \ enum.\"\"\"\n\n   class TestTaskService:\n       \"\"\"Tests for TaskService\
+      \ class.\"\"\"\n\nSAMPLE PLAN DATA:\n- Include 3 tasks: one pending, one in_progress,\
+      \ one completed\n- Use both phases[].tasks[] structure\n- Include edge cases:\
+      \ task without optional fields\n"
+    success_criteria:
+    - test_services_task.py created with proper structure
+    - Fixtures create valid plan YAML files
+    - Test classes defined for each component
+    - pytest can discover and collect tests
+  - id: test_002
+    name: Implement task retrieval tests
+    description: Test get_task(), list_tasks(), get_current_task()
+    status: completed
+    agent: builder
+    depends_on:
+    - test_001
+    inputs:
+    - modules/AgenticGuidance/tests/test_services_task.py
+    - modules/AgenticGuidance/src/agenticguidance/services/task.py
+    target_files:
+    - modules/AgenticGuidance/tests/test_services_task.py
+    guidance: "Implement retrieval method tests in TestTaskService class:\n\n1. test_get_task_returns_task_by_id()\n\
+      \   - Call get_task() with valid task_id\n   - Assert returned Task has correct\
+      \ id, name, status\n   - Verify Task dataclass fields populated\n\n2. test_get_task_returns_none_for_invalid_id()\n\
+      \   - Call get_task() with non-existent id\n   - Assert None returned\n\n3.\
+      \ test_list_tasks_returns_all_tasks()\n   - Call list_tasks() without status\
+      \ filter\n   - Assert returns list of all tasks (3 in fixture)\n\n4. test_list_tasks_filters_by_status()\n\
+      \   - Call list_tasks(status=TaskStatus.PENDING)\n   - Assert only pending tasks\
+      \ returned\n   - Repeat for in_progress and completed\n\n5. test_get_current_task_returns_in_progress()\n\
+      \   - Fixture has in_progress task\n   - Assert get_current_task() returns in_progress\
+      \ task\n\n6. test_get_current_task_returns_pending_when_none_in_progress()\n\
+      \   - Modify fixture to have no in_progress tasks\n   - Assert get_current_task()\
+      \ returns first pending task\n\n7. test_get_current_task_returns_none_when_all_completed()\n\
+      \   - Modify fixture to have only completed tasks\n   - Assert get_current_task()\
+      \ returns None\n\nASSERTIONS:\n- Use assert for boolean/equality checks\n- Verify\
+      \ Task dataclass field types\n- Check list lengths and contents\n"
+    success_criteria:
+    - All retrieval tests implemented
+    - Tests verify correct Task objects returned
+    - Tests validate None returns for edge cases
+    - Tests check status filtering logic
+    - Tests pass when run with pytest
+  - id: test_003
+    name: Implement task update tests
+    description: Test update_task_status(), start_task(), complete_task()
+    status: completed
+    agent: builder
+    depends_on:
+    - test_002
+    inputs:
+    - modules/AgenticGuidance/tests/test_services_task.py
+    - modules/AgenticGuidance/src/agenticguidance/services/task.py
+    target_files:
+    - modules/AgenticGuidance/tests/test_services_task.py
+    guidance: "Implement update method tests:\n\n1. test_update_task_status_changes_status()\n\
+      \   - Update task from pending to in_progress\n   - Assert update_task_status()\
+      \ returns True\n   - Re-load task and verify status changed\n   - Verify YAML\
+      \ file persisted change\n\n2. test_update_task_status_adds_completed_date()\n\
+      \   - Update task to completed status\n   - Verify completed_date field added\n\
+      \   - Verify date format is ISO 8601 (YYYY-MM-DD)\n\n3. test_update_task_status_returns_false_for_invalid_id()\n\
+      \   - Call update_task_status() with non-existent task_id\n   - Assert returns\
+      \ False\n\n4. test_start_task_sets_in_progress()\n   - Call start_task() on\
+      \ pending task\n   - Verify status changed to in_progress\n   - Verify returns\
+      \ True\n\n5. test_complete_task_sets_completed_with_date()\n   - Call complete_task()\
+      \ on in_progress task\n   - Verify status changed to completed\n   - Verify\
+      \ completed_date added\n   - Verify returns True\n\n6. test_concurrent_updates_use_file_locking()\n\
+      \   - Mock FileLock to verify it's used\n   - Call update_task_status()\n  \
+      \ - Assert FileLock context manager entered/exited\n\nFILE VERIFICATION:\n-\
+      \ After updates, re-read YAML file\n- Parse and verify changes persisted\n-\
+      \ Check YAML formatting preserved\n"
+    success_criteria:
+    - All update tests implemented
+    - Tests verify status transitions work
+    - Tests validate completed_date added correctly
+    - Tests confirm file locking used
+    - Tests verify YAML persistence
+    - Tests pass when run with pytest
+  - id: test_004
+    name: Implement edge case and error tests
+    description: Test error handling, malformed data, missing fields
+    status: completed
+    agent: builder
+    depends_on:
+    - test_003
+    inputs:
+    - modules/AgenticGuidance/tests/test_services_task.py
+    - modules/AgenticGuidance/src/agenticguidance/services/task.py
+    target_files:
+    - modules/AgenticGuidance/tests/test_services_task.py
+    guidance: "Implement edge case tests:\n\n1. test_handles_empty_plan_file()\n \
+      \  - Create plan with no tasks\n   - Assert list_tasks() returns empty list\n\
+      \   - Assert get_task() returns None\n\n2. test_handles_missing_phases_key()\n\
+      \   - Create plan without phases key\n   - Assert methods handle gracefully\
+      \ without exception\n\n3. test_handles_task_without_optional_fields()\n   -\
+      \ Create task with only required fields (id, name, status)\n   - Assert get_task()\
+      \ returns Task with None for optional fields\n\n4. test_handles_malformed_yaml()\n\
+      \   - Create invalid YAML file\n   - Assert methods return None/empty instead\
+      \ of crashing\n\n5. test_handles_nonexistent_plan_file()\n   - Call TaskService\
+      \ with non-existent path\n   - Assert methods return None/empty instead of crashing\n\
+      \n6. test_supports_both_nested_and_flat_task_structures()\n   - Create plan\
+      \ with plan.tasks[] (flat structure)\n   - Verify get_task() finds tasks in\
+      \ flat structure\n   - Create plan with phases[].tasks[] (nested)\n   - Verify\
+      \ both patterns supported\n\nERROR HANDLING:\n- Use try/except to verify no\
+      \ exceptions raised\n- Check for graceful degradation\n- Verify appropriate\
+      \ return values on errors\n"
+    success_criteria:
+    - Edge case tests implemented
+    - Tests verify graceful error handling
+    - Tests validate both task structure patterns
+    - No exceptions raised for malformed input
+    - Tests pass when run with pytest
+  - id: test_005
+    name: Run full test suite and fix failures
+    description: Execute pytest and iterate on failures
+    status: completed
+    agent: builder
+    depends_on:
+    - test_004
+    loop: test-fix-loop
+    inputs:
+    - modules/AgenticGuidance/tests/test_services_task.py
+    - modules/AgenticGuidance/src/agenticguidance/services/task.py
+    guidance: "Execute test suite and fix failures iteratively:\n\n1. Run pytest:\n\
+      \   cd modules/AgenticGuidance\n   pytest tests/test_services_task.py -v\n\n\
+      2. For each failure:\n   - Read pytest output to identify failing test\n   -\
+      \ Analyze expected vs actual behavior\n   - Fix implementation or test as appropriate\n\
+      \   - Re-run tests\n\n3. Verify coverage:\n   - All public methods tested\n\
+      \   - Edge cases covered\n   - Error paths validated\n\nITERATION:\n- Maximum\
+      \ 5 iterations (test-fix-loop)\n- Document any persistent failures for escalation\n\
+      - Ensure all tests pass before completing\n"
+    success_criteria:
+    - pytest runs without errors
+    - All tests pass (green)
+    - No skipped tests
+    - Test coverage >90% for task.py
+    - No warnings in pytest output
+- name: Integration Validation Phase
+  execution: sequential
+  description: Validate TaskService against real plan files
+  tasks:
+  - id: integ_001
+    name: Test with real plan files
+    description: Validate TaskService works with actual plan YAML files
+    status: completed
+    agent: builder
+    depends_on:
+    - test_005
+    inputs:
+    - docs/plans/live/260203TS_task_service/live/plan_build.yml
+    - modules/AgenticGuidance/src/agenticguidance/services/task.py
+    guidance: "Create integration test using this actual plan file:\n\n1. Create test_integration_real_plan():\n\
+      \   - Load this plan file (260203TS_task_service)\n   - Create TaskService instance\n\
+      \   - Call list_tasks() and verify returns expected tasks\n   - Call get_task()\
+      \ for known task IDs (impl_001, test_001, etc.)\n   - Verify Task objects have\
+      \ correct data\n\n2. Test status updates on real plan:\n   - Create copy of\
+      \ this plan file\n   - Update task status using TaskService\n   - Verify YAML\
+      \ file updated correctly\n   - Verify formatting preserved\n\n3. Verify backward\
+      \ compatibility:\n   - Find example of flat task structure in completed plans\n\
+      \   - Test TaskService can read flat structure\n   - Verify no exceptions\n\n\
+      VALIDATION:\n- Real plan files may have fields not in fixtures\n- Verify TaskService\
+      \ handles extra fields gracefully\n- Confirm YAML comments preserved after updates\n"
+    success_criteria:
+    - TaskService reads this plan file successfully
+    - list_tasks() returns all implementation and test tasks
+    - get_current_task() returns first pending task
+    - Task updates preserve YAML formatting
+    - No data loss on round-trip (load -> update -> save -> load)
+- name: Quality Validation Phase
+  execution: sequential
+  description: Audit test quality and prevent reward hacking
+  loop: audit-test-fix-loop
+  mandatory: true
+  tasks:
+  - id: audit_001
+    name: Test quality audit
+    description: Review tests for proper assertions and real behavior validation
+    status: completed
+    agent: test-audit
+    depends_on:
+    - integ_001
+    inputs:
+    - modules/AgenticGuidance/tests/test_services_task.py
+    - modules/AgenticGuidance/src/agenticguidance/services/task.py
+    guidance: "Audit test quality to prevent reward hacking:\n\nCHECKLIST:\n1. Do\
+      \ tests verify actual behavior or just success=True?\n   - Tests should check\
+      \ Task field values, not just \"returned something\"\n   - Tests should verify\
+      \ YAML file contents after updates\n\n2. Are edge cases properly tested?\n \
+      \  - Empty files, missing keys, malformed data\n   - Concurrent access scenarios\n\
+      \   - Both task structure patterns (nested and flat)\n\n3. Are assertions specific\
+      \ and meaningful?\n   - Avoid assert result is not None (too weak)\n   - Use\
+      \ assert result.status == TaskStatus.COMPLETED (specific)\n\n4. Do tests verify\
+      \ persistence?\n   - After update, re-load file and check changes persisted\n\
+      \   - Verify YAML formatting preserved\n\n5. Are error conditions tested?\n\
+      \   - Non-existent task IDs\n   - Invalid status transitions\n   - File locking\
+      \ failures\n\nREPORT FORMAT:\n- List each issue found\n- Provide specific test\
+      \ name and line number\n- Explain why current assertion is insufficient\n- Suggest\
+      \ specific improvement\n"
+    success_criteria:
+    - Audit report identifies any weak assertions
+    - Audit confirms edge cases covered
+    - Audit validates error path testing
+    - Audit verifies no reward hacking patterns
+    - If issues found, proceed to audit_002
+  - id: audit_002
+    name: Fix audit findings
+    description: Address test quality issues identified by auditor
+    status: completed
+    agent: builder
+    depends_on:
+    - audit_001
+    condition: audit_001 reports findings
+    inputs:
+    - modules/AgenticGuidance/tests/test_services_task.py
+    - modules/AgenticGuidance/src/agenticguidance/services/task.py
+    guidance: "Fix issues identified in audit report:\n\n1. For each finding:\n  \
+      \ - Locate test and assertion\n   - Strengthen assertion per audit recommendation\n\
+      \   - Re-run test to verify still passes\n\n2. Add missing tests:\n   - If audit\
+      \ identifies uncovered edge case, add test\n   - Follow existing test patterns\n\
+      \n3. Improve specificity:\n   - Replace weak assertions with specific field\
+      \ checks\n   - Add multi-step verification for complex operations\n\nITERATION:\n\
+      - After fixes, audit runs again\n- Maximum 3 iterations (audit-test-fix-loop)\n\
+      - Escalate if issues persist after 3 rounds\n"
+    success_criteria:
+    - All audit findings addressed
+    - Tests strengthened with specific assertions
+    - Missing tests added
+    - Re-run audit passes with no issues
+success_criteria:
+- TaskService class implemented with all 6 required methods
+- Task dataclass supports all plan task fields
+- TaskStatus enum provides pending/in_progress/completed states
+- All unit tests pass (>90% coverage)
+- Integration tests validate against real plan files
+- Test audit passes with no reward hacking detected
+- TaskService exported from agenticguidance.services package
+- Both nested (phases[].tasks[]) and flat (plan.tasks[]) structures supported
+- File locking prevents concurrent modification issues
+- YAML formatting preserved after task updates

@@ -7,10 +7,44 @@ guideline:
   inputs:
     - location: "modules/AgenticGuidance/assets/definitions/plans.yml"
       description: "Plan status values, completion patterns, and structure definitions"
-    - location: "modules/AgenticGuidance/userstories/"
+    - location: "docs/userstories/"
       description: "User stories location - UAT must reference stories from here"
 
   rules:
+    # ========================================
+    # FENCE: STORY-FIRST PLANNING
+    # ========================================
+    - rule: "Story-First Planning"
+      mandatory: true
+      fence: |
+        FENCE: STORY-FIRST PLANNING
+        Story discovery MUST occur BEFORE phase determination in any planning workflow.
+        Every plan MUST identify affected user stories using `agentic stories find`
+        before creating phase plans. Stories provide the acceptance criteria that
+        drive UAT and define success.
+      justification: |
+        Without early story discovery, plans risk building features that don't map
+        to user needs, and UAT phases lack concrete acceptance criteria. Story-first
+        planning ensures every implementation is anchored to verifiable user outcomes.
+      execution_pattern:
+        - "Run `agentic stories find [--project <project>]` to discover affected stories"
+        - "Record affected_stories in plan metadata (list of story IDs)"
+        - "Pass story context to downstream planner agents"
+        - "If no stories found: require no_stories_rationale field in plan metadata"
+      characteristics:
+        - "Story discovery runs before phase determination"
+        - "Stories location: docs/userstories/"
+        - "affected_stories field is mandatory in plan metadata (or no_stories_rationale)"
+        - "Story IDs follow US-<PROJECT>-NNN format (e.g., US-CLI-001)"
+      escape_hatch:
+        description: |
+          Plans with no matching user stories may proceed if a no_stories_rationale
+          field is provided. This applies to infrastructure-only, guidance-only, or
+          internal tooling changes that have no direct user-facing impact.
+        required_field: "no_stories_rationale"
+        example: |
+          no_stories_rationale: "Internal guidance refactoring with no user-facing behavior change"
+
     # ========================================
     # FENCE: UAT IS MANDATORY
     # ========================================
@@ -52,7 +86,7 @@ guideline:
         - "Document pass/fail per story ID (e.g., US-CLI-001)"
       characteristics:
         - "Stories discovered via: agentic stories find [--project <project>]"
-        - "Stories location: modules/AgenticGuidance/userstories/"
+        - "Stories location: docs/userstories/"
         - "Each UAT test traces to specific story ID"
         - "Acceptance criteria from stories define UAT success"
 

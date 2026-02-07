@@ -93,6 +93,98 @@ process:
       - fences.codebase_verification - Spawn explore agents to verify
       - fences.self_review_validation - ALL plans (new SSR-004)
       - fences.infrastructure_implementation - ALL plans (verify targets implemented infrastructure)
+      - fences.open_questions_validation - Validate open_questions section if present (see OPEN_QUESTIONS_VALIDATION below)
+
+    - |
+      OPEN_QUESTIONS_VALIDATION (Review Checklist):
+      Reference: modules/AgenticGuidance/assets/guidelines/question-workflow.yml
+
+      If the plan includes an open_questions section, validate that questions are properly
+      identified and tracked for human input. This ensures execution agents can leverage
+      the HITL question workflow effectively.
+
+      VALIDATION CHECKLIST:
+
+      1. Question Structure:
+         - Each question has required fields: id, question, severity, status, context, created_at, asked_by
+         - ID follows naming convention (plan-q-NNN or test-q-NNN format)
+         - Severity is valid enum value: blocking | high | medium | low
+         - Status is valid enum value: pending | answered | deferred
+         - Context explains what was tried and why it's blocking
+
+      2. Question Quality:
+         - Question text is specific and actionable (not vague like "How should I implement this?")
+         - Context provides sufficient background for human to answer
+         - Impact is explained (what depends on this decision)
+         - Research/attempted solutions are documented in context
+
+      3. Severity Appropriateness:
+         - blocking: Used only when truly cannot proceed (critical path blocked)
+         - high: Used when it blocks one task but other work can continue
+         - medium: Used when reasonable assumption exists and is documented
+         - low: Used for preferences or nice-to-haves
+
+      4. Autonomous Decision Boundary:
+         - Questions are NOT about things agent should decide autonomously:
+           * Variable naming (should follow existing patterns)
+           * File organization (should follow existing structure)
+           * Code formatting (should use existing linters)
+           * Standard patterns already in codebase
+           * Low-risk technical details
+         - Questions ARE about legitimate blockers:
+           * Architectural decisions with long-term impact
+           * Business logic requiring stakeholder input
+           * Priority clarification for conflicting requirements
+           * Missing critical information not in docs/code
+           * High-risk decisions
+
+      5. Answered Questions (if status=answered):
+         - answer field is present and non-empty
+         - answered_at timestamp is present
+         - answered_by field identifies who provided the answer
+
+      APPROVAL CRITERIA:
+      - APPROVE if all questions meet structure and quality requirements
+      - NEEDS_REVISION if questions are vague, missing context, or inappropriately severe
+      - NEEDS_REVISION if questions ask about autonomous decisions (too many questions)
+      - NEEDS_REVISION if blocking questions exist but no parallel work is planned
+
+      FEEDBACK EXAMPLES:
+      - "Question plan-q-002 lacks context explaining what was tried"
+      - "Question plan-q-005 asks about variable naming (autonomous decision, remove)"
+      - "Question plan-q-001 marked blocking but plan has no parallel tasks (add alternative work or adjust severity)"
+      - "Question test-q-003 is too vague: specify which behavior is unclear"
+
+      NO OPEN_QUESTIONS SECTION:
+      - This is VALID - not all plans require human questions
+      - Only plans with genuine blockers need open_questions
+      - Absence of section should not trigger rejection
+    - |
+      STORY VALIDATION (FENCE - Story-First Planning):
+      Reference: modules/AgenticGuidance/assets/guidelines/planning-standard.yml#Story-First Planning
+
+      Validate that plans properly integrate user stories:
+
+      VALIDATION CHECKLIST:
+      1. Build plans MUST have affected_stories list OR no_stories_rationale field
+         - REJECT if neither is present in plan metadata
+         - affected_stories should contain valid story IDs (US-<PROJECT>-NNN format)
+      2. Test plans with UAT phase MUST reference specific story IDs
+         - UAT tasks must map to story acceptance criteria
+      3. Plans modifying user-facing features MUST identify affected stories
+         - Check target_files: if any are user-facing (CLI, API, UI), stories are expected
+      4. Plans with affected_stories MUST have corresponding UAT tasks
+         - REJECT if stories listed but no UAT phase planned
+
+      ESCAPE HATCH:
+      - no_stories_rationale is valid for infrastructure, guidance, or internal tooling plans
+      - The rationale must explain why no user stories are impacted
+      - Vague rationales (e.g., "not applicable") should trigger NEEDS_REVISION
+
+      FEEDBACK EXAMPLES:
+      - "Plan lacks affected_stories and no_stories_rationale - add story discovery results"
+      - "affected_stories lists US-CLI-001 but no UAT phase validates it"
+      - "no_stories_rationale is too vague - explain why guidance changes don't impact users"
     - |
       Decision:
       - APPROVE: All checklist items pass AND all fences pass, plan ready for execution.

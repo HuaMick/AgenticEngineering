@@ -1,0 +1,503 @@
+# Typer Migration Mapping: argparse -> Typer
+# Generated from cli.py audit
+
+global_flags:
+  - argparse: "--version/-v (action=version)"
+    typer: "typer.Option('--version', '-v', callback=version_callback, is_eager=True)"
+    notes: "Typer version callback with is_eager=True for early exit"
+  - argparse: "--json/-j (action=store_true)"
+    typer: "typer.Option('--json', '-j')"
+    notes: "Stored in ctx.obj for subcommands"
+  - argparse: "--debug/-d (action=store_true)"
+    typer: "typer.Option('--debug', '-d')"
+    notes: "Stored in ctx.obj for subcommands"
+
+# Strategy: Each command module has handle(args, ctx) pattern.
+# Typer commands create an argparse-like Namespace and call handle() directly.
+# This avoids rewriting all command implementations.
+
+command_groups:
+  # ==========================================
+  # SIMPLE COMMANDS (no subparsers)
+  # ==========================================
+  - name: setup
+    type: simple
+    aliases: []
+    category: global
+    argparse_func: "_add_setup_parser"
+    flags:
+      - "--force/-f (store_true)"
+    routing: "setup.handle(args, ctx)"
+    typer: "@app.command()"
+
+  - name: health
+    type: simple
+    aliases: []
+    category: global
+    argparse_func: "_add_health_parser"
+    flags: []
+    routing: "health.handle(args, ctx)"
+    typer: "@app.command()"
+
+  - name: update
+    type: simple
+    aliases: []
+    category: global
+    argparse_func: "_add_update_parser"
+    flags: []
+    routing: "package.handle_update(args, ctx)"
+    typer: "@app.command()"
+
+  - name: rebuild
+    type: simple
+    aliases: []
+    category: global
+    argparse_func: "_add_rebuild_parser"
+    flags: []
+    routing: "package.handle_rebuild(args, ctx)"
+    typer: "@app.command()"
+
+  # ==========================================
+  # COMMAND GROUPS WITH SUBCOMMANDS
+  # ==========================================
+  - name: preferences
+    type: group
+    aliases: ["prefs", "pref"]
+    category: global
+    argparse_func: "_add_preferences_parser"
+    dest: "prefs_command"
+    subcommands:
+      - name: get
+        args: ["key (positional)"]
+      - name: set
+        args: ["key (positional)", "value (positional)"]
+      - name: list
+        args: []
+      - name: delete
+        args: ["key (positional)"]
+      - name: clear
+        args: ["--force/-f (store_true)"]
+    routing: "preferences.handle(args, ctx)"
+
+  - name: config
+    type: group
+    aliases: ["cfg"]
+    category: global
+    argparse_func: "_add_config_parser"
+    dest: "config_command"
+    subcommands:
+      - name: show
+        args: []
+      - name: init
+        args: []
+      - name: get
+        args: ["key (positional)"]
+      - name: set
+        args: ["key (positional)", "value (positional)"]
+      - name: list
+        args: []
+      - name: delete
+        args: ["key (positional)"]
+      - name: show-path
+        args: []
+      - name: clear
+        args: ["--force/-f (store_true)"]
+      - name: set-path
+        args: ["path (positional)"]
+    routing: "config.handle(args, ctx)"
+
+  - name: state
+    type: group
+    aliases: []
+    category: global
+    argparse_func: "_add_state_parser"
+    dest: "state_command"
+    subcommands:
+      - name: list
+        args: ["--active/-a (store_true)"]
+      - name: show
+        args: ["pid (positional, int)"]
+      - name: clear
+        args: ["--all/-a (store_true)", "--force/-f (store_true)"]
+      - name: cleanup
+        args: []
+    routing: "state.handle(args, ctx)"
+
+  - name: env
+    type: group
+    aliases: []
+    category: global
+    argparse_func: "_add_env_parser"
+    dest: "env_command"
+    subcommands:
+      - name: show
+        args: []
+      - name: export
+        args: ["--format/-f choices=[shell,json] default=shell"]
+      - name: run
+        args: ["cmd_args (positional, nargs=+)"]
+    routing: "env.handle(args, ctx)"
+
+  - name: inputs
+    type: group
+    aliases: []
+    category: project
+    argparse_func: "_add_inputs_parser"
+    dest: "inputs_command"
+    subcommands:
+      - name: validate
+        args: ["file (positional)"]
+      - name: resolve
+        args: ["file (positional)"]
+    routing: "inputs.handle(args, ctx)"
+
+  - name: template
+    type: group
+    aliases: ["tpl"]
+    category: project
+    argparse_func: "_add_template_parser"
+    dest: "template_command"
+    subcommands:
+      - name: generate
+        args: ["type (positional, choices=[build,test,cleanup,guidance])", "--output/-o", "--objective", "--phases", "--success-criteria"]
+      - name: list
+        args: []
+    routing: "template.handle(args, ctx)"
+
+  - name: stories
+    type: group
+    aliases: ["st"]
+    category: project
+    argparse_func: "_add_stories_parser"
+    dest: "stories_command"
+    subcommands:
+      - name: find
+        args: ["--project/-p", "--changes/-c (nargs=*)"]
+      - name: init
+        args: ["id (positional)", "--title/-t", "--plan"]
+      - name: cat
+        args: ["id (positional)"]
+      - name: status
+        args: ["id (positional)"]
+      - name: update
+        args: ["id (positional)", "--status/-s choices=[pass,fail,skip] required", "--notes/-n", "--plan"]
+      - name: report
+        args: ["--project/-p"]
+      - name: untested
+        args: ["--project/-p"]
+    routing: "stories.handle(args, ctx)"
+
+  - name: manifest
+    type: group
+    aliases: ["mf"]
+    category: project
+    argparse_func: "_add_manifest_parser"
+    dest: "manifest_command"
+    subcommands:
+      - name: show
+        args: ["path (positional)"]
+      - name: list
+        args: ["path (positional, optional)"]
+      - name: validate
+        args: ["path (positional)"]
+    routing: "manifest.handle(args, ctx)"
+
+  - name: cicd
+    type: group
+    aliases: []
+    category: project
+    argparse_func: "_add_cicd_parser"
+    dest: "cicd_command"
+    subcommands:
+      - name: audit
+        args: []
+      - name: list
+        args: []
+      - name: show
+        args: ["path (positional, optional)"]
+    routing: "cicd.handle(args, ctx)"
+
+  - name: completion
+    type: group
+    aliases: []
+    category: global
+    argparse_func: "_add_completion_parser"
+    dest: "completion_command"
+    notes: "Will be REMOVED - Typer has native --install-completion"
+    subcommands:
+      - name: install
+        args: ["shell (positional, choices=[bash,zsh,fish,powershell])"]
+      - name: show
+        args: ["shell (positional, choices=[bash,zsh,fish,powershell])"]
+    routing: "completion.handle(args, ctx)"
+
+  # ==========================================
+  # COMPLEX COMMAND GROUPS (nested subparsers)
+  # ==========================================
+  - name: worktree
+    type: group
+    aliases: ["wt"]
+    category: project
+    argparse_func: "_add_worktree_parser"
+    dest: "worktree_command"
+    subcommands:
+      - name: create
+        args: ["branch (positional)", "--base/-b default=main", "--no-plan (store_true)", "--abbreviation/-a", "--description/-d"]
+      - name: list
+        args: []
+      - name: remove
+        args: ["branch (positional)", "--force/-f (store_true)"]
+      - name: status
+        args: []
+    routing: "worktree.handle(args, ctx)"
+
+  - name: session
+    type: group
+    aliases: []
+    category: global
+    argparse_func: "_add_session_parser"
+    dest: "session_command"
+    subcommands:
+      - name: spawn
+        args:
+          - "--prompt/-p"
+          - "--role (mutually_exclusive with --task)"
+          - "--task (mutually_exclusive with --role)"
+          - "--plan"
+          - "--max-turns/-m (int)"
+          - "--background/-b (store_true)"
+          - "--directory/-d"
+          - "--dangerously-skip-permissions (store_true)"
+        notes: "--role and --task are mutually exclusive"
+      - name: list
+        args: ["--active/-a (store_true)"]
+      - name: stop
+        args: ["session_id (positional)", "--force/-f (store_true)"]
+      - name: status
+        args: ["session_id (positional)", "--show-output/-o (store_true)"]
+    routing: "session.handle(args, ctx)"
+
+  - name: loop
+    type: group
+    aliases: []
+    category: global
+    argparse_func: "_add_loop_parser"
+    dest: "loop_command"
+    subcommands:
+      - name: start
+        args:
+          - "--prompt/-p"
+          - "--prompt-file/-f"
+          - "--entrypoint/-e"
+          - "--max-iterations/-m (int, default=10)"
+          - "--completion-promise/-c"
+          - "--background/-b (store_true)"
+          - "--directory/-d"
+          - "--output/-o"
+          - "--dangerously-skip-permissions (store_true)"
+      - name: stop
+        args: ["loop_id (positional)", "--force/-f (store_true)"]
+      - name: status
+        args: ["loop_id (positional)"]
+      - name: history
+        args: ["--active/-a (store_true)", "--status/-s choices=[running,completed,failed,stopped]", "--limit/-l (int, default=20)"]
+    routing: "loop.handle(args, ctx)"
+
+  - name: langsmith
+    type: group
+    aliases: ["ls"]
+    category: global
+    argparse_func: "_add_langsmith_parser"
+    dest: "langsmith_command"
+    subcommands:
+      - name: runs
+        args: ["--project/-p", "--limit/-l (int, default=20)", "--type/-t choices=[llm,chain,tool,retriever]", "--error/-e (store_true)"]
+      - name: run
+        args: ["run_id (positional)", "--url/-u (store_true)"]
+      - name: projects
+        args: ["--detail/-d (store_true)"]
+      - name: stats
+        args: ["--project/-p required", "--since", "--until"]
+      - name: friction
+        args: ["--project/-p required", "--sessions (int)", "--since", "--limit/-l (int, default=100)", "--lookback-days (int, default=7)", "--min-affected (int, default=2)", "--recommend/-r (store_true)", "--validate/--no-validate (default=True)", "--json (store_true)"]
+        notes: "friction has its own --json flag separate from global"
+      - name: sessions
+        args: ["--project/-p required", "--limit/-l (int, default=10)", "--since", "--json (store_true)"]
+        notes: "sessions has its own --json flag separate from global"
+    routing: "langsmith.handle(args, ctx)"
+
+  - name: question
+    type: group
+    aliases: []
+    category: global
+    argparse_func: "_add_question_parser"
+    dest: "question_command"
+    subcommands:
+      - name: list
+        args: ["--plan", "--status choices=[pending,answered,deferred,all] default=pending", "--tmux-refresh (store_true)"]
+      - name: show
+        args: ["question_id (positional)", "--plan"]
+      - name: answer
+        args: ["question_id (positional)", "--text", "--confidence choices=[high,medium,low]", "--plan"]
+      - name: ask
+        args: ["text (positional)", "--severity choices=[blocking,high,medium,low] default=medium", "--context", "--plan"]
+      - name: defer
+        args: ["question_id (positional)", "--plan"]
+      - name: watch
+        args: ["--plan"]
+      - name: watch-daemon
+        args: ["--plan"]
+      - name: watch-stop
+        args: []
+    routing: "question.handle(args, ctx)"
+
+  # ==========================================
+  # DEEPLY NESTED (3 levels)
+  # ==========================================
+  - name: plan
+    type: deeply_nested
+    aliases: []
+    category: project
+    argparse_func: "_add_plan_parser"
+    dest: "plan_command"
+    subcommands:
+      - name: init
+        args: ["branch (positional)", "--description/-d", "--base/-b default=main", "--objective/-o"]
+      - name: bootstrap
+        args: ["branch (positional)", "--objective/-o required", "--description/-d"]
+      - name: scaffold
+        args: ["name (positional)", "--worktree/-w"]
+      - name: status
+        args: ["path (positional, optional)"]
+      - name: validate
+        args: ["path (positional)", "--strict (store_true)"]
+      - name: list
+        args: []
+      - name: archive
+        args: ["path (positional)"]
+      - name: unarchive
+        args: ["--plan/-p required", "--force/-f (store_true)"]
+      - name: move
+        nested_dest: "move_type"
+        nested_subcommands:
+          - name: task
+            args: ["task_id (positional)", "--plan/-p", "--dry-run/-n (store_true)", "--force/-f (store_true)"]
+          - name: tasks
+            args: ["--plan/-p", "--dry-run/-n (store_true)", "--force/-f (store_true)"]
+          - name: folder
+            args: ["--plan/-p", "--dry-run/-n (store_true)", "--force/-f (store_true)"]
+      - name: task
+        nested_dest: "task_action"
+        nested_subcommands:
+          - name: start
+            args: ["task_id (positional)", "--plan/-p", "--no-archive (store_true)"]
+          - name: complete
+            args: ["task_id (positional)", "--plan/-p", "--no-archive (store_true)"]
+          - name: prefill
+            args: ["--preset/-t required", "--plan/-p", "--dry-run/-n (store_true)"]
+          - name: list
+            args: ["--plan/-p", "--status/-s choices=[all,pending,in_progress,completed] default=all", "--verbose/-v (store_true)"]
+          - name: status
+            args: ["task_id (positional)", "--plan/-p"]
+          - name: add
+            args: ["description (positional)", "--plan/-p", "--phase/-ph", "--id", "--priority choices=[low,medium,high] default=medium"]
+          - name: update
+            args: ["task_id (positional)", "--status/-s required choices=[pending,in_progress,completed,blocked]", "--plan/-p", "--note/-n", "--no-archive (store_true)"]
+          - name: current
+            args: ["--plan/-p"]
+      - name: orchestration
+        nested_dest: "orchestration_action"
+        nested_subcommands:
+          - name: generate
+            args: ["--plan/-p", "--output/-o", "--force/-f (store_true)"]
+          - name: validate
+            args: ["--plan/-p", "--strict (store_true)"]
+      - name: phase
+        nested_dest: "phase_action"
+        nested_subcommands:
+          - name: add
+            args: ["--id required", "--name required", "--description", "--plan/-p"]
+          - name: list
+            args: ["--plan/-p"]
+          - name: update
+            args: ["phase_id (positional)", "--status/-s choices=[pending,in_progress,completed,blocked]", "--name/-n", "--plan/-p"]
+      - name: stories
+        nested_dest: "stories_action"
+        nested_subcommands:
+          - name: list
+            args: ["--plan/-p"]
+          - name: test
+            args: ["--plan/-p", "--output/-o", "--format/-f choices=[yaml,json] default=yaml"]
+    routing: "plan.handle(args, ctx)"
+
+  - name: context
+    type: group
+    aliases: ["ctx"]
+    category: project
+    argparse_func: "_add_context_parser"
+    dest: "context_command"
+    subcommands:
+      - name: bootstrap
+        args: ["--role/-r"]
+      - name: role
+        args: ["role_id (positional)", "--format/-f choices=[yaml,json] default=yaml"]
+      - name: task
+        args: ["--all/-a (store_true)"]
+      - name: inputs
+        args: ["--role/-r required", "--resolve (store_true)"]
+      - name: generate-agent
+        args: ["role_id (positional)", "--output/-o"]
+    routing: "context.handle(args, ctx)"
+
+  - name: entrypoint
+    type: group
+    aliases: ["ep"]
+    category: project
+    argparse_func: "_add_entrypoint_parser"
+    dest: "entrypoint_command"
+    subcommands:
+      - name: list
+        args: []
+      - name: show
+        args: ["name (positional)"]
+      - name: execute
+        args: ["name (positional)", "--vars/-v (action=append)", "--context", "--compile/-c (store_true)"]
+    routing: "entrypoint.handle(args, ctx)"
+
+# Migration strategy summary:
+#
+# APPROACH: Bridge pattern
+# - Create argparse-compatible Namespace objects in Typer commands
+# - Pass them to existing handle(args, ctx) functions
+# - This avoids rewriting every command module
+#
+# ALIAS STRATEGY:
+# - Typer doesn't natively support command aliases like argparse
+# - Use rich_click or register same Typer under multiple names
+# - For group aliases: app.add_typer(same_typer, name="alias")
+#
+# MUTUAL EXCLUSION:
+# - session spawn: --role vs --task
+# - Use typer callback validation or Click's MutuallyExclusiveOption
+#
+# NESTED SUBCOMMANDS:
+# - plan -> task -> start|complete|list|...  (3 levels)
+# - plan -> orchestration -> generate|validate
+# - plan -> phase -> add|list|update
+# - plan -> stories -> list|test
+# - plan -> move -> task|tasks|folder
+# - Use nested Typer apps: plan_app -> task_app -> @task_app.command()
+#
+# SPECIAL CASES:
+# - langsmith friction/sessions have their own --json flag
+# - env run uses nargs=+ for cmd_args
+# - entry.py handles --version and agent names BEFORE CLI
+# - completion command will be REMOVED (Typer native)
+#
+# COMMAND COUNT SUMMARY:
+# - Top-level commands: 4 (setup, health, update, rebuild)
+# - Command groups: 16 (preferences, config, state, env, inputs, template,
+#   stories, manifest, cicd, completion, worktree, session, loop, langsmith,
+#   question, entrypoint)
+# - Deeply nested: 2 (plan, context)
+# - Total unique subcommands: ~80

@@ -1,6 +1,8 @@
 """Tests for stories commands."""
 
+import json
 import os
+import sys
 
 import pytest
 import yaml
@@ -36,6 +38,60 @@ def sample_userstories(temp_dir):
         yaml.dump(story2, f)
 
     return stories_dir
+
+
+@pytest.fixture
+def userstories_dir(temp_repo):
+    """Create a userstories directory in the temp repo with test data."""
+    us_dir = temp_repo / "docs" / "userstories"
+    us_dir.mkdir(parents=True, exist_ok=True)
+
+    project_dir = us_dir / "TestProject"
+    project_dir.mkdir()
+
+    stories = {
+        "stories": [
+            {
+                "id": "US-TEST-001",
+                "title": "First Test Story",
+                "category": "testing",
+                "priority": "high",
+                "as_a": "developer",
+                "i_want": "to test",
+                "so_that": "it works",
+                "acceptance_criteria": ["Something works"],
+                "test_status": "pass",
+                "last_tested": "2026-02-01T00:00:00+00:00",
+                "test_notes": "All good",
+                "tested_by_plan": "260201XX_test",
+            },
+            {
+                "id": "US-TEST-002",
+                "title": "Second Test Story",
+                "category": "testing",
+                "priority": "medium",
+                "as_a": "user",
+                "i_want": "to use feature",
+                "so_that": "I benefit",
+                "acceptance_criteria": ["Feature works"],
+            },
+            {
+                "id": "US-TEST-003",
+                "title": "Third Test Story - Failed",
+                "category": "testing",
+                "priority": "low",
+                "test_status": "fail",
+                "last_tested": "2026-02-05T00:00:00+00:00",
+                "test_notes": "Broken",
+            },
+        ]
+    }
+
+    (project_dir / "01_tests.yml").write_text(
+        yaml.dump(stories, sort_keys=False, default_flow_style=False)
+    )
+
+    return us_dir
 
 
 class TestStoriesFind:
@@ -76,3 +132,283 @@ class TestStoriesFind:
         stdout, stderr, code = cli_runner(["stories", "find", "--project", "test"])
         # Should attempt to filter - may pass or fail depending on context
         assert code in [0, 1]
+
+
+class TestStoriesStatus:
+    """Tests for 'agentic stories status' command."""
+
+    def test_status_help(self, cli_runner):
+        """Test stories status --help."""
+        stdout, stderr, code = cli_runner(["stories", "status", "--help"])
+        assert code == 0
+        assert "status" in stdout.lower()
+
+    def test_status_existing_story(self, cli_runner, userstories_dir):
+        """Test status for a story with test metadata."""
+        stdout, stderr, code = cli_runner(["stories", "status", "US-TEST-001"])
+        assert code == 0
+        assert "US-TEST-001" in stdout
+        assert "pass" in stdout.lower()
+
+    def test_status_untested_story(self, cli_runner, userstories_dir):
+        """Test status for a story without test metadata."""
+        stdout, stderr, code = cli_runner(["stories", "status", "US-TEST-002"])
+        assert code == 0
+        assert "US-TEST-002" in stdout
+        assert "untested" in stdout.lower()
+
+    def test_status_not_found(self, cli_runner, userstories_dir):
+        """Test status for nonexistent story."""
+        stdout, stderr, code = cli_runner(["stories", "status", "US-NONEXIST-999"])
+        assert code == 1
+
+    def test_status_json_output(self, cli_runner, userstories_dir):
+        """Test status with JSON output."""
+        stdout, stderr, code = cli_runner(["--json", "stories", "status", "US-TEST-001"])
+        assert code == 0
+        data = json.loads(stdout)
+        assert data["id"] == "US-TEST-001"
+        assert data["test_status"] == "pass"
+        assert data["last_tested"] is not None
+
+
+class TestStoriesUpdate:
+    """Tests for 'agentic stories update' command."""
+
+    def test_update_help(self, cli_runner):
+        """Test stories update --help."""
+        stdout, stderr, code = cli_runner(["stories", "update", "--help"])
+        assert code == 0
+        assert "status" in stdout.lower()
+
+    def test_update_pass(self, cli_runner, userstories_dir):
+        """Test updating a story to pass."""
+        stdout, stderr, code = cli_runner([
+            "stories", "update", "US-TEST-002", "--status", "pass"
+        ])
+        assert code == 0
+        assert "Updated" in stdout
+
+        # Verify the file was updated
+        content = yaml.safe_load(
+            (userstories_dir / "TestProject" / "01_tests.yml").read_text()
+        )
+        story = next(s for s in content["stories"] if s["id"] == "US-TEST-002")
+        assert story["test_status"] == "pass"
+        assert story["last_tested"] is not None
+
+    def test_update_fail_with_notes(self, cli_runner, userstories_dir):
+        """Test updating a story to fail with notes."""
+        stdout, stderr, code = cli_runner([
+            "stories", "update", "US-TEST-002",
+            "--status", "fail",
+            "--notes", "Command crashed",
+        ])
+        assert code == 0
+
+        content = yaml.safe_load(
+            (userstories_dir / "TestProject" / "01_tests.yml").read_text()
+        )
+        story = next(s for s in content["stories"] if s["id"] == "US-TEST-002")
+        assert story["test_status"] == "fail"
+        assert story["test_notes"] == "Command crashed"
+
+    def test_update_with_plan(self, cli_runner, userstories_dir):
+        """Test updating a story with plan reference."""
+        stdout, stderr, code = cli_runner([
+            "stories", "update", "US-TEST-002",
+            "--status", "pass",
+            "--plan", "260207CL_test",
+        ])
+        assert code == 0
+
+        content = yaml.safe_load(
+            (userstories_dir / "TestProject" / "01_tests.yml").read_text()
+        )
+        story = next(s for s in content["stories"] if s["id"] == "US-TEST-002")
+        assert story["tested_by_plan"] == "260207CL_test"
+
+    def test_update_not_found(self, cli_runner, userstories_dir):
+        """Test update for nonexistent story."""
+        stdout, stderr, code = cli_runner([
+            "stories", "update", "US-NONEXIST-999", "--status", "pass"
+        ])
+        assert code == 1
+
+    def test_update_json_output(self, cli_runner, userstories_dir):
+        """Test update with JSON output."""
+        stdout, stderr, code = cli_runner([
+            "--json", "stories", "update", "US-TEST-002", "--status", "skip"
+        ])
+        assert code == 0
+        data = json.loads(stdout)
+        assert data["updated"] == "US-TEST-002"
+        assert data["test_status"] == "skip"
+
+
+class TestStoriesReport:
+    """Tests for 'agentic stories report' command."""
+
+    def test_report_help(self, cli_runner):
+        """Test stories report --help."""
+        stdout, stderr, code = cli_runner(["stories", "report", "--help"])
+        assert code == 0
+
+    def test_report_basic(self, cli_runner, userstories_dir):
+        """Test basic report output."""
+        stdout, stderr, code = cli_runner(["stories", "report"])
+        assert code == 0
+        assert "Pass" in stdout
+        assert "Fail" in stdout
+        assert "Untested" in stdout
+
+    def test_report_with_project(self, cli_runner, userstories_dir):
+        """Test report filtered by project."""
+        stdout, stderr, code = cli_runner(["stories", "report", "--project", "TestProject"])
+        assert code == 0
+        assert "Pass" in stdout
+
+    def test_report_json_output(self, cli_runner, userstories_dir):
+        """Test report with JSON output."""
+        stdout, stderr, code = cli_runner(["--json", "stories", "report"])
+        assert code == 0
+        data = json.loads(stdout)
+        assert "total" in data
+        assert "pass" in data
+        assert "fail" in data
+        assert "untested" in data
+        # Our fixture has 1 pass, 1 fail, 1 untested
+        assert data["pass"] == 1
+        assert data["fail"] == 1
+        assert data["untested"] == 1
+
+    def test_report_json_with_project_filter(self, cli_runner, userstories_dir):
+        """Test report JSON with project filter."""
+        stdout, stderr, code = cli_runner([
+            "--json", "stories", "report", "--project", "TestProject"
+        ])
+        assert code == 0
+        data = json.loads(stdout)
+        assert data["total"] == 3
+        assert data["project_filter"] == "TestProject"
+
+
+class TestStoriesUntested:
+    """Tests for 'agentic stories untested' command."""
+
+    def test_untested_help(self, cli_runner):
+        """Test stories untested --help."""
+        stdout, stderr, code = cli_runner(["stories", "untested", "--help"])
+        assert code == 0
+
+    def test_untested_basic(self, cli_runner, userstories_dir):
+        """Test basic untested output."""
+        stdout, stderr, code = cli_runner(["stories", "untested"])
+        assert code == 0
+        assert "US-TEST-002" in stdout
+        # US-TEST-001 is pass, US-TEST-003 is fail, only US-TEST-002 is untested
+        assert "US-TEST-001" not in stdout
+        assert "US-TEST-003" not in stdout
+
+    def test_untested_with_project(self, cli_runner, userstories_dir):
+        """Test untested filtered by project."""
+        stdout, stderr, code = cli_runner([
+            "stories", "untested", "--project", "TestProject"
+        ])
+        assert code == 0
+        assert "US-TEST-002" in stdout
+
+    def test_untested_json_output(self, cli_runner, userstories_dir):
+        """Test untested with JSON output."""
+        stdout, stderr, code = cli_runner(["--json", "stories", "untested"])
+        assert code == 0
+        data = json.loads(stdout)
+        assert data["count"] == 1
+        assert len(data["untested"]) == 1
+        assert data["untested"][0]["id"] == "US-TEST-002"
+
+
+class TestMigrationScript:
+    """Tests for the stories migration script logic."""
+
+    @pytest.fixture(autouse=True)
+    def add_scripts_to_path(self):
+        """Add scripts directory to path for importing."""
+        from pathlib import Path
+        # Navigate from test file up to repo root: tests/ -> AgenticCLI/ -> modules/ -> repo root
+        repo_root = Path(__file__).resolve().parent.parent.parent.parent
+        scripts_dir = str(repo_root / "scripts")
+        sys.path.insert(0, scripts_dir)
+        yield
+        if scripts_dir in sys.path:
+            sys.path.remove(scripts_dir)
+
+    def test_migrate_adds_fields(self, tmp_path):
+        """Test that migration adds test metadata fields."""
+        from migrate_stories import migrate_story_file
+
+        # Create a story without test metadata
+        story_file = tmp_path / "test_story.yml"
+        content = {
+            "stories": [
+                {"id": "US-TEST-001", "title": "Test Story"},
+                {"id": "US-TEST-002", "title": "Another Story"},
+            ]
+        }
+        story_file.write_text(yaml.dump(content, sort_keys=False))
+
+        result = migrate_story_file(story_file)
+        assert result["stories_updated"] == 2
+        assert result["already_current"] == 0
+
+        # Verify fields were added
+        updated = yaml.safe_load(story_file.read_text())
+        for story in updated["stories"]:
+            assert "test_status" in story
+            assert story["test_status"] == "untested"
+            assert "last_tested" in story
+            assert story["last_tested"] is None
+            assert "test_notes" in story
+            assert "tested_by_plan" in story
+
+    def test_migrate_idempotent(self, tmp_path):
+        """Test that migration is idempotent."""
+        from migrate_stories import migrate_story_file
+
+        story_file = tmp_path / "test_story.yml"
+        content = {
+            "stories": [
+                {
+                    "id": "US-TEST-001",
+                    "title": "Test Story",
+                    "test_status": "pass",
+                    "last_tested": "2026-02-01",
+                    "test_notes": "OK",
+                    "tested_by_plan": "some_plan",
+                },
+            ]
+        }
+        story_file.write_text(yaml.dump(content, sort_keys=False))
+
+        result = migrate_story_file(story_file)
+        assert result["stories_updated"] == 0
+        assert result["already_current"] == 1
+
+        # Verify existing values were preserved
+        updated = yaml.safe_load(story_file.read_text())
+        assert updated["stories"][0]["test_status"] == "pass"
+
+    def test_migrate_dry_run(self, tmp_path):
+        """Test that dry run doesn't write files."""
+        from migrate_stories import migrate_story_file
+
+        story_file = tmp_path / "test_story.yml"
+        content = {"stories": [{"id": "US-TEST-001", "title": "Test"}]}
+        original_text = yaml.dump(content, sort_keys=False)
+        story_file.write_text(original_text)
+
+        result = migrate_story_file(story_file, dry_run=True)
+        assert result["stories_updated"] == 1
+
+        # File should be unchanged
+        assert story_file.read_text() == original_text

@@ -1,0 +1,96 @@
+%% =============================================================================
+%% CCI BOOTSTRAP (CLI Context Injection) - EXECUTE FIRST
+%% =============================================================================
+%% Before following this flowchart, run:
+%%   agentic context bootstrap --role orchestration-executor -j
+%%   agentic plan task current -j
+%%
+%% PRINCIPLE: CLI-FIRST CONTEXT
+%% Always use agentic CLI commands for initial context.
+%% =============================================================================
+
+flowchart LR
+    %% GOAL: Fix LangSmith trace submission in stop_hook.sh (payload wrapping + HTTP status checks).
+    %% PROFILE: Orchestration-Executor
+    %% GUIDELINE: BUILD FOCUS policy - code implementation and verification.
+    %% INPUT_PATH: modules/AgenticGuidance/agents/orchestration/orchestration-executor/inputs.yml
+    %%
+    %% AGENT_ROUTING: Setup -> deploy-worktree, Build -> build-python, Verify -> test-runner
+    %% FEEDBACK_TRIGGER: BUILD_FAILURE -> BuildPhase (retry)
+    %% FEEDBACK_TRIGGER: VERIFY_FAILURE -> BuildPhase (after categorization)
+    %% STATUS: Setup=pending, Build=pending, Verify=pending
+
+    Start((Start)) --> LoadInputs[Load Plan Context]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    LoadInputs --> LoadPlan[Load plan_build.yml]
+    LoadPlan --> ValidatePlan{Plan Valid?}
+    ValidatePlan -- "No: Invalid" --> AskUser((Ask User for Clarification))
+    ValidatePlan -- "Yes: Valid" --> SetupPhase
+
+    %% ========================================
+    %% SETUP PHASE
+    %% ========================================
+    subgraph Setup_SG ["Setup Subgraph"]
+        SetupPhase[Enter Setup Phase] --> VerifyWorktree[Verify Worktree: /home/code/AgenticEngineering]
+        VerifyWorktree --> WorktreeValid{Worktree Valid?}
+        WorktreeValid -- "No" --> AskUser
+        WorktreeValid -- "Yes" --> VerifyTarget[Verify target: ~/.claude/hooks/stop_hook.sh exists]
+        VerifyTarget --> TargetValid{Target Valid?}
+        TargetValid -- "No" --> AskUser
+        TargetValid -- "Yes" --> SetupComplete[Setup Complete]
+    end
+
+    %% ========================================
+    %% BUILD PHASE
+    %% ========================================
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.test-fix-loop
+    %% MAX_ITERATIONS: 5 (per test-fix-loop definition)
+    %% ESCALATION: If max iterations reached, stop and Ask User
+
+    SetupComplete --> BuildPhase[Enter Build Phase]
+
+    subgraph Build_SG ["Build Phase Subgraph"]
+        BuildPhase --> BuildTask1[fix-payload-format.1: Wrap batch JSON in envelope object]
+        BuildTask1 --> SpawnBuild1[Spawn build-python Agent]
+        SpawnBuild1 --> BuildTask2[fix-http-status-check.1: Add HTTP status code validation to api_call]
+        BuildTask2 --> SpawnBuild2[Spawn build-python Agent]
+        SpawnBuild2 --> BuildComplete{Build Complete?}
+        BuildComplete -- "No: Fix Issues" --> BuildPhase
+        BuildComplete -- "Yes" --> VerifyPhase
+    end
+
+    %% ========================================
+    %% VERIFY PHASE
+    %% ========================================
+    %% This phase requires manual execution: run a Claude Code session and check logs.
+
+    subgraph Verify_SG ["Verify Phase Subgraph"]
+        VerifyPhase[Enter Verify Phase] --> RunSession[verify.1: Run short Claude Code session with fixed hook]
+        RunSession --> SpawnVerify[Spawn test-runner Agent]
+        SpawnVerify --> CheckLogs{Logs show success? No HTTP errors?}
+        CheckLogs -- "No: Errors found" --> AnalyzeFailure[Analyze failure]
+        AnalyzeFailure -.->|Return to Build with error context| BuildPhase
+        CheckLogs -- "Yes: Traces submitted" --> VerifyComplete[Verify Complete - SUCCESS]
+    end
+
+    %% ========================================
+    %% COMPLETION PHASE
+    %% ========================================
+    VerifyComplete --> Finalize[Mark Plan Complete]
+
+    subgraph Output_SG ["Output Subgraph"]
+        Finalize --> ArchivePlan[Archive to docs/plans/completed/]
+        ArchivePlan --> ReportResults[Report Success]
+    end
+
+    ReportResults --> End((End: Plan 260207LS Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    %% Dashed lines for feedback loops
+    classDef dashedstroke stroke-dasharray: 5 5;
+    linkStyle 17 stroke:#888,stroke-width:2px,stroke-dasharray: 5 5;

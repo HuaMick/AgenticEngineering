@@ -70,6 +70,28 @@ process:
       VALIDATE INPUTS: Review all inputs per inputs.yml. If an input cannot be found, STOP.
       Focus ONLY on your assigned test package - other agents handle other packages in parallel.
     - |
+      USER STORY VALIDATION: Find and walk through all User Stories associated with the package OR plan.
+      Use `agentic stories find --project <plan_id>` to discover them.
+      Walk through each 'journey' step-by-step to verify the implementation matches the human-readable requirements.
+      Report any deviations as "User Story Failures" in the final audit report.
+
+      STORY TEST METADATA CHECK:
+      For each discovered story, check test metadata fields:
+      - last_tested: When was this story last validated? Flag if missing or stale (>30 days)
+      - test_status: Current status (untested/passed/failed/regression)
+        - Flag stories with test_status=untested as "Not Yet Validated"
+        - Flag stories with test_status=regression as "REGRESSION - Priority Fix Required"
+      - test_notes: Review for completeness (should describe test approach and outcome)
+      - tested_by_plan: Which plan last validated this story?
+
+      REGRESSION DETECTION:
+      If a story previously had test_status=passed but current audit finds implementation
+      deviations, report as "Story Regression" (not just "User Story Failure").
+      This distinction is important for executor STORY_REGRESSION feedback triggers.
+
+      Include story metadata status in the final audit report under a dedicated
+      "Story Test Metadata" section.
+    - |
       AUDIT TEST QUALITY: Apply audit_checks per inputs.yml#audit_checks.
       For installation-related packages, also apply inputs.yml#installation_architecture_validation.
       For large packages (>20 files), use RLM per rlm_reference above and inputs.yml#rlm_audit_strategy.
@@ -82,7 +104,7 @@ process:
       Flag duplicates or architectural violations. Do not fix - report to orchestrator.
     - |
       REPORT FINDINGS: Output per inputs.yml#audit_reporting format.
-      Include: package path, skip audit results, test quality issues, structural issues.
+      Include: package path, user story results, skip audit results, test quality issues, structural issues.
       Constraints: inputs.yml#audit_constraints (do not fix, do not run tests).
 
   guidelines:

@@ -1,0 +1,674 @@
+name: question-cli
+worktree_path: /home/code/AgenticEngineering
+branch: main
+status: active
+priority: high
+worktree: /home/code/AgenticEngineering
+plan_file: docs/plans/live/260203QC_question_cli/plan_build.yml
+context: 'This plan implements CLI commands for managing the question/answer queue.
+
+  This is the PRIMARY INTERFACE layer of the CLI-First HITL strategy.
+
+
+  ARCHITECTURE DECISION (CLI-First Strategy):
+
+  - CLI is the primary text-mode interface for HITL
+
+  - Voice (PersonaPlex) is an optional alternative consumer
+
+  - Both interfaces use the same QuestionQueue service from 260203QF
+
+
+  CLI Commands:
+
+  - agentic question list [--plan PATH] [--status pending|answered|all]
+
+  - agentic question show <question-id> [--plan PATH]
+
+  - agentic question answer <question-id> [--text "answer"] [--plan PATH]
+
+  - agentic question ask <text> [--severity high|medium|low] [--plan PATH]
+
+  - agentic question defer <question-id> [--plan PATH]
+
+
+  IMPLEMENTATION APPROACH:
+
+  - Follow argparse patterns from existing CLI commands (health.py, langsmith.py)
+
+  - Use Rich library for formatted output (console.py utilities)
+
+  - Support JSON output mode via -j flag
+
+  - Auto-detect current plan context using plan detection logic
+
+  - Interactive prompts for multi-line text input (answer command)
+
+  '
+dependencies:
+  depends_on:
+  - plan_id: 260203QF
+    description: Uses QuestionQueue service and data models
+    status: must_complete_first
+    blocking: true
+  required_by:
+  - plan_id: 260203QG
+    description: Agent guidance references CLI commands
+  - plan_id: 260203QT
+    description: Tmux workflow uses CLI for HITL
+objective: 'Implement agentic question command group with list, show, answer, ask,
+  and defer commands.
+
+  Follow existing AgenticCLI patterns using argparse and Rich for formatted output.
+
+  Support JSON output mode and plan-scoped context detection.
+
+  '
+phases:
+- id: P1
+  name: 'Phase 1: Command Module Setup'
+  description: Create question.py command module with argparse router and CLI integration
+  status: pending
+  tasks:
+  - id: QC-001
+    name: Create question.py command module with handle() router
+    description: 'Create modules/AgenticCLI/src/agenticcli/commands/question.py with
+      argparse-based command routing.
+
+      Follow the pattern from health.py and langsmith.py for consistent CLI architecture.
+
+      '
+    agent: builder
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/health.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/langsmith.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/console.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/entry.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
+    guidance: "Create the question.py module with the following structure:\n\n1. handle(args,\
+      \ ctx=None) - Main router function that dispatches to subcommands\n2. _get_service()\
+      \ - Helper to instantiate QuestionQueue service with error handling\n3. _get_plan_path(args,\
+      \ ctx) - Helper to detect/resolve plan path from context or --plan flag\n4.\
+      \ Command stubs for: list, show, answer, ask, defer\n\nPATTERNS TO FOLLOW:\n\
+      - Use argparse patterns from langsmith.py (args.question_command routing)\n\
+      - Import console utilities (print_error, print_json, is_json_output, etc.)\n\
+      - Handle missing service gracefully with print_error + sys.exit(1)\n- Accept\
+      \ optional ctx parameter for dependency injection (testing)\n\nIMPORTANT: Use\
+      \ placeholder/stub implementations for now. Full implementation comes in later\
+      \ phases.\n\nExample structure:\n```python\ndef handle(args, ctx=None):\n  \
+      \  \"\"\"Route question subcommands.\"\"\"\n    if args.question_command ==\
+      \ \"list\":\n        cmd_list(args, ctx)\n    elif args.question_command ==\
+      \ \"show\":\n        cmd_show(args, ctx)\n    # ... etc\n\ndef _get_service():\n\
+      \    \"\"\"Get QuestionQueue instance with error handling.\"\"\"\n    try:\n\
+      \        from agenticguidance.services.question import QuestionQueue\n     \
+      \   return QuestionQueue()\n    except ImportError:\n        print_error(\"\
+      QuestionQueue service not available\")\n        sys.exit(1)\n\ndef cmd_list(args,\
+      \ ctx=None):\n    \"\"\"List questions (stub).\"\"\"\n    pass\n```\n"
+    success_criteria:
+    - question.py module created with handle() router
+    - _get_service() helper handles ImportError gracefully
+    - _get_plan_path() helper defined (stub implementation)
+    - All command functions defined as stubs (list, show, answer, ask, defer)
+    - Module follows argparse patterns from existing commands
+    - No syntax errors, imports resolve (except QuestionQueue until 260203QF completes)
+    status: completed
+  - id: QC-002
+    name: Integrate question command into CLI router
+    description: 'Add question command to cli.py subparsers and route to question.handle().
+
+      Ensure global flags (-j, --debug) are inherited via parent parser.
+
+      '
+    depends_on:
+    - QC-001
+    agent: builder
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
+    guidance: "Integrate the question command group into the main CLI parser.\n\n\
+      STEPS:\n1. Find the subparsers section in create_parser() in cli.py\n2. Add\
+      \ question subparser with help text and description\n3. Add question subcommands:\
+      \ list, show, answer, ask, defer\n4. Ensure parent_parser is used for global\
+      \ flags inheritance\n5. Add route to question.handle() in run_cli()\n\nSUBCOMMAND\
+      \ SPECIFICATIONS:\n\nlist:\n  - Optional --plan PATH (plan folder path)\n  -\
+      \ Optional --status pending|answered|deferred|all (default: pending)\n\nshow:\n\
+      \  - Required positional: question_id\n  - Optional --plan PATH\n\nanswer:\n\
+      \  - Required positional: question_id\n  - Optional --text \"answer text\" (if\
+      \ not provided, prompt interactively)\n  - Optional --plan PATH\n\nask:\n  -\
+      \ Required positional: text (question text)\n  - Optional --severity high|medium|low\
+      \ (default: medium)\n  - Optional --plan PATH\n\ndefer:\n  - Required positional:\
+      \ question_id\n  - Optional --plan PATH\n\nPATTERN REFERENCE:\nLook at how langsmith\
+      \ commands are registered (search for \"langsmith\" in cli.py).\nFollow the\
+      \ same pattern with parent_parser for global flags.\n"
+    success_criteria:
+    - question subparser added to cli.py with all 5 subcommands
+    - All subcommands have proper arguments (positional and optional)
+    - --plan PATH flag available on all subcommands
+    - Global flags (-j, --debug) inherited via parent parser
+    - Routing to question.handle() added in run_cli()
+    - agentic question --help displays all subcommands
+    - agentic question list --help shows correct options
+    status: completed
+- id: P2
+  name: 'Phase 2: List & Show Commands'
+  description: Implement list and show commands with Rich formatting and JSON output
+    support
+  status: pending
+  depends_on:
+  - P1
+  tasks:
+  - id: QC-003
+    name: Implement question list command with filtering
+    description: 'Implement cmd_list() to display questions in a formatted table (Rich)
+      or JSON.
+
+      Support filtering by status (pending/answered/deferred/all).
+
+      '
+    depends_on:
+    - QC-002
+    agent: builder
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/console.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
+    guidance: "Implement the cmd_list() function to query and display questions.\n\
+      \nFUNCTIONALITY:\n1. Get plan path using _get_plan_path(args, ctx)\n2. Get QuestionQueue\
+      \ service via _get_service()\n3. Call service.list_questions(plan_path, status=args.status)\n\
+      4. Format output based on is_json_output():\n   - JSON: Print raw question data\
+      \ as JSON array\n   - Human: Print Rich table with columns: ID, Severity, Status,\
+      \ Question (truncated)\n\nTABLE COLUMNS (Human-readable):\n- ID: Question ID\
+      \ (e.g., \"Q-001\")\n- Severity: high/medium/low with color coding (red/yellow/blue)\n\
+      - Status: pending/answered/deferred with color coding\n- Question: First 80\
+      \ chars of question text\n- Created: Timestamp (if available)\n\nRICH FORMATTING:\n\
+      - Use console.Table() from console.py\n- Color code severity: high=red, medium=yellow,\
+      \ low=blue\n- Color code status: pending=yellow, answered=green, deferred=dim\n\
+      - Use print_table() or build custom Table with rich.table.Table\n\nERROR HANDLING:\n\
+      - If plan_path not found: print_error(\"No plan folder detected...\")\n- If\
+      \ no questions found: print_info(\"No questions found with status: {status}\"\
+      )\n- If service fails: print_error(str(e)) + sys.exit(1)\n\nEXAMPLE OUTPUT (Human):\n\
+      ```\nQuestions for plan: 260203QC_question_cli\n\nID      Severity  Status \
+      \  Question\n------  --------  -------  ------------------------------------\n\
+      Q-001   high      pending  Should we support batch operations?\nQ-002   medium\
+      \    pending  What format for question IDs?\n```\n"
+    success_criteria:
+    - cmd_list() queries QuestionQueue service successfully
+    - Filtering by status works (pending/answered/deferred/all)
+    - JSON output mode (-j) produces valid JSON array
+    - Human-readable output uses Rich table formatting
+    - Severity and status are color-coded in human output
+    - Empty result set displays helpful message
+    - Error messages are clear and actionable
+    - Plan path auto-detection works from current directory
+    status: completed
+  - id: QC-004
+    name: Implement question show command with YAML display
+    description: 'Implement cmd_show() to display full question details including
+      YAML content.
+
+      Show question metadata, context, and any existing answer.
+
+      '
+    depends_on:
+    - QC-003
+    agent: builder
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/console.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
+    guidance: "Implement cmd_show() to display detailed question information.\n\n\
+      FUNCTIONALITY:\n1. Get plan path using _get_plan_path(args, ctx)\n2. Get QuestionQueue\
+      \ service and call service.get_question(plan_path, question_id)\n3. Format output\
+      \ based on is_json_output():\n   - JSON: Print full question object as JSON\n\
+      \   - Human: Pretty-print with Rich panels and syntax highlighting\n\nHUMAN-READABLE\
+      \ FORMAT:\nUse Rich panels to organize information:\n\nPanel 1 - Question Metadata:\n\
+      - ID: Q-001\n- Severity: high (color-coded)\n- Status: pending (color-coded)\n\
+      - Created: 2026-02-03 14:30:00\n\nPanel 2 - Question Text:\nDisplay the full\
+      \ question text (not truncated)\n\nPanel 3 - Context (if available):\n- Plan:\
+      \ 260203QC_question_cli\n- Task: QC-001\n- Agent: builder\n\nPanel 4 - Answer\
+      \ (if answered):\nDisplay the answer text with timestamp\n\nPanel 5 - Raw YAML:\n\
+      Use rich.syntax.Syntax to highlight the YAML file content\n\nERROR HANDLING:\n\
+      - If question not found: print_error(\"Question {question_id} not found\")\n\
+      - If service fails: print_error(str(e)) + sys.exit(1)\n"
+    success_criteria:
+    - cmd_show() retrieves and displays question by ID
+    - JSON mode outputs full question object
+    - Human mode uses Rich panels for organized display
+    - YAML content is syntax-highlighted
+    - Severity and status are color-coded
+    - Error handling for missing question ID
+    - Answer section shown if question is answered
+    status: completed
+- id: P3
+  name: 'Phase 3: Answer & Ask Commands'
+  description: Implement interactive answer command and question creation (ask)
+  status: pending
+  depends_on:
+  - P2
+  tasks:
+  - id: QC-005
+    name: Implement question answer command with interactive prompts
+    description: 'Implement cmd_answer() to accept answers via --text flag or interactive
+      multi-line prompt.
+
+      Write answer to queue via QuestionQueue service.
+
+      '
+    depends_on:
+    - QC-004
+    agent: builder
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/console.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
+    guidance: "Implement cmd_answer() to provide answers to questions.\n\nFUNCTIONALITY:\n\
+      1. Get plan path using _get_plan_path(args, ctx)\n2. Get QuestionQueue service\n\
+      3. If --text provided: Use that as the answer\n4. If --text NOT provided: Prompt\
+      \ interactively for multi-line input\n   - Use rich.prompt.Prompt.ask() or console.input()\n\
+      \   - Display instructions: \"Enter answer (Ctrl+D or empty line to finish):\"\
+      \n   - Collect multi-line input until EOF or empty line\n5. Call service.answer_question(plan_path,\
+      \ question_id, answer_text)\n6. Display success message\n\nINTERACTIVE PROMPT:\n\
+      ```\nAnswer question Q-001: \"Should we support batch operations?\"\n\nEnter\
+      \ your answer (press Enter twice or Ctrl+D to finish):\n> Yes, we should support\
+      \ batch operations.\n> This will enable bulk question management.\n>\n\nAnswer\
+      \ saved successfully.\n```\n\nJSON MODE:\nIn JSON mode, suppress interactive\
+      \ prompts:\n- If --text not provided: print_error(\"--text required in JSON\
+      \ mode\") + exit(1)\n- On success: print_json({\"status\": \"success\", \"question_id\"\
+      : \"Q-001\"})\n\nERROR HANDLING:\n- If question not found: print_error(\"Question\
+      \ {question_id} not found\")\n- If question already answered: print_warning(\"\
+      Question already answered. Use --force to overwrite?\")\n- If service fails:\
+      \ print_error(str(e)) + sys.exit(1)\n"
+    success_criteria:
+    - cmd_answer() accepts answer via --text flag
+    - Interactive prompt collects multi-line input when --text not provided
+    - QuestionQueue service.answer_question() called correctly
+    - Success message displayed on completion
+    - JSON mode requires --text (no interactive prompts)
+    - Error handling for missing/already-answered questions
+    - Multi-line answers preserved correctly
+    status: completed
+  - id: QC-006
+    name: Implement question ask command for creating questions
+    description: 'Implement cmd_ask() to create new questions in the queue.
+
+      This is primarily for manual/testing use - agents will use the service directly.
+
+      '
+    depends_on:
+    - QC-005
+    agent: builder
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/console.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
+    guidance: "Implement cmd_ask() to create new questions.\n\nFUNCTIONALITY:\n1.\
+      \ Get plan path using _get_plan_path(args, ctx)\n2. Get QuestionQueue service\n\
+      3. Extract question text from args.text\n4. Extract severity from args.severity\
+      \ (default: \"medium\")\n5. Call service.create_question(plan_path, text=text,\
+      \ severity=severity)\n6. Display created question ID and path\n\nOUTPUT EXAMPLES:\n\
+      \nHuman mode:\n```\nQuestion created successfully.\n\nID: Q-003\nSeverity: high\n\
+      Path: docs/plans/live/260203QC_question_cli/questions/pending/Q-003.yml\n\n\
+      Use 'agentic question show Q-003' to view details.\n```\n\nJSON mode:\n```json\n\
+      {\n  \"status\": \"success\",\n  \"question_id\": \"Q-003\",\n  \"severity\"\
+      : \"high\",\n  \"path\": \"docs/plans/live/260203QC_question_cli/questions/pending/Q-003.yml\"\
+      \n}\n```\n\nERROR HANDLING:\n- If plan_path invalid: print_error(\"Invalid plan\
+      \ path: {path}\")\n- If service fails: print_error(str(e)) + sys.exit(1)\n\n\
+      VALIDATION:\n- Ensure text is not empty\n- Ensure severity is one of: high,\
+      \ medium, low\n"
+    success_criteria:
+    - cmd_ask() creates question via QuestionQueue service
+    - Severity validation works (high/medium/low)
+    - Question ID auto-generated and returned
+    - Success message shows question ID and file path
+    - JSON mode outputs structured response
+    - Error handling for invalid inputs
+    status: completed
+- id: P4
+  name: 'Phase 4: Management Commands'
+  description: Implement defer command and enhance with additional management features
+  status: pending
+  depends_on:
+  - P3
+  tasks:
+  - id: QC-007
+    name: Implement question defer command
+    description: 'Implement cmd_defer() to mark questions as deferred (move to deferred
+      status).
+
+      This helps manage questions that can''t be answered immediately.
+
+      '
+    depends_on:
+    - QC-006
+    agent: builder
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/console.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
+    guidance: "Implement cmd_defer() to mark questions as deferred.\n\nFUNCTIONALITY:\n\
+      1. Get plan path using _get_plan_path(args, ctx)\n2. Get QuestionQueue service\n\
+      3. Call service.defer_question(plan_path, question_id)\n4. Display success message\n\
+      \nOUTPUT EXAMPLES:\n\nHuman mode:\n```\nQuestion Q-001 deferred successfully.\n\
+      \nThe question has been moved to deferred status.\nUse 'agentic question list\
+      \ --status deferred' to view deferred questions.\n```\n\nJSON mode:\n```json\n\
+      {\n  \"status\": \"success\",\n  \"question_id\": \"Q-001\",\n  \"new_status\"\
+      : \"deferred\"\n}\n```\n\nERROR HANDLING:\n- If question not found: print_error(\"\
+      Question {question_id} not found\")\n- If question already deferred: print_info(\"\
+      Question already deferred\")\n- If service fails: print_error(str(e)) + sys.exit(1)\n"
+    success_criteria:
+    - cmd_defer() marks question as deferred via service
+    - Success message displayed
+    - JSON mode outputs structured response
+    - Error handling for missing questions
+    - Already-deferred questions handled gracefully
+    status: completed
+  - id: QC-008
+    name: Add plan path auto-detection logic
+    description: 'Implement _get_plan_path() helper to auto-detect current plan folder
+      from working directory.
+
+      Support explicit --plan flag to override.
+
+      '
+    depends_on:
+    - QC-007
+    agent: builder
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/utils/git.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/plan.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
+    guidance: "Implement _get_plan_path() to detect or validate plan folder paths.\n\
+      \nFUNCTIONALITY:\n1. If args.plan provided: Validate and return that path\n\
+      2. If args.plan NOT provided: Auto-detect from current working directory\n \
+      \  - Check if cwd is inside a plan folder (docs/plans/live/YYMMDDXX_*)\n   -\
+      \ Walk up directory tree to find plan root\n   - Return detected plan path\n\
+      3. If no plan detected: Raise error with helpful message\n\nDETECTION LOGIC:\n\
+      ```python\ndef _get_plan_path(args, ctx=None):\n    \"\"\"Detect or validate\
+      \ plan folder path.\n\n    Args:\n        args: Command arguments (may have\
+      \ args.plan)\n        ctx: Optional CLI context\n\n    Returns:\n        Path\
+      \ object for plan folder\n\n    Raises:\n        SystemExit: If plan path invalid\
+      \ or not detected\n    \"\"\"\n    from pathlib import Path\n    from agenticcli.console\
+      \ import print_error\n\n    # Explicit --plan flag takes precedence\n    if\
+      \ hasattr(args, 'plan') and args.plan:\n        path = Path(args.plan).resolve()\n\
+      \        if not path.exists():\n            print_error(f\"Plan path does not\
+      \ exist: {path}\")\n            sys.exit(1)\n        return path\n\n    # Auto-detection:\
+      \ Check if cwd is in a plan folder\n    cwd = Path.cwd()\n    # Look for docs/plans/live/YYMMDDXX_*\
+      \ pattern\n    # Walk up until we find it or hit repo root\n\n    # If not found:\n\
+      \    print_error(\"Could not detect plan folder. Use --plan PATH to specify.\"\
+      )\n    sys.exit(1)\n```\n\nREFERENCE:\nLook at how plan.py detects plan folders\
+      \ (search for \"detect\" or \"find_plan\").\nReuse existing logic if available.\n"
+    success_criteria:
+    - _get_plan_path() returns Path object for valid plan
+    - Explicit --plan flag validated and used
+    - Auto-detection works from within plan folders
+    - Clear error messages when plan not found
+    - Handles absolute and relative paths correctly
+    status: completed
+- id: P5
+  name: 'Phase 5: Integration Tests'
+  description: Create comprehensive integration tests for all question commands
+  status: pending
+  depends_on:
+  - P4
+  tasks:
+  - id: QC-009
+    name: Create integration tests for question commands
+    description: 'Create test_question_commands.py with integration tests covering
+      all commands.
+
+      Use pytest and temporary plan folders for isolated testing.
+
+      '
+    depends_on:
+    - QC-008
+    agent: builder
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/integration/test_plan_creation_flow.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/integration/test_workflow_sequences.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/integration/test_question_commands.py
+    guidance: "Create comprehensive integration tests for question commands.\n\nTEST\
+      \ STRUCTURE:\n1. Fixtures:\n   - temp_plan_folder: Create temporary plan folder\
+      \ with questions/ subdirs\n   - sample_questions: Pre-populate with test questions\n\
+      \   - cli_runner: Simulate CLI command execution\n\n2. Test Cases:\n   - test_question_list_default:\
+      \ List pending questions\n   - test_question_list_filter_by_status: Filter by\
+      \ pending/answered/deferred\n   - test_question_list_empty: Handle empty result\
+      \ set\n   - test_question_list_json_output: Verify JSON format\n   - test_question_show_existing:\
+      \ Display question details\n   - test_question_show_not_found: Handle missing\
+      \ question\n   - test_question_answer_with_text: Answer via --text flag\n  \
+      \ - test_question_answer_interactive: (mock stdin for interactive)\n   - test_question_ask_create:\
+      \ Create new question\n   - test_question_ask_validation: Validate severity\
+      \ values\n   - test_question_defer: Defer a question\n   - test_plan_path_detection:\
+      \ Auto-detect from cwd\n   - test_plan_path_explicit: Use --plan flag\n\nTESTING\
+      \ APPROACH:\n- Use tmp_path pytest fixture for isolated file system\n- Mock\
+      \ QuestionQueue service for unit-style tests OR\n- Use real QuestionQueue with\
+      \ temp folders for integration tests\n- Test both JSON (-j) and human-readable\
+      \ output modes\n- Verify exit codes (0 for success, 1 for errors)\n\nEXAMPLE\
+      \ TEST:\n```python\ndef test_question_list_default(temp_plan_folder, cli_runner):\n\
+      \    \"\"\"Test listing pending questions.\"\"\"\n    # Arrange: Create test\
+      \ questions\n    create_test_question(temp_plan_folder, \"Q-001\", \"pending\"\
+      )\n    create_test_question(temp_plan_folder, \"Q-002\", \"answered\")\n\n \
+      \   # Act: Run command\n    result = cli_runner.invoke([\"question\", \"list\"\
+      , \"--plan\", str(temp_plan_folder)])\n\n    # Assert\n    assert result.exit_code\
+      \ == 0\n    assert \"Q-001\" in result.output\n    assert \"Q-002\" not in result.output\
+      \  # Answered, not shown by default\n```\n"
+    success_criteria:
+    - test_question_commands.py created with 12+ test cases
+    - All commands tested (list, show, answer, ask, defer)
+    - JSON output mode tested separately
+    - Error cases tested (not found, invalid input)
+    - Plan path detection tested (auto + explicit)
+    - Tests are isolated (use temp directories)
+    - All tests pass with pytest
+    - Test coverage >80% for question.py
+    status: completed
+  - id: QC-010
+    name: Add CLI documentation for question commands
+    description: 'Document question commands in AgenticCLI README.md with examples
+      and usage patterns.
+
+      '
+    depends_on:
+    - QC-009
+    agent: builder
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/README.md
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/README.md
+    guidance: 'Add a new section to README.md documenting the question commands.
+
+
+      SECTION LOCATION:
+
+      Add after the "plan" command section, before "worktree" section.
+
+
+      SECTION CONTENT:
+
+
+      ### question - Human-in-the-Loop Question Management
+
+
+      Manage the question/answer queue for human-in-the-loop workflows.
+
+      Agents can pause and ask clarifying questions when they hit blockers.
+
+
+      ```bash
+
+      # List pending questions
+
+      agentic question list
+
+      agentic question list --status all
+
+      agentic question list --plan /path/to/plan
+
+
+      # Show question details
+
+      agentic question show Q-001
+
+      agentic question show Q-001 --plan /path/to/plan
+
+
+      # Answer a question
+
+      agentic question answer Q-001 --text "Yes, proceed with approach A"
+
+      agentic question answer Q-001  # Interactive multi-line prompt
+
+
+      # Create a question (manual/testing)
+
+      agentic question ask "Should we refactor the auth module?" --severity high
+
+
+      # Defer a question
+
+      agentic question defer Q-001
+
+
+      # JSON output mode
+
+      agentic question list -j
+
+      agentic question show Q-001 -j
+
+      ```
+
+
+      #### Plan-Scoped Questions
+
+
+      Questions are stored in plan-scoped folders:
+
+      - `docs/plans/live/{plan_id}/questions/pending/` - Unanswered questions
+
+      - `docs/plans/live/{plan_id}/questions/answered/` - Answered questions
+
+      - `docs/plans/live/{plan_id}/questions/deferred/` - Deferred questions
+
+
+      The CLI auto-detects the plan folder from your current working directory.
+
+      Use `--plan PATH` to specify a different plan folder.
+
+
+      #### Integration with Agents
+
+
+      Agents use the QuestionQueue service directly (from agenticguidance.services.question).
+
+      The CLI commands provide the human interface for reviewing and answering questions.
+
+
+      See also: 260203QF (Question Foundation), 260203QG (Question Guidance)
+
+      '
+    success_criteria:
+    - question command section added to README.md
+    - All 5 commands documented with examples
+    - JSON output mode examples included
+    - Plan-scoped storage explained
+    - Integration with agents mentioned
+    - Related plans referenced
+    - Documentation is clear and actionable
+    status: completed
+success_criteria:
+  user_focused:
+  - User can list pending questions with 'agentic question list'
+  - User can view full question details with 'agentic question show <id>'
+  - User can answer questions with 'agentic question answer <id>'
+  - User can create manual questions with 'agentic question ask <text>'
+  - User can defer questions with 'agentic question defer <id>'
+  - Commands auto-detect plan context when run from plan folder
+  - JSON output mode (-j) works for all commands
+  - Rich formatting makes output readable and actionable
+  technical:
+  - All commands integrated into AgenticCLI argparse router
+  - QuestionQueue service integration working
+  - Plan path detection logic functional
+  - Integration tests achieve >80% code coverage
+  - Error handling is comprehensive and user-friendly
+  - Documentation in README.md is complete
+  validation_tests:
+  - agentic question list shows pending questions in formatted table
+  - agentic question list --status answered shows answered questions
+  - agentic question show Q-001 displays full YAML with syntax highlighting
+  - agentic question answer Q-001 --text 'answer' creates answer file
+  - agentic question ask 'test' --severity high creates new question
+  - agentic question defer Q-001 moves question to deferred status
+  - agentic question list -j outputs valid JSON array
+  - All commands exit with code 0 on success, 1 on error
+loop_structure:
+- phase: Implementation (P1-P4)
+  loop_type: test-fix-loop
+  maximum_iterations: 5
+  exit_conditions:
+    success: All commands executable, basic manual tests pass
+    max_iterations: Escalate to human for guidance
+- phase: Integration Tests (P5)
+  loop_type: test-fix-loop
+  maximum_iterations: 5
+  exit_conditions:
+    success: All integration tests pass, coverage >80%
+    max_iterations: Escalate to human for test refinement
+- phase: Test Quality Validation
+  loop_type: audit-test-fix-loop
+  maximum_iterations: 3
+  mandatory: true
+  exit_conditions:
+    success: Audit finds no reward hacking issues
+    max_iterations: Escalate - quality issues persist
+affected_user_stories:
+- 'US-HITL-001: Agent asks clarifying questions when blocked'
+- 'US-HITL-002: Human reviews and answers questions via CLI'
+- 'US-HITL-003: Questions are plan-scoped and isolated'
+- 'US-HITL-004: Deferred questions can be revisited later'
+architectural_notes: 'DOMAIN-WORKFLOW-ENTRYPOINT PATTERN:
+
+  - Domain: QuestionQueue service (from AgenticGuidance)
+
+  - Workflow: question.py command handlers (this plan)
+
+  - Entrypoint: CLI subparsers in cli.py
+
+
+  SERVICE BOUNDARIES:
+
+  - QuestionQueue is independent, no CLI dependencies
+
+  - CLI commands are thin wrappers around service calls
+
+  - Rich formatting isolated to CLI layer (not in service)
+
+
+  TESTING STRATEGY:
+
+  - Unit tests for QuestionQueue service (in 260203QF)
+
+  - Integration tests for CLI commands (this plan)
+
+  - Tests use temporary file systems for isolation
+
+  '
+next_steps:
+- Create orchestration_question_cli.mmd for workflow visualization
+- Wait for 260203QF (Question Foundation) to complete
+- Spawn builder agents for QC-001 through QC-010
+- Execute test-fix-loop for iterative implementation
+- Hand off to planner-test for UAT planning

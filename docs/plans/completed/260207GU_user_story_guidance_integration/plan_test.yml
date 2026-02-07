@@ -1,0 +1,202 @@
+_template_status: active
+plan:
+  name: User Story Guidance Integration - Test Plan
+  worktree: /home/code/AgenticEngineering
+  branch: userstory-guidance
+  status: pending
+  objective: 'Validate that all guidance file updates are structurally correct, internally
+    consistent,
+
+    and achieve the story-first planning goals. Since this plan modifies guidance
+    files (YAML,
+
+    MMD, Markdown) rather than code, testing focuses on structural validation, cross-reference
+
+    integrity, and guidance simulator verification.
+
+    '
+  phases:
+  - name: Phase 1 - Structural Validation
+    id: test_01
+    status: pending
+    tasks:
+    - id: test_01_001
+      name: Validate YAML syntax of all modified guidance files
+      status: completed
+      description: 'Parse all modified YAML files to ensure valid syntax:
+
+        - planning-standard.yml
+
+        - orchestration-planning/inputs.yml
+
+        - orchestration-executor/process.yml
+
+        - orchestration-executor/inputs.yml
+
+        - planner-build/process.yml
+
+        - planner-reviewer/process.yml
+
+        - planner-reviewer/inputs.yml
+
+        - planner-orchestration/process.yml
+
+        - testing.yml
+
+        - test-audit/process.yml
+
+
+        Use `python3 -c "import yaml; yaml.safe_load(open(''file''))"` for each file.
+
+        '
+    - id: test_01_002
+      name: Validate MMD syntax of modified process.mmd
+      status: completed
+      description: 'Verify orchestration-planning/process.mmd is valid Mermaid:
+
+        - All node references are defined
+
+        - Subgraph boundaries are correct
+
+        - New StoryDiscovery subgraph connects properly to existing flow
+
+        - No orphaned nodes or broken edges
+
+        '
+    - id: test_01_003
+      name: Validate cross-references between guidance files
+      status: completed
+      description: 'Verify all file references in guidance are valid:
+
+        - planning-standard.yml references to docs/userstories/ exist
+
+        - Executor references to planning-standard.yml story fence exist
+
+        - Reviewer references to story validation checklist exist
+
+        - All `location:` fields in inputs.yml point to real files
+
+        '
+  - name: Phase 2 - Content Integrity
+    id: test_02
+    status: pending
+    tasks:
+    - id: test_02_001
+      name: Verify fence consistency across agents
+      status: completed
+      description: 'Verify the STORY-FIRST PLANNING fence is consistently referenced:
+
+        - planning-standard.yml defines the fence
+
+        - orchestration-planning/process.mmd implements the checkpoint
+
+        - planner-build/process.yml references the fence in affected_stories step
+
+        - planner-reviewer/process.yml validates against the fence
+
+        - All references use consistent terminology
+
+        '
+    - id: test_02_002
+      name: Verify story metadata field consistency
+      status: completed
+      description: 'Verify the four metadata fields are consistently named across
+        all files:
+
+        - last_tested, test_status, test_notes, tested_by_plan
+
+        - testing.yml documents them
+
+        - test-audit/process.yml references them
+
+        - orchestration-executor/process.yml validation gate checks them
+
+        '
+    - id: test_02_003
+      name: Verify escape hatch documentation
+      status: completed
+      description: 'Verify the no_stories_rationale escape hatch is documented consistently:
+
+        - planning-standard.yml defines it
+
+        - planner-build/process.yml uses it
+
+        - planner-reviewer/process.yml validates it
+
+        - Wording and field name are consistent
+
+        '
+  - name: Phase 3 - Guidance Blind Test (UAT)
+    id: test_03
+    status: pending
+    tasks:
+    - id: test_03_001
+      name: Blind-test orchestration-planning story discovery
+      status: completed
+      description: 'Spawn test-guidance-simulator to walk through orchestration-planning/process.mmd:
+
+        - Can the agent follow the StoryDiscovery subgraph without prior knowledge?
+
+        - Are the CLI commands referenced clearly enough to execute?
+
+        - Does the flow make sense when stories are found? When no stories found?
+
+        - Is the escape hatch (no_stories_rationale) discoverable?
+
+
+        Strategy: guidance-blind-test
+
+        Stories: US-ORCH-001, US-ORCH-002
+
+        '
+    - id: test_03_002
+      name: Blind-test planner-reviewer story validation
+      status: completed
+      description: 'Spawn test-guidance-simulator to walk through planner-reviewer/process.yml:
+
+        - Can the reviewer follow the story validation checklist?
+
+        - Are the conditions for REJECT vs APPROVE clear for story integration?
+
+        - Does the reviewer know when affected_stories is required vs optional?
+
+
+        Strategy: guidance-blind-test
+
+        Stories: US-ORCH-004
+
+        '
+    - id: test_03_003
+      name: Blind-test executor story validation gate
+      status: completed
+      description: 'Spawn test-guidance-simulator to walk through orchestration-executor/process.yml:
+
+        - Can the executor parse story validation requirements from the gate?
+
+        - Is the STORY_REGRESSION trigger actionable?
+
+        - Does story context passing to UAT agents have clear instructions?
+
+
+        Strategy: guidance-blind-test
+
+        Stories: US-GD-073
+
+        '
+  test_strategy:
+  - type: structural
+    scope: All modified YAML and MMD files - syntax and reference validation
+    location: In-place validation via python3 yaml parsing and grep cross-reference
+      checks
+  - type: content
+    scope: Fence consistency, metadata field naming, escape hatch documentation
+    location: Cross-file grep analysis
+  - type: uat
+    scope: Guidance blind testing - agent can follow updated guidance without prior
+      context
+    location: test-guidance-simulator agent spawns
+    stories:
+    - 'US-ORCH-001: Initiate Implementation Planning'
+    - 'US-ORCH-002: Main-First Planning Workflow'
+    - 'US-ORCH-004: Plan Review and Approval'
+    - 'US-GD-073: Test User Stories'

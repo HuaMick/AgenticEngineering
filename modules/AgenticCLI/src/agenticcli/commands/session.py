@@ -134,6 +134,122 @@ def handle(args, ctx=None):
         sys.exit(1)
 
 
+def _resolve_plan_folder(plan_name: str) -> Path | None:
+    """Resolve a plan folder name to its full path.
+
+    Searches docs/plans/live/ for the matching plan folder.
+
+    Args:
+        plan_name: Plan folder name (e.g., '260207TA_cli_task_spawn').
+
+    Returns:
+        Path to plan folder, or None if not found.
+    """
+    # Try common plan locations
+    search_dirs = [
+        Path.cwd() / "docs" / "plans" / "live",
+        Path.cwd() / "docs" / "plans" / "completed",
+    ]
+
+    for search_dir in search_dirs:
+        if not search_dir.exists():
+            continue
+        candidate = search_dir / plan_name
+        if candidate.exists() and candidate.is_dir():
+            return candidate
+
+    return None
+
+
+_DOGFOOD_STRATEGY = """
+Dogfood Strategy — Self-Healing Gaps:
+If you encounter a gap in the system (missing service, broken workflow, missing CLI command),
+do NOT work around it silently. Instead:
+1. Check if a plan already exists: agentic plan list -j
+2. If a relevant plan exists, add a task to it or start working on the gap task.
+3. If no plan exists, create one: agentic plan init <descriptive-name>
+4. Then spawn a subagent to implement the fix:
+   agentic session spawn --role build-python --plan <plan_folder> -b
+5. Continue your original work once the gap is resolved.
+This ensures gaps are tracked and fixed systematically rather than patched ad-hoc.
+""".strip()
+
+
+def _build_role_prompt(role: str, plan_folder: Path | None) -> str:
+    """Build a prompt for spawning an agent by role.
+
+    Constructs a prompt that tells the agent its role and provides plan context.
+
+    Args:
+        role: Agent role identifier (e.g., 'build-python').
+        plan_folder: Optional path to plan folder for additional context.
+
+    Returns:
+        Constructed prompt string.
+    """
+    parts = [
+        f"You are being spawned as a {role} agent.",
+        f"Initialize your context by running: agentic context bootstrap --role {role} -j",
+    ]
+
+    if plan_folder:
+        plan_name = plan_folder.name
+        parts.append(f"Your active plan is: {plan_name}")
+        parts.append(f"Plan path: {plan_folder}")
+        parts.append(f"List tasks with: agentic plan task list --plan {plan_name} -j")
+        parts.append("Start by loading your bootstrap context, then work through the plan tasks.")
+
+    parts.append("")
+    parts.append(_DOGFOOD_STRATEGY)
+
+    return "\n".join(parts)
+
+
+def _build_task_prompt(task_id: str, plan_folder: Path) -> str | None:
+    """Build a prompt for spawning an agent for a specific task.
+
+    Loads task details from the plan and constructs a focused prompt.
+
+    Args:
+        task_id: Task identifier (e.g., 'CLI_001').
+        plan_folder: Path to plan folder containing plan_build.yml.
+
+    Returns:
+        Constructed prompt string, or None if task not found.
+    """
+    from agenticguidance.services.task import TaskService
+
+    service = TaskService(plan_folder)
+    task = service.get_task(task_id)
+
+    if not task:
+        return None
+
+    plan_name = plan_folder.name
+    parts = [
+        f"You are being spawned to work on task {task.id}: {task.name}",
+        f"Plan: {plan_name}",
+        "",
+        f"Description: {task.description}",
+    ]
+
+    if task.guidance:
+        parts.append(f"\nGuidance:\n{task.guidance}")
+
+    if task.target_files:
+        parts.append(f"\nTarget files: {', '.join(task.target_files)}")
+
+    if task.inputs:
+        parts.append(f"\nReference inputs: {', '.join(task.inputs)}")
+
+    parts.append(f"\nWhen done, mark the task complete: agentic plan task complete {task_id} --plan {plan_name}")
+
+    parts.append("")
+    parts.append(_DOGFOOD_STRATEGY)
+
+    return "\n".join(parts)
+
+
 def cmd_spawn(args, ctx=None):
     """Spawn a new Claude Code session.
 
@@ -141,12 +257,43 @@ def cmd_spawn(args, ctx=None):
         args: Parsed command arguments with prompt, max_turns, background.
         ctx: Optional CLIContext.
     """
-    from agenticcli.console import console, is_json_output, print_error, print_json, print_success
+    from agenticcli.console import console, get_status, is_json_output, print_error, print_json, print_success
+    from agenticcli.utils.tokens import (
+        context_usage_percent,
+        estimate_tokens,
+        get_usage_color,
+    )
 
     prompt = getattr(args, "prompt", None)
-    if not prompt:
-        print_error("Prompt is required. Use --prompt or -p to specify.")
+    role = getattr(args, "role", None)
+    task_id = getattr(args, "task", None)
+    plan_name = getattr(args, "plan", None)
+
+    # Resolve plan folder if provided
+    plan_folder = None
+    if plan_name:
+        plan_folder = _resolve_plan_folder(plan_name)
+        if not plan_folder:
+            print_error(f"Plan folder not found: {plan_name}")
+            sys.exit(1)
+
+    # Validate: --task requires --plan
+    if task_id and not plan_folder:
+        print_error("--task requires --plan to be set.")
         sys.exit(1)
+
+    # Build prompt from role or task if --prompt not provided
+    if not prompt:
+        if role:
+            prompt = _build_role_prompt(role, plan_folder)
+        elif task_id:
+            prompt = _build_task_prompt(task_id, plan_folder)
+            if not prompt:
+                print_error(f"Task not found: {task_id} in plan {plan_name}")
+                sys.exit(1)
+        else:
+            print_error("Prompt is required. Use --prompt, --role, or --task to specify.")
+            sys.exit(1)
 
     max_turns = getattr(args, "max_turns", None)
     background = getattr(args, "background", False)
@@ -157,9 +304,16 @@ def cmd_spawn(args, ctx=None):
 
     # Build claude command
     cmd = ["claude", "--print"]
+    if getattr(args, "dangerously_skip_permissions", False):
+        cmd.append("--dangerously-skip-permissions")
     if max_turns:
         cmd.extend(["--max-turns", str(max_turns)])
     cmd.append(prompt)
+
+    # Estimate token usage from prompt
+    prompt_tokens = estimate_tokens(prompt)
+    usage_percent = context_usage_percent(prompt_tokens)
+    usage_color = get_usage_color(usage_percent)
 
     # Create session record
     session_data = {
@@ -173,6 +327,8 @@ def cmd_spawn(args, ctx=None):
         "background": background,
         "working_dir": working_dir,
         "command": " ".join(cmd),
+        "estimated_tokens": prompt_tokens,
+        "context_usage_percent": usage_percent,
     }
 
     try:
@@ -203,44 +359,62 @@ def cmd_spawn(args, ctx=None):
                     "pid": process.pid,
                     "status": "running",
                     "background": True,
+                    "estimated_tokens": prompt_tokens,
+                    "context_usage_percent": usage_percent,
                 })
             else:
                 print_success(f"Session {session_id} started in background (PID: {process.pid})")
+                console.print(f"[dim]Context usage: [{usage_color}]{usage_percent:.1f}%[/{usage_color}] (~{prompt_tokens:,} tokens)[/dim]")
         else:
-            # Foreground mode: use run and wait for completion
+            # Foreground mode: use Popen for streaming output
             session_data["pid"] = os.getpid()  # Current process for tracking
             session_data["status"] = "running"
             _save_session(session_data)
 
-            result = subprocess.run(
-                cmd,
-                cwd=working_dir,
-                capture_output=True,
-                text=True,
-            )
+            # Display context metrics before starting
+            if not is_json_output():
+                console.print(f"[dim]Context usage: [{usage_color}]{usage_percent:.1f}%[/{usage_color}] (~{prompt_tokens:,} tokens)[/dim]")
 
-            session_data["status"] = "completed" if result.returncode == 0 else "failed"
+            # Use Popen for streaming output with status indicator
+            status_message = f"Running Claude session {session_id[:8]}..."
+
+            with get_status(status_message):
+                process = subprocess.Popen(
+                    cmd,
+                    cwd=working_dir,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+
+                # Capture output
+                stdout, stderr = process.communicate()
+                returncode = process.returncode
+
+            session_data["status"] = "completed" if returncode == 0 else "failed"
             session_data["ended_at"] = datetime.now().isoformat()
-            session_data["exit_code"] = result.returncode
+            session_data["exit_code"] = returncode
             _save_session(session_data)
 
             if is_json_output():
                 print_json({
                     "session_id": session_id,
                     "status": session_data["status"],
-                    "exit_code": result.returncode,
-                    "stdout": result.stdout,
-                    "stderr": result.stderr,
+                    "exit_code": returncode,
+                    "stdout": stdout,
+                    "stderr": stderr,
+                    "estimated_tokens": prompt_tokens,
+                    "context_usage_percent": usage_percent,
                 })
             else:
-                if result.returncode == 0:
+                if returncode == 0:
                     print_success(f"Session {session_id} completed")
-                    if result.stdout:
-                        console.print(result.stdout)
+                    if stdout:
+                        console.print(stdout)
                 else:
-                    print_error(f"Session {session_id} failed with exit code {result.returncode}")
-                    if result.stderr:
-                        console.print(f"[red]{result.stderr}[/red]")
+                    print_error(f"Session {session_id} failed with exit code {returncode}")
+                    if stderr:
+                        console.print(f"[red]{stderr}[/red]")
 
     except FileNotFoundError:
         session_data["status"] = "failed"
@@ -360,6 +534,19 @@ def cmd_stop(args, ctx=None):
     pid = session.get("pid")
     status = session.get("status")
 
+    # If already in terminal state, just return success
+    if status in ["completed", "stopped", "failed"]:
+        if is_json_output():
+            print_json({
+                "session_id": session["session_id"],
+                "status": status,
+                "message": f"Session is already in terminal state: {status}",
+                "success": True
+            })
+        else:
+            print_success(f"Session {session['session_id'][:8]} is already in terminal state: {status}")
+        return
+
     if status != "running":
         if is_json_output():
             print_json({"error": f"Session is not running (status: {status})", "success": False})
@@ -391,14 +578,20 @@ def cmd_stop(args, ctx=None):
             print_success(f"Session {session['session_id'][:8]} stopped (PID: {pid})")
 
     except ProcessLookupError:
+        # Process not found, mark as completed if it was running
         session["status"] = "completed"
         session["ended_at"] = datetime.now().isoformat()
         _save_session(session)
         if is_json_output():
-            print_json({"error": "Process not found (may have already exited)", "success": False})
+            print_json({
+                "session_id": session["session_id"],
+                "status": "completed",
+                "message": "Process not found (may have already exited)",
+                "success": True
+            })
         else:
-            print_error("Process not found (may have already exited)")
-        sys.exit(1)
+            print_success(f"Session {session['session_id'][:8]} already exited (process not found)")
+        return
     except PermissionError:
         print_error(f"Permission denied to stop process {pid}")
         sys.exit(1)

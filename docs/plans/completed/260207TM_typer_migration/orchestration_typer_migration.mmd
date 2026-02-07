@@ -1,0 +1,119 @@
+flowchart LR
+    %% ========================================
+    %% ORCHESTRATION: Full Typer/Click Migration
+    %% ========================================
+    %% GOAL: Replace argparse entirely with Typer — native shell completion, all commands migrated
+    %% PROFILE: orchestrator
+    %%
+    %% PLAN_FOLDER: docs/plans/live/260207TM_typer_migration
+    %% PLAN_FILES: plan_build.yml
+    %%
+    %% PHASES: FoundationPhase, CommandMigrationPhase, CleanupPhase, ValidationGate
+    %% AGENT_ROUTING: FoundationPhase=build-python, CommandMigrationPhase=build-python, CleanupPhase=build-python, ValidationGate=test-runner
+    %% FEEDBACK_TRIGGERS: BUILD_FAILURE=retry(3), TEST_FAILURE=retry(3)
+    %% STATUS: FoundationPhase=pending, CommandMigrationPhase=pending, CleanupPhase=pending, ValidationGate=pending
+
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION
+    %% ========================================
+    LoadInputs --> ReviewPlanFiles[Review plan_build.yml]
+    ReviewPlanFiles --> CheckInputs{All Inputs Found?}
+    CheckInputs -- "No: Missing" --> AskUser((Ask User for Clarification))
+    CheckInputs -- "Yes: Verified" --> CCIBootstrap[Run: agentic context bootstrap]
+
+    CCIBootstrap --> BootstrapReady{Bootstrap Complete?}
+    BootstrapReady -- "No: Failed" --> AskUser
+    BootstrapReady -- "Yes: Ready" --> EnterFoundationPhase[Enter Foundation Phase]
+
+    %% ========================================
+    %% PHASE 1: FOUNDATION
+    %% ========================================
+    %% Tasks: TM_001 (audit CLI mapping), TM_002 (create Typer skeleton)
+    %% Agent: build-python
+    %% Targets: migration_mapping.yml, cli.py
+
+    subgraph FoundationPhase_SG ["Foundation Phase"]
+        EnterFoundationPhase --> SpawnFoundation[Spawn build-python Agent]
+        SpawnFoundation --> FoundationResult{Foundation Built?}
+
+        FoundationResult -- "No: Issues" --> CaptureFoundationFeedback[Capture Feedback]
+        CaptureFoundationFeedback --> CheckFoundationIterations{Max Iterations?}
+        CheckFoundationIterations -- "No: Continue" --> SpawnFoundation
+        CheckFoundationIterations -- "Yes: Limit" --> EscalateFoundation((Escalate: Foundation Failed))
+
+        FoundationResult -- "Yes: Complete" --> FoundationComplete[Foundation Complete]
+    end
+
+    FoundationComplete --> EnterMigrationPhase[Enter Command Migration Phase]
+
+    %% ========================================
+    %% PHASE 2: COMMAND MIGRATION
+    %% ========================================
+    %% Tasks: TM_003 (simple groups), TM_004 (complex groups), TM_005 (context/CCI)
+    %% Agent: build-python
+    %% Targets: cli.py, command modules
+
+    subgraph MigrationPhase_SG ["Command Migration Phase"]
+        EnterMigrationPhase --> SpawnMigration[Spawn build-python Agent]
+        SpawnMigration --> MigrationResult{Commands Migrated?}
+
+        MigrationResult -- "No: Issues" --> CaptureMigrationFeedback[Capture Feedback]
+        CaptureMigrationFeedback --> CheckMigrationIterations{Max Iterations?}
+        CheckMigrationIterations -- "No: Continue" --> SpawnMigration
+        CheckMigrationIterations -- "Yes: Limit" --> EscalateMigration((Escalate: Migration Failed))
+
+        MigrationResult -- "Yes: Complete" --> MigrationComplete[Migration Complete]
+    end
+
+    MigrationComplete --> EnterCleanupPhase[Enter Cleanup Phase]
+
+    %% ========================================
+    %% PHASE 3: CLEANUP
+    %% ========================================
+    %% Tasks: TM_006 (remove argparse artifacts), TM_007 (update tests)
+    %% Agent: build-python
+    %% Targets: entry.py, typer_app.py, completion.py, pyproject.toml, tests/
+
+    subgraph CleanupPhase_SG ["Cleanup Phase"]
+        EnterCleanupPhase --> SpawnCleanup[Spawn build-python Agent]
+        SpawnCleanup --> CleanupResult{Cleanup Complete?}
+
+        CleanupResult -- "No: Issues" --> CaptureCleanupFeedback[Capture Feedback]
+        CaptureCleanupFeedback --> CheckCleanupIterations{Max Iterations?}
+        CheckCleanupIterations -- "No: Continue" --> SpawnCleanup
+        CheckCleanupIterations -- "Yes: Limit" --> EscalateCleanup((Escalate: Cleanup Failed))
+
+        CleanupResult -- "Yes: Complete" --> CleanupComplete[Cleanup Complete]
+    end
+
+    CleanupComplete --> EnterValidation[Enter Validation Gate]
+
+    %% ========================================
+    %% VALIDATION GATE
+    %% ========================================
+    subgraph ValidationPhase_SG ["Validation Gate"]
+        EnterValidation --> SpawnValidation[Spawn test-runner Agent]
+        SpawnValidation --> ValidationResult{All Tests Pass?}
+
+        ValidationResult -- "No: Failures" --> CaptureValidationFeedback[Capture Feedback]
+        CaptureValidationFeedback --> CheckValidationIterations{Max Iterations?}
+        CheckValidationIterations -- "No: Continue" --> SpawnBuildFix[Spawn build-python for Fix]
+        SpawnBuildFix --> SpawnValidation
+        CheckValidationIterations -- "Yes: Limit" --> EscalateValidation((Escalate: Validation Failed))
+
+        ValidationResult -- "Yes: Passed" --> ValidationComplete[Validation Complete]
+    end
+
+    %% ========================================
+    %% OUTPUT PHASE
+    %% ========================================
+    subgraph Output_SG ["Output Subgraph"]
+        ValidationComplete --> ReportCompletion[Report Completion Status]
+        ReportCompletion --> ArchivePlan[Run: agentic plan move folder --plan 260207TM_typer_migration]
+    end
+
+    ArchivePlan --> End((End: Plan Completed))
+
+    classDef dashedstroke stroke-dasharray: 5 5;

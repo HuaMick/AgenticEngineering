@@ -91,7 +91,7 @@ The CLI provides reliable primitives. Agents compose those primitives with judgm
 
 ## Agent Categories
 
-The module contains 6 implemented agent categories with 23 active sub-agents (plus 2 deprecated):
+The module contains 6 implemented agent categories with 24 active agents (plus 2 deprecated):
 
 ### Orchestration (3 active, 2 deprecated)
 High-level coordination of planning and execution workflows.
@@ -157,7 +157,7 @@ Infrastructure and deployment tooling.
 
 ## Assets
 
-### Definitions (35 files)
+### Definitions (42 files)
 Stable concepts and terminology that define "what is X". Key definitions include:
 - `agent-categories.yml` - Agent taxonomy
 - `plans.yml` - Plan structure and lifecycle
@@ -168,7 +168,7 @@ Stable concepts and terminology that define "what is X". Key definitions include
 - `path.yml` - Path concept for agent guidance
 - `guidance-artifacts.yml` - Fence/signpost concepts
 
-### Guidelines (44 files)
+### Guidelines (46 files)
 Behavioral rules and constraints that define "how to act":
 - `less-is-more.yml` - Minimal sufficient changes
 - `fix-the-source.yml` - Address root causes
@@ -183,8 +183,9 @@ Behavioral rules and constraints that define "how to act":
 
 ### Examples
 Reference implementations organized by agent category:
-- `planner/` - Plan structure examples, phase templates (build, test, teach, cleanup, UAT)
-- `teacher/` - Concise guidance examples
+- `orchestration/` - MMD reference examples, phase templates (build, test, teach, cleanup, UAT)
+- `planner/` - Plan structure examples, component patterns (loops, gates, validation)
+- `teacher/` - Concise guidance examples, LangSmith trace analysis
 - `test/` - Test plan examples, final outcome reports
 - `cleaner/` - Directory preservation rules
 
@@ -227,6 +228,61 @@ To initiate a workflow, **inject the content** of the appropriate entrypoint fil
    - Discovers `orchestration_*.mmd` file in plan folder
    - Executes phases using dynamic AGENT_ROUTING from MMD metadata
    - Orchestrates builder, tester, and teacher agents per phase definitions
+
+### Orchestration Agent Roles
+
+| Agent | Role |
+|-------|------|
+| `orchestration-executor` | Generic MMD-driven executor that routes to agents based on Plan-MMD metadata |
+| `orchestration-planning` | Human-in-the-loop plan creation with MMD generation |
+| `orchestration-friction` | LangSmith trace analysis for friction pattern detection |
+
+### Main-First Planning Workflow
+
+Plans are created in the **main worktree** for centralized visibility before execution:
+
+1. **Plan Creation** (main worktree): `agentic plan init <branch> --description <desc>`
+   - Creates plan folder in `docs/plans/live/YYMMDDXX_description/`
+   - Creates feature worktree for code implementation
+2. **Plan Approval**: Human reviews and approves the plan
+3. **Execution** (feature worktree): Switch to feature worktree for implementation
+4. **Merge**: Code merges via staging to main
+
+This ensures all active plans are visible from a single location while code development follows proper branching workflow.
+
+## CCI Bootstrap Pattern
+
+**CLI Context Injection (CCI)** is the standard pattern for agent context loading. Instead of agents using Read/Glob/Grep tools to discover their context, they invoke CLI commands that deterministically provide structured context.
+
+### Bootstrap Sequence
+
+```bash
+# 1. Get role context (process, inputs, guidelines)
+agentic context bootstrap --role <agent-role> -j
+
+# 2. Get current task from plan
+agentic plan task current -j
+```
+
+### Key Principles
+
+- **CLI-First Context**: Agents should not need file exploration during bootstrap phase
+- **Deterministic Loading**: CLI commands produce consistent context for the same inputs
+- **Structured Output**: JSON output (`-j` flag) enables machine parsing
+- **Role-Specific**: Each agent role has defined input files loaded by the CLI
+
+### Reference Layer Architecture
+
+Context is organized into reference layers loaded via `assets/inputs/` configurations:
+
+| Layer | File | Purpose |
+|-------|------|---------|
+| Core System | `core-system.yml` | Plan structure, architecture patterns, workflows |
+| Core Guidelines | `core-guidelines.yml` | Universal principles (fix-the-source, less-is-more, etc.) |
+| Planner Core | `planner-core-system.yml`, `planner-core-guidelines.yml` | Planner-specific context |
+| Role-Specific | `planner-shared.yml`, `test-shared.yml`, etc. | Agent category configurations |
+
+Agents reference these layers in their `inputs.yml` files to declare what context they need.
 
 ## Path Resolution
 
@@ -312,8 +368,8 @@ This section is the **source of truth** for agent implementation status. Plan-re
 | Infrastructure | Status | Notes |
 |----------------|--------|-------|
 | Agent Guidance Files | Implemented | 24 active agents with manifest.yml, inputs.yml, process.yml |
-| Definition Files | Implemented | 35+ definition files in assets/definitions/ |
-| Guideline Files | Implemented | 44+ guideline files in assets/guidelines/ |
+| Definition Files | Implemented | 42 definition files in assets/definitions/ |
+| Guideline Files | Implemented | 46 guideline files in assets/guidelines/ |
 | Shared Input Configs | Implemented | 11 shared input configurations |
 | Entrypoints | Implemented | 4 top-level workflow entrypoints |
 | Example Templates | Implemented | Reference implementations for all workflows |

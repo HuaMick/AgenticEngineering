@@ -1,6 +1,8 @@
 process:
   goal: |
-    Create new git worktrees and update VS Code workspace file configuration.
+    Create new git worktrees and plan folders via CLI commands.
+    The `agentic plan init` command handles worktree creation, plan folder scaffolding,
+    naming convention enforcement, and workspace file updates in a single operation.
 
   inputs:
     - location: "modules/AgenticGuidance/agents/deploy/deploy-worktree/inputs.yml"
@@ -68,21 +70,8 @@ process:
       ONLY use Glob/Grep/Read if CLI output indicates specific files to examine.
 
     - |
-      Review all inputs if an input cannot be found do not proceed.
-      If an input is found in a different location, update the path and flag
-      the discrepancy in your output.
-    - |
-      Determine current worktree context:
-      Use CLI command: `agentic worktree status`
-      This returns JSON with path, branch, is_worktree flag, and active plans.
-      Reference inputs.yml definitions for context interpretation.
-    - |
-      Create worktree and plan folder in one operation:
-      Use CLI command: `agentic plan init <branch> --description <desc> --base <base-branch>`
-
-      MAIN-FIRST PLANNING: The CLI creates TWO things in different locations:
-      - plan_folder: Created in MAIN worktree's docs/plans/live/ (for centralized visibility)
-      - worktree: Created/reused as feature worktree (for execution)
+      Create worktree and plan folder via CLI:
+      Run: `agentic plan init <branch> --description <desc> --base <base-branch>`
 
       This single command handles ALL of the following:
       - Git worktree creation (or reuses existing worktree for branch)
@@ -90,6 +79,7 @@ process:
       - Planning folder scaffolding in MAIN worktree (docs/plans/live/<folder_name>/)
       - Subdirectory creation (live/, completed/, analysis/, audit/)
       - README.md template creation
+      - VS Code workspace file update
 
       Exit codes:
       - 0: Success, worktree and folder created
@@ -97,36 +87,27 @@ process:
       - 2: Folder already exists (choose different description)
       - 3: Invalid branch name or description
 
-      For JSON output use: `agentic -j plan init <branch> --description <desc>`
+      For JSON output use: `agentic plan init <branch> --description <desc> --json`
       JSON response includes: worktree, worktree_created, branch, plan_folder, plan_folder_name, main_worktree
 
       NOTE: Do NOT create folders manually. The CLI enforces naming convention
       and Main-First Planning behavior programmatically, eliminating agent errors.
-    - |
-      Update VS Code workspace file:
-      Reference inputs.yml definitions (workspace_file, worktree_naming_convention) for:
-      - Workspace file structure and formatting requirements
-      - Folder naming patterns
-      - Git repository scanning configuration
-      NOTE: Workspace file update remains manual as it requires VS Code integration.
-    - |
-      Verify workspace file validity and accessibility:
-      Reference inputs.yml definitions (worktree_operations) for validation requirements
-    - |
-      Final verification:
-      Trust CLI exit codes - exit code 0 from 'agentic plan init' confirms success.
-      No additional verification commands needed (worktree list, plan list, status).
 
-      Report to orchestration for downstream use:
+    - |
+      Report outputs:
+      Trust CLI exit codes - exit code 0 from 'agentic plan init' confirms success.
+      No additional verification commands needed.
+
+      Parse CLI JSON output and report to orchestration:
+      - worktree_path: Feature worktree path (for execution)
       - plan_folder_path: In main worktree (for centralized visibility)
-      - worktree_path: Feature worktree (for execution)
       - main_worktree_path: Main worktree root (for reference)
+      - workspace_updated: true if CLI reported success
+      - validation_status: CLI validates folder structure internally
 
   guidelines:
     # Core guidelines: See modules/AgenticGuidance/assets/guidelines/ (safety.yml, fix-the-source.yml, worktree-and-branching.yml)
     # Core definitions: See modules/AgenticGuidance/assets/definitions/ (plans.yml, architecture-pattern.yml)
-    # Worktree procedures: See inputs.yml definitions (git_worktree, workspace_file, worktree_operations)
     - |
-      All detailed worktree procedures are in inputs.yml definitions.
-      Follow worktree_operations for safety checks and validation steps.
-
+      All worktree operations are delegated to the CLI.
+      Do NOT run manual git commands or modify workspace files directly.

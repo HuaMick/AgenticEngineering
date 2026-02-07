@@ -90,9 +90,44 @@ guideline:
     user_story_anchor:
       fence: |
         FENCE: UAT MUST be anchored to user stories
-        UAT phases MUST reference specific user stories from modules/AgenticGuidance/userstories/.
+        UAT phases MUST reference specific user stories from docs/userstories/.
         Each UAT test MUST trace back to a user story ID (e.g., US-CLI-001).
         User stories define the acceptance criteria that UAT validates.
+
+    story_test_metadata:
+      description: |
+        After UAT validation, test agents MUST update story test metadata to track
+        validation status over time. This enables regression detection and audit trails.
+      fields:
+        last_tested:
+          type: "ISO 8601 date"
+          description: "When the story was last validated"
+          example: "2026-02-07"
+        test_status:
+          type: "enum"
+          values: ["untested", "passed", "failed", "regression"]
+          description: "Current validation status of the story"
+        test_notes:
+          type: "string"
+          description: "Summary of test results or failure details"
+          example: "All 3 journey steps completed successfully via test-user-simulator"
+        tested_by_plan:
+          type: "string"
+          description: "Plan ID that last validated this story"
+          example: "260207WC_cli_worktree_updates"
+      update_pattern: |
+        After UAT execution, test agents should update story metadata:
+        1. Set last_tested to current date
+        2. Set test_status based on results (passed/failed)
+        3. Add test_notes summarizing outcomes
+        4. Set tested_by_plan to current plan ID
+        CLI command: `agentic stories update <story_id> --test-status <status> --plan <plan_id>`
+      regression_detection: |
+        A story has REGRESSED when:
+        - Previous test_status was "passed"
+        - Current UAT execution shows failure
+        - Set test_status to "regression" (not just "failed")
+        - This triggers STORY_REGRESSION feedback in executor
 
     implementation_options:
       description: |

@@ -96,6 +96,50 @@ process:
       DUMPING GROUND: Use additional subfolders (e.g., `analysis/`, `test-results/`) to store agent artifacts
       like test logs, coverage reports, or analysis files to avoid polluting shared spaces.
     - |
+      IMPACTED FILES AND ARTIFACTS ANALYSIS (Recommended for orchestration visibility):
+      Reference: modules/AgenticGuidance/assets/specifications/plan-schema.yml
+
+      For test plans, document file impacts to enable:
+      - Clear visibility of test file locations
+      - Conflict detection with other concurrent plans
+      - Progress tracking during execution
+
+      IMPACTED_FILES SECTION (for test plans):
+      ```yaml
+      impacted_files:
+        - path: "tests/unit/test_feature.py"
+          change_type: create
+          change_category: test
+          reason: "Unit tests for new feature"
+        - path: "tests/integration/test_e2e_workflow.py"
+          change_type: create
+          change_category: test
+          reason: "End-to-end integration tests"
+        - path: "tests/conftest.py"
+          change_type: modify
+          change_category: test
+          reason: "Add shared fixtures for new tests"
+      ```
+
+      IMPACTED_ARTIFACTS SECTION (for semantic impacts):
+      ```yaml
+      impacted_artifacts:
+        - artifact_type: service
+          artifact_identifier: "FeatureService"
+          impact_type: behavior_change
+          description: "Validated by new unit tests"
+        - artifact_type: api
+          artifact_identifier: "POST /api/feature"
+          impact_type: behavior_change
+          description: "Covered by integration tests"
+      ```
+
+      TEST-SPECIFIC NOTES:
+      - change_category: test (for all test files)
+      - Include config changes (conftest.py, pytest.ini) if modified
+      - Document which artifacts/services the tests validate
+
+    - |
       The plan should include phases in the order defined in manifest.yml test_plan_structure.
       See manifest.yml for authoritative phase ordering, testing_layers decision tree,
       and mandatory_user_stories requirements.
@@ -126,6 +170,83 @@ process:
             max_iterations:
               action: "escalate"
               reason: "Test failures persist"
+    - |
+      TEST EXPECTATION QUESTION GUIDANCE (HITL Question Workflow):
+      Reference: modules/AgenticGuidance/assets/guidelines/question-workflow.yml
+
+      During test planning, generate questions when test expected behavior is ambiguous
+      or acceptance criteria are unclear. This prevents test creation based on assumptions
+      and ensures tests validate correct behavior.
+
+      WHEN TO GENERATE QUESTIONS FOR TEST PLANNING:
+      - Expected behavior not specified in requirements
+      - Edge case handling unclear (e.g., which HTTP status code for validation errors?)
+      - Multiple valid interpretations of acceptance criteria
+      - Test coverage scope ambiguous (which scenarios are in/out of scope?)
+      - Performance/timeout expectations not documented
+
+      EXAMPLE SCENARIOS REQUIRING QUESTIONS:
+      1. API Error Handling:
+         Question: "Should invalid input return 400 Bad Request or 422 Unprocessable Entity?"
+         Context: REST best practices suggest 422 for validation, but implementation uses 400
+         Severity: medium (can document assumption and proceed)
+
+      2. Edge Case Behavior:
+         Question: "How should the system handle duplicate submissions within 1 second?"
+         Context: Spec doesn't address this edge case, could be reject or deduplicate
+         Severity: high (affects test expectations and may require code changes)
+
+      3. Coverage Scope:
+         Question: "Should UAT include multi-tenant scenarios or focus on single-tenant flows?"
+         Context: Architecture supports multi-tenancy but user stories don't mention it
+         Severity: medium (affects test suite size and complexity)
+
+      QUESTION FORMAT IN TEST PLAN:
+      Add to open_questions section:
+      ```yaml
+      open_questions:
+        - id: "test-q-001"
+          question: "Should invalid input return 400 or 422 status code?"
+          severity: "medium"
+          status: "pending"
+          context: |
+            Task: Create API error handling tests
+            Scenario: POST /users with invalid email format
+            Current: Implementation returns 400
+            Uncertainty: REST conventions suggest 422 for validation errors
+            Impact: Test expectations and API contract documentation
+          created_at: "2026-02-03T15:20:00"
+          asked_by: "planner-test"
+      ```
+
+      SEVERITY GUIDANCE FOR TEST QUESTIONS:
+      - blocking: Cannot write tests without answer (fundamental behavior unknown)
+      - high: Can write tests but may need to rewrite after clarification
+      - medium: Can document assumption and proceed with tentative tests
+      - low: Cosmetic or preference question (test wording, organization)
+
+      DO NOT ASK QUESTIONS ABOUT:
+      - Test structure patterns (follow existing test patterns in codebase)
+      - Assertion syntax or framework usage (refer to test-creation-principles.yml)
+      - Test file organization (follow project conventions)
+      - Mock/fixture naming (make reasonable decisions)
+
+      ASSUMPTION DOCUMENTATION:
+      When proceeding with medium/low severity questions:
+      - Document assumption in test docstrings
+      - Add TODO comment referencing the question ID
+      - Note in test plan that tests may need updates after clarification
+
+      Example:
+      ```python
+      def test_invalid_email_returns_validation_error():
+          """Test that invalid email format returns validation error.
+
+          ASSUMPTION: Using 422 status per REST conventions (question test-q-001).
+          May need update if different status code is preferred.
+          """
+      ```
+
     - |
       Provide the test plan back to the main orchestration agent for execution.
 

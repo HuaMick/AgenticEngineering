@@ -1,0 +1,183 @@
+name: guidance-updates
+status: active
+priority: medium
+context: 'The deploy-worktree agent has 7 process steps that are mostly redundant
+  now that
+
+  `agentic plan init` handles worktree+plan creation in one command. The agent should
+
+  be simplified to 3 steps: bootstrap, run CLI command, report outputs.
+
+
+  Additionally, inputs.yml contains redundant definitions (git_worktree_commands,
+
+  worktree_operations) that duplicate what the CLI already handles, and some guidance
+
+  still references old argparse-era CLI patterns.
+
+  '
+impacted_artifacts:
+- artifact_type: agent
+  artifact_identifier: deploy-worktree
+  impact_type: behavior_change
+  description: Simplify from 7 steps to 3; remove manual worktree creation guidance
+  breaking_change: false
+- artifact_type: agent_inputs
+  artifact_identifier: deploy-worktree/inputs.yml
+  impact_type: behavior_change
+  description: Remove redundant definitions (git commands, manual operations)
+  breaking_change: false
+phases:
+- name: Deploy-Worktree Simplification Phase
+  execution: sequential
+  tasks:
+  - id: GU_001
+    name: Simplify deploy-worktree process.yml from 7 steps to 3
+    status: completed
+    description: 'The current 7-step process includes manual worktree creation, workspace
+
+      updates, and verification that the CLI already handles. Reduce to:
+
+      1. CCI Bootstrap (get context)
+
+      2. Run `agentic plan init` (single CLI command does everything)
+
+      3. Report outputs (worktree_path, plan_folder_path, main_worktree_path)
+
+      '
+    target_files:
+    - modules/AgenticGuidance/agents/deploy/deploy-worktree/process.yml
+    inputs:
+    - modules/AgenticGuidance/agents/deploy/deploy-worktree/process.yml
+    guidance: "Current steps to KEEP (simplified):\n1. CCI Bootstrap - run `agentic\
+      \ context bootstrap --role deploy-worktree -j`\n2. Create worktree+plan - run\
+      \ `agentic plan init <branch> --description <desc>`\n   This single command\
+      \ handles: worktree creation, plan folder scaffolding,\n   workspace file update,\
+      \ naming convention enforcement\n3. Report outputs - parse CLI JSON output,\
+      \ report required outputs\n\nCurrent steps to REMOVE:\n- Step 2 \"Review all\
+      \ inputs\" - CLI validates internally\n- Step 3 \"Determine worktree context\"\
+      \ - CLI handles\n- Step 5 \"Update VS Code workspace\" - CLI handles\n- Step\
+      \ 6 \"Verify workspace file\" - CLI handles\n\nAlso update the outputs section\
+      \ if any are now always provided by CLI.\n"
+  - id: GU_002
+    name: Remove redundant definitions from deploy-worktree inputs.yml
+    status: completed
+    description: 'Remove definitions that duplicate CLI behavior:
+
+      - git_worktree_commands (CLI wraps these)
+
+      - worktree_operations (CLI handles all safety checks)
+
+      - workspace_file manual update instructions (CLI does this)
+
+      Keep: worktree_naming_convention (useful context), planning_scaffolding (reference)
+
+      '
+    target_files:
+    - modules/AgenticGuidance/agents/deploy/deploy-worktree/inputs.yml
+    inputs:
+    - modules/AgenticGuidance/agents/deploy/deploy-worktree/inputs.yml
+    guidance: '1. Remove definitions.git_worktree_commands - CLI wraps git commands
+
+      2. Remove definitions.worktree_operations - CLI handles safety checks
+
+      3. Remove definitions.workspace_file manual instructions - CLI updates workspace
+
+      4. Keep definitions.worktree_naming_convention - useful for agent context
+
+      5. Keep definitions.planning_scaffolding - useful reference
+
+      6. Update any remaining definitions to reference CLI commands instead of manual
+      steps
+
+      '
+- name: Cross-Agent Reference Update Phase
+  execution: sequential
+  tasks:
+  - id: GU_003
+    name: Update guidance referencing old CLI patterns
+    status: completed
+    description: 'Search all agent guidance files for references to:
+
+      - `plan bootstrap` (being merged into `plan init --objective`)
+
+      - Manual `git worktree add` commands (should use `agentic worktree create`)
+
+      - Direct argparse references (will change with Typer migration)
+
+      Update these to reference current CLI commands.
+
+      '
+    target_files:
+    - modules/AgenticGuidance/agents/deploy/deploy-worktree/process.yml
+    - modules/AgenticGuidance/agents/planner/planner-build/process.yml
+    - modules/AgenticGuidance/agents/planner/planner-build/inputs.yml
+    inputs:
+    - modules/AgenticGuidance/agents/
+    guidance: '1. Grep for "plan bootstrap" across all agent guidance - update to
+      "plan init --objective"
+
+      2. Grep for "git worktree add" - update to "agentic worktree create"
+
+      3. Grep for "argparse" or "create_parser" - note for future Typer migration
+      update
+
+      4. Update any step that says "manually create" to reference CLI command
+
+      5. Update CCI bootstrap examples if command syntax changed
+
+      '
+  - id: GU_004
+    name: Update deploy-worktree manifest for simplified scope
+    status: completed
+    description: 'Update manifest.yml to reflect the simplified agent scope.
+
+      The agent no longer manages VS Code workspace or does manual git operations.
+
+      '
+    target_files:
+    - modules/AgenticGuidance/agents/deploy/deploy-worktree/manifest.yml
+    inputs:
+    - modules/AgenticGuidance/agents/deploy/deploy-worktree/manifest.yml
+    guidance: '1. Update capabilities list to reflect CLI-delegated operations
+
+      2. Remove tools/capabilities for manual git and workspace operations
+
+      3. Simplify description to: "Creates worktrees and plan folders via CLI"
+
+      4. Update any version or metadata fields
+
+      '
+  - id: GU_005
+    name: Add tests verifying simplified deploy-worktree guidance
+    status: completed
+    description: 'Validate that the simplified guidance is complete and self-consistent.
+
+      Check that process.yml steps reference valid CLI commands.
+
+      '
+    target_files:
+    - modules/AgenticGuidance/tests/test_deploy_worktree_guidance.py
+    inputs:
+    - modules/AgenticGuidance/agents/deploy/deploy-worktree/process.yml
+    - modules/AgenticGuidance/agents/deploy/deploy-worktree/inputs.yml
+    guidance: 'Test cases:
+
+      1. process.yml has exactly 3 steps
+
+      2. All CLI commands referenced in guidance are valid (agentic plan init, etc.)
+
+      3. inputs.yml does not contain removed definitions
+
+      4. Required outputs in process.yml are all present
+
+      5. No references to manual git commands remain in process.yml
+
+      '
+success_criteria:
+- deploy-worktree process.yml has 3 steps (down from 7)
+- inputs.yml has no git_worktree_commands or worktree_operations definitions
+- No agent guidance references `plan bootstrap` (replaced with `plan init --objective`)
+- No agent guidance references manual `git worktree add` (replaced with CLI)
+- deploy-worktree manifest reflects simplified scope
+- Guidance validation tests pass

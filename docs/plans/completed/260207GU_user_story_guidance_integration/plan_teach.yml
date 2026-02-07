@@ -1,0 +1,423 @@
+_template_status: active
+plan:
+  name: User Story Guidance Integration
+  worktree: /home/code/AgenticEngineering
+  branch: userstory-guidance
+  status: planning
+  created: '2026-02-07'
+  objective: 'Update agent guidance files to integrate user stories as the central
+    validation anchor
+
+    for planning and execution workflows. Stories become mandatory anchors for planning
+    (with
+
+    escape hatch), and execution agents gain story-status update loops. Planners gain
+    remit
+
+    to update/create/delete stories.
+
+    '
+  scope:
+    includes:
+    - modules/AgenticGuidance/agents/orchestration/orchestration-planning/
+    - modules/AgenticGuidance/agents/orchestration/orchestration-executor/
+    - modules/AgenticGuidance/agents/planner/
+    - modules/AgenticGuidance/assets/guidelines/planning-standard.yml
+    - modules/AgenticGuidance/assets/guidelines/testing.yml
+    - docs/prompts/orchestration_planner.md
+    - docs/prompts/orchestration_executor.md
+    excludes:
+    - modules/AgenticCLI/
+    - docs/userstories/
+  affected_stories:
+  - 'US-ORCH-001: Initiate Implementation Planning'
+  - 'US-ORCH-002: Main-First Planning Workflow'
+  - 'US-ORCH-003: Specialized Planner Agents'
+  - 'US-ORCH-004: Plan Review and Approval'
+  - 'US-GD-063: Review Test Quality'
+  - 'US-GD-073: Test User Stories'
+  impacted_files:
+  - path: modules/AgenticGuidance/assets/guidelines/planning-standard.yml
+    change_type: modify
+    change_category: guidance
+    reason: Add story-first planning fence and pre-planning discovery requirement
+  - path: modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd
+    change_type: modify
+    change_category: guidance
+    reason: Add story discovery checkpoint before phase determination
+  - path: modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml
+    change_type: modify
+    change_category: guidance
+    reason: Add story discovery input requirements and sourcing guidance
+  - path: docs/prompts/orchestration_planner.md
+    change_type: modify
+    change_category: guidance
+    reason: Add story discovery to bootstrap and planning loop
+  - path: modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml
+    change_type: modify
+    change_category: guidance
+    reason: Add story validation to validation gate and UAT context passing
+  - path: modules/AgenticGuidance/agents/orchestration/orchestration-executor/inputs.yml
+    change_type: modify
+    change_category: guidance
+    reason: Add story workflow reference to required inputs
+  - path: docs/prompts/orchestration_executor.md
+    change_type: modify
+    change_category: guidance
+    reason: Add story validation checkpoint to execution workflow
+  - path: modules/AgenticGuidance/agents/planner/planner-build/process.yml
+    change_type: modify
+    change_category: guidance
+    reason: Strengthen affected_stories identification as mandatory step
+  - path: modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml
+    change_type: modify
+    change_category: guidance
+    reason: Add story validation fence to review checklist
+  - path: modules/AgenticGuidance/agents/planner/planner-reviewer/inputs.yml
+    change_type: modify
+    change_category: guidance
+    reason: Add story validation checklist items
+  - path: modules/AgenticGuidance/agents/planner/planner-orchestration/process.yml
+    change_type: modify
+    change_category: guidance
+    reason: Add story metadata to MMD node generation
+  phases:
+  - name: Phase 1 - Planning Standard & Orchestration-Planning
+    id: phase_01
+    status: pending
+    success_criteria:
+    - 'planning-standard.yml has FENCE: STORY-FIRST PLANNING rule requiring story
+      discovery before phase determination'
+    - orchestration-planning/process.mmd has StoryDiscovery node before PhaseDetermination
+    - orchestration-planning/inputs.yml documents story discovery requirements
+    - orchestration_planner.md bootstrap sequence includes story discovery command
+    tasks:
+    - id: phase_01_001
+      name: Add STORY-FIRST PLANNING fence to planning-standard.yml
+      status: completed
+      priority: critical
+      description: 'Add a new FENCE rule to planning-standard.yml that makes story
+        discovery mandatory
+
+        BEFORE phase determination. This is the anchor rule that all other agents
+        reference.
+
+
+        New rule should:
+
+        - Require running `agentic stories find` before creating any plan
+
+        - Document the escape hatch for plans with no matching stories (explicit no_stories_rationale)
+
+        - Reference docs/userstories/ as the authoritative location
+
+        - Be positioned before the existing UAT fence (story discovery feeds UAT)
+
+        '
+      target_files:
+      - modules/AgenticGuidance/assets/guidelines/planning-standard.yml
+    - id: phase_01_002
+      name: Add story discovery checkpoint to orchestration-planning process.mmd
+      status: completed
+      priority: critical
+      description: 'Insert a StoryDiscovery subgraph AFTER input validation and BEFORE
+        phase determination.
+
+
+        New subgraph should:
+
+        - Run `agentic stories find --project <relevant_project>` to discover affected
+        stories
+
+        - Validate stories exist (fence: if build plan and no stories found, warn
+        but allow with rationale)
+
+        - Pass discovered story IDs into phase determination context
+
+        - Store story context for downstream planner agents
+
+
+        Flow: CheckInputs -> StoryDiscovery -> PhaseDetermination (replacing direct
+        connection)
+
+        '
+      target_files:
+      - modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd
+    - id: phase_01_003
+      name: Update orchestration-planning inputs.yml with story sourcing
+      status: completed
+      priority: high
+      description: 'Add story discovery requirements to the inputs.yml:
+
+        - Add docs/userstories/ as a required input source
+
+        - Document how story context flows to downstream planners
+
+        - Add story_discovery_result as an intermediate output (list of story IDs)
+
+        - Reference planning-standard.yml story-first fence
+
+        '
+      target_files:
+      - modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml
+    - id: phase_01_004
+      name: Update orchestration_planner.md bootstrap guide
+      status: completed
+      priority: high
+      description: 'Add story discovery to the bootstrap guide:
+
+        - Add `agentic stories find` to BOOTSTRAP SEQUENCE after context loading
+
+        - Add story availability check to PLANNING LOOP before phase files
+
+        - Add to CRITICAL RULES: "Story discovery must complete before phase determination"
+
+        '
+      target_files:
+      - docs/prompts/orchestration_planner.md
+  - name: Phase 2 - Orchestration-Executor Updates
+    id: phase_02
+    status: pending
+    success_criteria:
+    - orchestration-executor/process.yml validation gate includes story validation
+      check
+    - orchestration-executor/process.yml loop_spawn_agent passes story context for
+      UAT phases
+    - orchestration-executor/inputs.yml references user stories definition
+    - orchestration_executor.md execution workflow includes story validation checkpoint
+    tasks:
+    - id: phase_02_001
+      name: Add story validation to executor validation gate
+      status: completed
+      priority: critical
+      description: 'Extend the validation_gate step in orchestration-executor/process.yml
+        to:
+
+        - Check if plan has affected_stories metadata
+
+        - If stories listed: verify UAT phase validated those specific stories
+
+        - If stories tested: verify story test results are captured
+
+        - Add FENCE: "Cannot proceed to shutdown if affected stories have test_status=failed"
+
+
+        This ensures the executor enforces story-based success criteria at the gate.
+
+        '
+      target_files:
+      - modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml
+    - id: phase_02_002
+      name: Add story context passing to agent spawning
+      status: completed
+      priority: high
+      description: 'Update loop_spawn_agent step to detect UAT phases and pass story
+        context:
+
+        - When spawning agents for UAT-type phases, include affected_stories in context
+
+        - Reference the specific story files from docs/userstories/
+
+        - Enable agents to update story test_status after validation
+
+        '
+      target_files:
+      - modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml
+    - id: phase_02_003
+      name: Add STORY_REGRESSION feedback trigger
+      status: completed
+      priority: high
+      description: "Add a new feedback trigger to loop_evaluate_triggers:\n\nSTORY_REGRESSION:\n\
+        \  - Condition: UAT agent reports a previously-passing story now fails\n \
+        \ - Action: Check iteration count, if < MAX_ITERATIONS retry with regression\
+        \ context\n  - Escalation: If >= MAX_ITERATIONS, transition to blocked with\
+        \ regression details\n\nThis enables the executor to detect and respond to\
+        \ story regressions.\n"
+      target_files:
+      - modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml
+    - id: phase_02_004
+      name: Update executor inputs.yml with story references
+      status: completed
+      priority: medium
+      description: 'Add to inputs.yml:
+
+        - Reference modules/AgenticGuidance/assets/definitions/user-stories.yml
+
+        - Reference planning-standard.yml story anchoring rules
+
+        - Document story context passing pattern for agent spawning
+
+        '
+      target_files:
+      - modules/AgenticGuidance/agents/orchestration/orchestration-executor/inputs.yml
+    - id: phase_02_005
+      name: Update orchestration_executor.md bootstrap guide
+      status: completed
+      priority: medium
+      description: 'Add story validation checkpoint to the executor bootstrap guide:
+
+        - Add story context loading after plan YAML parsing
+
+        - Add story validation step in EXECUTION WORKFLOW Phase 2
+
+        - Add to CRITICAL RULES: "Validate affected stories in UAT phases"
+
+        '
+      target_files:
+      - docs/prompts/orchestration_executor.md
+  - name: Phase 3 - Planner Agent Updates
+    id: phase_03
+    status: pending
+    success_criteria:
+    - planner-build/process.yml has mandatory affected_stories identification step
+    - planner-reviewer adds story validation to review checklist
+    - planner-orchestration includes story metadata in MMD node annotations
+    - planner-build delegates story creation/update tasks to appropriate plan phases
+    tasks:
+    - id: phase_03_001
+      name: Strengthen affected_stories step in planner-build
+      status: completed
+      priority: critical
+      description: 'Currently planner-build/process.yml (lines 161-168) mentions user
+        story integration
+
+        as an optional consideration. Upgrade to mandatory:
+
+
+        - Make affected_stories identification a distinct step (not embedded in success
+        criteria)
+
+        - Require running `agentic stories find` during objective parsing
+
+        - Add affected_stories field to plan metadata (list of story IDs)
+
+        - When stories affected: include story files in task input references
+
+        - When no stories found: require no_stories_rationale field
+
+        - When new stories needed: add story_creation_tasks to plan
+
+        '
+      target_files:
+      - modules/AgenticGuidance/agents/planner/planner-build/process.yml
+    - id: phase_03_002
+      name: Add story validation fence to planner-reviewer
+      status: completed
+      priority: critical
+      description: 'Add a new fence to planner-reviewer that validates story integration:
+
+
+        New checklist items for review:
+
+        1. Build plans MUST have affected_stories or no_stories_rationale
+
+        2. Test plans with UAT phase MUST reference specific story IDs
+
+        3. Plans modifying user-facing features MUST identify affected stories
+
+        4. Plans with affected_stories MUST have corresponding UAT tasks
+
+
+        This prevents ill-formed plans from reaching execution without story context.
+
+        '
+      target_files:
+      - modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml
+      - modules/AgenticGuidance/agents/planner/planner-reviewer/inputs.yml
+    - id: phase_03_003
+      name: Add story metadata to planner-orchestration MMD generation
+      status: completed
+      priority: medium
+      description: 'Update planner-orchestration/process.yml to include story metadata
+        in generated MMDs:
+
+
+        - When plan has affected_stories, include as MMD header comment
+
+        - UAT phase nodes should annotate which stories they validate
+
+        - STORY_REGRESSION trigger definition in FEEDBACK_TRIGGER section
+
+        - This enables executor to parse story context from MMD directly
+
+        '
+      target_files:
+      - modules/AgenticGuidance/agents/planner/planner-orchestration/process.yml
+  - name: Phase 4 - Testing Guidelines Alignment
+    id: phase_04
+    status: pending
+    success_criteria:
+    - testing.yml references story test metadata fields (last_tested, test_status,
+      test_notes, tested_by_plan)
+    - testing.yml documents story status update pattern for test agents
+    - test-audit process.yml story validation step references new metadata fields
+    tasks:
+    - id: phase_04_001
+      name: Update testing.yml with story test metadata documentation
+      status: completed
+      priority: high
+      description: 'Add to testing.yml:
+
+        - Document the story test metadata fields: last_tested, test_status, test_notes,
+        tested_by_plan
+
+        - Explain how test agents should update story status after validation
+
+        - Reference the CLI commands for story status updates (from companion plan
+        260207CL)
+
+        - Update UAT fence to mention story status tracking
+
+        '
+      target_files:
+      - modules/AgenticGuidance/assets/guidelines/testing.yml
+    - id: phase_04_002
+      name: Update test-audit story validation step
+      status: completed
+      priority: medium
+      description: 'Update test-audit/process.yml step 3 (USER STORY VALIDATION) to:
+
+        - Check story test_status metadata when available
+
+        - Report stories with stale test_status (last_tested > 30 days or missing)
+
+        - Include story regression detection (previously passed, now failing)
+
+        - Reference specific metadata fields in audit output format
+
+        '
+      target_files:
+      - modules/AgenticGuidance/agents/test/test-audit/process.yml
+  open_questions:
+  - id: gu-q-001
+    question: Should the story-first planning fence be blocking or warning-level for
+      guidance-only plans (teach phase)?
+    severity: medium
+    status: pending
+    context: 'Build plans clearly need story anchoring. But guidance-only plans (like
+      this one)
+
+      may not have direct user story impact. The escape hatch (no_stories_rationale)
+      handles
+
+      this, but should we make it a softer warning for teach plans?
+
+      '
+    created_at: '2026-02-07'
+    asked_by: planner-guidance
+  - id: gu-q-002
+    question: Should planner-build be able to create new user stories directly, or
+      should it only flag the need?
+    severity: medium
+    status: pending
+    context: 'The inputs.yml says planners have remit to update/create/delete stories.
+      But creating
+
+      stories during build planning could introduce unreviewed stories. Alternative:
+      planner-build
+
+      flags story_creation_needed and a separate teach phase handles creation.
+
+      '
+    created_at: '2026-02-07'
+    asked_by: planner-guidance

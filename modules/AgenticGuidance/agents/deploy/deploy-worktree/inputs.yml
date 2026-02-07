@@ -23,8 +23,7 @@ inputs:
       example: "/home/code/AgenticEngineering"
       note: |
         REPO_ROOT is typically the same as target_project_path.
-        Used in git commands: git worktree add ${REPO_ROOT}/../<worktree_name> <branch>
-        Used for path resolution: ${REPO_ROOT}/docs/plans/, ${REPO_ROOT}/*.code-workspace
+        Used by CLI for path resolution: ${REPO_ROOT}/docs/plans/, ${REPO_ROOT}/*.code-workspace
 
     - name: "branch_name"
       type: "string"
@@ -39,12 +38,12 @@ inputs:
       default: "main"
       example: "main"
 
-  # SIGNPOST: Variable usage in git commands
+  # SIGNPOST: Variable usage in CLI commands
   # =========================================
-  # REPO_ROOT is used for:
-  # 1. Worktree creation: git worktree add ${REPO_ROOT}/../<worktree_name> <branch>
-  # 2. Path resolution: ${REPO_ROOT}/docs/plans/live/YYMMDDXX_description/
-  # 3. VS Code workspace: ${REPO_ROOT}/*.code-workspace (glob pattern for filename discovery)
+  # REPO_ROOT is used by CLI for:
+  # 1. Path resolution: ${REPO_ROOT}/docs/plans/live/YYMMDDXX_description/
+  # 2. VS Code workspace: ${REPO_ROOT}/*.code-workspace (glob pattern for filename discovery)
+  # CLI handles git worktree commands internally
   # =========================================
 
   agent_context:
@@ -99,8 +98,8 @@ inputs:
 
   # Deploy-worktree specific definitions
   # Per context-minimisation.yml: provide only required information
-  # Policy content moved to worktree-and-branching.yml guideline
-  # Naming conventions in plans.yml#naming_convention
+  # Manual git/workspace procedures removed - CLI handles all operations
+  # Policy content in worktree-and-branching.yml, naming in plans.yml#naming_convention
   definitions:
     # Worktree naming convention
     worktree_naming_convention: |
@@ -125,43 +124,18 @@ inputs:
       - Format: "RepoName (branch-name)"
       - Example: "AgenticEngineering (agenticguidance)"
 
-    # Command reference only - policy in worktree-and-branching.yml
-    git_worktree_commands: |
-      Commands:
-      - Create: git worktree add -b <branch> <path>
-      - List: git worktree list
-      - Remove: git worktree remove <path>
-
-    # VS Code specific - not covered elsewhere
-    workspace_file: |
-      VS Code workspace file (*.code-workspace) is a JSON configuration that:
-      - Defines multiple folder roots for the workspace
-      - Configures git repository scanning for multi-repo support
-
-      When adding a new worktree:
-      1. Add folder entry with name format: "RepoName (branch-name)"
-      2. Add path to git.scanRepositories array
-      3. Preserve JSON formatting (tabs, trailing commas)
-
-    # Operational checklist - not policy
-    worktree_operations: |
-      Creating a new worktree:
-      1. Determine repository root (git rev-parse --show-toplevel)
-      2. Choose branch name following conventions (see worktree-and-branching.yml)
-      3. Create worktree: git -C <main-repo-path> worktree add -b <branch> <worktree-path>
-      4. Verify creation: git worktree list
-      5. Update workspace file with new folder and git scan path
-      6. Validate JSON syntax
-
-      Safety checks:
-      - Verify worktree path doesn't already exist
-      - Ensure branch name doesn't conflict with existing branches
-      - Validate workspace file remains valid JSON after modification
-      - Confirm git operations succeed before updating workspace file
-
     # Planning structure reference - see plans.yml for full definition
     planning_scaffolding: |
       Every new worktree requires a planning folder in docs/plans/live/ (YYMMDDXX_description pattern).
       Structure: live/ for active files, completed/ for finished work.
       CLI command 'agentic plan init' enforces naming convention and creates scaffolding.
       See plans.yml for full requirements.
+
+    # CLI commands reference
+    cli_commands: |
+      All worktree and plan operations are handled by the CLI:
+      - Create worktree + plan: `agentic plan init <branch> --description <desc>`
+      - List worktrees: `agentic worktree list`
+      - Remove worktree: `agentic worktree remove <path>`
+      - Worktree status: `agentic worktree status`
+      Do NOT run manual git worktree commands or modify workspace files directly.

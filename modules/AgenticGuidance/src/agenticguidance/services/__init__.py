@@ -7,12 +7,13 @@ Each module provides a specific domain of functionality:
 - config: Configuration management with tiered loading
 - state: Process state registry and file locking
 - context: Plan resolution and role context loading
-- plan: Plan movement and archival workflows
+- plan: Plan movement and archival workflows + CRUD operations (PlanService)
 - environment: Environment variable management
 - template: Jinja2 template rendering
 - preset: Task preset loading
 - session: Tmux session lifecycle management
 - claude_session: Claude Code session state management
+- ralph: Ralph Loop plan discovery and prioritization
 """
 
 from .config import (
@@ -40,8 +41,17 @@ from .plan import (
     FolderMoveResult,
     GitSafetyChecker,
     MoveResult,
+    PhaseData,
+    PlanCreateResult,
+    PlanData,
+    PlanDeleteResult,
+    PlanMetadata,
     PlanMovementWorkflow,
+    PlanService,
+    PlanUpdateResult,
+    TaskData,
     TaskMoveResult,
+    ValidationResult,
 )
 from .preset import (
     PresetLoadResult,
@@ -76,6 +86,16 @@ from .template import (
     TemplateWorkflow,
     create_template_context_from_project,
 )
+from .ralph import (
+    PlanAction,
+    PlanInfo,
+    RalphLoopService,
+)
+from .task import (
+    Task,
+    TaskService,
+    TaskStatus,
+)
 
 __all__ = [
     # Config services
@@ -100,8 +120,17 @@ __all__ = [
     "FolderMoveResult",
     "GitSafetyChecker",
     "MoveResult",
+    "PhaseData",
+    "PlanCreateResult",
+    "PlanData",
+    "PlanDeleteResult",
+    "PlanMetadata",
     "PlanMovementWorkflow",
+    "PlanService",
+    "PlanUpdateResult",
+    "TaskData",
     "TaskMoveResult",
+    "ValidationResult",
     # Preset services
     "PresetLoadResult",
     "TaskPresetWorkflow",
@@ -128,4 +157,12 @@ __all__ = [
     "TemplateContext",
     "TemplateWorkflow",
     "create_template_context_from_project",
+    # Ralph Loop services
+    "PlanAction",
+    "PlanInfo",
+    "RalphLoopService",
+    # Task services
+    "Task",
+    "TaskService",
+    "TaskStatus",
 ]

@@ -185,7 +185,6 @@ class TestSessionSpawnCommand:
         assert "--print" in cmd
         assert "--max-turns" in cmd
         assert "5" in cmd
-        assert "--prompt" in cmd
         assert "Test task" in cmd
 
         # Verify session was saved
@@ -194,16 +193,15 @@ class TestSessionSpawnCommand:
         assert sessions[0]["status"] == "running"
         assert sessions[0]["pid"] == 12345
 
-    @patch("agenticcli.commands.session.subprocess.run")
-    def test_spawn_foreground_success(self, mock_run, mock_sessions_dir, capsys):
+    @patch("agenticcli.commands.session.subprocess.Popen")
+    def test_spawn_foreground_success(self, mock_popen, mock_sessions_dir, capsys):
         """Test successful foreground spawn."""
         from agenticcli.commands import session
 
-        mock_run.return_value = MagicMock(
-            returncode=0,
-            stdout="Task completed successfully",
-            stderr="",
-        )
+        mock_process = MagicMock()
+        mock_process.returncode = 0
+        mock_process.communicate.return_value = ("Task completed successfully", "")
+        mock_popen.return_value = mock_process
 
         args = SimpleNamespace(
             prompt="Test task",
@@ -214,9 +212,9 @@ class TestSessionSpawnCommand:
 
         session.cmd_spawn(args)
 
-        # Verify run was called
-        mock_run.assert_called_once()
-        call_args = mock_run.call_args
+        # Verify Popen was called
+        mock_popen.assert_called_once()
+        call_args = mock_popen.call_args
         cmd = call_args[0][0]
         assert "claude" in cmd
 
@@ -225,16 +223,15 @@ class TestSessionSpawnCommand:
         assert len(sessions) == 1
         assert sessions[0]["status"] == "completed"
 
-    @patch("agenticcli.commands.session.subprocess.run")
-    def test_spawn_foreground_failure(self, mock_run, mock_sessions_dir, capsys):
+    @patch("agenticcli.commands.session.subprocess.Popen")
+    def test_spawn_foreground_failure(self, mock_popen, mock_sessions_dir, capsys):
         """Test foreground spawn with failure."""
         from agenticcli.commands import session
 
-        mock_run.return_value = MagicMock(
-            returncode=1,
-            stdout="",
-            stderr="Command failed",
-        )
+        mock_process = MagicMock()
+        mock_process.returncode = 1
+        mock_process.communicate.return_value = ("", "Command failed")
+        mock_popen.return_value = mock_process
 
         args = SimpleNamespace(
             prompt="Failing task",
@@ -408,12 +405,11 @@ class TestSessionStopCommand:
             force=False,
         )
 
-        with pytest.raises(SystemExit) as exc_info:
-            session.cmd_stop(args)
+        # Should succeed without raising SystemExit
+        session.cmd_stop(args)
 
-        assert exc_info.value.code == 1
         captured = capsys.readouterr()
-        assert "not running" in captured.err
+        assert "already in terminal state" in captured.out
 
     @patch("os.kill")
     def test_stop_running_session(self, mock_kill, mock_sessions_dir, sample_session_data, capsys):
@@ -470,12 +466,11 @@ class TestSessionStopCommand:
             force=False,
         )
 
-        with pytest.raises(SystemExit) as exc_info:
-            session.cmd_stop(args)
+        # Should succeed without raising SystemExit
+        session.cmd_stop(args)
 
-        assert exc_info.value.code == 1
         captured = capsys.readouterr()
-        assert "already exited" in captured.err
+        assert "already exited" in captured.out
 
 
 class TestSessionStatusCommand:
@@ -609,3 +604,344 @@ class TestSessionHandleRouting:
         assert exc_info.value.code == 1
         captured = capsys.readouterr()
         assert "Usage:" in captured.err
+
+
+class TestResolvePlanFolder:
+    """Tests for _resolve_plan_folder helper."""
+
+    def test_resolve_existing_plan(self, tmp_path, monkeypatch):
+        """Test resolving an existing plan folder in docs/plans/live/."""
+        from agenticcli.commands import session
+
+        live_dir = tmp_path / "docs" / "plans" / "live"
+        plan_dir = live_dir / "260207TA_cli_task_spawn"
+        plan_dir.mkdir(parents=True)
+
+        monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
+
+        result = session._resolve_plan_folder("260207TA_cli_task_spawn")
+        assert result == plan_dir
+
+    def test_resolve_completed_plan(self, tmp_path, monkeypatch):
+        """Test resolving a plan in docs/plans/completed/."""
+        from agenticcli.commands import session
+
+        completed_dir = tmp_path / "docs" / "plans" / "completed"
+        plan_dir = completed_dir / "260203TS_task_service"
+        plan_dir.mkdir(parents=True)
+
+        monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
+
+        result = session._resolve_plan_folder("260203TS_task_service")
+        assert result == plan_dir
+
+    def test_resolve_nonexistent_plan(self, tmp_path, monkeypatch):
+        """Test resolving a plan that doesn't exist."""
+        from agenticcli.commands import session
+
+        (tmp_path / "docs" / "plans" / "live").mkdir(parents=True)
+        monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
+
+        result = session._resolve_plan_folder("nonexistent_plan")
+        assert result is None
+
+
+class TestBuildRolePrompt:
+    """Tests for _build_role_prompt helper."""
+
+    def test_role_prompt_without_plan(self):
+        """Test building a role prompt without plan context."""
+        from agenticcli.commands import session
+
+        prompt = session._build_role_prompt("build-python", None)
+        assert "build-python" in prompt
+        assert "agentic context bootstrap" in prompt
+
+    def test_role_prompt_with_plan(self, tmp_path):
+        """Test building a role prompt with plan context."""
+        from agenticcli.commands import session
+
+        plan_folder = tmp_path / "260207TA_cli_task_spawn"
+        plan_folder.mkdir()
+
+        prompt = session._build_role_prompt("build-python", plan_folder)
+        assert "build-python" in prompt
+        assert "260207TA_cli_task_spawn" in prompt
+        assert "agentic plan task list" in prompt
+
+
+class TestBuildTaskPrompt:
+    """Tests for _build_task_prompt helper."""
+
+    def test_task_prompt_with_valid_task(self, tmp_path):
+        """Test building a task prompt from a valid plan file."""
+        from agenticcli.commands import session
+
+        plan_folder = tmp_path / "260207TA_test"
+        plan_folder.mkdir()
+
+        # Create a plan_build.yml with a task
+        plan_file = plan_folder / "plan_build.yml"
+        plan_file.write_text("""
+phases:
+  - name: "Test Phase"
+    tasks:
+      - id: "CLI_001"
+        name: "Add --task argument"
+        status: "pending"
+        description: "Add the --task argument to session spawn."
+        target_files:
+          - modules/AgenticCLI/src/agenticcli/commands/session.py
+        inputs:
+          - modules/AgenticCLI/src/agenticcli/commands/plan.py
+        guidance: "Follow existing patterns."
+""")
+
+        prompt = session._build_task_prompt("CLI_001", plan_folder)
+        assert prompt is not None
+        assert "CLI_001" in prompt
+        assert "Add --task argument" in prompt
+        assert "session.py" in prompt
+        assert "agentic plan task complete" in prompt
+
+    def test_task_prompt_with_invalid_task(self, tmp_path):
+        """Test building a task prompt for a nonexistent task."""
+        from agenticcli.commands import session
+
+        plan_folder = tmp_path / "260207TA_test"
+        plan_folder.mkdir()
+
+        plan_file = plan_folder / "plan_build.yml"
+        plan_file.write_text("""
+phases:
+  - name: "Test Phase"
+    tasks:
+      - id: "CLI_001"
+        name: "Existing task"
+        status: "pending"
+        description: "A task that exists."
+""")
+
+        prompt = session._build_task_prompt("NONEXISTENT", plan_folder)
+        assert prompt is None
+
+
+class TestSpawnWithRoleAndPlan:
+    """Tests for spawn with --role and --plan flags."""
+
+    @patch("agenticcli.commands.session.subprocess.Popen")
+    def test_spawn_with_role(self, mock_popen, mock_sessions_dir, tmp_path, monkeypatch, capsys):
+        """Test spawn with --role constructs prompt and spawns agent."""
+        from agenticcli.commands import session
+
+        # Set up plan folder
+        live_dir = tmp_path / "docs" / "plans" / "live"
+        plan_dir = live_dir / "260207TA_test"
+        plan_dir.mkdir(parents=True)
+        monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
+
+        mock_process = MagicMock()
+        mock_process.pid = 99999
+        mock_popen.return_value = mock_process
+
+        args = SimpleNamespace(
+            prompt=None,
+            role="build-python",
+            task=None,
+            plan="260207TA_test",
+            max_turns=None,
+            background=True,
+            directory=None,
+            dangerously_skip_permissions=False,
+        )
+
+        session.cmd_spawn(args)
+
+        # Verify Popen was called with a prompt containing the role
+        mock_popen.assert_called_once()
+        cmd = mock_popen.call_args[0][0]
+        # The last element should be the prompt
+        prompt_text = cmd[-1]
+        assert "build-python" in prompt_text
+
+    @patch("agenticcli.commands.session.subprocess.Popen")
+    def test_spawn_with_task(self, mock_popen, mock_sessions_dir, tmp_path, monkeypatch, capsys):
+        """Test spawn with --task loads task context and spawns agent."""
+        from agenticcli.commands import session
+
+        # Set up plan folder with task
+        live_dir = tmp_path / "docs" / "plans" / "live"
+        plan_dir = live_dir / "260207TA_test"
+        plan_dir.mkdir(parents=True)
+
+        plan_file = plan_dir / "plan_build.yml"
+        plan_file.write_text("""
+phases:
+  - name: "Build Phase"
+    tasks:
+      - id: "CLI_001"
+        name: "Add feature"
+        status: "pending"
+        description: "Add a new feature."
+        target_files:
+          - src/main.py
+""")
+
+        monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
+
+        mock_process = MagicMock()
+        mock_process.pid = 88888
+        mock_popen.return_value = mock_process
+
+        args = SimpleNamespace(
+            prompt=None,
+            role=None,
+            task="CLI_001",
+            plan="260207TA_test",
+            max_turns=None,
+            background=True,
+            directory=None,
+            dangerously_skip_permissions=False,
+        )
+
+        session.cmd_spawn(args)
+
+        mock_popen.assert_called_once()
+        cmd = mock_popen.call_args[0][0]
+        prompt_text = cmd[-1]
+        assert "CLI_001" in prompt_text
+        assert "Add feature" in prompt_text
+
+    def test_spawn_task_requires_plan(self, mock_sessions_dir, capsys):
+        """Test that --task without --plan fails."""
+        from agenticcli.commands import session
+
+        args = SimpleNamespace(
+            prompt=None,
+            role=None,
+            task="CLI_001",
+            plan=None,
+            max_turns=None,
+            background=False,
+            directory=None,
+            dangerously_skip_permissions=False,
+        )
+
+        with pytest.raises(SystemExit) as exc_info:
+            session.cmd_spawn(args)
+
+        assert exc_info.value.code == 1
+        captured = capsys.readouterr()
+        assert "--task requires --plan" in captured.err
+
+    def test_spawn_invalid_plan(self, mock_sessions_dir, tmp_path, monkeypatch, capsys):
+        """Test that spawn with nonexistent plan fails."""
+        from agenticcli.commands import session
+
+        (tmp_path / "docs" / "plans" / "live").mkdir(parents=True)
+        monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
+
+        args = SimpleNamespace(
+            prompt=None,
+            role="build-python",
+            task=None,
+            plan="nonexistent_plan",
+            max_turns=None,
+            background=False,
+            directory=None,
+            dangerously_skip_permissions=False,
+        )
+
+        with pytest.raises(SystemExit) as exc_info:
+            session.cmd_spawn(args)
+
+        assert exc_info.value.code == 1
+        captured = capsys.readouterr()
+        assert "Plan folder not found" in captured.err
+
+    def test_spawn_invalid_task_id(self, mock_sessions_dir, tmp_path, monkeypatch, capsys):
+        """Test that spawn with invalid task ID fails gracefully."""
+        from agenticcli.commands import session
+
+        live_dir = tmp_path / "docs" / "plans" / "live"
+        plan_dir = live_dir / "260207TA_test"
+        plan_dir.mkdir(parents=True)
+
+        plan_file = plan_dir / "plan_build.yml"
+        plan_file.write_text("""
+phases:
+  - name: "Build Phase"
+    tasks:
+      - id: "CLI_001"
+        name: "Real task"
+        status: "pending"
+        description: "A real task."
+""")
+
+        monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
+
+        args = SimpleNamespace(
+            prompt=None,
+            role=None,
+            task="NONEXISTENT",
+            plan="260207TA_test",
+            max_turns=None,
+            background=False,
+            directory=None,
+            dangerously_skip_permissions=False,
+        )
+
+        with pytest.raises(SystemExit) as exc_info:
+            session.cmd_spawn(args)
+
+        assert exc_info.value.code == 1
+        captured = capsys.readouterr()
+        assert "Task not found" in captured.err
+
+    def test_spawn_no_prompt_no_role_no_task(self, mock_sessions_dir, capsys):
+        """Test that spawn without any prompt source fails."""
+        from agenticcli.commands import session
+
+        args = SimpleNamespace(
+            prompt=None,
+            role=None,
+            task=None,
+            plan=None,
+            max_turns=None,
+            background=False,
+            directory=None,
+            dangerously_skip_permissions=False,
+        )
+
+        with pytest.raises(SystemExit) as exc_info:
+            session.cmd_spawn(args)
+
+        assert exc_info.value.code == 1
+        captured = capsys.readouterr()
+        assert "Prompt is required" in captured.err
+
+    @patch("agenticcli.commands.session.subprocess.Popen")
+    def test_spawn_prompt_still_works_standalone(self, mock_popen, mock_sessions_dir, capsys):
+        """Test that --prompt still works without --role or --task."""
+        from agenticcli.commands import session
+
+        mock_process = MagicMock()
+        mock_process.pid = 77777
+        mock_popen.return_value = mock_process
+
+        args = SimpleNamespace(
+            prompt="Hello world",
+            role=None,
+            task=None,
+            plan=None,
+            max_turns=None,
+            background=True,
+            directory=None,
+            dangerously_skip_permissions=False,
+        )
+
+        session.cmd_spawn(args)
+
+        mock_popen.assert_called_once()
+        cmd = mock_popen.call_args[0][0]
+        assert "Hello world" in cmd

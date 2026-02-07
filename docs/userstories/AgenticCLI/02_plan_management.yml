@@ -1,0 +1,308 @@
+# User Stories: CLI Plan Management
+# Covers plan init, scaffold, status, list, validate, archive, task, and phase operations
+
+stories:
+  # ============================================================================
+  # PLAN INITIALIZATION
+  # ============================================================================
+
+  - id: "US-CLI-010"
+    title: "Initialize Plan with Worktree"
+    category: "plan_management"
+    priority: "critical"
+    as_a: "developer starting a new feature"
+    i_want: "to run a single command that creates both a worktree and a plan folder"
+    so_that: "I have the correct workspace structure without manual naming or setup"
+    acceptance_criteria:
+      - "agentic plan init <branch> creates a git worktree at ../repo-<branch>"
+      - "A plan folder is created in docs/plans/live/ with YYMMDDXX_description naming"
+      - "The plan folder contains the required scaffold structure"
+      - "The --description flag customizes the plan folder suffix"
+      - "The --base flag specifies the base branch for the worktree"
+      - "If worktree already exists, it is reused without error"
+      - "Plan folder name is generated programmatically, not interpreted by agents"
+    related_commands:
+      - "agentic plan init <branch> --description <desc> --base <base>"
+    related_agents:
+      - "deploy-worktree"
+
+  - id: "US-CLI-011"
+    title: "Scaffold Plan Folder Only"
+    category: "plan_management"
+    priority: "high"
+    as_a: "developer who already has a worktree"
+    i_want: "to scaffold a plan folder without creating a new worktree"
+    so_that: "I can add planning structure to an existing workspace"
+    acceptance_criteria:
+      - "agentic plan scaffold <name> creates a plan folder in docs/plans/live/"
+      - "The --worktree flag associates the plan with a specific worktree path"
+      - "The scaffolded folder contains plan_build.yml and orchestration placeholder"
+      - "The command fails clearly if the plan folder already exists"
+    related_commands:
+      - "agentic plan scaffold <name>"
+      - "agentic plan scaffold <name> --worktree <path>"
+
+  # ============================================================================
+  # PLAN STATUS AND LISTING
+  # ============================================================================
+
+  - id: "US-CLI-012"
+    title: "View Plan Status"
+    category: "plan_management"
+    priority: "high"
+    as_a: "developer reviewing current work"
+    i_want: "to see the status of a plan at a glance"
+    so_that: "I know how many tasks are completed, in progress, or pending"
+    acceptance_criteria:
+      - "agentic plan status shows plan name, phase count, task counts by status"
+      - "Without arguments, auto-detects the active plan from the current branch"
+      - "With a path argument, shows status for the specified plan"
+      - "JSON output mode (-j) returns structured status data"
+    related_commands:
+      - "agentic plan status"
+      - "agentic plan status <path>"
+
+  - id: "US-CLI-013"
+    title: "List All Plans"
+    category: "plan_management"
+    priority: "high"
+    as_a: "developer managing multiple features"
+    i_want: "to see all active and completed plans"
+    so_that: "I have visibility into all ongoing and past work"
+    acceptance_criteria:
+      - "agentic plan list shows all plans in docs/plans/live/ and docs/plans/completed/"
+      - "Each plan shows name, status, and creation date"
+      - "Plans are organized by status (live vs completed)"
+      - "JSON output mode is supported for scripting"
+    related_commands:
+      - "agentic plan list"
+
+  - id: "US-CLI-014"
+    title: "Validate Plan Structure"
+    category: "plan_management"
+    priority: "medium"
+    as_a: "developer or agent"
+    i_want: "to validate that a plan folder has the correct structure"
+    so_that: "I catch structural issues before execution begins"
+    acceptance_criteria:
+      - "agentic plan validate checks for required files (plan_build.yml, orchestration_*.mmd)"
+      - "Reports missing or malformed files with clear messages"
+      - "Returns exit code 0 on success, non-zero on failure"
+      - "The --strict flag treats warnings as errors"
+    related_commands:
+      - "agentic plan validate <path>"
+
+  # ============================================================================
+  # TASK MANAGEMENT
+  # ============================================================================
+
+  - id: "US-CLI-020"
+    title: "List Plan Tasks"
+    category: "task_management"
+    priority: "critical"
+    as_a: "developer or agent working on a plan"
+    i_want: "to see all tasks in the current plan with their status"
+    so_that: "I know what work remains and what is currently in progress"
+    acceptance_criteria:
+      - "agentic plan task list shows all tasks with ID, name, status, and phase"
+      - "The --status flag filters by status (pending, in_progress, completed, all)"
+      - "The --verbose flag shows full task details including guidance and criteria"
+      - "Auto-detects the plan folder if --plan is not specified"
+      - "JSON output is supported"
+    related_commands:
+      - "agentic plan task list"
+      - "agentic plan task list --status pending --verbose"
+
+  - id: "US-CLI-021"
+    title: "Get Current Task"
+    category: "task_management"
+    priority: "critical"
+    as_a: "agent beginning a work iteration"
+    i_want: "to know which task I should work on next"
+    so_that: "I can start executing without manual task selection"
+    acceptance_criteria:
+      - "agentic plan task current returns the first in_progress task"
+      - "If no in_progress task exists, returns the first pending task"
+      - "Returns task ID, description, phase, guidance, and success criteria"
+      - "Returns empty result with clear message when no tasks remain"
+      - "JSON output includes all task metadata"
+    related_commands:
+      - "agentic plan task current"
+      - "agentic plan task current --plan <path>"
+    related_agents:
+      - "orchestration-executor"
+
+  - id: "US-CLI-022"
+    title: "Start and Complete Tasks"
+    category: "task_management"
+    priority: "critical"
+    as_a: "agent executing plan tasks"
+    i_want: "to mark tasks as started and completed"
+    so_that: "plan progress is tracked accurately across sessions"
+    acceptance_criteria:
+      - "agentic plan task start <id> sets status to in_progress"
+      - "Start requires orchestration_*.mmd to exist (plan must be orchestrated)"
+      - "agentic plan task complete <id> sets status to completed with timestamp"
+      - "Status transitions are validated (cannot complete a pending task directly)"
+      - "File operations are atomic (uses FileLock)"
+      - "Multiple agents cannot start the same task simultaneously"
+    related_commands:
+      - "agentic plan task start <id>"
+      - "agentic plan task complete <id>"
+    related_agents:
+      - "orchestration-executor"
+      - "build-python"
+
+  - id: "US-CLI-023"
+    title: "Add Tasks to Plan"
+    category: "task_management"
+    priority: "high"
+    as_a: "planner agent discovering new work"
+    i_want: "to add tasks to an existing plan"
+    so_that: "new requirements are captured within the plan structure"
+    acceptance_criteria:
+      - "agentic plan task add <description> creates a new pending task"
+      - "The --phase flag assigns the task to a specific phase"
+      - "The --id flag allows custom task IDs"
+      - "The --priority flag sets task priority (low, medium, high)"
+      - "Without --phase, the task is added to the last phase"
+      - "Auto-generated IDs follow the phase_sequence convention"
+    related_commands:
+      - "agentic plan task add <desc>"
+      - "agentic plan task add <desc> --phase P2 --priority high"
+
+  - id: "US-CLI-024"
+    title: "Update Task Status with Notes"
+    category: "task_management"
+    priority: "high"
+    as_a: "agent reporting on task progress"
+    i_want: "to update a task's status and add completion notes"
+    so_that: "the plan captures not just status but context about the work done"
+    acceptance_criteria:
+      - "agentic plan task update <id> --status <status> changes the task status"
+      - "Supports statuses: pending, in_progress, completed, blocked"
+      - "The --note flag adds text to the task record"
+      - "When marking completed, a timestamp is automatically recorded"
+      - "Status transitions are validated"
+    related_commands:
+      - "agentic plan task update <id> --status completed --note 'Tests passing'"
+
+  - id: "US-CLI-025"
+    title: "Prefill Tasks from Preset"
+    category: "task_management"
+    priority: "medium"
+    as_a: "planner agent setting up a standard workflow"
+    i_want: "to populate a plan with tasks from a known preset template"
+    so_that: "common task patterns are reused without manual entry"
+    acceptance_criteria:
+      - "agentic plan task prefill --preset <name> adds template tasks to the plan"
+      - "Available presets include planner-build and builder"
+      - "The --dry-run flag previews changes without modifying the plan"
+      - "Tasks are added to appropriate phases based on the preset definition"
+    related_commands:
+      - "agentic plan task prefill --preset planner-build"
+      - "agentic plan task prefill --preset builder --dry-run"
+
+  # ============================================================================
+  # PHASE MANAGEMENT
+  # ============================================================================
+
+  - id: "US-CLI-015"
+    title: "Manage Plan Phases"
+    category: "phase_management"
+    priority: "high"
+    as_a: "planner agent structuring a plan"
+    i_want: "to add, list, and update phases within a plan"
+    so_that: "the plan has clear execution milestones"
+    acceptance_criteria:
+      - "agentic plan phase add --id P1 --name 'Name' creates a new phase"
+      - "The --description flag adds scope information to the phase"
+      - "agentic plan phase list shows all phases with status and task counts"
+      - "agentic plan phase update <id> --status in_progress changes phase status"
+      - "Phase IDs are unique within a plan"
+    related_commands:
+      - "agentic plan phase add --id P1 --name 'Core Implementation'"
+      - "agentic plan phase list"
+      - "agentic plan phase update P1 --status completed"
+
+  # ============================================================================
+  # ORCHESTRATION AND ARCHIVING
+  # ============================================================================
+
+  - id: "US-CLI-016"
+    title: "Generate Orchestration MMD"
+    category: "orchestration"
+    priority: "high"
+    as_a: "planner agent finalizing a plan"
+    i_want: "to generate a Mermaid flowchart from the plan YAML files"
+    so_that: "the execution order and agent routing are defined for the executor"
+    acceptance_criteria:
+      - "agentic plan orchestration generate creates an orchestration_*.mmd file"
+      - "The MMD includes phase nodes with AGENT_ROUTING metadata"
+      - "Test phases include test-fix loop structure"
+      - "Feedback triggers are defined for failure handling"
+      - "The --force flag overwrites existing MMD files"
+      - "CLI commands are embedded as comments for agent reference"
+    related_commands:
+      - "agentic plan orchestration generate"
+      - "agentic plan orchestration validate"
+    related_agents:
+      - "planner-orchestration"
+      - "orchestration-executor"
+
+  - id: "US-CLI-017"
+    title: "Archive Completed Plans"
+    category: "archiving"
+    priority: "high"
+    as_a: "developer finishing a feature"
+    i_want: "to archive completed plans from live/ to completed/"
+    so_that: "the live folder only contains active work"
+    acceptance_criteria:
+      - "agentic plan archive <path> moves the plan folder to docs/plans/completed/"
+      - "Auto-archiving triggers when all tasks in a plan are completed"
+      - "agentic plan unarchive --plan <name> moves a plan back to live/"
+      - "The --force flag on unarchive skips confirmation"
+      - "Archived plans retain all files and history"
+    related_commands:
+      - "agentic plan archive <path>"
+      - "agentic plan unarchive --plan <name>"
+
+  - id: "US-CLI-018"
+    title: "Move Completed Tasks"
+    category: "archiving"
+    priority: "medium"
+    as_a: "developer cleaning up a plan"
+    i_want: "to move completed tasks within a plan's completed/ subfolder"
+    so_that: "the active task list stays focused on remaining work"
+    acceptance_criteria:
+      - "agentic plan move task <id> moves a single completed task"
+      - "agentic plan move tasks moves all completed tasks at once"
+      - "agentic plan move folder moves the entire plan folder when all tasks complete"
+      - "The --dry-run flag previews the move without making changes"
+      - "The --force flag skips confirmation prompts"
+    related_commands:
+      - "agentic plan move task <id>"
+      - "agentic plan move tasks --dry-run"
+      - "agentic plan move folder"
+
+  # ============================================================================
+  # USER STORIES MANAGEMENT
+  # ============================================================================
+
+  - id: "US-CLI-019"
+    title: "List and Test User Stories"
+    category: "stories"
+    priority: "medium"
+    as_a: "developer validating plan completion"
+    i_want: "to list user stories from a plan and generate blind test scenarios"
+    so_that: "I can validate that the plan deliverables meet user needs"
+    acceptance_criteria:
+      - "agentic plan stories list shows all user stories defined in plan YAML"
+      - "agentic plan stories test generates blind test scenarios"
+      - "Test output can be saved to YAML or JSON files"
+      - "Test scenarios are derived from acceptance criteria"
+    related_commands:
+      - "agentic plan stories list"
+      - "agentic plan stories test --output tests.yml --format yaml"
+    related_agents:
+      - "test-user-simulator"

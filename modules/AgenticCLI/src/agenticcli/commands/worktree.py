@@ -3,10 +3,13 @@
 Handles git worktree operations with planning folder integration.
 """
 
+import json
 import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
+
+import yaml
 
 
 # Template header for stub files - clearly marks them as requiring action
@@ -60,8 +63,90 @@ def get_repo_root() -> Path:
         sys.exit(1)
 
 
+def load_worktree_registry(repo_root: Path) -> list[dict]:
+    """Load the worktree registry from docs/worktrees.yml.
+
+    Args:
+        repo_root: Repository root path (or any worktree path).
+
+    Returns:
+        List of worktree entries, each with branch, abbreviation, description, path.
+        Returns empty list if registry doesn't exist or can't be parsed.
+    """
+    registry_path = repo_root / "docs" / "worktrees.yml"
+    if not registry_path.exists():
+        # Try finding main worktree's registry
+        try:
+            result = subprocess.run(
+                ["git", "worktree", "list", "--porcelain"],
+                capture_output=True, text=True, check=True, cwd=repo_root,
+            )
+            for line in result.stdout.strip().split("\n"):
+                if line.startswith("worktree "):
+                    candidate = Path(line.split(" ", 1)[1]) / "docs" / "worktrees.yml"
+                    if candidate.exists():
+                        registry_path = candidate
+                        break
+        except subprocess.CalledProcessError:
+            pass
+
+    if not registry_path.exists():
+        return []
+
+    try:
+        data = yaml.safe_load(registry_path.read_text())
+        return data.get("worktrees", []) if data else []
+    except (yaml.YAMLError, OSError):
+        return []
+
+
+def save_worktree_registry(repo_root: Path, entries: list[dict]) -> bool:
+    """Save entries to the worktree registry at docs/worktrees.yml.
+
+    Args:
+        repo_root: Repository root path.
+        entries: List of worktree entry dicts.
+
+    Returns:
+        True if saved successfully, False otherwise.
+    """
+    registry_path = repo_root / "docs" / "worktrees.yml"
+    registry_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        content = {
+            "worktrees": entries,
+        }
+        header = (
+            "# Worktree Registry\n"
+            "# Maps branch names to abbreviations and descriptions for plan folder naming.\n"
+            "# Used by `agentic worktree create` and `generate_plan_folder_name()`.\n\n"
+        )
+        registry_path.write_text(header + yaml.dump(content, default_flow_style=False, sort_keys=False))
+        return True
+    except OSError:
+        return False
+
+
+def lookup_abbreviation(registry: list[dict], branch: str) -> str | None:
+    """Look up abbreviation for a branch in the registry.
+
+    Args:
+        registry: List of worktree entries from load_worktree_registry().
+        branch: Branch name to look up.
+
+    Returns:
+        2-letter abbreviation string, or None if not found.
+    """
+    for entry in registry:
+        if entry.get("branch") == branch:
+            return entry.get("abbreviation")
+    return None
+
+
 def get_repo_abbreviation(repo_name: str) -> str:
     """Generate 2-letter abbreviation for repository name.
+
+    Fallback when branch is not found in worktree registry.
 
     Examples:
         AgenticEngineering -> AE
@@ -75,23 +160,143 @@ def get_repo_abbreviation(repo_name: str) -> str:
     return repo_name[:2].upper()
 
 
-def generate_plan_folder_name(branch: str, repo_root: Path) -> str:
+def generate_plan_folder_name(branch: str, repo_root: Path, abbreviation: str | None = None) -> str:
     """Generate planning folder name: YYMMDD<Abbr>_<branch>.
+
+    Looks up the abbreviation from the worktree registry first.
+    Falls back to capital-letter extraction from repo name if not found.
 
     Args:
         branch: Branch name
         repo_root: Repository root path
+        abbreviation: Optional explicit abbreviation override
 
     Returns:
-        Folder name like "260103AE_feature-auth"
+        Folder name like "260103AC_feature-auth"
     """
     date_prefix = datetime.now().strftime("%y%m%d")
-    repo_name = repo_root.name
-    # Handle names like AgenticEngineering-agentic-cli
-    if "-" in repo_name:
-        repo_name = repo_name.split("-")[0]
-    abbr = get_repo_abbreviation(repo_name)
+
+    if abbreviation:
+        abbr = abbreviation.upper()[:2]
+    else:
+        # Try registry lookup
+        registry = load_worktree_registry(repo_root)
+        abbr = lookup_abbreviation(registry, branch)
+
+        if not abbr:
+            # Fallback to capital-letter extraction
+            repo_name = repo_root.name
+            if "-" in repo_name:
+                repo_name = repo_name.split("-")[0]
+            abbr = get_repo_abbreviation(repo_name)
+
     return f"{date_prefix}{abbr}_{branch}"
+
+
+def find_workspace_file(repo_root: Path) -> Path | None:
+    """Find the .code-workspace file in the repository root.
+
+    Args:
+        repo_root: Repository root path
+
+    Returns:
+        Path to workspace file or None if not found
+    """
+    workspace_files = list(repo_root.glob("*.code-workspace"))
+    return workspace_files[0] if workspace_files else None
+
+
+def update_workspace_add(workspace_file: Path, worktree_path: Path, branch: str, repo_name: str) -> bool:
+    """Add a worktree entry to the workspace file.
+
+    Args:
+        workspace_file: Path to the .code-workspace file
+        worktree_path: Path to the new worktree
+        branch: Branch name
+        repo_name: Repository name for display
+
+    Returns:
+        True if updated successfully, False otherwise
+    """
+    try:
+        with open(workspace_file) as f:
+            workspace = json.load(f)
+
+        # Calculate relative path from workspace file to worktree
+        workspace_dir = workspace_file.parent
+        try:
+            relative_path = str(worktree_path.relative_to(workspace_dir))
+        except ValueError:
+            # Not relative, use ../<path> format
+            relative_path = f"../{worktree_path.name}"
+
+        # Add to folders array
+        folder_entry = {
+            "name": f"{repo_name} ({branch})",
+            "path": relative_path
+        }
+        if "folders" not in workspace:
+            workspace["folders"] = []
+        workspace["folders"].append(folder_entry)
+
+        # Add to git.scanRepositories
+        if "settings" not in workspace:
+            workspace["settings"] = {}
+        if "git.scanRepositories" not in workspace["settings"]:
+            workspace["settings"]["git.scanRepositories"] = ["."]
+        workspace["settings"]["git.scanRepositories"].append(relative_path)
+
+        # Write back
+        with open(workspace_file, "w") as f:
+            json.dump(workspace, f, indent="\t")
+
+        return True
+    except Exception:
+        return False
+
+
+def update_workspace_remove(workspace_file: Path, worktree_path: Path) -> bool:
+    """Remove a worktree entry from the workspace file.
+
+    Args:
+        workspace_file: Path to the .code-workspace file
+        worktree_path: Path to the worktree being removed
+
+    Returns:
+        True if updated successfully, False otherwise
+    """
+    try:
+        with open(workspace_file) as f:
+            workspace = json.load(f)
+
+        # Calculate relative path
+        workspace_dir = workspace_file.parent
+        try:
+            relative_path = str(worktree_path.relative_to(workspace_dir))
+        except ValueError:
+            relative_path = f"../{worktree_path.name}"
+
+        # Remove from folders array
+        if "folders" in workspace:
+            workspace["folders"] = [
+                f for f in workspace["folders"]
+                if f.get("path") != relative_path
+            ]
+
+        # Remove from git.scanRepositories
+        if "settings" in workspace and "git.scanRepositories" in workspace["settings"]:
+            workspace["settings"]["git.scanRepositories"] = [
+                r for r in workspace["settings"]["git.scanRepositories"]
+                if r != relative_path
+            ]
+
+        # Write back
+        with open(workspace_file, "w") as f:
+            json.dump(workspace, f, indent="\t")
+
+        return True
+    except Exception:
+        return False
 
 
 def create_planning_folder(plan_path: Path):
@@ -135,6 +340,26 @@ plan:
     excludes:
       # TODO: List files/modules explicitly out of scope
       # - "src/legacy/"
+
+  # Optional: Explicit file scoping for orchestration visibility
+  # Schema: modules/AgenticGuidance/assets/specifications/plan-schema.yml#impacted_files_schema
+  impacted_files:
+    # TODO: List files that will be modified/created
+    # - path: "src/feature/service.py"
+    #   change_type: create
+    #   change_category: implementation
+    #   reason: "New service module"
+    []
+
+  # Optional: Higher-level artifact impacts
+  # Schema: modules/AgenticGuidance/assets/specifications/plan-schema.yml#impacted_artifacts_schema
+  impacted_artifacts:
+    # TODO: List semantic impacts (APIs, CLI commands, services)
+    # - artifact_type: cli_command
+    #   artifact_identifier: "agentic feature run"
+    #   impact_type: new
+    #   description: "New CLI command for the feature"
+    []
 
   phases:
     # TODO: Define implementation phases
@@ -256,11 +481,14 @@ def cmd_create(args):
         print_info,
         print_json,
         print_success,
+        print_warning,
     )
 
     branch = args.branch
     base = args.base
     skip_plan = args.no_plan
+    abbreviation = getattr(args, "abbreviation", None)
+    description = getattr(args, "description", None)
 
     repo_root = get_repo_root()
     repo_name = repo_root.name
@@ -290,22 +518,61 @@ def cmd_create(args):
         print_error(f"Error creating worktree: {e}")
         sys.exit(1)
 
+    # Save to worktree registry if abbreviation or description provided
+    registry_updated = False
+    if abbreviation or description:
+        registry = load_worktree_registry(repo_root)
+        # Check if entry already exists for this branch
+        existing = [e for e in registry if e.get("branch") == branch]
+        if existing:
+            entry = existing[0]
+            if abbreviation:
+                entry["abbreviation"] = abbreviation.upper()[:2]
+            if description:
+                entry["description"] = description
+            entry["path"] = str(worktree_path)
+        else:
+            new_entry = {
+                "branch": branch,
+                "abbreviation": (abbreviation.upper()[:2]) if abbreviation else get_repo_abbreviation(repo_name.split("-")[0] if "-" in repo_name else repo_name),
+                "description": description or branch,
+                "path": str(worktree_path),
+            }
+            registry.append(new_entry)
+        registry_updated = save_worktree_registry(repo_root, registry)
+        if registry_updated and not is_json_output():
+            console.print(f"  [green]Updated worktree registry[/green]")
+
     # Create planning folder
     plan_folder_name = None
     if not skip_plan:
-        plan_folder_name = generate_plan_folder_name(branch, repo_root)
+        plan_folder_name = generate_plan_folder_name(branch, repo_root, abbreviation=abbreviation)
         plan_path = worktree_path / "docs" / "plans" / "live" / plan_folder_name
 
         create_planning_folder(plan_path)
         if not is_json_output():
             console.print(f"  [green]Created planning folder[/green] at {plan_path}")
 
+    # Update workspace file
+    workspace_updated = False
+    workspace_file = find_workspace_file(repo_root)
+    if workspace_file:
+        workspace_updated = update_workspace_add(workspace_file, worktree_path, branch, repo_name.split("-")[0])
+        if workspace_updated and not is_json_output():
+            console.print(f"  [green]Updated workspace file[/green] {workspace_file.name}")
+        elif not workspace_updated and not is_json_output():
+            print_warning(f"Could not update workspace file {workspace_file.name}")
+
     if is_json_output():
         result = {
             "worktree": str(worktree_path),
             "branch": branch,
             "base": base,
+            "workspace_updated": workspace_updated,
+            "registry_updated": registry_updated,
         }
+        if abbreviation:
+            result["abbreviation"] = abbreviation.upper()[:2]
         if plan_folder_name:
             result["plan_folder"] = f"docs/plans/live/{plan_folder_name}"
         print_json(result)
@@ -316,8 +583,55 @@ def cmd_create(args):
             console.print(f"[dim]Planning folder:[/dim] docs/plans/live/{plan_folder_name}")
 
 
+def _find_main_worktree_path(worktrees: list[dict]) -> str | None:
+    """Find the main worktree path from parsed worktree list.
+
+    Args:
+        worktrees: List of parsed worktree dicts with 'path' and 'branch' keys.
+
+    Returns:
+        Path string of the main/master worktree, or None.
+    """
+    for wt in worktrees:
+        if wt.get("branch") in ("main", "master"):
+            return wt.get("path")
+    return None
+
+
+def _match_plans_to_branch(plan_folders: list[str], branch: str, registry: list[dict]) -> list[str]:
+    """Match plan folder names to a branch using abbreviation or branch name.
+
+    Args:
+        plan_folders: List of plan folder names from main's docs/plans/live/.
+        branch: Branch name to match against.
+        registry: Worktree registry entries.
+
+    Returns:
+        List of matching plan folder names.
+    """
+    matches = []
+    # Get abbreviation for this branch from registry
+    abbr = lookup_abbreviation(registry, branch)
+
+    for folder in plan_folders:
+        # Match by abbreviation in the folder name (positions 6-8)
+        if abbr and len(folder) >= 8 and folder[6:8] == abbr:
+            matches.append(folder)
+        # Match by branch name appearing after the underscore
+        elif "_" in folder:
+            desc_part = folder.split("_", 1)[1] if "_" in folder else ""
+            if desc_part == branch or desc_part.startswith(branch + "_"):
+                matches.append(folder)
+
+    return matches
+
+
 def cmd_list(args):
-    """List all worktrees with their planning folders."""
+    """List all worktrees with their planning folders.
+
+    Main-First Planning aware: scans main worktree's docs/plans/live/
+    and matches plans to feature worktrees via registry abbreviation.
+    """
     from agenticcli.console import (
         is_json_output,
         print_error,
@@ -356,23 +670,47 @@ def cmd_list(args):
     if current_wt:
         worktrees.append(current_wt)
 
+    # Load registry and find main worktree for Main-First Planning
+    registry = load_worktree_registry(repo_root)
+    main_wt_path = _find_main_worktree_path(worktrees)
+
+    # Scan main worktree's plans
+    main_plan_folders = []
+    if main_wt_path:
+        main_plan_dir = Path(main_wt_path) / "docs" / "plans" / "live"
+        if main_plan_dir.exists():
+            main_plan_folders = [d.name for d in main_plan_dir.iterdir() if d.is_dir()]
+
     # Build worktree data with plan folders
     worktree_data = []
     for wt in worktrees:
         wt_path = Path(wt.get("path", ""))
         branch = wt.get("branch", "(bare)")
 
-        # Look for planning folder
-        plan_dir = wt_path / "docs" / "plans" / "live"
-        plan_folders = []
-        if plan_dir.exists():
-            plan_folders = [d.name for d in plan_dir.iterdir() if d.is_dir()]
+        # Look for local planning folders (legacy behavior)
+        local_plan_dir = wt_path / "docs" / "plans" / "live"
+        local_plan_folders = []
+        if local_plan_dir.exists():
+            local_plan_folders = [d.name for d in local_plan_dir.iterdir() if d.is_dir()]
+
+        # Match plans from main worktree (Main-First Planning)
+        main_matched_plans = []
+        if main_wt_path and str(wt_path) != main_wt_path:
+            main_matched_plans = _match_plans_to_branch(main_plan_folders, branch, registry)
+
+        # Get registry metadata
+        reg_entry = next((e for e in registry if e.get("branch") == branch), None)
+        abbreviation = reg_entry.get("abbreviation", "") if reg_entry else ""
+        description = reg_entry.get("description", "") if reg_entry else ""
 
         worktree_data.append(
             {
                 "path": str(wt_path),
                 "branch": branch,
-                "plan_folders": plan_folders,
+                "abbreviation": abbreviation,
+                "description": description,
+                "plan_folders": local_plan_folders,
+                "main_plans": main_matched_plans,
             }
         )
 
@@ -383,16 +721,26 @@ def cmd_list(args):
 
         rows = []
         for wt in worktree_data:
-            plan_str = ", ".join(wt["plan_folders"]) if wt["plan_folders"] else "[dim]-[/dim]"
+            # Combine local and main-first plans for display
+            all_plans = []
+            if wt["plan_folders"]:
+                all_plans.extend(wt["plan_folders"])
+            if wt["main_plans"]:
+                all_plans.extend([f"{p} [dim](main)[/dim]" for p in wt["main_plans"]])
+
+            plan_str = ", ".join(all_plans) if all_plans else "[dim]-[/dim]"
+            abbr_str = f"[yellow]{wt['abbreviation']}[/yellow]" if wt["abbreviation"] else "[dim]-[/dim]"
+
             rows.append(
                 [
                     f"[cyan]{wt['path']}[/cyan]",
                     f"[green]{wt['branch']}[/green]",
+                    abbr_str,
                     plan_str,
                 ]
             )
 
-        print_table("", ["Path", "Branch", "Plan Folders"], rows)
+        print_table("", ["Path", "Branch", "Abbr", "Plans"], rows)
 
 
 def cmd_remove(args):
@@ -464,8 +812,17 @@ def cmd_remove(args):
             cwd=repo_root,
             capture_output=is_json_output(),
         )
+
+        # Update workspace file
+        workspace_updated = False
+        workspace_file = find_workspace_file(repo_root)
+        if workspace_file:
+            workspace_updated = update_workspace_remove(workspace_file, wt_path)
+            if workspace_updated and not is_json_output():
+                console.print(f"  [green]Updated workspace file[/green] {workspace_file.name}")
+
         if is_json_output():
-            print_json({"removed": str(wt_path), "branch": branch})
+            print_json({"removed": str(wt_path), "branch": branch, "workspace_updated": workspace_updated})
         else:
             print_success(f"Removed worktree: {wt_path}")
     except subprocess.CalledProcessError as e:

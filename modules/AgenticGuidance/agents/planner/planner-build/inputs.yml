@@ -71,7 +71,7 @@ inputs:
     # Unified plan example
     - type: file
       path: "modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/live/plan_example.yml"
-      description: "Unified plan example showing how to coordinate multiple phases (Build, Test, Teach) in a single file with root-level inputs and context updates."
+      description: "Unified plan example showing task-level target_files pattern, impacted_artifacts (semantic), and multi-phase coordination."
       required: true
 
 
@@ -133,7 +133,11 @@ inputs:
       required: false
 
   # Build-specific guidelines
-  guidelines: []
+  guidelines:
+    - type: file
+      path: "modules/AgenticGuidance/assets/guidelines/question-workflow.yml"
+      description: "Human-in-the-Loop (HITL) question workflow - when to ask questions, how to generate them, storage patterns, and resumption"
+      required: true
 
   # Build-specific definitions - keep minimal, reference definition files
   # Per context-minimisation.yml: "Provide only the information required for a process to complete its task"
@@ -176,14 +180,14 @@ guidance_modification_fence:
 
   fence: |
     FENCE: GUIDANCE-MODIFICATION-DETECTION
-    Before finalizing any build plan, check if ANY task target_files
+    Before finalizing any build plan, check if ANY task `target_files`
     match the detection_patterns above.
 
     IF MATCH FOUND:
     1. DO NOT proceed with build-only execution
     2. FLAG the plan as requiring teach process validation
     3. ADD to plan output: requires_teach_validation: true
-    4. LIST the specific guidance files being modified in guidance_files_modified
+    4. The matched guidance files are already tracked in task target_files
     5. RECOMMEND running _plan_teach.yml for these changes
 
     RATIONALE: Guidance changes affect agent behavior across the entire
@@ -203,6 +207,5 @@ guidance_modification_fence:
   output_schema_addition: |
     # Add to plan output when guidance modifications detected:
     requires_teach_validation: true
-    guidance_files_modified:
-      - "modules/AgenticGuidance/agents/planner/planner-build/inputs.yml"
-      - "modules/AgenticGuidance/assets/definitions/example.yml"
+    # NOTE: Guidance files are tracked via task-level target_files, not plan-level lists.
+    # The fence detects guidance modifications by scanning task target_files against detection_patterns.

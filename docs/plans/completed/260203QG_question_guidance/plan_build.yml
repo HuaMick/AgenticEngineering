@@ -1,0 +1,742 @@
+name: question-guidance
+worktree_path: /home/code/AgenticEngineering
+branch: main
+status: active
+priority: medium
+worktree: /home/code/AgenticEngineering
+plan_file: docs/plans/live/260203QG_question_guidance/plan_build.yml
+context: 'This plan updates agent guidance documents to teach agents how to generate
+  and handle questions
+
+  when they encounter blockers or need clarification during task execution.
+
+
+  ARCHITECTURE DECISION (CLI-First Strategy):
+
+  - Agents generate well-formed YAML questions when blocked
+
+  - Questions follow 260203QF schema
+
+  - Agents reference CLI commands for human operators
+
+  - Resumption logic checks for answers and continues work
+
+
+  Guidance Updates:
+
+  - When to ask questions (blockers vs solvable issues)
+
+  - How to generate question YAML (severity, context, format)
+
+  - Where to write questions (plan-scoped folders)
+
+  - How to check for answers and resume work
+
+  - CLI references for human operators
+
+  '
+dependencies:
+  depends_on:
+  - plan_id: 260203QF
+    description: Question data model schema
+    status: must_complete_first
+  - plan_id: 260203QC
+    description: CLI commands to reference in guidance
+    status: must_complete_first
+  required_by:
+  - plan_id: 260203QT
+    description: Tmux workflow uses updated agent patterns
+  - plan_id: 260203VP
+    description: Voice daemon consumes questions from agents
+inputs:
+- location: modules/AgenticGuidance/README.md
+  description: Agent structure and category organization
+- location: modules/AgenticGuidance/agents/manifest.yml
+  description: Agent registry and metadata
+- location: modules/AgenticGuidance/assets/guidelines/escalation.yml
+  description: Existing escalation patterns (foundation for question generation)
+- location: modules/AgenticGuidance/assets/examples/planner/plan_example.yml
+  description: Plan structure including open_questions section
+- location: docs/plans/live/260203QF_question_foundation/README.md
+  description: Question/Answer data model schema and file structure
+- location: docs/plans/live/260203QC_question_cli/README.md
+  description: CLI commands for question management
+objective: 'Update agent guidance documents (inputs.yml, process.yml) to teach agents
+  the question workflow.
+
+  Create comprehensive examples and templates for question generation and resumption
+  patterns.
+
+
+  Target agent categories:
+
+  - Orchestration agents (detect decision points requiring human input)
+
+  - Planner agents (populate open_questions in plan YAML via CLI)
+
+  - Builder agents (ask questions when blocked on implementation decisions)
+
+  - Tester agents (ask questions about expected behavior)
+
+
+  Agents will learn to:
+
+  1. Identify when to ask questions vs. make autonomous decisions
+
+  2. Generate well-formed YAML questions with appropriate severity
+
+  3. Include sufficient context for human understanding
+
+  4. Check for answers before escalating
+
+  5. Resume work after receiving clarification
+
+  '
+loop_structures:
+- id: loop_guidance_validation
+  type: guidance-self-review-loop
+  applies_to_phase: Validation Phase
+  trigger: After all guidance updates complete
+  description: 'Agents review updated guidance files for correctness and completeness.
+
+    Validates that question workflow patterns are clear and actionable.
+
+    '
+  exit_criteria:
+    success: All checklist items pass AND spot-check validation passes
+    max_iterations: 3
+    escalation: Escalate to human reviewer with specific gaps identified
+  participants:
+  - agent: planner-reviewer
+    role: Self-reviews guidance against requirements
+  - agent: teacher-update-guidance
+    role: Validates example completeness and clarity
+phases:
+- name: Guideline Asset Creation
+  execution: sequential
+  description: Create question-workflow.yml guideline asset with complete workflow
+    patterns
+  tasks:
+  - id: guide_001
+    name: Create question-workflow.yml guideline
+    description: Create comprehensive guideline for question generation and resumption
+      workflow
+    agent: teacher-update-assets
+    status: completed
+    inputs:
+    - modules/AgenticGuidance/assets/guidelines/escalation.yml
+    - modules/AgenticGuidance/assets/guidelines/iteration.yml
+    - docs/plans/live/260203QF_question_foundation/README.md
+    - docs/plans/live/260203QC_question_cli/README.md
+    target_files:
+    - modules/AgenticGuidance/assets/guidelines/question-workflow.yml
+    guidance: "Create a new guideline file that teaches the complete question workflow\
+      \ pattern.\n\nRequired sections:\n\n1. When to Ask Questions:\n   - Blockers\
+      \ that require human judgment (architecture decisions, business logic, priorities)\n\
+      \   - Missing critical information that cannot be inferred\n   - Conflicting\
+      \ requirements or constraints\n   - High-risk decisions with significant impact\n\
+      \n2. When NOT to Ask Questions (Autonomous Decision-Making):\n   - Technical\
+      \ implementation details (naming, file organization)\n   - Standard patterns\
+      \ with documented precedent\n   - Low-risk choices that can be validated in\
+      \ review\n   - Questions answerable from existing docs/code\n\n3. Question Generation\
+      \ Format:\n   - YAML structure: id, question, severity, status, context, task_id,\
+      \ module\n   - Severity levels: high (blocking), medium (important), low (clarification)\n\
+      \   - Context requirements: task context, attempted solutions, why it's blocking\n\
+      \n4. File Storage Pattern:\n   - Location: docs/plans/live/{plan_id}/questions/pending/{question_id}.yml\n\
+      \   - Filename: YYMMDD_HH_brief_description.yml (timestamped)\n   - States:\
+      \ pending/, answered/, deferred/\n\n5. CLI Command References:\n   - Agent generates\
+      \ YAML: Write directly to questions/pending/\n   - Human answers: `agentic question\
+      \ list`, `agentic question answer <id>`\n   - Agent checks for answers: Read\
+      \ from questions/answered/\n\n6. Resumption Pattern:\n   - Before escalating,\
+      \ check questions/answered/ for new responses\n   - Load answer content and\
+      \ incorporate into decision-making\n   - Continue task execution with clarification\n\
+      \   - Move answered question to questions/answered/ if agent consumed it\n\n\
+      7. Example Scenarios:\n   - Builder blocked on architecture decision\n   - Planner\
+      \ needs priority clarification\n   - Tester uncertain about expected behavior\n\
+      \nReference escalation.yml for escalation trigger patterns (these become question\
+      \ triggers).\n"
+    success_criteria:
+    - Guideline file exists at correct location
+    - All 7 required sections are complete
+    - YAML format examples are syntactically correct
+    - Severity level guidance is clear and actionable
+    - CLI command references match 260203QC implementation
+    - Example scenarios cover builder, planner, and tester contexts
+- name: Orchestration Agent Updates
+  execution: sequential
+  description: Update orchestration agents to detect decision points and coordinate
+    question workflow
+  tasks:
+  - id: orch_001
+    name: Update orchestration-planning inputs.yml
+    description: Add question workflow guidance to orchestration-planning agent
+    agent: teacher-update-guidance
+    status: completed
+    depends_on:
+    - guide_001
+    inputs:
+    - modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml
+    - modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.yml
+    - modules/AgenticGuidance/assets/guidelines/question-workflow.yml
+    target_files:
+    - modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml
+    guidance: "Add reference to question-workflow.yml in the inputs section.\n\nAdd\
+      \ new section after existing guidelines:\n\n```yaml\nguidelines:\n  # ... existing\
+      \ guidelines ...\n\n  - type: file\n    path: \"modules/AgenticGuidance/assets/guidelines/question-workflow.yml\"\
+      \n    description: \"Question generation and resumption patterns for HITL workflow\"\
+      \n    required: true\n```\n\nThis enables orchestration-planning to teach subagent\
+      \ planners about the question workflow.\n"
+    success_criteria:
+    - question-workflow.yml reference added to inputs section
+    - File path is correct and follows convention
+    - Description clearly explains purpose
+  - id: orch_002
+    name: Update orchestration-planning process.yml
+    description: Add question detection and coordination steps to orchestration process
+    agent: teacher-update-guidance
+    status: completed
+    depends_on:
+    - orch_001
+    inputs:
+    - modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.yml
+    - modules/AgenticGuidance/assets/guidelines/question-workflow.yml
+    target_files:
+    - modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.yml
+    guidance: "Add new step in the process steps section after plan creation but before\
+      \ approval:\n\n```yaml\nsteps:\n  # ... existing steps ...\n\n  - |\n    QUESTION\
+      \ WORKFLOW CHECKPOINT (Before Plan Approval):\n    Before submitting plan for\
+      \ approval, check for open questions that require human input.\n\n    1. Check\
+      \ for questions/pending/ in plan folder\n    2. If questions exist:\n      \
+      \ - List pending questions with severity\n       - Inform user: \"Plan has N\
+      \ open questions requiring answers before execution\"\n       - Reference CLI:\
+      \ `agentic question list --plan {plan_id}`\n    3. Plan approval gate:\n   \
+      \    - High-severity questions MUST be answered before approval\n       - Medium/low\
+      \ severity can be deferred to execution phase\n\n    This prevents plan execution\
+      \ from blocking on unanswered critical questions.\n```\n"
+    success_criteria:
+    - Question checkpoint step added to process
+    - Step placement is logical (before approval gate)
+    - Instructions reference CLI commands correctly
+    - Severity-based gating is clear
+  - id: orch_003
+    name: Update orchestration-executor inputs.yml
+    description: Add question workflow guidance to orchestration-executor agent
+    agent: teacher-update-guidance
+    status: completed
+    depends_on:
+    - guide_001
+    inputs:
+    - modules/AgenticGuidance/agents/orchestration/orchestration-executor/inputs.yml
+    - modules/AgenticGuidance/assets/guidelines/question-workflow.yml
+    target_files:
+    - modules/AgenticGuidance/agents/orchestration/orchestration-executor/inputs.yml
+    guidance: 'Add reference to question-workflow.yml in the inputs section.
+
+      Same pattern as orch_001 - add guideline reference for execution-time question
+      handling.
+
+      '
+    success_criteria:
+    - question-workflow.yml reference added
+    - File path and description correct
+- name: Planner Agent Updates
+  execution: parallel
+  description: Update planner agents to populate open_questions and generate questions
+    when needed
+  tasks:
+  - id: plan_001
+    name: Update planner-build inputs.yml
+    description: Add question workflow to planner-build agent
+    agent: teacher-update-guidance
+    status: completed
+    depends_on:
+    - guide_001
+    inputs:
+    - modules/AgenticGuidance/agents/planner/planner-build/inputs.yml
+    - modules/AgenticGuidance/assets/guidelines/question-workflow.yml
+    target_files:
+    - modules/AgenticGuidance/agents/planner/planner-build/inputs.yml
+    guidance: 'Add question-workflow.yml reference to inputs section.
+
+      Planners need this to understand when to populate open_questions in plan YAML.
+
+      '
+    success_criteria:
+    - question-workflow.yml reference added
+    - Placement follows existing guideline references
+  - id: plan_002
+    name: Update planner-build process.yml
+    description: Add open_questions population step to planner-build process
+    agent: teacher-update-guidance
+    status: completed
+    depends_on:
+    - plan_001
+    inputs:
+    - modules/AgenticGuidance/agents/planner/planner-build/process.yml
+    - modules/AgenticGuidance/assets/examples/planner/plan_example.yml
+    - modules/AgenticGuidance/assets/guidelines/question-workflow.yml
+    target_files:
+    - modules/AgenticGuidance/agents/planner/planner-build/process.yml
+    guidance: "Add new step in plan creation process after phase planning:\n\n```yaml\n\
+      steps:\n  # ... existing plan creation steps ...\n\n  - |\n    OPEN QUESTIONS\
+      \ POPULATION (During Plan Creation):\n    While creating the plan, identify\
+      \ decision points that require human judgment.\n\n    1. Architecture Decisions:\n\
+      \       - Technology choices (which framework, library, pattern)\n       - Service\
+      \ boundaries and interfaces\n       - Data model structures\n\n    2. Business\
+      \ Logic Decisions:\n       - Feature scope and priorities\n       - User experience\
+      \ flows\n       - Validation rules and constraints\n\n    3. Populate open_questions\
+      \ section in plan YAML:\n       ```yaml\n       open_questions:\n         -\
+      \ id: \"QUESTION-001\"\n           question: \"Should the API support both REST\
+      \ and GraphQL endpoints?\"\n           severity: \"high\"\n           status:\
+      \ \"OPEN\"\n           context: |\n             Current spec mentions both,\
+      \ but implementing both adds complexity.\n             Need to understand client\
+      \ requirements and timeline constraints.\n           options:\n            \
+      \ - \"REST only (simpler, faster delivery)\"\n             - \"GraphQL only\
+      \ (more flexible for clients)\"\n             - \"Both (higher complexity, more\
+      \ maintenance)\"\n       ```\n\n    4. For critical questions (severity: high):\n\
+      \       - Generate YAML file in questions/pending/\n       - Filename: YYMMDD_HH_brief_description.yml\n\
+      \       - Include in plan's open_questions AND as separate file\n\n    This\
+      \ enables human review during plan approval phase.\n```\n"
+    success_criteria:
+    - Open questions population step added
+    - Examples show correct YAML structure
+    - Guidance explains when to create separate question files
+    - Severity-based handling is clear
+  - id: plan_003
+    name: Update planner-test inputs.yml
+    description: Add question workflow to planner-test agent
+    agent: teacher-update-guidance
+    status: completed
+    depends_on:
+    - guide_001
+    inputs:
+    - modules/AgenticGuidance/agents/planner/planner-test/inputs.yml
+    - modules/AgenticGuidance/assets/guidelines/question-workflow.yml
+    target_files:
+    - modules/AgenticGuidance/agents/planner/planner-test/inputs.yml
+    guidance: 'Add question-workflow.yml reference to inputs section.
+
+      Test planners need this for test strategy and expected behavior questions.
+
+      '
+    success_criteria:
+    - question-workflow.yml reference added
+  - id: plan_004
+    name: Update planner-test process.yml
+    description: Add test expectation questions to planner-test process
+    agent: teacher-update-guidance
+    status: completed
+    depends_on:
+    - plan_003
+    inputs:
+    - modules/AgenticGuidance/agents/planner/planner-test/process.yml
+    - modules/AgenticGuidance/assets/guidelines/question-workflow.yml
+    target_files:
+    - modules/AgenticGuidance/agents/planner/planner-test/process.yml
+    guidance: "Add guidance for test expectation questions during test planning:\n\
+      \n```yaml\nsteps:\n  # ... existing test planning steps ...\n\n  - |\n    TEST\
+      \ EXPECTATION QUESTIONS (During Test Planning):\n    When test expected behavior\
+      \ is ambiguous or under-specified, generate questions.\n\n    Common test question\
+      \ scenarios:\n    - Edge case behavior not documented\n    - Error message format\
+      \ and wording\n    - Validation rule specifics (exact limits, formats)\n   \
+      \ - User experience flows with multiple valid paths\n\n    Question generation:\n\
+      \    1. Add to plan's open_questions section\n    2. For high-severity: Create\
+      \ questions/pending/ YAML file\n    3. Mark affected test tasks as \"blocked_on:\
+      \ QUESTION-XXX\"\n\n    Example:\n    ```yaml\n    open_questions:\n      -\
+      \ id: \"QUESTION-TEST-001\"\n        question: \"What should happen when user\
+      \ uploads a file larger than 100MB?\"\n        severity: \"medium\"\n      \
+      \  status: \"OPEN\"\n        context: |\n          Spec says \"large files rejected\"\
+      \ but doesn't specify:\n          - Exact size limit\n          - Error message\
+      \ to user\n          - Whether to reject before or during upload\n        affected_tests:\n\
+      \          - test_file_upload_validation\n    ```\n```\n"
+    success_criteria:
+    - Test expectation question guidance added
+    - Examples show blocked task references
+    - Common scenarios are covered
+  - id: plan_005
+    name: Update planner-reviewer inputs.yml
+    description: Add question workflow to planner-reviewer agent
+    agent: teacher-update-guidance
+    status: completed
+    depends_on:
+    - guide_001
+    inputs:
+    - modules/AgenticGuidance/agents/planner/planner-reviewer/inputs.yml
+    - modules/AgenticGuidance/assets/guidelines/question-workflow.yml
+    target_files:
+    - modules/AgenticGuidance/agents/planner/planner-reviewer/inputs.yml
+    guidance: 'Add question-workflow.yml reference to inputs section.
+
+      Reviewers need to validate that open_questions are properly populated.
+
+      '
+    success_criteria:
+    - question-workflow.yml reference added
+  - id: plan_006
+    name: Update planner-reviewer process.yml
+    description: Add open_questions validation to plan review process
+    agent: teacher-update-guidance
+    status: completed
+    depends_on:
+    - plan_005
+    inputs:
+    - modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml
+    - modules/AgenticGuidance/assets/guidelines/question-workflow.yml
+    target_files:
+    - modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml
+    guidance: "Add validation step for open_questions during plan review:\n\n```yaml\n\
+      steps:\n  # ... existing review steps ...\n\n  - |\n    OPEN QUESTIONS VALIDATION\
+      \ (During Plan Review):\n    Verify that plans properly identify and track questions\
+      \ requiring human input.\n\n    Review checklist:\n    1. Are decision points\
+      \ that require human judgment identified?\n    2. Are questions well-formed\
+      \ with clear context?\n    3. Are severity levels appropriate (high = blocking,\
+      \ medium = important, low = clarification)?\n    4. Do high-severity questions\
+      \ have corresponding questions/pending/ files?\n    5. Are affected tasks marked\
+      \ with blocked_on references?\n\n    Common gaps to catch:\n    - Architecture\
+      \ decisions presented as certainties (should be questions)\n    - Missing context\
+      \ in question descriptions\n    - Questions that could be answered from existing\
+      \ docs (shouldn't be questions)\n    - Severity mismatch (minor clarifications\
+      \ marked high)\n\n    Feedback examples:\n    - APPROVE: \"Open questions properly\
+      \ identify architecture decisions with clear options\"\n    - REJECT: \"Plan\
+      \ assumes REST API pattern without questioning - should be QUESTION-001\"\n\
+      \    - REJECT: \"QUESTION-002 missing context - why is this blocking the implementation?\"\
+      \n```\n"
+    success_criteria:
+    - Validation step added to review process
+    - Checklist is comprehensive
+    - Examples show approve and reject scenarios
+- name: Builder and Test Agent Updates
+  execution: parallel
+  description: Update builder and test agents to generate questions when blocked
+  tasks:
+  - id: build_001
+    name: Update shared builder inputs (if exists)
+    description: Add question workflow to shared builder inputs
+    agent: teacher-update-guidance
+    status: completed
+    depends_on:
+    - guide_001
+    inputs:
+    - modules/AgenticGuidance/agents/build/manifest.yml
+    - modules/AgenticGuidance/assets/guidelines/question-workflow.yml
+    target_files:
+    - modules/AgenticGuidance/assets/inputs/build-shared.yml
+    guidance: "Check if build-shared.yml exists. If not, create it with question-workflow.yml\
+      \ reference.\nIf it exists, add the reference to existing guidelines section.\n\
+      \nThis provides question workflow guidance to all builder agents.\n\nStructure:\n\
+      ```yaml\nversion: \"2.0\"\n\nguidelines:\n  - type: file\n    path: \"modules/AgenticGuidance/assets/guidelines/question-workflow.yml\"\
+      \n    description: \"Question generation when blocked on implementation decisions\"\
+      \n    required: true\n```\n"
+    success_criteria:
+    - build-shared.yml exists with question-workflow.yml reference
+    - OR guidance added to existing shared inputs
+    - File follows existing input file conventions
+  - id: build_002
+    name: Create builder question generation example
+    description: Add example of builder question generation to guidelines
+    agent: teacher-update-assets
+    status: completed
+    depends_on:
+    - guide_001
+    inputs:
+    - modules/AgenticGuidance/assets/guidelines/question-workflow.yml
+    target_files:
+    - modules/AgenticGuidance/assets/examples/builder/question-example.yml
+    guidance: "Create new example file showing builder question generation workflow.\n\
+      \nExample scenario: Builder encounters architecture decision during implementation.\n\
+      \nRequired sections:\n1. Scenario description\n2. What triggered the question\n\
+      3. Generated question YAML (complete example)\n4. How builder checks for answer\n\
+      5. How builder resumes after answer\n\nExample structure:\n```yaml\nscenario:\
+      \ \"Builder implementing data validation service\"\n\ntrigger: |\n  Task requires\
+      \ input validation but plan doesn't specify validation library.\n  Multiple\
+      \ options exist (Pydantic, Marshmallow, custom).\n\nquestion_generated:\n  file:\
+      \ \"questions/pending/260203_14_validation_library_choice.yml\"\n  content:\n\
+      \    id: \"QUESTION-BUILD-001\"\n    question: \"Which validation library should\
+      \ we use for data validation service?\"\n    severity: \"high\"\n    status:\
+      \ \"OPEN\"\n    task_id: \"build_003\"\n    module: \"src/services/validation.py\"\
+      \n    context: |\n      Implementing data validation service per plan task build_003.\n\
+      \      Need to choose validation approach. Options:\n\n      1. Pydantic (already\
+      \ in pyproject.toml)\n         - Pros: Type-safe, good docs, widely used\n \
+      \        - Cons: Adds runtime overhead\n\n      2. Marshmallow (not in dependencies)\n\
+      \         - Pros: Flexible, serialization support\n         - Cons: Requires\
+      \ new dependency\n\n      3. Custom validation\n         - Pros: Lightweight,\
+      \ full control\n         - Cons: More code to maintain\n\n      Recommendation:\
+      \ Pydantic (already available)\n      But seeking confirmation before implementing.\n\
+      \    options:\n      - \"Pydantic (recommended - already in deps)\"\n      -\
+      \ \"Marshmallow (requires new dependency)\"\n      - \"Custom validation functions\"\
+      \n\nresumption_check:\n  command: \"Read questions/answered/260203_14_validation_library_choice.yml\"\
+      \n  interpretation: |\n    If file exists in answered/:\n    1. Read answer\
+      \ content\n    2. Implement using specified library\n    3. Continue with task\
+      \ build_003\n\n    If file doesn't exist:\n    - Notify user via CLI message\n\
+      \    - Reference: `agentic question list` shows pending question\n    - Pause\
+      \ task until answer received\n```\n"
+    success_criteria:
+    - Example file created in correct location
+    - All required sections present
+    - Question YAML is complete and valid
+    - Resumption pattern is clear
+  - id: test_001
+    name: Update test-builder inputs.yml
+    description: Add question workflow to test-builder agent
+    agent: teacher-update-guidance
+    status: completed
+    depends_on:
+    - guide_001
+    inputs:
+    - modules/AgenticGuidance/agents/test/test-builder/inputs.yml
+    - modules/AgenticGuidance/assets/guidelines/question-workflow.yml
+    target_files:
+    - modules/AgenticGuidance/agents/test/test-builder/inputs.yml
+    guidance: 'Add question-workflow.yml reference to test-builder inputs.
+
+      Test builders need this when test expected behavior is ambiguous.
+
+      '
+    success_criteria:
+    - question-workflow.yml reference added to inputs
+  - id: test_002
+    name: Update test-builder process.yml
+    description: Add question generation to test-builder process when expectations
+      unclear
+    agent: teacher-update-guidance
+    status: completed
+    depends_on:
+    - test_001
+    inputs:
+    - modules/AgenticGuidance/agents/test/test-builder/process.yml
+    - modules/AgenticGuidance/assets/guidelines/question-workflow.yml
+    target_files:
+    - modules/AgenticGuidance/agents/test/test-builder/process.yml
+    guidance: "Add step for generating questions when test expectations are unclear:\n\
+      \n```yaml\nsteps:\n  # ... existing test building steps ...\n\n  - |\n    QUESTION\
+      \ GENERATION FOR UNCLEAR EXPECTATIONS:\n    When implementing tests, if expected\
+      \ behavior is ambiguous, generate a question.\n\n    Common scenarios:\n   \
+      \ 1. Error handling: What error code/message should be returned?\n    2. Edge\
+      \ cases: How should system behave at boundary conditions?\n    3. User flows:\
+      \ Which path should user take in scenario X?\n    4. Data validation: What are\
+      \ exact validation rules and limits?\n\n    Process:\n    1. Attempt to infer\
+      \ from existing code patterns\n    2. Check documentation and related tests\n\
+      \    3. If still ambiguous AND test is critical:\n       - Generate question\
+      \ YAML in questions/pending/\n       - Include attempted solutions and why they're\
+      \ insufficient\n       - Mark test task as blocked_on question ID\n\n    Example\
+      \ question:\n    ```yaml\n    id: \"QUESTION-TEST-002\"\n    question: \"What\
+      \ error should be returned when user uploads invalid file format?\"\n    severity:\
+      \ \"medium\"\n    task_id: \"test_002\"\n    module: \"tests/test_file_upload.py\"\
+      \n    context: |\n      Writing test for invalid file upload scenario.\n   \
+      \   Existing code returns generic 400 Bad Request.\n      Need to know:\n  \
+      \    - Should we return specific error code (e.g., 415 Unsupported Media Type)?\n\
+      \      - Should error message list supported formats?\n      - Should we log\
+      \ the attempt?\n\n      Pattern from other validation: Returns 400 with message.\n\
+      \      But file format seems different enough to warrant confirmation.\n   \
+      \ attempted_solutions:\n      - \"Checked test_validation.py - uses generic\
+      \ 400\"\n      - \"Checked API spec - doesn't specify file upload errors\"\n\
+      \    ```\n\n    After answer received:\n    - Implement test with specified\
+      \ behavior\n    - Update test documentation with clarification\n```\n"
+    success_criteria:
+    - Question generation step added
+    - Common scenarios are listed
+    - Example shows complete question YAML
+    - Process explains when to question vs. infer
+- name: Workflow Example Creation
+  execution: sequential
+  description: Create end-to-end examples showing complete question-answer workflows
+  tasks:
+  - id: example_001
+    name: Create planner workflow example
+    description: End-to-end example of planner generating and consuming questions
+    agent: teacher-update-assets
+    status: completed
+    depends_on:
+    - plan_002
+    - plan_004
+    - plan_006
+    inputs:
+    - modules/AgenticGuidance/assets/guidelines/question-workflow.yml
+    - modules/AgenticGuidance/assets/examples/planner/plan_example.yml
+    target_files:
+    - modules/AgenticGuidance/assets/examples/planner/question-workflow-example.yml
+    guidance: "Create example showing complete planner question workflow:\n\n1. Session\
+      \ 1: Plan Creation\n   - Planner identifies architecture decision\n   - Adds\
+      \ to open_questions in plan YAML\n   - Creates questions/pending/ file for high-severity\
+      \ question\n   - Plan submitted for approval with open questions\n\n2. Human\
+      \ Interaction:\n   - User runs `agentic question list --plan 260203XX`\n   -\
+      \ User answers via `agentic question answer QUESTION-001`\n   - Answer written\
+      \ to questions/answered/\n\n3. Session 2: Plan Revision\n   - Planner checks\
+      \ questions/answered/\n   - Loads human answer\n   - Updates plan with decision\n\
+      \   - Moves question status from OPEN to ANSWERED\n   - Includes answered_by:\
+      \ HUMAN tag\n\nShow actual YAML structures for each step.\n"
+    success_criteria:
+    - Example covers complete workflow (generation -> answer -> consumption)
+    - YAML structures are complete and valid
+    - Human interaction steps reference correct CLI commands
+    - answered_by: HUMAN authority pattern is shown
+  - id: example_002
+    name: Create builder workflow example
+    description: End-to-end example of builder blocking and resuming on question
+    agent: teacher-update-assets
+    status: completed
+    depends_on:
+    - build_002
+    inputs:
+    - modules/AgenticGuidance/assets/guidelines/question-workflow.yml
+    - modules/AgenticGuidance/assets/examples/builder/question-example.yml
+    target_files:
+    - modules/AgenticGuidance/assets/examples/builder/question-workflow-complete.yml
+    guidance: "Create example showing builder blocking and resuming workflow:\n\n\
+      1. Implementation Phase:\n   - Builder working on task build_003\n   - Encounters\
+      \ blocker requiring human decision\n   - Generates question with context and\
+      \ attempted solutions\n   - Writes questions/pending/ YAML file\n   - Reports\
+      \ to orchestrator: \"Task blocked on QUESTION-BUILD-001\"\n\n2. Human Answers:\n\
+      \   - User reviews via CLI\n   - Provides answer with rationale\n   - Answer\
+      \ includes decision and any constraints\n\n3. Resumption Phase:\n   - Builder\
+      \ spawned again for build_003\n   - Checks questions/answered/ first\n   - Finds\
+      \ answer for QUESTION-BUILD-001\n   - Implements using specified approach\n\
+      \   - Completes task successfully\n\nInclude timing and session boundaries to\
+      \ show async nature.\n"
+    success_criteria:
+    - Example shows blocking behavior clearly
+    - Resumption check pattern is explicit
+    - Human answer includes rationale
+    - Implementation follows answer constraints
+  - id: example_003
+    name: Create tester workflow example
+    description: Example of test-builder asking about expected behavior
+    agent: teacher-update-assets
+    status: completed
+    depends_on:
+    - test_002
+    inputs:
+    - modules/AgenticGuidance/assets/guidelines/question-workflow.yml
+    target_files:
+    - modules/AgenticGuidance/assets/examples/test/question-workflow-example.yml
+    guidance: "Create example showing test-builder question workflow:\n\nScenario:\
+      \ Writing test for edge case behavior not specified in plan.\n\n1. Test Implementation:\n\
+      \   - Test-builder analyzing test task\n   - Expected behavior unclear for edge\
+      \ case\n   - Checks existing tests for patterns\n   - Checks docs and implementation\n\
+      \   - Still ambiguous - generates question\n\n2. Question Details:\n   - What\
+      \ was checked (attempted solutions)\n   - Why existing patterns don't answer\
+      \ it\n   - Impact of getting it wrong\n   - Proposed test approach\n\n3. Human\
+      \ Clarification:\n   - Answers with expected behavior\n   - May reference requirement\
+      \ or user story\n\n4. Test Completion:\n   - Test-builder implements test with\
+      \ clarified behavior\n   - Adds comment referencing question answer\n   - Test\
+      \ validates the specified behavior\n"
+    success_criteria:
+    - Example shows inference attempts before questioning
+    - Question includes attempted_solutions section
+    - Test implementation references answer in comments
+    - Pattern teaches "try to infer, then ask if critical"
+- name: Validation Phase
+  execution: sequential
+  description: Validate that all guidance updates are complete and consistent
+  tasks:
+  - id: val_001
+    name: Self-review guidance updates
+    description: Review all updated guidance files for completeness and consistency
+    agent: planner-reviewer
+    status: completed
+    depends_on:
+    - orch_002
+    - orch_003
+    - plan_002
+    - plan_004
+    - plan_006
+    - build_002
+    - test_002
+    - example_001
+    - example_002
+    - example_003
+    loop: guidance-self-review-loop
+    inputs:
+    - modules/AgenticGuidance/assets/guidelines/question-workflow.yml
+    - modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml
+    - modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.yml
+    - modules/AgenticGuidance/agents/planner/planner-build/inputs.yml
+    - modules/AgenticGuidance/agents/planner/planner-build/process.yml
+    - modules/AgenticGuidance/agents/planner/planner-test/inputs.yml
+    - modules/AgenticGuidance/agents/planner/planner-test/process.yml
+    - modules/AgenticGuidance/agents/planner/planner-reviewer/inputs.yml
+    - modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml
+    - modules/AgenticGuidance/agents/test/test-builder/inputs.yml
+    - modules/AgenticGuidance/agents/test/test-builder/process.yml
+    guidance: "Review all updated guidance files against success criteria:\n\nChecklist:\n\
+      1. question-workflow.yml guideline is complete\n   - All 7 sections present\n\
+      \   - Examples are clear and correct\n   - CLI references match 260203QC spec\n\
+      \n2. Orchestration agents updated\n   - inputs.yml has question-workflow.yml\
+      \ reference\n   - process.yml has question checkpoint/handling steps\n   - Instructions\
+      \ are actionable\n\n3. Planner agents updated\n   - All planner inputs.yml have\
+      \ guideline reference\n   - process.yml files have question generation steps\n\
+      \   - open_questions population is explained\n   - Examples show correct YAML\
+      \ structure\n\n4. Builder/Test agents updated\n   - Shared inputs or per-agent\
+      \ inputs updated\n   - Question generation triggers are clear\n   - Resumption\
+      \ patterns are explicit\n\n5. Examples are complete\n   - Planner, builder,\
+      \ and tester workflows shown\n   - End-to-end flow is clear\n   - YAML structures\
+      \ are valid\n   - Human interaction steps reference CLI correctly\n\n6. Consistency\
+      \ across agents\n   - Question YAML format is consistent\n   - Severity level\
+      \ usage is consistent\n   - CLI command references are consistent\n   - Resumption\
+      \ pattern is consistent\n\nReport findings with specific file:line references\
+      \ for any gaps.\n"
+    success_criteria:
+    - All checklist items pass
+    - No inconsistencies found across agent files
+    - Examples validate successfully
+    - Question workflow is teachable and actionable
+  - id: val_002
+    name: Spot-check example validity
+    description: Validate that example YAML files are syntactically correct and complete
+    agent: teacher-update-assets
+    status: completed
+    depends_on:
+    - val_001
+    inputs:
+    - modules/AgenticGuidance/assets/examples/planner/question-workflow-example.yml
+    - modules/AgenticGuidance/assets/examples/builder/question-workflow-complete.yml
+    - modules/AgenticGuidance/assets/examples/test/question-workflow-example.yml
+    guidance: "Spot-check example files for technical correctness:\n\n1. YAML Syntax:\n\
+      \   - Parse each example file as YAML\n   - Verify no syntax errors\n   - Check\
+      \ indentation consistency\n\n2. Schema Compliance:\n   - Question YAML matches\
+      \ 260203QF schema\n   - Required fields present (id, question, severity, status,\
+      \ context)\n   - Optional fields used correctly (task_id, module, options, attempted_solutions)\n\
+      \n3. Severity Levels:\n   - high, medium, low used correctly\n   - Severity\
+      \ matches question impact\n\n4. File Paths:\n   - questions/pending/ paths are\
+      \ correct\n   - questions/answered/ paths are correct\n   - Filename format:\
+      \ YYMMDD_HH_brief_description.yml\n\n5. CLI References:\n   - Commands match\
+      \ 260203QC spec\n   - Flag usage is correct (--plan, etc.)\n\nReport any schema\
+      \ violations or syntax errors with specific examples.\n"
+    success_criteria:
+    - All example YAML files parse successfully
+    - Question schemas match 260203QF specification
+    - File paths follow conventions
+    - CLI references are accurate
+success_criteria:
+- question-workflow.yml guideline exists with all 7 required sections
+- YAML format examples are syntactically correct and follow 260203QF schema
+- Severity level guidance (high/medium/low) is clear and actionable
+- CLI command references match 260203QC implementation
+- orchestration-planning and orchestration-executor inputs.yml reference question-workflow.yml
+- orchestration-planning process includes question checkpoint before plan approval
+- Question checkpoint distinguishes high-severity (must answer) from medium/low (can
+  defer)
+- All planner inputs.yml files reference question-workflow.yml
+- planner-build process includes open_questions population step with examples
+- planner-test process includes test expectation question generation
+- planner-reviewer process includes open_questions validation checklist
+- Examples show correct open_questions YAML structure in plan files
+- Builder agents have question workflow guidance (via shared inputs or per-agent)
+- test-builder inputs and process include question generation patterns
+- Question generation includes attempted_solutions and context requirements
+- Resumption pattern teaches checking questions/answered/ before escalating
+- Planner workflow example shows complete lifecycle (generate -> answer -> consume)
+- Builder workflow example shows blocking and resumption pattern
+- Tester workflow example shows inference-first, question-second approach
+- All examples use valid YAML matching 260203QF schema
+- 'Examples demonstrate answered_by: HUMAN authority pattern'
+- Question YAML format is consistent across all examples
+- Severity level usage is consistent across agent types
+- CLI command references are consistent and accurate
+- Resumption pattern is consistent across agents
+- No gaps or contradictions found in validation review
+- Agent can read guidance and understand when to ask vs. decide autonomously
+- Agent can generate well-formed question YAML with appropriate severity
+- Agent can check for answers and resume work after human clarification
+- Human can review pending questions and provide answers via CLI
+- Question workflow enables async HITL without blocking agent progress on other tasks

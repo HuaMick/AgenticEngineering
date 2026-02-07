@@ -1,0 +1,593 @@
+# Tester Question Workflow Example
+# This example demonstrates how a test-builder agent should use the question workflow
+# when encountering edge cases where expected behavior is not specified in requirements.
+
+example_name: "Tester Question Workflow - Edge Case Clarification"
+description: |
+  Complete scenario showing a test-builder agent implementing tests for an API,
+  encountering an edge case where expected behavior is ambiguous, attempting to
+  infer the answer from existing context, and generating a question when the
+  answer is critical and cannot be reliably inferred.
+
+# ==============================================
+# SCENARIO: API Rate Limiting Edge Case
+# ==============================================
+scenario_context:
+  context: |
+    A test-builder agent is implementing integration tests for a REST API client library.
+    The task is to test error handling for various failure scenarios. While implementing
+    tests for rate limiting (HTTP 429), the agent discovers that the specification doesn't
+    clearly define whether the client should automatically retry after rate limit errors
+    or bubble the error up to the calling code.
+
+  task_description: |
+    Task ID: test_003_api_error_handling
+    Description: Implement integration tests for API client error handling
+    Files: tests/integration/test_api_client_errors.py
+    Coverage required: Network errors, timeouts, rate limits, authentication failures
+
+# ==============================================
+# STEP 1: Test Implementation Begins
+# ==============================================
+test_implementation_start:
+  agent_thought_process: |
+    "I'm implementing error handling tests for the API client. I need to test several
+    scenarios including rate limiting (HTTP 429 Too Many Requests).
+
+    Let me check what the test task specifies about rate limit behavior..."
+
+  task_specification_excerpt: |
+    test_003_api_error_handling:
+      description: "Test API client error handling for various failure modes"
+      scenarios:
+        - Network connection errors (connection refused, timeout)
+        - HTTP error codes (4xx, 5xx)
+        - Rate limiting (HTTP 429)
+        - Authentication failures (401, 403)
+      acceptance_criteria:
+        - All error scenarios have test coverage
+        - Tests verify error messages are meaningful
+        - Tests validate that errors propagate correctly
+
+  agent_observation: |
+    "The specification mentions testing rate limiting but doesn't specify the EXPECTED
+    BEHAVIOR. Should the client:
+    A) Automatically retry with exponential backoff?
+    B) Bubble the error up to calling code?
+    C) Return None/null and log the error?
+
+    This is ambiguous. Before asking a question, let me try to infer the answer from
+    existing code and tests."
+
+# ==============================================
+# STEP 2: Inference Attempts (Attempted Solutions)
+# ==============================================
+inference_attempts:
+  description: |
+    The agent follows the question-workflow guideline: try to answer the question
+    from existing context before asking. This section documents all inference attempts.
+
+  attempt_1_check_implementation:
+    action: "Read the API client implementation to see current behavior"
+    code_examined: |
+      # File: src/api_client.py
+      class APIClient:
+          def _make_request(self, method, endpoint, **kwargs):
+              try:
+                  response = requests.request(method, url, **kwargs)
+                  response.raise_for_status()
+                  return response.json()
+              except requests.HTTPError as e:
+                  if e.response.status_code == 429:
+                      # TODO: Handle rate limiting
+                      raise APIRateLimitError(f"Rate limited: {e}")
+                  raise APIRequestError(f"HTTP error: {e}")
+
+    finding: |
+      "The implementation has a TODO comment but doesn't implement retry logic.
+      It currently just raises an exception. This doesn't tell me what the EXPECTED
+      behavior should be - it might be incomplete implementation."
+
+  attempt_2_check_existing_tests:
+    action: "Look for similar tests that might establish a pattern"
+    code_examined: |
+      # File: tests/integration/test_api_client_errors.py (existing tests)
+      def test_network_timeout():
+          '''Test that network timeouts raise TimeoutError without retry.'''
+          with mock_timeout():
+              with pytest.raises(APITimeoutError):
+                  client.get("/endpoint")
+
+      def test_server_error_500():
+          '''Test that 5xx errors are retried 3 times then raise exception.'''
+          with mock_response(status=500, retry_count=3):
+              with pytest.raises(APIServerError):
+                  client.get("/endpoint")
+              assert mock.call_count == 4  # Initial + 3 retries
+
+    finding: |
+      "Interesting! There's a pattern emerging:
+       - Timeouts: NO retry (immediate exception)
+       - 5xx errors: YES retry (3 attempts)
+
+       But which category does 429 fall into? It's a 4xx error (client error), but
+       unlike other 4xx errors (400 Bad Request, 404 Not Found), rate limiting is
+       TEMPORARY and WILL succeed if we retry later.
+
+       The existing tests don't establish a clear pattern for 429."
+
+  attempt_3_check_documentation:
+    action: "Check project documentation and API design docs"
+    files_checked:
+      - "docs/api_client_design.md"
+      - "README.md"
+      - "docs/error_handling.md"
+
+    finding: |
+      "Error handling documentation mentions:
+       - 'Retry transient errors automatically'
+       - 'Permanent errors should be raised immediately'
+
+       But 429 is not explicitly mentioned. Is rate limiting 'transient'? Technically
+       yes, but the retry delay should respect Retry-After header, which is more
+       complex than standard exponential backoff.
+
+       Documentation doesn't clarify this edge case."
+
+  attempt_4_check_external_apis:
+    action: "Check if the API being called has documentation about rate limit handling"
+    finding: |
+      "The external API documentation says:
+       - 'Rate limit: 100 requests per minute per API key'
+       - 'HTTP 429 returned when rate limit exceeded'
+       - 'Retry-After header indicates seconds to wait'
+
+       This tells me the API's behavior, but not what OUR client library should do.
+       Different clients have different philosophies (some retry, some don't)."
+
+  attempt_5_analyze_tradeoffs:
+    action: "Consider the implications of each approach"
+    analysis: |
+      "Option A (Auto-retry):
+       - Pro: More user-friendly, handles transient issue automatically
+       - Con: Unexpected delays, might hide rate limit problems from users
+       - Con: Complex to implement (respect Retry-After, max retries, etc.)
+
+       Option B (Bubble error up):
+       - Pro: User has full control over retry strategy
+       - Con: Every user has to implement retry logic separately
+       - Pro: User can implement custom backoff or skip retries entirely
+
+       Option C (Return None):
+       - Pro: Non-exception error handling
+       - Con: Inconsistent with other error handling patterns in this codebase
+
+       I cannot determine which is 'correct' without knowing the library's design
+       philosophy and user expectations."
+
+  summary_of_attempts: |
+    "I've checked:
+     1. Implementation code (incomplete, has TODO)
+     2. Existing tests (mixed patterns: timeouts don't retry, 5xx do retry)
+     3. Documentation (mentions 'transient errors' but doesn't specify 429)
+     4. External API docs (explains rate limit behavior, not client behavior)
+     5. Tradeoff analysis (valid arguments for multiple approaches)
+
+    Conclusion: This is genuinely ambiguous and requires human judgment about the
+    library's design philosophy. Getting this wrong would affect:
+     - User experience (unexpected delays vs manual retry code)
+     - API usage patterns (aggressive retries might worsen rate limiting)
+     - Test expectations (testing for exception vs testing for automatic retry)
+
+    This is a 'business_logic' question with 'high' severity (not blocking, but
+    impacts UX and test correctness). I should ask a question."
+
+# ==============================================
+# STEP 3: Question Generation
+# ==============================================
+question_generation:
+  agent_decision: |
+    "This meets the question-workflow criteria:
+     - Trigger: business_logic (library design decision)
+     - Severity: high (impacts UX, affects test correctness)
+     - Attempted solutions: Checked code, tests, docs, API docs, analyzed tradeoffs
+     - Still ambiguous: Multiple valid approaches, no clear precedent
+
+    I'll generate a question with full context of my attempted solutions."
+
+  code_example: |
+    from pathlib import Path
+    from agenticguidance.services.question import QuestionQueue
+    from agenticguidance.models.question import QuestionSeverity
+
+    # Initialize queue for current plan
+    plan_path = Path("docs/plans/live/260203XX_api_client_testing")
+    queue = QuestionQueue(plan_path)
+
+    # Create question with attempted_solutions context
+    question = queue.create_question(
+        text="Should the API client automatically retry HTTP 429 rate limit errors?",
+        context=(
+            "Task: Implement integration tests for API client error handling (test_003)\n"
+            "Scenario: Testing rate limit handling (HTTP 429 Too Many Requests)\n\n"
+            "Attempted Solutions:\n"
+            "1. Checked implementation: Has TODO for rate limit handling, currently raises exception\n"
+            "2. Checked existing tests:\n"
+            "   - Timeouts: NO retry (immediate exception)\n"
+            "   - 5xx errors: YES retry (3 attempts with backoff)\n"
+            "   - Pattern unclear for 429 (4xx but transient)\n"
+            "3. Checked docs: Mentions 'retry transient errors' but doesn't specify 429\n"
+            "4. Checked external API: Documents rate limit behavior but not client strategy\n"
+            "5. Analyzed tradeoffs:\n"
+            "   - Auto-retry: User-friendly but adds complexity and potential delays\n"
+            "   - Bubble error: User control but requires every user to implement retry\n\n"
+            "Why Ambiguous:\n"
+            "- 429 is technically 4xx (client error) but behaves like transient error\n"
+            "- No precedent in codebase for this specific scenario\n"
+            "- Valid arguments for both approaches\n\n"
+            "Impact:\n"
+            "- Affects test expectations (assert exception vs assert retry behavior)\n"
+            "- Affects user experience (manual retry vs automatic)\n"
+            "- Affects API usage patterns (aggressive retry might worsen rate limits)\n\n"
+            "Options:\n"
+            "A) Auto-retry with Retry-After header (like 5xx errors)\n"
+            "B) Raise exception immediately (like other 4xx errors)\n"
+            "C) Configurable via client option (retry_on_rate_limit=True/False)"
+        ),
+        severity=QuestionSeverity.HIGH.value,
+        asked_by="test-builder-api"
+    )
+
+    print(f"Question created: {question.id}")
+    print(f"Saved to: {question.file_path}")
+
+  generated_question_yaml: |
+    # File: docs/plans/live/260203XX_api_client_testing/questions/pending/Q-20260203-161500-d7e8.yml
+    id: Q-20260203-161500-d7e8
+    text: Should the API client automatically retry HTTP 429 rate limit errors?
+    context: |
+      Task: Implement integration tests for API client error handling (test_003)
+      Scenario: Testing rate limit handling (HTTP 429 Too Many Requests)
+
+      Attempted Solutions:
+      1. Checked implementation: Has TODO for rate limit handling, currently raises exception
+      2. Checked existing tests:
+         - Timeouts: NO retry (immediate exception)
+         - 5xx errors: YES retry (3 attempts with backoff)
+         - Pattern unclear for 429 (4xx but transient)
+      3. Checked docs: Mentions 'retry transient errors' but doesn't specify 429
+      4. Checked external API: Documents rate limit behavior but not client strategy
+      5. Analyzed tradeoffs:
+         - Auto-retry: User-friendly but adds complexity and potential delays
+         - Bubble error: User control but requires every user to implement retry
+
+      Why Ambiguous:
+      - 429 is technically 4xx (client error) but behaves like transient error
+      - No precedent in codebase for this specific scenario
+      - Valid arguments for both approaches
+
+      Impact:
+      - Affects test expectations (assert exception vs assert retry behavior)
+      - Affects user experience (manual retry vs automatic)
+      - Affects API usage patterns (aggressive retry might worsen rate limits)
+
+      Options:
+      A) Auto-retry with Retry-After header (like 5xx errors)
+      B) Raise exception immediately (like other 4xx errors)
+      C) Configurable via client option (retry_on_rate_limit=True/False)
+    severity: high
+    asked_by: test-builder-api
+    created_at: 1738604100.8
+    status: pending
+
+  agent_next_steps: |
+    "Question created. While waiting for answer, I'll:
+     1. Continue implementing other error handling tests (timeouts, auth failures)
+     2. Mark rate limit test as TODO with question reference
+     3. Check for answer before finalizing test suite"
+
+  temporary_test_code: |
+    # Temporary test with TODO - will finalize after question answered
+    def test_rate_limit_429():
+        '''Test rate limit handling (HTTP 429).
+
+        TODO: Awaiting clarification on expected behavior (Question Q-20260203-161500-d7e8)
+        Options: Auto-retry vs raise exception immediately
+        '''
+        pytest.skip("Blocked on question Q-20260203-161500-d7e8")
+
+# ==============================================
+# STEP 4: Human Clarification
+# ==============================================
+human_interaction:
+  human_review: |
+    "The human reviews the question and recognizes this is a library design decision
+    that affects the user-facing API contract. After considering the use cases:
+     - Library is used in rate-sensitive production environments
+     - Users need visibility into rate limit events for monitoring
+     - Automatic retries could mask underlying quota issues
+
+    Decision: Bubble error up to user, provide helper utility for retry logic."
+
+  cli_command: |
+    agentic question answer Q-20260203-161500-d7e8 \
+      --text "Raise APIRateLimitError immediately (option B). Do NOT auto-retry. \
+      Include rate limit details in exception (limit, remaining, reset time from headers). \
+      Provide a separate retry_with_backoff() utility function that users can opt into. \
+      This gives users control and visibility for monitoring/alerting on rate limit events."
+
+  question_moved_to_answered: |
+    Question moved to questions/answered/
+    Files created:
+      - questions/answered/Q-20260203-161500-d7e8.yml (Answer object)
+      - questions/answered/Q-20260203-161500-d7e8_question.yml (Question with answer)
+
+# ==============================================
+# STEP 5: Agent Resumption and Answer Application
+# ==============================================
+agent_resumption:
+  check_for_answer:
+    code_example: |
+      from pathlib import Path
+      from agenticguidance.services.question import QuestionQueue
+
+      # Check if question was answered
+      plan_path = Path("docs/plans/live/260203XX_api_client_testing")
+      queue = QuestionQueue(plan_path)
+
+      question_id = "Q-20260203-161500-d7e8"
+      question = queue.get_question(question_id)
+
+      if question and question.status == "answered":
+          print(f"Answer received: {question.answer}")
+          print(f"Proceeding with test implementation...")
+      else:
+          print(f"Question still pending: {question_id}")
+
+  answer_content: |
+    "Raise APIRateLimitError immediately (option B). Do NOT auto-retry.
+    Include rate limit details in exception (limit, remaining, reset time from headers).
+    Provide a separate retry_with_backoff() utility function that users can opt into.
+    This gives users control and visibility for monitoring/alerting on rate limit events."
+
+  agent_application: |
+    "Answer received! The decision is option B (bubble error up) with additional context:
+     1. Raise APIRateLimitError immediately (no auto-retry)
+     2. Include rate limit details from response headers in exception
+     3. Provide optional retry_with_backoff() utility
+
+    I'll now implement the test based on this clarification."
+
+# ==============================================
+# STEP 6: Final Test Implementation
+# ==============================================
+final_test_implementation:
+  test_code: |
+    def test_rate_limit_429_raises_exception():
+        '''Test that HTTP 429 rate limit errors raise APIRateLimitError immediately.
+
+        Design Decision (Q-20260203-161500-d7e8):
+        Rate limit errors are NOT automatically retried. The exception includes
+        rate limit details from response headers to allow users to implement
+        custom retry strategies and monitoring.
+        '''
+        with mock_response(
+            status=429,
+            headers={
+                'X-RateLimit-Limit': '100',
+                'X-RateLimit-Remaining': '0',
+                'X-RateLimit-Reset': '1738604160',
+                'Retry-After': '60'
+            }
+        ) as mock:
+            with pytest.raises(APIRateLimitError) as exc_info:
+                client.get("/endpoint")
+
+            # Verify exception contains rate limit details
+            error = exc_info.value
+            assert error.limit == 100
+            assert error.remaining == 0
+            assert error.reset_time == 1738604160
+            assert error.retry_after == 60
+
+            # Verify NO retry attempted (call count should be 1)
+            assert mock.call_count == 1
+
+    def test_rate_limit_with_manual_retry():
+        '''Test that retry_with_backoff() utility can handle rate limits.
+
+        Users who want automatic retry can opt in using the retry utility.
+        '''
+        from api_client.utils import retry_with_backoff
+
+        with mock_response(
+            status=429,
+            headers={'Retry-After': '2'},
+            succeed_after=2  # Fail twice, succeed on third call
+        ) as mock:
+            result = retry_with_backoff(
+                lambda: client.get("/endpoint"),
+                max_retries=3,
+                respect_retry_after=True
+            )
+
+            assert result is not None
+            assert mock.call_count == 3  # Initial + 2 retries
+
+  documentation_added: |
+    # Added to docs/error_handling.md
+
+    ## Rate Limiting (HTTP 429)
+
+    The API client does NOT automatically retry rate limit errors. When a rate
+    limit is exceeded, `APIRateLimitError` is raised immediately with details
+    from the response headers:
+
+    ```python
+    try:
+        response = client.get("/endpoint")
+    except APIRateLimitError as e:
+        print(f"Rate limited: {e.limit} requests/min")
+        print(f"Retry after: {e.retry_after} seconds")
+        print(f"Reset time: {datetime.fromtimestamp(e.reset_time)}")
+    ```
+
+    **Design Rationale**: Immediate exception propagation gives users visibility
+    into rate limit events for monitoring and alerting. Users can implement
+    custom retry strategies using the `retry_with_backoff()` utility.
+
+    **Optional Retry**: Use `retry_with_backoff()` to automatically retry:
+
+    ```python
+    from api_client.utils import retry_with_backoff
+
+    result = retry_with_backoff(
+        lambda: client.get("/endpoint"),
+        max_retries=3,
+        respect_retry_after=True
+    )
+    ```
+
+  commit_message: |
+    test: Add rate limit error handling tests (HTTP 429)
+
+    Implement tests for API rate limit behavior. When HTTP 429 is returned,
+    the client raises APIRateLimitError immediately without automatic retry.
+    Exception includes rate limit details from response headers.
+
+    Tests verify:
+    - Immediate exception on 429 (no auto-retry)
+    - Rate limit details extracted from headers
+    - Optional retry_with_backoff() utility works correctly
+
+    Design decision: Bubble error to user for monitoring visibility.
+    Users can opt into automatic retry using retry utility.
+
+    Question ID: Q-20260203-161500-d7e8
+
+    Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+# ==============================================
+# Key Takeaways for Test-Builder Agents
+# ==============================================
+key_takeaways:
+  inference_first:
+    principle: "Always try to infer the answer before asking"
+    steps:
+      - "Check implementation code for current behavior"
+      - "Check existing tests for established patterns"
+      - "Check documentation for specifications"
+      - "Analyze tradeoffs for different approaches"
+      - "Only ask if answer is critical AND cannot be reliably inferred"
+
+  attempted_solutions_section:
+    principle: "Document all inference attempts in question context"
+    why: |
+      Shows the human that you've done your homework. Prevents questions like
+      "Did you check the docs?" and makes it clear why the answer is ambiguous.
+
+    what_to_include:
+      - "What you checked (code, tests, docs)"
+      - "What you found in each source"
+      - "Why existing patterns don't answer the question"
+      - "Tradeoffs you analyzed"
+
+  question_quality:
+    be_specific:
+      bad: "How should I test rate limiting?"
+      good: "Should the API client automatically retry HTTP 429 rate limit errors?"
+
+    show_options:
+      bad: "What should happen when rate limited?"
+      good: "Options: A) Auto-retry, B) Raise exception, C) Configurable"
+
+    explain_impact:
+      bad: "I need to know how to handle 429."
+      good: "Affects test expectations, user experience, and API usage patterns."
+
+  severity_selection:
+    blocking:
+      when: "Cannot write ANY tests until answered"
+      example: "No test framework installed, which framework should we use?"
+
+    high:
+      when: "Blocks THIS test but other tests can proceed"
+      example: "Rate limit behavior unclear (this scenario), but can test other errors"
+
+    medium:
+      when: "Can make reasonable assumption and document it"
+      example: "Timeout value not specified, using 30s for now"
+
+  test_implementation_pattern:
+    reference_answer_in_comments:
+      why: "Documents design decision for future maintainers"
+      example: |
+        def test_rate_limit_429_raises_exception():
+            '''Test HTTP 429 rate limit handling.
+
+            Design Decision (Q-20260203-161500-d7e8):
+            Rate limit errors raise exception immediately (no auto-retry).
+            '''
+
+    temporary_test_during_wait:
+      why: "Mark test as TODO instead of leaving incomplete"
+      example: |
+        def test_rate_limit_429():
+            '''TODO: Awaiting clarification (Q-20260203-161500-d7e8)'''
+            pytest.skip("Blocked on question Q-20260203-161500-d7e8")
+
+  anti_patterns:
+    asking_too_early:
+      bad: "Should this test use pytest or unittest? (asking immediately)"
+      good: "Check existing tests to see what framework is used"
+
+    vague_questions:
+      bad: "How do I test this? (no specifics)"
+      good: "Should rate limit errors retry automatically or raise exception?"
+
+    no_attempted_solutions:
+      bad: "What should the timeout be? (no research)"
+      good: "Checked docs (no timeout), checked tests (mixed 30s/60s), which is standard?"
+
+# ==============================================
+# Related Patterns
+# ==============================================
+related_patterns:
+  question_workflow_guideline:
+    location: "modules/AgenticGuidance/assets/guidelines/question-workflow.yml"
+    description: "Complete question workflow specification"
+
+  builder_question_example:
+    location: "modules/AgenticGuidance/assets/examples/builder/question-example.yml"
+    description: "Builder agent question patterns (architectural decisions)"
+
+  escalation_patterns:
+    location: "modules/AgenticGuidance/assets/guidelines/escalation.yml"
+    description: "When to escalate vs make autonomous decisions"
+
+# ==============================================
+# Example Variations
+# ==============================================
+other_test_scenarios:
+  scenario_concurrent_writes:
+    question: "When testing concurrent database writes, should the test expect last-write-wins or error on conflict?"
+    attempted_solutions:
+      - "Check database configuration (isolation level not specified)"
+      - "Check implementation (uses default transaction settings)"
+      - "Check existing tests (no concurrent write tests exist)"
+    severity: "high"
+    impact: "Test expectations depend on database behavior, wrong assumption breaks tests"
+
+  scenario_error_message_format:
+    question: "Should error messages include stack traces in production mode?"
+    attempted_solutions:
+      - "Check implementation (currently includes traces in all modes)"
+      - "Check security docs (no guidance on error exposure)"
+      - "Check tests (no tests validate error message content)"
+    severity: "medium"
+    impact: "Security concern (info disclosure) vs debugging utility"
+
+  scenario_autonomous_decision:
+    question: "What should I name this test helper function?"
+    correct_approach: "DO NOT ASK - follow existing naming patterns in test suite"
+    why: "Low-risk technical detail, easily changed in review"

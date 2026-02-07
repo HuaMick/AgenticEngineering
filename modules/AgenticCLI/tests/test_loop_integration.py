@@ -458,7 +458,7 @@ class TestLoopStopCommand:
         assert "Loop not found" in captured.err
 
     def test_stop_completed_loop(self, mock_loops_dir, sample_loop_data, capsys):
-        """Test stopping an already completed loop."""
+        """Test stopping an already completed loop (idempotent: returns success)."""
         from agenticcli.commands import loop
 
         sample_loop_data["status"] = "completed"
@@ -469,12 +469,11 @@ class TestLoopStopCommand:
             force=False,
         )
 
-        with pytest.raises(SystemExit) as exc_info:
-            loop.cmd_stop(args)
+        # Idempotent stop: completed loops return success instead of raising
+        loop.cmd_stop(args)
 
-        assert exc_info.value.code == 1
         captured = capsys.readouterr()
-        assert "not running" in captured.err
+        assert "terminal state" in captured.out or "completed" in captured.out
 
     @patch("os.kill")
     def test_stop_running_loop(self, mock_kill, mock_loops_dir, sample_loop_data, capsys):

@@ -1,0 +1,110 @@
+flowchart LR
+    %% ========================================
+    %% ORCHESTRATION: planner-orchestration Refactor — Teach Validation
+    %% ========================================
+    %% GOAL: Validate guidance changes from the planner-orchestration refactor via agent self-review
+    %% PROFILE: orchestrator
+    %% INPUT_PATH: modules/AgenticGuidance/agents/orchestration/orchestration-executor/inputs.yml
+    %%
+    %% PLAN_FOLDER: docs/plans/live/260207PO_planner_orchestration_refactor
+    %% PLAN_FILES: plan_build.yml, plan_teach.yml
+    %%
+    %% PHASES: AgentSelfReview, CrossReferenceConsistency
+    %% AGENT_ROUTING: AgentSelfReview=test-guidance-simulator, CrossReferenceConsistency=test-guidance-simulator
+    %% FEEDBACK_TRIGGERS: SELF_REVIEW_FAILURE=retry(3), CROSS_REFERENCE_FAILURE=retry(3)
+    %% STATUS: AgentSelfReview=pending, CrossReferenceConsistency=pending
+    %%
+    %% NOTE: Build phases 1-4 are already completed. This orchestration covers
+    %% the mandatory teach validation (Phase 5 from plan_build.yml / plan_teach.yml).
+
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    LoadInputs --> ReviewPlanFiles[Review plan_teach.yml]
+    ReviewPlanFiles --> CheckInputs{All Inputs Found?}
+    CheckInputs -- "No: Missing" --> AskUser((Ask User for Clarification))
+    CheckInputs -- "Yes: Verified" --> CCIBootstrap[Run: agentic context bootstrap]
+
+    %% ========================================
+    %% CCI BOOTSTRAP
+    %% ========================================
+    CCIBootstrap --> BootstrapReady{Bootstrap Complete?}
+    BootstrapReady -- "No: Failed" --> AskUser
+    BootstrapReady -- "Yes: Ready" --> EnterSelfReviewPhase[Enter Agent Self-Review Phase]
+
+    %% ========================================
+    %% PHASE 1: AGENT SELF-REVIEW
+    %% ========================================
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.agent-self-review
+    %% MAX_ITERATIONS: 3
+    %% ESCALATION: Report specific validation failures to human
+    %%
+    %% Tasks: teach_001, teach_002, teach_003 (parallel-eligible)
+    %% Agent: test-guidance-simulator
+    %% Targets:
+    %%   teach_001: planner-orchestration (NEW agent)
+    %%   teach_002: orchestration-planning (MODIFIED)
+    %%   teach_003: orchestration-executor (MODIFIED)
+
+    subgraph SelfReviewPhase_SG ["Agent Self-Review Phase"]
+        EnterSelfReviewPhase --> SpawnSelfReview[Spawn test-guidance-simulator Agent]
+        SpawnSelfReview --> SelfReviewResult{All Self-Reviews Passed?}
+
+        SelfReviewResult -- "No: Issues Found" --> CaptureSelfReviewFeedback[Capture Self-Review Feedback]
+        CaptureSelfReviewFeedback --> CheckSelfReviewIterations{Max Iterations?}
+        CheckSelfReviewIterations -- "No: Continue" --> SpawnTeacherFix[Spawn teacher-update-guidance Agent for Fix]
+        SpawnTeacherFix --> SpawnSelfReview
+        CheckSelfReviewIterations -- "Yes: Limit" --> EscalateSelfReview((Escalate: Self-Review Failed))
+
+        SelfReviewResult -- "Yes: Passed" --> SelfReviewComplete[Self-Review Complete]
+    end
+
+    SelfReviewComplete --> EnterCrossRefPhase[Enter Cross-Reference Consistency Phase]
+
+    %% ========================================
+    %% PHASE 2: CROSS-REFERENCE CONSISTENCY
+    %% ========================================
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.agent-self-review
+    %% MAX_ITERATIONS: 3
+    %% ESCALATION: Report specific cross-reference failures to human
+    %%
+    %% Task: teach_004
+    %% Agent: test-guidance-simulator
+    %% Validates: manifest spawns, routing tables, orphan references
+
+    subgraph CrossRefPhase_SG ["Cross-Reference Consistency Phase"]
+        EnterCrossRefPhase --> SpawnCrossRefCheck[Spawn test-guidance-simulator Agent]
+        SpawnCrossRefCheck --> CrossRefResult{Cross-References Consistent?}
+
+        CrossRefResult -- "No: Issues Found" --> CaptureCrossRefFeedback[Capture Cross-Reference Feedback]
+        CaptureCrossRefFeedback --> CheckCrossRefIterations{Max Iterations?}
+        CheckCrossRefIterations -- "No: Continue" --> SpawnTeacherCrossRefFix[Spawn teacher-update-guidance Agent for Fix]
+        SpawnTeacherCrossRefFix --> SpawnCrossRefCheck
+        CheckCrossRefIterations -- "Yes: Limit" --> EscalateCrossRef((Escalate: Cross-Reference Check Failed))
+
+        CrossRefResult -- "Yes: Passed" --> CrossRefComplete[Cross-Reference Complete]
+    end
+
+    %% ========================================
+    %% OUTPUT PHASE
+    %% ========================================
+    subgraph Output_SG ["Output Subgraph"]
+        CrossRefComplete --> ReportCompletion[Report Completion Status]
+        ReportCompletion --> ArchivePlan[Run: agentic plan move folder --plan 260207PO]
+    end
+
+    ArchivePlan --> End((End: Plan Completed))
+
+    %% ========================================
+    %% FEEDBACK TRIGGERS
+    %% ========================================
+    %% FEEDBACK_TRIGGER: SELF_REVIEW_FAILURE -> SpawnTeacherFix (within SelfReviewPhase)
+    %% FEEDBACK_TRIGGER: CROSS_REFERENCE_FAILURE -> SpawnTeacherCrossRefFix (within CrossRefPhase)
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef dashedstroke stroke-dasharray: 5 5;
+    linkStyle 12,13,21,22 stroke:#888,stroke-width:2px,stroke-dasharray: 5 5;

@@ -1,0 +1,292 @@
+# User Stories: Backend CLI Proxy
+# Covers executing CLI commands via API endpoints
+
+stories:
+  # ============================================================================
+  # COMMAND EXECUTION
+  # ============================================================================
+
+  - id: "US-BACKEND-CLI-001"
+    title: "Execute CLI Command via API"
+    category: "command_execution"
+    priority: "high"
+    as_a: "frontend developer"
+    i_want: "to execute agentic CLI commands via API"
+    so_that: "web users can perform CLI operations without terminal access"
+    acceptance_criteria:
+      - "POST /api/cli/execute runs agentic command"
+      - "Request includes: command (string), args (array), working_dir (optional)"
+      - "Command is validated against whitelist of allowed commands"
+      - "Returns command output (stdout, stderr, exit_code)"
+      - "Returns 200 OK with execution result"
+      - "Returns 400 Bad Request if command is not whitelisted"
+      - "Returns 403 Forbidden for dangerous commands"
+    related_endpoints:
+      - "POST /api/cli/execute"
+    integration_with: "AgenticCLI"
+    technical_notes: |
+      - Use subprocess.run() with timeout
+      - Whitelist: plan, session, loop, langsmith, worktree
+      - Blacklist: System commands, git push --force, etc.
+
+  - id: "US-BACKEND-CLI-002"
+    title: "Stream CLI Command Output"
+    category: "command_execution"
+    priority: "medium"
+    as_a: "frontend developer"
+    i_want: "to stream command output in real-time"
+    so_that: "users see progress for long-running commands"
+    acceptance_criteria:
+      - "POST /api/cli/execute?stream=true returns SSE stream"
+      - "Output is sent line-by-line as Server-Sent Events"
+      - "Stream includes: stdout, stderr, exit_code on completion"
+      - "Connection can be closed early to cancel command"
+      - "Returns 200 OK with text/event-stream content type"
+    related_endpoints:
+      - "POST /api/cli/execute?stream=true"
+    technical_notes: |
+      - Use subprocess.Popen() with stdout=PIPE
+      - Send SSE events for each line
+
+  - id: "US-BACKEND-CLI-003"
+    title: "Execute with Timeout"
+    category: "command_execution"
+    priority: "high"
+    as_a: "backend service"
+    i_want: "to enforce timeouts on CLI commands"
+    so_that: "hung commands don't block the API"
+    acceptance_criteria:
+      - "All commands have configurable timeout (default 60 seconds)"
+      - "Timeout can be overridden per-command"
+      - "Command is killed if timeout is exceeded"
+      - "Returns 504 Gateway Timeout if command times out"
+      - "Timeout error includes partial output captured before timeout"
+    technical_notes: |
+      - Use subprocess.run(timeout=N)
+      - Catch subprocess.TimeoutExpired
+
+  # ============================================================================
+  # COMMAND SECURITY
+  # ============================================================================
+
+  - id: "US-BACKEND-CLI-010"
+    title: "Command Whitelist Validation"
+    category: "command_security"
+    priority: "critical"
+    as_a: "backend service"
+    i_want: "to validate commands against a whitelist"
+    so_that: "only safe commands can be executed"
+    acceptance_criteria:
+      - "Whitelist includes: agentic plan, agentic session, agentic loop, etc."
+      - "Commands not matching whitelist are rejected"
+      - "Shell metacharacters (;, |, &&, etc.) are rejected"
+      - "Path traversal attempts are rejected"
+      - "Returns 403 Forbidden with clear error message"
+    technical_notes: |
+      - Define whitelist in configuration
+      - Use shlex.split() for safe parsing
+
+  - id: "US-BACKEND-CLI-011"
+    title: "Argument Sanitization"
+    category: "command_security"
+    priority: "critical"
+    as_a: "backend service"
+    i_want: "to sanitize command arguments"
+    so_that: "command injection is prevented"
+    acceptance_criteria:
+      - "Arguments are validated before passing to subprocess"
+      - "Shell=False is always used"
+      - "Arguments are passed as list, not concatenated string"
+      - "Dangerous flags are blocked (--force on sensitive commands)"
+      - "Returns 400 Bad Request for invalid arguments"
+    technical_notes: |
+      - Never use shell=True
+      - Validate each argument separately
+
+  - id: "US-BACKEND-CLI-012"
+    title: "Authentication for CLI Execution"
+    category: "command_security"
+    priority: "high"
+    as_a: "backend service"
+    i_want: "to require authentication for CLI commands"
+    so_that: "only authorized users can execute commands"
+    acceptance_criteria:
+      - "All CLI endpoints require valid API key or session token"
+      - "Returns 401 Unauthorized if not authenticated"
+      - "Returns 403 Forbidden if user lacks permission"
+      - "Different permission levels for read-only vs write commands"
+    technical_notes: |
+      - Use FastAPI Depends() for auth
+      - Implement role-based access control (RBAC)
+
+  # ============================================================================
+  # COMMAND HISTORY
+  # ============================================================================
+
+  - id: "US-BACKEND-CLI-020"
+    title: "Log Command Execution"
+    category: "command_history"
+    priority: "medium"
+    as_a: "administrator"
+    i_want: "to log all CLI commands executed via API"
+    so_that: "I can audit usage and debug issues"
+    acceptance_criteria:
+      - "All commands are logged with: timestamp, user, command, args, exit_code"
+      - "Logs include execution duration"
+      - "Logs are structured (JSON) for parsing"
+      - "Sensitive arguments are redacted (passwords, tokens)"
+      - "Logs are persisted to file and/or database"
+    technical_notes: |
+      - Use Python logging with JSON formatter
+      - Redact args matching patterns: --token, --password
+
+  - id: "US-BACKEND-CLI-021"
+    title: "Query Command History"
+    category: "command_history"
+    priority: "low"
+    as_a: "administrator"
+    i_want: "to query command execution history via API"
+    so_that: "I can review past operations"
+    acceptance_criteria:
+      - "GET /api/cli/history returns recent commands"
+      - "Supports filtering by: user, command, date_range"
+      - "Results are paginated"
+      - "Returns 200 OK with list of command records"
+      - "Sensitive data is redacted in response"
+    related_endpoints:
+      - "GET /api/cli/history"
+
+  # ============================================================================
+  # ASYNC EXECUTION
+  # ============================================================================
+
+  - id: "US-BACKEND-CLI-030"
+    title: "Execute Command Asynchronously"
+    category: "async_execution"
+    priority: "medium"
+    as_a: "frontend developer"
+    i_want: "to start long-running commands asynchronously"
+    so_that: "the API doesn't block for slow operations"
+    acceptance_criteria:
+      - "POST /api/cli/execute?async=true starts command in background"
+      - "Returns 202 Accepted with job_id immediately"
+      - "GET /api/cli/jobs/{job_id} polls for status and output"
+      - "Job status: pending, running, completed, failed"
+      - "Completed jobs return full output"
+    related_endpoints:
+      - "POST /api/cli/execute?async=true"
+      - "GET /api/cli/jobs/{job_id}"
+    technical_notes: |
+      - Use background worker (asyncio task or Celery)
+      - Store job state in repository
+
+  - id: "US-BACKEND-CLI-031"
+    title: "Cancel Running Command"
+    category: "async_execution"
+    priority: "low"
+    as_a: "frontend user"
+    i_want: "to cancel a running command"
+    so_that: "I can stop operations that are taking too long"
+    acceptance_criteria:
+      - "DELETE /api/cli/jobs/{job_id} cancels running command"
+      - "Process is killed gracefully (SIGTERM, then SIGKILL)"
+      - "Returns 204 No Content on success"
+      - "Returns 404 Not Found if job doesn't exist"
+      - "Returns 409 Conflict if job already completed"
+    related_endpoints:
+      - "DELETE /api/cli/jobs/{job_id}"
+
+  # ============================================================================
+  # SPECIFIC CLI COMMANDS
+  # ============================================================================
+
+  - id: "US-BACKEND-CLI-040"
+    title: "Plan Commands via API"
+    category: "specific_commands"
+    priority: "high"
+    as_a: "frontend developer"
+    i_want: "to execute plan commands via dedicated endpoints"
+    so_that: "I have type-safe interfaces for common operations"
+    acceptance_criteria:
+      - "POST /api/cli/plan/init initializes new plan"
+      - "POST /api/cli/plan/task/start starts task"
+      - "POST /api/cli/plan/task/complete completes task"
+      - "All endpoints return structured responses"
+      - "Endpoints validate parameters before execution"
+    related_endpoints:
+      - "POST /api/cli/plan/init"
+      - "POST /api/cli/plan/task/start"
+      - "POST /api/cli/plan/task/complete"
+    technical_notes: |
+      - These are wrappers around generic execute endpoint
+      - Provide better parameter validation and response parsing
+
+  - id: "US-BACKEND-CLI-041"
+    title: "Session Commands via API"
+    category: "specific_commands"
+    priority: "medium"
+    as_a: "frontend developer"
+    i_want: "to manage Claude Code sessions via API"
+    so_that: "web users can control sessions"
+    acceptance_criteria:
+      - "POST /api/cli/session/start starts new session"
+      - "POST /api/cli/session/stop stops session"
+      - "GET /api/cli/session/status gets session status"
+      - "All endpoints return structured session data"
+    related_endpoints:
+      - "POST /api/cli/session/start"
+      - "POST /api/cli/session/stop"
+      - "GET /api/cli/session/status"
+
+  - id: "US-BACKEND-CLI-042"
+    title: "LangSmith Commands via API"
+    category: "specific_commands"
+    priority: "low"
+    as_a: "frontend developer"
+    i_want: "to access LangSmith functionality via API"
+    so_that: "web users can view traces and analytics"
+    acceptance_criteria:
+      - "GET /api/cli/langsmith/traces lists recent traces"
+      - "GET /api/cli/langsmith/traces/{trace_id} gets trace details"
+      - "All endpoints return structured LangSmith data"
+    related_endpoints:
+      - "GET /api/cli/langsmith/traces"
+      - "GET /api/cli/langsmith/traces/{trace_id}"
+    integration_with: "AgenticLangSmith"
+
+  # ============================================================================
+  # ERROR HANDLING
+  # ============================================================================
+
+  - id: "US-BACKEND-CLI-050"
+    title: "Handle Command Failures"
+    category: "error_handling"
+    priority: "high"
+    as_a: "backend service"
+    i_want: "to handle command failures gracefully"
+    so_that: "API remains stable when commands fail"
+    acceptance_criteria:
+      - "Non-zero exit code returns 200 OK with exit_code in response"
+      - "Process crash returns 500 Internal Server Error"
+      - "Timeout returns 504 Gateway Timeout"
+      - "All error responses include stdout and stderr"
+      - "Error responses include error ID for support"
+    technical_notes: |
+      - Distinguish between CLI error vs API error
+      - CLI errors are not API failures
+
+  - id: "US-BACKEND-CLI-051"
+    title: "Parse CLI Output"
+    category: "error_handling"
+    priority: "medium"
+    as_a: "backend service"
+    i_want: "to parse CLI output into structured data"
+    so_that: "frontend can consume responses programmatically"
+    acceptance_criteria:
+      - "Detect JSON output mode (-j flag) and parse"
+      - "Return parsed JSON in response.data field"
+      - "Fall back to raw text if JSON parsing fails"
+      - "Include both raw and parsed output in response"
+    technical_notes: |
+      - Try to parse stdout as JSON
+      - Handle both single-line and multi-line JSON

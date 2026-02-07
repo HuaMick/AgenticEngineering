@@ -1,0 +1,286 @@
+# Builder Agent Question Generation Example
+# This example demonstrates how a builder agent should use the question workflow
+# when encountering implementation blockers requiring human judgment.
+
+example_name: "Builder Question Workflow"
+description: |
+  Complete scenario showing a builder agent encountering a blocker, generating
+  a question YAML, and checking for/consuming an answer to resume work.
+
+# ==============================================
+# SCENARIO 1: Architectural Decision Blocker
+# ==============================================
+scenario_1_architecture:
+  context: |
+    A build-python agent is implementing a new user authentication API for a web service.
+    The codebase has no existing authentication implementation to follow as precedent.
+    The builder must choose between JWT tokens and session cookies, which has significant
+    architectural implications for the entire API security layer.
+
+  # Step 1: Recognize the blocker
+  blocker_recognition:
+    agent_thought_process: |
+      "I need to implement user authentication for API endpoints. I've researched both
+      JWT tokens and session cookies. Both are valid approaches with different tradeoffs:
+
+      JWT: Stateless, scales horizontally, no server-side storage needed, harder to revoke
+      Session: Stateful, easier revocation, requires server storage, session management
+
+      This is an architectural decision with long-term impact. I should not make this
+      decision autonomously because:
+      1. No existing auth pattern in codebase to follow
+      2. Affects database schema (session storage?)
+      3. Affects client libraries and API contracts
+      4. Affects horizontal scaling strategy
+
+      This matches 'architectural_decisions' trigger in question-workflow.yml.
+      Severity: blocking (cannot proceed with auth implementation without this decision)."
+
+  # Step 2: Generate question YAML
+  question_generation:
+    method: "Use QuestionQueue service"
+    code_example: |
+      from pathlib import Path
+      from agenticguidance.services.question import QuestionQueue
+      from agenticguidance.models.question import QuestionSeverity
+
+      # Initialize queue for current plan
+      plan_path = Path("docs/plans/live/260203XX_user_auth_api")
+      queue = QuestionQueue(plan_path)
+
+      # Create question
+      question = queue.create_question(
+          text="Should we use JWT tokens or session cookies for API authentication?",
+          context=(
+              "Task: Implement user authentication for API endpoints\n"
+              "Research:\n"
+              "  - JWT: Stateless, scales horizontally, no server storage, harder revocation\n"
+              "  - Session: Stateful, easier revocation, requires server storage\n"
+              "Blocking: No precedent in codebase for auth pattern\n"
+              "Impact: Affects database schema, client libs, API contracts, scaling strategy"
+          ),
+          severity=QuestionSeverity.BLOCKING.value,
+          asked_by="build-python"
+      )
+
+      print(f"Question created: {question.id}")
+      print(f"Saved to: {question.file_path}")
+
+    generated_question_yaml: |
+      # File: docs/plans/live/260203XX_user_auth_api/questions/pending/Q-20260203-143022-a1b2.yml
+      id: Q-20260203-143022-a1b2
+      text: Should we use JWT tokens or session cookies for API authentication?
+      context: |
+        Task: Implement user authentication for API endpoints
+        Research:
+          - JWT: Stateless, scales horizontally, no server storage, harder revocation
+          - Session: Stateful, easier revocation, requires server storage
+        Blocking: No precedent in codebase for auth pattern
+        Impact: Affects database schema, client libs, API contracts, scaling strategy
+      severity: blocking
+      asked_by: build-python
+      created_at: 1738598622.5
+      status: pending
+
+  # Step 3: Exit gracefully and notify
+  agent_exit_behavior:
+    task_status_update: "blocked-on-question"
+    output_message: |
+      "Build task blocked on architectural decision.
+      Question ID: Q-20260203-143022-a1b2
+      Question: Should we use JWT tokens or session cookies for API authentication?
+      Status: Waiting for human response in questions/pending/
+
+      Recommendation: Run 'agentic question list --status pending' to see question.
+      Answer with: 'agentic question answer Q-20260203-143022-a1b2 --text \"your answer\"'"
+
+  # Step 4: Human answers the question
+  human_interaction:
+    cli_command: |
+      agentic question answer Q-20260203-143022-a1b2 \
+        --text "Use JWT tokens with RS256 signing for stateless authentication. \
+        Store public keys in configuration. Implement token refresh mechanism. \
+        Set expiration to 15 minutes for access tokens, 7 days for refresh tokens."
+
+    result: |
+      Question moved from questions/pending/ to questions/answered/
+      Files created:
+        - questions/answered/Q-20260203-143022-a1b2.yml (Answer object)
+        - questions/answered/Q-20260203-143022-a1b2_question.yml (Question with answer)
+
+  # Step 5: Agent resumes and checks for answer
+  resumption_check:
+    code_example: |
+      from pathlib import Path
+      from agenticguidance.services.question import QuestionQueue
+
+      # Initialize queue
+      plan_path = Path("docs/plans/live/260203XX_user_auth_api")
+      queue = QuestionQueue(plan_path)
+
+      # Check if our specific question was answered
+      question_id = "Q-20260203-143022-a1b2"
+      question = queue.get_question(question_id)
+
+      if question and question.status == "answered":
+          print(f"Answer received: {question.answer}")
+          print(f"Answered by: {question.answered_by}")
+          print(f"Proceeding with implementation using: JWT tokens with RS256")
+      else:
+          print(f"Question still pending. Status: {question.status if question else 'not found'}")
+
+  # Step 6: Incorporate answer and continue
+  agent_continuation:
+    action: |
+      Agent reads answer: "Use JWT tokens with RS256 signing for stateless authentication..."
+
+      Implementation plan:
+      1. Install PyJWT library (add to pyproject.toml)
+      2. Create auth service with RS256 key pair generation
+      3. Implement token generation endpoint (/auth/token)
+      4. Implement token refresh endpoint (/auth/refresh)
+      5. Create authentication middleware for protected endpoints
+      6. Store public keys in config/auth_keys.yml
+      7. Set token expiration: 15min (access), 7d (refresh)
+
+      Document decision in commit message:
+      "Implement JWT-based authentication with RS256 signing
+
+      Decision: Use JWT tokens over session cookies for stateless auth
+      Rationale: Better horizontal scaling, no server-side session storage
+      Configuration: RS256 signing, 15min access / 7d refresh tokens
+
+      Question ID: Q-20260203-143022-a1b2
+      Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>"
+
+# ==============================================
+# SCENARIO 2: Business Logic Clarification
+# ==============================================
+scenario_2_business_logic:
+  context: |
+    A build-python agent is implementing error handling for a payment processing workflow.
+    The spec says "handle payment failures gracefully" but doesn't specify the default
+    timeout value or retry strategy.
+
+  blocker_recognition:
+    agent_thought_process: |
+      "I'm implementing payment processing error handling. The requirement says to
+      'handle failures gracefully' but doesn't specify:
+      1. Default timeout value for payment API calls
+      2. Retry strategy (how many retries? exponential backoff?)
+      3. What constitutes a 'temporary' vs 'permanent' failure
+
+      This is business logic that requires domain expertise. I could make assumptions,
+      but payment processing is high-risk (financial transactions).
+
+      Matches 'business_logic' trigger in question-workflow.yml.
+      Severity: high (I can implement other parts while waiting, but this affects UX)."
+
+  question_generation:
+    generated_question_yaml: |
+      # File: docs/plans/live/260203XX_payment_flow/questions/pending/Q-20260203-150500-c3d4.yml
+      id: Q-20260203-150500-c3d4
+      text: What timeout and retry strategy should we use for payment API calls?
+      context: |
+        Task: Implement error handling for payment processing workflow
+        Requirements: "Handle payment failures gracefully" (from spec)
+        Missing details:
+          - Default timeout for payment API calls
+          - Retry strategy (count, backoff, which errors to retry)
+          - Classification of temporary vs permanent failures
+        Impact: Affects user experience (wait time), payment success rate, API load
+        Risk: Payment processing is financial transaction (high-risk domain)
+      severity: high
+      asked_by: build-python
+      created_at: 1738600300.2
+      status: pending
+
+  human_interaction:
+    cli_command: |
+      agentic question answer Q-20260203-150500-c3d4 \
+        --text "Timeout: 30 seconds. Retry: 3 attempts with exponential backoff (1s, 2s, 4s). \
+        Retry on: 5xx errors, timeouts, connection errors. \
+        Do NOT retry on: 4xx errors (invalid input). \
+        Permanent failure after 3 failed attempts - notify user and log for manual review."
+
+  resumption_check:
+    agent_action: |
+      Agent checks answered/ directory, finds answer, implements:
+      - 30-second timeout on payment API calls
+      - 3 retry attempts with exponential backoff
+      - Retry logic for 5xx/timeout/connection errors
+      - No retry for 4xx (invalid input)
+      - User notification + logging after permanent failure
+
+# ==============================================
+# SCENARIO 3: When NOT to Ask (Autonomous Decision)
+# ==============================================
+scenario_3_autonomous:
+  context: |
+    A build-python agent is creating a new utility function for date formatting.
+
+  wrong_approach:
+    agent_thought: "Should I name this format_date() or date_format()? I'll ask a question."
+    why_wrong: |
+      This is a LOW-RISK technical detail that can be changed easily in code review.
+      The agent should make an autonomous decision by following existing patterns.
+
+  correct_approach:
+    agent_action: |
+      1. Check existing codebase for similar function names
+         $ grep -r "def format_" src/ | head -10
+         # Finds: format_string(), format_number(), format_currency()
+
+      2. Identify pattern: verb_noun convention (format_X)
+
+      3. Make decision: Use format_date() to match existing pattern
+
+      4. Document in docstring:
+         def format_date(dt: datetime, fmt: str = "%Y-%m-%d") -> str:
+             '''Format datetime object to string.
+
+             Args:
+                 dt: Datetime object to format
+                 fmt: strftime format string
+
+             Returns:
+                 Formatted date string
+             '''
+
+      5. If reviewer prefers different name, they can suggest in PR review
+         (low cost to change, no architectural impact)
+
+  rationale: |
+    Agent should exercise judgment and make reasonable decisions for low-risk choices.
+    Asking questions for trivial decisions slows progress unnecessarily.
+    Follow observable patterns and document choices clearly.
+
+# ==============================================
+# Best Practices Summary
+# ==============================================
+best_practices:
+  when_to_ask:
+    - "Architectural decisions with long-term impact"
+    - "Business logic requiring domain expertise"
+    - "High-risk decisions (security, financial, data loss)"
+    - "Conflicting requirements needing priority call"
+    - "Missing critical info not available in docs/code"
+
+  when_not_to_ask:
+    - "Variable/function naming (follow patterns)"
+    - "Code organization (follow existing structure)"
+    - "Implementation details with precedent"
+    - "Low-risk choices easily changed in review"
+    - "Questions answerable from existing docs/code"
+
+  question_quality:
+    - "Be specific: Ask clear yes/no or choice questions"
+    - "Provide context: Explain research and why blocked"
+    - "Show impact: Describe what depends on this decision"
+    - "Offer options: Present alternatives you've considered"
+
+  resumption_pattern:
+    - "Check for answers before exiting or escalating"
+    - "Use QuestionQueue.get_question(id) to check status"
+    - "Apply answer and document decision in commit message"
+    - "Update task status from 'blocked-on-question' to 'in-progress'"

@@ -1,0 +1,171 @@
+# User Stories: Utility Commands
+# State management, environment, inputs, manifests, CICD
+
+stories:
+  # ============================================================================
+  # STATE MANAGEMENT
+  # ============================================================================
+
+  - id: "US-CLI-140"
+    title: "List Process State Registry"
+    category: "state_management"
+    priority: "medium"
+    as_a: "developer debugging CLI operations"
+    i_want: "to see all registered CLI processes"
+    so_that: "I can track what operations are running or have run"
+    acceptance_criteria:
+      - "agentic state list shows all registered processes"
+      - "Output includes PID, command, status, start time"
+      - "The --active flag filters to show only running processes"
+      - "Dead processes are automatically cleaned up on list"
+      - "JSON output supported with --json flag"
+    related_commands:
+      - "agentic state list"
+      - "agentic state list --active"
+    related_agents: []
+
+  - id: "US-CLI-141"
+    title: "Show Process State Details"
+    category: "state_management"
+    priority: "low"
+    as_a: "developer investigating a specific process"
+    i_want: "to see detailed information about a registered process"
+    so_that: "I can diagnose issues or track execution"
+    acceptance_criteria:
+      - "agentic state show <pid> displays full process details"
+      - "Output includes command, args, cwd, environment"
+      - "Start time, end time, and duration are shown"
+      - "Exit code is displayed if process completed"
+    related_commands:
+      - "agentic state show 12345"
+    related_agents: []
+
+  - id: "US-CLI-142"
+    title: "Clear State Registry"
+    category: "state_management"
+    priority: "low"
+    as_a: "developer cleaning up test artifacts"
+    i_want: "to clear the process state registry"
+    so_that: "I can remove stale process records"
+    acceptance_criteria:
+      - "agentic state clear removes all completed process records"
+      - "The --all flag removes all records including active processes"
+      - "The --force flag skips confirmation prompt"
+      - "Active processes are not cleared unless --all is specified"
+    related_commands:
+      - "agentic state clear"
+      - "agentic state clear --all --force"
+    related_agents: []
+
+  - id: "US-CLI-143"
+    title: "Cleanup Dead Processes"
+    category: "state_management"
+    priority: "medium"
+    as_a: "developer maintaining system hygiene"
+    i_want: "to remove records for processes that are no longer running"
+    so_that: "The state registry stays clean and accurate"
+    acceptance_criteria:
+      - "agentic state cleanup removes dead process records"
+      - "Process liveness is checked via PID"
+      - "Count of cleaned processes is displayed"
+      - "Command is safe to run regularly"
+    related_commands:
+      - "agentic state cleanup"
+    related_agents: []
+
+  # ============================================================================
+  # ENVIRONMENT MANAGEMENT
+  # ============================================================================
+
+  - id: "US-CLI-144"
+    title: "Show Environment Variables"
+    category: "environment_management"
+    priority: "medium"
+    as_a: "developer debugging configuration issues"
+    i_want: "to see all relevant environment variables"
+    so_that: "I can verify configuration and API keys"
+    acceptance_criteria:
+      - "agentic env show displays CLI-relevant environment variables"
+      - "Output includes LANGSMITH_API_KEY, CC_*, CLAUDE_* variables"
+      - "Sensitive values are masked in output"
+      - "JSON output supported with --json flag"
+    related_commands:
+      - "agentic env show"
+    related_agents: []
+
+  - id: "US-CLI-145"
+    title: "Export Environment Variables"
+    category: "environment_management"
+    priority: "low"
+    as_a: "developer scripting CLI operations"
+    i_want: "to export environment variables in a format I can eval"
+    so_that: "I can set environment programmatically"
+    acceptance_criteria:
+      - "agentic env export outputs env vars in shell format"
+      - "The --format shell outputs export statements"
+      - "The --format json outputs JSON object"
+      - "Output can be eval'd to set environment"
+    related_commands:
+      - "agentic env export --format shell"
+      - "eval $(agentic env export --format shell)"
+      - "agentic env export --format json"
+    related_agents: []
+
+  - id: "US-CLI-146"
+    title: "Run Command with Environment"
+    category: "environment_management"
+    priority: "medium"
+    as_a: "developer testing with specific environment"
+    i_want: "to run a command with CLI environment pre-loaded"
+    so_that: "I don't need to manually set environment variables"
+    acceptance_criteria:
+      - "agentic env run <command> executes command with CLI environment"
+      - "All CLI-relevant environment variables are injected"
+      - "Command arguments are passed through correctly"
+      - "Exit code is preserved from the wrapped command"
+    related_commands:
+      - "agentic env run claude code"
+      - "agentic env run pytest tests/"
+    related_agents: []
+
+  # ============================================================================
+  # INPUTS VALIDATION
+  # ============================================================================
+
+  - id: "US-CLI-147"
+    title: "Validate Inputs YAML References"
+    category: "inputs_management"
+    priority: "medium"
+    as_a: "developer creating agent inputs.yml"
+    i_want: "to validate that all file references in inputs.yml exist"
+    so_that: "Agents don't fail due to missing input files"
+    acceptance_criteria:
+      - "agentic inputs validate <file> checks all location references"
+      - "Missing files are reported with paths"
+      - "Layer references are expanded and checked"
+      - "Exit code 1 if validation fails, 0 if all files exist"
+    related_commands:
+      - "agentic inputs validate inputs.yml"
+      - "agentic inputs validate agents/planner/planner-build/inputs.yml"
+    related_agents:
+      - "planner-build"
+      - "builder"
+
+  - id: "US-CLI-148"
+    title: "Resolve Inputs YAML References"
+    category: "inputs_management"
+    priority: "medium"
+    as_a: "agent bootstrapping context"
+    i_want: "to resolve all layer and file references in inputs.yml"
+    so_that: "I get a flat list of all files to load"
+    acceptance_criteria:
+      - "agentic inputs resolve <file> expands all references"
+      - "Layer references are expanded to full file lists"
+      - "File existence is checked and reported"
+      - "Output is JSON array of resolved file paths"
+    related_commands:
+      - "agentic inputs resolve inputs.yml"
+      - "agentic inputs resolve agents/planner/inputs.yml --json"
+    related_agents:
+      - "planner-build"
+      - "builder"

@@ -1,0 +1,130 @@
+# User Stories: Planning Workflow
+# Covers the orchestration-planning workflow for creating approved plans
+
+stories:
+  # ============================================================================
+  # PLANNING INITIATION
+  # ============================================================================
+
+  - id: "US-ORCH-001"
+    title: "Initiate Implementation Planning"
+    category: "planning_workflow"
+    priority: "critical"
+    as_a: "developer starting a new feature"
+    i_want: "to initiate a planning workflow that produces an approved implementation plan"
+    so_that: "work is planned before execution begins"
+    acceptance_criteria:
+      - "Planning is initiated via _plan_build.yml entrypoint"
+      - "The orchestration-planning agent coordinates the planning process"
+      - "A worktree is created or verified via deploy-worktree agent"
+      - "A plan folder is created in docs/plans/live/ with YYMMDDXX_description naming"
+      - "The planning objective is captured and validated"
+      - "Required phases are determined based on objective type"
+    related_commands:
+      - "agentic ep execute plan_build"
+      - "agentic plan init <branch> --description <desc>"
+    related_agents:
+      - "orchestration-planning"
+      - "deploy-worktree"
+
+  - id: "US-ORCH-002"
+    title: "Main-First Planning Workflow"
+    category: "planning_workflow"
+    priority: "critical"
+    as_a: "team maintaining multiple features"
+    i_want: "plans to be created in the main worktree for centralized visibility"
+    so_that: "all active plans are visible from a single location"
+    acceptance_criteria:
+      - "Plan folders are created in the main worktree's docs/plans/live/"
+      - "Feature worktrees are created for code implementation"
+      - "Plan creation happens on main branch, execution on feature branch"
+      - "agentic plan init creates both worktree and plan folder atomically"
+      - "Plan status is viewable from the main worktree"
+      - "Merging happens via staging to main"
+    related_commands:
+      - "agentic plan init <branch>"
+      - "agentic plan list"
+    related_agents:
+      - "orchestration-planning"
+      - "deploy-worktree"
+
+  # ============================================================================
+  # PLAN CREATION
+  # ============================================================================
+
+  - id: "US-ORCH-003"
+    title: "Specialized Planner Agents"
+    category: "plan_creation"
+    priority: "critical"
+    as_a: "orchestration-planning agent"
+    i_want: "to spawn specialized planner agents for each phase type"
+    so_that: "each plan phase is created by a domain expert"
+    acceptance_criteria:
+      - "planner-build creates implementation phase plans for code changes"
+      - "planner-test creates test validation phase plans with execution loops"
+      - "planner-cleaning creates cleanup and audit phase plans"
+      - "planner-guidance creates guidance improvement phase plans"
+      - "planner-guidance-testing creates guidance completeness testing plans"
+      - "Each planner follows its process.yml guidance"
+      - "Planners output structured YAML plan files"
+    related_agents:
+      - "orchestration-planning"
+      - "planner-build"
+      - "planner-test"
+      - "planner-cleaning"
+      - "planner-guidance"
+
+  - id: "US-ORCH-004"
+    title: "Plan Review and Approval"
+    category: "plan_review"
+    priority: "critical"
+    as_a: "orchestration-planning agent ensuring plan quality"
+    i_want: "to submit plans for review and iterate based on feedback"
+    so_that: "only well-structured, complete plans proceed to execution"
+    acceptance_criteria:
+      - "planner-reviewer agent reviews submitted plans"
+      - "Review checks for completeness, clarity, and feasibility"
+      - "Rejected plans are returned with specific feedback"
+      - "Orchestration-planning manages the review iteration loop"
+      - "Plans can go through multiple review cycles"
+      - "Approved plans have clear success criteria and task definitions"
+    related_agents:
+      - "orchestration-planning"
+      - "planner-reviewer"
+
+  - id: "US-ORCH-005"
+    title: "Generate Orchestration MMD from Plan"
+    category: "plan_creation"
+    priority: "critical"
+    as_a: "orchestration-planning agent finalizing a plan"
+    i_want: "to generate a Mermaid flowchart (MMD) that defines execution order"
+    so_that: "the orchestration-executor can read and execute the plan dynamically"
+    acceptance_criteria:
+      - "planner-orchestration agent generates orchestration_*.mmd files"
+      - "MMD includes phase nodes with AGENT_ROUTING metadata"
+      - "MMD defines transitions between phases (success/failure paths)"
+      - "Test phases include test-fix loop structures"
+      - "Feedback triggers are defined for failure handling"
+      - "MMD is validated via agentic plan orchestration validate"
+    related_commands:
+      - "agentic plan orchestration generate"
+      - "agentic plan orchestration validate"
+    related_agents:
+      - "planner-orchestration"
+      - "orchestration-executor"
+
+  - id: "US-ORCH-006"
+    title: "Human Approval Gate"
+    category: "plan_review"
+    priority: "critical"
+    as_a: "human overseeing the planning process"
+    i_want: "to review and approve the complete plan before execution begins"
+    so_that: "I maintain control over what gets built"
+    acceptance_criteria:
+      - "The orchestration-planning agent presents the complete plan for human review"
+      - "Human can approve, reject, or request modifications"
+      - "Plan includes objective, phases, tasks, success criteria, and orchestration MMD"
+      - "Approval is recorded in the plan metadata"
+      - "Only approved plans can be executed by orchestration-executor"
+    related_agents:
+      - "orchestration-planning"

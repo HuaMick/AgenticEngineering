@@ -127,8 +127,10 @@ process:
       Reference plan_example.yml from inputs for:
       - Plan structure with unique name and worktree path at root level
       - File-level inputs for context routing (enables parallel vs sequential execution determination)
+      - Task-level `target_files` on EVERY task (sole mechanism for parallelization decisions)
       - Detailed guidance and measurable success criteria patterns
       - Operation ordering and agent type allocation
+      - NOTE: Do NOT include plan-level `impacted_files` (DEPRECATED)
 
       INPUTS SECTION (CRITICAL - Required for each task):
       Each task MUST include an `inputs` list specifying project-specific files the agent needs to pre-read.
@@ -158,14 +160,26 @@ process:
       - Entrypoint execution - which CLI commands, API endpoints, or UI flows to test?
       - Expected outcomes - what should the user see/experience when it works?
 
-      USER STORY INTEGRATION (for UAT planning by planner-test):
-      Build plans should identify which user stories are affected by the implementation.
-      This enables planner-test to create comprehensive UAT phases:
-      - List affected user stories in plan metadata (e.g., affected_stories: ["US-001", "US-002"])
-      - Note new user stories that may need creation
-      - Consider user journey impacts beyond the immediate implementation
-      - Reference: modules/AgenticGuidance/assets/definitions/user-stories.yml
-      - UAT planning is handled by planner-test (see planner-test/process.yml#uat_phase_planning)
+      USER STORY INTEGRATION (MANDATORY - FENCE: Story-First Planning):
+      Build plans MUST identify affected user stories. This is a mandatory step
+      enforced by planning-standard.yml#Story-First Planning.
+
+      PROCESS:
+      1. Run `agentic stories find` during objective parsing to discover affected stories
+      2. Record affected_stories in plan metadata (e.g., affected_stories: ["US-CLI-001", "US-CLI-002"])
+      3. Include story files in task input references for context
+      4. When stories affected: planner-test creates UAT phases targeting those stories
+      5. When no stories found: MUST include no_stories_rationale field explaining why
+
+      STORY CREATION/UPDATE:
+      When implementation requires new stories or changes existing user journeys:
+      - Add story_creation_tasks to the plan (tasks to create/update story files)
+      - Flag story_updates_needed: true in plan metadata
+      - Story creation is deferred to a teach phase (not done during build planning)
+
+      Reference: modules/AgenticGuidance/assets/definitions/user-stories.yml
+      Reference: modules/AgenticGuidance/assets/guidelines/planning-standard.yml#Story-First Planning
+      UAT planning: planner-test (see planner-test/process.yml#uat_phase_planning)
 
       Architecture patterns for new code:
       Reference docs/ARCHITECTURE.md for Domain -> Workflow -> Entrypoint pattern and separation of concerns.
@@ -193,6 +207,96 @@ process:
 
       DUMPING GROUND: Use additional subfolders (e.g., `analysis/`, `design-specs/`) to store agent artifacts
       like .md analysis files, diagrams, or intermediate specs to avoid polluting shared spaces.
+
+    - |
+      OPEN QUESTIONS POPULATION (HITL Question Workflow):
+      Reference: modules/AgenticGuidance/assets/guidelines/question-workflow.yml
+
+      During plan creation, identify blocking questions that require human judgment or
+      information that cannot be inferred from existing context. Populate the open_questions
+      section in the plan YAML to enable agents to track and resolve these during execution.
+
+      WHEN TO INCLUDE QUESTIONS:
+      - Architectural decisions with significant long-term impact
+      - Business logic requiring domain-specific stakeholder input
+      - Priority clarification for conflicting requirements
+      - Missing critical information not in docs/code
+      - High-risk decisions affecting system behavior
+
+      QUESTION FORMAT IN PLAN:
+      ```yaml
+      open_questions:
+        - id: "plan-q-001"
+          question: "Should the user authentication use JWT tokens or session cookies?"
+          severity: "blocking"  # blocking | high | medium | low
+          status: "pending"     # pending | answered | deferred
+          context: |
+            Task: Implement user authentication for API endpoints
+            Attempted: Researched both approaches, found tradeoffs
+            Blocking: No prior auth implementation in codebase to follow
+            Impact: Affects all API endpoint security implementation
+          created_at: "2026-02-03T14:30:22"
+          asked_by: "planner-build"
+      ```
+
+      FIELD DEFINITIONS:
+      - id: Unique identifier (plan-q-NNN format for plan-level questions)
+      - question: Clear, specific question text
+      - severity: blocking (cannot proceed), high (significant impact), medium (workaround exists), low (preference)
+      - status: pending (awaiting answer), answered (has answer field), deferred (postponed)
+      - context: Background explaining why this is blocking and what was tried
+      - created_at: ISO 8601 timestamp
+      - asked_by: Agent role generating the question
+
+      WHEN ANSWERED (populated during execution, not during planning):
+      ```yaml
+      - id: "plan-q-001"
+        question: "..."
+        status: "answered"
+        answer: "Use JWT tokens with RS256 signing for stateless authentication"
+        answered_at: "2026-02-03T16:45:00"
+        answered_by: "human"
+      ```
+
+      DO NOT ASK QUESTIONS ABOUT:
+      - Technical implementation details agents can decide autonomously
+      - Standard patterns already established in codebase
+      - Low-risk choices that can be validated in code review
+      - Information available in existing documentation or code
+
+      NOTE: During execution, agents will use QuestionQueue service to manage these
+      questions dynamically. The open_questions section in the plan provides visibility
+      and tracks plan-level questions identified during planning.
+
+    - |
+      IMPACTED ARTIFACTS ANALYSIS (Recommended for orchestration visibility):
+      Reference: modules/AgenticGuidance/assets/specifications/plan-schema.yml
+
+      After identifying tasks, analyze and document semantic artifact impacts to enable:
+      - Clear impact analysis for reviewers
+      - Semantic conflict detection between plans
+
+      NOTE: Plan-level `impacted_files` is DEPRECATED. Do NOT generate it.
+      File scoping is handled exclusively by task-level `target_files`.
+      Each task MUST declare its `target_files` list.
+      Orchestration determines parallelization from non-overlapping task target_files.
+
+      IMPACTED_ARTIFACTS SECTION (semantic metadata — still recommended):
+      For higher-level semantic impacts (APIs, CLI commands, services):
+      ```yaml
+      impacted_artifacts:
+        - artifact_type: cli_command  # api | cli_command | service | agent | config | model | schema
+          artifact_identifier: "agentic worktree create"
+          impact_type: new  # new | interface_change | behavior_change | deprecation | removal
+          description: "New command for worktree creation"
+          breaking_change: false
+      ```
+
+      ANALYSIS APPROACH:
+      1. Ensure every task has `target_files` defined (REQUIRED for parallelization)
+      2. Identify semantic impacts (new commands, API changes, service modifications)
+      3. Flag any breaking_change: true for interface or behavior changes
+      4. Include impacted_artifacts in the plan output for reviewer visibility
 
     - |
       CLI vs AGENT DECISION STEP (For New Functionality):

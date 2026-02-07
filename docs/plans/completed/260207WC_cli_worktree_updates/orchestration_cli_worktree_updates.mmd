@@ -1,0 +1,140 @@
+flowchart LR
+    %% ========================================
+    %% ORCHESTRATION: CLI Worktree Updates — Registry, Naming, Bootstrap Merge
+    %% ========================================
+    %% GOAL: Fix worktree-plan alignment with registry, naming fix, Main-First list, bootstrap merge
+    %% PROFILE: orchestrator
+    %%
+    %% PLAN_FOLDER: docs/plans/live/260207WC_cli_worktree_updates
+    %% PLAN_FILES: plan_build.yml
+    %%
+    %% PHASES: RegistryPhase, CLIFlagsPhase, BootstrapMergePhase, TestPhase, ValidationGate
+    %% AGENT_ROUTING: RegistryPhase=build-python, CLIFlagsPhase=build-python, BootstrapMergePhase=build-python, TestPhase=test-builder, ValidationGate=test-runner
+    %% FEEDBACK_TRIGGERS: BUILD_FAILURE=retry(3), TEST_FAILURE=retry(3)
+    %% STATUS: RegistryPhase=pending, CLIFlagsPhase=pending, BootstrapMergePhase=pending, TestPhase=pending, ValidationGate=pending
+
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION
+    %% ========================================
+    LoadInputs --> ReviewPlanFiles[Review plan_build.yml]
+    ReviewPlanFiles --> CheckInputs{All Inputs Found?}
+    CheckInputs -- "No: Missing" --> AskUser((Ask User for Clarification))
+    CheckInputs -- "Yes: Verified" --> CCIBootstrap[Run: agentic context bootstrap]
+
+    CCIBootstrap --> BootstrapReady{Bootstrap Complete?}
+    BootstrapReady -- "No: Failed" --> AskUser
+    BootstrapReady -- "Yes: Ready" --> EnterRegistryPhase[Enter Worktree Registry Phase]
+
+    %% ========================================
+    %% PHASE 1: WORKTREE REGISTRY
+    %% ========================================
+    %% Tasks: WC_001 (create registry), WC_002 (fix naming algorithm)
+    %% Agent: build-python
+    %% Targets: docs/worktrees.yml, worktree.py
+
+    subgraph RegistryPhase_SG ["Worktree Registry Phase"]
+        EnterRegistryPhase --> SpawnRegistry[Spawn build-python Agent]
+        SpawnRegistry --> RegistryResult{Registry Created?}
+
+        RegistryResult -- "No: Issues" --> CaptureRegistryFeedback[Capture Feedback]
+        CaptureRegistryFeedback --> CheckRegistryIterations{Max Iterations?}
+        CheckRegistryIterations -- "No: Continue" --> SpawnRegistry
+        CheckRegistryIterations -- "Yes: Limit" --> EscalateRegistry((Escalate: Registry Build Failed))
+
+        RegistryResult -- "Yes: Complete" --> RegistryComplete[Registry Complete]
+    end
+
+    RegistryComplete --> EnterCLIFlagsPhase[Enter CLI Flags Phase]
+
+    %% ========================================
+    %% PHASE 2: CLI FLAGS
+    %% ========================================
+    %% Tasks: WC_003 (--abbreviation, --description flags), WC_004 (Main-First list)
+    %% Agent: build-python
+    %% Targets: cli.py, worktree.py
+
+    subgraph CLIFlagsPhase_SG ["CLI Flags Phase"]
+        EnterCLIFlagsPhase --> SpawnCLIFlags[Spawn build-python Agent]
+        SpawnCLIFlags --> CLIFlagsResult{Flags Added?}
+
+        CLIFlagsResult -- "No: Issues" --> CaptureCLIFlagsFeedback[Capture Feedback]
+        CaptureCLIFlagsFeedback --> CheckCLIFlagsIterations{Max Iterations?}
+        CheckCLIFlagsIterations -- "No: Continue" --> SpawnCLIFlags
+        CheckCLIFlagsIterations -- "Yes: Limit" --> EscalateCLIFlags((Escalate: CLI Flags Failed))
+
+        CLIFlagsResult -- "Yes: Complete" --> CLIFlagsComplete[CLI Flags Complete]
+    end
+
+    CLIFlagsComplete --> EnterBootstrapMergePhase[Enter Bootstrap Merge Phase]
+
+    %% ========================================
+    %% PHASE 3: BOOTSTRAP MERGE
+    %% ========================================
+    %% Tasks: WC_005 (merge plan bootstrap into plan init --objective)
+    %% Agent: build-python
+    %% Targets: cli.py, plan.py
+
+    subgraph BootstrapMergePhase_SG ["Bootstrap Merge Phase"]
+        EnterBootstrapMergePhase --> SpawnBootstrapMerge[Spawn build-python Agent]
+        SpawnBootstrapMerge --> BootstrapMergeResult{Bootstrap Merged?}
+
+        BootstrapMergeResult -- "No: Issues" --> CaptureBootstrapMergeFeedback[Capture Feedback]
+        CaptureBootstrapMergeFeedback --> CheckBootstrapMergeIterations{Max Iterations?}
+        CheckBootstrapMergeIterations -- "No: Continue" --> SpawnBootstrapMerge
+        CheckBootstrapMergeIterations -- "Yes: Limit" --> EscalateBootstrapMerge((Escalate: Merge Failed))
+
+        BootstrapMergeResult -- "Yes: Complete" --> BootstrapMergeComplete[Bootstrap Merge Complete]
+    end
+
+    BootstrapMergeComplete --> EnterTestPhase[Enter Test Phase]
+
+    %% ========================================
+    %% PHASE 4: TESTS
+    %% ========================================
+    %% Task: WC_006 (unit tests for registry, naming, flags, list)
+    %% Agent: test-builder
+
+    subgraph TestPhase_SG ["Test Phase"]
+        EnterTestPhase --> SpawnTests[Spawn test-builder Agent]
+        SpawnTests --> TestResult{Tests Pass?}
+
+        TestResult -- "No: Failures" --> CaptureTestFeedback[Capture Test Feedback]
+        CaptureTestFeedback --> CheckTestIterations{Max Iterations?}
+        CheckTestIterations -- "No: Continue" --> SpawnBuildFix[Spawn build-python for Fix]
+        SpawnBuildFix --> SpawnTests
+        CheckTestIterations -- "Yes: Limit" --> EscalateTest((Escalate: Tests Failed))
+
+        TestResult -- "Yes: Passed" --> TestComplete[Tests Complete]
+    end
+
+    TestComplete --> EnterValidation[Enter Validation Gate]
+
+    %% ========================================
+    %% VALIDATION GATE
+    %% ========================================
+    subgraph ValidationPhase_SG ["Validation Gate"]
+        EnterValidation --> SpawnValidation[Spawn test-runner Agent]
+        SpawnValidation --> ValidationResult{All Tests Pass?}
+
+        ValidationResult -- "No: Failures" --> CaptureValidationFeedback[Capture Feedback]
+        CaptureValidationFeedback --> CheckValidationIterations{Max Iterations?}
+        CheckValidationIterations -- "No: Continue" --> SpawnValidationFix[Spawn build-python for Fix]
+        SpawnValidationFix --> SpawnValidation
+        CheckValidationIterations -- "Yes: Limit" --> EscalateValidation((Escalate: Validation Failed))
+
+        ValidationResult -- "Yes: Passed" --> ValidationComplete[Validation Complete]
+    end
+
+    %% ========================================
+    %% OUTPUT PHASE
+    %% ========================================
+    subgraph Output_SG ["Output Subgraph"]
+        ValidationComplete --> ReportCompletion[Report Completion Status]
+        ReportCompletion --> ArchivePlan[Run: agentic plan move folder --plan 260207WC_cli_worktree_updates]
+    end
+
+    ArchivePlan --> End((End: Plan Completed))
+
+    classDef dashedstroke stroke-dasharray: 5 5;

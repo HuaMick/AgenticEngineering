@@ -65,6 +65,37 @@ inputs:
     description: "Project dependencies and build configuration"
 
 # ========================================
+# FILE SCOPING
+# ========================================
+# File scoping uses TASK-LEVEL `target_files` (see tasks below).
+# Each task declares which files it modifies via its `target_files` list.
+# Orchestration uses non-overlapping target_files to determine safe parallelization.
+# Plan-level `impacted_files` is DEPRECATED — do not include it in new plans.
+
+# ========================================
+# IMPACTED ARTIFACTS (Semantic Impact Tracking)
+# ========================================
+# Higher-level system components affected by this plan.
+# Complements impacted_files with semantic-level impact tracking.
+# Schema: modules/AgenticGuidance/assets/specifications/plan-schema.yml#impacted_artifacts_schema
+impacted_artifacts:
+  - artifact_type: cli_command
+    artifact_identifier: "myproject example run"
+    impact_type: new
+    description: "New CLI command for running the example feature"
+    breaking_change: false
+
+  - artifact_type: service
+    artifact_identifier: "ExampleService"
+    impact_type: new
+    description: "New domain service encapsulating business logic"
+
+  - artifact_type: api
+    artifact_identifier: "POST /api/v1/example"
+    impact_type: new
+    description: "New API endpoint for programmatic access"
+
+# ========================================
 # OPEN QUESTIONS (Human-Authority Decisions)
 # ========================================
 # This section tracks questions/decisions that require human judgment.
@@ -190,16 +221,23 @@ phases:
         description: "Implement pure business logic at src/domain/"
         status: "completed"
         completed_date: "YYYY-MM-DD"
+        target_files:
+          - "src/domain/services/example_service.py"
 
       - id: "dev_002"
         name: "Workflow Layer Build"
         description: "Orchestrate domain services at src/workflows/"
         status: "in_progress"
+        target_files:
+          - "src/workflows/example_workflow.py"
 
       - id: "dev_003"
         name: "Entrypoint Layer Build"
         description: "CLI and API interfaces at src/cli/ and src/api/"
         status: "pending"
+        target_files:
+          - "src/cli/commands/example.py"
+          - "src/api/routes/example.py"
 
   # ----------------------------------------
   # PHASE 2: Validation
@@ -214,12 +252,18 @@ phases:
         status: "pending"
         loop: "test-fix-loop"
         strategy: "agent-blind-test"
+        target_files:
+          - "tests/test_example_service.py"
+          - "tests/integration/test_example_e2e.py"
 
       - id: "val_002"
         name: "Final Quality Audit (audit-test-fix-loop)"
         description: "Mandatory audit to detect reward-hacking and verify test quality before completion."
         status: "pending"
         loop: "audit-test-fix-loop"
+        target_files:
+          - "tests/test_example_service.py"
+          - "tests/integration/test_example_e2e.py"
 
   # ----------------------------------------
   # PHASE 3: Cleanup
@@ -232,11 +276,17 @@ phases:
         name: "Remove development artifacts"
         description: "Clean temp files, debug logs, unused imports"
         status: "pending"
+        target_files:
+          - "src/domain/services/example_service.py"
+          - "src/workflows/example_workflow.py"
+          - "src/cli/commands/example.py"
 
       - id: "clean_002"
         name: "Documentation review"
         description: "Ensure docs match final implementation"
         status: "pending"
+        target_files:
+          - "docs/features/example.md"
 
 # ========================================
 # SUCCESS CRITERIA

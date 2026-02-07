@@ -1,0 +1,354 @@
+# User Stories: Plan Approval and Intervention
+# Covers human-in-the-loop approval, plan review, and manual intervention
+
+stories:
+  # ============================================================================
+  # PLAN REVIEW INTERFACE
+  # ============================================================================
+
+  - id: "US-FE-100"
+    title: "Review Generated Plan"
+    category: "plan_approval"
+    priority: "high"
+    as_a: "developer receiving a generated plan"
+    i_want: "to review the plan before execution starts"
+    so_that: "I can verify it meets requirements and makes sense"
+    acceptance_criteria:
+      - "Plan is displayed in readable format"
+      - "All phases and tasks are visible"
+      - "Agent assignments are shown"
+      - "Acceptance criteria for each task displayed"
+      - "Orchestration flow is visualized"
+      - "Plan metadata (description, goals) is shown"
+    related_components:
+      - "frontend: PlanReviewView"
+      - "frontend: PlanApprovalModal"
+      - "backend: PlanService"
+
+  - id: "US-FE-101"
+    title: "Approve or Reject Plan"
+    category: "plan_approval"
+    priority: "high"
+    as_a: "developer reviewing a plan"
+    i_want: "to approve or reject the plan with feedback"
+    so_that: "execution only proceeds with my consent"
+    acceptance_criteria:
+      - "Clear approve/reject buttons"
+      - "Rejection requires reason/feedback"
+      - "Approval confirms readiness to execute"
+      - "Decision is sent to backend/CLI"
+      - "Approval state persists in plan metadata"
+      - "Notification sent to session on decision"
+    related_commands:
+      - "agentic plan approve <plan-id>"
+      - "agentic plan reject <plan-id> --reason <text>"
+    related_components:
+      - "frontend: ApprovalControls"
+      - "backend: PlanApprovalService"
+
+  - id: "US-FE-102"
+    title: "Request Plan Revisions"
+    category: "plan_approval"
+    priority: "high"
+    as_a: "developer with concerns about the plan"
+    i_want: "to request specific changes before approving"
+    so_that: "the plan is refined to meet my needs"
+    acceptance_criteria:
+      - "Revision request form with specific feedback fields"
+      - "Can flag specific tasks or phases for revision"
+      - "Suggested changes can be entered"
+      - "Request is sent back to planning agent"
+      - "Plan status changes to 'revision requested'"
+      - "User notified when revised plan is ready"
+    related_components:
+      - "frontend: RevisionRequestForm"
+      - "frontend: PlanReviewView"
+      - "backend: PlanService"
+
+  # ============================================================================
+  # INLINE PLAN EDITING
+  # ============================================================================
+
+  - id: "US-FE-103"
+    title: "Edit Task Descriptions"
+    category: "plan_approval"
+    priority: "medium"
+    as_a: "developer reviewing tasks"
+    i_want: "to edit task descriptions inline"
+    so_that: "I can clarify or correct without full rejection"
+    acceptance_criteria:
+      - "Click task description to enter edit mode"
+      - "Changes are saved to plan YAML"
+      - "Validation prevents invalid changes"
+      - "Confirmation before saving major edits"
+      - "Edit history is tracked"
+      - "Can revert individual edits"
+    related_components:
+      - "frontend: TaskEditor"
+      - "frontend: InlineEdit"
+      - "backend: PlanService"
+
+  - id: "US-FE-104"
+    title: "Add or Remove Tasks"
+    category: "plan_approval"
+    priority: "medium"
+    as_a: "developer customizing the plan"
+    i_want: "to add new tasks or remove unnecessary ones"
+    so_that: "the plan reflects my priorities"
+    acceptance_criteria:
+      - "Add task button creates new task entry"
+      - "Task form includes description, phase, priority"
+      - "Remove task shows confirmation dialog"
+      - "Changes update plan YAML atomically"
+      - "Task IDs are auto-generated if not provided"
+      - "Changes marked as 'user-modified'"
+    related_components:
+      - "frontend: TaskManager"
+      - "frontend: PlanReviewView"
+      - "backend: TaskService"
+
+  - id: "US-FE-105"
+    title: "Reorder Tasks and Phases"
+    category: "plan_approval"
+    priority: "medium"
+    as_a: "developer optimizing execution order"
+    i_want: "to drag-and-drop tasks and phases into different order"
+    so_that: "the plan executes in my preferred sequence"
+    acceptance_criteria:
+      - "Drag-and-drop interface for tasks within phases"
+      - "Drag phases to reorder them"
+      - "Visual feedback during drag"
+      - "Changes save automatically"
+      - "Orchestration MMD regenerated on reorder"
+      - "Undo option for accidental reorders"
+    related_components:
+      - "frontend: DragDropManager"
+      - "frontend: TaskList"
+
+  # ============================================================================
+  # APPROVAL WORKFLOW
+  # ============================================================================
+
+  - id: "US-FE-106"
+    title: "Multi-Stage Approval"
+    category: "plan_approval"
+    priority: "low"
+    as_a: "team lead managing approvals"
+    i_want: "to require multiple approvals for plans"
+    so_that: "critical plans are reviewed by multiple stakeholders"
+    acceptance_criteria:
+      - "Configure required approver count"
+      - "Each approver sees approval status of others"
+      - "Plan execution blocked until all approve"
+      - "Approvers can be assigned specific roles"
+      - "Email/notification sent to approvers"
+      - "Approval history tracked with timestamps"
+    related_components:
+      - "frontend: ApprovalWorkflow"
+      - "backend: ApprovalService"
+
+  - id: "US-FE-107"
+    title: "Conditional Approval"
+    category: "plan_approval"
+    priority: "low"
+    as_a: "developer with partial concerns"
+    i_want: "to approve with conditions or notes"
+    so_that: "I can greenlight execution while flagging caveats"
+    acceptance_criteria:
+      - "Approve button has 'approve with conditions' option"
+      - "Conditions entered as structured notes"
+      - "Executor agent sees conditions during execution"
+      - "Conditions can be task-specific or plan-wide"
+      - "Conditions are tracked in approval metadata"
+      - "Can mark conditions as addressed"
+    related_components:
+      - "frontend: ConditionalApproval"
+      - "frontend: ApprovalControls"
+
+  # ============================================================================
+  # EXECUTION INTERVENTION
+  # ============================================================================
+
+  - id: "US-FE-108"
+    title: "Pause Execution"
+    category: "plan_approval"
+    priority: "high"
+    as_a: "user monitoring execution"
+    i_want: "to pause the workflow at any time"
+    so_that: "I can intervene if something goes wrong"
+    acceptance_criteria:
+      - "Pause button prominently displayed during execution"
+      - "Current task completes before pausing"
+      - "Status changes to 'paused by user'"
+      - "Pause reason can be entered (optional)"
+      - "Resume button available when paused"
+      - "Backend respects pause state"
+    related_commands:
+      - "agentic session pause"
+      - "agentic session resume"
+    related_components:
+      - "frontend: ExecutionControls"
+      - "backend: OrchestrationService"
+
+  - id: "US-FE-109"
+    title: "Cancel Execution"
+    category: "plan_approval"
+    priority: "high"
+    as_a: "user needing to stop execution"
+    i_want: "to cancel the workflow permanently"
+    so_that: "I can prevent further actions"
+    acceptance_criteria:
+      - "Cancel button with confirmation dialog"
+      - "Cancellation reason required"
+      - "In-progress task is interrupted"
+      - "Status changes to 'cancelled'"
+      - "Cancellation cannot be undone"
+      - "Session remains active but workflow stops"
+    related_commands:
+      - "agentic session cancel"
+    related_components:
+      - "frontend: ExecutionControls"
+      - "backend: OrchestrationService"
+
+  - id: "US-FE-110"
+    title: "Skip Current Task"
+    category: "plan_approval"
+    priority: "medium"
+    as_a: "user with manual override needs"
+    i_want: "to skip the current task and move to the next"
+    so_that: "I can bypass problematic tasks"
+    acceptance_criteria:
+      - "Skip button available during task execution"
+      - "Confirmation dialog warns of consequences"
+      - "Skip reason is logged"
+      - "Task status set to 'skipped'"
+      - "Workflow advances to next task"
+      - "Skipped tasks are visible in history"
+    related_commands:
+      - "agentic plan task skip <id>"
+    related_components:
+      - "frontend: TaskControls"
+      - "backend: TaskService"
+
+  # ============================================================================
+  # APPROVAL NOTIFICATIONS
+  # ============================================================================
+
+  - id: "US-FE-111"
+    title: "Approval Request Notifications"
+    category: "plan_approval"
+    priority: "high"
+    as_a: "developer needing to approve plans"
+    i_want: "to be notified when approval is needed"
+    so_that: "I don't delay execution unnecessarily"
+    acceptance_criteria:
+      - "Browser notification when plan awaits approval"
+      - "Email notification option (configurable)"
+      - "In-app notification badge on sessions list"
+      - "Notification includes plan name and summary"
+      - "Click notification navigates to approval view"
+      - "Reminder notification if not acted upon"
+    related_components:
+      - "frontend: NotificationService"
+      - "backend: ApprovalService"
+
+  - id: "US-FE-112"
+    title: "Approval Status Dashboard"
+    category: "plan_approval"
+    priority: "medium"
+    as_a: "team lead tracking approvals"
+    i_want: "a dashboard showing pending approvals"
+    so_that: "I can see what needs review across all projects"
+    acceptance_criteria:
+      - "List of plans awaiting approval"
+      - "Shows plan name, requester, time pending"
+      - "Filter by project or plan type"
+      - "Sort by urgency or date"
+      - "Bulk approve option (with caution)"
+      - "Click plan opens approval view"
+    related_components:
+      - "frontend: ApprovalDashboard"
+      - "backend: ApprovalService"
+
+  # ============================================================================
+  # AUDIT AND HISTORY
+  # ============================================================================
+
+  - id: "US-FE-113"
+    title: "Approval Audit Trail"
+    category: "plan_approval"
+    priority: "medium"
+    as_a: "auditor reviewing decisions"
+    i_want: "to see full history of approvals and rejections"
+    so_that: "I can understand who approved what and when"
+    acceptance_criteria:
+      - "Audit log shows all approval events"
+      - "Each event includes approver, timestamp, decision"
+      - "Rejection reasons are recorded"
+      - "Plan modifications tracked with diffs"
+      - "Audit log is immutable"
+      - "Export log as report"
+    related_components:
+      - "frontend: AuditLog"
+      - "backend: ApprovalService"
+
+  - id: "US-FE-114"
+    title: "Compare Plan Versions"
+    category: "plan_approval"
+    priority: "medium"
+    as_a: "developer reviewing revised plan"
+    i_want: "to see what changed since last review"
+    so_that: "I can focus on the differences"
+    acceptance_criteria:
+      - "Side-by-side diff view of plan versions"
+      - "Highlight added, removed, modified tasks"
+      - "Diff for orchestration changes"
+      - "Version history with timestamps"
+      - "Rollback to previous version option"
+      - "Export diff as document"
+    related_components:
+      - "frontend: PlanDiff"
+      - "frontend: VersionHistory"
+
+  # ============================================================================
+  # MANUAL TASK EXECUTION
+  # ============================================================================
+
+  - id: "US-FE-115"
+    title: "Manually Execute Task"
+    category: "plan_approval"
+    priority: "medium"
+    as_a: "developer taking direct control"
+    i_want: "to mark tasks as completed manually"
+    so_that: "I can handle tasks outside the automated workflow"
+    acceptance_criteria:
+      - "Task menu has 'complete manually' option"
+      - "Requires confirmation and reason"
+      - "Task status set to 'completed (manual)'"
+      - "Timestamp and user recorded"
+      - "Workflow advances to next task"
+      - "Manual completions visible in audit log"
+    related_commands:
+      - "agentic plan task complete <id> --manual"
+    related_components:
+      - "frontend: TaskControls"
+      - "backend: TaskService"
+
+  - id: "US-FE-116"
+    title: "Add Ad-Hoc Tasks During Execution"
+    category: "plan_approval"
+    priority: "medium"
+    as_a: "developer discovering new work"
+    i_want: "to add tasks while plan is executing"
+    so_that: "I can capture emergent requirements"
+    acceptance_criteria:
+      - "Add task button available during execution"
+      - "New tasks are inserted at appropriate position"
+      - "Can add to current or future phase"
+      - "Workflow pauses for user to confirm insertion"
+      - "Orchestration updated to include new task"
+      - "New tasks tracked as 'user-added'"
+    related_components:
+      - "frontend: TaskManager"
+      - "frontend: ExecutionControls"
+      - "backend: TaskService"

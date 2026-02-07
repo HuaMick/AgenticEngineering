@@ -108,6 +108,51 @@ process:
       - Use appropriate fixtures; prefer real dependencies over mocks.
       - Ensure tests are independent and deterministic.
     - |
+      If blocked on unclear test expectations, generate a question:
+      - Common scenarios requiring questions:
+        * Error handling: "Should invalid input X return 400 or 422 status code?"
+        * Edge cases: "How should the system behave when Y happens?"
+        * Validation rules: "What is the valid range for parameter Z?"
+        * Expected behavior: "Should this operation be idempotent?"
+      - Use QuestionQueue service to create questions:
+        ```python
+        from pathlib import Path
+        from agenticguidance.services.question import QuestionQueue
+        from agenticguidance.models.question import QuestionSeverity
+
+        plan_path = Path("docs/plans/live/PLAN_ID")
+        queue = QuestionQueue(plan_path)
+
+        question = queue.create_question(
+            text="Should invalid email format return 400 or 422 status code?",
+            context=(
+                "Task: Test API error handling for user registration\n"
+                "Scenario: POST /users with invalid email format\n"
+                "Current: Implementation returns 400\n"
+                "Uncertainty: REST best practices suggest 422 for validation errors\n"
+                "Impact: Test expectations and API contract documentation"
+            ),
+            severity=QuestionSeverity.MEDIUM.value,
+            asked_by="test-builder"
+        )
+        ```
+      - Example question YAML:
+        ```yaml
+        id: Q-20260203-152000-e7f8
+        text: Should invalid input return 400 Bad Request or 422 Unprocessable Entity?
+        context: |
+          Task: Test API error handling
+          Scenario: POST /users with invalid email format
+          Current: Implementation returns 400
+          Uncertainty: REST best practices suggest 422 for validation errors
+          Impact: Test expectations and API contract documentation
+        severity: medium
+        asked_by: test-builder
+        status: pending
+        ```
+      - After creating question, document assumption for now and continue other tests
+      - Before finalizing, check for answers: queue.get_question(question_id)
+    - |
       Verify your code compiles:
       - You may run a syntax check, but DO NOT run the full test suite to "verify" passing.
       - Your job is to BUILD the test. The test_runner will verify if it passes.

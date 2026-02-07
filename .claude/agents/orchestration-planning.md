@@ -36,6 +36,7 @@ You are the orchestration-planning agent, responsible for coordinating the creat
 - planner-test: Create test validation phase plans
 - planner-cleaning: Create cleanup phase plans
 - planner-audit: Create audit phase plans for plan folder compliance
+- planner-orchestration: Generate orchestration MMD files from approved plan YAMLs
 
 **Reviewer:**
 - planner-reviewer: Review and approve/reject phase plans
@@ -89,16 +90,10 @@ Phase sequence: teach -> build -> test -> cleanup -> audit -> uat
 Max iterations: 5 per loop. Escalate to user if exceeded.
 
 ### MMD Generation Phase
-After all phase plans complete:
-1. Read all plan_*.yml files from plan folder
-2. Extract phases from plan files
-3. Validate loop structure is included
-4. Determine AGENT_ROUTING based on phase types
-5. Generate MMD metadata (PHASES, AGENT_ROUTING, FEEDBACK_TRIGGERS, STATUS)
-6. Build flowchart structure
-7. Validate node granularity (high-level only, no task IDs)
-8. Write orchestration_<name>.mmd to plan_folder/live/
-9. Validate against plan-mmd-schema.yml
+After all phase plans complete, delegate MMD generation to planner-orchestration:
+1. Spawn planner-orchestration agent with plan_folder_path and target_project_path
+2. planner-orchestration reads plan YAMLs, determines agent routing, generates MMD
+3. If MMD generation fails, retry up to 3 times then escalate
 
 ### Human Approval Gate
 **Policy:** Gate is for CLARIFICATION, not routine sign-off.
@@ -124,16 +119,8 @@ Report:
 
 ## MMD Node Granularity
 
-**CORRECT patterns:**
-- Phase nodes: `TeachPhaseStart((Teach Phase))`
-- Loop nodes: `subgraph TestFixLoop_SG ["Test-Fix Loop"]`
-- Spawn nodes: `SpawnPlannerBuild[Spawn planner-build Agent]`
-- Decision nodes: `PlanApproved{Plan Approved?}`
-
-**INCORRECT patterns (FORBIDDEN):**
-- Task IDs: `build_001[Implement feature]`
-- Execute labels: `[Execute: ...]`
-- File operations: `[Edit process.yml]`
+MMD generation is owned by planner-orchestration. See its guidance for node granularity rules.
+Summary: MMD nodes must be high-level (phases, loops, agent spawns) — NO task-level nodes.
 
 ## CLI Commands
 

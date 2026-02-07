@@ -114,6 +114,8 @@ def handle(args, ctx=None):
     """
     if args.plan_command == "init":
         cmd_init(args, ctx)
+    elif args.plan_command == "bootstrap":
+        cmd_bootstrap(args, ctx)
     elif args.plan_command == "scaffold":
         cmd_scaffold(args)
     elif args.plan_command == "status":
@@ -430,26 +432,61 @@ def cmd_init(args, ctx=None):
     # Create the folder structure
     create_planning_folder(plan_path)
 
+    # If --objective provided, write plan_build.yml with objective (replaces plan bootstrap)
+    objective = getattr(args, "objective", None)
+    if objective:
+        created_date = datetime.now().strftime("%Y-%m-%d")
+        plan_build_content = f"""# Implementation Plan: {description}
+# Plan ID: {plan_folder_name.split('_')[0]}
+# Created: {created_date}
+
+name: "{description}"
+worktree_path: "{worktree_path}"
+branch: "{branch}"
+status: "active"
+priority: "high"
+
+context: |
+  {objective}
+
+phases:
+  - name: "Initial Research and Planning"
+    tasks:
+      - id: "IM_001"
+        name: "Research existing implementation"
+        status: "pending"
+        description: "Analyze the codebase to understand how to implement the objective."
+"""
+        (plan_path / "plan_build.yml").write_text(plan_build_content)
+
     # Output results
+    result_data = {
+        "worktree": str(worktree_path),
+        "worktree_created": not worktree_exists,
+        "branch": branch,
+        "base": base,
+        "plan_folder": str(plan_path),
+        "plan_folder_name": plan_folder_name,
+        "main_worktree": str(main_worktree_path),
+    }
+    if objective:
+        result_data["objective"] = objective
+
     if is_json_output():
-        print_json({
-            "worktree": str(worktree_path),
-            "worktree_created": not worktree_exists,
-            "branch": branch,
-            "base": base,
-            "plan_folder": str(plan_path),
-            "plan_folder_name": plan_folder_name,
-            "main_worktree": str(main_worktree_path),
-        })
+        print_json(result_data)
     else:
         console.print(f"  [green]Created plan folder[/green] at {plan_path}")
         console.print("  [dim](Main-First Planning: plan in main worktree)[/dim]")
+        if objective:
+            console.print(f"  [green]Wrote plan_build.yml[/green] with objective")
         console.print()
         print_success(f"Plan initialized: {plan_folder_name}")
         console.print(f"[dim]Execution worktree:[/dim] {worktree_path}")
         console.print(f"[dim]Plan folder:[/dim] {plan_path}")
-
-    sys.exit(0)
+        console.print()
+        console.print("[dim]Link related user stories in inputs.yml:[/dim]")
+        console.print(f"[dim]  agentic stories find --project <name>[/dim]")
+        console.print(f"[dim]  agentic stories untested --project <name>[/dim]")
 
 
 def cmd_scaffold(args):
@@ -3436,3 +3473,24 @@ def _generate_assertions(validation_type: str, command: str, expected_outcome: s
         })
 
     return assertions
+
+def cmd_bootstrap(args, ctx=None):
+    """Bootstrap a new plan with an objective.
+
+    DEPRECATED: Use `agentic plan init --objective` instead.
+    This command is kept for backward compatibility and redirects to cmd_init.
+    """
+    import sys
+
+    from agenticcli.console import (
+        is_json_output,
+        print_warning,
+    )
+
+    if not is_json_output():
+        print_warning(
+            "plan bootstrap is deprecated. Use: agentic plan init <branch> --objective '<objective>' --description '<desc>'"
+        )
+
+    # Redirect to cmd_init by forwarding args
+    cmd_init(args, ctx)

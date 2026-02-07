@@ -1,0 +1,179 @@
+flowchart LR
+    %% ========================================
+    %% ORCHESTRATION: User Story CLI Tooling — Build & Test
+    %% ========================================
+    %% GOAL: Implement CLI commands for user story test tracking, migration script, argparse registration, and tests
+    %% PROFILE: orchestrator
+    %%
+    %% PLAN_FOLDER: docs/plans/live/260207CL_user_story_cli_tooling
+    %% PLAN_FILES: plan_build.yml
+    %%
+    %% PHASES: MigrationBuild, CommandBuild, ArgparseRegistration, PlanInitLinking, TestPhase, DocsPhase, ValidationGate
+    %% AGENT_ROUTING: MigrationBuild=build-python, CommandBuild=build-python, ArgparseRegistration=build-python, PlanInitLinking=build-python, TestPhase=test-builder, DocsPhase=teacher-update-guidance, ValidationGate=test-runner
+    %% FEEDBACK_TRIGGERS: BUILD_FAILURE=retry(3), TEST_FAILURE=retry(3)
+    %% STATUS: MigrationBuild=pending, CommandBuild=pending, ArgparseRegistration=pending, PlanInitLinking=pending, TestPhase=pending, DocsPhase=pending, ValidationGate=pending
+
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION
+    %% ========================================
+    LoadInputs --> ReviewPlanFiles[Review plan_build.yml]
+    ReviewPlanFiles --> CheckInputs{All Inputs Found?}
+    CheckInputs -- "No: Missing" --> AskUser((Ask User for Clarification))
+    CheckInputs -- "Yes: Verified" --> CCIBootstrap[Run: agentic context bootstrap]
+
+    CCIBootstrap --> BootstrapReady{Bootstrap Complete?}
+    BootstrapReady -- "No: Failed" --> AskUser
+    BootstrapReady -- "Yes: Ready" --> EnterMigrationPhase[Enter Migration Build Phase]
+
+    %% ========================================
+    %% PHASE 1: MIGRATION SCRIPT BUILD
+    %% ========================================
+    %% Task: phase_01_001 (create migration script)
+    %% Agent: build-python
+    %% Targets: scripts/migrate_stories.py
+
+    subgraph MigrationPhase_SG ["Migration Script Build Phase"]
+        EnterMigrationPhase --> SpawnMigration[Spawn build-python Agent]
+        SpawnMigration --> MigrationResult{Migration Script Built?}
+
+        MigrationResult -- "No: Issues" --> CaptureMigrationFeedback[Capture Feedback]
+        CaptureMigrationFeedback --> CheckMigrationIterations{Max Iterations?}
+        CheckMigrationIterations -- "No: Continue" --> SpawnMigration
+        CheckMigrationIterations -- "Yes: Limit" --> EscalateMigration((Escalate: Migration Build Failed))
+
+        MigrationResult -- "Yes: Complete" --> MigrationComplete[Migration Script Complete]
+    end
+
+    MigrationComplete --> EnterCommandPhase[Enter Command Build Phase]
+
+    %% ========================================
+    %% PHASE 2: COMMAND BUILD
+    %% ========================================
+    %% Tasks: phase_02_001-004 (status, update, report, untested commands)
+    %% Agent: build-python
+    %% Targets: agenticcli/commands/stories.py
+
+    subgraph CommandPhase_SG ["Command Build Phase"]
+        EnterCommandPhase --> SpawnCommands[Spawn build-python Agent]
+        SpawnCommands --> CommandResult{Commands Built?}
+
+        CommandResult -- "No: Issues" --> CaptureCommandFeedback[Capture Feedback]
+        CaptureCommandFeedback --> CheckCommandIterations{Max Iterations?}
+        CheckCommandIterations -- "No: Continue" --> SpawnCommands
+        CheckCommandIterations -- "Yes: Limit" --> EscalateCommand((Escalate: Command Build Failed))
+
+        CommandResult -- "Yes: Complete" --> CommandComplete[Commands Complete]
+    end
+
+    CommandComplete --> EnterArgparsePhase[Enter Argparse Registration Phase]
+
+    %% ========================================
+    %% PHASE 3: ARGPARSE REGISTRATION
+    %% ========================================
+    %% Task: phase_03_001 (register subcommands in cli.py)
+    %% Agent: build-python
+
+    subgraph ArgparsePhase_SG ["Argparse Registration Phase"]
+        EnterArgparsePhase --> SpawnArgparse[Spawn build-python Agent]
+        SpawnArgparse --> ArgparseResult{Commands Registered?}
+
+        ArgparseResult -- "No: Issues" --> CaptureArgparseFeedback[Capture Feedback]
+        CaptureArgparseFeedback --> CheckArgparseIterations{Max Iterations?}
+        CheckArgparseIterations -- "No: Continue" --> SpawnArgparse
+        CheckArgparseIterations -- "Yes: Limit" --> EscalateArgparse((Escalate: Registration Failed))
+
+        ArgparseResult -- "Yes: Complete" --> ArgparseComplete[Registration Complete]
+    end
+
+    ArgparseComplete --> EnterPlanInitPhase[Enter Plan Init Linking Phase]
+
+    %% ========================================
+    %% PHASE 4: PLAN INIT STORY LINKING
+    %% ========================================
+    %% Task: phase_04_001 (add story linking to plan init)
+    %% Agent: build-python
+
+    subgraph PlanInitPhase_SG ["Plan Init Linking Phase"]
+        EnterPlanInitPhase --> SpawnPlanInit[Spawn build-python Agent]
+        SpawnPlanInit --> PlanInitResult{Story Linking Added?}
+
+        PlanInitResult -- "No: Issues" --> CapturePlanInitFeedback[Capture Feedback]
+        CapturePlanInitFeedback --> CheckPlanInitIterations{Max Iterations?}
+        CheckPlanInitIterations -- "No: Continue" --> SpawnPlanInit
+        CheckPlanInitIterations -- "Yes: Limit" --> EscalatePlanInit((Escalate: Linking Failed))
+
+        PlanInitResult -- "Yes: Complete" --> PlanInitComplete[Plan Init Linking Complete]
+    end
+
+    PlanInitComplete --> EnterTestPhase[Enter Test Phase]
+
+    %% ========================================
+    %% PHASE 5: TESTS
+    %% ========================================
+    %% Task: phase_05_001 (unit tests for new commands)
+    %% Agent: test-builder
+
+    subgraph TestPhase_SG ["Test Phase"]
+        EnterTestPhase --> SpawnTests[Spawn test-builder Agent]
+        SpawnTests --> TestResult{Tests Pass?}
+
+        TestResult -- "No: Failures" --> CaptureTestFeedback[Capture Test Feedback]
+        CaptureTestFeedback --> CheckTestIterations{Max Iterations?}
+        CheckTestIterations -- "No: Continue" --> SpawnBuildFix[Spawn build-python for Fix]
+        SpawnBuildFix --> SpawnTests
+        CheckTestIterations -- "Yes: Limit" --> EscalateTest((Escalate: Tests Failed))
+
+        TestResult -- "Yes: Passed" --> TestComplete[Tests Complete]
+    end
+
+    TestComplete --> EnterDocsPhase[Enter Documentation Phase]
+
+    %% ========================================
+    %% PHASE 6: DOCUMENTATION
+    %% ========================================
+    %% Task: phase_06_001 (update user stories)
+    %% Agent: teacher-update-guidance
+
+    subgraph DocsPhase_SG ["Documentation Phase"]
+        EnterDocsPhase --> SpawnDocs[Spawn teacher-update-guidance Agent]
+        SpawnDocs --> DocsResult{Docs Updated?}
+
+        DocsResult -- "No: Issues" --> CaptureDocsFeedback[Capture Feedback]
+        CaptureDocsFeedback --> CheckDocsIterations{Max Iterations?}
+        CheckDocsIterations -- "No: Continue" --> SpawnDocs
+        CheckDocsIterations -- "Yes: Limit" --> EscalateDocs((Escalate: Docs Failed))
+
+        DocsResult -- "Yes: Complete" --> DocsComplete[Documentation Complete]
+    end
+
+    DocsComplete --> EnterValidation[Enter Validation Gate]
+
+    %% ========================================
+    %% VALIDATION GATE
+    %% ========================================
+    subgraph ValidationPhase_SG ["Validation Gate"]
+        EnterValidation --> SpawnValidation[Spawn test-runner Agent]
+        SpawnValidation --> ValidationResult{All Tests Pass?}
+
+        ValidationResult -- "No: Failures" --> CaptureValidationFeedback[Capture Feedback]
+        CaptureValidationFeedback --> CheckValidationIterations{Max Iterations?}
+        CheckValidationIterations -- "No: Continue" --> SpawnBuildValidationFix[Spawn build-python for Fix]
+        SpawnBuildValidationFix --> SpawnValidation
+        CheckValidationIterations -- "Yes: Limit" --> EscalateValidation((Escalate: Validation Failed))
+
+        ValidationResult -- "Yes: Passed" --> ValidationComplete[Validation Complete]
+    end
+
+    %% ========================================
+    %% OUTPUT PHASE
+    %% ========================================
+    subgraph Output_SG ["Output Subgraph"]
+        ValidationComplete --> ReportCompletion[Report Completion Status]
+        ReportCompletion --> ArchivePlan[Run: agentic plan move folder --plan 260207CL_user_story_cli_tooling]
+    end
+
+    ArchivePlan --> End((End: Plan Completed))
+
+    classDef dashedstroke stroke-dasharray: 5 5;

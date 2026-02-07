@@ -1,0 +1,129 @@
+# User Stories: Execution Workflow
+# Covers the orchestration-executor workflow for executing approved plans
+
+stories:
+  # ============================================================================
+  # PLAN EXECUTION
+  # ============================================================================
+
+  - id: "US-ORCH-010"
+    title: "Execute Approved Plan via MMD"
+    category: "execution_workflow"
+    priority: "critical"
+    as_a: "developer with an approved plan"
+    i_want: "to execute the plan by routing work to appropriate agents"
+    so_that: "implementation proceeds automatically with the right specialists"
+    acceptance_criteria:
+      - "Execution is initiated via _orchestrate.yml entrypoint"
+      - "orchestration-executor reads the orchestration_*.mmd file"
+      - "AGENT_ROUTING metadata determines which agent handles each phase"
+      - "Phases execute in the order defined by the MMD flowchart"
+      - "Phase status transitions: pending -> in_progress -> completed"
+      - "State is persisted to plan YAML and MMD STATUS headers"
+    related_commands:
+      - "agentic ep execute orchestrate"
+      - "agentic plan task current"
+    related_agents:
+      - "orchestration-executor"
+
+  - id: "US-ORCH-011"
+    title: "Dynamic Agent Routing"
+    category: "execution_workflow"
+    priority: "critical"
+    as_a: "orchestration-executor agent"
+    i_want: "to spawn the correct agent for each phase based on MMD metadata"
+    so_that: "the right specialist handles each type of work"
+    acceptance_criteria:
+      - "Builder phases route to build-python (default) or build-flutter"
+      - "Tester phases route to test-runner or test-guidance-simulator"
+      - "Deployer phases route to deploy-cicd or deploy-worktree"
+      - "Teacher phases route to teacher-update-guidance or teacher-update-assets"
+      - "Cleaner phases route to planner-cleaning"
+      - "Auditor phases route to test-audit or test-final-output"
+      - "Routing is determined at runtime from MMD, not hardcoded"
+    related_agents:
+      - "orchestration-executor"
+      - "build-python"
+      - "test-runner"
+      - "teacher-update-guidance"
+
+  - id: "US-ORCH-012"
+    title: "Phase-Level Task Execution"
+    category: "execution_workflow"
+    priority: "critical"
+    as_a: "specialist agent spawned by the executor"
+    i_want: "to receive my current task, execute it, and report completion"
+    so_that: "plan progress is tracked at the task level"
+    acceptance_criteria:
+      - "Agent bootstraps via agentic ctx bootstrap to get role context and current task"
+      - "Agent starts the task via agentic plan task start <id>"
+      - "Agent performs the work defined in the task description and guidance"
+      - "Agent marks the task complete via agentic plan task complete <id>"
+      - "Task completion triggers status update in the plan YAML"
+      - "When all tasks in a phase complete, the phase status updates"
+    related_commands:
+      - "agentic ctx bootstrap --role build-python"
+      - "agentic plan task start <id>"
+      - "agentic plan task complete <id>"
+    related_agents:
+      - "build-python"
+      - "test-runner"
+
+  - id: "US-ORCH-013"
+    title: "Validation Gates"
+    category: "execution_workflow"
+    priority: "high"
+    as_a: "orchestration-executor enforcing quality"
+    i_want: "to run validation before committing phase outputs"
+    so_that: "defective work is caught before it progresses to the next phase"
+    acceptance_criteria:
+      - "Test phases execute test-fix loops before marking complete"
+      - "Build phases require passing validation before completion"
+      - "The executor spawns test agents (test-runner, test-audit) for validation"
+      - "Failed validation triggers feedback loops (re-execution with fixes)"
+      - "Validation results are recorded in the plan"
+    related_agents:
+      - "orchestration-executor"
+      - "test-runner"
+      - "test-audit"
+
+  # ============================================================================
+  # STATE MANAGEMENT
+  # ============================================================================
+
+  - id: "US-ORCH-014"
+    title: "Persistent Execution State"
+    category: "state_management"
+    priority: "critical"
+    as_a: "orchestration-executor resuming after interruption"
+    i_want: "to pick up execution where it left off using persistent state"
+    so_that: "interruptions do not cause work to be repeated"
+    acceptance_criteria:
+      - "Task statuses are persisted to plan YAML files via atomic file operations"
+      - "FileLock ensures concurrent agents cannot corrupt state"
+      - "An interrupted executor can resume by reading current task status"
+      - "Completed tasks are not re-executed"
+      - "In-progress tasks are re-attempted on resume"
+      - "agentic plan task current returns the correct next task after resume"
+    related_commands:
+      - "agentic plan task current"
+      - "agentic plan task list --status in_progress"
+    related_agents:
+      - "orchestration-executor"
+
+  - id: "US-ORCH-015"
+    title: "Plan Auto-Archival"
+    category: "state_management"
+    priority: "high"
+    as_a: "developer cleaning up after feature completion"
+    i_want: "completed plans to be automatically archived"
+    so_that: "the live plans folder only shows active work"
+    acceptance_criteria:
+      - "When all tasks in a plan are marked completed, auto-archival triggers"
+      - "The plan folder moves from docs/plans/live/ to docs/plans/completed/"
+      - "Auto-archival preserves all plan files and history"
+      - "Manual archival is available via agentic plan archive"
+      - "Unarchival is available via agentic plan unarchive for reactivation"
+    related_commands:
+      - "agentic plan archive <path>"
+      - "agentic plan unarchive --plan <name>"

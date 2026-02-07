@@ -1,0 +1,163 @@
+name: guidance-file-scoping
+worktree_path: /home/code/AgenticEngineering-task-level-scoping
+branch: task-level-scoping
+status: active
+priority: high
+context: 'This plan updates the agent guidance to use task-level file scoping exclusively.
+
+
+  DECISION LOG:
+
+  - Remove plan-level `impacted_files` - redundant with task `target_files`
+
+  - Keep plan-level `impacted_artifacts` - useful semantic metadata for reviewers
+
+  - Parallel execution determined by non-overlapping `target_files` WITHIN a plan
+
+  - No cross-plan parallelism - each plan is a serial orchestration unit
+
+  '
+impacted_artifacts:
+- artifact_type: schema
+  artifact_identifier: plan-schema.yml#impacted_files
+  impact_type: deprecation
+  description: Deprecate plan-level impacted_files, task-level target_files is sole
+    mechanism
+- artifact_type: agent
+  artifact_identifier: planner-build
+  impact_type: behavior_change
+  description: Stop generating plan-level impacted_files section
+- artifact_type: agent
+  artifact_identifier: orchestration-executor
+  impact_type: behavior_change
+  description: Use task-level target_files for parallelization decisions
+phases:
+- name: Schema Update Phase
+  execution: sequential
+  tasks:
+  - id: SCH_001
+    name: Mark impacted_files as deprecated in plan-schema.yml
+    status: completed
+    description: 'Add deprecation notice to impacted_files_schema section.
+
+      Keep schema for backward compatibility but mark deprecated.
+
+      '
+    target_files:
+    - modules/AgenticGuidance/assets/specifications/plan-schema.yml
+    inputs:
+    - modules/AgenticGuidance/assets/specifications/plan-schema.yml
+    guidance: '1. Add `deprecated: true` flag to impacted_files_schema
+
+      2. Add deprecation_notice explaining task-level target_files is preferred
+
+      3. Keep schema structure for backward compatibility
+
+      4. Update orchestration_usage to reference task-level pattern
+
+      '
+  - id: SCH_002
+    name: Update plan_example.yml to remove impacted_files
+    status: completed
+    description: 'Remove impacted_files section from example, keep impacted_artifacts.
+
+      '
+    target_files:
+    - modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/plan_example.yml
+    inputs:
+    - modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/plan_example.yml
+    guidance: '1. Remove the entire impacted_files: section
+
+      2. Keep impacted_artifacts: section (semantic metadata)
+
+      3. Add comment explaining task-level target_files pattern
+
+      4. Ensure all tasks have target_files defined
+
+      '
+- name: Planner Guidance Phase
+  execution: sequential
+  tasks:
+  - id: PLN_001
+    name: Update planner-build process to skip impacted_files generation
+    status: completed
+    description: 'Modify planner-build to not generate plan-level impacted_files section.
+
+      '
+    target_files:
+    - modules/AgenticGuidance/agents/planner/planner-build/process.yml
+    inputs:
+    - modules/AgenticGuidance/agents/planner/planner-build/process.yml
+    guidance: '1. Remove step "IMPACTED FILES AND ARTIFACTS ANALYSIS"
+
+      2. Or simplify to only mention impacted_artifacts (semantic)
+
+      3. Emphasize task-level target_files in PLAN STRUCTURE REQUIREMENTS
+
+      4. Add note: "impacted_files at plan level is DEPRECATED"
+
+      '
+  - id: PLN_002
+    name: Update planner-build inputs to reference new pattern
+    status: completed
+    description: 'Update inputs.yml to reference task-level scoping pattern.
+
+      '
+    target_files:
+    - modules/AgenticGuidance/agents/planner/planner-build/inputs.yml
+    inputs:
+    - modules/AgenticGuidance/agents/planner/planner-build/inputs.yml
+    guidance: '1. Remove any guidance_files_modified references at plan level
+
+      2. Add note about task-level target_files being sole mechanism
+
+      3. Update examples to show task-level pattern
+
+      '
+- name: Orchestration Executor Phase
+  execution: sequential
+  tasks:
+  - id: ORC_001
+    name: Update orchestration-executor-specification for task-level parallelism
+    status: completed
+    description: 'Update spec to use task-level target_files for parallelization decisions.
+
+      '
+    target_files:
+    - modules/AgenticGuidance/assets/specifications/orchestration-executor-specification.yml
+    inputs:
+    - modules/AgenticGuidance/assets/specifications/orchestration-executor-specification.yml
+    guidance: '1. Add new section: TASK_PARALLELIZATION_STRATEGY
+
+      2. Define conflict detection algorithm using target_files
+
+      3. Define task grouping for parallel spawning
+
+      4. Reference CLI --task flag for task-level spawning
+
+      5. Add examples of parallel vs sequential task groups
+
+      '
+  - id: ORC_002
+    name: Update orchestration_executor.md prompt
+    status: completed
+    description: 'Update the executor prompt to use task-level spawning.
+
+      '
+    target_files:
+    - docs/prompts/orchestration_executor.md
+    inputs:
+    - docs/prompts/orchestration_executor.md
+    guidance: '1. Add section on task-level parallel execution
+
+      2. Update SESSION MANAGEMENT section with --task flag
+
+      3. Add example of spawning multiple tasks in parallel
+
+      '
+success_criteria:
+- plan-schema.yml marks impacted_files as deprecated
+- plan_example.yml has no impacted_files section
+- planner-build no longer generates plan-level impacted_files
+- orchestration-executor spec defines task-level parallelization
+- orchestration_executor.md prompt references --task flag

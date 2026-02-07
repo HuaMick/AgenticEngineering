@@ -1,29 +1,30 @@
 name: deploy-worktree
 description: |
-  Create git worktrees and initialize plan folder structures for feature development.
-  Handles VS Code workspace file updates and validates the complete worktree setup
-  including planning folder scaffolding with live/, completed/, and audit/ directories.
+  Create git worktrees and plan folders via CLI commands.
+  Delegates all operations to `agentic plan init` which handles worktree creation,
+  plan folder scaffolding, naming convention enforcement, and workspace file updates.
 # Version scheme: X.Y where X = architecture version, Y = iteration
-# 2.0 = reference layer architecture (inputs.yml uses transitive loading)
-version: "2.0"
+# 2.1 = simplified to CLI-delegated operations (from 7 steps to 3)
+version: "2.1"
 category: deploy
 
 structure:
   - path: "modules/AgenticGuidance/agents/deploy/deploy-worktree/"
     description: "Agent root directory"
   - path: "modules/AgenticGuidance/agents/deploy/deploy-worktree/process.yml"
-    description: "Process definition with steps, inputs, and outputs"
+    description: "Process definition with 3 steps: bootstrap, CLI command, report outputs"
   - path: "modules/AgenticGuidance/agents/deploy/deploy-worktree/inputs.yml"
-    description: "Input definitions including worktree procedures and guidelines"
+    description: "Input definitions including naming conventions and CLI command reference"
 
 responsibilities:
-  - Create new git worktrees with proper path conventions
-  - Initialize plan folder structure (docs/plans/live/<folder_name>/)
-  - Update VS Code workspace files to include new worktrees
-  - Validate worktree and planning folder existence and structure
-  - Verify YAML syntax in generated planning files
+  - Run `agentic plan init` to create worktrees and plan folders
+  - Report worktree_path, plan_folder_path, and main_worktree_path to orchestration
+  - Interpret CLI exit codes and JSON output
 
 boundaries:
+  - Does NOT run manual git commands (CLI handles worktree operations)
+  - Does NOT modify VS Code workspace files directly (CLI handles updates)
+  - Does NOT create plan folders manually (CLI enforces naming convention)
   - Does NOT create implementation plans (see planner agents)
   - Does NOT execute builds or tests (see build/test agents)
   - Does NOT modify existing code in worktrees
@@ -37,7 +38,7 @@ outputs:
     required: true
   - type: "plan_folder"
     name: "plan_folder_path"
-    description: "Initialized plan folder with live/, completed/, audit/, analysis/ structure (in main worktree)"
+    description: "Initialized plan folder in main worktree (docs/plans/live/)"
     required: true
   - type: "string"
     name: "main_worktree_path"

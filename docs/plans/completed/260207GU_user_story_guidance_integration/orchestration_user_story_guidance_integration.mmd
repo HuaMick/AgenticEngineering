@@ -1,0 +1,279 @@
+%% =============================================================================
+%% CCI BOOTSTRAP (CLI Context Injection) - EXECUTE FIRST
+%% =============================================================================
+%% Before following this flowchart, run:
+%%   agentic context bootstrap --role orchestration-executor
+%%   agentic plan task current
+%%
+%% This provides structured context more efficiently than file exploration.
+%%
+%% PRINCIPLE: CLI-FIRST CONTEXT
+%% Always use agentic CLI commands for initial context. Agents should not
+%% need Read/Glob/Grep tools during bootstrap phase. All context retrieval
+%% should flow through CCI commands before any file exploration.
+%% =============================================================================
+
+flowchart LR
+    %% GOAL: Orchestrate guidance integration agents to update agent guidance files with user story validation anchoring.
+    %% PROFILE: orchestrator
+    %% INPUT_PATH: /home/code/AgenticEngineering/docs/plans/live/260207GU_user_story_guidance_integration/inputs.yml
+    %% OUTPUT: Updated guidance files with story-first planning integration and validation gates
+    %% GUIDELINE: modules/AgenticGuidance/assets/guidelines/planning-standard.yml - Story-first planning fence
+    %% GUIDELINE: modules/AgenticGuidance/assets/guidelines/testing.yml - Story validation metadata
+    %%
+    %% PHASES:
+    %% - Teach_Phase_1: Planning Standard & Orchestration-Planning Updates (4 tasks)
+    %% - Teach_Phase_2: Orchestration-Executor Updates (5 tasks)
+    %% - Teach_Phase_3: Planner Agent Updates (3 tasks)
+    %% - Teach_Phase_4: Testing Guidelines Alignment (2 tasks)
+    %% - Test_Structural: YAML syntax and cross-reference validation (3 tasks)
+    %% - Test_Content: Fence consistency and metadata validation (3 tasks)
+    %% - Test_UAT: Guidance blind testing with simulator (3 tasks)
+    %% - Audit_Consistency: Story-first fence propagation chain audit (3 tasks)
+    %% - Audit_Cleanup: Remove template markers and archive artifacts (2 tasks)
+    %%
+    %% AGENT_ROUTING:
+    %% - Teach_Phase_1 -> teacher-update-guidance
+    %% - Teach_Phase_2 -> teacher-update-guidance
+    %% - Teach_Phase_3 -> teacher-update-guidance
+    %% - Teach_Phase_4 -> teacher-update-guidance
+    %% - Test_Structural -> test-runner
+    %% - Test_Content -> test-runner
+    %% - Test_UAT -> test-guidance-simulator
+    %% - Audit_Consistency -> test-audit
+    %% - Audit_Cleanup -> planner-cleaning
+    %%
+    %% FEEDBACK_TRIGGERS:
+    %% - GUIDANCE_GAP -> Re-enter teach phases with gap context
+    %% - TEST_FAILURE -> Re-enter relevant teach phase based on failure type
+    %% - AUDIT_FAILURE -> Re-enter teach phases with audit findings
+    %%
+    %% STATUS: Teach_Phase_1=pending, Teach_Phase_2=pending, Teach_Phase_3=pending, Teach_Phase_4=pending, Test_Structural=pending, Test_Content=pending, Test_UAT=pending, Audit_Consistency=pending, Audit_Cleanup=pending
+    %%
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.agent-self-review
+    %% MAX_ITERATIONS: 3 (per agent-self-review definition)
+    %% ESCALATION: If max iterations reached without all guidance updates passing validation, escalate to user
+
+    Start((Start)) --> LoadInputs[Load Plan Context from inputs.yml]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    %% Verify plan folder structure and load all plan files
+    LoadInputs --> CheckPlanFiles{All Plan Files Present?}
+    CheckPlanFiles -- "No: Missing" --> AskUser((Ask User for Clarification))
+    CheckPlanFiles -- "Yes: Found" --> ValidateWorktree[Validate Execution Worktree]
+
+    ValidateWorktree --> WorktreeValid{Worktree Valid?}
+    WorktreeValid -- "No: Invalid" --> AskUser
+    WorktreeValid -- "Yes: Verified" --> EnterTeachPhase1
+
+    %% ========================================
+    %% TEACH PHASE 1: Planning Standard & Orchestration-Planning
+    %% ========================================
+    %% Update planning-standard.yml with STORY-FIRST fence
+    %% Update orchestration-planning/process.mmd with StoryDiscovery checkpoint
+    %% Reference: plan_teach.yml phase_01 (4 tasks)
+    %%
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.agent-self-review
+    %% MAX_ITERATIONS: 3
+    %% FEEDBACK_TRIGGER: GUIDANCE_GAP -> EnterTeachPhase1
+
+    subgraph TeachPhase1_SG ["Teach Phase 1: Planning Standard Updates"]
+        EnterTeachPhase1[Enter Phase 1: Planning Standard] --> SpawnTeacher1[Spawn teacher-update-guidance Agent]
+        SpawnTeacher1 --> Phase1Tasks[Execute 4 Tasks: Add STORY-FIRST fence, Update process.mmd, Update inputs.yml, Update bootstrap guide]
+        Phase1Tasks --> Phase1SelfReview[Agent Self-Review: Guidance Consistency Check]
+        Phase1SelfReview --> Phase1Complete{Phase 1 Complete?}
+        Phase1Complete -- "No: Issues Found" --> Phase1Iteration{Iteration < 3?}
+        Phase1Iteration -- "Yes: Retry" --> SpawnTeacher1
+        Phase1Iteration -- "No: Max Iterations" --> EscalatePhase1((Escalate: Phase 1 Failed))
+        Phase1Complete -- "Yes: Validated" --> EnterTeachPhase2
+    end
+
+    %% ========================================
+    %% TEACH PHASE 2: Orchestration-Executor Updates
+    %% ========================================
+    %% Update orchestration-executor with story validation gates
+    %% Add STORY_REGRESSION trigger to feedback loops
+    %% Reference: plan_teach.yml phase_02 (5 tasks)
+
+    subgraph TeachPhase2_SG ["Teach Phase 2: Executor Story Validation"]
+        EnterTeachPhase2[Enter Phase 2: Executor Updates] --> SpawnTeacher2[Spawn teacher-update-guidance Agent]
+        SpawnTeacher2 --> Phase2Tasks[Execute 5 Tasks: Validation gate, Story context passing, STORY_REGRESSION trigger, inputs.yml, bootstrap guide]
+        Phase2Tasks --> Phase2SelfReview[Agent Self-Review: Story Validation Integration]
+        Phase2SelfReview --> Phase2Complete{Phase 2 Complete?}
+        Phase2Complete -- "No: Issues Found" --> Phase2Iteration{Iteration < 3?}
+        Phase2Iteration -- "Yes: Retry" --> SpawnTeacher2
+        Phase2Iteration -- "No: Max Iterations" --> EscalatePhase2((Escalate: Phase 2 Failed))
+        Phase2Complete -- "Yes: Validated" --> EnterTeachPhase3
+    end
+
+    %% ========================================
+    %% TEACH PHASE 3: Planner Agent Updates
+    %% ========================================
+    %% Strengthen affected_stories identification in planner-build
+    %% Add story validation fence to planner-reviewer
+    %% Update planner-orchestration MMD generation with story metadata
+    %% Reference: plan_teach.yml phase_03 (3 tasks)
+
+    subgraph TeachPhase3_SG ["Teach Phase 3: Planner Story Integration"]
+        EnterTeachPhase3[Enter Phase 3: Planner Updates] --> SpawnTeacher3[Spawn teacher-update-guidance Agent]
+        SpawnTeacher3 --> Phase3Tasks[Execute 3 Tasks: planner-build affected_stories, planner-reviewer fence, planner-orchestration MMD]
+        Phase3Tasks --> Phase3SelfReview[Agent Self-Review: Planner Integration Check]
+        Phase3SelfReview --> Phase3Complete{Phase 3 Complete?}
+        Phase3Complete -- "No: Issues Found" --> Phase3Iteration{Iteration < 3?}
+        Phase3Iteration -- "Yes: Retry" --> SpawnTeacher3
+        Phase3Iteration -- "No: Max Iterations" --> EscalatePhase3((Escalate: Phase 3 Failed))
+        Phase3Complete -- "Yes: Validated" --> EnterTeachPhase4
+    end
+
+    %% ========================================
+    %% TEACH PHASE 4: Testing Guidelines Alignment
+    %% ========================================
+    %% Update testing.yml with story test metadata documentation
+    %% Update test-audit with story validation step
+    %% Reference: plan_teach.yml phase_04 (2 tasks)
+
+    subgraph TeachPhase4_SG ["Teach Phase 4: Testing Guidelines"]
+        EnterTeachPhase4[Enter Phase 4: Testing Guidelines] --> SpawnTeacher4[Spawn teacher-update-guidance Agent]
+        SpawnTeacher4 --> Phase4Tasks[Execute 2 Tasks: testing.yml metadata, test-audit story validation]
+        Phase4Tasks --> Phase4SelfReview[Agent Self-Review: Testing Integration Check]
+        Phase4SelfReview --> Phase4Complete{Phase 4 Complete?}
+        Phase4Complete -- "No: Issues Found" --> Phase4Iteration{Iteration < 3?}
+        Phase4Iteration -- "Yes: Retry" --> SpawnTeacher4
+        Phase4Iteration -- "No: Max Iterations" --> EscalatePhase4((Escalate: Phase 4 Failed))
+        Phase4Complete -- "Yes: Validated" --> EnterTestPhase
+    end
+
+    %% ========================================
+    %% TEST PHASE: Structural Validation
+    %% ========================================
+    %% Validate YAML syntax and cross-references
+    %% Reference: plan_test.yml test_01 (3 tasks)
+
+    subgraph TestStructural_SG ["Test Phase: Structural Validation"]
+        EnterTestPhase[Enter Test Phase: Structural] --> SpawnTestRunner1[Spawn test-runner Agent]
+        SpawnTestRunner1 --> StructuralTests[Execute 3 Tasks: YAML syntax, MMD syntax, Cross-references]
+        StructuralTests --> StructuralResult{Tests Passed?}
+        StructuralResult -- "No: Syntax Errors" --> CategorizeStructuralFailure{Failure Type?}
+        CategorizeStructuralFailure -- "YAML Syntax" --> FixYAMLSyntax[Return to Relevant Teach Phase]
+        FixYAMLSyntax -.->|FEEDBACK: TEST_FAILURE| EnterTeachPhase1
+        CategorizeStructuralFailure -- "MMD Syntax" --> FixMMDSyntax[Return to Phase 1]
+        FixMMDSyntax -.->|FEEDBACK: TEST_FAILURE| EnterTeachPhase1
+        CategorizeStructuralFailure -- "Cross-references" --> FixReferences[Return to Relevant Phase]
+        FixReferences -.->|FEEDBACK: TEST_FAILURE| EnterTeachPhase1
+        StructuralResult -- "Yes: All Passed" --> EnterContentTest
+    end
+
+    %% ========================================
+    %% TEST PHASE: Content Integrity
+    %% ========================================
+    %% Validate fence consistency and metadata fields
+    %% Reference: plan_test.yml test_02 (3 tasks)
+
+    subgraph TestContent_SG ["Test Phase: Content Integrity"]
+        EnterContentTest[Enter Test Phase: Content] --> SpawnTestRunner2[Spawn test-runner Agent]
+        SpawnTestRunner2 --> ContentTests[Execute 3 Tasks: Fence consistency, Metadata fields, Escape hatch]
+        ContentTests --> ContentResult{Tests Passed?}
+        ContentResult -- "No: Inconsistencies" --> CategorizeContentFailure{Failure Type?}
+        CategorizeContentFailure -- "Fence Inconsistent" --> FixFence[Return to Phase 1]
+        FixFence -.->|FEEDBACK: TEST_FAILURE| EnterTeachPhase1
+        CategorizeContentFailure -- "Metadata Mismatch" --> FixMetadata[Return to Phase 4]
+        FixMetadata -.->|FEEDBACK: TEST_FAILURE| EnterTeachPhase4
+        CategorizeContentFailure -- "Escape Hatch" --> FixEscapeHatch[Return to Phase 3]
+        FixEscapeHatch -.->|FEEDBACK: TEST_FAILURE| EnterTeachPhase3
+        ContentResult -- "Yes: All Passed" --> EnterUATTest
+    end
+
+    %% ========================================
+    %% TEST PHASE: Guidance Blind Test (UAT)
+    %% ========================================
+    %% Spawn test-guidance-simulator for blind testing
+    %% Reference: plan_test.yml test_03 (3 tasks)
+    %% Stories: US-ORCH-001, US-ORCH-002, US-ORCH-004, US-GD-073
+
+    subgraph TestUAT_SG ["Test Phase: Guidance UAT"]
+        EnterUATTest[Enter UAT Phase: Blind Testing] --> SpawnUATSimulator[Spawn test-guidance-simulator Agent]
+        SpawnUATSimulator --> UATTests[Execute 3 Tasks: orchestration-planning discovery, planner-reviewer validation, executor gate]
+        UATTests --> UATResult{All UAT Passed?}
+        UATResult -- "No: Guidance Gaps" --> CategorizeUATFailure{Gap Type?}
+        CategorizeUATFailure -- "Planning Discovery Gap" --> FixPlanningGap[Return to Phase 1]
+        FixPlanningGap -.->|FEEDBACK: GUIDANCE_GAP| EnterTeachPhase1
+        CategorizeUATFailure -- "Reviewer Gap" --> FixReviewerGap[Return to Phase 3]
+        FixReviewerGap -.->|FEEDBACK: GUIDANCE_GAP| EnterTeachPhase3
+        CategorizeUATFailure -- "Executor Gap" --> FixExecutorGap[Return to Phase 2]
+        FixExecutorGap -.->|FEEDBACK: GUIDANCE_GAP| EnterTeachPhase2
+        UATResult -- "Yes: All Stories Validated" --> UpdateStoryMetadata[Update Story test_status Fields]
+    end
+
+    UpdateStoryMetadata --> EnterAuditPhase
+
+    %% ========================================
+    %% AUDIT PHASE: Consistency Audit
+    %% ========================================
+    %% Verify complete story-first fence propagation chain
+    %% Reference: plan_audit_clean.yml audit_01 (3 tasks)
+
+    subgraph AuditConsistency_SG ["Audit Phase: Consistency Check"]
+        EnterAuditPhase[Enter Audit Phase: Consistency] --> SpawnAuditor[Spawn test-audit Agent]
+        SpawnAuditor --> AuditTasks[Execute 3 Tasks: Fence chain, Orphaned references, Scope creep check]
+        AuditTasks --> AuditResult{Audit Passed?}
+        AuditResult -- "No: Issues Found" --> CategorizeAuditFailure{Failure Type?}
+        CategorizeAuditFailure -- "Broken Chain" --> FixChain[Return to Affected Phase]
+        FixChain -.->|FEEDBACK: AUDIT_FAILURE| EnterTeachPhase1
+        CategorizeAuditFailure -- "Orphaned References" --> FixOrphans[Return to Relevant Phase]
+        FixOrphans -.->|FEEDBACK: AUDIT_FAILURE| EnterTeachPhase1
+        CategorizeAuditFailure -- "Scope Creep" --> RevertScopeCreep[Revert Unauthorized Changes]
+        RevertScopeCreep -.->|FEEDBACK: AUDIT_FAILURE| EnterTeachPhase1
+        AuditResult -- "Yes: Chain Intact" --> EnterCleanupPhase
+    end
+
+    %% ========================================
+    %% CLEANUP PHASE
+    %% ========================================
+    %% Remove template markers and archive artifacts
+    %% Reference: plan_audit_clean.yml audit_02 (2 tasks)
+
+    subgraph Cleanup_SG ["Cleanup Phase"]
+        EnterCleanupPhase[Enter Cleanup Phase] --> SpawnCleaner[Spawn planner-cleaning Agent]
+        SpawnCleaner --> CleanupTasks[Execute 2 Tasks: Remove template markers, Archive artifacts]
+        CleanupTasks --> CleanupComplete{Cleanup Complete?}
+        CleanupComplete -- "No: Cleanup Failed" --> EscalateCleanup((Escalate: Cleanup Failed))
+        CleanupComplete -- "Yes: Done" --> ValidationGate
+    end
+
+    %% ========================================
+    %% VALIDATION GATE
+    %% ========================================
+    %% Final validation before marking plan complete
+
+    subgraph ValidationGate_SG ["Validation Gate"]
+        ValidationGate[Enter Validation Gate] --> CheckAllPhases{All Phases Complete?}
+        CheckAllPhases -- "No: Pending" --> AskUser
+        CheckAllPhases -- "Yes: All Done" --> CheckStoryStatus{All Affected Stories Validated?}
+        CheckStoryStatus -- "No: Stories Pending" --> ListPendingStories[List Pending Stories]
+        ListPendingStories --> AskUser
+        CheckStoryStatus -- "Yes: Stories Validated" --> FinalCheck[Final Consistency Check]
+    end
+
+    FinalCheck --> ReadyForShutdown{Ready for Shutdown?}
+    ReadyForShutdown -- "No: Issues Remain" --> AskUser
+    ReadyForShutdown -- "Yes: Validated" --> GenerateSummary
+
+    %% ========================================
+    %% OUTPUT PHASE
+    %% ========================================
+
+    subgraph Output_SG ["Output Generation"]
+        GenerateSummary[Generate Completion Summary] --> ReportChanges[Report Modified Guidance Files]
+        ReportChanges --> ReportStories[Report Story Validation Results]
+        ReportStories --> ArchivePlan[Archive Plan to Completed]
+    end
+
+    ArchivePlan --> End((End: Guidance Integration Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    %% Feedback loops use dashed lines
+    classDef dashedstroke stroke-dasharray: 5 5;

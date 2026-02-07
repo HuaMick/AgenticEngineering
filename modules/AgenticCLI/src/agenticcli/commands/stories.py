@@ -1,10 +1,11 @@
-"""User stories discovery commands.
+"""User stories discovery and test tracking commands.
 
-Find and filter user stories for testing.
+Find, filter, and track test status of user stories.
 """
 
 import re
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
@@ -14,8 +15,20 @@ def handle(args, ctx=None):
     """Route stories subcommands."""
     if args.stories_command == "find":
         cmd_find(args)
+    elif args.stories_command == "init":
+        cmd_init(args)
+    elif args.stories_command == "cat":
+        cmd_cat(args)
+    elif args.stories_command == "status":
+        cmd_status(args)
+    elif args.stories_command == "update":
+        cmd_update(args)
+    elif args.stories_command == "report":
+        cmd_report(args)
+    elif args.stories_command == "untested":
+        cmd_untested(args)
     else:
-        print("Usage: agentic stories find [--project <project>]", file=sys.stderr)
+        print("Usage: agentic stories [find|init|cat|status|update|report|untested]", file=sys.stderr)
         sys.exit(1)
 
 
@@ -23,8 +36,8 @@ def _find_userstories_dir() -> Path | None:
     """Find the userstories directory."""
     # Look in common locations
     search_paths = [
-        Path.cwd() / "modules" / "AgenticGuidance" / "userstories",
-        Path.cwd().parent / "modules" / "AgenticGuidance" / "userstories",
+        Path.cwd() / "docs" / "userstories",
+        Path.cwd().parent / "docs" / "userstories",
         Path.cwd() / "userstories",
     ]
 
@@ -33,6 +46,21 @@ def _find_userstories_dir() -> Path | None:
             return path
 
     return None
+
+
+def _find_plan_stories_dirs() -> list[Path]:
+    """Find user_stories directories inside live plans."""
+    base_dir = Path.cwd() / "docs" / "plans" / "live"
+    if not base_dir.exists():
+        return []
+
+    story_dirs = []
+    for plan_dir in base_dir.iterdir():
+        if plan_dir.is_dir():
+            story_dir = plan_dir / "user_stories"
+            if story_dir.exists():
+                story_dirs.append(story_dir)
+    return story_dirs
 
 
 def _get_project_from_path(story_file: Path, userstories_dir: Path) -> str:
@@ -110,6 +138,105 @@ def _parse_story_file(story_file: Path, userstories_dir: Path | None = None) -> 
     ]
 
 
+def _collect_all_stories(project_filter: str | None = None) -> list[dict]:
+    """Collect all stories from userstories directory and plan story dirs.
+
+    Each returned dict includes test metadata fields and file path info.
+    """
+    userstories_dir = _find_userstories_dir()
+    story_files = []
+    if userstories_dir:
+        story_files.extend(list(userstories_dir.glob("**/*.yml")))
+    for d in _find_plan_stories_dirs():
+        story_files.extend(list(d.glob("*.yml")))
+
+    all_stories = []
+    for f in story_files:
+        # Skip metadata files
+        if f.name == "00_metadata.yml":
+            continue
+        try:
+            content = yaml.safe_load(f.read_text())
+        except yaml.YAMLError:
+            continue
+        if not content or not isinstance(content, dict):
+            continue
+
+        # Determine project
+        project = ""
+        if userstories_dir:
+            project = _get_project_from_path(f, userstories_dir)
+        if f.parent.name == "user_stories":
+            project = f.parent.parent.name
+
+        # Process stories from either format
+        for key in ("stories", "user_stories"):
+            items = content.get(key, [])
+            if not isinstance(items, list):
+                continue
+            for story in items:
+                if not isinstance(story, dict):
+                    continue
+                entry = {
+                    "id": story.get("id", f.stem),
+                    "title": story.get("title", story.get("name", "")),
+                    "project": story.get("project", project),
+                    "file": str(f),
+                    "test_status": story.get("test_status", "untested"),
+                    "last_tested": story.get("last_tested"),
+                    "test_notes": story.get("test_notes", ""),
+                    "tested_by_plan": story.get("tested_by_plan"),
+                }
+                all_stories.append(entry)
+
+    if project_filter:
+        pf = project_filter.lower()
+        all_stories = [s for s in all_stories if pf in s.get("project", "").lower()]
+
+    return all_stories
+
+
+def _find_story_in_file(story_file: Path, story_id: str) -> tuple[dict | None, str | None]:
+    """Find a story by ID in a YAML file.
+
+    Returns (story_dict, list_key) where list_key is 'stories' or 'user_stories'.
+    """
+    try:
+        content = yaml.safe_load(story_file.read_text())
+    except yaml.YAMLError:
+        return None, None
+    if not content or not isinstance(content, dict):
+        return None, None
+
+    for key in ("stories", "user_stories"):
+        items = content.get(key, [])
+        if not isinstance(items, list):
+            continue
+        for story in items:
+            if isinstance(story, dict) and story.get("id") == story_id:
+                return story, key
+
+    return None, None
+
+
+def _find_story_file_by_id(story_id: str) -> Path | None:
+    """Find the file containing a story with the given ID."""
+    userstories_dir = _find_userstories_dir()
+    story_files = []
+    if userstories_dir:
+        story_files.extend(list(userstories_dir.glob("**/*.yml")))
+    for d in _find_plan_stories_dirs():
+        story_files.extend(list(d.glob("*.yml")))
+
+    for f in story_files:
+        if f.name == "00_metadata.yml":
+            continue
+        story, _ = _find_story_in_file(f, story_id)
+        if story is not None:
+            return f
+    return None
+
+
 def _categorize_stories(stories: list[dict]) -> dict:
     """Categorize stories by prefix."""
     categories = {}
@@ -149,19 +276,35 @@ def cmd_find(args):
         else:
             print_error("Could not find userstories directory")
             console.print("[dim]Searched in:[/dim]")
-            console.print("  [dim]- modules/AgenticGuidance/userstories/[/dim]")
-            console.print("  [dim]- ../modules/AgenticGuidance/userstories/[/dim]")
+            console.print("  [dim]- docs/userstories/[/dim]")
+            console.print("  [dim]- ../docs/userstories/[/dim]")
             console.print("  [dim]- userstories/[/dim]")
         sys.exit(1)
 
     # Find all story files
-    story_files = list(userstories_dir.glob("**/*.yml"))
+    story_files = []
+    if userstories_dir:
+        story_files.extend(list(userstories_dir.glob("**/*.yml")))
+
+    plan_story_dirs = _find_plan_stories_dirs()
+    for d in plan_story_dirs:
+        story_files.extend(list(d.glob("*.yml")))
 
     # Parse files (each file may contain multiple stories)
     all_stories = []
     for f in story_files:
+        # Determine appropriate project name for plan-local stories
+        p_dir = f.parent
+        if p_dir.name == "user_stories":
+            project = p_dir.parent.name
+        else:
+            project = _get_project_from_path(f, userstories_dir) if userstories_dir else ""
+
         parsed = _parse_story_file(f, userstories_dir)
-        all_stories.extend(parsed)
+        for s in parsed:
+            if project:
+                s["project"] = project
+            all_stories.append(s)
 
     stories = all_stories
 
@@ -231,3 +374,278 @@ def cmd_find(args):
                 console.print(f"  [cyan]{story['id']}[/cyan]: {title}{status_marker}")
 
     console.print(f"\n[bold]Total:[/bold] [cyan]{len(stories)}[/cyan] stories found")
+
+
+def cmd_init(args):
+    """Initialize a new user story template."""
+    from agenticcli.console import console, print_error, print_success
+
+    target_dir = Path.cwd()
+    if args.plan:
+        plan_dir = Path.cwd() / "docs" / "plans" / "live" / args.plan
+        if not plan_dir.exists():
+            print_error(f"Plan directory not found: {plan_dir}")
+            sys.exit(1)
+        target_dir = plan_dir / "user_stories"
+        target_dir.mkdir(exist_ok=True)
+
+    file_path = target_dir / f"{args.id}.yml"
+    if file_path.exists():
+        print_error(f"Story file already exists: {file_path}")
+        sys.exit(1)
+
+    template = {
+        "id": args.id,
+        "title": args.title or "New User Story",
+        "category": "testing",
+        "priority": "medium",
+        "starting_state": {"environment": {}},
+        "journey": [
+            {"step": 1, "action": "Do something", "expected": "Something happens"}
+        ],
+        "success_criteria": ["Criteria 1"],
+    }
+
+    file_path.write_text(yaml.dump(template, sort_keys=False))
+    print_success(f"Created user story: {file_path}")
+
+
+def cmd_cat(args):
+    """Display a user story's content."""
+    from agenticcli.console import console, print_error
+
+    # Find the story
+    userstories_dir = _find_userstories_dir()
+    story_files = []
+    if userstories_dir:
+        story_files.extend(list(userstories_dir.glob("**/*.yml")))
+    for d in _find_plan_stories_dirs():
+        story_files.extend(list(d.glob("*.yml")))
+
+    target_story = None
+    for f in story_files:
+        # Check filename/stem match
+        if f.stem == args.id or f.name == args.id or args.id in f.stem:
+            target_story = f
+            break
+        
+        # Check ID inside YAML
+        try:
+            stories = _parse_story_file(f)
+            if any(s.get("id") == args.id for s in stories):
+                target_story = f
+                break
+        except Exception:
+            continue
+
+    if not target_story:
+        print_error(f"Story not found: {args.id}")
+        sys.exit(1)
+
+    console.print(target_story.read_text())
+
+
+def cmd_status(args):
+    """Display test status for a specific story."""
+    from agenticcli.console import console, is_json_output, print_error, print_header, print_json
+
+    story_id = args.id
+    story_file = _find_story_file_by_id(story_id)
+
+    if not story_file:
+        if is_json_output():
+            print_json({"error": f"Story not found: {story_id}"})
+        else:
+            print_error(f"Story not found: {story_id}")
+        sys.exit(1)
+
+    story, _ = _find_story_in_file(story_file, story_id)
+    if story is None:
+        print_error(f"Story not found in file: {story_id}")
+        sys.exit(1)
+
+    status_data = {
+        "id": story.get("id", story_id),
+        "title": story.get("title", story.get("name", "")),
+        "test_status": story.get("test_status", "untested"),
+        "last_tested": story.get("last_tested"),
+        "test_notes": story.get("test_notes", ""),
+        "tested_by_plan": story.get("tested_by_plan"),
+        "file": str(story_file),
+    }
+
+    if is_json_output():
+        print_json(status_data)
+        return
+
+    print_header(f"Test Status: {story_id}")
+    console.print(f"  [bold]Title:[/bold] {status_data['title']}")
+
+    ts = status_data["test_status"]
+    if ts == "pass":
+        console.print(f"  [bold]Test Status:[/bold] [green]{ts}[/green]")
+    elif ts == "fail":
+        console.print(f"  [bold]Test Status:[/bold] [red]{ts}[/red]")
+    elif ts == "skip":
+        console.print(f"  [bold]Test Status:[/bold] [yellow]{ts}[/yellow]")
+    else:
+        console.print(f"  [bold]Test Status:[/bold] [dim]{ts}[/dim]")
+
+    if status_data["last_tested"]:
+        console.print(f"  [bold]Last Tested:[/bold] {status_data['last_tested']}")
+    else:
+        console.print("  [bold]Last Tested:[/bold] [dim]never[/dim]")
+
+    if status_data["test_notes"]:
+        console.print(f"  [bold]Notes:[/bold] {status_data['test_notes']}")
+
+    if status_data["tested_by_plan"]:
+        console.print(f"  [bold]Tested By Plan:[/bold] {status_data['tested_by_plan']}")
+
+    console.print(f"  [dim]File: {status_data['file']}[/dim]")
+
+
+def cmd_update(args):
+    """Update test status for a specific story."""
+    from agenticcli.console import is_json_output, print_error, print_json, print_success
+
+    story_id = args.id
+    story_file = _find_story_file_by_id(story_id)
+
+    if not story_file:
+        if is_json_output():
+            print_json({"error": f"Story not found: {story_id}"})
+        else:
+            print_error(f"Story not found: {story_id}")
+        sys.exit(1)
+
+    # Read and modify the file
+    try:
+        content = yaml.safe_load(story_file.read_text())
+    except yaml.YAMLError as e:
+        print_error(f"YAML parse error: {e}")
+        sys.exit(1)
+
+    if not content or not isinstance(content, dict):
+        print_error(f"Invalid story file: {story_file}")
+        sys.exit(1)
+
+    updated = False
+    for key in ("stories", "user_stories"):
+        items = content.get(key, [])
+        if not isinstance(items, list):
+            continue
+        for story in items:
+            if isinstance(story, dict) and story.get("id") == story_id:
+                story["test_status"] = args.status
+                story["last_tested"] = datetime.now(timezone.utc).isoformat()
+                if args.notes:
+                    story["test_notes"] = args.notes
+                if hasattr(args, "plan") and args.plan:
+                    story["tested_by_plan"] = args.plan
+                updated = True
+                break
+        if updated:
+            break
+
+    if not updated:
+        print_error(f"Could not find story {story_id} in {story_file}")
+        sys.exit(1)
+
+    story_file.write_text(yaml.dump(content, sort_keys=False, default_flow_style=False))
+
+    if is_json_output():
+        print_json({
+            "updated": story_id,
+            "test_status": args.status,
+            "file": str(story_file),
+        })
+    else:
+        print_success(f"Updated {story_id}: test_status={args.status}")
+
+
+def cmd_report(args):
+    """Show test status summary across stories."""
+    from agenticcli.console import console, is_json_output, print_header, print_json
+
+    project_filter = getattr(args, "project", None)
+    stories = _collect_all_stories(project_filter=project_filter)
+
+    # Tally
+    counts = {"pass": 0, "fail": 0, "skip": 0, "untested": 0}
+    for s in stories:
+        ts = s.get("test_status", "untested")
+        if ts in counts:
+            counts[ts] += 1
+        else:
+            counts["untested"] += 1
+
+    total = len(stories)
+
+    if is_json_output():
+        print_json({
+            "total": total,
+            "pass": counts["pass"],
+            "fail": counts["fail"],
+            "skip": counts["skip"],
+            "untested": counts["untested"],
+            "project_filter": project_filter,
+        })
+        return
+
+    title = "Story Test Report"
+    if project_filter:
+        title += f" (project: {project_filter})"
+    print_header(title)
+
+    console.print(f"  [green]Pass:[/green]     {counts['pass']}")
+    console.print(f"  [red]Fail:[/red]     {counts['fail']}")
+    console.print(f"  [yellow]Skip:[/yellow]     {counts['skip']}")
+    console.print(f"  [dim]Untested:[/dim] {counts['untested']}")
+    console.print(f"  [bold]Total:[/bold]    {total}")
+
+    if total > 0:
+        pct = (counts["pass"] / total) * 100
+        console.print(f"\n  [bold]Coverage:[/bold] {pct:.0f}% passing")
+
+
+def cmd_untested(args):
+    """List stories that have no test status or are marked untested."""
+    from agenticcli.console import console, is_json_output, print_header, print_json
+
+    project_filter = getattr(args, "project", None)
+    stories = _collect_all_stories(project_filter=project_filter)
+
+    untested = [s for s in stories if s.get("test_status", "untested") == "untested"]
+
+    if is_json_output():
+        print_json({
+            "untested": untested,
+            "count": len(untested),
+            "project_filter": project_filter,
+        })
+        return
+
+    title = "Untested Stories"
+    if project_filter:
+        title += f" (project: {project_filter})"
+    print_header(title)
+
+    if not untested:
+        console.print("  [green]All stories have been tested![/green]")
+        return
+
+    # Group by project
+    by_project: dict[str, list[dict]] = {}
+    for s in untested:
+        proj = s.get("project", "unknown")
+        by_project.setdefault(proj, []).append(s)
+
+    for proj in sorted(by_project):
+        proj_stories = by_project[proj]
+        console.print(f"\n  [bold magenta]{proj}[/bold magenta] ({len(proj_stories)} untested)")
+        for s in proj_stories:
+            title = s.get("title", "(no title)")[:60]
+            console.print(f"    [cyan]{s['id']}[/cyan]: {title}")
+
+    console.print(f"\n  [bold]Total untested:[/bold] {len(untested)}")

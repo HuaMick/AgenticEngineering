@@ -1,0 +1,122 @@
+flowchart LR
+    %% ========================================
+    %% ORCHESTRATION: Guidance File Scoping — Task-Level target_files
+    %% ========================================
+    %% GOAL: Update guidance to use task-level target_files only, deprecate plan-level impacted_files
+    %% PROFILE: orchestrator
+    %%
+    %% PLAN_FOLDER: docs/plans/live/260207SC_guidance_file_scoping
+    %% PLAN_FILES: plan_build.yml
+    %%
+    %% PHASES: SchemaUpdate, PlannerGuidanceUpdate, OrchestratorUpdate, ValidationGate
+    %% AGENT_ROUTING: SchemaUpdate=teacher-update-guidance, PlannerGuidanceUpdate=teacher-update-guidance, OrchestratorUpdate=teacher-update-guidance, ValidationGate=test-guidance-simulator
+    %% FEEDBACK_TRIGGERS: GUIDANCE_FAILURE=retry(3), VALIDATION_FAILURE=retry(3)
+    %% STATUS: SchemaUpdate=pending, PlannerGuidanceUpdate=pending, OrchestratorUpdate=pending, ValidationGate=pending
+
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION
+    %% ========================================
+    LoadInputs --> ReviewPlanFiles[Review plan_build.yml]
+    ReviewPlanFiles --> CheckInputs{All Inputs Found?}
+    CheckInputs -- "No: Missing" --> AskUser((Ask User for Clarification))
+    CheckInputs -- "Yes: Verified" --> CCIBootstrap[Run: agentic context bootstrap]
+
+    CCIBootstrap --> BootstrapReady{Bootstrap Complete?}
+    BootstrapReady -- "No: Failed" --> AskUser
+    BootstrapReady -- "Yes: Ready" --> EnterSchemaPhase[Enter Schema Update Phase]
+
+    %% ========================================
+    %% PHASE 1: SCHEMA UPDATE
+    %% ========================================
+    %% Tasks: SCH_001 (deprecate impacted_files in schema), SCH_002 (update example)
+    %% Agent: teacher-update-guidance
+    %% Targets: plan-schema.yml, plan_example.yml
+
+    subgraph SchemaPhase_SG ["Schema Update Phase"]
+        EnterSchemaPhase --> SpawnSchema[Spawn teacher-update-guidance Agent]
+        SpawnSchema --> SchemaResult{Schema Updated?}
+
+        SchemaResult -- "No: Issues" --> CaptureSchemaFeedback[Capture Feedback]
+        CaptureSchemaFeedback --> CheckSchemaIterations{Max Iterations?}
+        CheckSchemaIterations -- "No: Continue" --> SpawnSchema
+        CheckSchemaIterations -- "Yes: Limit" --> EscalateSchema((Escalate: Schema Update Failed))
+
+        SchemaResult -- "Yes: Complete" --> SchemaComplete[Schema Update Complete]
+    end
+
+    SchemaComplete --> EnterPlannerPhase[Enter Planner Guidance Phase]
+
+    %% ========================================
+    %% PHASE 2: PLANNER GUIDANCE UPDATE
+    %% ========================================
+    %% Tasks: PLN_001 (update planner-build process), PLN_002 (update planner-build inputs)
+    %% Agent: teacher-update-guidance
+    %% Targets: planner-build process.yml, planner-build inputs.yml
+
+    subgraph PlannerPhase_SG ["Planner Guidance Update Phase"]
+        EnterPlannerPhase --> SpawnPlanner[Spawn teacher-update-guidance Agent]
+        SpawnPlanner --> PlannerResult{Guidance Updated?}
+
+        PlannerResult -- "No: Issues" --> CapturePlannerFeedback[Capture Feedback]
+        CapturePlannerFeedback --> CheckPlannerIterations{Max Iterations?}
+        CheckPlannerIterations -- "No: Continue" --> SpawnPlanner
+        CheckPlannerIterations -- "Yes: Limit" --> EscalatePlanner((Escalate: Planner Update Failed))
+
+        PlannerResult -- "Yes: Complete" --> PlannerComplete[Planner Guidance Complete]
+    end
+
+    PlannerComplete --> EnterOrchestratorPhase[Enter Orchestrator Update Phase]
+
+    %% ========================================
+    %% PHASE 3: ORCHESTRATION EXECUTOR UPDATE
+    %% ========================================
+    %% Tasks: ORC_001 (update executor spec), ORC_002 (update executor prompt)
+    %% Agent: teacher-update-guidance
+    %% Targets: orchestration-executor-specification.yml, orchestration_executor.md
+
+    subgraph OrchestratorPhase_SG ["Orchestrator Update Phase"]
+        EnterOrchestratorPhase --> SpawnOrchestrator[Spawn teacher-update-guidance Agent]
+        SpawnOrchestrator --> OrchestratorResult{Orchestrator Updated?}
+
+        OrchestratorResult -- "No: Issues" --> CaptureOrchestratorFeedback[Capture Feedback]
+        CaptureOrchestratorFeedback --> CheckOrchestratorIterations{Max Iterations?}
+        CheckOrchestratorIterations -- "No: Continue" --> SpawnOrchestrator
+        CheckOrchestratorIterations -- "Yes: Limit" --> EscalateOrchestrator((Escalate: Orchestrator Update Failed))
+
+        OrchestratorResult -- "Yes: Complete" --> OrchestratorComplete[Orchestrator Update Complete]
+    end
+
+    OrchestratorComplete --> EnterValidation[Enter Validation Gate]
+
+    %% ========================================
+    %% PHASE 4: VALIDATION GATE
+    %% ========================================
+    %% Agent: test-guidance-simulator
+    %% Validates all guidance changes are consistent
+
+    subgraph ValidationPhase_SG ["Validation Gate"]
+        EnterValidation --> SpawnValidation[Spawn test-guidance-simulator Agent]
+        SpawnValidation --> ValidationResult{Validation Passed?}
+
+        ValidationResult -- "No: Issues" --> CaptureValidationFeedback[Capture Validation Feedback]
+        CaptureValidationFeedback --> CheckValidationIterations{Max Iterations?}
+        CheckValidationIterations -- "No: Continue" --> SpawnTeacherFix[Spawn teacher-update-guidance for Fix]
+        SpawnTeacherFix --> SpawnValidation
+        CheckValidationIterations -- "Yes: Limit" --> EscalateValidation((Escalate: Validation Failed))
+
+        ValidationResult -- "Yes: Passed" --> ValidationComplete[Validation Complete]
+    end
+
+    %% ========================================
+    %% OUTPUT PHASE
+    %% ========================================
+    subgraph Output_SG ["Output Subgraph"]
+        ValidationComplete --> ReportCompletion[Report Completion Status]
+        ReportCompletion --> ArchivePlan[Run: agentic plan move folder --plan 260207SC_guidance_file_scoping]
+    end
+
+    ArchivePlan --> End((End: Plan Completed))
+
+    classDef dashedstroke stroke-dasharray: 5 5;

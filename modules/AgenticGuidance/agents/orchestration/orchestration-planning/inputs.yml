@@ -73,96 +73,48 @@ runtime_inputs:
         planning_intent: "test"
         effect: "Prioritize planner-test, assume test strategy objective"
 
-# ##############################################
-# ##############################################
-# CRITICAL: MMD NODE GRANULARITY (READ FIRST)
-# ##############################################
-# ##############################################
-# This section MUST be read and applied when generating orchestration MMD files.
-# FENCE: Output must NOT contain task-level nodes - only high-level orchestration nodes.
 # ==============================================
-mmd_node_granularity:
-  principle: |
-    MMD diagrams represent orchestration flow at the phase, loop, and agent
-    spawn level. They do NOT represent individual task IDs or file operations.
-    Task-level details belong in plan YAML files, not MMD orchestration diagrams.
+# STORY DISCOVERY INPUTS
+# ==============================================
+# Story discovery is a MANDATORY step before phase determination.
+# FENCE: planning-standard.yml#Story-First Planning
+# ==============================================
+story_discovery:
+  description: |
+    Before phase determination, orchestration-planning MUST discover affected
+    user stories. This provides acceptance criteria for UAT and anchors the
+    plan to verifiable user outcomes.
+  source_location: "docs/userstories/"
+  discovery_command: "agentic stories find [--project <project>]"
+  outputs:
+    - name: "affected_stories"
+      type: "list[string]"
+      description: "List of story IDs affected by this plan (e.g., US-CLI-001)"
+      example: ["US-CLI-001", "US-CLI-002", "US-ORCH-003"]
+    - name: "no_stories_rationale"
+      type: "string"
+      description: "Required when no stories found - explains why plan has no user story impact"
+      example: "Internal guidance refactoring with no user-facing behavior change"
+  downstream_usage: |
+    Story context is passed to downstream planner agents:
+    - planner-build: Uses affected_stories to populate plan metadata
+    - planner-test: Uses affected_stories to plan UAT phases
+    - planner-reviewer: Validates affected_stories or no_stories_rationale is present
+  fence_reference: "modules/AgenticGuidance/assets/guidelines/planning-standard.yml#Story-First Planning"
 
-  fence: |
-    STOP and regenerate if ANY of these patterns appear in generated MMD:
-    - Task ID nodes: deploy_\d+, build_\d+, test_\d+, teach_\d+, cleanup_\d+
-    - Execute labels: [Execute: ...]
-    - Individual file operations: [Edit ...], [Create ...], [Delete ...]
-
-    REQUIRED patterns for valid MMD:
-    - Phase nodes: [Enter X Phase], ((X Phase))
-    - Spawn nodes: [Spawn X Agent]
-    - Loop nodes: {X Loop}, subgraph X_Loop_SG
-    - Decision nodes: {X?}
-
-  correct_granularity:
-    description: "Nodes should represent these concepts"
-    node_types:
-      - type: "Phase nodes"
-        examples:
-          - "TeachPhaseStart((Teach Phase))"
-          - "BuildPhaseStart((Build Phase))"
-          - "TestPhaseStart((Test Phase))"
-          - "CleanupPhaseStart((Cleanup Phase))"
-        pattern: "<PhaseName>PhaseStart((<Phase> Phase))"
-
-      - type: "Loop nodes"
-        examples:
-          - "subgraph PlannerLoop_SG [\"Planner-Loop Subgraph\"]"
-          - "subgraph TestFixLoop_SG [\"Test-Fix-Loop Integration Subgraph\"]"
-          - "subgraph ArchLayers_SG [\"Architecture Layer Verification Subgraph\"]"
-        pattern: "subgraph <LoopName>_SG [\"<Loop Description> Subgraph\"]"
-
-      - type: "Agent spawn nodes"
-        examples:
-          - "SpawnPlannerGuidance[Spawn planner-guidance Agent]"
-          - "SpawnPlannerBuild[Spawn planner-build Agent]"
-          - "SpawnReviewer[Spawn planner-reviewer Agent]"
-        pattern: "Spawn<AgentName>[Spawn <agent-name> Agent]"
-
-      - type: "Decision nodes"
-        examples:
-          - "PlanCreated{Plan Created?}"
-          - "ReviewResult{Plan Approved?}"
-          - "CheckIterations{Max Iterations?}"
-        pattern: "<DecisionName>{<Question>?}"
-
-      - type: "Exit nodes"
-        examples:
-          - "TeachPhaseComplete((Teach Phase Complete))"
-          - "EscalateTeach((Escalate: Cannot Create Plan))"
-        pattern: "<PhaseName>Complete((<Phase> Phase Complete))"
-
-  incorrect_granularity:
-    description: "These should NOT appear as MMD nodes"
-    anti_patterns:
-      - type: "Task IDs"
-        examples:
-          - "build_001[Implement authentication]"
-          - "teach_003[Update inputs.yml]"
-          - "test_002[Write unit tests]"
-        reason: "Task IDs belong in plan YAML files, not orchestration MMD"
-
-      - type: "Individual file operations"
-        examples:
-          - "EditFile[Edit process.yml]"
-          - "WriteConfig[Write config.json]"
-          - "ReadManifest[Read manifest.yml]"
-        reason: "File operations are execution details, not orchestration flow"
-
-      - type: "Code-level operations"
-        examples:
-          - "AddFunction[Add validateUser function]"
-          - "FixBug[Fix null pointer error]"
-          - "RefactorClass[Refactor AuthService]"
-        reason: "Code operations belong in build task descriptions, not MMD"
-
-  phase_template_reference: "modules/AgenticGuidance/assets/examples/orchestration/phase_templates/"
-  note: "See teach_phase.mmd, build_phase.mmd, test_phase.mmd for correct patterns"
+# ##############################################
+# MMD NODE GRANULARITY (DELEGATED)
+# ##############################################
+# MMD generation is now handled by planner-orchestration agent.
+# The mmd_node_granularity fence and detailed patterns live in:
+# modules/AgenticGuidance/agents/planner/planner-orchestration/inputs.yml
+#
+# This orchestrator spawns planner-orchestration after all phase plans are approved.
+# ==============================================
+mmd_generation_delegation:
+  agent: "planner-orchestration"
+  reference: "modules/AgenticGuidance/agents/planner/planner-orchestration/process.yml"
+  note: "All MMD generation logic, node granularity fences, and schema validation are owned by planner-orchestration."
 
 # ##############################################
 # ##############################################
@@ -426,10 +378,6 @@ inputs:
   - location: "modules/AgenticGuidance/assets/definitions/agent-categories.yml"
     description: "Agent category definitions and boundaries."
 
-  # Plan-MMD Schema for orchestration MMD generation
-  - location: "modules/AgenticGuidance/assets/specifications/plan-mmd-schema.yml"
-    description: "Schema for orchestration MMD files: headers, nodes, edges, subgraphs, metadata requirements"
-
   # Orchestration executor specification for agent routing patterns
   - location: "modules/AgenticGuidance/assets/specifications/orchestration-executor-specification.yml"
     description: "Runtime behavior spec: AGENT_ROUTING format, FEEDBACK_TRIGGERS patterns, STATUS management"
@@ -437,6 +385,12 @@ inputs:
   # Planner manifest for routing decisions
   - location: "modules/AgenticGuidance/agents/planner/manifest.yml"
     description: "Planner agent family manifest with sub-agents and routing logic."
+
+  # Question workflow guideline
+  - type: file
+    path: "modules/AgenticGuidance/assets/guidelines/question-workflow.yml"
+    description: "Question generation and resumption patterns for HITL workflow"
+    required: true
 
   # Deploy agent for worktree setup
   - location: "modules/AgenticGuidance/agents/deploy/deploy-worktree/process.yml"
@@ -455,22 +409,13 @@ inputs:
     description: "Process for reviewing and approving implementation plans."
 
   # Plan examples for structure reference
-  - location: "modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/live/plan_example.yml"
+  - location: "modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/plan_example.yml"
     description: "Unified plan example showing integrated phases (Build, Test, Teach, Audit) in a single file with context updates and decision tracking."
   - location: "modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/README.md"
     description: "README example showing consolidated session tracking, next steps, and decision items."
   - location: "modules/AgenticGuidance/assets/examples/planner/teaching-plan-example.yml"
     description: "Teaching plan example for guidance improvements with phases and tasks."
 
-  # MMD Component Examples
-  # Orchestration can reference these when determining phase structure
-  - location: "modules/AgenticGuidance/assets/examples/orchestration/phase_templates/teach_phase.mmd"
-    description: "MMD component for teach phase orchestration pattern."
-  - location: "modules/AgenticGuidance/assets/examples/orchestration/phase_templates/build_phase.mmd"
-    description: "MMD component for build phase orchestration pattern."
-  - location: "modules/AgenticGuidance/assets/examples/orchestration/phase_templates/test_phase.mmd"
-    description: "MMD component for test phase orchestration pattern."
-  - location: "modules/AgenticGuidance/assets/examples/orchestration/phase_templates/cleanup_phase.mmd"
-    description: "MMD component for cleanup phase orchestration pattern."
-  - location: "modules/AgenticGuidance/assets/examples/orchestration/phase_templates/uat_phase.mmd"
-    description: "MMD component for UAT phase orchestration pattern (MANDATORY)."
+  # Planner-orchestration agent reference (for MMD generation delegation)
+  - location: "modules/AgenticGuidance/agents/planner/planner-orchestration/process.yml"
+    description: "Process for generating orchestration MMD files from approved plan YAMLs."

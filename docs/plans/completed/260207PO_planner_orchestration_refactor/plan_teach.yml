@@ -1,0 +1,159 @@
+# Teach Validation Plan: planner-orchestration refactor
+# Purpose: Validate guidance changes from the planner-orchestration refactor
+# Triggered by: guidance_change_routing fence (guidance changes REQUIRE teach validation)
+
+name: "planner-orchestration-refactor-teach"
+description: |
+  MANDATORY teach validation for the planner-orchestration refactor.
+  This plan modified guidance files for 4 agents:
+  - planner-orchestration (NEW: process.yml, inputs.yml, manifest.yml)
+  - orchestration-planning (MODIFIED: process.mmd, manifest.yml, inputs.yml)
+  - orchestration-executor (MODIFIED: inputs.yml)
+  - planner/manifest.yml (MODIFIED: sub_agents list)
+
+  All must pass agent self-review before the refactor is considered complete.
+status: "completed"
+
+# ========================================
+# LOOP STRUCTURES
+# ========================================
+loop_structures:
+  - id: "loop_agent_self_review"
+    type: "agent-self-review"
+    applies_to_phase: "Agent Self-Review"
+    trigger: "After all guidance file modifications are complete"
+    description: |
+      Each agent whose guidance was created or modified must be validated by
+      test-guidance-simulator for path resolution, internal consistency,
+      and completeness.
+    exit_criteria:
+      success: "All agent self-reviews pass"
+      max_iterations: 3
+      escalation: "Escalate to human with specific validation failures"
+    participants:
+      - agent: "test-guidance-simulator"
+        role: "Validates agent guidance completeness"
+    mandatory: true
+
+  - id: "loop_cross_reference_review"
+    type: "agent-self-review"
+    applies_to_phase: "Cross-Reference Consistency"
+    trigger: "After all individual agent self-reviews pass"
+    description: |
+      Holistic cross-reference check across all modified agents to ensure
+      spawns, routing, and manifest entries are mutually consistent.
+    exit_criteria:
+      success: "All cross-references resolve correctly"
+      max_iterations: 3
+      escalation: "Escalate to human with specific cross-reference failures"
+    participants:
+      - agent: "test-guidance-simulator"
+        role: "Validates cross-agent reference consistency"
+    mandatory: true
+
+# ========================================
+# PHASES AND TASKS
+# ========================================
+phases:
+  # ----------------------------------------
+  # PHASE 1: Agent Self-Review
+  # ----------------------------------------
+  - name: "Agent Self-Review"
+    execution: parallel
+    description: |
+      Individual self-review for each created or modified agent.
+      These tasks are independent and can run in parallel.
+    tasks:
+      - id: "teach_001"
+        name: "Agent self-review: planner-orchestration"
+        description: |
+          Validate the NEW planner-orchestration agent guidance:
+          - process.yml steps are coherent, complete, and follow logical order
+          - inputs.yml paths resolve correctly (all 10+ referenced files)
+          - manifest.yml outputs match process.yml expectations
+          - mmd_node_granularity fence is properly defined in inputs.yml
+          - inputs_reference in process.yml points to correct inputs.yml
+          - All specification references (plan-mmd-schema.yml, orchestration-executor-specification.yml) exist
+          - Phase template references exist on disk
+          - Guidelines references (context-minimisation.yml, fix-the-source.yml) exist
+        status: "completed"
+        agent_type: "test-guidance-simulator"
+        loop: "agent-self-review"
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/planner-orchestration/process.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-orchestration/inputs.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-orchestration/manifest.yml"
+
+      - id: "teach_002"
+        name: "Agent self-review: orchestration-planning"
+        description: |
+          Validate orchestration-planning after MMD generation removal:
+          - process.mmd no longer contains MMD generation logic (lines 250-329 removed)
+          - process.mmd properly spawns planner-orchestration for MMD generation
+          - manifest.yml spawns list includes planner-orchestration
+          - inputs.yml references planner-orchestration process (mmd_generation_delegation)
+          - inputs.yml no longer contains mmd_node_granularity section (moved to planner-orchestration)
+          - No broken internal references after MMD removal
+          - All remaining path references in inputs.yml resolve correctly
+        status: "completed"
+        agent_type: "test-guidance-simulator"
+        loop: "agent-self-review"
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/manifest.yml"
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml"
+
+      - id: "teach_003"
+        name: "Agent self-review: orchestration-executor"
+        description: |
+          Validate orchestration-executor after routing table update:
+          - inputs.yml includes planner-orchestration in agent routing references
+          - Routing table can resolve planner-orchestration for re-planning scenarios
+          - No broken references to deleted planner/planner/ agent
+        status: "completed"
+        agent_type: "test-guidance-simulator"
+        loop: "agent-self-review"
+        target_files:
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-executor/inputs.yml"
+
+  # ----------------------------------------
+  # PHASE 2: Cross-Reference Consistency
+  # ----------------------------------------
+  - name: "Cross-Reference Consistency"
+    execution: sequential
+    description: |
+      Holistic cross-reference check across all modified agents.
+      Validates that spawns, routing, and manifest entries are mutually consistent.
+      Depends on Phase 1 completing successfully.
+    depends_on: ["Agent Self-Review"]
+    tasks:
+      - id: "teach_004"
+        name: "Cross-reference consistency check"
+        description: |
+          Validate consistency across all modified guidance files:
+          - planner/manifest.yml lists planner-orchestration in sub_agents
+          - orchestration-planning/manifest.yml spawns planner-orchestration
+          - orchestration-executor/inputs.yml references planner-orchestration
+          - planner/planner/ directory no longer exists (replaced by planner-orchestration)
+          - No orphan references to old planner/planner/ agent in any guidance file
+          - Agent routing in orchestration-executor can resolve planner-orchestration type
+          - orchestration-planning process.mmd spawn node matches manifest.yml spawns entry
+        status: "completed"
+        agent_type: "test-guidance-simulator"
+        loop: "agent-self-review"
+        target_files:
+          - "modules/AgenticGuidance/agents/planner/manifest.yml"
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/manifest.yml"
+          - "modules/AgenticGuidance/agents/orchestration/orchestration-executor/inputs.yml"
+          - "modules/AgenticGuidance/agents/planner/planner-orchestration/manifest.yml"
+
+# ========================================
+# SUCCESS CRITERIA
+# ========================================
+success_criteria:
+  - "All 4 agent self-reviews pass (teach_001 through teach_004)"
+  - "No broken path references across any modified inputs.yml"
+  - "No orphan references to deleted planner/planner/ agent"
+  - "Manifest spawns lists are consistent with process files"
+  - "planner-orchestration inputs.yml paths all resolve to existing files"
+  - "orchestration-planning no longer contains MMD generation logic"

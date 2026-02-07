@@ -1,0 +1,202 @@
+name: cli-worktree-updates
+status: active
+priority: high
+context: "Investigation revealed broken worktree\u2194plan relationships:\n- Naming\
+  \ abbreviation bug: get_repo_abbreviation() extracts capital letters from repo name,\n\
+  \  but worktree names like \"AgenticEngineering-agentic-cli\" strip the suffix,\
+  \ always yielding \"AE\".\n  A worktree registry (docs/worktrees.yml) with explicit\
+  \ abbreviation+description solves this.\n- `worktree list` doesn't understand Main-First\
+  \ Planning (plans live in main, not in feature worktrees).\n- `plan bootstrap` and\
+  \ `plan init` overlap \u2014 bootstrap should merge into init via --objective flag.\n\
+  - No --abbreviation or --description flags on `worktree create`.\n"
+impacted_artifacts:
+- artifact_type: cli_command
+  artifact_identifier: agentic worktree create
+  impact_type: behavior_change
+  description: Add --abbreviation and --description flags, use registry for naming
+  breaking_change: false
+- artifact_type: cli_command
+  artifact_identifier: agentic worktree list
+  impact_type: behavior_change
+  description: Show plans from main worktree (Main-First Planning awareness)
+  breaking_change: false
+- artifact_type: cli_command
+  artifact_identifier: agentic plan init
+  impact_type: behavior_change
+  description: Absorb plan bootstrap functionality via --objective flag
+  breaking_change: false
+- artifact_type: data_file
+  artifact_identifier: docs/worktrees.yml
+  impact_type: new
+  description: Worktree registry with abbreviation + description metadata
+  breaking_change: false
+phases:
+- name: Worktree Registry Phase
+  execution: sequential
+  tasks:
+  - id: WC_001
+    name: Create docs/worktrees.yml registry schema and seed data
+    status: completed
+    description: 'Create a worktrees.yml registry at docs/worktrees.yml that maps
+      branch names
+
+      to abbreviations and descriptions. Seed with existing worktrees.
+
+      '
+    target_files:
+    - docs/worktrees.yml
+    inputs:
+    - modules/AgenticGuidance/assets/definitions/plans.yml
+    guidance: "Schema:\n  worktrees:\n    - branch: \"agentic-cli\"\n      abbreviation:\
+      \ \"AC\"\n      description: \"AgenticCLI module development\"\n      path:\
+      \ \"/home/code/AgenticEngineering-agentic-cli\"\n    - branch: \"agenticguidance\"\
+      \n      abbreviation: \"AG\"\n      description: \"AgenticGuidance module development\"\
+      \n      path: \"/home/code/AgenticEngineering-agenticguidance\"\nSeed from `git\
+      \ worktree list` output.\nInclude all currently active worktrees.\n"
+  - id: WC_002
+    name: Fix naming algorithm to use registry lookup
+    status: completed
+    description: 'Modify generate_plan_folder_name() in worktree.py to look up abbreviation
+
+      from docs/worktrees.yml registry instead of computing from repo name capitals.
+
+      Fall back to capital-letter extraction if branch not in registry.
+
+      '
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/worktree.py
+    inputs:
+    - docs/worktrees.yml
+    - modules/AgenticCLI/src/agenticcli/commands/worktree.py
+    guidance: '1. Add load_worktree_registry(repo_root) function
+
+      2. Modify generate_plan_folder_name() to check registry first
+
+      3. If branch found in registry, use its abbreviation
+
+      4. If not found, fall back to existing get_repo_abbreviation() logic
+
+      5. Registry path: {repo_root}/docs/worktrees.yml
+
+      '
+- name: CLI Flags Phase
+  execution: sequential
+  tasks:
+  - id: WC_003
+    name: Add --abbreviation and --description flags to worktree create
+    status: completed
+    description: 'Add optional --abbreviation (-a) and --description (-d) flags to
+
+      `agentic worktree create`. When provided, these are saved to the
+
+      worktree registry and used for plan folder naming.
+
+      '
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    - modules/AgenticCLI/src/agenticcli/commands/worktree.py
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    - modules/AgenticCLI/src/agenticcli/commands/worktree.py
+    guidance: '1. Add --abbreviation/-a argument to worktree create subparser
+
+      2. Add --description/-d argument to worktree create subparser
+
+      3. In cmd_create(), if abbreviation provided, save to registry
+
+      4. Use provided abbreviation for plan folder name generation
+
+      5. Update registry file atomically (YAML write)
+
+      '
+  - id: WC_004
+    name: Enhance worktree list for Main-First Planning awareness
+    status: completed
+    description: 'Currently worktree list looks for plans inside each worktree''s
+      docs/plans/live/.
+
+      With Main-First Planning, plans live in the main worktree. Update cmd_list()
+
+      to show plans from main worktree that reference each feature worktree.
+
+      '
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/worktree.py
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/worktree.py
+    - docs/worktrees.yml
+    guidance: '1. In cmd_list(), find main worktree (the one that''s not a worktree)
+
+      2. Scan main''s docs/plans/live/ for plan folders
+
+      3. Match plan folders to worktrees via registry abbreviation or branch name
+
+      4. Show matched plans alongside each worktree in table output
+
+      5. Add "Plans (Main)" column to differentiate from local plans
+
+      '
+- name: Bootstrap Merge Phase
+  execution: sequential
+  tasks:
+  - id: WC_005
+    name: Merge plan bootstrap into plan init with --objective flag
+    status: completed
+    description: '`plan bootstrap` and `plan init` overlap. Merge bootstrap behavior
+      into
+
+      plan init by adding an --objective flag. When --objective is provided,
+
+      plan init creates the folder AND writes the objective into plan_build.yml.
+
+      '
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    guidance: '1. Add --objective flag to plan init subparser
+
+      2. When --objective provided, write objective into plan_build.yml context field
+
+      3. Deprecate `plan bootstrap` command (print deprecation warning, redirect to
+      init)
+
+      4. Keep backward compat: `plan bootstrap` still works but warns
+
+      '
+  - id: WC_006
+    name: Add tests for worktree registry and naming fixes
+    status: completed
+    description: 'Unit tests for registry loading, naming algorithm, new flags, and
+      Main-First list.
+
+      '
+    target_files:
+    - modules/AgenticCLI/tests/test_worktree_registry.py
+    inputs:
+    - modules/AgenticCLI/tests/test_plan_init.py
+    - modules/AgenticCLI/src/agenticcli/commands/worktree.py
+    guidance: 'Test cases:
+
+      1. Registry loads correctly from docs/worktrees.yml
+
+      2. Registry lookup returns correct abbreviation for known branch
+
+      3. Registry fallback to capital-letter extraction for unknown branch
+
+      4. --abbreviation flag overrides registry and saves to it
+
+      5. worktree list shows plans from main worktree
+
+      6. plan init --objective writes objective to plan_build.yml
+
+      '
+success_criteria:
+- docs/worktrees.yml exists with all current worktrees registered
+- Plan folder naming uses registry abbreviation (not capital-letter extraction)
+- '`worktree create --abbreviation AC --description ''CLI dev''` saves to registry'
+- '`worktree list` shows plans from main worktree per Main-First Planning'
+- '`plan init --objective ''my goal''` creates folder with objective in plan_build.yml'
+- All new tests pass

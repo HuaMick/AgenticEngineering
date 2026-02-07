@@ -1,0 +1,741 @@
+# Planner Question Workflow Example
+# This example demonstrates the complete end-to-end workflow of a planner agent
+# generating questions, tracking them in the plan, and consuming human answers.
+
+example_name: "Planner Question Workflow (Complete HITL Cycle)"
+description: |
+  Complete scenario showing a planner agent identifying an architectural decision
+  during plan creation, adding it to open_questions, creating a question file,
+  and later consuming the human answer to finalize the plan.
+
+# ==============================================
+# SESSION 1: Plan Creation with Open Question
+# ==============================================
+session_1_plan_creation:
+  context: |
+    A planner-build agent is creating a plan for implementing a new data export feature.
+    The feature needs to export user data in various formats. During planning, the planner
+    identifies a critical architectural decision about database migration strategy that
+    requires human judgment.
+
+  scenario: |
+    The system currently uses a single PostgreSQL database. The export feature will generate
+    large result sets that could impact production database performance. The planner must
+    decide between:
+    1. Read replica for export queries (infrastructure change)
+    2. Async job queue with query throttling (code change)
+    3. Caching layer with materialized views (hybrid approach)
+
+    This is an architectural decision with significant cost/complexity tradeoffs.
+
+  # Step 1: Planner recognizes the decision blocker
+  planner_thought_process: |
+    "I'm creating a plan for the data export feature. During Phase 1 (Implementation),
+    I need to specify how we'll handle large export queries without impacting production.
+
+    Analysis:
+    - Option A (Read Replica): Best performance isolation, requires infrastructure setup
+    - Option B (Async Queue): Code-only solution, may still impact DB under heavy load
+    - Option C (Materialized Views): Good balance, adds complexity to schema management
+
+    This matches 'architectural_decisions' trigger in question-workflow.yml:
+    - Long-term architectural impact (database strategy)
+    - Affects cost, infrastructure, and development timeline
+    - No clear precedent in codebase for this scale of export
+
+    I should:
+    1. Add this to open_questions section in plan.yml
+    2. Create question YAML in questions/pending/
+    3. Mark task dependency on answer (implementation task blocked)
+    4. Set severity to 'high' (can plan other phases while waiting)"
+
+  # Step 2: Generated plan.yml with open_questions section
+  generated_plan_partial:
+    file_path: "docs/plans/live/260205EX_data_export/plan.yml"
+    content: |
+      # Plan: Data Export Feature Implementation
+      name: "data-export-feature"
+      worktree_path: "/home/code/MyProject-export-feature"
+      branch: "feature/data-export"
+      status: "needs_review"
+      priority: "high"
+
+      context: |
+        Implement bulk data export feature allowing users to export their data
+        in CSV, JSON, and XML formats. Exports can be large (100k+ records).
+
+      # ========================================
+      # OPEN QUESTIONS (Human Authority)
+      # ========================================
+      open_questions:
+        - id: "Q-20260205-093015-b7e4"
+          question: "What database strategy should we use for large export queries to avoid production impact?"
+          severity: "high"
+          status: "OPEN"
+          context: |
+            Feature: Data export (CSV/JSON/XML formats, up to 100k+ records per export)
+            Problem: Large queries could impact production database performance
+
+            Options analyzed:
+            A) Read Replica (Dedicated read-only DB instance)
+               + Best performance isolation
+               + Zero production impact
+               - Requires infrastructure setup (cost: ~$200/mo)
+               - Adds deployment complexity
+
+            B) Async Job Queue with Query Throttling
+               + Code-only solution (no infra changes)
+               + Can implement immediately
+               - Still queries production DB (throttled but not isolated)
+               - May impact production under sustained load
+
+            C) Materialized Views with Cache Layer
+               + Good balance: pre-computed data, lower query cost
+               + Less infra than full replica
+               - Adds schema management complexity
+               - Requires cache invalidation strategy
+
+            Impact: Affects Phase 1 implementation approach, infrastructure requirements,
+            development timeline, and ongoing operational costs.
+          asked_by: "planner-build"
+          options:
+            - "Read Replica (infrastructure investment)"
+            - "Async Queue (code-only, production queries)"
+            - "Materialized Views (hybrid approach)"
+            - "Other strategy (please specify)"
+
+      # ========================================
+      # IMPACTED FILES
+      # ========================================
+      impacted_files:
+        - path: "src/services/export_service.py"
+          change_type: create
+          change_category: implementation
+          reason: "Core export service handling query execution"
+
+        - path: "src/workers/export_worker.py"
+          change_type: create
+          change_category: implementation
+          reason: "Background worker for async export processing"
+
+        - path: "src/api/export_endpoints.py"
+          change_type: create
+          change_category: implementation
+          reason: "API endpoints for export requests"
+
+        - path: "tests/test_export_service.py"
+          change_type: create
+          change_category: test
+          reason: "Unit tests for export service"
+
+      # ========================================
+      # PHASES AND TASKS
+      # ========================================
+      phases:
+        - name: "Phase 1: Core Implementation"
+          execution: sequential
+          tasks:
+            - id: "impl_001"
+              name: "Design database query strategy"
+              description: |
+                Implement the database query strategy for exports based on answer
+                to question Q-20260205-093015-b7e4.
+                BLOCKED until question is answered.
+              status: "blocked"
+              blocked_on: "Q-20260205-093015-b7e4"
+
+            - id: "impl_002"
+              name: "Implement export service core logic"
+              description: "Create ExportService with format conversion (CSV/JSON/XML)"
+              status: "pending"
+              dependencies: ["impl_001"]
+
+            - id: "impl_003"
+              name: "Create API endpoints"
+              description: "POST /exports (create) and GET /exports/:id (retrieve)"
+              status: "pending"
+              dependencies: ["impl_002"]
+
+        - name: "Phase 2: Testing & Validation"
+          execution: sequential
+          tasks:
+            - id: "test_001"
+              name: "Unit testing"
+              description: "Test export service with various formats and data sizes"
+              status: "pending"
+
+            - id: "test_002"
+              name: "Load testing"
+              description: "Validate performance with 100k+ record exports"
+              status: "pending"
+
+      success_criteria:
+        - "Users can export data in CSV, JSON, XML formats"
+        - "Exports complete successfully for 100k+ records"
+        - "Production database performance unaffected during exports"
+        - "All tests pass including load tests"
+
+  # Step 3: Question file created in pending/
+  question_file_created:
+    file_path: "docs/plans/live/260205EX_data_export/questions/pending/Q-20260205-093015-b7e4.yml"
+    content: |
+      id: Q-20260205-093015-b7e4
+      text: What database strategy should we use for large export queries to avoid production impact?
+      context: |
+        Feature: Data export (CSV/JSON/XML formats, up to 100k+ records per export)
+        Problem: Large queries could impact production database performance
+
+        Options analyzed:
+        A) Read Replica (Dedicated read-only DB instance)
+           + Best performance isolation
+           + Zero production impact
+           - Requires infrastructure setup (cost: ~$200/mo)
+           - Adds deployment complexity
+
+        B) Async Job Queue with Query Throttling
+           + Code-only solution (no infra changes)
+           + Can implement immediately
+           - Still queries production DB (throttled but not isolated)
+           - May impact production under sustained load
+
+        C) Materialized Views with Cache Layer
+           + Good balance: pre-computed data, lower query cost
+           + Less infra than full replica
+           - Adds schema management complexity
+           - Requires cache invalidation strategy
+
+        Impact: Affects Phase 1 implementation approach, infrastructure requirements,
+        development timeline, and ongoing operational costs.
+      severity: high
+      asked_by: planner-build
+      created_at: 1738749015.3
+      status: pending
+
+  # Step 4: Planner output and notification
+  planner_output_message: |
+    Plan created for data export feature: docs/plans/live/260205EX_data_export/plan.yml
+
+    STATUS: needs_review
+    REASON: Blocked on architectural decision
+
+    OPEN QUESTION: Q-20260205-093015-b7e4
+    Question: What database strategy should we use for large export queries?
+    Severity: high
+    Location: questions/pending/Q-20260205-093015-b7e4.yml
+
+    Task impl_001 (Design database query strategy) is BLOCKED until this question
+    is answered. Other phases can be planned in parallel.
+
+    To answer: agentic question answer Q-20260205-093015-b7e4 --text "your answer"
+    To view: agentic question show Q-20260205-093015-b7e4
+
+# ==============================================
+# HUMAN INTERACTION: Answering the Question
+# ==============================================
+human_interaction:
+  context: |
+    The human developer reviews the plan and the open question. They decide to use
+    the async queue approach to minimize infrastructure changes for the MVP, with
+    a plan to migrate to read replica in v2 if needed.
+
+  # Step 1: List pending questions
+  cli_command_list: |
+    $ agentic question list --plan docs/plans/live/260205EX_data_export
+
+    Output:
+    PENDING QUESTIONS (1):
+
+    [1] Q-20260205-093015-b7e4 (high)
+        What database strategy should we use for large export queries to avoid production impact?
+        Asked by: planner-build
+        Created: 2026-02-05 09:30:15
+
+  # Step 2: View question details
+  cli_command_show: |
+    $ agentic question show Q-20260205-093015-b7e4
+
+    Output:
+    QUESTION: Q-20260205-093015-b7e4
+    Status: pending
+    Severity: high
+    Asked by: planner-build
+    Created: 2026-02-05 09:30:15
+
+    Question:
+    What database strategy should we use for large export queries to avoid production impact?
+
+    Context:
+    Feature: Data export (CSV/JSON/XML formats, up to 100k+ records per export)
+    Problem: Large queries could impact production database performance
+
+    Options analyzed:
+    A) Read Replica (Dedicated read-only DB instance)
+       + Best performance isolation, zero production impact
+       - Requires infrastructure setup (cost: ~$200/mo)
+
+    B) Async Job Queue with Query Throttling
+       + Code-only solution, can implement immediately
+       - Still queries production DB (may impact under sustained load)
+
+    C) Materialized Views with Cache Layer
+       + Good balance, pre-computed data
+       - Adds schema management complexity
+
+    Impact: Affects Phase 1 implementation, infrastructure, timeline, costs.
+
+  # Step 3: Answer the question
+  cli_command_answer: |
+    $ agentic question answer Q-20260205-093015-b7e4 \
+        --text "Use Option B: Async Job Queue with Query Throttling for MVP. \
+    Implement export as background jobs with max concurrency limit (3 jobs). \
+    Add query timeout (60s) and row limit per batch (10k). Monitor production \
+    metrics for 2 weeks. If performance impact observed, we'll provision read \
+    replica in v2. This minimizes upfront infrastructure cost while delivering \
+    feature quickly with safety guardrails."
+
+    Output:
+    Question Q-20260205-093015-b7e4 answered successfully.
+    Answer saved to: questions/answered/Q-20260205-093015-b7e4.yml
+    Question moved to: questions/answered/Q-20260205-093015-b7e4_question.yml
+
+  # Step 4: Files after answering
+  files_after_answer:
+    answered_question_file:
+      file_path: "docs/plans/live/260205EX_data_export/questions/answered/Q-20260205-093015-b7e4_question.yml"
+      content: |
+        id: Q-20260205-093015-b7e4
+        text: What database strategy should we use for large export queries to avoid production impact?
+        context: |
+          Feature: Data export (CSV/JSON/XML formats, up to 100k+ records per export)
+          Problem: Large queries could impact production database performance
+
+          Options analyzed:
+          A) Read Replica (Dedicated read-only DB instance)
+          B) Async Job Queue with Query Throttling
+          C) Materialized Views with Cache Layer
+
+          Impact: Affects Phase 1 implementation approach, infrastructure requirements.
+        severity: high
+        asked_by: planner-build
+        created_at: 1738749015.3
+        status: answered
+        answer: |
+          Use Option B: Async Job Queue with Query Throttling for MVP.
+          Implement export as background jobs with max concurrency limit (3 jobs).
+          Add query timeout (60s) and row limit per batch (10k).
+          Monitor production metrics for 2 weeks.
+          If performance impact observed, we'll provision read replica in v2.
+          This minimizes upfront infrastructure cost while delivering feature quickly with safety guardrails.
+        answered_by: HUMAN
+        answered_at: 1738750200.1
+
+    answer_file:
+      file_path: "docs/plans/live/260205EX_data_export/questions/answered/Q-20260205-093015-b7e4.yml"
+      content: |
+        text: |
+          Use Option B: Async Job Queue with Query Throttling for MVP.
+          Implement export as background jobs with max concurrency limit (3 jobs).
+          Add query timeout (60s) and row limit per batch (10k).
+          Monitor production metrics for 2 weeks.
+          If performance impact observed, we'll provision read replica in v2.
+          This minimizes upfront infrastructure cost while delivering feature quickly with safety guardrails.
+        answered_by: HUMAN
+        answered_at: 1738750200.1
+
+# ==============================================
+# SESSION 2: Plan Revision with Answer
+# ==============================================
+session_2_plan_revision:
+  context: |
+    The planner is resuming work on the plan. Before finalizing, it checks for
+    answered questions and incorporates the human's decision into the plan.
+
+  # Step 1: Planner checks for answers
+  planner_resumption_check:
+    code_example: |
+      from pathlib import Path
+      from agenticguidance.services.question import QuestionQueue
+
+      # Initialize queue for this plan
+      plan_path = Path("docs/plans/live/260205EX_data_export")
+      queue = QuestionQueue(plan_path)
+
+      # Check if our question was answered
+      question_id = "Q-20260205-093015-b7e4"
+      question = queue.get_question(question_id)
+
+      if question and question.status == "answered":
+          print(f"Question {question_id} has been answered!")
+          print(f"Answer: {question.answer}")
+          print(f"Answered by: {question.answered_by}")
+          # Proceed to incorporate answer into plan
+      else:
+          print(f"Question {question_id} still pending.")
+
+    output: |
+      Question Q-20260205-093015-b7e4 has been answered!
+      Answer: Use Option B: Async Job Queue with Query Throttling for MVP...
+      Answered by: HUMAN
+
+  # Step 2: Planner incorporates answer into plan
+  planner_thought_process: |
+    "The question has been answered by a HUMAN. This answer has absolute authority
+    and I MUST incorporate it into the plan without modification.
+
+    Answer summary:
+    - Strategy: Async Job Queue with Query Throttling (Option B)
+    - Concurrency limit: 3 jobs max
+    - Query timeout: 60 seconds
+    - Batch size: 10k rows per batch
+    - Monitoring period: 2 weeks
+    - Future migration path: Read replica in v2 if needed
+
+    I need to:
+    1. Update open_questions section: status OPEN -> ANSWERED, add answer and answered_by: HUMAN
+    2. Update task impl_001: unblock task, add implementation details from answer
+    3. Add monitoring task for 2-week evaluation period
+    4. Document decision rationale in context"
+
+  # Step 3: Updated plan.yml with answer incorporated
+  updated_plan_partial:
+    file_path: "docs/plans/live/260205EX_data_export/plan.yml"
+    content: |
+      # Plan: Data Export Feature Implementation
+      name: "data-export-feature"
+      worktree_path: "/home/code/MyProject-export-feature"
+      branch: "feature/data-export"
+      status: "active"
+      priority: "high"
+
+      context: |
+        Implement bulk data export feature allowing users to export their data
+        in CSV, JSON, and XML formats. Exports can be large (100k+ records).
+
+        ARCHITECTURAL DECISION (2026-02-05):
+        Database strategy for export queries: Async Job Queue with Query Throttling.
+        Decision made by human stakeholder to minimize upfront infrastructure cost
+        while delivering MVP quickly with performance guardrails.
+
+        Constraints:
+        - Max 3 concurrent export jobs
+        - 60s query timeout per batch
+        - 10k row batch size
+        - 2-week monitoring period to validate production impact
+        - Migration to read replica in v2 if metrics show production impact
+
+      # ========================================
+      # OPEN QUESTIONS (Human Authority)
+      # ========================================
+      open_questions:
+        - id: "Q-20260205-093015-b7e4"
+          question: "What database strategy should we use for large export queries to avoid production impact?"
+          severity: "high"
+          status: "ANSWERED"
+          answer: |
+            Use Option B: Async Job Queue with Query Throttling for MVP.
+            Implement export as background jobs with max concurrency limit (3 jobs).
+            Add query timeout (60s) and row limit per batch (10k).
+            Monitor production metrics for 2 weeks.
+            If performance impact observed, we'll provision read replica in v2.
+            This minimizes upfront infrastructure cost while delivering feature quickly with safety guardrails.
+          answered_by: "HUMAN"
+          answered_at: 1738750200.1
+          context: |
+            Feature: Data export (CSV/JSON/XML formats, up to 100k+ records per export)
+            Problem: Large queries could impact production database performance
+
+            Options analyzed:
+            A) Read Replica - Best isolation but requires infrastructure
+            B) Async Queue - Code-only solution with throttling
+            C) Materialized Views - Hybrid approach with cache layer
+          asked_by: "planner-build"
+          options:
+            - "Read Replica (infrastructure investment)"
+            - "Async Queue (code-only, production queries)"
+            - "Materialized Views (hybrid approach)"
+
+      # ========================================
+      # IMPACTED FILES
+      # ========================================
+      impacted_files:
+        - path: "src/services/export_service.py"
+          change_type: create
+          change_category: implementation
+          reason: "Core export service with batch processing and throttling"
+
+        - path: "src/workers/export_worker.py"
+          change_type: create
+          change_category: implementation
+          reason: "Background worker with concurrency limit (max 3 jobs)"
+
+        - path: "src/api/export_endpoints.py"
+          change_type: create
+          change_category: implementation
+          reason: "API endpoints for async export requests"
+
+        - path: "config/export_settings.py"
+          change_type: create
+          change_category: config
+          reason: "Export configuration (timeout, batch size, concurrency)"
+
+        - path: "tests/test_export_service.py"
+          change_type: create
+          change_category: test
+          reason: "Unit tests for export service"
+
+        - path: "tests/test_export_throttling.py"
+          change_type: create
+          change_category: test
+          reason: "Tests for concurrency limits and throttling behavior"
+
+      # ========================================
+      # PHASES AND TASKS
+      # ========================================
+      phases:
+        - name: "Phase 1: Core Implementation"
+          execution: sequential
+          tasks:
+            - id: "impl_001"
+              name: "Implement async job queue with throttling"
+              description: |
+                Implement database query strategy using async job queue pattern
+                per human decision (Q-20260205-093015-b7e4).
+
+                Requirements:
+                - Use existing job queue framework (Celery/RQ)
+                - Max 3 concurrent export jobs
+                - Query timeout: 60 seconds per batch
+                - Batch size: 10k rows per query
+                - Export job status tracking (pending/running/completed/failed)
+              status: "pending"
+              target_files:
+                - "src/workers/export_worker.py"
+                - "config/export_settings.py"
+
+            - id: "impl_002"
+              name: "Implement export service core logic"
+              description: |
+                Create ExportService with format conversion (CSV/JSON/XML).
+                Integrate with job queue for async execution.
+              status: "pending"
+              dependencies: ["impl_001"]
+              target_files:
+                - "src/services/export_service.py"
+
+            - id: "impl_003"
+              name: "Create API endpoints"
+              description: |
+                POST /exports (create job) - returns job_id
+                GET /exports/:job_id (check status/download)
+              status: "pending"
+              dependencies: ["impl_002"]
+              target_files:
+                - "src/api/export_endpoints.py"
+
+        - name: "Phase 2: Testing & Validation"
+          execution: sequential
+          tasks:
+            - id: "test_001"
+              name: "Unit testing"
+              description: "Test export service with various formats and data sizes"
+              status: "pending"
+
+            - id: "test_002"
+              name: "Throttling and concurrency tests"
+              description: "Validate max 3 jobs, timeout behavior, batch processing"
+              status: "pending"
+
+            - id: "test_003"
+              name: "Load testing"
+              description: "Validate performance with 100k+ record exports"
+              status: "pending"
+
+        - name: "Phase 3: Production Monitoring"
+          execution: sequential
+          tasks:
+            - id: "monitor_001"
+              name: "Deploy monitoring for production DB metrics"
+              description: |
+                Set up monitoring for 2-week evaluation period:
+                - Database query latency (p50, p95, p99)
+                - Connection pool usage
+                - Export job completion rate
+                - Export job duration distribution
+              status: "pending"
+
+            - id: "monitor_002"
+              name: "Evaluate performance impact"
+              description: |
+                After 2 weeks, review metrics to determine if read replica needed.
+                Create follow-up plan if production impact detected.
+              status: "pending"
+
+      success_criteria:
+        - "Users can export data in CSV, JSON, XML formats via async jobs"
+        - "Max 3 concurrent export jobs enforced"
+        - "Exports complete successfully for 100k+ records with 10k batch size"
+        - "Query timeout (60s) and throttling working as expected"
+        - "Production database metrics monitored for 2 weeks post-launch"
+        - "All tests pass including load and throttling tests"
+
+  # Step 4: Planner output after revision
+  planner_output_after_revision: |
+    Plan updated: docs/plans/live/260205EX_data_export/plan.yml
+
+    STATUS: active (ready for execution)
+
+    INCORPORATED ANSWER: Q-20260205-093015-b7e4
+    Decision: Async Job Queue with Query Throttling (answered_by: HUMAN)
+
+    Changes made:
+    - Updated open_questions: Q-20260205-093015-b7e4 status OPEN -> ANSWERED
+    - Unblocked task impl_001 with specific implementation requirements
+    - Added config file for export settings (timeout, batch size, concurrency)
+    - Added test task test_002 for throttling validation
+    - Added Phase 3 for production monitoring (2-week evaluation)
+    - Updated context with architectural decision rationale
+
+    Plan is now ready for builder execution.
+
+# ==============================================
+# KEY PATTERNS DEMONSTRATED
+# ==============================================
+patterns_demonstrated:
+  authority_pattern:
+    description: "answered_by: HUMAN indicates authoritative answer"
+    importance: |
+      When a question is answered by a HUMAN, that answer has absolute authority.
+      Agents MUST incorporate it without modification or second-guessing.
+      The answered_by field makes this authority explicit in the plan history.
+
+  question_lifecycle:
+    states:
+      - "OPEN: Question created, awaiting answer"
+      - "ANSWERED: Human has provided answer, ready to incorporate"
+      - "DEFERRED: Question marked for later (status field)"
+    transitions:
+      - "pending/ -> answered/ (via CLI command)"
+      - "status: OPEN -> status: ANSWERED (in plan.yml)"
+
+  plan_blocking_pattern:
+    description: "Tasks can be blocked on specific questions"
+    implementation: |
+      Task includes:
+      - status: "blocked"
+      - blocked_on: "Q-20260205-093015-b7e4"
+
+      After answer, task updated to:
+      - status: "pending"
+      - blocked_on field removed
+      - description updated with answer details
+
+  question_in_plan_yaml:
+    description: "open_questions section in plan.yml tracks all questions"
+    fields:
+      - "id: Question identifier"
+      - "question: The question text"
+      - "severity: blocking/high/medium/low"
+      - "status: OPEN/ANSWERED"
+      - "context: Background and research"
+      - "options: Alternatives considered (optional)"
+      - "answer: The answer text (when ANSWERED)"
+      - "answered_by: Who answered (HUMAN/agent-name)"
+      - "answered_at: Unix timestamp (when ANSWERED)"
+      - "asked_by: Who asked (agent-name)"
+
+  file_structure:
+    description: "Question files stored in plan subdirectories"
+    structure: |
+      docs/plans/live/260205EX_data_export/
+      ├── plan.yml (includes open_questions section)
+      └── questions/
+          ├── pending/
+          │   └── Q-20260205-093015-b7e4.yml (before answer)
+          └── answered/
+              ├── Q-20260205-093015-b7e4.yml (Answer object)
+              └── Q-20260205-093015-b7e4_question.yml (Question with answer)
+
+# ==============================================
+# BEST PRACTICES FOR PLANNERS
+# ==============================================
+best_practices_for_planners:
+  when_to_add_question:
+    - "Architectural decisions affecting multiple components"
+    - "Business logic requiring domain expertise"
+    - "Priority conflicts between requirements"
+    - "Missing critical information not in docs/code"
+    - "High-risk decisions (security, data integrity, cost)"
+
+  when_not_to_add_question:
+    - "Standard technical choices with precedent in codebase"
+    - "Low-risk decisions easily changed later"
+    - "Implementation details that don't affect architecture"
+    - "Questions answerable from existing documentation"
+
+  severity_guidelines_for_planners:
+    blocking:
+      when: "Cannot create plan without answer"
+      example: "Which database to use (affects entire architecture)"
+
+    high:
+      when: "Blocks critical phase but other phases can be planned"
+      example: "Export query strategy (affects Phase 1, but can plan Phase 2)"
+
+    medium:
+      when: "Important clarification but can make documented assumption"
+      example: "Preferred naming convention (can follow general patterns)"
+
+    low:
+      when: "Nice-to-have preference, not critical to plan"
+      example: "Order of implementing subfeatures"
+
+  incorporating_answers:
+    - "Check questions/answered/ before finalizing plan"
+    - "Update open_questions section: status OPEN -> ANSWERED"
+    - "Add answer and answered_by: HUMAN fields"
+    - "Unblock any tasks that were waiting on the question"
+    - "Update task descriptions with specific guidance from answer"
+    - "Document decision in context section"
+    - "Add any new tasks implied by the answer (e.g., monitoring)"
+    - "NEVER override or modify human answers - they have absolute authority"
+
+  context_quality:
+    - "Provide clear options with pros/cons analysis"
+    - "Explain impact on timeline, cost, complexity"
+    - "Show what research you've done"
+    - "Explain why you can't make autonomous decision"
+    - "Reference specific tasks/phases affected"
+
+# ==============================================
+# ANTI-PATTERNS
+# ==============================================
+anti_patterns:
+  over_planning:
+    description: "Asking questions about every technical detail"
+    problem: "Slows down planning, creates decision fatigue"
+    solution: "Ask only about decisions with architectural/business impact"
+
+  under_planning:
+    description: "Making high-risk decisions without consulting human"
+    problem: "May choose wrong approach, costly to change later"
+    solution: "Recognize high-risk scenarios and create questions"
+
+  ignoring_answers:
+    description: "Not checking for answered questions before finalizing"
+    problem: "Plan remains blocked on already-answered questions"
+    solution: "Always check questions/answered/ during plan revision"
+
+  modifying_human_answers:
+    description: "Reinterpreting or 'improving' human's answer"
+    problem: "Violates human authority, leads to incorrect implementation"
+    solution: "Incorporate answer exactly as given, answered_by: HUMAN is authoritative"
+
+  vague_questions:
+    description: "Questions without context or clear options"
+    problem: "Human can't provide useful answer without more info"
+    solution: "Always include context, research, options, and impact analysis"
+
+  wrong_severity:
+    description: "Marking all questions as 'blocking'"
+    problem: "Blocks entire planning process unnecessarily"
+    solution: "Use 'high' if other phases can proceed, 'blocking' only if truly stuck"

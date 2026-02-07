@@ -64,6 +64,9 @@ agentic plan move folder [--plan <path>] [--dry-run] [--force]
 # Archive plan folder
 agentic plan archive <path>
 
+# Unarchive plan folder (move from completed back to live)
+agentic plan unarchive --plan <name> [--force]
+
 # Phase management
 agentic plan phase add --id <id> --name <name> [--description <desc>] [--plan <path>]
 agentic plan phase list [--plan <path>]
@@ -129,7 +132,7 @@ agentic plan task prefill --preset builder --dry-run  # Preview without changes
 
 **Options for `plan task list`:**
 - `--plan`, `-p`: Path to plan folder (auto-detected if omitted)
-- `--status`, `-s`: Filter by status (pending, in_progress, completed, blocked, or all)
+- `--status`, `-s`: Filter by status (pending, in_progress, completed, or all)
 - `--verbose`, `-v`: Show full task details including guidance and success criteria
 
 **Options for `plan task current`:**
@@ -260,16 +263,18 @@ agentic plan stories test --output tests/story_tests.json --format json
 
 ### langsmith (ls) - LangSmith Integration
 
-Query LangSmith traces, runs, and project statistics.
+Query LangSmith traces, runs, and project statistics with advanced forensic analysis capabilities.
 
 ```bash
 # List recent runs
 agentic langsmith runs [--project <name>] [--limit <n>] [--type llm|chain|tool|retriever] [--error]
 agentic ls runs -p my-project -l 50
 
-# Get details for a specific run
-agentic langsmith run <run-id> [--url]
-agentic ls run abc123 --url
+# Get details for a specific run (enhanced with hierarchy and timing)
+agentic langsmith run <run-id> [--url] [--tree] [--full] [--format json|yaml|table] [--timing]
+agentic ls run abc123 --url --tree --timing       # Show hierarchy and timing breakdown
+agentic ls run abc123 --full --format yaml        # Full inputs/outputs in YAML
+agentic ls run abc123 --tree                      # Show parent/child hierarchy
 
 # List all projects
 agentic langsmith projects [--detail]
@@ -279,18 +284,124 @@ agentic ls projects -d
 agentic langsmith stats --project <name> [--since YYYY-MM-DD] [--until YYYY-MM-DD]
 agentic ls stats -p my-project --since 2026-01-01
 
-# Analyze friction patterns
-agentic langsmith friction [--project <name>] [--limit <n>] [--lookback-days <n>] [--recommend]
-agentic ls friction -p my-project -r
+# Analyze friction patterns (enhanced with export and grouping)
+agentic langsmith friction --project <name> [--sessions <n>] [--since YYYY-MM-DD] [--limit <n>] [--lookback-days <n>] [--min-affected <n>] [--recommend] [--validate|--no-validate] [--export json|markdown|yaml] [--group-by severity|type|session] [--json]
+agentic ls friction -p my-project -r                                    # With recommendations
+agentic ls friction -p my-project --sessions 5 --min-affected 2         # Session-based filtering
+agentic ls friction -p my-project --export markdown --group-by severity # Export to markdown
+agentic ls friction -p my-project --export yaml --group-by type         # Export grouped by type
 
 # List recent sessions with run counts
-agentic langsmith sessions [--project <name>] [--limit <n>]
+agentic langsmith sessions --project <name> [--limit <n>] [--since YYYY-MM-DD] [--json]
 agentic ls sessions -p my-project -l 20
+
+# Analyze a specific session (NEW)
+agentic langsmith session-analyze <session-id> [--project <name>] [--export json|csv|markdown]
+agentic ls session-analyze abc123 --export csv     # Export session timeline to CSV
+agentic ls session-analyze abc123 --export markdown # Export session report to markdown
+agentic ls session-analyze abc123 -p my-project   # Analyze with project validation
+
+# Search runs by pattern (NEW)
+agentic langsmith batch-search <pattern> --project <name> [--field inputs|outputs|error|all] [--type llm|chain|tool|retriever] [--status success|error|running] [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--limit <n>] [--group-by session|type|status|none] [--export json|csv]
+agentic ls batch-search "timeout.*exceeded" -p my-project                        # Search for timeout errors
+agentic ls batch-search "retry" -p my-project --field error --export csv         # Search errors, export CSV
+agentic ls batch-search "user_id" -p my-project --field inputs --group-by session # Group by session
 ```
+
+**Enhanced Features:**
+
+- **Run Inspection**: `--tree` shows parent/child hierarchy, `--full` displays complete inputs/outputs, `--timing` provides detailed timing breakdown
+- **Friction Analysis**: Export to markdown/YAML/JSON, group patterns by severity/type/session for better organization
+- **Session Analysis**: Dedicated command to analyze individual sessions with timeline and statistics
+- **Batch Search**: Regex-based search across runs with flexible filtering and grouping
 
 **Environment Variables:**
 - `LANGSMITH_API_KEY` - Required for all LangSmith commands
 - `CC_LANGSMITH_PROJECT` - Default project for friction analysis
+
+**Troubleshooting:**
+
+If you encounter "LANGSMITH_API_KEY not found":
+```bash
+# Set API key in environment
+export LANGSMITH_API_KEY=your_key_here
+
+# Or configure in CLI config
+agentic config set langsmith.api_key your_key_here
+```
+
+If commands fail with "agenticlangsmith package not installed":
+```bash
+cd modules/AgenticLangSmith
+uv pip install -e .
+```
+
+### question - Question Queue Management
+
+Manage questions that arise during agent workflows. Questions are stored in a plan's `questions/` directory with pending and answered status tracking.
+
+```bash
+# List questions
+agentic question list [--plan <path>] [--status pending|answered|deferred|all]
+agentic question list --status pending              # List pending questions (default)
+agentic question list --status answered             # List answered questions
+agentic question list --status all                  # List all questions
+
+# Show question details
+agentic question show <question_id> [--plan <path>]
+agentic question show Q-20260203-143022-a1b2
+
+# Create a new question
+agentic question ask <text> [--plan <path>] [--severity blocking|high|medium|low] [--context <text>]
+agentic question ask "What testing framework should we use?" --severity high
+agentic question ask "Should we add this feature?" --severity medium --context "Feature request from user"
+
+# Answer a question
+agentic question answer <question_id> [--plan <path>] [--text <answer>] [--confidence high|medium|low]
+agentic question answer Q-20260203-143022-a1b2 --text "Use pytest for testing" --confidence high
+agentic question answer Q-20260203-143022-a1b2   # Prompt for answer text
+
+# Defer a question
+agentic question defer <question_id> [--plan <path>]
+agentic question defer Q-20260203-143022-a1b2
+```
+
+**Question ID Format:**
+- `Q-YYYYMMDD-HHMMSS-XXXX` (e.g., `Q-20260203-143022-a1b2`)
+- Timestamp provides chronological ordering
+- Random suffix ensures uniqueness
+
+**Directory Structure:**
+```
+plan_folder/
+  questions/
+    pending/          # Unanswered questions
+      Q-20260203-143022-a1b2.yml
+    answered/         # Answered questions
+      Q-20260203-143022-a1b2.yml          # Answer
+      Q-20260203-143022-a1b2_question.yml # Original question
+```
+
+**Severity Levels:**
+- `blocking` - Must be answered before proceeding
+- `high` - Important, should be answered soon
+- `medium` - Normal priority (default)
+- `low` - Can be deferred
+
+**Plan Path Detection:**
+- Auto-detects from Main-First plan resolver (current branch's active plan)
+- Override with `--plan <path>` flag
+- Useful for working across multiple plans
+
+**JSON Output:**
+All commands support `--json` flag for structured output:
+```bash
+agentic --json question list --status pending
+agentic --json question show Q-20260203-143022-a1b2
+```
+
+**Tmux Integration:**
+For remote/SSH scenarios, see the [Tmux HITL Workflow Guide](../../docs/plans/live/260203QT_question_tmux/WORKFLOW.md) for setting up automatic question notifications in tmux panes.
 
 ### worktree (wt) - Git Worktree Management
 

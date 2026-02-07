@@ -921,10 +921,11 @@ execution_protocol:
           - "Resolve to specific agent based on context (project type, etc.)"
           - "Verify agent is in spawns fence"
 
-      - step: "3. Spawn agent"
+      - step: "3. Spawn agent(s)"
         actions:
           - "Prepare agent inputs (phase tasks from YAML, context)"
-          - "Spawn agent process"
+          - "If phase execution=parallel: Group tasks by target_files overlap (see Section 7)"
+          - "Spawn agents for parallel task groups concurrently using --task flag"
           - "Monitor agent execution"
 
       - step: "4. Collect output"
@@ -962,7 +963,93 @@ execution_protocol:
       - "Await user input (do not auto-terminate)"
 
 # =============================================================================
-# SECTION 7: INTEGRATION POINTS
+# SECTION 7: TASK PARALLELIZATION STRATEGY
+# =============================================================================
+# Defines how the executor determines which tasks can run in parallel
+# based on task-level target_files declarations.
+
+task_parallelization:
+  definition: |
+    The executor uses task-level `target_files` to determine which tasks within a
+    phase can safely run in parallel. Plan-level `impacted_files` is DEPRECATED
+    and should not be used for parallelization decisions.
+
+  scope: |
+    Parallelization applies WITHIN a single plan. Cross-plan parallelism is not
+    supported — each plan is a serial orchestration unit.
+
+  conflict_detection_algorithm:
+    description: |
+      Two tasks conflict if their target_files sets overlap (share any common file path).
+      Tasks with non-overlapping target_files can run in parallel.
+
+    steps:
+      - "1. Collect target_files from all tasks within the current phase"
+      - "2. For each pair of tasks, compute set intersection of target_files"
+      - "3. If intersection is empty: tasks are INDEPENDENT (can parallelize)"
+      - "4. If intersection is non-empty: tasks CONFLICT (must run sequentially)"
+      - "5. Build task groups where all tasks in a group are mutually independent"
+
+    example:
+      tasks:
+        - id: "T_001"
+          target_files: ["src/service_a.py", "tests/test_a.py"]
+        - id: "T_002"
+          target_files: ["src/service_b.py", "tests/test_b.py"]
+        - id: "T_003"
+          target_files: ["src/service_a.py", "src/shared.py"]
+
+      analysis: |
+        T_001 ∩ T_002 = {} → INDEPENDENT (can parallelize)
+        T_001 ∩ T_003 = {src/service_a.py} → CONFLICT (sequential)
+        T_002 ∩ T_003 = {} → INDEPENDENT (can parallelize)
+
+      parallel_groups:
+        - group_1: ["T_001", "T_002"]  # Run in parallel
+        - group_2: ["T_003"]            # Run after T_001 completes
+
+  task_grouping:
+    description: |
+      Tasks are grouped into parallel execution batches. Within a batch, all tasks
+      run concurrently. Batches execute sequentially.
+
+    algorithm: |
+      1. Start with all pending tasks in the phase
+      2. Find the maximal set of mutually independent tasks (no pairwise conflicts)
+      3. This set forms the next parallel batch
+      4. Remove batch tasks from pending set
+      5. Repeat until no pending tasks remain
+
+    constraints:
+      - "Tasks with explicit `dependencies` must wait for dependencies to complete"
+      - "Phase-level `execution: sequential` overrides parallelization (all tasks serial)"
+      - "Phase-level `execution: parallel` enables the parallelization algorithm"
+
+  spawning_pattern:
+    description: |
+      When spawning parallel tasks, the executor uses the --task flag to target
+      specific tasks within a plan.
+
+    cli_pattern: |
+      # Spawn individual task within a plan
+      agentic session spawn --role <agent> --plan <folder> --task <task_id> -b --dangerously-skip-permissions
+
+    example: |
+      # Parallel batch: T_001 and T_002 can run simultaneously
+      agentic session spawn --role build-python --plan 260207XX_feature --task T_001 -b --dangerously-skip-permissions
+      agentic session spawn --role build-python --plan 260207XX_feature --task T_002 -b --dangerously-skip-permissions
+
+      # Sequential: Wait for T_001 to complete, then run T_003
+      agentic session spawn --role build-python --plan 260207XX_feature --task T_003 -b --dangerously-skip-permissions
+
+  missing_target_files:
+    behavior: |
+      If a task does not declare target_files, it is treated as potentially conflicting
+      with ALL other tasks in the phase. This forces sequential execution for that task.
+      Planners should always include target_files on every task.
+
+# =============================================================================
+# SECTION 8: INTEGRATION POINTS
 # =============================================================================
 
 integration_points:
@@ -997,7 +1084,7 @@ integration_points:
       5. Collect exit code and output artifacts
 
 # =============================================================================
-# SECTION 8: EXAMPLES
+# SECTION 9: EXAMPLES
 # =============================================================================
 
 examples:
@@ -1046,7 +1133,7 @@ examples:
             started_at: "2025-01-10T14:15:00Z"
 
 # =============================================================================
-# SECTION 9: VALIDATION CHECKLIST
+# SECTION 10: VALIDATION CHECKLIST
 # =============================================================================
 
 validation_checklist:

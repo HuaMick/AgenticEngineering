@@ -226,6 +226,13 @@ process:
         3. Relevant input files
         4. Timeout based on phase complexity
 
+        STORY CONTEXT FOR UAT PHASES:
+        When spawning agents for UAT-type phases, include story context:
+        - Pass affected_stories from plan metadata to the spawned agent
+        - Reference specific story files from docs/userstories/
+        - Enable agents to update story test_status after validation
+        - Story IDs map to acceptance criteria that define UAT success
+
         MANDATE: Use CLI session commands for agent spawning.
         This ensures proper CCI bootstrap and state tracking.
         Agent is spawned as session, execution waits for completion.
@@ -265,6 +272,13 @@ process:
         AUDIT_FAILURE:
           - Condition: test-audit or test-final-output reports issues
           - Action: Invoke audit-test-fix-loop per agent-loops.yml
+
+        STORY_REGRESSION:
+          - Condition: UAT agent reports a previously-passing story now fails
+          - Action: Check iteration count
+            - If < MAX_ITERATIONS: Retry with regression context (story ID + previous pass evidence)
+            - If >= MAX_ITERATIONS: Transition to blocked with regression details
+          - Note: Story regressions are high-priority - they indicate broken user journeys
 
         If NO triggers fire, proceed to phase completion.
 
@@ -306,6 +320,13 @@ process:
         3. For each executed validation, verify result = PASS
         4. If ANY validation subgraph was skipped → BLOCK shutdown
         5. If ANY validation result != PASS → Return to fix phase
+
+        STORY VALIDATION CHECK:
+        6. If plan has affected_stories metadata:
+           a. Verify UAT phase validated those specific stories
+           b. Check story test results are captured (test_status field)
+           c. FENCE: Cannot proceed to shutdown if affected stories have test_status=failed
+        7. If plan has no affected_stories and no no_stories_rationale → WARN (non-blocking)
 
         FENCE: VALIDATION GATE
         Cannot proceed to shutdown_aggregate_status until:

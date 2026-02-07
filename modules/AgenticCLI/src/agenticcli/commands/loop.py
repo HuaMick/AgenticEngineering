@@ -197,6 +197,8 @@ def cmd_start(args, ctx=None):
 
     # Build claude command for loop execution
     cmd = ["claude", "--print"]
+    if getattr(args, "dangerously_skip_permissions", False):
+        cmd.append("--dangerously-skip-permissions")
     if max_iterations:
         cmd.extend(["--max-turns", str(max_iterations)])
     cmd.extend(["--prompt", prompt])
@@ -358,12 +360,18 @@ def cmd_stop(args, ctx=None):
     pid = loop.get("pid")
     status = loop.get("status")
 
-    if status != "running":
+    # If already in terminal state, just return success
+    if status in ["completed", "stopped", "failed"]:
         if is_json_output():
-            print_json({"error": f"Loop is not running (status: {status})", "success": False})
+            print_json({
+                "loop_id": loop["loop_id"],
+                "status": status,
+                "message": f"Loop is already in terminal state: {status}",
+                "success": True
+            })
         else:
-            print_error(f"Loop is not running (status: {status})")
-        sys.exit(1)
+            print_success(f"Loop {loop['loop_id'][:8]} is already in terminal state: {status}")
+        return
 
     # Try to stop the process
     force = getattr(args, "force", False)
@@ -396,14 +404,20 @@ def cmd_stop(args, ctx=None):
             print_success(f"Loop {loop['loop_id'][:8]} stopped (PID: {pid})")
 
     except ProcessLookupError:
+        # Process not found, mark as completed if it was running
         loop["status"] = "completed"
         loop["ended_at"] = datetime.now().isoformat()
         _save_loop(loop)
         if is_json_output():
-            print_json({"error": "Process not found (may have already exited)", "success": False})
+            print_json({
+                "loop_id": loop["loop_id"],
+                "status": "completed",
+                "message": "Process not found (may have already exited)",
+                "success": True
+            })
         else:
-            print_error("Process not found (may have already exited)")
-        sys.exit(1)
+            print_success(f"Loop {loop['loop_id'][:8]} already exited (process not found)")
+        return
     except PermissionError:
         print_error(f"Permission denied to stop process {pid}")
         sys.exit(1)

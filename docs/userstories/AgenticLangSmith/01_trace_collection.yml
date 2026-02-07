@@ -1,0 +1,100 @@
+# User Stories: Trace Collection
+# Automatic trace capture during Claude Code sessions
+
+stories:
+  - id: "US-LANGSMITH-001"
+    title: "Automatic Trace Capture via Stop Hook"
+    category: "trace_collection"
+    priority: "critical"
+    as_a: "developer using Claude Code"
+    i_want: "traces to be automatically captured after each conversation turn"
+    so_that: "I can analyze agent behavior without manual intervention"
+    acceptance_criteria:
+      - "stop_hook.sh executes after each Claude Code response"
+      - "Conversation transcript is loaded and parsed into turns"
+      - "Hierarchical traces are created (turn -> assistant -> tool runs)"
+      - "Traces are sent to LangSmith API via multipart form uploads"
+      - "State is maintained in ~/.claude/state/langsmith_state.json"
+      - "All captured data includes user messages, assistant responses, and tool use"
+      - "Usage metadata (tokens, cache statistics) is included in traces"
+      - "Timestamps are captured with microsecond precision"
+    related_commands:
+      - "N/A (automatic via stop hook)"
+    related_files:
+      - "modules/AgenticLangSmith/hooks/stop_hook.sh"
+      - "~/.claude/settings.json"
+
+  - id: "US-LANGSMITH-002"
+    title: "Multi-Worktree Configuration"
+    category: "trace_collection"
+    priority: "high"
+    as_a: "developer working across multiple git worktrees"
+    i_want: "each worktree to trace to a different LangSmith project"
+    so_that: "I can segregate traces by context and avoid mixing different workflows"
+    acceptance_criteria:
+      - "Global hook is symlinked from repo canonical source"
+      - "Each worktree has .claude/settings.local.json with unique CC_LANGSMITH_PROJECT"
+      - "Hook uses per-worktree environment variables"
+      - "Traces from worktree A go to project A, traces from worktree B go to project B"
+      - "Single hook script is version-controlled in repo"
+      - "Updates to hook script propagate to all worktrees via symlink"
+    related_commands:
+      - "ln -sf /path/to/repo/modules/AgenticLangSmith/hooks/stop_hook.sh ~/.claude/hooks/stop_hook.sh"
+    related_files:
+      - "modules/AgenticLangSmith/hooks/stop_hook.sh"
+      - ".claude/settings.local.json (per worktree)"
+
+  - id: "US-LANGSMITH-003"
+    title: "Selective Trace Activation"
+    category: "trace_collection"
+    priority: "medium"
+    as_a: "developer who sometimes wants to disable tracing"
+    i_want: "to enable or disable tracing per worktree"
+    so_that: "I can avoid capturing traces for experimental or private sessions"
+    acceptance_criteria:
+      - "Setting TRACE_TO_LANGSMITH=false disables tracing for a worktree"
+      - "Removing TRACE_TO_LANGSMITH variable disables tracing"
+      - "Setting TRACE_TO_LANGSMITH=true enables tracing"
+      - "Tracing can be toggled by editing .claude/settings.local.json"
+      - "No errors occur when tracing is disabled"
+    related_commands:
+      - "N/A (configured via .claude/settings.local.json)"
+    related_files:
+      - ".claude/settings.local.json"
+
+  - id: "US-LANGSMITH-004"
+    title: "Debug Logging for Trace Capture"
+    category: "trace_collection"
+    priority: "low"
+    as_a: "developer troubleshooting trace capture issues"
+    i_want: "verbose logging of the trace capture process"
+    so_that: "I can diagnose why traces are not appearing in LangSmith"
+    acceptance_criteria:
+      - "Setting CC_LANGSMITH_DEBUG=true enables debug logging"
+      - "Debug logs are written to ~/.claude/state/hook.log"
+      - "Logs include transcript parsing, API calls, and error messages"
+      - "Normal operation produces minimal logs"
+      - "Debug mode does not impact trace capture functionality"
+    related_commands:
+      - "tail -f ~/.claude/state/hook.log"
+    related_files:
+      - "~/.claude/state/hook.log"
+      - "~/.claude/state/langsmith_state.json"
+
+  - id: "US-LANGSMITH-005"
+    title: "Cross-Platform Trace Capture"
+    category: "trace_collection"
+    priority: "high"
+    as_a: "developer on Linux or macOS"
+    i_want: "trace capture to work seamlessly on my platform"
+    so_that: "I don't need platform-specific configuration"
+    acceptance_criteria:
+      - "Linux (including WSL2) uses native date +%6N for microseconds"
+      - "macOS uses gdate (GNU coreutils) or Python fallback"
+      - "Required commands (jq, curl, uuidgen) are detected or gracefully fallback"
+      - "Hook script fails gracefully if prerequisites are missing"
+      - "Clear error messages indicate missing dependencies"
+    related_commands:
+      - "which jq curl uuidgen"
+    related_files:
+      - "modules/AgenticLangSmith/hooks/stop_hook.sh"

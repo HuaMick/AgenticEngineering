@@ -1,0 +1,97 @@
+# User Stories: CLI Context Injection (CCI) and Bootstrap
+# Covers context bootstrap, role, task, inputs, and generate-agent commands
+
+stories:
+  # ============================================================================
+  # CONTEXT BOOTSTRAP
+  # ============================================================================
+
+  - id: "US-CLI-040"
+    title: "Agent Self-Initialization via Bootstrap"
+    category: "context_bootstrap"
+    priority: "critical"
+    as_a: "agent spawned by an orchestrator"
+    i_want: "to bootstrap my context with a single CLI command"
+    so_that: "I have my role guidance, current task, and input files without file exploration"
+    acceptance_criteria:
+      - "agentic context bootstrap returns a combined context bundle"
+      - "The bundle includes the active task from docs/plans/live/"
+      - "The bundle includes role-specific process.yml guidance"
+      - "The bundle includes essential input file references"
+      - "The --role flag specifies the agent role explicitly"
+      - "Without --role, the role is auto-detected from context"
+      - "JSON output (-j) returns structured data for machine parsing"
+    related_commands:
+      - "agentic context bootstrap --role build-python"
+      - "agentic ctx bootstrap"
+    related_agents:
+      - "build-python"
+      - "build-flutter"
+      - "test-runner"
+
+  - id: "US-CLI-041"
+    title: "Get Role Guidance"
+    category: "context_bootstrap"
+    priority: "high"
+    as_a: "agent needing its process definition"
+    i_want: "to retrieve my process.yml and manifest.yml content by role ID"
+    so_that: "I know what steps to follow and what my capabilities are"
+    acceptance_criteria:
+      - "agentic context role <id> returns process.yml and manifest.yml content"
+      - "Content is sourced from AgenticGuidance module agent definitions"
+      - "The --format flag supports yaml (default) and json output"
+      - "Invalid role IDs produce clear error messages"
+    related_commands:
+      - "agentic ctx role planner-build"
+      - "agentic ctx role build-python --format json"
+
+  - id: "US-CLI-042"
+    title: "Get Active Task from Plan"
+    category: "context_bootstrap"
+    priority: "critical"
+    as_a: "agent ready to begin work"
+    i_want: "to retrieve the current or next task from the active plan"
+    so_that: "I know exactly what to implement"
+    acceptance_criteria:
+      - "agentic context task returns the first in_progress task"
+      - "If no in_progress task, returns the first pending task"
+      - "Task details include ID, description, guidance, and success criteria"
+      - "The --all flag returns all tasks in the plan"
+      - "Returns clear message when no tasks remain"
+      - "Crawls docs/plans/live/ to find the active plan"
+    related_commands:
+      - "agentic ctx task"
+      - "agentic ctx task --all"
+
+  - id: "US-CLI-043"
+    title: "Resolve Input Files for Role"
+    category: "context_bootstrap"
+    priority: "high"
+    as_a: "agent needing reference material"
+    i_want: "to get my input files with resolved paths and existence checks"
+    so_that: "I have the project files I need without searching the filesystem"
+    acceptance_criteria:
+      - "agentic context inputs --role <id> returns the inputs.yml for the role"
+      - "The --resolve flag expands layer references and checks file existence"
+      - "Missing files are reported but do not cause failure"
+      - "Path resolution uses module-relative and repo-relative conventions"
+      - "Layer expansion follows the Reference Layer Architecture"
+    related_commands:
+      - "agentic ctx inputs --role build-python"
+      - "agentic ctx inputs --role planner-build --resolve"
+
+  - id: "US-CLI-044"
+    title: "Generate Thin-Client Agent File"
+    category: "context_bootstrap"
+    priority: "medium"
+    as_a: "developer creating a new agent"
+    i_want: "to generate a minimal agent markdown file that uses CCI bootstrap"
+    so_that: "the agent self-initializes at runtime instead of embedding static context"
+    acceptance_criteria:
+      - "agentic context generate-agent <role-id> outputs a markdown agent file"
+      - "The generated file includes bootstrap CLI calls in its initialization section"
+      - "The --output flag saves the file to a specified path"
+      - "The generated agent uses agentic ctx bootstrap for context loading"
+    related_commands:
+      - "agentic ctx generate-agent build-python"
+      - "agentic ctx generate-agent planner-build --output agent.md"

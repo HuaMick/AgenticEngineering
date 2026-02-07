@@ -9,13 +9,14 @@ from datetime import datetime
 from pathlib import Path
 
 
-def get_worktree_id(worktree_path: Path) -> str:
-    """Extract 2-character worktree identifier from path.
+def get_worktree_id(worktree_path: Path, branch: str | None = None) -> str:
+    """Extract 2-character worktree identifier from path or registry.
 
     Algorithm:
-    1. Parse worktree path (e.g., /home/code/AgenticEngineering-agenticguidance)
-    2. Extract suffix after last hyphen (e.g., agenticguidance)
-    3. Take first 2 characters, uppercase (e.g., AG)
+    1. If branch provided, look up abbreviation from worktree registry
+    2. Parse worktree path (e.g., /home/code/AgenticEngineering-agenticguidance)
+    3. Extract suffix after last hyphen (e.g., agenticguidance)
+    4. Take first 2 characters, uppercase (e.g., AG)
 
     Special cases:
     - No hyphen in path: Use first 2 chars of directory name
@@ -23,6 +24,7 @@ def get_worktree_id(worktree_path: Path) -> str:
 
     Args:
         worktree_path: Path to the worktree directory.
+        branch: Optional branch name for registry lookup.
 
     Returns:
         2-character uppercase identifier (e.g., "AG", "CL", "XX").
@@ -35,6 +37,20 @@ def get_worktree_id(worktree_path: Path) -> str:
         >>> get_worktree_id(Path("/home/code/MyProject"))
         'MY'
     """
+    # Try registry lookup if branch is provided
+    if branch:
+        try:
+            from agenticcli.commands.worktree import load_worktree_registry, lookup_abbreviation
+            # Try loading registry from worktree_path or its parent paths
+            for candidate in [worktree_path, worktree_path.parent]:
+                registry = load_worktree_registry(candidate)
+                if registry:
+                    abbr = lookup_abbreviation(registry, branch)
+                    if abbr:
+                        return abbr[:2].upper()
+        except ImportError:
+            pass
+
     dir_name = worktree_path.name
 
     if "-" in dir_name:

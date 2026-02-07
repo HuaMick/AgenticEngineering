@@ -91,7 +91,19 @@ inputs:
       description: "RLM integration guidelines"
       required: false
 
-  guidelines: []
+  guidelines:
+    - type: file
+      path: "modules/AgenticGuidance/assets/guidelines/question-workflow.yml"
+      description: "Human-in-the-Loop (HITL) question workflow - for validating open_questions sections in plans"
+      required: true
+
+    - type: file
+      path: "modules/AgenticGuidance/assets/guidelines/planning-standard.yml"
+      description: "Planning standards including Story-First Planning fence"
+      required: true
+      usage: |
+        Validates that plans include affected_stories or no_stories_rationale.
+        Reference: planning-standard.yml#Story-First Planning
 
   definitions:
     review_decision: "APPROVED | REJECTED | NEEDS_REVISION"
@@ -118,3 +130,22 @@ inputs:
         description: "Reject plans targeting placeholder or deprecated agents"
         check: "Verify agents have actual guidance files, not just taxonomy entries"
         reject_if: "Plan targets agents that exist only in taxonomy but lack process.yml/inputs.yml"
+
+  story_validation:
+    description: "Validation rules for Story-First Planning fence"
+    fence_reference: "modules/AgenticGuidance/assets/guidelines/planning-standard.yml#Story-First Planning"
+    rules:
+      - name: "verify_story_presence"
+        description: "Build plans must have affected_stories or no_stories_rationale"
+        check: "Plan metadata contains affected_stories list OR no_stories_rationale field"
+        reject_if: "Neither affected_stories nor no_stories_rationale is present"
+
+      - name: "verify_uat_story_alignment"
+        description: "Plans with affected_stories must have UAT tasks for those stories"
+        check: "UAT phase references specific story IDs from affected_stories"
+        reject_if: "Stories listed but no UAT phase validates them"
+
+      - name: "verify_story_rationale_quality"
+        description: "no_stories_rationale must be specific and justified"
+        check: "Rationale explains why no user stories are impacted"
+        reject_if: "Rationale is vague (e.g., 'not applicable', 'none')"

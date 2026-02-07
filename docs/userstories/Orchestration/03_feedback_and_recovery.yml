@@ -1,0 +1,127 @@
+# User Stories: Feedback Loops and Recovery
+# Covers test-fix loops, failure handling, feedback triggers, and re-planning
+
+stories:
+  # ============================================================================
+  # FEEDBACK LOOPS
+  # ============================================================================
+
+  - id: "US-ORCH-020"
+    title: "Test-Fix Loop Execution"
+    category: "feedback_loops"
+    priority: "critical"
+    as_a: "orchestration-executor running test phases"
+    i_want: "to execute test-fix loops that re-run failing tests after fixes"
+    so_that: "test failures are resolved iteratively without human intervention"
+    acceptance_criteria:
+      - "Test phases in the MMD define test-fix loop structure"
+      - "test-runner agent executes tests and reports results"
+      - "On failure, the build agent is re-spawned to fix the issue"
+      - "The loop repeats until tests pass or max iterations is reached"
+      - "Loop iteration count and results are tracked in plan state"
+      - "Max iterations prevents infinite loops"
+    related_agents:
+      - "orchestration-executor"
+      - "test-runner"
+      - "build-python"
+
+  - id: "US-ORCH-021"
+    title: "Feedback Trigger Handling"
+    category: "feedback_loops"
+    priority: "high"
+    as_a: "orchestration-executor encountering a failure"
+    i_want: "to route failures to the appropriate recovery agent based on trigger type"
+    so_that: "different failure types get specialized handling"
+    acceptance_criteria:
+      - "TEST_FAILURE triggers: re-spawn build agent with failure details"
+      - "BUILD_FAILURE triggers: escalate to orchestration-planning for re-planning"
+      - "CICD_FAILURE triggers: route to deploy-cicd for pipeline fixes"
+      - "GUIDANCE_GAP triggers: route to teacher-update-guidance for improvement"
+      - "AUDIT_FAILURE triggers: route to planner-cleaning for resolution"
+      - "Feedback triggers are defined in the MMD flowchart"
+      - "Trigger metadata includes failure details for the recovery agent"
+    related_agents:
+      - "orchestration-executor"
+      - "orchestration-planning"
+      - "teacher-update-guidance"
+
+  # ============================================================================
+  # FAILURE RECOVERY
+  # ============================================================================
+
+  - id: "US-ORCH-022"
+    title: "Re-Planning After Failure"
+    category: "failure_recovery"
+    priority: "high"
+    as_a: "orchestration-executor unable to resolve a failure"
+    i_want: "to escalate to orchestration-planning for plan modification"
+    so_that: "the plan adapts to unexpected situations instead of halting"
+    acceptance_criteria:
+      - "When test-fix loops exhaust max iterations, failure is escalated"
+      - "orchestration-planning receives failure context and original plan"
+      - "Re-planning may add new tasks, modify existing tasks, or adjust phases"
+      - "The updated plan generates a new orchestration MMD"
+      - "Execution resumes with the updated plan"
+    related_agents:
+      - "orchestration-executor"
+      - "orchestration-planning"
+      - "planner-orchestration"
+
+  - id: "US-ORCH-023"
+    title: "Guidance Improvement from Friction"
+    category: "failure_recovery"
+    priority: "high"
+    as_a: "teacher agent responding to friction signals"
+    i_want: "to update guidance files based on observed agent struggles"
+    so_that: "future agents do not encounter the same friction patterns"
+    acceptance_criteria:
+      - "GUIDANCE_GAP triggers from execution are routed to teacher agents"
+      - "teacher-update-guidance improves process.yml and inputs.yml files"
+      - "teacher-update-assets creates or updates shared definitions and guidelines"
+      - "Guidance changes are verified by test-guidance-simulator"
+      - "Improved guidance reduces friction in subsequent executions"
+    related_agents:
+      - "teacher-update-guidance"
+      - "teacher-update-assets"
+      - "test-guidance-simulator"
+
+  # ============================================================================
+  # QUALITY ASSURANCE
+  # ============================================================================
+
+  - id: "US-ORCH-024"
+    title: "Test Audit and Reward Hacking Prevention"
+    category: "quality_assurance"
+    priority: "high"
+    as_a: "orchestration-executor ensuring test quality"
+    i_want: "to audit tests for reward hacking and verify genuine outcomes"
+    so_that: "agents cannot game metrics to appear successful while failing"
+    acceptance_criteria:
+      - "test-audit agent reviews test quality and detects gaming"
+      - "Checks that tests verify actual behavior, not just help text validation"
+      - "test-final-output validates final outputs against success criteria"
+      - "Audit results are reported to the orchestration-executor"
+      - "Failed audits block plan completion"
+    related_agents:
+      - "test-audit"
+      - "test-final-output"
+      - "orchestration-executor"
+
+  - id: "US-ORCH-025"
+    title: "Plan Compliance Auditing"
+    category: "quality_assurance"
+    priority: "medium"
+    as_a: "orchestration agent ensuring plan folder correctness"
+    i_want: "to audit plan folders for structural compliance"
+    so_that: "plan folders are consistent and parseable by all agents and CLI tools"
+    acceptance_criteria:
+      - "planner-audit agent checks plan folder structure"
+      - "Validates presence of required files (plan_build.yml, orchestration_*.mmd)"
+      - "Validates YAML schema compliance"
+      - "Validates task IDs are unique within the plan"
+      - "Validates phase references are consistent"
+      - "Audit results report specific compliance issues"
+    related_commands:
+      - "agentic plan validate <path>"
+    related_agents:
+      - "planner-audit"

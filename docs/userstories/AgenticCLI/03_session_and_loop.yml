@@ -1,0 +1,138 @@
+# User Stories: Session and Loop Management
+# Covers session spawn/list/stop/status and Ralph Loop start/stop/status/history
+
+stories:
+  # ============================================================================
+  # SESSION MANAGEMENT
+  # ============================================================================
+
+  - id: "US-CLI-030"
+    title: "Spawn Claude Code Session"
+    category: "session_management"
+    priority: "critical"
+    as_a: "developer or orchestration agent"
+    i_want: "to spawn a Claude Code session with a specific prompt"
+    so_that: "I can delegate work to a Claude Code instance programmatically"
+    acceptance_criteria:
+      - "agentic session spawn --prompt <text> launches a Claude Code session"
+      - "Foreground mode waits for completion and displays output"
+      - "Background mode (--background) returns immediately with a session ID"
+      - "The --max-turns flag limits the number of conversation turns"
+      - "The --directory flag sets the working directory for the session"
+      - "Session metadata is persisted to ~/.agentic/sessions/"
+      - "Output logs are written to ~/.agentic/sessions/logs/"
+    related_commands:
+      - "agentic session spawn --prompt 'Fix the tests' --background"
+      - "agentic session spawn -p 'Build feature' --max-turns 10"
+    related_agents:
+      - "orchestration-executor"
+      - "orchestration-planning"
+
+  - id: "US-CLI-031"
+    title: "List and Monitor Sessions"
+    category: "session_management"
+    priority: "high"
+    as_a: "developer managing multiple agents"
+    i_want: "to see all active and past Claude Code sessions"
+    so_that: "I can monitor progress and identify completed or stuck sessions"
+    acceptance_criteria:
+      - "agentic session list shows all tracked sessions with status, PID, start time"
+      - "The --active flag filters to running sessions only"
+      - "Session status includes: running, completed, failed, stopped"
+      - "JSON output is supported for scripting"
+      - "Prompt summary is truncated for readability"
+    related_commands:
+      - "agentic session list"
+      - "agentic session list --active"
+
+  - id: "US-CLI-032"
+    title: "Stop Running Session"
+    category: "session_management"
+    priority: "high"
+    as_a: "developer needing to cancel a session"
+    i_want: "to gracefully or forcefully stop a running Claude Code session"
+    so_that: "I can free resources or restart a stuck session"
+    acceptance_criteria:
+      - "agentic session stop <id> sends SIGTERM for graceful shutdown"
+      - "The --force flag sends SIGKILL for immediate termination"
+      - "Partial session ID matching is supported"
+      - "Stop is idempotent (stopping an already stopped session does not error)"
+      - "Session metadata is updated to reflect stopped status"
+    related_commands:
+      - "agentic session stop <id>"
+      - "agentic session stop <id> --force"
+
+  - id: "US-CLI-033"
+    title: "View Session Details"
+    category: "session_management"
+    priority: "medium"
+    as_a: "developer debugging a session"
+    i_want: "to see detailed information about a specific session including output"
+    so_that: "I can understand what the session did and diagnose issues"
+    acceptance_criteria:
+      - "agentic session status <id> shows session metadata and timing"
+      - "The --show-output flag includes stdout and stderr log contents"
+      - "Status includes PID, start time, duration, prompt, and exit code"
+      - "JSON output includes all fields for programmatic access"
+    related_commands:
+      - "agentic session status <id>"
+      - "agentic session status <id> --show-output"
+
+  # ============================================================================
+  # RALPH LOOP MANAGEMENT
+  # ============================================================================
+
+  - id: "US-CLI-034"
+    title: "Start Ralph Loop"
+    category: "loop_management"
+    priority: "critical"
+    as_a: "orchestration agent executing a plan"
+    i_want: "to start an iterative execution loop that runs until completion"
+    so_that: "multi-step plans are executed without manual intervention"
+    acceptance_criteria:
+      - "agentic loop start --prompt <text> begins a Ralph Loop"
+      - "The --entrypoint flag loads prompt from an entrypoint file"
+      - "The --prompt-file flag reads prompt from a file"
+      - "The --max-iterations flag limits total iterations (default: 10)"
+      - "The --completion-promise flag defines a text pattern that signals completion"
+      - "The --background flag runs the loop asynchronously"
+      - "Loop metadata is persisted to ~/.agentic/loops/"
+    related_commands:
+      - "agentic loop start --prompt 'Run and fix tests' --max-iterations 20"
+      - "agentic loop start --entrypoint _orchestrate"
+      - "agentic loop start -f prompt.txt -b -c 'All tasks complete'"
+
+  - id: "US-CLI-035"
+    title: "Stop Running Loop"
+    category: "loop_management"
+    priority: "high"
+    as_a: "developer needing to halt an iteration"
+    i_want: "to stop a running Ralph Loop gracefully or forcefully"
+    so_that: "I can intervene when a loop is stuck or no longer needed"
+    acceptance_criteria:
+      - "agentic loop stop <id> sends SIGTERM allowing current iteration to complete"
+      - "The --force flag sends SIGKILL for immediate termination"
+      - "Partial loop ID matching is supported"
+      - "Stop is idempotent (stopping an already stopped loop does not error)"
+    related_commands:
+      - "agentic loop stop <id>"
+      - "agentic loop stop <id> --force"
+
+  - id: "US-CLI-036"
+    title: "Monitor Loop Progress"
+    category: "loop_management"
+    priority: "high"
+    as_a: "developer tracking loop execution"
+    i_want: "to see the current iteration, status, and history of a Ralph Loop"
+    so_that: "I know if the loop is progressing toward completion"
+    acceptance_criteria:
+      - "agentic loop status <id> shows iteration count, runtime, and completion state"
+      - "Status information includes the prompt source and completion promise"
+      - "Iteration history table shows timing for each iteration"
+      - "agentic loop history lists all past loops sorted by most recent"
+      - "The --active flag filters to running loops only"
+      - "The --status flag filters by status (running, completed, failed, stopped)"
+    related_commands:
+      - "agentic loop status <id>"
+      - "agentic loop history"
+      - "agentic loop history --active"

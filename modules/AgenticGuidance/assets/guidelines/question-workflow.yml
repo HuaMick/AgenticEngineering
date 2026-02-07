@@ -1,0 +1,812 @@
+guideline:
+  name: "Question Workflow (HITL)"
+  description: |
+    Complete pattern for Human-in-the-Loop (HITL) question workflow. This guideline
+    teaches agents when to ask questions, how to generate them, where to store them,
+    and how to resume execution after receiving answers.
+
+  inputs:
+    - location: "modules/AgenticGuidance/assets/guidelines/escalation.yml"
+      description: "Escalation triggers and patterns"
+    - location: "modules/AgenticGuidance/assets/guidelines/iteration.yml"
+      description: "Iteration and loop behavioral patterns"
+    - location: "modules/AgenticGuidance/src/agenticguidance/models/question.py"
+      description: "Question and Answer data models"
+    - location: "modules/AgenticGuidance/src/agenticguidance/services/question.py"
+      description: "QuestionQueue service implementation"
+
+  # ========================================
+  # SECTION 1: When to Ask Questions
+  # ========================================
+  when_to_ask:
+    description: |
+      Ask questions when you encounter blockers requiring human judgment or
+      information that cannot be inferred from existing context.
+
+    triggers:
+      architectural_decisions:
+        description: "Decisions with significant long-term architectural impact"
+        examples:
+          - "Should we use REST or GraphQL for this new API?"
+          - "Which database should we use for this feature (SQL vs NoSQL)?"
+          - "Should this be a monolith or microservice?"
+
+      business_logic:
+        description: "Domain-specific business rules that require stakeholder input"
+        examples:
+          - "What should the default timeout be for payment processing?"
+          - "How should we handle edge case X in the checkout flow?"
+          - "Which user role has permission to perform this action?"
+
+      priority_clarification:
+        description: "Conflicting requirements or unclear priorities"
+        examples:
+          - "Task A requires X but Task B requires Y (conflicting). Which takes precedence?"
+          - "Should we prioritize performance or maintainability here?"
+          - "Is feature X in scope for this plan or deferred to next iteration?"
+
+      missing_critical_info:
+        description: "Information required to proceed that is not in docs, code, or context"
+        examples:
+          - "What is the external API endpoint for service X?"
+          - "What are the expected input/output formats for this integration?"
+          - "What is the access token or credential for this third-party service?"
+
+      high_risk_decisions:
+        description: "Decisions with significant impact on system behavior or user experience"
+        examples:
+          - "Should we apply this database migration immediately or schedule it?"
+          - "This change will break backward compatibility. Proceed?"
+          - "Deleting this data is irreversible. Confirm deletion?"
+
+  # ========================================
+  # SECTION 2: When NOT to Ask Questions
+  # ========================================
+  when_not_to_ask:
+    description: |
+      Do NOT ask questions about decisions you can make autonomously.
+      Agents should exercise judgment and make reasonable decisions for
+      low-risk technical details.
+
+    autonomous_decisions:
+      technical_implementation:
+        description: "Standard technical choices with documented precedent"
+        examples:
+          - "Variable naming conventions (follow existing patterns in codebase)"
+          - "File organization (follow existing directory structure)"
+          - "Code formatting (use existing linters/formatters)"
+          - "Import ordering (use isort or similar)"
+
+      standard_patterns:
+        description: "Established patterns in the codebase or industry best practices"
+        examples:
+          - "Error handling patterns (follow existing exception handling)"
+          - "Logging patterns (follow existing logging conventions)"
+          - "Testing patterns (follow existing test structure)"
+          - "Documentation structure (follow existing doc templates)"
+
+      low_risk_choices:
+        description: "Decisions that can be validated in code review with minimal cost"
+        examples:
+          - "Helper function names (can be renamed if needed)"
+          - "Temporary variable names (can be changed easily)"
+          - "Comment wording (can be improved in review)"
+          - "Order of private methods (can be reordered)"
+
+      answerable_from_context:
+        description: "Questions where the answer exists in available documentation or code"
+        examples:
+          - "What is the structure of config.yml? (read the existing config files)"
+          - "How do other modules handle X? (grep for similar patterns)"
+          - "What's the expected format? (check existing tests or examples)"
+
+  # ========================================
+  # SECTION 3: Question Generation Format
+  # ========================================
+  question_format:
+    description: |
+      Questions are stored as YAML files with structured metadata.
+      Use the QuestionQueue service to create questions programmatically.
+
+    yaml_structure:
+      description: "Structure of a question YAML file"
+      fields:
+        id:
+          type: "string"
+          format: "Q-YYYYMMDD-HHMMSS-XXXX"
+          description: "Auto-generated unique identifier with timestamp and random suffix"
+          example: "Q-20260203-143022-a1b2"
+
+        text:
+          type: "string"
+          description: "The question itself, clear and specific"
+          example: "Should the user authentication use JWT tokens or session cookies?"
+
+        context:
+          type: "string"
+          description: "Background explaining why this is blocking and what you've tried"
+          example: |
+            Task: Implement user authentication for API endpoints
+            Attempted: Researched both approaches, found tradeoffs
+            Blocking: No prior auth implementation in codebase to follow
+            Impact: Affects all API endpoint security implementation
+
+        severity:
+          type: "string"
+          enum: ["blocking", "high", "medium", "low"]
+          description: "Priority level (see severity_levels below)"
+
+        asked_by:
+          type: "string"
+          description: "Agent role or 'human'"
+          example: "builder-api"
+
+        created_at:
+          type: "float"
+          description: "Unix timestamp (auto-generated)"
+
+        status:
+          type: "string"
+          enum: ["pending", "answered", "deferred"]
+          description: "Question lifecycle status"
+
+        answer:
+          type: "string (optional)"
+          description: "The answer text (present when status=answered)"
+
+        answered_at:
+          type: "float (optional)"
+          description: "Unix timestamp of answer (present when answered)"
+
+        answered_by:
+          type: "string (optional)"
+          description: "Who provided the answer"
+
+    severity_levels:
+      blocking:
+        description: "Cannot proceed with current task without answer"
+        when_to_use: "Agent is completely stuck on critical path"
+        example: "Missing API credentials required to test integration"
+
+      high:
+        description: "Significant impact, but can work on parallel tasks"
+        when_to_use: "Blocks one task but other tasks can proceed"
+        example: "Unclear which of two valid approaches to use for feature X"
+
+      medium:
+        description: "Important clarification, but workaround exists"
+        when_to_use: "Can make reasonable assumption and document it"
+        example: "Default timeout value not specified, using 30s for now"
+
+      low:
+        description: "Nice-to-have clarification, not urgent"
+        when_to_use: "Cosmetic or minor preference question"
+        example: "Preferred wording for this user-facing message?"
+
+    code_example:
+      language: "python"
+      description: "Using QuestionQueue service to create a question"
+      code: |
+        from pathlib import Path
+        from agenticguidance.services.question import QuestionQueue
+        from agenticguidance.models.question import QuestionSeverity
+
+        # Initialize queue for current plan
+        plan_path = Path("docs/plans/live/260203QG_question_guidance")
+        queue = QuestionQueue(plan_path)
+
+        # Create question
+        question = queue.create_question(
+            text="Should we use JWT or session cookies for API authentication?",
+            context=(
+                "Task: Implement user authentication for API endpoints\n"
+                "Attempted: Researched both approaches, found tradeoffs\n"
+                "Blocking: No prior auth implementation in codebase to follow\n"
+                "Impact: Affects all API endpoint security implementation"
+            ),
+            severity=QuestionSeverity.BLOCKING.value,
+            asked_by="builder-api"
+        )
+
+        print(f"Question created: {question.id}")
+        # Output: Question created: Q-20260203-143022-a1b2
+
+  # ========================================
+  # SECTION 4: File Storage Pattern
+  # ========================================
+  file_storage:
+    description: |
+      Questions are organized in a structured directory hierarchy within
+      each plan folder. The file system serves as the queue and provides
+      clear lifecycle visibility.
+
+    directory_structure:
+      root: "docs/plans/live/{plan_id}/"
+      subdirectories:
+        questions:
+          pending:
+            description: "Unanswered questions waiting for human response"
+            file_pattern: "{question_id}.yml"
+            example: "Q-20260203-143022-a1b2.yml"
+          answered:
+            description: "Questions that have been answered"
+            file_pattern: "{question_id}.yml (Answer) and {question_id}_question.yml (Question)"
+            example:
+              - "Q-20260203-143022-a1b2.yml (Answer object)"
+              - "Q-20260203-143022-a1b2_question.yml (Question object with answer)"
+          deferred:
+            description: "Questions marked as deferred (status field updated, stays in pending/)"
+            note: "Deferred questions remain in pending/ with status='deferred'"
+
+    filename_convention:
+      pattern: "Q-YYYYMMDD-HHMMSS-XXXX.yml"
+      components:
+        prefix: "Q-"
+        date: "YYYYMMDD (e.g., 20260203)"
+        time: "HHMMSS (e.g., 143022)"
+        suffix: "XXXX (4-char random hex, e.g., a1b2)"
+      rationale: "Timestamp provides chronological ordering, random suffix ensures uniqueness"
+
+    state_transitions:
+      creation:
+        action: "Agent creates question"
+        destination: "questions/pending/{question_id}.yml"
+        service_method: "queue.create_question(...)"
+
+      answering:
+        action: "Human answers via CLI"
+        source: "questions/pending/{question_id}.yml"
+        destination:
+          - "questions/answered/{question_id}.yml (Answer)"
+          - "questions/answered/{question_id}_question.yml (Question with answer)"
+        service_method: "queue.answer_question(...)"
+
+      deferring:
+        action: "Mark as deferred (not urgent)"
+        location: "questions/pending/{question_id}.yml"
+        change: "status field updated to 'deferred'"
+        service_method: "question.mark_deferred()"
+
+    example_tree:
+      description: "Example directory structure for a plan with questions"
+      tree: |
+        docs/plans/live/260203QG_question_guidance/
+        ├── plan.yml
+        ├── tasks/
+        │   └── guide_001_create_guideline.yml
+        └── questions/
+            ├── pending/
+            │   ├── Q-20260203-143022-a1b2.yml
+            │   └── Q-20260203-150100-c3d4.yml
+            └── answered/
+                ├── Q-20260203-140500-e5f6.yml
+                └── Q-20260203-140500-e5f6_question.yml
+
+  # ========================================
+  # SECTION 5: CLI Command References
+  # ========================================
+  cli_commands:
+    description: |
+      The agentic CLI provides commands for humans to manage the question queue.
+      Agents should be aware of these commands to understand the workflow but
+      should NOT invoke them directly (agents write YAML, humans use CLI).
+
+    agent_workflow:
+      create_question:
+        description: "Agent generates question YAML and writes to pending/"
+        method: "Use QuestionQueue.create_question() or write YAML directly"
+        destination: "questions/pending/{question_id}.yml"
+        note: "Agents do NOT use CLI commands"
+
+    human_workflow:
+      list_questions:
+        command: "agentic question list"
+        options:
+          - "--plan PATH (specify plan folder)"
+          - "--status pending|answered|deferred|all"
+        description: "Display all questions with status filter"
+        example: "agentic question list --status pending"
+
+      show_details:
+        command: "agentic question show <question_id>"
+        options:
+          - "--plan PATH"
+        description: "Show detailed information for specific question"
+        example: "agentic question show Q-20260203-143022-a1b2"
+
+      answer_question:
+        command: "agentic question answer <question_id>"
+        options:
+          - "--text 'answer text' (provide answer inline)"
+          - "--confidence high|medium|low (optional)"
+          - "--plan PATH"
+        description: "Answer a pending question (moves to answered/)"
+        example: |
+          agentic question answer Q-20260203-143022-a1b2 \
+            --text "Use JWT tokens for stateless authentication"
+
+      create_question_cli:
+        command: "agentic question ask <text>"
+        options:
+          - "--severity blocking|high|medium|low"
+          - "--context 'context text'"
+          - "--plan PATH"
+        description: "Create new question from CLI (human asking agent)"
+        example: |
+          agentic question ask "Why did the build fail?" \
+            --severity high \
+            --context "Build 123 failed with unclear error"
+
+      defer_question:
+        command: "agentic question defer <question_id>"
+        options:
+          - "--plan PATH"
+        description: "Mark question as deferred (updates status in pending/)"
+        example: "agentic question defer Q-20260203-143022-a1b2"
+
+    integration_notes:
+      - "CLI commands auto-detect active plan using Main-First plan resolver"
+      - "--plan flag overrides auto-detection for specific plan targeting"
+      - "JSON output available with --json flag for scripting"
+
+  # ========================================
+  # SECTION 6: Resumption Pattern
+  # ========================================
+  resumption_pattern:
+    description: |
+      When an agent is blocked on a question, it should check for answers
+      periodically or when resuming work. This pattern enables async HITL
+      without blocking the entire workflow.
+
+    workflow:
+      step_1_detect_blocker:
+        description: "Agent identifies it cannot proceed without human input"
+        action:
+          - "Assess severity (blocking vs. high vs. medium vs. low)"
+          - "Check if question can be avoided via autonomous decision-making"
+          - "Document context: what was tried, why it's blocking"
+
+      step_2_create_question:
+        description: "Generate and persist question to pending/"
+        code_example: |
+          from agenticguidance.services.question import QuestionQueue
+          from agenticguidance.models.question import QuestionSeverity
+
+          queue = QuestionQueue(plan_path)
+          question = queue.create_question(
+              text="Clear, specific question here?",
+              context="Task context, what was attempted, why blocking",
+              severity=QuestionSeverity.BLOCKING.value,
+              asked_by="builder-name"
+          )
+
+      step_3_notify_human:
+        description: "Signal that question needs attention"
+        options:
+          - "Update task status to 'blocked-on-question'"
+          - "Log question ID in task output"
+          - "Escalate if blocking severity"
+        note: "Future: integrate with notification system (Slack, email, etc.)"
+
+      step_4_work_on_parallel_tasks:
+        description: "If non-blocking, switch to other tasks while waiting"
+        when: "severity is high/medium/low (not blocking)"
+        action: "Continue with tasks that don't depend on this answer"
+
+      step_5_check_for_answers:
+        description: "Before escalating or when resuming, check if answer arrived"
+        code_example: |
+          # Check if specific question was answered
+          question = queue.get_question(question_id)
+          if question and question.status == "answered":
+              print(f"Answer received: {question.answer}")
+              # Incorporate answer and continue
+
+          # Or list all pending questions to see what's still unanswered
+          pending = queue.list_pending_questions()
+          answered = [q for q in pending if q.status == "answered"]
+
+      step_6_incorporate_answer:
+        description: "Load answer content and apply to decision-making"
+        code_example: |
+          question = queue.get_question(question_id)
+          if question.status == "answered":
+              answer_text = question.answer
+              # Use answer to unblock task
+              # Example: if answer is "Use JWT", implement JWT auth
+              print(f"Proceeding with: {answer_text}")
+
+      step_7_continue_execution:
+        description: "Resume task with clarification applied"
+        action:
+          - "Update task status from 'blocked-on-question' to 'in-progress'"
+          - "Apply decision from answer"
+          - "Document decision in commit message or task notes"
+
+    checking_strategies:
+      periodic_polling:
+        description: "Check for answers at natural checkpoints"
+        when: "Long-running tasks with multiple questions"
+        pattern: "Check after completing each subtask or every N minutes"
+
+      resume_time_check:
+        description: "Check when agent resumes after human intervention"
+        when: "Agent was paused and human ran 'agentic question answer'"
+        pattern: "First action on resume: scan answered/ directory"
+
+      blocking_wait:
+        description: "For blocking questions, halt and wait for answer"
+        when: "Cannot proceed without answer (severity=blocking)"
+        pattern: "Exit gracefully, log question ID, wait for human to resume"
+
+  # ========================================
+  # SECTION 7: Example Scenarios
+  # ========================================
+  example_scenarios:
+    builder_blocked_on_architecture:
+      context: "Builder agent implementing new API feature"
+      scenario: |
+        Task: Implement user authentication API endpoints
+        Blocker: No existing auth implementation to follow as precedent
+        Decision: JWT vs session cookies (architectural impact)
+
+      agent_action:
+        step_1: "Recognize this is an architectural decision (not just technical detail)"
+        step_2: "Create blocking question with context"
+        step_3: "Log question ID in task output"
+        step_4: "Exit gracefully with status 'blocked-on-question'"
+
+      question_example: |
+        id: Q-20260203-143022-a1b2
+        text: Should we use JWT tokens or session cookies for API authentication?
+        context: |
+          Task: Implement user authentication for API endpoints
+          Research:
+            - JWT: Stateless, scales horizontally, no server storage
+            - Session: Stateful, easier revocation, less client complexity
+          Blocking: No precedent in codebase for auth pattern
+          Impact: Affects all API endpoint security, database schema, client libs
+        severity: blocking
+        asked_by: builder-api
+        status: pending
+
+      human_response: "Use JWT tokens with RS256 signing for stateless authentication"
+
+      agent_resumption:
+        step_1: "Human runs: agentic question answer Q-20260203-143022-a1b2 --text '...'"
+        step_2: "Question moved to answered/ directory"
+        step_3: "Agent resumes, checks answered/ directory"
+        step_4: "Agent loads answer: 'Use JWT tokens with RS256 signing...'"
+        step_5: "Agent implements JWT-based authentication"
+        step_6: "Agent documents decision in implementation notes"
+
+    planner_needs_priority_clarification:
+      context: "Planner agent building execution plan"
+      scenario: |
+        Task: Plan implementation for feature X and bug fix Y
+        Blocker: Both marked as P0 but conflict in implementation approach
+        Decision: Which takes priority when they conflict?
+
+      agent_action:
+        step_1: "Recognize conflicting requirements (need human priority call)"
+        step_2: "Create high severity question (not blocking, but important)"
+        step_3: "Continue planning other non-conflicting tasks"
+        step_4: "Revisit after answer to finalize plan"
+
+      question_example: |
+        id: Q-20260203-150100-c3d4
+        text: When feature X and bug fix Y conflict, which takes priority?
+        context: |
+          Feature X: Requires refactoring auth module
+          Bug fix Y: Requires quick patch to auth module (ship in 24h)
+          Conflict: Both modify same code, feature X would delay bug fix
+          Attempted: Checked plan priority markers, both marked P0
+        severity: high
+        asked_by: planner-main
+        status: pending
+
+      human_response: "Ship bug fix Y immediately as hotfix, defer feature X to next sprint"
+
+      agent_resumption:
+        step_1: "Agent checks for answers before finalizing plan"
+        step_2: "Finds answer in questions/answered/"
+        step_3: "Adjusts plan: bug fix Y in phase 1 (hotfix), feature X deferred"
+        step_4: "Updates plan.yml with priority decision documented"
+
+    tester_uncertain_about_behavior:
+      context: "Tester agent validating edge case behavior"
+      scenario: |
+        Task: Test API error handling for invalid input
+        Uncertainty: Should 400 or 422 status code be returned?
+        Decision: Expected behavior not specified in requirements
+
+      agent_action:
+        step_1: "Recognize ambiguity in acceptance criteria"
+        step_2: "Create medium severity question (can make assumption)"
+        step_3: "Document assumption: 'Using 400 for now, awaiting clarification'"
+        step_4: "Continue testing other scenarios"
+
+      question_example: |
+        id: Q-20260203-152000-e7f8
+        text: Should invalid input return 400 Bad Request or 422 Unprocessable Entity?
+        context: |
+          Task: Test API error handling
+          Scenario: POST /users with invalid email format
+          Current: Implementation returns 400
+          Uncertainty: REST best practices suggest 422 for validation errors
+          Impact: Test expectations and API contract documentation
+        severity: medium
+        asked_by: tester-api
+        status: pending
+
+      human_response: "Use 422 for validation errors per REST conventions, update implementation"
+
+      agent_resumption:
+        step_1: "Tester checks for answers after completing other tests"
+        step_2: "Finds answer: 'Use 422 for validation errors...'"
+        step_3: "Updates test expectations to assert 422 status code"
+        step_4: "Creates issue for builder to update implementation"
+        step_5: "Re-runs tests with corrected expectations"
+
+    autonomous_decision_example:
+      context: "Builder should NOT ask question for low-risk technical detail"
+      scenario: |
+        Task: Implement new utility function for string formatting
+        Question (WRONG): "Should I name it format_string or string_format?"
+
+      correct_approach:
+        decision: "Make autonomous decision following existing patterns"
+        action:
+          - "Check existing codebase for similar function names"
+          - "Follow established naming convention (e.g., verb_noun pattern)"
+          - "Choose format_string (matches format_date, format_number)"
+          - "Document in code with clear docstring"
+        rationale: |
+          This is a low-risk technical detail that can be changed easily in
+          code review. Asking a question would slow down progress unnecessarily.
+          Agent should exercise judgment and follow observable patterns.
+
+  # ========================================
+  # SECTION 8: Tmux Integration
+  # ========================================
+  tmux_integration:
+    description: |
+      When running in a tmux session, question notifications can be displayed
+      in a dedicated notification pane. This provides real-time visibility of
+      pending questions without interrupting the main workflow.
+
+    session_detection:
+      description: "Detecting tmux sessions and enabling notifications"
+      method: |
+        The CLI automatically detects if running in a tmux session by checking
+        the TMUX environment variable. If detected, question operations will
+        automatically update the notification pane.
+
+      code_example:
+        language: "python"
+        description: "Checking if running in tmux"
+        code: |
+          from agenticcli.utils.tmux import is_in_tmux
+
+          if is_in_tmux():
+              # Enable tmux notifications
+              print("Running in tmux - notifications enabled")
+          else:
+              # Use alternative notification method
+              print("Not in tmux - using stderr notifications")
+
+    notification_strategy:
+      description: |
+        Questions are displayed in a notification pane titled "questions" that
+        is created on-demand. The pane shows a formatted list of pending questions
+        with severity indicators and quick-reference information.
+
+      automatic_updates:
+        description: "When notifications are automatically refreshed"
+        triggers:
+          - "After answering a question (agentic question answer)"
+          - "After deferring a question (agentic question defer)"
+          - "When using --tmux-refresh flag with list command"
+          - "When file watcher detects changes (agentic question watch)"
+
+      manual_refresh:
+        command: "agentic question list --tmux-refresh"
+        description: "Force refresh of tmux notification pane"
+        use_case: "When you want to manually update notifications without modifying questions"
+
+    notification_pane:
+      title: "questions"
+      location: "Right side of current window (30% width, vertical split)"
+      content_format:
+        - "Header with question count and severity summary"
+        - "List of pending questions (ID, severity, text preview)"
+        - "Blocking questions highlighted in red"
+        - "Instructions for viewing/answering questions"
+
+      pane_management:
+        creation: "Pane is created automatically on first notification"
+        reuse: "Existing pane is reused if found by title"
+        clearing: "Pane is cleared and shows 'No pending questions' when all answered"
+
+    file_watcher_integration:
+      description: |
+        The question watcher service monitors question folders for changes and
+        automatically refreshes tmux notifications. This enables real-time updates
+        when questions are answered externally (e.g., by another user or process).
+
+      commands:
+        foreground_watch:
+          command: "agentic question watch [--plan PATH]"
+          description: "Run watcher in foreground with live updates to console and tmux"
+          use_case: "During active development when you want to see changes immediately"
+          behavior:
+            - "Prints notifications to console when questions change"
+            - "Auto-refreshes tmux notification pane"
+            - "Runs until interrupted with Ctrl+C"
+
+        daemon_watch:
+          command: "agentic question watch-daemon [--plan PATH]"
+          description: "Run watcher in background as daemon process"
+          use_case: "Long-running sessions where you want continuous monitoring"
+          behavior:
+            - "Starts in background (detached from terminal)"
+            - "Auto-refreshes tmux notification pane on changes"
+            - "Tracked in process state registry"
+            - "Stop with: agentic question watch-stop"
+
+        stop_watch:
+          command: "agentic question watch-stop"
+          description: "Stop all running question watcher daemons"
+          behavior:
+            - "Sends SIGTERM to all watcher processes"
+            - "Cleans up process state registry"
+            - "Reports stopped watchers"
+
+    resumption_patterns:
+      description: |
+        When agents resume work in a tmux session, they should be aware of
+        the notification pane and use it for question visibility.
+
+      on_agent_startup:
+        description: "Check for tmux session and enable notifications"
+        steps:
+          - "Detect tmux session using is_in_tmux()"
+          - "Load pending questions for current plan"
+          - "Update notification pane with current state"
+          - "Log that tmux notifications are enabled"
+
+      checking_for_answers:
+        description: "Use notification pane as visual indicator"
+        pattern: |
+          When checking if questions have been answered:
+          1. Check notification pane visually (if in tmux)
+          2. Programmatically query questions/answered/ directory
+          3. Process any answered questions
+          4. Refresh notification pane to reflect new state
+
+      workflow_example:
+        scenario: "Agent blocked on question, human answers in separate window"
+        steps:
+          step_1:
+            description: "Agent creates blocking question"
+            action: "Question written to questions/pending/, tmux pane updates automatically"
+
+          step_2:
+            description: "Agent exits or waits"
+            state: "Notification pane shows 1 blocking question"
+
+          step_3:
+            description: "Human answers in different tmux window"
+            action: "agentic question answer Q-xxx --text 'answer'"
+
+          step_4:
+            description: "Notification pane auto-updates"
+            state: "Pane shows 0 pending questions (answered, moved to answered/)"
+
+          step_5:
+            description: "Agent resumes work"
+            action: |
+              - Agent checks for answers
+              - Finds answer in questions/answered/
+              - Loads answer and continues execution
+              - Notification pane remains clear (no pending questions)
+
+    best_practices:
+      visual_awareness:
+        - "Glance at notification pane when resuming work"
+        - "Use pane as quick reference for question count and severity"
+        - "Notification pane complements but doesn't replace programmatic checks"
+
+      watcher_usage:
+        - "Use foreground watch during active development for immediate feedback"
+        - "Use daemon watch for long-running sessions or overnight work"
+        - "Stop daemons when done to free resources"
+        - "One watcher per plan is sufficient"
+
+      notification_reliability:
+        - "Always check programmatically (don't rely solely on pane for state)"
+        - "Tmux notifications are a convenience, not a requirement"
+        - "Gracefully degrade if tmux not available"
+        - "Log notification failures but don't halt execution"
+
+      multi_user_scenarios:
+        - "Watchers enable collaborative workflows (multiple users, same plan)"
+        - "Each user can have their own watcher for their tmux session"
+        - "Answers by one user immediately visible to others with watchers"
+
+    integration_notes:
+      - "Tmux integration is optional and transparent (no special setup required)"
+      - "CLI auto-detects tmux and enables notifications when appropriate"
+      - "Notifications fail gracefully if tmux operations encounter errors"
+      - "Agents should not depend on tmux for correctness (only convenience)"
+      - "File watcher requires watchdog library (pip install watchdog>=3.0)"
+
+  # ========================================
+  # Related Guidelines
+  # ========================================
+  related_guidelines:
+    - location: "modules/AgenticGuidance/assets/guidelines/escalation.yml"
+      description: "Escalation triggers (questions are one form of escalation)"
+
+    - location: "modules/AgenticGuidance/assets/guidelines/iteration.yml"
+      description: "Iteration patterns when questions arise mid-loop"
+
+    - location: "modules/AgenticGuidance/assets/guidelines/orchestration-policy.yml"
+      description: "How questions fit into multi-agent orchestration"
+
+  # ========================================
+  # Best Practices
+  # ========================================
+  best_practices:
+    question_quality:
+      - "Be specific: Ask 'Should we use JWT or session cookies?' not 'How to do auth?'"
+      - "Provide context: Explain what you tried and why you're stuck"
+      - "Show impact: Explain why this matters and what depends on it"
+      - "Offer options: Present alternatives you've researched when applicable"
+
+    severity_selection:
+      - "Use blocking only when truly cannot proceed (critical path blocked)"
+      - "Use high when it blocks one task but other work can continue"
+      - "Use medium when you can make a reasonable assumption and document it"
+      - "Use low for preferences or nice-to-haves"
+
+    context_field:
+      - "Include task ID or task description"
+      - "List what you've already tried or researched"
+      - "Explain why this blocks you (not obvious from docs/code)"
+      - "Describe impact (what depends on this decision)"
+
+    resumption:
+      - "Check for answers before escalating or exiting"
+      - "Document answer application in commit messages"
+      - "Update task status when unblocked by answer"
+      - "Thank the human (optional but builds good HITL culture)"
+
+  # ========================================
+  # Anti-Patterns
+  # ========================================
+  anti_patterns:
+    over_asking:
+      description: "Asking questions for things agent should decide autonomously"
+      example: "What should I name this variable?"
+      solution: "Follow existing patterns and make reasonable decisions"
+
+    under_asking:
+      description: "Making high-risk decisions without consulting human"
+      example: "Chose to delete production database without confirmation"
+      solution: "Recognize high-risk scenarios and create blocking questions"
+
+    vague_questions:
+      description: "Questions too broad or lacking context"
+      example: "How should I implement this?"
+      solution: "Be specific, provide options, explain what you've tried"
+
+    missing_context:
+      description: "Question without explaining why it's blocking"
+      example: "Should we use X or Y? (no research, no impact analysis)"
+      solution: "Always include context field with research and impact"
+
+    ignoring_answers:
+      description: "Not checking for answers before escalating"
+      example: "Exit immediately after creating question without polling"
+      solution: "Check questions/answered/ before giving up or escalating"

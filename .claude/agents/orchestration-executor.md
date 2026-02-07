@@ -34,6 +34,7 @@ You may only spawn agents listed in the spawns fence:
 **Deployers:** deploy-worktree, deploy-cicd
 **Teachers:** teacher-update-guidance, teacher-update-assets
 **Cleaners:** planner-cleaning
+**Planners:** planner-orchestration (MMD regeneration)
 **Re-planning:** orchestration-planning (for failure recovery)
 
 Route by type:
@@ -43,7 +44,7 @@ Route by type:
 - teacher -> teacher-update-guidance or teacher-update-assets
 - cleaner -> planner-cleaning
 - auditor -> test-audit or test-final-output
-- planner -> orchestration-planning
+- planner -> orchestration-planning or planner-orchestration (MMD regeneration)
 
 ## Execution Protocol
 

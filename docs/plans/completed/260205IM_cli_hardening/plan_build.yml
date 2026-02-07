@@ -1,0 +1,160 @@
+name: cli-hardening-and-idempotency
+worktree_path: /home/code/AgenticEngineering
+branch: main
+status: active
+priority: high
+context: 'This plan addresses context waste and orchestration friction by:
+
+  1. Making ''session stop'' and ''loop stop'' idempotent.
+
+  2. Standardizing the ''planner'' role.
+
+  3. Ensuring agents have a safe path to update planning files.
+
+
+  All implementation tasks are PENDING and have been explored via diagnostic sessions.
+  The following implementation is already present in the source but requires verification:
+  - Idempotency in session/loop stop - Generic planner role - agentic plan bootstrap
+  - --dangerously-skip-permissions flag
+
+  The test plan should be used to verify these implementations.
+
+  Implementation should follow the guidance in each task.
+
+  '
+objective: '1. Modify ''agentic session stop'' to be idempotent.
+
+  2. Modify ''agentic loop stop'' to be idempotent.
+
+  3. Define a standardized ''planner'' role in AgenticGuidance.
+
+  4. Implement ''agentic plan bootstrap'' to automate the scout-to-worker transition.
+  5. Add --dangerously-skip-permissions flag to support unattended sessions/loops.
+
+  '
+phases:
+- name: 'Phase 1: CLI Stop Idempotency'
+  execution: sequential
+  description: Make stop commands return success if already stopped
+  tasks:
+  - id: IM_001
+    name: Make session stop idempotent
+    description: Update cmd_stop in session.py to exit 0 if status is terminal or
+      process not found
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    guidance: "Update the cmd_stop function:\n1. After checking terminal states ['completed',\
+      \ 'stopped', 'failed']:\n   - Print info message and return (don't exit 1)\n\
+      \   - Include \"success\": true in JSON output\n2. In the ProcessLookupError\
+      \ except block:\n   - Mark session as completed\n   - Return success (don't\
+      \ exit 1)\n   - Include \"success\": true in JSON output\n"
+    success_criteria:
+    - Calling stop on a 'completed' session returns exit code 0
+    - Calling stop on a 'stopped' session returns exit code 0
+    - Calling stop on a 'failed' session returns exit code 0
+    - ProcessLookupError sets status to completed and returns exit code 0
+    - 'JSON output includes success: true for all idempotent cases'
+    completed_at: '2026-02-05T23:21:40.538075'
+  - id: IM_002
+    name: Make loop stop idempotent
+    description: Update cmd_stop in loop.py to exit 0 if status is terminal
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/loop.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/loop.py
+    guidance: 'Same pattern as IM_001 for loops:
+
+      1. Terminal states [''completed'', ''stopped'', ''failed''] should return success
+
+      2. ProcessLookupError should mark loop as completed and return success
+
+      '
+    success_criteria:
+    - Calling stop on a 'completed' loop returns exit code 0
+    - Calling stop on a 'stopped' loop returns exit code 0
+    - Calling stop on a 'failed' loop returns exit code 0
+    - ProcessLookupError sets status to completed and returns exit code 0
+    completed_at: '2026-02-05T23:21:40.679541'
+- name: 'Phase 2: Standardized Planning Role'
+  execution: sequential
+  description: Establish the 'planner' role and automated spawning
+  tasks:
+  - id: IM_003
+    name: Define generic planner role
+    description: Create a base planner role with necessary permissions for plan folder
+      management
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticGuidance/agents/planner/planner-build/process.yml
+    - modules/AgenticGuidance/agents/planner/planner-build/manifest.yml
+    target_files:
+    - modules/AgenticGuidance/agents/planner/planner/process.yml
+    - modules/AgenticGuidance/agents/planner/planner/manifest.yml
+    - modules/AgenticGuidance/agents/planner/planner/inputs.yml
+    guidance: "Create a new 'planner' directory under agents/planner/ with:\n1. manifest.yml\
+      \ - defines the generic planner role\n   - name: planner\n   - description:\
+      \ Generic planning agent for plan folder management\n   - version: \"2.0\"\n\
+      \   - outputs: plan_yaml files\n2. process.yml - defines the planning workflow\n\
+      \   - CCI bootstrap step\n   - Plan initialization step\n   - Plan content creation\
+      \ step\n3. inputs.yml - defines required parameters\n   - essential_inputs for\
+      \ plan folders\n"
+    success_criteria:
+    - Directory modules/AgenticGuidance/agents/planner/planner/ exists
+    - manifest.yml defines generic planner role
+    - process.yml defines planning workflow
+    - inputs.yml defines required parameters
+    - '''agentic context bootstrap --role planner'' works'
+    completed_at: '2026-02-05T23:21:40.811777'
+  - id: IM_004
+    name: Implement plan bootstrap command
+    description: Add 'agentic plan bootstrap' to automate plan folder initialization
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    guidance: "Add cmd_bootstrap function to plan.py:\n1. Accept --branch and --objective\
+      \ arguments\n2. Generate plan folder name using YYMMDDXX_description pattern\n\
+      3. Create plan folder in docs/plans/live/\n4. Create live/ subdirectory\n5.\
+      \ Generate plan_build.yml with:\n   - Correct metadata (name, worktree_path,\
+      \ branch, status)\n   - Objective from input\n   - Initial PLAN_001 task for\
+      \ establishing phases\n6. Generate plan_test.yml stub\n7. Print next steps guidance\
+      \ for spawning planner agent\n\nRegister in handle() router and add CLI arguments\
+      \ in cli.py.\n"
+    success_criteria:
+    - '''agentic plan bootstrap --branch X --objective Y'' creates folder structure'
+    - plan_build.yml is generated with correct metadata
+    - plan_test.yml stub is created
+    - Output suggests next steps for planner agent
+    - 'Exit codes: 0 success, 1 error, 2 folder exists'
+    completed_at: '2026-02-05T23:21:40.977720'
+- name: 'Phase 3: Permission Skip Flag'
+  execution: sequential
+  description: Add support for bypassing permission prompts
+  tasks:
+  - id: IM_005
+    name: Add --dangerously-skip-permissions flag
+    description: Add the flag to session spawn and loop start commands
+    status: completed
+    agent: build-python
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    - modules/AgenticCLI/src/agenticcli/commands/loop.py
+    guidance: '1. Add --dangerously-skip-permissions to argparse in cli.py
+
+      2. Pass flag value to subprocess call in session.py and loop.py
+
+      '
+    success_criteria:
+    - Passing the flag results in '--dangerously-skip-permissions' being sent to 'claude'

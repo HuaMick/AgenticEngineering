@@ -317,11 +317,14 @@ def _load_agent_context(agent_name: str) -> dict:
     context["next_commands"] = [
         f"agentic context bootstrap --role {agent_name} -j  # Get full seed context",
         "agentic plan task current -j                       # Get current task details",
+    ]
+
+    context["next_commands"].extend([
         "agentic plan task update <id> --status completed   # Mark task done",
         "agentic plan task list                             # Show all tasks",
         "agentic entrypoint list                            # List available entrypoints",
         "agentic entrypoint execute <name>                  # Execute an entrypoint",
-    ]
+    ])
 
     return context
 
@@ -616,12 +619,15 @@ def _load_agent_bootstrap_context(agent_name: str) -> dict:
     context["next_commands"] = [
         f"agentic context bootstrap --role {agent_name} -j  # Get full seed context (workflow integration)",
         "agentic plan task current -j                       # Get current task details",
+    ]
+
+    context["next_commands"].extend([
         "agentic plan task update <id> --status in_progress # Start working on task",
         "agentic plan task update <id> --status completed   # Mark task done",
         "agentic plan task list                             # Show all tasks",
         "agentic entrypoint list                            # List available entrypoints",
         "agentic entrypoint execute <name>                  # Execute an entrypoint",
-    ]
+    ])
 
     return context
 

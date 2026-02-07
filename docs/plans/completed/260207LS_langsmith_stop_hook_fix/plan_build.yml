@@ -1,0 +1,88 @@
+description: >
+  Fix LangSmith trace submission in stop_hook.sh.
+  Three bugs prevent traces from appearing in LangSmith:
+  (1) batch payloads sent as raw arrays instead of {"post": [...]} / {"patch": [...]} - FIXED
+  (2) HTTP status codes not checked - curl exit code 0 masks 422 API errors - FIXED
+  (3) dotted_order format invalid for child runs - has trailing 'Z' in timestamp part
+
+target_file: ~/.claude/hooks/stop_hook.sh
+
+phases:
+  - id: fix-payload-format
+    name: Fix batch payload wrapping
+    status: completed
+    description: >
+      Wrap the JSON array in the correct envelope object before sending to /batch endpoint.
+      LangSmith batch API expects {"post": [runs...]} for creates and {"patch": [runs...]} for updates.
+    tasks:
+      - id: fix-payload-format.1
+        status: completed
+        description: >
+          In send_multipart_batch(), wrap $batch_json in the correct envelope using jq.
+
+  - id: fix-http-status-check
+    name: Add HTTP status code validation
+    status: completed
+    description: >
+      The api_call function now checks HTTP response status codes.
+    tasks:
+      - id: fix-http-status-check.1
+        status: completed
+        description: >
+          Modified api_call() to capture HTTP status code using curl's -w flag.
+
+  - id: fix-dotted-order
+    name: Fix dotted_order timestamp format for child runs
+    status: pending
+    description: >
+      Child runs have malformed dotted_order values. The API error shows:
+      "invalid timestamp format in dotted_order at index 1: timestamp must contain 'T' separator"
+      
+      Current bad format: 20260207053601597218437Z7dcba651...
+      Expected format: 20260207T053601000000uuid or 20260207T053601uuid
+      
+      The issue is in the assistant_dotted calculation around line 313 where the 
+      timestamp substitution ${llm_start//[-:TZ.]/} incorrectly handles the ISO timestamp.
+    tasks:
+      - id: fix-dotted-order.1
+        status: pending
+        description: >
+          Fix the dotted_order generation for child runs (assistant, tool runs).
+          
+          Current problematic code around line 313:
+            local assistant_dotted="${turn_dotted_order}.${llm_start//[-:TZ.]/}$(get_microseconds)${assistant_id}"
+          
+          The ${llm_start//[-:TZ.]/} substitution strips characters but leaves a malformed timestamp.
+          The LangSmith API expects format: YYYYMMDDTHHMMSS or YYYYMMDDTHHMMSS000000
+          
+          Fix approach:
+          1. Create a helper function to properly format ISO timestamps to LangSmith format:
+             format_dotted_timestamp() {
+                 local iso_ts="$1"
+                 # Convert 2026-02-07T05:36:01Z to 20260207T053601
+                 echo "$iso_ts" | sed 's/-//g; s/://g; s/\.[0-9]*Z$//' | cut -c1-15
+             }
+          2. Use this function when building child dotted_order values
+          3. Ensure microseconds are appended correctly (6 digits, no letters)
+        success_criteria:
+          - Child run dotted_order format matches: YYYYMMDDTHHMMSS000000uuid
+          - No 'Z' character in the timestamp portion
+          - API accepts batches without 400 errors
+
+  - id: verify
+    name: Verify traces appear in LangSmith
+    depends_on: [fix-payload-format, fix-http-status-check, fix-dotted-order]
+    status: pending
+    description: >
+      End-to-end verification that traces now submit successfully.
+    tasks:
+      - id: verify.1
+        status: pending
+        description: >
+          Run a short Claude Code session with the fixed hook.
+          Check hook logs for "succeeded" messages WITHOUT preceding HTTP errors.
+          Confirm traces appear in LangSmith UI for the project.
+        success_criteria:
+          - Hook logs show "Batch post succeeded" and "Batch patch succeeded" with no errors
+          - No HTTP 400/422 or other error status codes in logs
+          - Traces visible in LangSmith dashboard for the configured project

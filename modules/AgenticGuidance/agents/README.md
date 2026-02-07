@@ -67,10 +67,8 @@ Build agents handle code implementation for production deployment. Each sub-agen
 
 | Agent | Version | Description | Status |
 |-------|---------|-------------|--------|
-| build-python | - | Python-specific build agent for backend services and CLI components | Complete |
-| build-flutter | - | Flutter-specific build agent for mobile/web frontend components | Complete |
-
-**Note:** Build agent manifests define folder structures rather than versioned agents. Implementation is complete with manifest.yml, inputs.yml, and process.yml files.
+| build-python | 2.0 | Python-specific build agent for backend services and CLI components | Complete |
+| build-flutter | 2.0 | Flutter-specific build agent for mobile/web frontend components | Complete |
 
 ---
 
@@ -80,9 +78,9 @@ Test agents validate implementations through various testing strategies. They ex
 
 | Agent | Version | Description | Status |
 |-------|---------|-------------|--------|
-| test-runner | 1.0 | Execute existing tests and accurately report their status; identifies defects through test failures | Complete |
+| test-runner | 2.0-pilot | Execute existing tests and accurately report their status; identifies defects through test failures | Complete |
 | test-audit | 2.0 | Review test quality, coverage alignment, and identify gaps (reward hacking detection) | Complete |
-| test-final-output | 1.0 | Validate final outputs of agent processes for completeness and correctness | Complete |
+| test-final-output | 2.0-pilot | Validate final outputs of agent processes for completeness and correctness | Complete |
 | test-guidance-simulator | 1.0 | Test agent guidance completeness by attempting task execution using only guidance files | Complete |
 | test-builder | 2.0 | Create and update test files that expose defects (Unit, Integration, E2E coverage) | Complete |
 | test-user-simulator | 2.0 | Test user stories using only project documentation (agent-blind-test approach) | Complete |
@@ -106,7 +104,7 @@ Teacher agents improve agent guidance by building paths, fences, and signposts. 
 | Agent | Version | Description | Status |
 |-------|---------|-------------|--------|
 | teacher-update-guidance | 2.0 | Update agent guidance by improving process.yml and inputs.yml files, and inline examples | Complete |
-| teacher-update-assets | 2.0 | Create/update shared assets (definitions, guidelines, examples) in modules/AgenticGuidance/assets/ | Complete |
+| teacher-update-assets | 2.0-p1 | Create/update shared assets (definitions, guidelines, examples) in modules/AgenticGuidance/assets/ | Complete |
 | teacher-trace-diagnostics | 1.0 | Analyze LangSmith traces for friction patterns (backtracking, error clusters, path ambiguity, token anomaly) | Complete |
 
 **Routing Logic:**
@@ -123,7 +121,7 @@ Deploy agents handle infrastructure and deployment tooling. They do not write ap
 | Agent | Version | Description | Status |
 |-------|---------|-------------|--------|
 | deploy-worktree | 2.0 | Git worktree creation and plan folder structure initialization | Complete |
-| deploy-cicd | 1.0 | CI/CD pipeline configuration and validation | Complete |
+| deploy-cicd | 2.0 | CI/CD pipeline configuration and validation | Complete |
 
 **Routing Logic:**
 - `deploy-worktree`: Route worktree/workspace/branch requests
@@ -153,7 +151,7 @@ The following categories have infrastructure (definitions, guidelines, shared in
 
 | Category | Infrastructure | Current Workaround | Status |
 |----------|---------------|-------------------|--------|
-| cleaner | 5 files (definitions, guidelines, examples) | `planner-cleaning` handles cleanup planning | Planned |
+| cleaner | 3 files (cleaner-shared-guidelines.yml, cleaner-shared.yml, cleanup_phase.mmd) | `planner-cleaning` handles cleanup planning | Planned |
 | explore | 1 file (exploration-principles.yml) | Planner agents handle ad-hoc discovery | Planned |
 | documentation | Minimal | `teacher-update-assets` handles doc updates | Planned |
 

@@ -1,0 +1,739 @@
+# Builder Question Workflow - Complete End-to-End Example
+# This example demonstrates the full lifecycle of a builder agent blocking on a question,
+# receiving a human answer, and resuming execution with the answer applied.
+
+example_name: "Complete Builder Question Workflow with Async Resumption"
+description: |
+  End-to-end scenario showing a builder agent working on a task, encountering a blocking
+  decision requiring human judgment, generating a question, and resuming after receiving
+  an answer. Demonstrates the async nature of the workflow with clear session boundaries.
+
+# ==============================================
+# PART 1: Implementation Phase - Blocking
+# ==============================================
+part_1_implementation_blocking:
+  context: |
+    A build-python agent is implementing task build_003: "Add caching layer to third-party
+    API integration". The agent encounters an architectural decision that requires human
+    judgment about which caching strategy to use.
+
+  scenario_details:
+    plan_id: "260203XY_api_integration"
+    task_id: "build_003"
+    task_description: "Add caching layer to third-party API integration"
+    session_id: "20260203-143000-session-1"
+    timestamp: "2026-02-03 14:30:00 UTC"
+
+  # Step 1: Agent working, encounters blocker
+  agent_work_before_blocker:
+    agent_thought_process: |
+      "I'm implementing the caching layer for the WeatherAPI integration. I've reviewed
+      the requirements and existing code:
+
+      Current state:
+      - WeatherAPI calls made directly in src/services/weather_service.py
+      - No existing caching infrastructure in codebase
+      - API rate limit: 1000 calls/day (limit could be hit easily)
+      - Response times: 200-500ms per request
+      - Data freshness requirement: not specified in docs
+
+      Architectural options I've researched:
+
+      Option A: Redis-based distributed cache
+        Pros: Fast, scalable, supports TTL, shared across instances
+        Cons: Adds infrastructure dependency (Redis server), operational complexity
+        Use case: Multi-instance deployments, high traffic
+
+      Option B: In-memory cache (lru_cache or similar)
+        Pros: Simple, no external dependencies, zero infrastructure overhead
+        Cons: Not shared across instances, lost on restart
+        Use case: Single-instance deployments, development environments
+
+      Option C: File-based cache (SQLite or disk cache)
+        Pros: Persistent, no external dependencies, works across restarts
+        Cons: Slower than memory, not ideal for high-frequency access
+        Use case: Low-to-medium traffic, persistence needed
+
+      This is a blocking architectural decision because:
+      1. No precedent in codebase for caching strategy
+      2. Affects infrastructure (Redis deployment if chosen)
+      3. Impacts deployment model (single vs multi-instance)
+      4. Different tradeoffs for different environments (dev/staging/prod)
+      5. Cannot proceed with implementation without knowing which to use
+
+      This matches 'architectural_decisions' trigger in question-workflow.yml.
+      Severity: blocking (cannot write cache code without knowing the approach)"
+
+  # Step 2: Agent generates question using QuestionQueue
+  question_generation:
+    method: "Use QuestionQueue service to create question"
+    code_executed: |
+      from pathlib import Path
+      from agenticguidance.services.question import QuestionQueue
+      from agenticguidance.models.question import QuestionSeverity
+
+      # Initialize queue for current plan
+      plan_path = Path("docs/plans/live/260203XY_api_integration")
+      queue = QuestionQueue(plan_path)
+
+      # Create question with full context
+      question = queue.create_question(
+          text="Which caching strategy should we use for the WeatherAPI integration?",
+          context=(
+              "Task: build_003 - Add caching layer to third-party API integration\n"
+              "\n"
+              "Current state:\n"
+              "  - No existing caching infrastructure in codebase\n"
+              "  - API rate limit: 1000 calls/day\n"
+              "  - Response times: 200-500ms per request\n"
+              "  - Data freshness requirement: not specified\n"
+              "\n"
+              "Researched options:\n"
+              "  A) Redis: Fast, distributed, requires infrastructure\n"
+              "  B) In-memory (lru_cache): Simple, not persistent, single-instance\n"
+              "  C) File-based (SQLite): Persistent, no deps, slower than Redis\n"
+              "\n"
+              "Blocking reasons:\n"
+              "  - No caching precedent to follow in codebase\n"
+              "  - Affects infrastructure deployment (Redis?)\n"
+              "  - Different tradeoffs per environment (dev/staging/prod)\n"
+              "\n"
+              "Impact:\n"
+              "  - Infrastructure: Redis adds server dependency\n"
+              "  - Performance: Redis fastest, file slowest, memory middle\n"
+              "  - Deployment: Redis enables multi-instance, others single-instance\n"
+              "  - Maintenance: In-memory simplest, Redis most complex"
+          ),
+          severity=QuestionSeverity.BLOCKING.value,
+          asked_by="build-python"
+      )
+
+      print(f"Question created: {question.id}")
+      print(f"File written to: {plan_path}/questions/pending/{question.id}.yml")
+
+    output: |
+      Question created: Q-20260203-143022-a1b2
+      File written to: docs/plans/live/260203XY_api_integration/questions/pending/Q-20260203-143022-a1b2.yml
+
+  # Step 3: Question YAML file contents
+  question_file_generated:
+    file_path: "docs/plans/live/260203XY_api_integration/questions/pending/Q-20260203-143022-a1b2.yml"
+    contents: |
+      id: Q-20260203-143022-a1b2
+      text: Which caching strategy should we use for the WeatherAPI integration?
+      context: |
+        Task: build_003 - Add caching layer to third-party API integration
+
+        Current state:
+          - No existing caching infrastructure in codebase
+          - API rate limit: 1000 calls/day
+          - Response times: 200-500ms per request
+          - Data freshness requirement: not specified
+
+        Researched options:
+          A) Redis: Fast, distributed, requires infrastructure
+          B) In-memory (lru_cache): Simple, not persistent, single-instance
+          C) File-based (SQLite): Persistent, no deps, slower than Redis
+
+        Blocking reasons:
+          - No caching precedent to follow in codebase
+          - Affects infrastructure deployment (Redis?)
+          - Different tradeoffs per environment (dev/staging/prod)
+
+        Impact:
+          - Infrastructure: Redis adds server dependency
+          - Performance: Redis fastest, file slowest, memory middle
+          - Deployment: Redis enables multi-instance, others single-instance
+          - Maintenance: In-memory simplest, Redis most complex
+      severity: blocking
+      asked_by: build-python
+      created_at: 1738598622.5
+      status: pending
+
+  # Step 4: Agent exits gracefully and reports status
+  agent_exit_behavior:
+    task_status_update: "blocked-on-question"
+    output_message: |
+      Task build_003 blocked on architectural decision.
+
+      Question ID: Q-20260203-143022-a1b2
+      Question: Which caching strategy should we use for the WeatherAPI integration?
+      Severity: blocking
+      Status: Waiting for human response in questions/pending/
+
+      Context: Need to decide between Redis (distributed, complex), in-memory
+      (simple, single-instance), or file-based (persistent, slower) caching.
+
+      This is an architectural decision with infrastructure and deployment implications.
+      Cannot proceed with implementation until strategy is chosen.
+
+      Recommendation: Review question with `agentic question show Q-20260203-143022-a1b2`
+      Answer with: `agentic question answer Q-20260203-143022-a1b2 --text "your decision"`
+
+      Agent session ending. Task will resume after answer is provided.
+
+    orchestrator_notification: |
+      [build-python] Task build_003: blocked-on-question (Q-20260203-143022-a1b2)
+      [orchestrator] Marking task build_003 as BLOCKED, proceeding with parallel tasks
+
+  session_end:
+    timestamp: "2026-02-03 14:32:15 UTC"
+    session_id: "20260203-143000-session-1"
+    status: "Agent exited gracefully after blocking on question"
+
+# ==============================================
+# PART 2: Human Interaction - Answering
+# ==============================================
+part_2_human_answers:
+  context: |
+    Human reviews the pending question and provides an answer with architectural
+    rationale and implementation constraints.
+
+  scenario_details:
+    timestamp: "2026-02-03 16:45:30 UTC"
+    reviewer: "tech-lead"
+    time_elapsed: "2 hours 13 minutes since question was created"
+
+  # Human reviews question via CLI
+  human_review:
+    cli_command: "agentic question list --status pending"
+    output: |
+      Pending Questions for Plan: 260203XY_api_integration
+      =====================================================
+
+      [1] Q-20260203-143022-a1b2 (blocking)
+          Created: 2026-02-03 14:30:22 UTC (2h 13m ago)
+          Asked by: build-python
+
+          Question: Which caching strategy should we use for the WeatherAPI integration?
+
+          Context (excerpt):
+            Task: build_003 - Add caching layer to third-party API integration
+            Researched options:
+              A) Redis: Fast, distributed, requires infrastructure
+              B) In-memory (lru_cache): Simple, not persistent, single-instance
+              C) File-based (SQLite): Persistent, no deps, slower than Redis
+
+          View full details: agentic question show Q-20260203-143022-a1b2
+
+      Total: 1 pending question(s)
+
+  # Human views full question details
+  human_detailed_review:
+    cli_command: "agentic question show Q-20260203-143022-a1b2"
+    output: |
+      Question Details
+      ================
+
+      ID: Q-20260203-143022-a1b2
+      Status: pending
+      Severity: blocking
+      Created: 2026-02-03 14:30:22 UTC (2h 15m ago)
+      Asked by: build-python
+
+      Question:
+      ---------
+      Which caching strategy should we use for the WeatherAPI integration?
+
+      Context:
+      --------
+      [Full context displayed as shown in question file above]
+
+      Answer this question with:
+        agentic question answer Q-20260203-143022-a1b2 --text "your answer"
+
+  # Human provides answer with rationale
+  human_answer_submission:
+    cli_command: |
+      agentic question answer Q-20260203-143022-a1b2 \
+        --text "Use in-memory caching with functools.lru_cache.
+
+      Rationale:
+      - Current deployment is single-instance only (no multi-instance planned)
+      - Simplicity > complexity for MVP (can migrate to Redis later if needed)
+      - No Redis infrastructure available in staging/dev environments
+      - API rate limit (1000/day) is manageable with single-instance cache
+
+      Implementation requirements:
+      - Use functools.lru_cache with maxsize=128
+      - Set TTL to 1 hour (cache weather data for 1h)
+      - Use cachetools if need TTL support (functools.lru_cache has no TTL)
+      - Add cache invalidation method for testing
+      - Document cache behavior in docstring
+      - Add metrics logging for cache hits/misses
+
+      Constraints:
+      - DO NOT add Redis as dependency
+      - Keep solution simple and testable
+      - Plan for future Redis migration (use abstraction layer)
+
+      Future migration path:
+      - If traffic grows or multi-instance needed, wrap with caching abstraction
+      - Then swap in Redis backend without changing consumer code" \
+        --confidence high
+
+    cli_output: |
+      Question answered successfully!
+
+      Question ID: Q-20260203-143022-a1b2
+      Answered by: human
+      Confidence: high
+
+      Files updated:
+        - Moved: questions/pending/Q-20260203-143022-a1b2.yml
+                 → questions/answered/Q-20260203-143022-a1b2_question.yml
+        - Created: questions/answered/Q-20260203-143022-a1b2.yml (Answer object)
+
+      The agent can now resume task build_003 using this answer.
+
+  # Answer file created
+  answer_file_created:
+    file_path: "docs/plans/live/260203XY_api_integration/questions/answered/Q-20260203-143022-a1b2.yml"
+    contents: |
+      question_id: Q-20260203-143022-a1b2
+      answer_text: |
+        Use in-memory caching with functools.lru_cache.
+
+        Rationale:
+        - Current deployment is single-instance only (no multi-instance planned)
+        - Simplicity > complexity for MVP (can migrate to Redis later if needed)
+        - No Redis infrastructure available in staging/dev environments
+        - API rate limit (1000/day) is manageable with single-instance cache
+
+        Implementation requirements:
+        - Use functools.lru_cache with maxsize=128
+        - Set TTL to 1 hour (cache weather data for 1h)
+        - Use cachetools if need TTL support (functools.lru_cache has no TTL)
+        - Add cache invalidation method for testing
+        - Document cache behavior in docstring
+        - Add metrics logging for cache hits/misses
+
+        Constraints:
+        - DO NOT add Redis as dependency
+        - Keep solution simple and testable
+        - Plan for future Redis migration (use abstraction layer)
+
+        Future migration path:
+        - If traffic grows or multi-instance needed, wrap with caching abstraction
+        - Then swap in Redis backend without changing consumer code
+      answered_by: human
+      answered_at: 1738606530.2
+      confidence: high
+      original_question:
+        id: Q-20260203-143022-a1b2
+        text: Which caching strategy should we use for the WeatherAPI integration?
+        severity: blocking
+        asked_by: build-python
+        created_at: 1738598622.5
+
+  # Question file moved to answered directory (with answer fields populated)
+  question_file_moved:
+    file_path: "docs/plans/live/260203XY_api_integration/questions/answered/Q-20260203-143022-a1b2_question.yml"
+    contents: |
+      id: Q-20260203-143022-a1b2
+      text: Which caching strategy should we use for the WeatherAPI integration?
+      context: |
+        Task: build_003 - Add caching layer to third-party API integration
+
+        Current state:
+          - No existing caching infrastructure in codebase
+          - API rate limit: 1000 calls/day
+          - Response times: 200-500ms per request
+          - Data freshness requirement: not specified
+
+        Researched options:
+          A) Redis: Fast, distributed, requires infrastructure
+          B) In-memory (lru_cache): Simple, not persistent, single-instance
+          C) File-based (SQLite): Persistent, no deps, slower than Redis
+
+        Blocking reasons:
+          - No caching precedent to follow in codebase
+          - Affects infrastructure deployment (Redis?)
+          - Different tradeoffs per environment (dev/staging/prod)
+
+        Impact:
+          - Infrastructure: Redis adds server dependency
+          - Performance: Redis fastest, file slowest, memory middle
+          - Deployment: Redis enables multi-instance, others single-instance
+          - Maintenance: In-memory simplest, Redis most complex
+      severity: blocking
+      asked_by: build-python
+      created_at: 1738598622.5
+      status: answered
+      answer: |
+        Use in-memory caching with functools.lru_cache.
+
+        Rationale:
+        - Current deployment is single-instance only (no multi-instance planned)
+        - Simplicity > complexity for MVP (can migrate to Redis later if needed)
+        - No Redis infrastructure available in staging/dev environments
+        - API rate limit (1000/day) is manageable with single-instance cache
+
+        Implementation requirements:
+        - Use functools.lru_cache with maxsize=128
+        - Set TTL to 1 hour (cache weather data for 1h)
+        - Use cachetools if need TTL support (functools.lru_cache has no TTL)
+        - Add cache invalidation method for testing
+        - Document cache behavior in docstring
+        - Add metrics logging for cache hits/misses
+
+        Constraints:
+        - DO NOT add Redis as dependency
+        - Keep solution simple and testable
+        - Plan for future Redis migration (use abstraction layer)
+
+        Future migration path:
+        - If traffic grows or multi-instance needed, wrap with caching abstraction
+        - Then swap in Redis backend without changing consumer code
+      answered_by: human
+      answered_at: 1738606530.2
+
+# ==============================================
+# PART 3: Resumption Phase - Unblocking
+# ==============================================
+part_3_resumption:
+  context: |
+    The orchestrator detects that question Q-20260203-143022-a1b2 has been answered
+    and spawns a new builder session to resume task build_003.
+
+  scenario_details:
+    session_id: "20260203-170000-session-2"
+    timestamp: "2026-02-03 17:00:00 UTC"
+    time_since_answer: "14 minutes 30 seconds"
+    resumption_trigger: "Orchestrator detected answered question, resumed task"
+
+  # Step 1: Agent starts new session and checks for answers
+  agent_resumption_check:
+    agent_startup_logic: |
+      "Starting build-python agent for task build_003 (resumed after blocking).
+
+      Task status shows: blocked-on-question (Q-20260203-143022-a1b2)
+
+      First action: Check if this question has been answered before proceeding."
+
+    code_executed: |
+      from pathlib import Path
+      from agenticguidance.services.question import QuestionQueue
+
+      # Initialize queue for current plan
+      plan_path = Path("docs/plans/live/260203XY_api_integration")
+      queue = QuestionQueue(plan_path)
+
+      # Check if our specific question was answered
+      question_id = "Q-20260203-143022-a1b2"
+      question = queue.get_question(question_id)
+
+      if question and question.status == "answered":
+          print(f"✓ Question answered!")
+          print(f"  Answer by: {question.answered_by}")
+          print(f"  Confidence: {getattr(question, 'confidence', 'not specified')}")
+          print(f"  Answer:\n{question.answer}")
+          print("\nProceeding with implementation using provided answer.")
+      else:
+          status = question.status if question else 'not found'
+          print(f"✗ Question still pending or not found. Status: {status}")
+          print("Cannot proceed. Exiting.")
+
+    output: |
+      ✓ Question answered!
+        Answer by: human
+        Confidence: not specified
+        Answer:
+      Use in-memory caching with functools.lru_cache.
+
+      Rationale:
+      - Current deployment is single-instance only (no multi-instance planned)
+      - Simplicity > complexity for MVP (can migrate to Redis later if needed)
+      - No Redis infrastructure available in staging/dev environments
+      - API rate limit (1000/day) is manageable with single-instance cache
+
+      Implementation requirements:
+      - Use functools.lru_cache with maxsize=128
+      - Set TTL to 1 hour (cache weather data for 1h)
+      - Use cachetools if need TTL support (functools.lru_cache has no TTL)
+      - Add cache invalidation method for testing
+      - Document cache behavior in docstring
+      - Add metrics logging for cache hits/misses
+
+      Constraints:
+      - DO NOT add Redis as dependency
+      - Keep solution simple and testable
+      - Plan for future Redis migration (use abstraction layer)
+
+      Future migration path:
+      - If traffic grows or multi-instance needed, wrap with caching abstraction
+      - Then swap in Redis backend without changing consumer code
+
+      Proceeding with implementation using provided answer.
+
+  # Step 2: Agent incorporates answer into implementation
+  agent_implementation:
+    agent_thought_process: |
+      "Answer received! Clear direction: use in-memory caching with functools.lru_cache
+      (or cachetools for TTL support).
+
+      Implementation plan based on answer:
+      1. Add cachetools to pyproject.toml (need TTL support, lru_cache has none)
+      2. Create cached wrapper for WeatherAPI.get_weather() method
+      3. Use cachetools.TTLCache with maxsize=128, ttl=3600 (1 hour)
+      4. Add cache_clear() method for testing
+      5. Add logging for cache hits/misses using metrics
+      6. Document caching behavior in docstring
+      7. Write tests for cache behavior (hit/miss/expiry)
+      8. Add abstraction layer for future Redis migration
+
+      Following constraints from answer:
+      - ✓ NOT using Redis
+      - ✓ Keeping solution simple
+      - ✓ Planning for future migration with abstraction
+
+      Starting implementation now..."
+
+    files_modified:
+      - file: "pyproject.toml"
+        change: "Add cachetools dependency"
+
+      - file: "src/services/weather_service.py"
+        change: "Add TTL-based caching using cachetools"
+        code_snippet: |
+          from cachetools import TTLCache
+          import logging
+
+          logger = logging.getLogger(__name__)
+
+          class WeatherService:
+              def __init__(self, api_key: str):
+                  self.api_key = api_key
+                  # In-memory cache: max 128 entries, 1 hour TTL
+                  # Per Q-20260203-143022-a1b2: use simple in-memory cache for MVP
+                  self._cache = TTLCache(maxsize=128, ttl=3600)
+
+              def get_weather(self, city: str) -> dict:
+                  '''Get weather data with 1-hour caching.
+
+                  Uses in-memory TTL cache to reduce API calls (rate limit: 1000/day).
+                  Cache is not persistent (resets on restart) but suitable for single-
+                  instance deployment.
+
+                  Future: Can migrate to Redis for distributed caching if needed.
+
+                  Args:
+                      city: City name to get weather for
+
+                  Returns:
+                      Weather data dict
+
+                  Implementation decision: Q-20260203-143022-a1b2 (in-memory > Redis for MVP)
+                  '''
+                  # Check cache first
+                  if city in self._cache:
+                      logger.debug(f"Cache HIT for city: {city}")
+                      return self._cache[city]
+
+                  # Cache miss - call API
+                  logger.debug(f"Cache MISS for city: {city}")
+                  weather_data = self._fetch_from_api(city)
+
+                  # Store in cache
+                  self._cache[city] = weather_data
+                  return weather_data
+
+              def cache_clear(self) -> None:
+                  '''Clear cache (useful for testing).'''
+                  self._cache.clear()
+                  logger.debug("Weather cache cleared")
+
+              def _fetch_from_api(self, city: str) -> dict:
+                  # Existing API call logic...
+                  pass
+
+      - file: "tests/test_weather_service.py"
+        change: "Add tests for cache behavior"
+        code_snippet: |
+          def test_weather_caching_hit():
+              '''Test cache hit reduces API calls.'''
+              service = WeatherService(api_key="test-key")
+
+              # First call - cache miss
+              result1 = service.get_weather("London")
+
+              # Second call - cache hit (no API call)
+              result2 = service.get_weather("London")
+
+              assert result1 == result2
+              # Verify only one API call was made (add mock verification)
+
+          def test_weather_cache_expiry():
+              '''Test cache expires after TTL.'''
+              # Implementation with time mocking...
+              pass
+
+          def test_weather_cache_clear():
+              '''Test cache_clear method.'''
+              service = WeatherService(api_key="test-key")
+              service.get_weather("London")
+              assert len(service._cache) == 1
+
+              service.cache_clear()
+              assert len(service._cache) == 0
+
+  # Step 3: Agent completes task and documents decision
+  agent_completion:
+    task_status_update: "completed"
+    commit_message: |
+      Add in-memory caching layer to WeatherAPI integration
+
+      Implemented TTL-based caching using cachetools to reduce API calls
+      and stay within rate limit (1000 calls/day).
+
+      Implementation details:
+      - Cache: TTLCache with maxsize=128, TTL=3600s (1 hour)
+      - Storage: In-memory (suitable for single-instance deployment)
+      - Invalidation: cache_clear() method for testing
+      - Monitoring: Added debug logging for cache hits/misses
+
+      Architectural decision (Q-20260203-143022-a1b2):
+      - Chose in-memory over Redis for MVP simplicity
+      - Current deployment is single-instance (no distributed cache needed)
+      - Abstraction layer included for future Redis migration if needed
+
+      Constraints followed:
+      - No Redis dependency added
+      - Simple, testable implementation
+      - Migration path documented
+
+      Task: build_003
+      Question: Q-20260203-143022-a1b2
+
+      Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+    output_message: |
+      Task build_003 completed successfully!
+
+      Implementation:
+      - Added cachetools dependency
+      - Implemented TTL-based caching in WeatherService
+      - Added cache_clear() method for testing
+      - Wrote tests for cache behavior
+      - Documented decision in commit message
+
+      Question Q-20260203-143022-a1b2 answer applied:
+      - Used in-memory caching as recommended
+      - Followed all implementation requirements
+      - Respected constraints (no Redis)
+      - Included abstraction for future migration
+
+      Files modified: 3
+      Tests passing: ✓
+
+      Task status: completed
+      Blocking question resolved: Q-20260203-143022-a1b2
+
+  session_end:
+    timestamp: "2026-02-03 17:25:45 UTC"
+    session_id: "20260203-170000-session-2"
+    duration: "25 minutes 45 seconds"
+    status: "Task completed successfully after question was answered"
+
+# ==============================================
+# Key Takeaways - Async Workflow Patterns
+# ==============================================
+key_takeaways:
+  timing_and_sessions:
+    description: "Demonstrates the async nature of the question workflow"
+    timeline:
+      - time: "14:30:00"
+        event: "Agent blocks on question, creates Q-20260203-143022-a1b2"
+        session: "session-1"
+
+      - time: "14:32:15"
+        event: "Agent exits gracefully, task marked as blocked"
+        session: "session-1 ends"
+
+      - time: "16:45:30"
+        event: "Human reviews and answers question (2h 13m later)"
+        session: "human interaction"
+
+      - time: "17:00:00"
+        event: "Orchestrator resumes task with new agent session"
+        session: "session-2 starts"
+
+      - time: "17:00:15"
+        event: "Agent checks for answer, finds it, proceeds"
+        session: "session-2"
+
+      - time: "17:25:45"
+        event: "Agent completes task successfully"
+        session: "session-2 ends"
+
+  blocking_behavior:
+    description: "Clear pattern for blocking and resuming"
+    agent_responsibilities:
+      - "Recognize when decision requires human judgment"
+      - "Generate question with full context and research"
+      - "Exit gracefully with clear status update"
+      - "On resumption, CHECK for answers first"
+      - "Apply answer and document decision"
+
+    human_responsibilities:
+      - "Review pending questions periodically"
+      - "Provide clear answers with rationale"
+      - "Include implementation requirements and constraints"
+      - "Specify confidence level if applicable"
+
+  resumption_check_pattern:
+    description: "Critical pattern: always check for answers on resume"
+    code_pattern: |
+      # ALWAYS check for answers when resuming blocked task
+      from agenticguidance.services.question import QuestionQueue
+
+      queue = QuestionQueue(plan_path)
+      question = queue.get_question(question_id)
+
+      if question and question.status == "answered":
+          # Proceed with answer applied
+          answer = question.answer
+          # implement using answer...
+      else:
+          # Still blocked, exit again or escalate
+          pass
+
+  answer_quality:
+    description: "High-quality answer includes multiple components"
+    components:
+      decision: "Clear choice (use in-memory caching)"
+      rationale: "Why this choice (single-instance, simplicity)"
+      requirements: "What to implement (lru_cache, TTL, logging)"
+      constraints: "What NOT to do (no Redis dependency)"
+      future_path: "Migration strategy (Redis if needed later)"
+
+  documentation_trail:
+    description: "Complete audit trail from question to implementation"
+    artifacts:
+      - "Question YAML with full context and research"
+      - "Answer YAML with decision and rationale"
+      - "Commit message referencing question ID"
+      - "Code comments documenting architectural decision"
+      - "Test coverage for chosen approach"
+
+# ==============================================
+# Related Examples and Guidelines
+# ==============================================
+related_content:
+  examples:
+    - path: "modules/AgenticGuidance/assets/examples/builder/question-example.yml"
+      description: "Multiple question scenarios (architecture, business logic, autonomous decisions)"
+
+  guidelines:
+    - path: "modules/AgenticGuidance/assets/guidelines/question-workflow.yml"
+      description: "Complete question workflow guideline (when to ask, format, CLI, resumption)"
+
+    - path: "modules/AgenticGuidance/assets/guidelines/escalation.yml"
+      description: "Escalation patterns (questions are one form of escalation)"
+
+  services:
+    - path: "modules/AgenticGuidance/src/agenticguidance/services/question.py"
+      description: "QuestionQueue service implementation"
+
+    - path: "modules/AgenticGuidance/src/agenticguidance/models/question.py"
+      description: "Question and Answer data models"

@@ -1,0 +1,63 @@
+# User Stories: Worktree Integration
+# Covers linking sessions to git worktrees for automatic directory navigation
+
+stories:
+  - id: "US-TMUX-010"
+    title: "Create Session Linked to Worktree"
+    category: "worktree_integration"
+    priority: "high"
+    as_a: "developer working on a feature branch"
+    i_want: "to create a tmux session that starts in a specific worktree directory"
+    so_that: "the session is automatically in the correct working directory"
+    acceptance_criteria:
+      - "agentic-tmux session create <name> --worktree <path> links to worktree"
+      - "Session starts with working directory set to the worktree path"
+      - "Worktree path is stored in session metadata"
+      - "Worktree path is displayed in session list and status"
+      - "Validates that worktree path exists before creating session"
+      - "Absolute paths are stored in registry"
+    related_commands:
+      - "agentic-tmux session create feat-001 --worktree /home/code/worktrees/feat-001"
+      - "agentic-tmux session create -w ~/code/worktrees/my-branch my-session"
+    notes: |
+      The worktree path is passed as -c flag to tmux new-session to set the
+      initial working directory. This ensures all panes start in the worktree.
+
+  - id: "US-TMUX-011"
+    title: "Link Existing Session to Worktree"
+    category: "worktree_integration"
+    priority: "medium"
+    as_a: "developer who created a session without worktree link"
+    i_want: "to retroactively link a session to a worktree"
+    so_that: "the metadata is updated without recreating the session"
+    acceptance_criteria:
+      - "SessionService.link_worktree(session_name, worktree_path) updates metadata"
+      - "Registry is updated with worktree path"
+      - "Does not affect the running tmux session's working directory"
+      - "If session not in registry but exists in tmux, adds registry entry"
+      - "Returns success result with confirmation message"
+      - "Validates that worktree path exists"
+    related_commands:
+      - "SessionService.link_worktree('my-session', '/path/to/worktree')"
+    notes: |
+      This is primarily a service layer operation. Could be exposed as
+      'agentic-tmux session link --worktree <path> <name>' if needed.
+
+  - id: "US-TMUX-012"
+    title: "Navigate to Worktree on Attach"
+    category: "worktree_integration"
+    priority: "medium"
+    as_a: "developer attaching to a worktree-linked session"
+    i_want: "the session to navigate to the worktree directory on attach"
+    so_that: "I'm immediately in the correct working directory"
+    acceptance_criteria:
+      - "When attaching to a session with linked worktree, current pane changes directory"
+      - "Uses tmux send-keys to cd into worktree before attaching"
+      - "Gracefully handles case where worktree no longer exists"
+      - "Does nothing if session has no linked worktree"
+    related_commands:
+      - "agentic-tmux session attach my-session"
+    notes: |
+      This requires sending 'cd <worktree_path>' to the session before attaching.
+      Implementation may send keys to active pane or rely on initial directory.
+      Current implementation relies on start_directory at creation time.

@@ -15,7 +15,9 @@ def main():
     All other commands are delegated to run_cli().
     """
     # Handle --version flag early (before any heavy imports)
-    if "--version" in sys.argv or "-v" in sys.argv:
+    # Note: Only handle --version (long form), not -v short form
+    # -v is used by subcommands for --verbose and --vars
+    if "--version" in sys.argv:
         from agenticcli import __version__
 
         print(f"agentic {__version__}")
@@ -39,8 +41,12 @@ def main():
                     show_agent_help(agent_name, json_output=json_output, bootstrap=bootstrap)
                     sys.exit(0)
 
-    # Handle --help flag at top level early
-    if len(sys.argv) == 1 or (len(sys.argv) == 2 and sys.argv[1] in ("--help", "-h")):
+    # Handle -h alias: Typer only recognizes --help, so translate -h for users
+    if len(sys.argv) >= 2 and sys.argv[1] == "-h":
+        sys.argv[1] = "--help"
+
+    # Handle no-args: Typer shows help via no_args_is_help but exits with code 0
+    if len(sys.argv) == 1:
         from agenticcli.cli import run_cli
 
         run_cli()

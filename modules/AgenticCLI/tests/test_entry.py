@@ -50,11 +50,11 @@ class TestEntryPoint:
                 main()
             assert exc_info.value.code == 0
 
-    def test_main_v_flag(self):
-        """Test -v flag also shows version."""
+    def test_main_version_long_flag(self):
+        """Test --version flag shows version (Typer: no -v short form for version)."""
         from agenticcli.entry import main
 
-        with patch.object(sys, "argv", ["agentic", "-v"]):
+        with patch.object(sys, "argv", ["agentic", "--version"]):
             with pytest.raises(SystemExit) as exc_info:
                 main()
             assert exc_info.value.code == 0

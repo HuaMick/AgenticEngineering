@@ -4,10 +4,20 @@ Provides colored and formatted output for CLI commands.
 """
 
 import json
+from contextlib import contextmanager
 from typing import Any
 
 from rich.console import Console
 from rich.panel import Panel
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TaskProgressColumn,
+    TextColumn,
+    TimeElapsedColumn,
+)
+from rich.status import Status
 from rich.table import Table
 from rich.tree import Tree
 
@@ -175,3 +185,26 @@ def print_stability_banner(command: str):
         color = get_stability_color(level)
         console.print(f"[{color}]{banner_text}[/{color}]")
         console.print()
+
+
+def get_progress(**kwargs) -> Progress:
+    """Return a configured Rich Progress instance for CLI operations."""
+    return Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+        TimeElapsedColumn(),
+        console=console,
+        **kwargs,
+    )
+
+
+@contextmanager
+def get_status(message: str):
+    """Context manager for showing a status spinner."""
+    if _output_json:
+        yield None
+        return
+    with console.status(message) as status:
+        yield status

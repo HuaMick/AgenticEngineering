@@ -1,0 +1,107 @@
+flowchart LR
+    %% ========================================
+    %% ORCHESTRATION: Guidance Updates — Deploy-Worktree Simplification
+    %% ========================================
+    %% GOAL: Simplify deploy-worktree agent from 7 steps to 3, remove redundant definitions, update cross-agent references
+    %% PROFILE: orchestrator
+    %%
+    %% PLAN_FOLDER: docs/plans/live/260207GU_guidance_updates
+    %% PLAN_FILES: plan_build.yml
+    %%
+    %% PHASES: GuidanceSimplification, CrossAgentUpdate, ValidationGate
+    %% AGENT_ROUTING: GuidanceSimplification=teacher-update-guidance, CrossAgentUpdate=teacher-update-guidance, ValidationGate=test-guidance-simulator
+    %% FEEDBACK_TRIGGERS: GUIDANCE_FAILURE=retry(3), VALIDATION_FAILURE=retry(3)
+    %% STATUS: GuidanceSimplification=pending, CrossAgentUpdate=pending, ValidationGate=pending
+
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION
+    %% ========================================
+    LoadInputs --> ReviewPlanFiles[Review plan_build.yml]
+    ReviewPlanFiles --> CheckInputs{All Inputs Found?}
+    CheckInputs -- "No: Missing" --> AskUser((Ask User for Clarification))
+    CheckInputs -- "Yes: Verified" --> CCIBootstrap[Run: agentic context bootstrap]
+
+    %% ========================================
+    %% CCI BOOTSTRAP
+    %% ========================================
+    CCIBootstrap --> BootstrapReady{Bootstrap Complete?}
+    BootstrapReady -- "No: Failed" --> AskUser
+    BootstrapReady -- "Yes: Ready" --> EnterSimplificationPhase[Enter Guidance Simplification Phase]
+
+    %% ========================================
+    %% PHASE 1: GUIDANCE SIMPLIFICATION
+    %% ========================================
+    %% Tasks: GU_001 (simplify process.yml), GU_002 (remove redundant inputs.yml defs)
+    %% Agent: teacher-update-guidance
+    %% Targets: deploy-worktree process.yml, deploy-worktree inputs.yml
+
+    subgraph SimplificationPhase_SG ["Guidance Simplification Phase"]
+        EnterSimplificationPhase --> SpawnSimplification[Spawn teacher-update-guidance Agent]
+        SpawnSimplification --> SimplificationResult{Guidance Simplified?}
+
+        SimplificationResult -- "No: Issues Found" --> CaptureSimplificationFeedback[Capture Feedback]
+        CaptureSimplificationFeedback --> CheckSimplificationIterations{Max Iterations?}
+        CheckSimplificationIterations -- "No: Continue" --> SpawnSimplification
+        CheckSimplificationIterations -- "Yes: Limit" --> EscalateSimplification((Escalate: Simplification Failed))
+
+        SimplificationResult -- "Yes: Complete" --> SimplificationComplete[Simplification Complete]
+    end
+
+    SimplificationComplete --> EnterCrossAgentPhase[Enter Cross-Agent Update Phase]
+
+    %% ========================================
+    %% PHASE 2: CROSS-AGENT REFERENCE UPDATE
+    %% ========================================
+    %% Tasks: GU_003 (update old CLI patterns), GU_004 (update manifest), GU_005 (add tests)
+    %% Agent: teacher-update-guidance
+    %% Targets: multiple agent guidance files, manifest.yml
+
+    subgraph CrossAgentPhase_SG ["Cross-Agent Update Phase"]
+        EnterCrossAgentPhase --> SpawnCrossAgent[Spawn teacher-update-guidance Agent]
+        SpawnCrossAgent --> CrossAgentResult{References Updated?}
+
+        CrossAgentResult -- "No: Issues Found" --> CaptureCrossAgentFeedback[Capture Feedback]
+        CaptureCrossAgentFeedback --> CheckCrossAgentIterations{Max Iterations?}
+        CheckCrossAgentIterations -- "No: Continue" --> SpawnCrossAgent
+        CheckCrossAgentIterations -- "Yes: Limit" --> EscalateCrossAgent((Escalate: Cross-Agent Update Failed))
+
+        CrossAgentResult -- "Yes: Complete" --> CrossAgentComplete[Cross-Agent Update Complete]
+    end
+
+    CrossAgentComplete --> EnterValidationPhase[Enter Validation Gate]
+
+    %% ========================================
+    %% PHASE 3: VALIDATION GATE
+    %% ========================================
+    %% Agent: test-guidance-simulator
+    %% Validates simplified guidance is complete and self-consistent
+
+    subgraph ValidationPhase_SG ["Validation Gate"]
+        EnterValidationPhase --> SpawnValidation[Spawn test-guidance-simulator Agent]
+        SpawnValidation --> ValidationResult{Validation Passed?}
+
+        ValidationResult -- "No: Issues Found" --> CaptureValidationFeedback[Capture Validation Feedback]
+        CaptureValidationFeedback --> CheckValidationIterations{Max Iterations?}
+        CheckValidationIterations -- "No: Continue" --> SpawnTeacherFix[Spawn teacher-update-guidance for Fix]
+        SpawnTeacherFix --> SpawnValidation
+        CheckValidationIterations -- "Yes: Limit" --> EscalateValidation((Escalate: Validation Failed))
+
+        ValidationResult -- "Yes: Passed" --> ValidationComplete[Validation Complete]
+    end
+
+    %% ========================================
+    %% OUTPUT PHASE
+    %% ========================================
+    subgraph Output_SG ["Output Subgraph"]
+        ValidationComplete --> ReportCompletion[Report Completion Status]
+        ReportCompletion --> ArchivePlan[Run: agentic plan move folder --plan 260207GU_guidance_updates]
+    end
+
+    ArchivePlan --> End((End: Plan Completed))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef dashedstroke stroke-dasharray: 5 5;

@@ -1,0 +1,429 @@
+# User Stories: Backend Service Infrastructure
+# Covers background workers, health checks, and service lifecycle management
+
+stories:
+  # ============================================================================
+  # SERVICE LIFECYCLE
+  # ============================================================================
+
+  - id: "US-BACKEND-INFRA-001"
+    title: "FastAPI Lifespan Management"
+    category: "service_lifecycle"
+    priority: "critical"
+    as_a: "backend service"
+    i_want: "to manage startup and shutdown lifecycle"
+    so_that: "resources are initialized and cleaned up properly"
+    acceptance_criteria:
+      - "Lifespan context manager handles startup and shutdown"
+      - "Startup initializes: repositories, background workers, WebSocket manager"
+      - "Shutdown closes: all WebSockets, background tasks, database connections"
+      - "Graceful shutdown waits up to 10 seconds for cleanup"
+      - "Errors during startup prevent server from starting"
+      - "Errors during shutdown are logged but don't block"
+    related_legacy:
+      - "modules/legacy/MyAgents/projects/RemoteAgents/src/agent_remote/services/relay/api/server.py"
+    technical_notes: |
+      - Use @asynccontextmanager for lifespan
+      - Register lifespan with FastAPI app
+
+  - id: "US-BACKEND-INFRA-002"
+    title: "Configuration Management"
+    category: "service_lifecycle"
+    priority: "high"
+    as_a: "deployment engineer"
+    i_want: "to configure service via environment variables"
+    so_that: "I can adjust behavior without code changes"
+    acceptance_criteria:
+      - "Configuration loaded from environment variables"
+      - "Supports: PORT, HOST, LOG_LEVEL, SESSION_TIMEOUT, CORS_ORIGINS"
+      - "Configuration is validated on startup"
+      - "Invalid configuration prevents server from starting"
+      - "Configuration can be queried via admin endpoint"
+    technical_notes: |
+      - Use Pydantic Settings for config management
+      - Support .env file for local development
+
+  - id: "US-BACKEND-INFRA-003"
+    title: "Graceful Signal Handling"
+    category: "service_lifecycle"
+    priority: "high"
+    as_a: "deployment engineer"
+    i_want: "to handle SIGTERM and SIGINT gracefully"
+    so_that: "service shuts down cleanly during deployments"
+    acceptance_criteria:
+      - "SIGTERM triggers graceful shutdown"
+      - "SIGINT (Ctrl+C) triggers graceful shutdown"
+      - "In-flight requests are completed before shutdown"
+      - "New requests are rejected during shutdown (503 Service Unavailable)"
+      - "Shutdown timeout is configurable (default 10 seconds)"
+    technical_notes: |
+      - Use signal handlers
+      - Uvicorn's graceful shutdown support
+
+  # ============================================================================
+  # HEALTH CHECKS
+  # ============================================================================
+
+  - id: "US-BACKEND-INFRA-010"
+    title: "Health Check Endpoint"
+    category: "health_checks"
+    priority: "critical"
+    as_a: "load balancer"
+    i_want: "to check service health"
+    so_that: "I can route traffic to healthy instances"
+    acceptance_criteria:
+      - "GET /health returns service health status"
+      - "Returns 200 OK if healthy"
+      - "Returns 503 Service Unavailable if unhealthy"
+      - "Response includes: status, uptime, version"
+      - "Health check completes in <100ms"
+    related_endpoints:
+      - "GET /health"
+    technical_notes: |
+      - Simple endpoint with minimal dependencies
+      - Don't check external services (use /health/detailed for that)
+
+  - id: "US-BACKEND-INFRA-011"
+    title: "Detailed Health Check"
+    category: "health_checks"
+    priority: "high"
+    as_a: "monitoring system"
+    i_want: "to check detailed health of all components"
+    so_that: "I can identify specific subsystem failures"
+    acceptance_criteria:
+      - "GET /health/detailed returns component health"
+      - "Components checked: repository, filesystem, background_workers"
+      - "Each component has: name, status, latency, error (if unhealthy)"
+      - "Returns 200 OK with component details"
+      - "Overall status is unhealthy if any component is unhealthy"
+    related_endpoints:
+      - "GET /health/detailed"
+    technical_notes: |
+      - Check each component independently
+      - Set timeout for each check
+
+  - id: "US-BACKEND-INFRA-012"
+    title: "Readiness Probe"
+    category: "health_checks"
+    priority: "high"
+    as_a: "orchestration system (Kubernetes)"
+    i_want: "to check if service is ready to accept traffic"
+    so_that: "I don't route requests during initialization"
+    acceptance_criteria:
+      - "GET /health/ready returns readiness status"
+      - "Returns 200 OK when ready to accept requests"
+      - "Returns 503 Service Unavailable during startup"
+      - "Returns 503 during graceful shutdown"
+      - "Checks: repositories initialized, background workers started"
+    related_endpoints:
+      - "GET /health/ready"
+
+  - id: "US-BACKEND-INFRA-013"
+    title: "Liveness Probe"
+    category: "health_checks"
+    priority: "high"
+    as_a: "orchestration system (Kubernetes)"
+    i_want: "to check if service is alive"
+    so_that: "I can restart crashed instances"
+    acceptance_criteria:
+      - "GET /health/live returns liveness status"
+      - "Returns 200 OK if process is responsive"
+      - "Returns 503 if process is deadlocked or hung"
+      - "Very lightweight check (<10ms)"
+      - "Never blocks on external resources"
+    related_endpoints:
+      - "GET /health/live"
+
+  # ============================================================================
+  # BACKGROUND WORKERS
+  # ============================================================================
+
+  - id: "US-BACKEND-INFRA-020"
+    title: "Session Cleanup Worker"
+    category: "background_workers"
+    priority: "critical"
+    as_a: "backend service"
+    i_want: "to periodically clean up expired sessions"
+    so_that: "stale sessions don't accumulate"
+    acceptance_criteria:
+      - "Worker runs every 60 seconds (configurable)"
+      - "Removes sessions that have expired"
+      - "Closes associated WebSocket connections"
+      - "Logs cleanup actions"
+      - "Worker handles errors gracefully without crashing"
+      - "Worker stops during graceful shutdown"
+    related_legacy:
+      - "modules/legacy/MyAgents/projects/RemoteAgents/src/agent_remote/services/relay/workers/cleanup_worker.py"
+    technical_notes: |
+      - Use asyncio task started in lifespan
+      - Use while loop with asyncio.sleep()
+
+  - id: "US-BACKEND-INFRA-021"
+    title: "Metrics Collection Worker"
+    category: "background_workers"
+    priority: "medium"
+    as_a: "backend service"
+    i_want: "to periodically collect system metrics"
+    so_that: "I can track performance over time"
+    acceptance_criteria:
+      - "Worker runs every 10 seconds (configurable)"
+      - "Collects: active_sessions, websocket_connections, request_rate, error_rate"
+      - "Stores metrics in time-series data structure"
+      - "Metrics are available via GET /api/metrics"
+      - "Old metrics are evicted (keep last 1 hour)"
+    technical_notes: |
+      - Use deque or circular buffer for storage
+      - Consider exporting to Prometheus
+
+  - id: "US-BACKEND-INFRA-022"
+    title: "Worker Status Monitoring"
+    category: "background_workers"
+    priority: "medium"
+    as_a: "administrator"
+    i_want: "to monitor background worker status"
+    so_that: "I can detect worker failures"
+    acceptance_criteria:
+      - "GET /api/workers returns list of background workers"
+      - "Each worker shows: name, status (running/stopped), last_run, error_count"
+      - "Returns 200 OK with worker status"
+      - "Unhealthy workers are flagged in health check"
+    related_endpoints:
+      - "GET /api/workers"
+
+  # ============================================================================
+  # LOGGING
+  # ============================================================================
+
+  - id: "US-BACKEND-INFRA-030"
+    title: "Structured Logging"
+    category: "logging"
+    priority: "high"
+    as_a: "developer"
+    i_want: "to have structured logs in JSON format"
+    so_that: "I can parse and analyze logs programmatically"
+    acceptance_criteria:
+      - "All logs are JSON formatted"
+      - "Each log includes: timestamp, level, message, module, function"
+      - "Request logs include: method, path, status_code, duration, request_id"
+      - "Error logs include: stack_trace, exception_type"
+      - "Logs are written to stdout for container environments"
+    technical_notes: |
+      - Use python-json-logger or structlog
+      - Configure Uvicorn logging to use JSON
+
+  - id: "US-BACKEND-INFRA-031"
+    title: "Log Level Configuration"
+    category: "logging"
+    priority: "high"
+    as_a: "deployment engineer"
+    i_want: "to configure log levels at runtime"
+    so_that: "I can enable debug logging without redeployment"
+    acceptance_criteria:
+      - "Log level is set via LOG_LEVEL environment variable"
+      - "Supports: DEBUG, INFO, WARNING, ERROR, CRITICAL"
+      - "Default is INFO"
+      - "Can be changed via admin endpoint (POST /api/admin/log-level)"
+      - "Changes apply immediately without restart"
+    related_endpoints:
+      - "POST /api/admin/log-level"
+
+  - id: "US-BACKEND-INFRA-032"
+    title: "Request ID Tracing"
+    category: "logging"
+    priority: "medium"
+    as_a: "developer"
+    i_want: "to trace requests across logs"
+    so_that: "I can debug multi-step operations"
+    acceptance_criteria:
+      - "Each request gets a unique request_id (UUID)"
+      - "request_id is included in all logs for that request"
+      - "request_id is returned in X-Request-ID response header"
+      - "Client can provide X-Request-ID header to use specific ID"
+      - "WebSocket messages include request_id in metadata"
+    technical_notes: |
+      - Use FastAPI middleware to generate request_id
+      - Store in context var for async propagation
+
+  # ============================================================================
+  # METRICS AND MONITORING
+  # ============================================================================
+
+  - id: "US-BACKEND-INFRA-040"
+    title: "Prometheus Metrics Export"
+    category: "metrics"
+    priority: "medium"
+    as_a: "monitoring system"
+    i_want: "to scrape metrics in Prometheus format"
+    so_that: "I can integrate with standard monitoring tools"
+    acceptance_criteria:
+      - "GET /metrics returns Prometheus-formatted metrics"
+      - "Metrics include: http_requests_total, http_request_duration_seconds"
+      - "Metrics include: websocket_connections, active_sessions"
+      - "Metrics include: background_worker_runs, background_worker_errors"
+      - "Returns 200 OK with text/plain content type"
+    related_endpoints:
+      - "GET /metrics"
+    technical_notes: |
+      - Use prometheus_client library
+      - Don't conflict with /health endpoints
+
+  - id: "US-BACKEND-INFRA-041"
+    title: "Custom Metrics"
+    category: "metrics"
+    priority: "medium"
+    as_a: "backend service"
+    i_want: "to track domain-specific metrics"
+    so_that: "I can monitor business logic performance"
+    acceptance_criteria:
+      - "Track: sessions_created, sessions_paired, sessions_expired"
+      - "Track: messages_relayed, messages_failed"
+      - "Track: cli_commands_executed, cli_command_duration"
+      - "Track: plan_tasks_started, plan_tasks_completed"
+      - "Metrics are exposed via /metrics endpoint"
+    technical_notes: |
+      - Use Counter, Gauge, Histogram from prometheus_client
+      - Instrument domain workflows
+
+  # ============================================================================
+  # CORS AND SECURITY
+  # ============================================================================
+
+  - id: "US-BACKEND-INFRA-050"
+    title: "CORS Configuration"
+    category: "security"
+    priority: "critical"
+    as_a: "frontend developer"
+    i_want: "to access API from web frontend"
+    so_that: "browser allows cross-origin requests"
+    acceptance_criteria:
+      - "CORS is configured via CORS_ORIGINS environment variable"
+      - "Supports wildcards for development (*)"
+      - "Production uses explicit allowed origins"
+      - "Supports preflight OPTIONS requests"
+      - "Allows credentials (cookies, auth headers)"
+    technical_notes: |
+      - Use FastAPI CORSMiddleware
+      - Be restrictive in production
+
+  - id: "US-BACKEND-INFRA-051"
+    title: "Rate Limiting"
+    category: "security"
+    priority: "medium"
+    as_a: "backend service"
+    i_want: "to rate limit API requests"
+    so_that: "service is protected from abuse"
+    acceptance_criteria:
+      - "Rate limit: 100 requests per minute per IP address"
+      - "Rate limit headers included in responses (X-RateLimit-*)"
+      - "Returns 429 Too Many Requests when exceeded"
+      - "WebSocket connections are not rate limited"
+      - "Admin endpoints have separate rate limits"
+    technical_notes: |
+      - Use slowapi or custom middleware
+      - Store counters in Redis for multi-instance
+
+  - id: "US-BACKEND-INFRA-052"
+    title: "Request Size Limits"
+    category: "security"
+    priority: "high"
+    as_a: "backend service"
+    i_want: "to limit request body size"
+    so_that: "service is protected from large payloads"
+    acceptance_criteria:
+      - "Maximum request body size: 1MB (configurable)"
+      - "Returns 413 Payload Too Large if exceeded"
+      - "WebSocket messages limited to 1MB"
+      - "File uploads (if supported) have separate limit"
+    technical_notes: |
+      - Configure Uvicorn --limit-max-requests
+      - Validate WebSocket message size
+
+  # ============================================================================
+  # ADMIN ENDPOINTS
+  # ============================================================================
+
+  - id: "US-BACKEND-INFRA-060"
+    title: "Admin API Protection"
+    category: "admin"
+    priority: "critical"
+    as_a: "backend service"
+    i_want: "to protect admin endpoints with authentication"
+    so_that: "only authorized users can access sensitive operations"
+    acceptance_criteria:
+      - "Admin endpoints require API key or admin token"
+      - "Returns 401 Unauthorized if not authenticated"
+      - "Admin endpoints are under /api/admin prefix"
+      - "Admin operations are logged with user identity"
+    related_endpoints:
+      - "/api/admin/*"
+    technical_notes: |
+      - Use FastAPI Depends() for auth
+      - Store admin tokens securely (environment or secrets manager)
+
+  - id: "US-BACKEND-INFRA-061"
+    title: "Clear Caches Endpoint"
+    category: "admin"
+    priority: "low"
+    as_a: "administrator"
+    i_want: "to clear caches via admin endpoint"
+    so_that: "I can force refresh without restart"
+    acceptance_criteria:
+      - "POST /api/admin/cache/clear clears all caches"
+      - "Supports clearing specific cache types (guidance, plans)"
+      - "Returns 200 OK with cache clear confirmation"
+      - "Requires admin authentication"
+    related_endpoints:
+      - "POST /api/admin/cache/clear"
+
+  - id: "US-BACKEND-INFRA-062"
+    title: "Service Info Endpoint"
+    category: "admin"
+    priority: "low"
+    as_a: "administrator"
+    i_want: "to retrieve service information"
+    so_that: "I can verify version and configuration"
+    acceptance_criteria:
+      - "GET /api/admin/info returns service details"
+      - "Response includes: version, build_date, commit_hash, python_version"
+      - "Response includes: configuration (non-sensitive values)"
+      - "Returns 200 OK with service info"
+      - "Requires admin authentication"
+    related_endpoints:
+      - "GET /api/admin/info"
+
+  # ============================================================================
+  # ERROR HANDLING
+  # ============================================================================
+
+  - id: "US-BACKEND-INFRA-070"
+    title: "Global Exception Handler"
+    category: "error_handling"
+    priority: "critical"
+    as_a: "backend service"
+    i_want: "to catch all unhandled exceptions"
+    so_that: "service doesn't crash on unexpected errors"
+    acceptance_criteria:
+      - "Unhandled exceptions return 500 Internal Server Error"
+      - "Response includes error_id for support"
+      - "Stack trace is logged but not returned to client"
+      - "Error is logged with full context"
+      - "Service remains healthy after exception"
+    technical_notes: |
+      - Use FastAPI exception handler for Exception
+      - Generate error_id (UUID) for tracking
+
+  - id: "US-BACKEND-INFRA-071"
+    title: "Validation Error Formatting"
+    category: "error_handling"
+    priority: "high"
+    as_a: "frontend developer"
+    i_want: "to receive formatted validation errors"
+    so_that: "I can display field-specific error messages"
+    acceptance_criteria:
+      - "Pydantic validation errors return 422 Unprocessable Entity"
+      - "Response includes list of errors with: field, message, type"
+      - "Field paths use dot notation (e.g., metadata.client_version)"
+      - "Errors are sorted by field name"
+    technical_notes: |
+      - FastAPI handles Pydantic validation automatically
+      - Customize error response format if needed
