@@ -17,6 +17,7 @@ error_console = Console(stderr=True)
 
 # Global output format flag
 _output_json = False
+_debug_mode = False
 
 
 def set_json_output(enabled: bool):
@@ -25,9 +26,33 @@ def set_json_output(enabled: bool):
     _output_json = enabled
 
 
+# Alias for Typer integration
+set_json_mode = set_json_output
+
+
 def is_json_output() -> bool:
     """Check if JSON output mode is enabled."""
     return _output_json
+
+
+def set_debug_mode(enabled: bool):
+    """Enable or disable debug mode.
+
+    When enabled, debug messages are printed to console.
+    """
+    global _debug_mode
+    _debug_mode = enabled
+
+
+def is_debug_mode() -> bool:
+    """Check if debug mode is enabled."""
+    return _debug_mode
+
+
+def print_debug(message: str):
+    """Print a debug message (only when debug mode is enabled)."""
+    if _debug_mode and not _output_json:
+        console.print(f"[dim cyan]DEBUG: {message}[/dim cyan]")
 
 
 def print_success(message: str):
