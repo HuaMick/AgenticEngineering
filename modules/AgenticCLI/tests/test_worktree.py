@@ -353,3 +353,277 @@ class TestIsStubTemplate:
 
         assert is_stub_template(None) is False
         assert is_stub_template({}) is False
+
+
+class TestWorktreeValidate:
+    """Tests for worktree validate helpers and cmd_validate logic (WS-007)."""
+
+    # --- Helper function tests ---
+
+    @patch("subprocess.run")
+    def test_get_actual_worktrees_parses_porcelain(self, mock_run, temp_dir):
+        """Test that porcelain output is correctly parsed into dicts."""
+        from agenticcli.commands.worktree import get_actual_worktrees
+
+        mock_run.return_value = MagicMock(
+            stdout=(
+                "worktree /home/code/Repo\n"
+                "HEAD abc1234\n"
+                "branch refs/heads/main\n"
+                "\n"
+                "worktree /home/code/Repo-feature\n"
+                "HEAD def5678\n"
+                "branch refs/heads/feature-x\n"
+                "\n"
+            ),
+            returncode=0,
+        )
+
+        result = get_actual_worktrees(temp_dir)
+        assert len(result) == 2
+        assert result[0] == {"path": "/home/code/Repo", "branch": "main"}
+        assert result[1] == {"path": "/home/code/Repo-feature", "branch": "feature-x"}
+
+    @patch("subprocess.run")
+    def test_get_actual_worktrees_empty_on_error(self, mock_run, temp_dir):
+        """Test that subprocess failure returns empty list."""
+        from agenticcli.commands.worktree import get_actual_worktrees
+
+        mock_run.side_effect = subprocess.CalledProcessError(1, "git")
+
+        result = get_actual_worktrees(temp_dir)
+        assert result == []
+
+    def test_get_live_plan_folders_finds_dirs(self, temp_dir):
+        """Test that plan directories are discovered and returned sorted."""
+        from agenticcli.commands.worktree import get_live_plan_folders
+
+        plan_dir = temp_dir / "docs" / "plans" / "live"
+        plan_dir.mkdir(parents=True)
+        (plan_dir / "260208WS_worktree_sync").mkdir()
+        (plan_dir / "260207AB_other_plan").mkdir()
+        # Also add a file to make sure it's excluded
+        (plan_dir / "README.md").write_text("# Plans\n")
+
+        result = get_live_plan_folders(temp_dir)
+        assert result == ["260207AB_other_plan", "260208WS_worktree_sync"]
+
+    def test_get_live_plan_folders_empty_if_no_dir(self, temp_dir):
+        """Test that missing plan directory returns empty list."""
+        from agenticcli.commands.worktree import get_live_plan_folders
+
+        result = get_live_plan_folders(temp_dir)
+        assert result == []
+
+    # --- Validation logic tests (mock helpers) ---
+
+    @patch("agenticcli.commands.worktree.get_repo_root")
+    @patch("agenticcli.commands.worktree.get_actual_worktrees")
+    @patch("agenticcli.commands.worktree.load_worktree_registry")
+    @patch("agenticcli.commands.worktree.get_live_plan_folders")
+    @patch("agenticcli.console.is_json_output", return_value=True)
+    @patch("agenticcli.console.print_json")
+    def test_validate_all_clean(
+        self, mock_pj, mock_json, mock_plans, mock_registry, mock_wts, mock_root, temp_dir
+    ):
+        """Test validation passes when everything is in sync."""
+        from agenticcli.commands.worktree import cmd_validate
+
+        mock_root.return_value = temp_dir
+        mock_wts.return_value = [
+            {"path": str(temp_dir), "branch": "main"},
+            {"path": str(temp_dir / "feat"), "branch": "feature-x"},
+        ]
+        mock_registry.return_value = [
+            {"branch": "feature-x", "abbreviation": "FX"},
+        ]
+        mock_plans.return_value = ["260208FX_feature-x"]
+
+        with pytest.raises(SystemExit) as exc_info:
+            cmd_validate(MagicMock())
+        assert exc_info.value.code == 0
+
+    @patch("agenticcli.commands.worktree.get_repo_root")
+    @patch("agenticcli.commands.worktree.get_actual_worktrees")
+    @patch("agenticcli.commands.worktree.load_worktree_registry")
+    @patch("agenticcli.commands.worktree.get_live_plan_folders")
+    @patch("agenticcli.console.is_json_output", return_value=True)
+    @patch("agenticcli.console.print_json")
+    def test_validate_orphaned_plans(
+        self, mock_pj, mock_json, mock_plans, mock_registry, mock_wts, mock_root, temp_dir
+    ):
+        """Test detection of plan folders with no matching worktree."""
+        from agenticcli.commands.worktree import cmd_validate
+
+        mock_root.return_value = temp_dir
+        # Only main worktree exists
+        mock_wts.return_value = [
+            {"path": str(temp_dir), "branch": "main"},
+        ]
+        mock_registry.return_value = []
+        # Plan exists but no worktree for it
+        mock_plans.return_value = ["260208AB_old_feature"]
+
+        with pytest.raises(SystemExit) as exc_info:
+            cmd_validate(MagicMock())
+        assert exc_info.value.code == 1
+
+    @patch("agenticcli.commands.worktree.get_repo_root")
+    @patch("agenticcli.commands.worktree.get_actual_worktrees")
+    @patch("agenticcli.commands.worktree.load_worktree_registry")
+    @patch("agenticcli.commands.worktree.get_live_plan_folders")
+    @patch("agenticcli.console.is_json_output", return_value=True)
+    @patch("agenticcli.console.print_json")
+    def test_validate_stale_worktrees(
+        self, mock_pj, mock_json, mock_plans, mock_registry, mock_wts, mock_root, temp_dir
+    ):
+        """Test detection of worktrees with no matching plan."""
+        from agenticcli.commands.worktree import cmd_validate
+
+        mock_root.return_value = temp_dir
+        mock_wts.return_value = [
+            {"path": str(temp_dir), "branch": "main"},
+            {"path": str(temp_dir / "stale"), "branch": "stale-branch"},
+        ]
+        mock_registry.return_value = [
+            {"branch": "stale-branch", "abbreviation": "SB"},
+        ]
+        # No plans at all
+        mock_plans.return_value = []
+
+        with pytest.raises(SystemExit) as exc_info:
+            cmd_validate(MagicMock())
+        assert exc_info.value.code == 1
+
+    @patch("agenticcli.commands.worktree.get_repo_root")
+    @patch("agenticcli.commands.worktree.get_actual_worktrees")
+    @patch("agenticcli.commands.worktree.load_worktree_registry")
+    @patch("agenticcli.commands.worktree.get_live_plan_folders")
+    @patch("agenticcli.console.is_json_output", return_value=True)
+    @patch("agenticcli.console.print_json")
+    def test_validate_registry_drift_missing(
+        self, mock_pj, mock_json, mock_plans, mock_registry, mock_wts, mock_root, temp_dir
+    ):
+        """Test detection of registry entries for non-existent worktrees."""
+        from agenticcli.commands.worktree import cmd_validate
+
+        mock_root.return_value = temp_dir
+        # Only main worktree actually exists
+        mock_wts.return_value = [
+            {"path": str(temp_dir), "branch": "main"},
+        ]
+        # Registry has an entry for a worktree that doesn't exist
+        mock_registry.return_value = [
+            {"branch": "deleted-branch", "abbreviation": "DB"},
+        ]
+        mock_plans.return_value = []
+
+        with pytest.raises(SystemExit) as exc_info:
+            cmd_validate(MagicMock())
+        assert exc_info.value.code == 1
+
+    @patch("agenticcli.commands.worktree.get_repo_root")
+    @patch("agenticcli.commands.worktree.get_actual_worktrees")
+    @patch("agenticcli.commands.worktree.load_worktree_registry")
+    @patch("agenticcli.commands.worktree.get_live_plan_folders")
+    @patch("agenticcli.console.is_json_output", return_value=True)
+    @patch("agenticcli.console.print_json")
+    def test_validate_registry_drift_unregistered(
+        self, mock_pj, mock_json, mock_plans, mock_registry, mock_wts, mock_root, temp_dir
+    ):
+        """Test detection of actual worktrees not in registry."""
+        from agenticcli.commands.worktree import cmd_validate
+
+        mock_root.return_value = temp_dir
+        mock_wts.return_value = [
+            {"path": str(temp_dir), "branch": "main"},
+            {"path": str(temp_dir / "unreg"), "branch": "unregistered-branch"},
+        ]
+        # Empty registry - the worktree is unregistered
+        mock_registry.return_value = []
+        mock_plans.return_value = []
+
+        with pytest.raises(SystemExit) as exc_info:
+            cmd_validate(MagicMock())
+        assert exc_info.value.code == 1
+
+    @patch("agenticcli.commands.worktree.get_repo_root")
+    @patch("agenticcli.commands.worktree.get_actual_worktrees")
+    @patch("agenticcli.commands.worktree.load_worktree_registry")
+    @patch("agenticcli.commands.worktree.get_live_plan_folders")
+    @patch("agenticcli.console.is_json_output", return_value=True)
+    @patch("agenticcli.console.print_json")
+    def test_validate_json_output(
+        self, mock_print_json, mock_json, mock_plans, mock_registry, mock_wts, mock_root, temp_dir
+    ):
+        """Test that JSON output contains expected structure."""
+        from agenticcli.commands.worktree import cmd_validate
+
+        mock_root.return_value = temp_dir
+        mock_wts.return_value = [
+            {"path": str(temp_dir), "branch": "main"},
+            {"path": str(temp_dir / "feat"), "branch": "feature-y"},
+        ]
+        mock_registry.return_value = [
+            {"branch": "feature-y", "abbreviation": "FY"},
+            {"branch": "ghost", "abbreviation": "GH"},
+        ]
+        mock_plans.return_value = ["260208FY_feature-y", "260208ZZ_orphan"]
+
+        with pytest.raises(SystemExit):
+            cmd_validate(MagicMock())
+
+        mock_print_json.assert_called_once()
+        data = mock_print_json.call_args[0][0]
+
+        assert "orphaned_plans" in data
+        assert "stale_worktrees" in data
+        assert "registry_drift" in data
+        assert "valid" in data
+        assert "missing_worktrees" in data["registry_drift"]
+        assert "unregistered" in data["registry_drift"]
+        # Verify specific findings
+        assert "260208ZZ_orphan" in data["orphaned_plans"]
+        assert data["valid"] is False
+
+
+class TestWorktreeValidateCLI:
+    """CLI integration tests for worktree validate (WS-008)."""
+
+    def test_validate_help(self, cli_runner):
+        """Test worktree validate --help shows usage."""
+        stdout, stderr, code = cli_runner(["worktree", "validate", "--help"])
+        assert code == 0
+        assert "validate" in stdout.lower() or "validate" in stderr.lower()
+
+    def test_validate_in_git_repo(self, cli_runner, temp_repo):
+        """Test validate runs in a git repo and reports orphaned plans."""
+        import shutil
+
+        # Remove pre-created plan folder so we get a clean state
+        plans_dir = temp_repo / "docs" / "plans" / "live"
+        if plans_dir.exists():
+            shutil.rmtree(plans_dir)
+
+        stdout, stderr, code = cli_runner(["worktree", "validate"])
+        # No plans, no feature worktrees, no registry -> clean
+        assert code == 0
+
+    def test_validate_json_output(self, cli_runner, temp_repo):
+        """Test validate with --json returns valid JSON with expected keys."""
+        import json as json_mod
+        import shutil
+
+        # Remove pre-created plan folder so we get a clean state
+        plans_dir = temp_repo / "docs" / "plans" / "live"
+        if plans_dir.exists():
+            shutil.rmtree(plans_dir)
+
+        stdout, stderr, code = cli_runner(["--json", "worktree", "validate"])
+        assert code == 0
+        data = json_mod.loads(stdout)
+        assert "orphaned_plans" in data
+        assert "stale_worktrees" in data
+        assert "registry_drift" in data
+        assert "valid" in data
+        assert data["valid"] is True

@@ -5,11 +5,14 @@ and reuse across different entrypoints.
 """
 
 import json
+import logging
 import os
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any, Optional
+
+logger = logging.getLogger(__name__)
 
 import yaml
 
@@ -55,6 +58,11 @@ DEFAULT_CONFIG = {
     "plan": {
         "auto_scaffold": True,
     },
+    "ntfy": {
+        "topic": "",
+        "server": "https://ntfy.sh",
+        "enabled": True,
+    },
 }
 
 # Environment variable to config key mapping
@@ -63,6 +71,8 @@ ENV_VAR_MAPPING = {
     "AGENTIC_REPO_ABBREVIATION": "defaults.repo_abbreviation",
     "AGENTIC_WORKTREE_BASE": "worktree.default_base",
     "AGENTIC_PLAN_AUTO_SCAFFOLD": "plan.auto_scaffold",
+    "AGENTIC_NTFY_TOPIC": "ntfy.topic",
+    "AGENTIC_NTFY_SERVER": "ntfy.server",
 }
 
 
@@ -458,6 +468,9 @@ class ConfigWorkflow:
         else:
             parsed_value = value
 
+        # Validate before persisting
+        self._validate_config_value(key, parsed_value)
+
         self._set_nested_value(prefs, key, parsed_value)
 
         with open(self.prefs_file, "w") as f:
@@ -560,6 +573,35 @@ class ConfigWorkflow:
             message="All preferences cleared.",
             data={"cleared": True},
         )
+
+    @staticmethod
+    def _validate_config_value(key: str, value: Any) -> None:
+        """Validate a config value before persisting.
+
+        Args:
+            key: Preference key in dot notation.
+            value: Parsed value to validate.
+
+        Raises:
+            ValueError: If the value is invalid for the given key.
+        """
+        if key == "ntfy.server":
+            if not isinstance(value, str) or not (
+                value.startswith("http://") or value.startswith("https://")
+            ):
+                raise ValueError(
+                    f"ntfy.server must be a URL starting with http:// or https://, got: {value!r}"
+                )
+        elif key == "ntfy.topic":
+            if isinstance(value, str) and value == "":
+                logger.info("ntfy.topic set to empty string; notifications will be disabled")
+        elif key == "ntfy.enabled":
+            valid_true = {True, "true", "yes", "1"}
+            valid_false = {False, "false", "no", "0"}
+            if value not in valid_true and value not in valid_false:
+                raise ValueError(
+                    f"ntfy.enabled must be a boolean (true/false, yes/no, 1/0), got: {value!r}"
+                )
 
     @staticmethod
     def _get_nested_value(data: dict, key: str) -> Any:

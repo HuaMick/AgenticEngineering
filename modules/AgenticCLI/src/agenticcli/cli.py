@@ -631,6 +631,12 @@ def worktree_status():
     _worktree_handle(_ns(command="worktree", worktree_command="status", json=_global["json"], debug=_global["debug"]))
 
 
+@worktree_app.command("validate")
+def worktree_validate():
+    """Validate worktree-plan synchronization."""
+    _worktree_handle(_ns(command="worktree", worktree_command="validate", json=_global["json"], debug=_global["debug"]))
+
+
 # ===========================================================================
 # SESSION
 # ===========================================================================
@@ -930,17 +936,22 @@ def question_show(
 
 @question_app.command("answer")
 def question_answer(
-    question_id: str = typer.Argument(..., help="Question ID to answer"),
+    question_id: Annotated[Optional[str], typer.Argument(help="Question ID to answer")] = None,
     text: Annotated[Optional[str], typer.Option("--text", help="Answer text")] = None,
     confidence: Annotated[Optional[str], typer.Option("--confidence", help="Confidence level")] = None,
+    interactive: Annotated[bool, typer.Option("--interactive", "-i", help="Use interactive wizard")] = False,
     plan: Annotated[Optional[str], typer.Option("--plan", help="Plan folder path")] = None,
 ):
     """Answer a pending question."""
-    _question_handle(_ns(
+    ns = _ns(
         command="question", question_command="answer",
         json=_global["json"], debug=_global["debug"],
-        question_id=question_id, text=text, confidence=confidence, plan=plan,
-    ))
+        text=text, confidence=confidence, interactive=interactive, plan=plan,
+    )
+    # Only set question_id if provided
+    if question_id is not None:
+        ns.question_id = question_id
+    _question_handle(ns)
 
 
 @question_app.command("ask")
@@ -948,13 +959,14 @@ def question_ask(
     text: str = typer.Argument(..., help="Question text"),
     severity: Annotated[str, typer.Option("--severity", help="Severity level")] = "medium",
     context: Annotated[Optional[str], typer.Option("--context", help="Additional context")] = None,
+    suggest: Annotated[Optional[List[str]], typer.Option("--suggest", help="Suggested answer (repeatable)")] = None,
     plan: Annotated[Optional[str], typer.Option("--plan", help="Plan folder path")] = None,
 ):
     """Create a new question."""
     _question_handle(_ns(
         command="question", question_command="ask",
         json=_global["json"], debug=_global["debug"],
-        text=text, severity=severity, context=context, plan=plan,
+        text=text, severity=severity, context=context, suggest=suggest, plan=plan,
     ))
 
 
@@ -1148,6 +1160,32 @@ def _plan_handle(args):
     plan.handle(args, ctx=cli_ctx)
 
 
+# --- plan new ---
+@plan_app.command("new")
+def plan_new(
+    objective: Annotated[Optional[str], typer.Argument(help="Planning objective description")] = None,
+    branch: Annotated[Optional[str], typer.Option("--branch", "-b", help="Git branch name (auto-generated from objective if omitted)")] = None,
+    description: Annotated[Optional[str], typer.Option("--description", "-d", help="Plan folder description suffix")] = None,
+    base: Annotated[str, typer.Option("--base", help="Base branch for worktree")] = "main",
+    execute: Annotated[bool, typer.Option("--execute", "-x", help="Auto-execute after planning completes")] = False,
+    max_turns: Annotated[int, typer.Option("--max-turns", help="Max turns for planner agent")] = 25,
+    dangerously_skip_permissions: Annotated[bool, typer.Option(
+        "--dangerously-skip-permissions", help="Skip permission prompts for spawned sessions")] = False,
+):
+    """Create plan and spawn planner agent."""
+    if not objective:
+        from agenticcli.console import print_error
+        print_error("Objective is required. Usage: agentic plan new \"your objective\"")
+        raise typer.Exit(1)
+    _plan_handle(_ns(
+        command="plan", plan_command="new",
+        json=_global["json"], debug=_global["debug"],
+        objective=objective, branch=branch, description=description,
+        base=base, execute=execute, max_turns=max_turns,
+        dangerously_skip_permissions=dangerously_skip_permissions,
+    ))
+
+
 # --- plan init ---
 @plan_app.command("init")
 def plan_init(
@@ -1205,12 +1243,13 @@ def plan_status(path: Optional[str] = typer.Argument(None, help="Path to plan fo
 def plan_validate(
     path: str = typer.Argument(..., help="Path to plan folder"),
     strict: Annotated[bool, typer.Option("--strict", help="Fail on stub templates")] = False,
+    check_fences: Annotated[bool, typer.Option("--check-fences", help="Validate UAT fence compliance")] = False,
 ):
     """Validate plan folder structure and YAML."""
     _plan_handle(_ns(
         command="plan", plan_command="validate",
         json=_global["json"], debug=_global["debug"],
-        path=path, strict=strict,
+        path=path, strict=strict, check_fences=check_fences,
     ))
 
 

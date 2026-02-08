@@ -1,0 +1,119 @@
+flowchart LR
+    %% ========================================
+    %% ORCHESTRATION: Worktree-Plan Sync Validation
+    %% ========================================
+    %% GOAL: Add `agentic worktree validate` command for worktree-plan synchronization checks
+    %% PROFILE: orchestrator
+    %%
+    %% PLAN_FOLDER: docs/plans/live/260208WS_worktree_plan_sync
+    %% PLAN_FILES: plan_build.yml
+    %%
+    %% PHASES: ValidationLogic, CLIRegistration, TestPhase, ValidationGate
+    %% AGENT_ROUTING: ValidationLogic=build-python, CLIRegistration=build-python, TestPhase=test-builder, ValidationGate=test-runner
+    %% FEEDBACK_TRIGGERS: BUILD_FAILURE=retry(3), TEST_FAILURE=retry(3)
+    %% STATUS: ValidationLogic=pending, CLIRegistration=pending, TestPhase=pending, ValidationGate=pending
+
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION
+    %% ========================================
+    LoadInputs --> ReviewPlanFiles[Review plan_build.yml]
+    ReviewPlanFiles --> CheckInputs{All Inputs Found?}
+    CheckInputs -- "No: Missing" --> AskUser((Ask User for Clarification))
+    CheckInputs -- "Yes: Verified" --> EnterValidationLogic[Enter Validation Logic Phase]
+
+    %% ========================================
+    %% PHASE 1: CORE VALIDATION LOGIC
+    %% ========================================
+    %% Tasks: WS-001 (get_actual_worktrees), WS-002 (get_live_plan_folders), WS-003 (cmd_validate)
+    %% Agent: build-python
+    %% Targets: worktree.py
+
+    subgraph ValidationLogic_SG ["Core Validation Logic Phase"]
+        EnterValidationLogic --> SpawnValidationLogic[Spawn build-python Agent]
+        SpawnValidationLogic --> ValidationLogicResult{Helpers + cmd_validate Built?}
+
+        ValidationLogicResult -- "No: Issues" --> CaptureValidationLogicFeedback[Capture Feedback]
+        CaptureValidationLogicFeedback --> CheckValidationLogicIterations{Max Iterations?}
+        CheckValidationLogicIterations -- "No: Continue" --> SpawnValidationLogic
+        CheckValidationLogicIterations -- "Yes: Limit" --> EscalateValidationLogic((Escalate: Build Failed))
+
+        ValidationLogicResult -- "Yes: Complete" --> ValidationLogicComplete[Validation Logic Complete]
+    end
+
+    ValidationLogicComplete --> EnterCLIRegistration[Enter CLI Registration Phase]
+
+    %% ========================================
+    %% PHASE 2: CLI REGISTRATION & OUTPUT
+    %% ========================================
+    %% Tasks: WS-004 (handle router), WS-005 (Typer registration), WS-006 (output formatting)
+    %% Agent: build-python
+    %% Targets: worktree.py, cli.py
+
+    subgraph CLIRegistration_SG ["CLI Registration Phase"]
+        EnterCLIRegistration --> SpawnCLIRegistration[Spawn build-python Agent]
+        SpawnCLIRegistration --> CLIRegistrationResult{Command Registered?}
+
+        CLIRegistrationResult -- "No: Issues" --> CaptureCLIRegistrationFeedback[Capture Feedback]
+        CaptureCLIRegistrationFeedback --> CheckCLIRegistrationIterations{Max Iterations?}
+        CheckCLIRegistrationIterations -- "No: Continue" --> SpawnCLIRegistration
+        CheckCLIRegistrationIterations -- "Yes: Limit" --> EscalateCLIRegistration((Escalate: CLI Registration Failed))
+
+        CLIRegistrationResult -- "Yes: Complete" --> CLIRegistrationComplete[CLI Registration Complete]
+    end
+
+    CLIRegistrationComplete --> EnterTestPhase[Enter Test Phase]
+
+    %% ========================================
+    %% PHASE 3: UNIT TESTS
+    %% ========================================
+    %% Tasks: WS-007 (unit tests), WS-008 (integration tests)
+    %% Agent: test-builder
+    %% Target: test_worktree.py
+
+    subgraph TestPhase_SG ["Test Phase"]
+        EnterTestPhase --> SpawnTests[Spawn test-builder Agent]
+        SpawnTests --> TestResult{Tests Written?}
+
+        TestResult -- "No: Issues" --> CaptureTestFeedback[Capture Test Feedback]
+        CaptureTestFeedback --> CheckTestIterations{Max Iterations?}
+        CheckTestIterations -- "No: Continue" --> SpawnBuildFix[Spawn build-python for Fix]
+        SpawnBuildFix --> SpawnTests
+        CheckTestIterations -- "Yes: Limit" --> EscalateTest((Escalate: Tests Failed))
+
+        TestResult -- "Yes: Written" --> TestComplete[Tests Complete]
+    end
+
+    TestComplete --> EnterValidationGate[Enter Validation Gate]
+
+    %% ========================================
+    %% PHASE 4: VALIDATION GATE
+    %% ========================================
+    %% Task: WS-009 (run full test suite)
+    %% Agent: test-runner
+
+    subgraph ValidationGate_SG ["Validation Gate"]
+        EnterValidationGate --> SpawnValidation[Spawn test-runner Agent]
+        SpawnValidation --> ValidationResult{All Tests Pass?}
+
+        ValidationResult -- "No: Failures" --> CaptureValidationFeedback[Capture Feedback]
+        CaptureValidationFeedback --> CheckValidationIterations{Max Iterations?}
+        CheckValidationIterations -- "No: Continue" --> SpawnValidationFix[Spawn build-python for Fix]
+        SpawnValidationFix --> SpawnValidation
+        CheckValidationIterations -- "Yes: Limit" --> EscalateValidation((Escalate: Validation Failed))
+
+        ValidationResult -- "Yes: Passed" --> ValidationComplete[Validation Complete]
+    end
+
+    %% ========================================
+    %% OUTPUT PHASE
+    %% ========================================
+    subgraph Output_SG ["Output Subgraph"]
+        ValidationComplete --> ReportCompletion[Report Completion Status]
+        ReportCompletion --> ArchivePlan[Run: agentic plan move folder --plan 260208WS_worktree_plan_sync]
+    end
+
+    ArchivePlan --> End((End: Plan Completed))
+
+    classDef dashedstroke stroke-dasharray: 5 5;

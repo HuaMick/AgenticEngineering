@@ -1,0 +1,229 @@
+name: UAT Fence Hardening
+status: active
+affected_stories:
+- US-ORCH-035
+- US-ORCH-036
+- US-ORCH-037
+- US-ORCH-038
+- US-ORCH-039
+- US-ORCH-040
+- US-ORCH-041
+- US-ORCH-042
+phases:
+- phase_id: P1_ESCAPE_HATCH
+  name: Unify Escape Hatch Rules
+  status: pending
+  stories:
+  - US-ORCH-035
+  - US-ORCH-036
+  tasks:
+  - id: UF-001
+    name: Replace escape_hatch with structured escape_hatch_rules in planning-standard.yml
+    status: completed
+    target_files:
+    - modules/AgenticGuidance/assets/guidelines/planning-standard.yml
+    guidance: 'Replace lines 39-46 escape_hatch section with structured escape_hatch_rules:
+
+      - allowed_plan_types: [infrastructure, guidance, internal_tooling]
+
+      - blocked_plan_types: [build, test]
+
+      - required_field: no_stories_rationale
+
+      - Rationale must explain why no user stories are impacted
+
+      '
+  - id: UF-002
+    name: Update orchestration-planning process.mmd StoryDiscovery_SG
+    status: completed
+    target_files:
+    - modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd
+    guidance: 'Update StoryDiscovery_SG subgraph (lines 121-138) to reference unified
+      rules.
+
+      Replace CheckStoryEscapeHatch decision with escape_hatch_rules reference:
+
+      - Only allowed_plan_types can bypass with rationale
+
+      - blocked_plan_types (build, test) must BLOCK when no stories found
+
+      - Add reference comment to planning-standard.yml#escape_hatch_rules
+
+      '
+  - id: UF-003
+    name: Add escape hatch reference to planner-test/process.yml
+    status: completed
+    target_files:
+    - modules/AgenticGuidance/agents/planner/planner-test/process.yml
+    guidance: 'Add escape hatch reference at uat_phase_planning section (line 257).
+
+      Reference: planning-standard.yml#escape_hatch_rules
+
+      Note: test plans are blocked_plan_types and cannot use escape hatch.
+
+      '
+  - id: UF-004
+    name: Replace inline escape hatch in planner-reviewer/process.yml
+    status: completed
+    target_files:
+    - modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml
+    guidance: 'Replace inline ESCAPE HATCH section (lines 179-182) with reference
+
+      to canonical rules: planning-standard.yml#escape_hatch_rules.
+
+      Keep validation behavior but source rules from canonical location.
+
+      '
+  - id: UF-005
+    name: Add blocked_plan_type note to planner-build/process.yml
+    status: completed
+    target_files:
+    - modules/AgenticGuidance/agents/planner/planner-build/process.yml
+    guidance: 'Add note near line 172 (USER STORY INTEGRATION section):
+
+      Build plans are blocked_plan_types per planning-standard.yml#escape_hatch_rules
+
+      and CANNOT use the escape hatch to skip stories.
+
+      '
+- phase_id: P2_GATES
+  name: Harden Planning and Executor Gates
+  status: pending
+  stories:
+  - US-ORCH-037
+  - US-ORCH-038
+  tasks:
+  - id: UF-006
+    name: Remove UAT bypass path in orchestration-planning process.mmd
+    status: completed
+    target_files:
+    - modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd
+    guidance: "Remove line 275: CheckUAT -- \"No\" --> AllPhasesPlanned\nReplace with\
+      \ gated logic:\n- blocked_plan_types (build, test) -> BLOCK (no path to AllPhasesPlanned\
+      \ without UAT)\n- allowed_plan_types (infrastructure, guidance, internal_tooling)\
+      \ ->\n  check escape_hatch_rules rationale -> proceed or BLOCK\nReference: planning-standard.yml#escape_hatch_rules\n"
+  - id: UF-007
+    name: Change executor validation gate WARN to BLOCK
+    status: completed
+    target_files:
+    - modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml
+    guidance: "In validation_gate step (line 329), change:\n- WARN on no stories +\
+      \ no rationale -> BLOCK for build/test plan types\n- Add UAT subgraph existence\
+      \ check: if affected_stories present but no\n  UAT subgraph in MMD -> BLOCK\n\
+      - allowed_plan_types with valid rationale -> WARN (allowed)\n"
+  - id: UF-008
+    name: Add escape_hatch_rules reference to executor inputs.yml
+    status: completed
+    target_files:
+    - modules/AgenticGuidance/agents/orchestration/orchestration-executor/inputs.yml
+    guidance: 'Add reference to planning-standard.yml#escape_hatch_rules after line
+      170
+
+      for validation gate rule sourcing.
+
+      '
+- phase_id: P3_CONTRACT
+  name: Fix Output Contract and Story Schema
+  status: pending
+  stories:
+  - US-ORCH-039
+  - US-ORCH-040
+  tasks:
+  - id: UF-009
+    name: Add test_metadata section to user-stories.yml
+    status: completed
+    target_files:
+    - modules/AgenticGuidance/assets/definitions/user-stories.yml
+    guidance: 'Add test_metadata section defining:
+
+      - test_status: enum [untested, pass, fail, skip, regression], default: untested
+
+      - last_tested: ISO 8601 timestamp, nullable
+
+      - test_notes: string, nullable
+
+      - tested_by_plan: string (plan folder name), nullable
+
+      Schema must match what stories.py cmd_update reads/writes.
+
+      '
+  - id: UF-010
+    name: Add mandatory story update step to test-user-simulator/process.yml
+    status: completed
+    target_files:
+    - modules/AgenticGuidance/agents/test/test-user-simulator/process.yml
+    guidance: 'After step at line 147 (report test results), add mandatory step:
+
+      Run `agentic stories update <id> --status <pass|fail> --notes "..." --plan <folder>`
+
+      after each story test, BEFORE reporting results to orchestrator.
+
+      CLI command exists in commands/stories.py.
+
+      '
+  - id: UF-011
+    name: Add user-stories.yml input reference to test-user-simulator/inputs.yml
+    status: completed
+    target_files:
+    - modules/AgenticGuidance/agents/test/test-user-simulator/inputs.yml
+    guidance: 'Add input reference to user-stories.yml for schema awareness.
+
+      The simulator needs to know the test_metadata field definitions.
+
+      '
+- phase_id: P4_COVERAGE
+  name: Story Coverage Validation and CLI Fence Check
+  status: pending
+  stories:
+  - US-ORCH-041
+  - US-ORCH-042
+  tasks:
+  - id: UF-012
+    name: Add story coverage check to executor validation_gate
+    status: completed
+    target_files:
+    - modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml
+    guidance: 'Add step 9 to validation_gate: For each story in affected_stories,
+
+      read test_status from YAML; if any is untested -> BLOCK with coverage
+
+      percentage and list of untested IDs.
+
+      '
+  - id: UF-013
+    name: Add --check-fences flag to agentic plan validate
+    status: completed
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    guidance: 'Add --check-fences flag to cmd_validate performing 3 checks:
+
+      1. Story discovery: has affected_stories or valid no_stories_rationale
+
+      2. UAT existence: MMD has UAT subgraph
+
+      3. Story coverage: all stories have test_status != untested
+
+      Reuse _collect_all_stories() and _find_story_file_by_id() from stories.py.
+
+      Exit 0 if all pass, exit 1 if any fail.
+
+      '
+  - id: UF-014
+    name: Create test_plan_validate_fences.py
+    status: completed
+    target_files:
+    - modules/AgenticCLI/tests/test_plan_validate_fences.py
+    guidance: 'pytest tests covering:
+
+      - Plan with all fences passing -> exit 0
+
+      - Missing UAT subgraph -> exit 1
+
+      - Missing stories -> exit 1
+
+      - Partial coverage -> warning
+
+      Use tmp_path fixtures, create mock plan folders with YAML/MMD.
+
+      '

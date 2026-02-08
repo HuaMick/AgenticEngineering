@@ -1,0 +1,207 @@
+flowchart LR
+    %% ========================================
+    %% ORCHESTRATION: Phone Notifications via ntfy
+    %% ========================================
+    %% GOAL: Add ntfy push notifications, interactive answer wizard, and suggested answers
+    %% PROFILE: orchestrator
+    %%
+    %% PLAN_FOLDER: docs/plans/live/260208PN_phone_notifications
+    %% PLAN_FILES: plan_build.yml, plan_test.yml
+    %%
+    %% PHASES: NtfyHook, Config, Wizard, Suggestions, T1, T2, T3, T4, A1, A2, A3, A4, UAT
+    %% AGENT_ROUTING: NtfyHook=build-python, Config=build-python, Wizard=build-python, Suggestions=build-python, T1=test-runner, T2=test-runner, T3=test-runner, T4=test-runner, A1=test-audit, A2=test-audit, A3=test-audit, A4=test-audit, UAT=test-user-simulator
+    %% FEEDBACK_TRIGGERS: BUILD_FAILURE=retry(3), TEST_FAILURE=retry(5)
+    %% STATUS: NtfyHook=pending, Config=pending, Wizard=pending, Suggestions=pending, T1=pending, T2=pending, T3=pending, T4=pending, A1=pending, A2=pending, A3=pending, A4=pending, UAT=pending
+
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    LoadInputs --> ReviewPlanFiles[Review plan_build.yml + plan_test.yml]
+    ReviewPlanFiles --> CheckInputs{All Inputs Found?}
+    CheckInputs -- "No" --> AskUser((Ask User))
+    CheckInputs -- "Yes" --> EnterNtfy[Enter ntfy Hook Phase]
+
+    %% ========================================
+    %% PHASE 1: NTFY HOOK (build-python)
+    %% ========================================
+    %% Tasks: PN-001 (ntfy client), PN-002 (watcher hook), PN-003 (tests)
+    %% Targets: ntfy.py, question.py, test_ntfy.py
+
+    subgraph NtfyHook_SG ["Phase 1: ntfy Notification Hook"]
+        EnterNtfy --> SpawnNtfy[Spawn build-python Agent]
+        SpawnNtfy --> NtfyResult{ntfy Client + Hook Built?}
+        NtfyResult -- "No" --> CaptureNtfyFB[Capture Feedback]
+        CaptureNtfyFB --> CheckNtfyIter{Max Iter?}
+        CheckNtfyIter -- "No" --> SpawnNtfy
+        CheckNtfyIter -- "Yes" --> EscalateNtfy((Escalate))
+        NtfyResult -- "Yes" --> NtfyComplete[ntfy Hook Complete]
+    end
+
+    NtfyComplete --> EnterConfig[Enter Config Phase]
+
+    %% ========================================
+    %% PHASE 2: CONFIG SCHEMA (build-python)
+    %% ========================================
+    %% Tasks: PN-004 (DEFAULT_CONFIG), PN-005 (validation), PN-006 (tests)
+    %% Targets: config.py, test_config_ntfy.py
+
+    subgraph Config_SG ["Phase 2: Configuration Schema"]
+        EnterConfig --> SpawnConfig[Spawn build-python Agent]
+        SpawnConfig --> ConfigResult{Config Schema Added?}
+        ConfigResult -- "No" --> CaptureConfigFB[Capture Feedback]
+        CaptureConfigFB --> CheckConfigIter{Max Iter?}
+        CheckConfigIter -- "No" --> SpawnConfig
+        CheckConfigIter -- "Yes" --> EscalateConfig((Escalate))
+        ConfigResult -- "Yes" --> ConfigComplete[Config Complete]
+    end
+
+    ConfigComplete --> EnterWizard[Enter Wizard Phase]
+
+    %% ========================================
+    %% PHASE 3: INTERACTIVE WIZARD (build-python)
+    %% ========================================
+    %% Tasks: PN-007 (wizard module), PN-008 (--interactive flag), PN-009 (tests)
+    %% Targets: interactive_answer.py, question.py, cli.py, test_interactive_answer.py
+
+    subgraph Wizard_SG ["Phase 3: Interactive Wizard"]
+        EnterWizard --> SpawnWizard[Spawn build-python Agent]
+        SpawnWizard --> WizardResult{Wizard Working?}
+        WizardResult -- "No" --> CaptureWizardFB[Capture Feedback]
+        CaptureWizardFB --> CheckWizardIter{Max Iter?}
+        CheckWizardIter -- "No" --> SpawnWizard
+        CheckWizardIter -- "Yes" --> EscalateWizard((Escalate))
+        WizardResult -- "Yes" --> WizardComplete[Wizard Complete]
+    end
+
+    WizardComplete --> EnterSuggestions[Enter Suggestions Phase]
+
+    %% ========================================
+    %% PHASE 4: SUGGESTED ANSWERS (build-python)
+    %% ========================================
+    %% Tasks: PN-010 (model field), PN-011 (service + CLI), PN-012 (wire to wizard), PN-013 (tests)
+    %% Targets: question.py model, question.py service, question.py CLI, test_suggested_answers.py
+
+    subgraph Suggestions_SG ["Phase 4: Suggested Answers"]
+        EnterSuggestions --> SpawnSuggestions[Spawn build-python Agent]
+        SpawnSuggestions --> SuggestionsResult{Suggested Answers Working?}
+        SuggestionsResult -- "No" --> CaptureSuggestionsFB[Capture Feedback]
+        CaptureSuggestionsFB --> CheckSuggestionsIter{Max Iter?}
+        CheckSuggestionsIter -- "No" --> SpawnSuggestions
+        CheckSuggestionsIter -- "Yes" --> EscalateSuggestions((Escalate))
+        SuggestionsResult -- "Yes" --> SuggestionsComplete[Suggestions Complete]
+    end
+
+    SuggestionsComplete --> EnterT1[Enter Test Phase 1]
+
+    %% ========================================
+    %% TEST PHASES T1-T4 (test-runner)
+    %% ========================================
+
+    subgraph T1_SG ["T1: ntfy Tests"]
+        EnterT1 --> SpawnT1[Spawn test-runner]
+        SpawnT1 --> T1Result{Pass?}
+        T1Result -- "No" --> FixT1[Spawn build-python Fix]
+        FixT1 --> SpawnT1
+        T1Result -- "Yes" --> T1Done[T1 Complete]
+    end
+
+    T1Done --> EnterT2[Enter T2]
+
+    subgraph T2_SG ["T2: Config Tests"]
+        EnterT2 --> SpawnT2[Spawn test-runner]
+        SpawnT2 --> T2Result{Pass?}
+        T2Result -- "No" --> FixT2[Spawn build-python Fix]
+        FixT2 --> SpawnT2
+        T2Result -- "Yes" --> T2Done[T2 Complete]
+    end
+
+    T2Done --> EnterT3[Enter T3]
+
+    subgraph T3_SG ["T3: Wizard Tests"]
+        EnterT3 --> SpawnT3[Spawn test-runner]
+        SpawnT3 --> T3Result{Pass?}
+        T3Result -- "No" --> FixT3[Spawn build-python Fix]
+        FixT3 --> SpawnT3
+        T3Result -- "Yes" --> T3Done[T3 Complete]
+    end
+
+    T3Done --> EnterT4[Enter T4]
+
+    subgraph T4_SG ["T4: Suggestion Tests"]
+        EnterT4 --> SpawnT4[Spawn test-runner]
+        SpawnT4 --> T4Result{Pass?}
+        T4Result -- "No" --> FixT4[Spawn build-python Fix]
+        FixT4 --> SpawnT4
+        T4Result -- "Yes" --> T4Done[T4 Complete]
+    end
+
+    T4Done --> EnterA1[Enter Audit Phase 1]
+
+    %% ========================================
+    %% AUDIT PHASES A1-A4 (test-audit)
+    %% ========================================
+
+    subgraph A1_SG ["A1: Audit ntfy Tests"]
+        EnterA1 --> SpawnA1[Spawn test-audit]
+        SpawnA1 --> A1Result{Pass?}
+        A1Result -- "No" --> FixA1[Spawn test-builder Fix]
+        FixA1 --> SpawnA1
+        A1Result -- "Yes" --> A1Done[A1 Complete]
+    end
+
+    A1Done --> EnterA2[Enter A2]
+
+    subgraph A2_SG ["A2: Audit Config Tests"]
+        EnterA2 --> SpawnA2[Spawn test-audit]
+        SpawnA2 --> A2Result{Pass?}
+        A2Result -- "No" --> FixA2[Spawn test-builder Fix]
+        FixA2 --> SpawnA2
+        A2Result -- "Yes" --> A2Done[A2 Complete]
+    end
+
+    A2Done --> EnterA3[Enter A3]
+
+    subgraph A3_SG ["A3: Audit Wizard Tests"]
+        EnterA3 --> SpawnA3[Spawn test-audit]
+        SpawnA3 --> A3Result{Pass?}
+        A3Result -- "No" --> FixA3[Spawn test-builder Fix]
+        FixA3 --> SpawnA3
+        A3Result -- "Yes" --> A3Done[A3 Complete]
+    end
+
+    A3Done --> EnterA4[Enter A4]
+
+    subgraph A4_SG ["A4: Audit Suggestion Tests"]
+        EnterA4 --> SpawnA4[Spawn test-audit]
+        SpawnA4 --> A4Result{Pass?}
+        A4Result -- "No" --> FixA4[Spawn test-builder Fix]
+        FixA4 --> SpawnA4
+        A4Result -- "Yes" --> A4Done[A4 Complete]
+    end
+
+    A4Done --> EnterUAT[Enter UAT]
+
+    %% ========================================
+    %% UAT (PRIMARY SUCCESS CRITERIA)
+    %% ========================================
+    %% Tasks: T9-001 through T9-005
+    %% Agent: test-user-simulator
+
+    subgraph UAT_SG ["T9: UAT (PRIMARY SUCCESS CRITERIA)"]
+        EnterUAT --> SpawnUAT[Spawn test-user-simulator]
+        SpawnUAT --> UATResult{All Stories Pass?}
+        UATResult -- "No" --> FixUAT[Spawn build-python Fix]
+        FixUAT --> SpawnUAT
+        UATResult -- "Yes" --> UATDone[UAT Complete]
+    end
+
+    %% ========================================
+    %% OUTPUT
+    %% ========================================
+    subgraph Output_SG ["Output"]
+        UATDone --> ReportCompletion[Report Completion Status]
+        ReportCompletion --> ArchivePlan[Run: agentic plan move folder --plan 260208PN_phone_notifications]
+    end
+
+    ArchivePlan --> End((End: Plan Completed))
+
+    classDef dashedstroke stroke-dasharray: 5 5;

@@ -1,0 +1,196 @@
+flowchart LR
+    %% ========================================
+    %% ORCHESTRATION: Planning Loop CLI Command
+    %% ========================================
+    %% GOAL: Create `agentic plan new` command for automated planning loops
+    %% PROFILE: orchestrator
+    %%
+    %% PLAN_FOLDER: docs/plans/live/260208PL_planning_loop_cli
+    %% PLAN_FILES: plan_build.yml, plan_test.yml
+    %%
+    %% PHASES: Scaffold, PlannerPrompt, OrchGen, BuilderSpawn, IntegrationUAT, T1, T2, T3, T4, T5_Audit, T6_UAT
+    %% AGENT_ROUTING: Scaffold=build-python, PlannerPrompt=build-python, OrchGen=build-python, BuilderSpawn=build-python, IntegrationUAT=build-python, T1=test-runner, T2=test-runner, T3=test-runner, T4=test-runner, T5_Audit=test-audit, T6_UAT=test-user-simulator
+    %% FEEDBACK_TRIGGERS: BUILD_FAILURE=retry(3), TEST_FAILURE=retry(5)
+    %% DEPENDENCIES: 260208CF (blocking - plan init fix)
+    %% STATUS: Scaffold=pending, PlannerPrompt=pending, OrchGen=pending, BuilderSpawn=pending, IntegrationUAT=pending, T1=pending, T2=pending, T3=pending, T4=pending, T5_Audit=pending, T6_UAT=pending
+
+    Start((Start)) --> CheckDeps{260208CF Complete?}
+    CheckDeps -- "No: Blocked" --> WaitForCF((Wait: 260208CF Must Complete First))
+    CheckDeps -- "Yes: Ready" --> LoadInputs[Load Context Inputs]
+
+    LoadInputs --> ReviewPlanFiles[Review plan_build.yml + plan_test.yml]
+    ReviewPlanFiles --> CheckInputs{All Inputs Found?}
+    CheckInputs -- "No" --> AskUser((Ask User))
+    CheckInputs -- "Yes" --> EnterScaffold[Enter Scaffold Phase]
+
+    %% ========================================
+    %% PHASE 1: COMMAND SCAFFOLD (build-python)
+    %% ========================================
+    %% Tasks: PL_001, PL_002, PL_003
+    %% Targets: cli.py, plan.py, test_plan_new.py
+
+    subgraph Scaffold_SG ["Phase 1: Command Scaffold"]
+        EnterScaffold --> SpawnScaffold[Spawn build-python Agent]
+        SpawnScaffold --> ScaffoldResult{Command Registered?}
+        ScaffoldResult -- "No" --> CaptureScaffoldFB[Capture Feedback]
+        CaptureScaffoldFB --> CheckScaffoldIter{Max Iter?}
+        CheckScaffoldIter -- "No" --> SpawnScaffold
+        CheckScaffoldIter -- "Yes" --> EscalateScaffold((Escalate))
+        ScaffoldResult -- "Yes" --> ScaffoldComplete[Scaffold Complete]
+    end
+
+    ScaffoldComplete --> EnterPrompt[Enter Planner Prompt Phase]
+
+    %% ========================================
+    %% PHASE 2: PLANNER PROMPT (build-python)
+    %% ========================================
+    %% Tasks: PL_004, PL_005, PL_006
+    %% Targets: planner_prompt.py, plan.py, test_plan_new.py
+
+    subgraph Prompt_SG ["Phase 2: Planner Prompt"]
+        EnterPrompt --> SpawnPrompt[Spawn build-python Agent]
+        SpawnPrompt --> PromptResult{Prompt + Spawn Working?}
+        PromptResult -- "No" --> CapturePromptFB[Capture Feedback]
+        CapturePromptFB --> CheckPromptIter{Max Iter?}
+        CheckPromptIter -- "No" --> SpawnPrompt
+        CheckPromptIter -- "Yes" --> EscalatePrompt((Escalate))
+        PromptResult -- "Yes" --> PromptComplete[Prompt Complete]
+    end
+
+    PromptComplete --> EnterOrchGen[Enter Orchestration Phase]
+
+    %% ========================================
+    %% PHASE 3: ORCHESTRATION GEN (build-python)
+    %% ========================================
+    %% Tasks: PL_007, PL_008
+    %% Targets: plan.py
+
+    subgraph OrchGen_SG ["Phase 3: Orchestration Auto-Gen"]
+        EnterOrchGen --> SpawnOrchGen[Spawn build-python Agent]
+        SpawnOrchGen --> OrchGenResult{Orchestration Integrated?}
+        OrchGenResult -- "No" --> CaptureOrchFB[Capture Feedback]
+        CaptureOrchFB --> CheckOrchIter{Max Iter?}
+        CheckOrchIter -- "No" --> SpawnOrchGen
+        CheckOrchIter -- "Yes" --> EscalateOrch((Escalate))
+        OrchGenResult -- "Yes" --> OrchGenComplete[Orchestration Complete]
+    end
+
+    OrchGenComplete --> EnterBuilder[Enter Builder Spawn Phase]
+
+    %% ========================================
+    %% PHASE 4: BUILDER SPAWNING (build-python)
+    %% ========================================
+    %% Tasks: PL_009, PL_010, PL_011
+    %% Targets: plan.py, test_plan_new.py
+
+    subgraph Builder_SG ["Phase 4: Builder Spawning"]
+        EnterBuilder --> SpawnBuilder[Spawn build-python Agent]
+        SpawnBuilder --> BuilderResult{Builder Logic Working?}
+        BuilderResult -- "No" --> CaptureBuilderFB[Capture Feedback]
+        CaptureBuilderFB --> CheckBuilderIter{Max Iter?}
+        CheckBuilderIter -- "No" --> SpawnBuilder
+        CheckBuilderIter -- "Yes" --> EscalateBuilder((Escalate))
+        BuilderResult -- "Yes" --> BuilderComplete[Builder Complete]
+    end
+
+    BuilderComplete --> EnterInteg[Enter Integration Phase]
+
+    %% ========================================
+    %% PHASE 5: INTEGRATION + UAT (build-python)
+    %% ========================================
+    %% Tasks: PL_012, PL_013
+    %% Targets: test_plan_new.py
+
+    subgraph Integ_SG ["Phase 5: Integration & UAT"]
+        EnterInteg --> SpawnInteg[Spawn build-python Agent]
+        SpawnInteg --> IntegResult{Integration Tests Pass?}
+        IntegResult -- "No" --> CaptureIntegFB[Capture Feedback]
+        CaptureIntegFB --> CheckIntegIter{Max Iter?}
+        CheckIntegIter -- "No" --> SpawnInteg
+        CheckIntegIter -- "Yes" --> EscalateInteg((Escalate))
+        IntegResult -- "Yes" --> IntegComplete[Integration Complete]
+    end
+
+    IntegComplete --> EnterT1[Enter Test Phase 1]
+
+    %% ========================================
+    %% TEST PHASES T1-T4 (test-runner)
+    %% ========================================
+
+    subgraph T1_SG ["T1: Scaffold Tests"]
+        EnterT1 --> SpawnT1[Spawn test-runner]
+        SpawnT1 --> T1Result{Pass?}
+        T1Result -- "No" --> FixT1[Spawn build-python Fix]
+        FixT1 --> SpawnT1
+        T1Result -- "Yes" --> T1Done[T1 Complete]
+    end
+
+    T1Done --> EnterT2[Enter T2]
+
+    subgraph T2_SG ["T2: Prompt Tests"]
+        EnterT2 --> SpawnT2[Spawn test-runner]
+        SpawnT2 --> T2Result{Pass?}
+        T2Result -- "No" --> FixT2[Spawn build-python Fix]
+        FixT2 --> SpawnT2
+        T2Result -- "Yes" --> T2Done[T2 Complete]
+    end
+
+    T2Done --> EnterT3[Enter T3]
+
+    subgraph T3_SG ["T3: Orch + Builder Tests"]
+        EnterT3 --> SpawnT3[Spawn test-runner]
+        SpawnT3 --> T3Result{Pass?}
+        T3Result -- "No" --> FixT3[Spawn build-python Fix]
+        FixT3 --> SpawnT3
+        T3Result -- "Yes" --> T3Done[T3 Complete]
+    end
+
+    T3Done --> EnterT4[Enter T4]
+
+    subgraph T4_SG ["T4: E2E Integration"]
+        EnterT4 --> SpawnT4[Spawn test-runner]
+        SpawnT4 --> T4Result{Pass?}
+        T4Result -- "No" --> FixT4[Spawn build-python Fix]
+        FixT4 --> SpawnT4
+        T4Result -- "Yes" --> T4Done[T4 Complete]
+    end
+
+    T4Done --> EnterT5[Enter Audit]
+
+    %% ========================================
+    %% T5: AUDIT (MANDATORY)
+    %% ========================================
+
+    subgraph T5_SG ["T5: Test Audit (MANDATORY)"]
+        EnterT5 --> SpawnT5[Spawn test-audit Agent]
+        SpawnT5 --> T5Result{Quality Passed?}
+        T5Result -- "No" --> FixT5[Spawn build-python Fix]
+        FixT5 --> SpawnT5
+        T5Result -- "Yes" --> T5Done[Audit Complete]
+    end
+
+    T5Done --> EnterT6[Enter UAT]
+
+    %% ========================================
+    %% T6: UAT (PRIMARY SUCCESS CRITERIA)
+    %% ========================================
+
+    subgraph T6_SG ["T6: UAT (PRIMARY SUCCESS CRITERIA)"]
+        EnterT6 --> SpawnT6[Spawn test-user-simulator]
+        SpawnT6 --> T6Result{All Stories Pass?}
+        T6Result -- "No" --> FixT6[Spawn build-python Fix]
+        FixT6 --> SpawnT6
+        T6Result -- "Yes" --> T6Done[UAT Complete]
+    end
+
+    %% ========================================
+    %% OUTPUT
+    %% ========================================
+    subgraph Output_SG ["Output"]
+        T6Done --> ReportCompletion[Report Completion Status]
+        ReportCompletion --> ArchivePlan[Run: agentic plan move folder --plan 260208PL_planning_loop_cli]
+    end
+
+    ArchivePlan --> End((End: Plan Completed))
+
+    classDef dashedstroke stroke-dasharray: 5 5;

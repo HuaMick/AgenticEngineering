@@ -3,9 +3,15 @@
 Handles question queue operations for agent workflows.
 """
 
+import logging
 import sys
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
+
+# Track question IDs already notified via ntfy (dedup across callback invocations)
+_ntfy_seen_question_ids: set[str] = set()
 
 
 def handle(args, ctx=None):
@@ -333,7 +339,7 @@ def cmd_show(args, ctx=None):
 def cmd_answer(args, ctx=None):
     """Answer a pending question.
 
-    Implements: agentic question answer <question_id> --text "answer" [--plan PATH]
+    Implements: agentic question answer <question_id> --text "answer" [--plan PATH] [--interactive]
     """
     from agenticcli.console import (
         console,
@@ -346,32 +352,107 @@ def cmd_answer(args, ctx=None):
     plan_path = _get_plan_path(args, ctx)
     service = _get_service(plan_path)
 
-    question_id = args.question_id
-    answer_text = getattr(args, "text", None)
+    # Check for interactive mode
+    interactive = getattr(args, "interactive", False)
 
-    # If --text not provided, prompt for input
-    if not answer_text:
-        console.print(f"[bold]Answering question:[/bold] {question_id}")
-        console.print("[dim]Enter answer (Ctrl+D when done):[/dim]")
+    # If interactive mode and no question_id, list pending questions for selection
+    if interactive and not hasattr(args, "question_id"):
+        # List pending questions and prompt for selection
+        pending = service.list_pending_questions()
+        if not pending:
+            print_error("No pending questions to answer")
+            sys.exit(1)
+
+        console.print("[bold]Pending Questions:[/bold]\n")
+        for i, q in enumerate(pending, start=1):
+            severity = q.severity.upper()
+            # Add [S] indicator if question has suggested answers
+            suggest_indicator = " [S]" if q.suggested_answers else ""
+            console.print(f"  [{i}] {q.id[:20]} - {q.text[:50]}{'...' if len(q.text) > 50 else ''} [{severity}]{suggest_indicator}")
+
+        console.print()
         try:
-            lines = []
-            while True:
-                try:
-                    line = input()
-                    lines.append(line)
-                except EOFError:
-                    break
-            answer_text = "\n".join(lines).strip()
-        except KeyboardInterrupt:
-            print_error("\nAnswer cancelled")
+            choice = input("Select question number: ").strip()
+            if not choice.isdigit() or int(choice) < 1 or int(choice) > len(pending):
+                print_error("Invalid selection")
+                sys.exit(1)
+            question_id = pending[int(choice) - 1].id
+        except (EOFError, KeyboardInterrupt):
+            print_error("\nCancelled")
+            sys.exit(1)
+    elif hasattr(args, "question_id"):
+        question_id = args.question_id
+    else:
+        print_error("question_id is required when not using --interactive")
+        sys.exit(1)
+
+    # If interactive mode, use the wizard
+    if interactive:
+        from agenticcli.utils.interactive_answer import (
+            DEFER_SENTINEL,
+            interactive_answer_wizard,
+        )
+
+        # Load the question
+        question = service.get_question(question_id)
+        if not question:
+            print_error(f"Question not found: {question_id}")
             sys.exit(1)
 
+        # Load suggested answers from question if available
+        suggested_answers = question.suggested_answers
+
+        # Launch wizard
+        answer_text, confidence = interactive_answer_wizard(question, suggested_answers)
+
+        # Handle deferral
+        if answer_text == DEFER_SENTINEL:
+            # Defer the question
+            question.mark_deferred()
+            try:
+                from agenticguidance.models.question import question_to_yaml
+
+                yaml_content = question_to_yaml(question)
+                question_path = plan_path / "questions" / "pending" / f"{question_id}.yml"
+                question_path.write_text(yaml_content, encoding="utf-8")
+            except Exception as e:
+                print_error(f"Failed to defer question: {e}")
+                sys.exit(1)
+
+            # Auto-refresh tmux notifications
+            _auto_refresh_tmux_notifications(plan_path)
+
+            print_success(f"Question deferred: {question_id}")
+            console.print(f"[dim]Status updated in: {plan_path}/questions/pending/[/dim]")
+            return
+
+    else:
+        # Non-interactive mode: get text from args
+        answer_text = getattr(args, "text", None)
+
+        # If --text not provided, prompt for input
         if not answer_text:
-            print_error("Answer cannot be empty")
-            sys.exit(1)
+            console.print(f"[bold]Answering question:[/bold] {question_id}")
+            console.print("[dim]Enter answer (Ctrl+D when done):[/dim]")
+            try:
+                lines = []
+                while True:
+                    try:
+                        line = input()
+                        lines.append(line)
+                    except EOFError:
+                        break
+                answer_text = "\n".join(lines).strip()
+            except KeyboardInterrupt:
+                print_error("\nAnswer cancelled")
+                sys.exit(1)
 
-    # Get confidence if provided
-    confidence = getattr(args, "confidence", None)
+            if not answer_text:
+                print_error("Answer cannot be empty")
+                sys.exit(1)
+
+        # Get confidence if provided
+        confidence = getattr(args, "confidence", None)
 
     # Answer the question
     try:
@@ -405,7 +486,7 @@ def cmd_answer(args, ctx=None):
 def cmd_ask(args, ctx=None):
     """Create a new question.
 
-    Implements: agentic question ask <text> [--severity LEVEL] [--plan PATH]
+    Implements: agentic question ask <text> [--severity LEVEL] [--plan PATH] [--suggest "option"]
     """
     from agenticcli.console import (
         console,
@@ -424,6 +505,9 @@ def cmd_ask(args, ctx=None):
     # Get context from args or use default
     context = getattr(args, "context", "Created via CLI")
 
+    # Get suggested answers from args
+    suggested_answers = getattr(args, "suggest", None)
+
     # Create question
     try:
         question = service.create_question(
@@ -431,6 +515,7 @@ def cmd_ask(args, ctx=None):
             context=context,
             severity=severity,
             asked_by="human",
+            suggested_answers=suggested_answers,
         )
     except ValueError as e:
         print_error(str(e))
@@ -446,6 +531,8 @@ def cmd_ask(args, ctx=None):
         print_success(f"Question created: {question.id}")
         console.print(f"[bold]Text:[/bold] {text}")
         console.print(f"[bold]Severity:[/bold] {severity}")
+        if suggested_answers:
+            console.print(f"[bold]Suggested answers:[/bold] {len(suggested_answers)} options")
         console.print(f"[dim]Question saved to: {plan_path}/questions/pending/[/dim]")
 
 
@@ -564,6 +651,12 @@ def cmd_watch(args, ctx=None):
                     _auto_refresh_tmux_notifications(plan_path)
             except Exception as e:
                 console.print(f"[dim]Could not refresh tmux: {e}[/dim]")
+
+            # Send ntfy push notifications for new questions
+            try:
+                _send_ntfy_if_configured(plan_path, pending)
+            except Exception as e:
+                logger.debug("ntfy hook error in watcher callback: %s", e)
 
         except Exception as e:
             console.print(f"[red]Error processing question change: {e}[/red]")
@@ -740,6 +833,60 @@ def cmd_watch_stop(args, ctx=None):
         print_warning("No running watchers were stopped")
     else:
         print_success(f"Stopped {stopped_count} watcher(s)")
+
+
+def _send_ntfy_if_configured(plan_path: Path, questions: list) -> None:
+    """Send ntfy push notifications for NEW pending questions.
+
+    Reads ntfy.topic from user preferences. If not configured, returns
+    silently (ntfy is opt-in). Deduplicates by tracking previously-seen
+    question IDs in the module-level _ntfy_seen_question_ids set.
+
+    Args:
+        plan_path: Path to plan folder.
+        questions: List of Question objects (pending).
+    """
+    global _ntfy_seen_question_ids
+
+    try:
+        from agenticcli.commands.config import get_config_dir
+
+        config_dir = get_config_dir()
+        prefs_file = config_dir / "preferences.yml"
+
+        if not prefs_file.exists():
+            return
+
+        import yaml
+
+        prefs = yaml.safe_load(prefs_file.read_text()) or {}
+        ntfy_config = prefs.get("ntfy", {})
+
+        topic = ntfy_config.get("topic", "")
+        if not topic:
+            return
+
+        # Check enabled flag (default True if absent)
+        if not ntfy_config.get("enabled", True):
+            return
+
+        server = ntfy_config.get("server", "https://ntfy.sh")
+
+        from agenticcli.utils.ntfy import notify_new_question
+
+        for q in questions:
+            q_id = q.id if hasattr(q, "id") else q.get("id", "")
+            if not q_id or q_id in _ntfy_seen_question_ids:
+                continue
+
+            _ntfy_seen_question_ids.add(q_id)
+            success = notify_new_question(topic, q, server)
+            logger.debug(
+                "ntfy notification for %s: %s", q_id, "sent" if success else "failed"
+            )
+
+    except Exception as e:
+        logger.debug("ntfy notification error: %s", e)
 
 
 def _auto_refresh_tmux_notifications(plan_path: Path):

@@ -104,12 +104,12 @@ Repeat for each plan. When all plans have orchestration MMDs, output completion 
 | Generic Type | Specific Agents |
 |--------------|-----------------|
 | builder | build-python, build-flutter |
-| tester | test-runner, test-guidance-simulator, test-audit |
+| tester | test-runner, test-builder, test-guidance-simulator, test-user-simulator, test-service, test-audit |
 | deployer | deploy-cicd, deploy-worktree |
-| teacher | teacher-update-guidance, teacher-update-assets |
+| teacher | teacher-update-guidance, teacher-update-assets, teacher-trace-diagnostics |
 | cleaner | planner-cleaning |
 | auditor | test-audit, test-final-output |
-| planner | planner-build, planner-test, planner-reviewer, planner-orchestration |
+| planner | planner-build, planner-test, planner-reviewer, planner-orchestration, planner-guidance, planner-guidance-testing |
 
 ---
 
@@ -126,6 +126,7 @@ This orchestrator spawns the following agents:
 | planner-cleaning | Create cleanup phase plans | Cleanup phase required |
 | planner-audit | Create audit phase plans | Audit phase required |
 | planner-reviewer | Review and approve/reject phase plans | After each planner output |
+| planner-guidance-testing | Create guidance test plans for walkthrough validation | Guidance validation required |
 | planner-orchestration | Generate orchestration MMD from approved plans | After all phases approved |
 
 ---
@@ -145,6 +146,13 @@ If ANY command fails:
 ---
 
 ## CRITICAL RULES
+
+### HITL Question Queue
+If spawned planners need clarification, they may create blocking questions:
+- Check: `agentic question list --plan <folder>`
+- Answer: `agentic question answer <question_id>`
+- Defer: `agentic question defer <question_id>`
+Questions block task completion until answered.
 
 ### Story Discovery Must Precede Phase Determination
 - Run `agentic stories find` BEFORE creating phase plans

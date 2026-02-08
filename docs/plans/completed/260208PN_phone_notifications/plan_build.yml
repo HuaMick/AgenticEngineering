@@ -1,0 +1,637 @@
+name: phone-notifications
+status: active
+priority: high
+context: 'Add phone push notifications via ntfy.sh and an interactive wizard CLI for
+
+  answering questions from mobile. When agents create questions, the daemon
+
+  detects new pending questions and sends an ntfy push to the user''s phone.
+
+  The user SSHs via Termux and runs `agentic question answer --interactive`
+
+  to select from suggested answers or type a custom response.
+
+
+  The question watcher (QuestionWatcherHandler) already monitors pending/
+
+  and answered/ folders with debounced callbacks. This plan hooks ntfy
+
+  notification sending into that callback path.
+
+
+  Configuration uses the existing TieredConfigLoader + CLI config commands
+
+  to store ntfy topic and server URL in preferences.
+
+
+  The Question model gains an optional suggested_answers field so agents
+
+  can propose answer choices when creating questions.
+
+  '
+dependencies:
+  depends_on:
+  - plan_id: 260203QF
+    description: Question Foundation - provides QuestionQueue, Question model, YAML
+      serialization
+  - plan_id: 260203QC
+    description: Question CLI - provides answer, ask, watch commands
+  - plan_id: 260203QT
+    description: Question Tmux - provides watcher daemon and tmux notifications
+  required_by: []
+inputs:
+- location: modules/AgenticCLI/src/agenticcli/services/question_watcher.py
+  description: QuestionWatcherHandler callback path - ntfy hook integrates here
+- location: modules/AgenticCLI/src/agenticcli/commands/question.py
+  description: Existing question commands - answer gets --interactive flag
+- location: modules/AgenticGuidance/src/agenticguidance/models/question.py
+  description: Question dataclass - gains suggested_answers field
+- location: modules/AgenticGuidance/src/agenticguidance/services/question.py
+  description: QuestionQueue service - create_question gains suggested_answers param
+- location: modules/AgenticGuidance/src/agenticguidance/services/config.py
+  description: TieredConfigLoader and DEFAULT_CONFIG - gains ntfy config keys
+- location: modules/AgenticCLI/src/agenticcli/commands/config.py
+  description: CLI config get/set commands - used to configure ntfy topic
+- location: modules/AgenticCLI/src/agenticcli/utils/tmux_notify.py
+  description: Tmux notification patterns - reference for notification integration
+objective: 'Implement phone push notifications via ntfy.sh and an interactive answer
+
+  wizard so users can answer agent questions from their phone.
+
+
+  Phase 1: ntfy notification client and watcher hook
+
+  Phase 2: Configuration schema for ntfy settings
+
+  Phase 3: Interactive wizard for --interactive answer mode
+
+  Phase 4: Suggested answers support in Question model and CLI
+
+  '
+loop_structures:
+- id: loop_implementation
+  type: test-fix-loop
+  applies_to_phase: All phases
+  trigger: After each phase's implementation tasks complete
+  description: 'Each phase includes verification tasks. Run tests after
+
+    implementation, fix failures, iterate until passing.
+
+    '
+  exit_criteria:
+    success: All tests pass for the phase
+    max_iterations: 3
+    escalation: Escalate to user with test results
+phases:
+- name: 'Phase 1: ntfy Notification Hook'
+  execution: sequential
+  description: 'Create an ntfy client utility and hook it into the question watcher
+
+    callback so that new pending questions trigger a push notification.
+
+    '
+  tasks:
+  - id: PN-001
+    name: Create ntfy client utility module
+    description: 'HTTP client for ntfy.sh push notifications. Uses urllib.request
+
+      (stdlib) to POST messages to an ntfy topic. No external dependencies.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/utils/tmux_notify.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/utils/ntfy.py
+    guidance: "Create modules/AgenticCLI/src/agenticcli/utils/ntfy.py with:\n\nFunctions:\n\
+      1. send_ntfy(topic: str, title: str, message: str,\n             priority: str\
+      \ = \"default\",\n             server: str = \"https://ntfy.sh\",\n        \
+      \     tags: list[str] | None = None) -> bool\n   - POST to {server}/{topic}\
+      \ using urllib.request.Request\n   - Headers: Title, Priority, Tags (comma-separated)\n\
+      \   - Body: message text (UTF-8 encoded)\n   - Return True on success (2xx),\
+      \ False on error\n   - Catch URLError, HTTPError - log warning, return False\n\
+      \   - 5-second timeout on request\n\n2. notify_new_question(topic: str, question:\
+      \ \"Question\",\n                      server: str = \"https://ntfy.sh\") ->\
+      \ bool\n   - Format notification for a new question\n   - Title: f\"New Question\
+      \ [{question.severity.upper()}]\"\n   - Message: question.text (truncated to\
+      \ 200 chars if long)\n   - Tags: based on severity (warning for blocking, question\
+      \ for others)\n   - Priority: \"urgent\" for blocking, \"high\" for high, \"\
+      default\" for others\n   - Calls send_ntfy()\n\nUse logging.getLogger(__name__)\
+      \ for error logging.\nNo external dependencies - stdlib only (urllib.request).\n"
+    success_criteria:
+    - send_ntfy() sends HTTP POST to ntfy.sh with correct headers
+    - notify_new_question() formats severity-appropriate notification
+    - Network errors caught and logged, never raised
+    - 5-second timeout prevents hanging
+    - No external dependencies (urllib.request only)
+  - id: PN-002
+    name: Hook ntfy into question watcher callback
+    description: 'Modify the watch command''s callback to send ntfy notifications
+
+      alongside existing tmux notifications when new questions appear.
+
+      '
+    status: completed
+    agent: build-python
+    depends_on:
+    - PN-001
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/question.py
+    - modules/AgenticCLI/src/agenticcli/utils/ntfy.py
+    - modules/AgenticCLI/src/agenticcli/services/question_watcher.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/question.py
+    guidance: "In question.py, modify cmd_watch() and cmd_watch_daemon() to include\n\
+      ntfy notifications in the watcher callback:\n\n1. Add a helper function _send_ntfy_if_configured(plan_path:\
+      \ Path, questions: list):\n   - Read ntfy config: topic = config.get(\"ntfy.topic\"\
+      )\n   - If no topic configured, return silently (ntfy is opt-in)\n   - server\
+      \ = config.get(\"ntfy.server\", \"https://ntfy.sh\")\n   - For each NEW pending\
+      \ question, call notify_new_question(topic, q, server)\n   - \"New\" detection:\
+      \ track previously-seen question IDs in a set\n   - Log success/failure at DEBUG\
+      \ level\n\n2. In the existing notification callback used by cmd_watch():\n \
+      \  - After tmux notification refresh, call _send_ntfy_if_configured()\n   -\
+      \ The callback already has access to plan_path and reloads questions\n\n3. Config\
+      \ reading pattern:\n   - Import from agenticcli.commands.config: get_config_value\n\
+      \   - Or use agenticguidance.services.config TieredConfigLoader\n   - Follow\
+      \ whichever pattern is already used in question.py\n\nDo NOT modify QuestionWatcherHandler\
+      \ itself - the hook goes in the\ncallback function that is passed to the watcher.\n"
+    success_criteria:
+    - ntfy notification sent when new pending question detected
+    - No notification for already-seen questions (dedup by ID)
+    - Silent no-op when ntfy.topic not configured
+    - Existing tmux notifications unaffected
+    - Network errors do not crash the watcher
+  - id: PN-003
+    name: Add unit tests for ntfy client
+    description: Unit tests for the ntfy utility module
+    status: completed
+    agent: test-builder
+    depends_on:
+    - PN-002
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/utils/ntfy.py
+    target_files:
+    - modules/AgenticCLI/tests/test_ntfy.py
+    guidance: 'Create test_ntfy.py with:
+
+
+      TestSendNtfy:
+
+      - test_send_success: mock urlopen, verify POST body and headers
+
+      - test_send_failure_network: mock URLError, returns False
+
+      - test_send_failure_http: mock HTTPError 403, returns False
+
+      - test_send_timeout: mock timeout, returns False
+
+      - test_send_custom_server: verify custom server URL used
+
+      - test_send_with_tags: verify Tags header comma-separated
+
+
+      TestNotifyNewQuestion:
+
+      - test_blocking_question: priority=urgent, warning tag
+
+      - test_high_question: priority=high
+
+      - test_medium_question: priority=default
+
+      - test_long_message_truncated: text > 200 chars truncated
+
+
+      TestNtfyWatcherHook:
+
+      - test_sends_notification_when_configured: mock config, verify send
+
+      - test_skips_when_no_topic: no config = no send
+
+      - test_deduplicates_seen_questions: same question ID not re-sent
+
+
+      Use unittest.mock.patch for urllib.request and config reads.
+
+      Use tmp_path for any file-based tests.
+
+      '
+    success_criteria:
+    - All HTTP interactions mocked (no real network calls)
+    - Success and failure paths tested
+    - Deduplication logic verified
+    - Config opt-in behavior tested
+    - All tests pass
+- name: 'Phase 2: Configuration Schema'
+  execution: sequential
+  description: 'Add ntfy configuration keys to the config schema so users can
+
+    configure their ntfy topic via `agentic config set ntfy.topic <topic>`.
+
+    '
+  tasks:
+  - id: PN-004
+    name: Add ntfy keys to DEFAULT_CONFIG and ENV_VAR_MAPPING
+    description: 'Register ntfy.topic and ntfy.server in the configuration schema
+
+      so they participate in the tiered config loading.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/config.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/config.py
+    guidance: "In config.py:\n\n1. Add to DEFAULT_CONFIG dict:\n   \"ntfy\": {\n \
+      \      \"topic\": \"\",\n       \"server\": \"https://ntfy.sh\",\n       \"\
+      enabled\": True,\n   },\n\n2. Add to ENV_VAR_MAPPING dict:\n   \"AGENTIC_NTFY_TOPIC\"\
+      : \"ntfy.topic\",\n   \"AGENTIC_NTFY_SERVER\": \"ntfy.server\",\n\nThis follows\
+      \ the existing pattern for worktree and plan config keys.\nEmpty topic string\
+      \ = not configured (feature is opt-in).\nThe enabled flag allows temporarily\
+      \ disabling without removing topic.\n"
+    success_criteria:
+    - ntfy.topic in DEFAULT_CONFIG with empty default
+    - ntfy.server in DEFAULT_CONFIG with https://ntfy.sh default
+    - ntfy.enabled in DEFAULT_CONFIG with True default
+    - ENV_VAR_MAPPING includes AGENTIC_NTFY_TOPIC and AGENTIC_NTFY_SERVER
+    - Existing config keys unchanged
+  - id: PN-005
+    name: Add config validation for ntfy settings
+    description: 'Add validation so `agentic config set ntfy.topic ""` warns about
+
+      empty topic and `agentic config set ntfy.server` validates URL format.
+
+      '
+    status: completed
+    agent: build-python
+    depends_on:
+    - PN-004
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/config.py
+    - modules/AgenticGuidance/src/agenticguidance/services/config.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/config.py
+    guidance: "In ConfigWorkflow or TieredConfigLoader (whichever handles set operations),\n\
+      add a validation hook for ntfy keys:\n\n1. When setting ntfy.server: validate\
+      \ it starts with http:// or https://\n   - If invalid, raise ValueError with\
+      \ helpful message\n2. When setting ntfy.topic: warn (via logger) if empty string\n\
+      \   - Empty is valid (disables feature) but worth a log message\n3. When setting\
+      \ ntfy.enabled: validate boolean-like values\n   - Accept: true/false, yes/no,\
+      \ 1/0\n\nKeep validation minimal - just URL format and type checks.\n"
+    success_criteria:
+    - ntfy.server rejects non-URL values
+    - ntfy.topic accepts any string (including empty)
+    - ntfy.enabled validates boolean
+    - Validation errors have helpful messages
+    - Existing config set operations unaffected
+  - id: PN-006
+    name: Add unit tests for ntfy config schema
+    description: Test the new config keys and validation
+    status: completed
+    agent: test-builder
+    depends_on:
+    - PN-005
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/config.py
+    target_files:
+    - modules/AgenticGuidance/tests/test_config_ntfy.py
+    guidance: 'Create test_config_ntfy.py:
+
+
+      TestNtfyConfigDefaults:
+
+      - test_default_topic_empty: DEFAULT_CONFIG["ntfy"]["topic"] == ""
+
+      - test_default_server: DEFAULT_CONFIG["ntfy"]["server"] == "https://ntfy.sh"
+
+      - test_default_enabled: DEFAULT_CONFIG["ntfy"]["enabled"] is True
+
+
+      TestNtfyConfigEnvVars:
+
+      - test_env_var_topic: AGENTIC_NTFY_TOPIC maps to ntfy.topic
+
+      - test_env_var_server: AGENTIC_NTFY_SERVER maps to ntfy.server
+
+
+      TestNtfyConfigValidation:
+
+      - test_valid_server_url: https://ntfy.example.com accepted
+
+      - test_invalid_server_url: "not-a-url" rejected with ValueError
+
+      - test_empty_topic_accepted: empty string valid
+
+      - test_boolean_enabled: true/false accepted
+
+
+      Use monkeypatch for environment variables.
+
+      '
+    success_criteria:
+    - Default values verified
+    - Environment variable mapping tested
+    - Validation logic tested
+    - All tests pass
+- name: 'Phase 3: Interactive Wizard'
+  execution: sequential
+  description: 'Add --interactive flag to `agentic question answer` that presents
+
+    a rich TUI wizard for selecting answers, optimized for mobile SSH.
+
+    '
+  tasks:
+  - id: PN-007
+    name: Create interactive answer wizard module
+    description: 'A rich-based interactive prompt that displays the question and
+
+      lets the user select from numbered options or type a custom answer.
+
+      Designed for small screens (Termux on phone).
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/question.py
+    - modules/AgenticCLI/src/agenticcli/utils/question_formatter.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/utils/interactive_answer.py
+    guidance: "Create modules/AgenticCLI/src/agenticcli/utils/interactive_answer.py:\n\
+      \nFunction: interactive_answer_wizard(\n    question: \"Question\",\n    suggested_answers:\
+      \ list[str] | None = None,\n) -> tuple[str, str | None]:\n    \"\"\"Run interactive\
+      \ answer wizard.\n\n    Returns:\n        Tuple of (answer_text, confidence)\
+      \ where confidence is\n        \"high\" for suggested answers, None for custom\
+      \ text.\n    \"\"\"\n\nImplementation:\n1. Display question header: severity\
+      \ badge, question text, context\n   - Use rich.console.Console() for formatting\n\
+      \   - Keep output width <= 60 chars for mobile screens\n\n2. If suggested_answers\
+      \ provided, show numbered options:\n   [1] Yes, proceed\n   [2] No, stop\n \
+      \  [3] Defer - handle later\n   [C] Custom answer\n\n3. If no suggested_answers,\
+      \ show only:\n   [1] Type answer\n   [2] Defer question\n\n4. Read user input:\n\
+      \   - Number selection: return the selected answer, confidence=\"high\"\n  \
+      \ - \"C\" or \"c\": prompt for free-text input, confidence=None\n   - \"D\"\
+      \ or \"d\": return special DEFER_SENTINEL\n   - Invalid input: re-prompt (max\
+      \ 3 retries then exit)\n\n5. Confirm answer before returning:\n   \"Your answer:\
+      \ {text} - Submit? [Y/n]\"\n\nUse plain input() for prompts (works over SSH/Termux).\n\
+      Use rich only for display formatting (colors, panels).\nDefine DEFER_SENTINEL\
+      \ = \"__DEFER__\" as module constant.\n"
+    success_criteria:
+    - Question displayed with severity and context
+    - Numbered options shown when suggested_answers provided
+    - Custom text input fallback always available
+    - Defer option available
+    - Confirmation before submit
+    - Works with plain input() (SSH compatible)
+    - Display width <= 60 chars for mobile
+  - id: PN-008
+    name: Add --interactive flag to answer command
+    description: 'Wire the interactive wizard into the existing answer command
+
+      so `agentic question answer --interactive` launches the wizard.
+
+      '
+    status: completed
+    agent: build-python
+    depends_on:
+    - PN-007
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/question.py
+    - modules/AgenticCLI/src/agenticcli/utils/interactive_answer.py
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/question.py
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    guidance: "1. In cli.py, add --interactive flag to question_answer command:\n\
+      \   @question_app.command(\"answer\")\n   def question_answer(\n       question_id:\
+      \ str = ...,\n       text: Optional[str] = ...,\n       confidence: Optional[str]\
+      \ = ...,\n       interactive: bool = typer.Option(False, \"--interactive\",\
+      \ \"-i\",\n           help=\"Launch interactive answer wizard\"),\n       plan:\
+      \ Optional[str] = ...,\n   ):\n\n2. In question.py cmd_answer(), add interactive\
+      \ mode:\n   - Check args.interactive flag\n   - If True:\n     a. Load question\
+      \ via service.get_question(question_id)\n     b. Get suggested_answers from\
+      \ question YAML (if present)\n     c. Call interactive_answer_wizard(question,\
+      \ suggested_answers)\n     d. Handle DEFER_SENTINEL: call service.defer_question()\
+      \ instead\n     e. Otherwise: proceed with normal answer_question() flow\n \
+      \  - If False: existing behavior unchanged\n\n3. Interactive mode also works\
+      \ WITHOUT question_id:\n   - If --interactive and no question_id, show list\
+      \ of pending\n     questions and let user select which to answer\n   - Use numbered\
+      \ list: [1] Q-xxx: \"question text...\"\n   - After selection, launch wizard\
+      \ for that question\n\nRegister args.interactive in the Typer command and pass\
+      \ through\nthe namespace object to cmd_answer().\n"
+    success_criteria:
+    - --interactive flag registered in Typer CLI
+    - -i short form works
+    - Interactive wizard launched when flag present
+    - Without flag, existing behavior preserved
+    - Defer handling routes to defer logic
+    - Question selection works when no question_id given
+    - Works over SSH (no curses/terminal-specific features)
+  - id: PN-009
+    name: Add unit tests for interactive wizard
+    description: Test the interactive answer wizard and CLI integration
+    status: completed
+    agent: test-builder
+    depends_on:
+    - PN-008
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/utils/interactive_answer.py
+    - modules/AgenticCLI/src/agenticcli/commands/question.py
+    target_files:
+    - modules/AgenticCLI/tests/test_interactive_answer.py
+    guidance: "Create test_interactive_answer.py:\n\nTestInteractiveAnswerWizard:\n\
+      - test_select_suggested_answer: mock input(\"1\"), verify answer returned\n\
+      - test_select_custom_answer: mock input(\"C\"), then input(\"my answer\"),\n\
+      \  verify custom text returned with confidence=None\n- test_defer_question:\
+      \ mock input(\"D\"), verify DEFER_SENTINEL returned\n- test_confirm_yes: mock\
+      \ input(\"Y\"), answer submitted\n- test_confirm_no: mock input(\"n\"), re-prompts\n\
+      - test_no_suggestions: wizard works without suggested_answers\n- test_invalid_input_retries:\
+      \ mock bad input then valid input\n\nTestAnswerCommandInteractive:\n- test_interactive_flag_launches_wizard:\
+      \ mock wizard, verify called\n- test_non_interactive_unchanged: existing behavior\
+      \ preserved\n- test_interactive_no_question_id: lists pending, prompts selection\n\
+      \nMock input() with unittest.mock.patch(\"builtins.input\").\nMock rich.console.Console.print\
+      \ for display assertions.\n"
+    success_criteria:
+    - All user input paths tested via mocked input()
+    - Suggested answer selection tested
+    - Custom text input tested
+    - Defer path tested
+    - Confirmation flow tested
+    - CLI flag integration tested
+    - All tests pass
+- name: 'Phase 4: Suggested Answers'
+  execution: sequential
+  description: 'Add suggested_answers field to the Question model so agents can propose
+
+    answer choices. These appear as numbered options in the interactive wizard.
+
+    '
+  tasks:
+  - id: PN-010
+    name: Add suggested_answers field to Question model
+    description: 'Extend the Question dataclass with an optional suggested_answers
+
+      field that holds a list of answer strings.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/models/question.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/models/question.py
+    guidance: "In question.py Question dataclass:\n\n1. Add field:\n   suggested_answers:\
+      \ list[str] | None = None\n\n2. Update to_dict():\n   - Include \"suggested_answers\"\
+      : self.suggested_answers\n   - Only include key if not None (keep YAML clean)\n\
+      \n3. Update from_dict():\n   - Read suggested_answers from dict, default to\
+      \ None\n   - Validate it's a list of strings if present\n\n4. Update question_to_yaml()\
+      \ and yaml_to_question():\n   - Serialize/deserialize suggested_answers field\n\
+      \nExample YAML output:\n  id: Q-20260208-143022-a1b2\n  text: \"Should we use\
+      \ pytest or unittest?\"\n  severity: medium\n  suggested_answers:\n    - \"\
+      Use pytest (recommended)\"\n    - \"Use unittest\"\n    - \"Use both with pytest\
+      \ as primary\"\n"
+    success_criteria:
+    - suggested_answers field on Question dataclass
+    - Field is Optional, defaults to None
+    - to_dict() includes field when not None, omits when None
+    - from_dict() parses list of strings
+    - YAML round-trip preserves suggested_answers
+    - Existing questions without field still parse correctly
+  - id: PN-011
+    name: Add suggested_answers to create_question
+    description: 'Extend QuestionQueue.create_question() to accept and persist
+
+      suggested_answers when creating questions.
+
+      '
+    status: completed
+    agent: build-python
+    depends_on:
+    - PN-010
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/question.py
+    - modules/AgenticGuidance/src/agenticguidance/models/question.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/question.py
+    guidance: "In QuestionQueue.create_question():\n\n1. Add parameter: suggested_answers:\
+      \ list[str] | None = None\n\n2. Pass to Question constructor:\n   question =\
+      \ Question(\n       ...,\n       suggested_answers=suggested_answers,\n   )\n\
+      \n3. Validation:\n   - If provided, must be a non-empty list\n   - Each entry\
+      \ must be a non-empty string\n   - Max 10 suggestions (prevent abuse)\n   -\
+      \ Raise ValueError if invalid\n\nAlso update the CLI ask command to support\
+      \ --suggest flag:\nIn question.py cmd_ask():\n- Add --suggest flag (can be repeated):\
+      \ --suggest \"Option A\" --suggest \"Option B\"\n- Pass to service.create_question(suggested_answers=suggestions)\n"
+    success_criteria:
+    - create_question() accepts suggested_answers parameter
+    - Suggestions persisted in question YAML file
+    - Validation: non-empty list, non-empty strings, max 10
+    - ValueError for invalid suggestions
+    - CLI --suggest flag works with ask command
+    - Existing create_question calls without suggestions still work
+  - id: PN-012
+    name: Wire suggested answers into interactive wizard
+    description: 'Update the interactive wizard to read suggested_answers from the
+
+      question and display them as numbered options.
+
+      '
+    status: completed
+    agent: build-python
+    depends_on:
+    - PN-011
+    - PN-008
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/utils/interactive_answer.py
+    - modules/AgenticCLI/src/agenticcli/commands/question.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/question.py
+    guidance: "In cmd_answer() interactive mode:\n\n1. When loading the question for\
+      \ interactive mode:\n   question = service.get_question(question_id)\n   suggested\
+      \ = question.suggested_answers if question else None\n\n2. Pass to wizard:\n\
+      \   answer_text, confidence = interactive_answer_wizard(question, suggested)\n\
+      \nThe interactive_answer_wizard already handles suggested_answers\n(built in\
+      \ PN-007). This task just wires the data through from\nthe question YAML to\
+      \ the wizard.\n\nAlso update the question list display in interactive mode to\
+      \ show\na [S] indicator when a question has suggested answers:\n   [1] [S] Q-xxx:\
+      \ \"Should we use pytest?\" (3 suggestions)\n   [2]     Q-yyy: \"What color\
+      \ theme?\"\n"
+    success_criteria:
+    - Suggested answers loaded from question YAML
+    - Passed to interactive_answer_wizard correctly
+    - Questions with suggestions show [S] indicator in list
+    - Questions without suggestions still work
+    - End-to-end flow: ask with --suggest -> answer --interactive -> select
+  - id: PN-013
+    name: Add unit tests for suggested answers
+    description: Test suggested answers model, service, and CLI integration
+    status: completed
+    agent: test-builder
+    depends_on:
+    - PN-012
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/models/question.py
+    - modules/AgenticGuidance/src/agenticguidance/services/question.py
+    - modules/AgenticCLI/src/agenticcli/commands/question.py
+    target_files:
+    - modules/AgenticGuidance/tests/test_suggested_answers.py
+    guidance: 'Create test_suggested_answers.py:
+
+
+      TestQuestionSuggestedAnswers:
+
+      - test_field_default_none: Question().suggested_answers is None
+
+      - test_field_with_values: Question(suggested_answers=["a","b"]).suggested_answers
+
+      - test_to_dict_includes_when_set: to_dict() has key when not None
+
+      - test_to_dict_omits_when_none: to_dict() omits key when None
+
+      - test_from_dict_with_suggestions: parses list from dict
+
+      - test_from_dict_without_suggestions: None when key missing
+
+      - test_yaml_round_trip: Question with suggestions -> YAML -> Question
+
+
+      TestCreateQuestionSuggested:
+
+      - test_create_with_suggestions: suggestions persisted in YAML
+
+      - test_create_without_suggestions: backward compatible
+
+      - test_validation_empty_list: ValueError for []
+
+      - test_validation_empty_string: ValueError for [""]
+
+      - test_validation_max_10: ValueError for 11+ items
+
+
+      TestInteractiveWithSuggestions:
+
+      - test_suggested_answers_displayed: verify wizard shows options
+
+      - test_indicator_in_list: [S] shown for questions with suggestions
+
+
+      Use tmp_path for service tests.
+
+      '
+    success_criteria:
+    - Model field behavior tested
+    - Serialization round-trip tested
+    - Service validation tested
+    - CLI integration tested
+    - Backward compatibility verified
+    - All tests pass
+success_criteria:
+- ntfy notifications sent when new pending questions appear
+- Notifications include severity, question text, and priority mapping
+- ntfy configuration via agentic config set ntfy.topic
+- agentic question answer --interactive launches TUI wizard
+- Interactive wizard works over SSH from Termux
+- Suggested answers shown as numbered options in wizard
+- Custom text input always available as fallback
+- agentic question ask --suggest creates suggestions
+- All existing question tests still pass (no regressions)
+- Network errors in ntfy client never crash the watcher daemon

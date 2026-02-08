@@ -1,0 +1,154 @@
+name: UAT Fence Hardening - Test Plan
+status: pending
+affected_stories:
+- US-ORCH-035
+- US-ORCH-036
+- US-ORCH-037
+- US-ORCH-038
+- US-ORCH-039
+- US-ORCH-040
+- US-ORCH-041
+- US-ORCH-042
+phases:
+- phase_id: T1_ESCAPE_HATCH_UAT
+  name: Verify Escape Hatch Unification
+  status: pending
+  stories:
+  - US-ORCH-035
+  - US-ORCH-036
+  tasks:
+  - id: TF-001
+    name: Verify all files reference planning-standard.yml#escape_hatch_rules
+    status: completed
+    acceptance_criteria:
+    - No inline escape hatch definitions remain outside planning-standard.yml
+    - All 5 modified files reference canonical location
+  - id: TF-002
+    name: Trace process.mmd flow for build plan without stories
+    status: completed
+    acceptance_criteria:
+    - No path exists from StoryDiscovery_SG to AllPhasesPlanned for build plans without
+      stories
+  - id: TF-003
+    name: Trace process.mmd flow for guidance plan with rationale
+    status: completed
+    acceptance_criteria:
+    - Guidance plan with no_stories_rationale can proceed to AllPhasesPlanned
+- phase_id: T2_GATES_UAT
+  name: Verify Gate Hardening
+  status: pending
+  stories:
+  - US-ORCH-037
+  - US-ORCH-038
+  tasks:
+  - id: TF-004
+    name: Trace process.mmd for build plan with CheckUAT=No
+    status: completed
+    acceptance_criteria:
+    - Build plan with no UAT results in BLOCK, not AllPhasesPlanned
+    verification_notes: 'Traced process.mmd lines 288-289: CheckUAT --"No"--> CheckUATEscapeHatch
+
+      --"Yes: build/test"--> BlockNoUAT((BLOCK)). No path to AllPhasesPlanned
+
+      exists for build plans without UAT. Old bypass removed per UF-006.
+
+      '
+  - id: TF-005
+    name: 'Trace executor validation gate: no stories, no rationale, build type'
+    status: completed
+    acceptance_criteria:
+    - Executor BLOCKs (not WARNs) for build plan missing stories
+    verification_notes: 'Traced executor process.yml validation_gate step 7b (line
+      331):
+
+      "If plan type in blocked_plan_types (build, test) -> BLOCK (not WARN)".
+
+      Explicit "(not WARN)" text confirms hardened behavior per UF-007.
+
+      Cross-ref inputs.yml line 192 confirms same rule.
+
+      '
+  - id: TF-006
+    name: Trace executor with affected_stories but no UAT subgraph
+    status: completed
+    acceptance_criteria:
+    - Executor BLOCKs when UAT subgraph missing but stories present
+    verification_notes: 'Traced executor process.yml validation_gate step 8a-8b (lines
+      335-337):
+
+      "If no UAT subgraph found but affected_stories exist -> BLOCK" with
+
+      error "BLOCKED: Plan has affected_stories but no UAT subgraph in MMD."
+
+      Added by UF-007.
+
+      '
+  - id: TF-007
+    name: Trace executor with infrastructure type + valid rationale
+    status: completed
+    acceptance_criteria:
+    - Executor WARNs (allowed) for infrastructure with rationale
+    verification_notes: 'Traced executor process.yml validation_gate step 7c (line
+      332):
+
+      allowed_plan_types -> WARN (non-blocking). With valid rationale,
+
+      infrastructure plans pass validation gate (step 7 not entered).
+
+      Cross-ref process.mmd lines 290-291: CheckUATRationale --"Yes: Valid"-->
+
+      AllPhasesPlanned. Infrastructure with rationale is allowed to proceed.
+
+      '
+- phase_id: T3_CONTRACT_UAT
+  name: Verify Output Contract
+  status: pending
+  stories:
+  - US-ORCH-039
+  - US-ORCH-040
+  tasks:
+  - id: TF-008
+    name: Verify user-stories.yml schema matches stories.py cmd_update
+    status: completed
+    acceptance_criteria:
+    - test_metadata fields in schema match what cmd_update reads/writes
+    - 'test_status enum includes: untested, pass, fail, skip, regression'
+  - id: TF-009
+    name: Run agentic stories update with test data
+    status: completed
+    acceptance_criteria:
+    - agentic stories update <id> --status pass --notes 'test' --plan test_plan updates
+      YAML
+  - id: TF-010
+    name: Trace test-user-simulator/process.yml for story update step
+    status: completed
+    acceptance_criteria:
+    - Mandatory agentic stories update step exists before result reporting
+- phase_id: T4_COVERAGE_UAT
+  name: Verify Coverage Validation and CLI
+  status: pending
+  stories:
+  - US-ORCH-041
+  - US-ORCH-042
+  tasks:
+  - id: TF-011
+    name: agentic plan validate --check-fences with all fences passing
+    status: completed
+    acceptance_criteria:
+    - Exit 0 when all fences pass
+  - id: TF-012
+    name: agentic plan validate --check-fences missing UAT subgraph
+    status: completed
+    acceptance_criteria:
+    - Exit 1 with Fence 2 BLOCK message
+  - id: TF-013
+    name: pytest test_plan_validate_fences.py
+    status: completed
+    acceptance_criteria:
+    - All tests pass
+  - id: TF-014
+    name: 'End-to-end: validate against real plan folder'
+    status: completed
+    acceptance_criteria:
+    - agentic plan validate docs/plans/live/260208UF_uat_fence_hardening --check-fences
+      succeeds

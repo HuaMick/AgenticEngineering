@@ -24,3 +24,52 @@ user_stories: |
   - Orchestration agent passes user story definition in the prompt
   - Agent receives only: docs/README.md, docs/architecture/architecture.md, and user story definition
   - Agent does NOT read userstories files directly (keeps it "blind")
+
+# ==============================================
+# TEST METADATA SCHEMA
+# ==============================================
+# Defines the test-related fields that may appear on each user story.
+# These fields are managed by `agentic stories update` (commands/stories.py)
+# and read by the executor validation gate for coverage checks.
+# ==============================================
+test_metadata:
+  description: |
+    Test metadata fields that track UAT results per user story. Updated by
+    test-user-simulator via `agentic stories update` CLI command. Read by
+    orchestration-executor validation gate for story coverage validation.
+
+  fields:
+    test_status:
+      type: "string"
+      enum: ["untested", "pass", "fail", "skip", "regression"]
+      default: "untested"
+      description: |
+        Current test result for this story.
+        - untested: Story has not been tested (default)
+        - pass: All acceptance criteria validated successfully
+        - fail: One or more acceptance criteria failed
+        - skip: Story intentionally skipped with documented reason
+        - regression: Previously passing story now fails
+
+    last_tested:
+      type: "string"
+      format: "ISO 8601 timestamp"
+      nullable: true
+      default: null
+      description: "Timestamp of the most recent test execution"
+
+    test_notes:
+      type: "string"
+      nullable: true
+      default: null
+      description: "Free-text notes from the test agent about results, failures, or observations"
+
+    tested_by_plan:
+      type: "string"
+      nullable: true
+      default: null
+      description: "Plan folder name (e.g., 260208UF_uat_fence_hardening) that last tested this story"
+
+  cli_command: |
+    agentic stories update <story_id> --status <pass|fail|skip|regression> [--notes "..."] [--plan <folder>]
+  cli_reference: "modules/AgenticCLI/src/agenticcli/commands/stories.py#cmd_update"

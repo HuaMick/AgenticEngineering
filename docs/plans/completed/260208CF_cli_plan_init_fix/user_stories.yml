@@ -1,0 +1,64 @@
+# User Stories: Plan Init Folder Naming Fix
+# Covers the bug where 2-character code is incorrectly derived from path suffix
+
+stories:
+  - id: "US-PLAN-INIT-001"
+    title: "Plan Init Uses Branch Suffix for 2-Char Code"
+    category: "plan_naming"
+    priority: "critical"
+    as_a: "developer running agentic plan init"
+    i_want: "the generated folder name to use the branch suffix (e.g., PN from 260208PN)"
+    so_that: "folder names correctly identify which worktree they belong to"
+    acceptance_criteria:
+      - "agentic plan init 260208PN -d 'phone_notifications' creates folder 260208PN_phone_notifications"
+      - "For branch 260208XX, the 2-char code is XX (from branch suffix), not first 2 chars of date"
+      - "Worktree registry is consulted first if branch is registered"
+    test_inputs:
+      - branch: "260208PN"
+        description: "phone_notifications"
+        expected_folder: "260208PN_phone_notifications"
+        expected_code: "PN"
+      - branch: "260208CF"
+        description: "cli_fix"
+        expected_folder: "260208CF_cli_fix"
+        expected_code: "CF"
+    test_status: pass
+    related_commands:
+      - "agentic plan init <branch> -d <description>"
+
+  - id: "US-PLAN-INIT-002"
+    title: "Plan Init Uses Registry for Known Branches"
+    category: "plan_naming"
+    priority: "high"
+    as_a: "developer working on a registered worktree"
+    i_want: "plan init to use the abbreviation from worktrees.yml"
+    so_that: "plans use consistent abbreviations across the system"
+    acceptance_criteria:
+      - "For branch 'agentic-cli' registered with abbreviation 'AC', folder uses 'AC'"
+      - "For branch 'agenticguidance' registered with 'AG', folder uses 'AG'"
+      - "Registry lookup takes precedence over path suffix extraction"
+    test_inputs:
+      - branch: "agentic-cli"
+        description: "test_feature"
+        expected_code: "AC"  # From worktrees.yml
+      - branch: "agenticguidance"
+        description: "new_module"
+        expected_code: "AG"  # From worktrees.yml
+    test_status: pass
+    related_commands:
+      - "agentic plan init <branch> -d <description>"
+
+  - id: "US-PLAN-INIT-003"
+    title: "Plan Init Fallback for Unregistered Branches"
+    category: "plan_naming"
+    priority: "medium"
+    as_a: "developer creating a plan for a new worktree"
+    i_want: "plan init to derive 2-char code from worktree path when not in registry"
+    so_that: "unregistered branches still get reasonable folder names"
+    acceptance_criteria:
+      - "For unregistered branch, code is derived from worktree path suffix"
+      - "Path /home/code/AgenticEngineering-myfeature uses 'MY'"
+      - "Short suffixes are padded with X (e.g., single char 'a' becomes 'AX')"
+    test_status: pass
+    related_commands:
+      - "agentic plan init <branch> -d <description>"

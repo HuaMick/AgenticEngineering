@@ -73,9 +73,9 @@ For each phase:
    | Generic Type | Specific Agents |
    |--------------|-----------------|
    | builder | build-python, build-flutter |
-   | tester | test-runner, test-guidance-simulator |
+   | tester | test-runner, test-builder, test-guidance-simulator, test-user-simulator, test-service |
    | deployer | deploy-cicd, deploy-worktree |
-   | teacher | teacher-update-guidance, teacher-update-assets |
+   | teacher | teacher-update-guidance, teacher-update-assets, teacher-trace-diagnostics |
    | cleaner | planner-cleaning |
    | auditor | test-audit, test-final-output |
    | planner | orchestration-planning, planner-orchestration |
@@ -115,7 +115,13 @@ For each phase:
    agentic plan task complete <task_id> --plan <folder>
    ```
 
-5. **Handle feedback triggers** if agent fails:
+5. **Check for blocking questions** from spawned agents:
+   ```bash
+   agentic question list --plan <folder>
+   ```
+   If questions exist, answer or defer before continuing.
+
+6. **Handle feedback triggers** if agent fails:
    - `TEST_FAILURE`: Check iteration count, retry or escalate
    - `BUILD_FAILURE`: Delegate to orchestration-planning
    - `CICD_FAILURE`: Delegate to orchestration-planning
@@ -123,7 +129,7 @@ For each phase:
    - `STORY_REGRESSION`: Previously-passing story now fails — retry with regression context or escalate
    - **CLI/TOOLING ERRORS**: STOP immediately, spawn `orchestration-planning` agent to generate remediation plan, EXIT
 
-6. Repeat until all phases complete
+7. Repeat until all phases complete
 
 ### Phase 2.5: Validation Gate (MANDATORY)
 

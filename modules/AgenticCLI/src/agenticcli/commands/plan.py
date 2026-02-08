@@ -112,7 +112,9 @@ def handle(args, ctx=None):
         args: Parsed command arguments.
         ctx: Optional CLIContext for dependency injection.
     """
-    if args.plan_command == "init":
+    if args.plan_command == "new":
+        cmd_new(args, ctx)
+    elif args.plan_command == "init":
         cmd_init(args, ctx)
     elif args.plan_command == "bootstrap":
         cmd_bootstrap(args, ctx)
@@ -177,7 +179,7 @@ def handle(args, ctx=None):
             print("Usage: agentic plan stories <list|test>", file=sys.stderr)
             sys.exit(1)
     else:
-        print("Usage: agentic plan <init|scaffold|status|validate|task|archive|unarchive|list|move|phase|orchestration|stories>", file=sys.stderr)
+        print("Usage: agentic plan <new|init|scaffold|status|validate|task|archive|unarchive|list|move|phase|orchestration|stories>", file=sys.stderr)
         sys.exit(1)
 
 
@@ -301,6 +303,457 @@ def find_main_worktree(repo_root: Path) -> Path | None:
     return None
 
 
+def _slugify_objective(objective: str) -> str:
+    """Convert an objective string into a valid git branch slug.
+
+    Rules:
+    - Lowercase
+    - Replace spaces/underscores with hyphens
+    - Remove special characters except hyphens
+    - Collapse multiple hyphens
+    - Max 50 characters
+    - Prefix with "plan-"
+
+    Args:
+        objective: Human-readable objective text.
+
+    Returns:
+        Git-safe branch name like "plan-add-phone-notifications".
+    """
+    import re
+
+    slug = objective.lower()
+    slug = slug.replace(" ", "-").replace("_", "-")
+    slug = re.sub(r"[^a-z0-9-]", "", slug)
+    slug = re.sub(r"-+", "-", slug)
+    slug = slug.strip("-")
+    if len(slug) > 50:
+        slug = slug[:50].rstrip("-")
+    return f"plan-{slug}"
+
+
+def cmd_new(args, ctx=None):
+    """Create a new plan and optionally spawn a planner agent.
+
+    Automates the full planning loop:
+    1. Creates plan folder via plan init logic
+    2. [Phase 2] Spawns planner agent session (not yet implemented)
+    3. [Phase 3] Generates orchestration MMD (not yet implemented)
+    4. [Phase 4] Spawns builder agents with --execute (not yet implemented)
+
+    Args:
+        args: Parsed command arguments with:
+            - objective: Planning objective description
+            - branch: Optional git branch name
+            - description: Optional plan description suffix
+            - base: Base branch (default: main)
+            - execute: Auto-execute flag
+            - max_turns: Max turns for planner agent
+            - dangerously_skip_permissions: Skip permissions flag
+        ctx: Optional CLIContext.
+
+    Returns:
+        dict with plan_folder, branch, objective on success.
+
+    Exit codes:
+        0: Success
+        1: Failure (missing objective, init failed, etc.)
+    """
+    from types import SimpleNamespace
+
+    from agenticcli.console import (
+        is_json_output,
+        print_error,
+        print_info,
+        print_json,
+        print_success,
+        print_warning,
+    )
+
+    objective = getattr(args, "objective", None)
+    if not objective:
+        print_error("Objective is required. Usage: agentic plan new \"your objective\"")
+        sys.exit(1)
+
+    branch = getattr(args, "branch", None)
+    description = getattr(args, "description", None)
+    base = getattr(args, "base", "main")
+    execute = getattr(args, "execute", False)
+    max_turns = getattr(args, "max_turns", 25)
+    dangerously_skip_permissions = getattr(args, "dangerously_skip_permissions", False)
+
+    # Auto-generate branch name from objective if not provided
+    if not branch:
+        branch = _slugify_objective(objective)
+
+    # Use objective as description if not provided
+    if not description:
+        description = objective
+
+    if not is_json_output():
+        print_info(f"Creating plan for: {objective}")
+        print_info(f"Branch: {branch}")
+
+    # Step 1: Create plan folder by delegating to cmd_init
+    # Suppress cmd_init's own output (we produce our own summary)
+    import io
+    from contextlib import redirect_stdout
+
+    from agenticcli.console import set_json_output as _set_json
+
+    init_args = SimpleNamespace(
+        command="plan",
+        plan_command="init",
+        json=False,  # Always suppress init's JSON - we emit our own
+        debug=getattr(args, "debug", False),
+        branch=branch,
+        description=description,
+        base=base,
+        objective=objective,
+    )
+
+    was_json = is_json_output()
+    if was_json:
+        _set_json(False)
+
+    # Capture cmd_init stdout so it doesn't leak into our output
+    init_stdout = io.StringIO()
+    with redirect_stdout(init_stdout):
+        cmd_init(init_args, ctx)
+
+    if was_json:
+        _set_json(True)
+
+    # If we get here, init succeeded. Find the created plan folder.
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, check=True,
+        )
+        repo_root = Path(result.stdout.strip())
+    except subprocess.CalledProcessError:
+        print_error("Not in a git repository")
+        sys.exit(1)
+
+    main_worktree_path = find_main_worktree(repo_root) or repo_root
+    plans_live = main_worktree_path / "docs" / "plans" / "live"
+
+    # Find the folder we just created (most recently modified matching description)
+    from agenticcli.utils.naming import sanitize_description
+    sanitized = sanitize_description(description)
+    matching = [p for p in plans_live.iterdir() if p.is_dir() and sanitized in p.name]
+    plan_folder = matching[0] if matching else None
+
+    if not plan_folder:
+        print_error("Plan folder was not created. Check plan init output above.")
+        sys.exit(1)
+
+    # Step 2: Spawn planner agent
+    from agenticcli.console import console, get_status
+    from agenticcli.utils.planner_prompt import build_planner_prompt
+
+    if not is_json_output():
+        print_info("[Step 2] Spawning planner agent...")
+
+    # Build planner prompt
+    planner_prompt = build_planner_prompt(objective, plan_folder)
+
+    # Build claude command
+    claude_cmd = ["claude", "--print"]
+    if dangerously_skip_permissions:
+        claude_cmd.append("--dangerously-skip-permissions")
+    if max_turns:
+        claude_cmd.extend(["--max-turns", str(max_turns)])
+    claude_cmd.append(planner_prompt)
+
+    # Spawn planner in foreground
+    try:
+        if not is_json_output():
+            status_message = "Running planner agent..."
+            with get_status(status_message):
+                result = subprocess.run(
+                    claude_cmd,
+                    cwd=plan_folder,
+                    capture_output=True,
+                    text=True,
+                )
+                planner_stdout = result.stdout
+                planner_stderr = result.stderr
+                planner_exitcode = result.returncode
+        else:
+            # In JSON mode, run without status indicator
+            result = subprocess.run(
+                claude_cmd,
+                cwd=plan_folder,
+                capture_output=True,
+                text=True,
+            )
+            planner_stdout = result.stdout
+            planner_stderr = result.stderr
+            planner_exitcode = result.returncode
+
+        # Validate that plan_build.yml was created
+        plan_build_file = plan_folder / "plan_build.yml"
+        if not plan_build_file.exists() or plan_build_file.stat().st_size == 0:
+            if not is_json_output():
+                print_error("Planner did not create plan_build.yml")
+                if planner_stdout:
+                    console.print("[yellow]Planner output:[/yellow]")
+                    console.print(planner_stdout)
+                if planner_stderr:
+                    console.print("[red]Planner errors:[/red]")
+                    console.print(planner_stderr)
+            sys.exit(1)
+
+        if not is_json_output():
+            if planner_exitcode == 0:
+                print_success("Planner agent completed")
+            else:
+                print_error(f"Planner agent failed with exit code {planner_exitcode}")
+                if planner_stderr:
+                    console.print(f"[red]{planner_stderr}[/red]")
+
+    except FileNotFoundError:
+        print_error("Claude CLI not found. Make sure 'claude' is installed and in PATH.")
+        sys.exit(1)
+    except Exception as e:
+        print_error(f"Failed to spawn planner: {e}")
+        sys.exit(1)
+
+    # Step 3: Generate orchestration MMD (Phase 3)
+    if not is_json_output():
+        print_info("[Step 3] Generating orchestration MMD...")
+
+    # Generate orchestration by calling cmd_orchestration_generate
+    orch_args = SimpleNamespace(
+        plan=str(plan_folder),
+        output=None,  # Use default naming
+        force=True,  # Overwrite if exists
+    )
+
+    orchestration_success = False
+    try:
+        # Suppress orchestration output - we produce our own summary
+        orch_stdout = io.StringIO()
+        with redirect_stdout(orch_stdout):
+            cmd_orchestration_generate(orch_args, ctx)
+        orchestration_success = True
+        if not is_json_output():
+            print_success("Orchestration MMD generated")
+    except SystemExit as e:
+        if e.code != 0:
+            if not is_json_output():
+                print_warning("Orchestration generation failed - you can generate it manually later")
+                print_warning("  Run: agentic plan orchestration generate --plan " + str(plan_folder))
+        else:
+            orchestration_success = True
+    except Exception as e:
+        if not is_json_output():
+            print_warning(f"Orchestration generation failed: {e}")
+            print_warning("  You can generate it manually later with:")
+            print_warning("  agentic plan orchestration generate --plan " + str(plan_folder))
+
+    # Step 3b: Validate orchestration MMD (Phase 3)
+    validation_success = False
+    if orchestration_success:
+        if not is_json_output():
+            print_info("[Step 3b] Validating orchestration MMD...")
+
+        validate_args = SimpleNamespace(
+            plan=str(plan_folder),
+            strict=False,
+        )
+
+        try:
+            # Suppress validation output
+            val_stdout = io.StringIO()
+            with redirect_stdout(val_stdout):
+                cmd_orchestration_validate(validate_args, ctx)
+            validation_success = True
+            if not is_json_output():
+                print_success("Orchestration validation passed")
+        except SystemExit as e:
+            if e.code == 0:
+                validation_success = True
+            else:
+                if not is_json_output():
+                    print_warning("Orchestration validation found issues")
+                    if execute:
+                        print_error("Cannot execute with invalid orchestration. Fix issues and retry with --execute.")
+                        execute = False  # Block execution
+        except Exception as e:
+            if not is_json_output():
+                print_warning(f"Orchestration validation failed: {e}")
+                if execute:
+                    print_error("Cannot execute without valid orchestration.")
+                    execute = False
+
+    # If --execute was NOT passed, stop here
+    if not execute:
+        # Skip to result reporting
+        pass
+    else:
+        # Step 4: Spawn builder agents (Phase 4)
+        if not is_json_output():
+            print_info("[Step 4] Spawning builder agents...")
+
+        # Read plan_build.yml to get phases and tasks
+        plan_build_file = plan_folder / "plan_build.yml"
+        if not plan_build_file.exists():
+            if not is_json_output():
+                print_error("plan_build.yml not found - cannot spawn builders")
+        else:
+            try:
+                plan_data = yaml.safe_load(plan_build_file.read_text())
+                phases = _get_phases_from_content(plan_data)
+
+                total_tasks = 0
+                spawned_sessions = []
+
+                for phase_idx, phase in enumerate(phases, 1):
+                    phase_name = phase.get("name", f"Phase {phase_idx}")
+                    execution_mode = phase.get("execution", "sequential")
+                    tasks = phase.get("tasks", [])
+
+                    if not tasks:
+                        continue
+
+                    if not is_json_output():
+                        print_info(f"  Phase {phase_idx}: {phase_name} ({len(tasks)} tasks, {execution_mode})")
+
+                    # Spawn sessions for each task in this phase
+                    phase_sessions = []
+                    for task in tasks:
+                        task_id = task.get("id", "")
+                        if not task_id:
+                            continue
+
+                        # Check if task is already completed
+                        task_status = task.get("status", "pending")
+                        if task_status == "completed":
+                            if not is_json_output():
+                                print_info(f"    Task {task_id}: already completed (skipped)")
+                            continue
+
+                        # Build the spawn command: agentic session spawn --task <id> --plan <folder>
+                        spawn_cmd = ["agentic", "session", "spawn", "--task", task_id, "--plan", str(plan_folder)]
+                        if dangerously_skip_permissions:
+                            spawn_cmd.append("--dangerously-skip-permissions")
+
+                        try:
+                            # Spawn in background
+                            proc = subprocess.Popen(
+                                spawn_cmd,
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE,
+                                text=True,
+                            )
+                            phase_sessions.append({
+                                "task_id": task_id,
+                                "process": proc,
+                                "command": " ".join(spawn_cmd),
+                            })
+                            total_tasks += 1
+                            if not is_json_output():
+                                print_info(f"    Task {task_id}: spawned (PID {proc.pid})")
+                        except Exception as e:
+                            if not is_json_output():
+                                print_error(f"    Task {task_id}: failed to spawn - {e}")
+
+                    spawned_sessions.extend(phase_sessions)
+
+                    # If phase is sequential, wait for all tasks to complete before next phase
+                    if execution_mode == "sequential" and phase_sessions:
+                        if not is_json_output():
+                            print_info(f"  Waiting for phase {phase_idx} to complete...")
+
+                        for session in phase_sessions:
+                            try:
+                                session["process"].wait()
+                                if not is_json_output():
+                                    exit_code = session["process"].returncode
+                                    if exit_code == 0:
+                                        print_success(f"    Task {session['task_id']}: completed")
+                                    else:
+                                        print_error(f"    Task {session['task_id']}: failed (exit code {exit_code})")
+                            except Exception as e:
+                                if not is_json_output():
+                                    print_error(f"    Task {session['task_id']}: error waiting - {e}")
+
+                if not is_json_output():
+                    if total_tasks > 0:
+                        print_success(f"Spawned {total_tasks} builder sessions")
+                    else:
+                        print_warning("No tasks to spawn (all completed or no pending tasks)")
+
+                # Step 5: Check completion and auto-archive (Phase 4)
+                if not is_json_output():
+                    print_info("[Step 5] Checking plan completion status...")
+
+                if is_plan_fully_completed(plan_folder):
+                    if not is_json_output():
+                        print_success("All tasks completed!")
+                        print_info("Auto-archiving plan...")
+
+                    # Archive the plan
+                    archive_args = SimpleNamespace(path=str(plan_folder))
+                    try:
+                        # Call cmd_archive - it handles the move
+                        cmd_archive(archive_args)
+                        if not is_json_output():
+                            print_success("Plan archived to docs/plans/completed/")
+                    except Exception as e:
+                        if not is_json_output():
+                            print_warning(f"Auto-archive failed: {e}")
+                            print_warning("  You can archive manually with:")
+                            print_warning(f"  agentic plan archive {plan_folder}")
+                else:
+                    if not is_json_output():
+                        # Count remaining tasks
+                        remaining = []
+                        for phase in phases:
+                            for task in phase.get("tasks", []):
+                                if task.get("status", "pending") != "completed":
+                                    remaining.append(task.get("id", "unknown"))
+
+                        print_info(f"Plan incomplete: {len(remaining)} tasks remaining")
+                        if remaining[:3]:  # Show first 3
+                            print_info("  Remaining tasks: " + ", ".join(remaining[:3]))
+                            if len(remaining) > 3:
+                                print_info(f"    ... and {len(remaining) - 3} more")
+
+            except yaml.YAMLError as e:
+                if not is_json_output():
+                    print_error(f"Failed to parse plan_build.yml: {e}")
+            except Exception as e:
+                if not is_json_output():
+                    print_error(f"Failed to spawn builders: {e}")
+
+    # Return result
+    result_data = {
+        "plan_folder": str(plan_folder),
+        "branch": branch,
+        "objective": objective,
+        "execute": execute,
+        "max_turns": max_turns,
+    }
+
+    if is_json_output():
+        print_json(result_data)
+    else:
+        print_success(f"Plan created: {plan_folder.name}")
+        print(f"  Plan folder: {plan_folder}")
+        print(f"  Branch: {branch}")
+        print(f"  Objective: {objective}")
+        if not execute:
+            print()
+            print("  Next steps:")
+            print(f"    1. Review plan: agentic plan status {plan_folder}")
+            print(f"    2. Execute: agentic plan new \"{objective}\" --execute")
+
+    return result_data
+
+
 def cmd_init(args, ctx=None):
     """Initialize worktree and plan folder with proper naming convention.
 
@@ -413,7 +866,7 @@ def cmd_init(args, ctx=None):
             sys.exit(1)
 
     # Generate plan folder name using new naming algorithm
-    plan_folder_name = generate_plan_folder_name(worktree_path, description)
+    plan_folder_name = generate_plan_folder_name(worktree_path, description, branch=branch)
 
     # Validate the generated name
     is_valid, error = validate_plan_folder_name(plan_folder_name)
@@ -808,6 +1261,143 @@ def _parse_mmd_tasks(mmd_content: str) -> list[str]:
     return sorted(tasks)
 
 
+def _check_fences(plan_path: Path, yaml_files: list, mmd_files: list) -> dict:
+    """Run UAT fence validation checks on a plan folder.
+
+    Three fences are checked:
+    1. Story Discovery: plan has affected_stories or no_stories_rationale
+    2. UAT Existence: MMD has UAT subgraph
+    3. Story Coverage: all affected stories have test_status != untested
+
+    Args:
+        plan_path: Path to the plan folder.
+        yaml_files: List of plan_*.yml files found.
+        mmd_files: List of orchestration_*.mmd files found.
+
+    Returns:
+        Dict of fence name -> {status, message}.
+    """
+    import re
+
+    results = {}
+
+    # Collect metadata from all plan YAML files
+    affected_stories = []
+    no_stories_rationale = None
+    for yf in yaml_files:
+        try:
+            content = yaml.safe_load(yf.read_text())
+        except yaml.YAMLError:
+            continue
+        if not content or not isinstance(content, dict):
+            continue
+        stories = content.get("affected_stories", [])
+        if stories:
+            affected_stories.extend(stories)
+        rationale = content.get("no_stories_rationale")
+        if rationale:
+            no_stories_rationale = rationale
+
+    # Also check user_stories.yml in plan folder
+    user_stories_file = plan_path / "user_stories.yml"
+    if user_stories_file.exists():
+        try:
+            us_content = yaml.safe_load(user_stories_file.read_text())
+            if us_content and isinstance(us_content, dict):
+                stories = us_content.get("affected_stories", [])
+                if stories:
+                    affected_stories.extend(stories)
+        except yaml.YAMLError:
+            pass
+
+    # Deduplicate
+    affected_stories = sorted(set(affected_stories))
+
+    # --- Fence 1: Story Discovery ---
+    if affected_stories:
+        results["Fence 1 (Story Discovery)"] = {
+            "status": "PASS",
+            "message": f"{len(affected_stories)} affected stories found",
+        }
+    elif no_stories_rationale:
+        results["Fence 1 (Story Discovery)"] = {
+            "status": "WARN",
+            "message": f"No stories but rationale provided: {no_stories_rationale[:80]}",
+        }
+    else:
+        results["Fence 1 (Story Discovery)"] = {
+            "status": "FAIL",
+            "message": "No affected_stories and no no_stories_rationale in plan metadata",
+        }
+
+    # --- Fence 2: UAT Existence ---
+    has_uat_subgraph = False
+    if mmd_files:
+        try:
+            mmd_content = mmd_files[0].read_text()
+            # Check for UAT subgraph or UAT-related nodes
+            if re.search(r'(?i)(UAT|User.?Acceptance)', mmd_content):
+                has_uat_subgraph = True
+        except IOError:
+            pass
+
+    if has_uat_subgraph:
+        results["Fence 2 (UAT Existence)"] = {
+            "status": "PASS",
+            "message": "UAT subgraph found in MMD",
+        }
+    elif not mmd_files:
+        results["Fence 2 (UAT Existence)"] = {
+            "status": "WARN",
+            "message": "No MMD file found (cannot check for UAT subgraph)",
+        }
+    else:
+        results["Fence 2 (UAT Existence)"] = {
+            "status": "FAIL",
+            "message": "No UAT subgraph found in MMD",
+        }
+
+    # --- Fence 3: Story Coverage ---
+    if not affected_stories:
+        results["Fence 3 (Story Coverage)"] = {
+            "status": "WARN",
+            "message": "No affected stories to check coverage for",
+        }
+    else:
+        from agenticcli.commands.stories import _collect_all_stories
+
+        all_stories = _collect_all_stories()
+        story_map = {s["id"]: s for s in all_stories}
+
+        untested = []
+        tested = 0
+        for sid in affected_stories:
+            story = story_map.get(sid)
+            if story:
+                ts = story.get("test_status", "untested")
+                if ts == "untested":
+                    untested.append(sid)
+                else:
+                    tested += 1
+            else:
+                untested.append(sid)
+
+        total = len(affected_stories)
+        if untested:
+            pct = (tested / total) * 100 if total > 0 else 0
+            results["Fence 3 (Story Coverage)"] = {
+                "status": "WARN",
+                "message": f"Coverage: {tested}/{total} ({pct:.0f}%). Untested: {', '.join(untested)}",
+            }
+        else:
+            results["Fence 3 (Story Coverage)"] = {
+                "status": "PASS",
+                "message": f"All {total} stories tested",
+            }
+
+    return results
+
+
 def cmd_validate(args):
     """Validate plan folder structure and YAML.
 
@@ -940,20 +1530,34 @@ def cmd_validate(args):
             orchestration_result["details"].append(f"Cannot read MMD: {e}")
             errors.append(f"Cannot read {mmd_file.name}: {e}")
 
+    # --check-fences: validate UAT fence compliance
+    check_fences = getattr(args, "check_fences", False)
+    fence_results = {}
+    if check_fences:
+        fence_results = _check_fences(plan_path, yaml_files, mmd_files)
+        for fence_name, result in fence_results.items():
+            if result["status"] == "FAIL":
+                errors.append(f"Fence {fence_name}: {result['message']}")
+            elif result["status"] == "WARN":
+                warnings.append(f"Fence {fence_name}: {result['message']}")
+
     # Determine overall validation result
     has_errors = len(errors) > 0
     overall_status = "FAIL" if has_errors else ("WARN" if warnings else "PASS")
 
     # Report results
     if is_json_output():
-        print_json({
+        result_data = {
             "plan": plan_path.name,
             "status": overall_status,
             "orchestration": orchestration_result,
             "errors": errors,
             "warnings": warnings,
             "stub_files": stub_files,
-        })
+        }
+        if check_fences:
+            result_data["fences"] = fence_results
+        print_json(result_data)
     else:
         print(f"Validating: {plan_path}")
         print("=" * 60)
@@ -962,6 +1566,13 @@ def cmd_validate(args):
         print(f"\nOrchestration: {orchestration_result['status']}")
         for detail in orchestration_result["details"]:
             print(f"  - {detail}")
+
+        # Fence validation section
+        if check_fences:
+            print("\nFence Checks:")
+            for fence_name, result in fence_results.items():
+                status_marker = "PASS" if result["status"] == "PASS" else result["status"]
+                print(f"  {fence_name}: {status_marker} - {result['message']}")
 
         if errors:
             print("\nErrors:")

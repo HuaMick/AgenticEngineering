@@ -1,0 +1,531 @@
+name: planning-loop-cli
+worktree_path: /home/code/AgenticEngineering
+branch: main
+status: active
+priority: high
+context: 'This plan implements `agentic plan new`, a CLI command that automates the
+  full
+
+  planning loop: creates a plan folder via `agentic plan init`, spawns a planner
+
+  agent session, generates orchestration MMD, and optionally spawns builder agents
+
+  to execute the plan. The command replaces manual multi-step planning workflows
+
+  with a single invocation.
+
+
+  Existing building blocks:
+
+  - `agentic plan init` creates worktree + plan folder (needs 260208CF fix first)
+
+  - `agentic session spawn --role/--task/--plan` spawns agent sessions
+
+  - `agentic plan orchestration generate` creates MMD from plan YAML
+
+  - `agentic plan status` shows plan progress
+
+  - `agentic plan archive` handles plan completion
+
+  '
+objective: "Single command to automate the full planning loop:\n  agentic plan new\
+  \ \"Add phone notifications\" --execute\nMust create folder, spawn planner, generate\
+  \ orchestration, optionally execute.\n"
+dependencies:
+- plan_id: 260208CF
+  description: Plan init fix - correct 2-char code extraction from branch name
+  status: in_progress
+  blocking: true
+  rationale: plan new calls plan init internally; incorrect folder naming breaks the
+    entire flow
+affected_stories:
+- US-ORCH-001
+- US-ORCH-002
+- US-ORCH-005
+- US-ORCH-006
+- US-CLI-010
+impacted_artifacts:
+- artifact_type: cli_command
+  artifact_identifier: agentic plan new
+  impact_type: new
+  description: New top-level plan subcommand for automated planning loop
+  breaking_change: false
+- artifact_type: cli_module
+  artifact_identifier: agenticcli.commands.plan:cmd_new
+  impact_type: new
+  description: New command handler function for plan new
+  breaking_change: false
+- artifact_type: template
+  artifact_identifier: agenticcli.templates.planner_prompt
+  impact_type: new
+  description: Prompt template for spawned planner agent sessions
+  breaking_change: false
+open_questions:
+- id: QUESTION-001
+  question: Should --execute wait for planner completion before spawning builders,
+    or start them in background?
+  severity: high
+  status: ANSWERED
+  answer: Wait for planner. The planner must produce plan_build.yml before builders
+    can read tasks. Use foreground planner + background builders.
+- id: QUESTION-002
+  question: Should the human approval gate be implicit (--execute skips it) or explicit
+    (--approve required)?
+  severity: medium
+  status: ANSWERED
+  answer: 'Default: planner runs, user reviews, then runs --execute separately. With
+    --execute flag: auto-approve (user opted in via flag).'
+loop_structures:
+- id: loop_planner_review
+  type: review-loop
+  applies_to_phase: 'Phase 2: Planner Agent Prompt Template'
+  trigger: After planner prompt template is implemented
+  exit_criteria:
+    success: Planner agent produces valid plan_build.yml with phases, tasks, and success_criteria
+    max_iterations: 3
+    escalation: Escalate to user if planner output repeatedly fails validation
+- id: loop_integration_test
+  type: test-fix-loop
+  applies_to_phase: 'Phase 5: Integration Testing and UAT'
+  trigger: After all implementation phases complete
+  exit_criteria:
+    success: 'Full end-to-end flow succeeds: new -> plan -> orchestrate -> execute'
+    max_iterations: 5
+    escalation: Escalate to user with failing test details
+phases:
+- name: 'Phase 1: Command Scaffold'
+  execution: sequential
+  description: 'Register `agentic plan new` subcommand with argparse and create the
+
+    cmd_new handler skeleton. Wire up argument parsing for objective,
+
+    --execute, --branch, --description, and --base flags.
+
+    '
+  tasks:
+  - id: PL_001
+    name: Register plan new subcommand in CLI
+    description: 'Add `new` subparser under the `plan` command group in cli.py.
+
+      Arguments:
+
+      - objective (positional): Description of what to plan
+
+      - --branch / -b: Git branch name (optional, auto-generated from objective if
+      omitted)
+
+      - --description / -d: Plan folder description suffix
+
+      - --base: Base branch for worktree (default: main)
+
+      - --execute / -x: Auto-execute after planning completes
+
+      - --max-turns: Max turns for planner agent (default: 25)
+
+      - --dangerously-skip-permissions: Pass through to spawned sessions
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    guidance: "1. Find the plan subparsers section in cli.py\n2. Add new_parser =\
+      \ plan_sub.add_parser(\"new\", help=\"Create plan and spawn planner agent\"\
+      )\n3. Add positional arg: \"objective\" (nargs=\"?\", help=\"Planning objective\
+      \ description\")\n4. Add optional args: --branch, --description, --base, --execute\
+      \ (store_true),\n   --max-turns (type=int, default=25), --dangerously-skip-permissions\
+      \ (store_true)\n5. Add \"new\" case in the handle() router in plan.py\n"
+    success_criteria:
+    - agentic plan new --help shows all arguments
+    - agentic plan new (no args) shows usage error
+    - plan.py handle() routes 'new' to cmd_new
+  - id: PL_002
+    name: Create cmd_new handler skeleton
+    description: 'Implement cmd_new(args, ctx) in plan.py. In Phase 1, only implement
+
+      the folder creation step by delegating to the existing cmd_init logic.
+
+      The planner spawn, orchestration, and execution steps will be stubs
+
+      that print "not yet implemented" messages.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    guidance: "1. Create cmd_new(args, ctx=None) function\n2. Extract objective from\
+      \ args\n3. Auto-generate branch name from objective if --branch not provided:\n\
+      \   slugify objective -> \"plan-<slug>\" (e.g., \"plan-add-phone-notifications\"\
+      )\n4. Call plan init logic: reuse _do_plan_init() or call cmd_init with\n  \
+      \ constructed args (prefer extracting shared logic into a helper)\n5. After\
+      \ folder creation, print the plan folder path\n6. Add placeholder steps for:\
+      \ spawn planner, generate orchestration, spawn builders\n7. Return result dict\
+      \ with plan_folder, branch, objective\n"
+    success_criteria:
+    - cmd_new creates a plan folder via plan init logic
+    - Auto-generated branch name is a valid git branch slug
+    - Function returns plan_folder path for downstream phases
+  - id: PL_003
+    name: Add unit tests for plan new scaffold
+    description: 'Unit tests for the cmd_new function covering argument parsing,
+
+      branch name generation, and folder creation delegation.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/tests/test_plan.py
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    target_files:
+    - modules/AgenticCLI/tests/test_plan_new.py
+    guidance: '1. Test branch name auto-generation from objective string
+
+      2. Test that cmd_new creates plan folder at expected path
+
+      3. Test --branch overrides auto-generation
+
+      4. Test missing objective shows error
+
+      5. Mock subprocess calls for git operations
+
+      6. Use tmp_path for plan folder creation
+
+      '
+    success_criteria:
+    - All tests pass with pytest
+    - Branch name generation tested with various inputs
+    - 'Error cases covered: missing objective, existing folder'
+- name: 'Phase 2: Planner Agent Prompt Template'
+  execution: sequential
+  description: 'Create a prompt template that cmd_new uses to spawn a planner agent
+    session.
+
+    The planner agent receives the objective, plan folder path, and relevant
+
+    context, then writes README.md and plan_build.yml into the plan folder.
+
+    '
+  tasks:
+  - id: PL_004
+    name: Create planner prompt template
+    description: 'Create a prompt template module that generates structured prompts
+      for
+
+      the planner agent. The prompt must include: objective, plan folder path,
+
+      available user stories, planning standard rules, and expected output format.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    - modules/AgenticGuidance/assets/guidelines/planning-standard.yml
+    - modules/AgenticGuidance/agents/planner/planner-build/process.yml
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/utils/planner_prompt.py
+    guidance: "1. Create build_planner_prompt(objective, plan_folder, context=None)\
+      \ function\n2. Template must instruct the planner to:\n   a. Run `agentic stories\
+      \ find` to discover affected stories\n   b. Write README.md with objective,\
+      \ phases overview, dependencies\n   c. Write plan_build.yml following planning-standard\
+      \ format\n   d. Include UAT phase (mandatory per planning-standard.yml)\n  \
+      \ e. Define success_criteria at plan level\n3. Include the plan folder path\
+      \ so planner knows where to write\n4. Include planning-standard fences (story-first,\
+      \ UAT mandatory)\n5. Template uses Python f-strings or str.format, not Jinja\n"
+    success_criteria:
+    - build_planner_prompt returns a complete prompt string
+    - Prompt includes objective, plan_folder, story discovery instructions
+    - Prompt references UAT mandatory fence
+  - id: PL_005
+    name: Wire planner spawn into cmd_new
+    description: 'Update cmd_new to spawn a planner agent session using the prompt
+      template
+
+      after folder creation. Use existing session spawn infrastructure.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    - modules/AgenticCLI/src/agenticcli/utils/planner_prompt.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    guidance: "1. After plan folder creation in cmd_new, build the planner prompt\n\
+      2. Spawn a foreground claude session using subprocess.Popen\n   (reuse patterns\
+      \ from cmd_spawn in session.py)\n3. Stream output to console with progress indicator\n\
+      4. On completion, validate that plan_build.yml was written\n5. If plan_build.yml\
+      \ missing or empty, report error\n6. Pass --max-turns and --dangerously-skip-permissions\
+      \ through\n"
+    success_criteria:
+    - cmd_new spawns a claude session with the planner prompt
+    - Planner output is streamed to the terminal
+    - plan_build.yml existence is validated after planner completes
+  - id: PL_006
+    name: Add tests for planner prompt and spawn
+    description: 'Tests for the planner prompt template and the spawn integration.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/tests/test_plan_new.py
+    - modules/AgenticCLI/src/agenticcli/utils/planner_prompt.py
+    target_files:
+    - modules/AgenticCLI/tests/test_plan_new.py
+    guidance: '1. Test build_planner_prompt output contains expected sections
+
+      2. Test prompt includes UAT fence reference
+
+      3. Test prompt includes story discovery instruction
+
+      4. Mock subprocess to test spawn flow (planner not actually invoked)
+
+      5. Test validation: plan_build.yml missing triggers error
+
+      '
+    success_criteria:
+    - Prompt template tests pass
+    - Spawn integration tests pass with mocked subprocess
+- name: 'Phase 3: Orchestration Auto-Generation'
+  execution: sequential
+  description: 'After the planner writes plan_build.yml, cmd_new calls the existing
+
+    orchestration generate command to produce the MMD file. Then validates it.
+
+    '
+  tasks:
+  - id: PL_007
+    name: Integrate orchestration generate into cmd_new flow
+    description: 'After planner session completes and plan_build.yml is validated,
+
+      automatically invoke orchestration generation. Reuse existing
+
+      cmd_orchestration_generate logic.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    guidance: '1. After planner spawn completes, call orchestration generation
+
+      2. Construct args-like object with plan path and force=True
+
+      3. Call cmd_orchestration_generate or extract its core logic into a helper
+
+      4. If generation fails, warn but don''t abort (user can fix and re-run)
+
+      5. If --execute was NOT passed, stop here and print summary
+
+      '
+    success_criteria:
+    - orchestration_*.mmd is generated after planner completes
+    - Generation failure produces warning, not fatal error
+    - Without --execute, cmd_new stops after orchestration generation
+  - id: PL_008
+    name: Add orchestration validation step
+    description: 'After generating the MMD, run validation to catch structural issues
+
+      before execution begins.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    guidance: '1. After generate, call cmd_orchestration_validate or its core logic
+
+      2. If validation passes, print success
+
+      3. If validation fails, print warnings and block --execute from proceeding
+
+      4. User must fix issues and re-run with --execute
+
+      '
+    success_criteria:
+    - Validation runs automatically after generation
+    - Validation failure blocks --execute
+- name: 'Phase 4: Builder Agent Spawning'
+  execution: sequential
+  description: 'When --execute is passed, spawn builder agent sessions for each phase/task
+
+    in the generated plan. Uses existing session spawn --task infrastructure.
+
+    '
+  tasks:
+  - id: PL_009
+    name: Implement builder spawning loop
+    description: 'When --execute flag is set and orchestration is valid, iterate through
+
+      plan phases and spawn builder agents for each task. Respect phase
+
+      ordering (sequential phases run one at a time).
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    guidance: "1. Read plan_build.yml to get phases and tasks\n2. For each phase (in\
+      \ order):\n   a. For each task in the phase:\n      - Spawn `agentic session\
+      \ spawn --task <id> --plan <folder>` in background\n      - Record session ID\
+      \ for monitoring\n   b. If phase.execution == \"sequential\", wait for all tasks\
+      \ before next phase\n3. Print progress summary after each phase\n4. Pass --dangerously-skip-permissions\
+      \ through to spawned sessions\n5. Use subprocess.Popen for background spawning\n"
+    success_criteria:
+    - --execute spawns builder sessions for each task
+    - Sequential phases wait for completion before proceeding
+    - Session IDs are recorded for monitoring
+  - id: PL_010
+    name: Add completion monitoring and auto-archive
+    description: 'After all builder sessions complete, check plan status and auto-archive
+
+      if all tasks are completed. Print final summary.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    guidance: '1. After all builders finish, call is_plan_fully_completed()
+
+      2. If complete, auto-archive via cmd_archive logic
+
+      3. Print final summary: tasks completed, phases finished, archive status
+
+      4. If not complete, print remaining tasks and suggest next steps
+
+      '
+    success_criteria:
+    - Auto-archive triggers when all tasks complete
+    - Summary shows completion status
+    - Incomplete plans show remaining work
+  - id: PL_011
+    name: Add tests for builder spawning and completion
+    description: 'Tests for the --execute flow including builder spawning, phase ordering,
+
+      and completion monitoring.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/tests/test_plan_new.py
+    target_files:
+    - modules/AgenticCLI/tests/test_plan_new.py
+    guidance: '1. Test --execute spawns sessions for each task (mock subprocess)
+
+      2. Test sequential phase ordering is respected
+
+      3. Test auto-archive on full completion
+
+      4. Test partial completion prints remaining tasks
+
+      5. Test --execute blocked when orchestration validation fails
+
+      '
+    success_criteria:
+    - Builder spawn tests pass with mocked subprocess
+    - Phase ordering logic tested
+    - Auto-archive tested
+- name: 'Phase 5: Integration Testing and UAT'
+  execution: sequential
+  description: 'End-to-end integration tests and user acceptance testing to validate
+    the
+
+    complete planning loop works as described in the user stories.
+
+    '
+  tasks:
+  - id: PL_012
+    name: 'Integration test: full plan new flow'
+    description: 'End-to-end test that runs `agentic plan new` with a mock planner
+
+      and verifies the entire flow: folder creation -> planner spawn ->
+
+      orchestration generation -> summary output.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/tests/test_plan_new.py
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    target_files:
+    - modules/AgenticCLI/tests/test_plan_new.py
+    guidance: '1. Create a mock planner that writes a valid plan_build.yml
+
+      2. Patch subprocess to use the mock planner
+
+      3. Run cmd_new with an objective
+
+      4. Assert: plan folder created, plan_build.yml exists, orchestration_*.mmd generated
+
+      5. Test with --execute: assert builder sessions are spawned
+
+      6. Test without --execute: assert flow stops after orchestration
+
+      '
+    success_criteria:
+    - Full flow test passes end-to-end with mocked subprocess
+    - Both --execute and non-execute paths tested
+  - id: PL_013
+    name: 'UAT: User story validation'
+    description: 'Validate against affected user stories using test-user-simulator.
+
+      Stories: US-ORCH-001, US-ORCH-002, US-ORCH-005, US-CLI-010.
+
+      '
+    status: completed
+    agent: test-user-simulator
+    inputs:
+    - docs/userstories/Orchestration/01_planning_workflow.yml
+    - docs/userstories/AgenticCLI/02_plan_management.yml
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    target_files: []
+    guidance: "Validate the following user journeys:\n\n1. US-ORCH-001 (Initiate Implementation\
+      \ Planning):\n   - Run: agentic plan new \"Test feature\" --branch test-uat\n\
+      \   - Verify: Plan folder created in docs/plans/live/ with YYMMDDXX naming\n\
+      \   - Verify: Planner agent is spawned with the objective\n\n2. US-ORCH-002\
+      \ (Main-First Planning):\n   - Verify: Plan folder is in main worktree's docs/plans/live/\n\
+      \   - Verify: Execution worktree is created for the branch\n\n3. US-ORCH-005\
+      \ (Generate Orchestration MMD):\n   - Verify: orchestration_*.mmd file is created\
+      \ after planner\n   - Verify: MMD contains phase nodes and agent routing\n\n\
+      4. US-CLI-010 (Initialize Plan with Worktree):\n   - Verify: Worktree and plan\
+      \ folder created atomically\n   - Verify: --description flag customizes folder\
+      \ suffix\n\nUAT strategy: test-user-simulator\nAcceptance criteria are defined\
+      \ in the user story files above.\n"
+    success_criteria:
+    - US-ORCH-001 acceptance criteria pass
+    - US-ORCH-002 acceptance criteria pass
+    - US-ORCH-005 acceptance criteria pass
+    - US-CLI-010 acceptance criteria pass
+    - All user journeys complete without errors
+success_criteria:
+- '`agentic plan new ''objective''` creates a populated plan folder with README.md
+  and plan_build.yml'
+- Planner agent is spawned and writes proper plan files following planning-standard.yml
+- '`--execute` flag spawns builder agents for each task in the plan'
+- Progress is visible via `agentic plan status` during execution
+- Auto-archives on completion when all tasks finish
+- All existing tests continue to pass (no regressions)
+- UAT validates against US-ORCH-001, US-ORCH-002, US-ORCH-005, US-CLI-010

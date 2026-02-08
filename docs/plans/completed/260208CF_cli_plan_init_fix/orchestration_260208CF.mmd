@@ -1,0 +1,143 @@
+flowchart LR
+    %% ========================================
+    %% ORCHESTRATION: CLI Plan Init Fix
+    %% ========================================
+    %% GOAL: Fix 2-char code extraction in plan init folder naming
+    %% PROFILE: orchestrator
+    %%
+    %% PLAN_FOLDER: docs/plans/live/260208CF_cli_plan_init_fix
+    %% PLAN_FILES: plan_build.yml, plan_test.yml
+    %%
+    %% PHASES: Fix, Tests, TestVerifyFix, TestVerifyTests, TestAudit, ValidationGate, UAT
+    %% AGENT_ROUTING: Fix=build-python, Tests=build-python, TestVerifyFix=test-runner, TestVerifyTests=test-runner, TestAudit=test-audit, ValidationGate=test-runner, UAT=test-user-simulator
+    %% FEEDBACK_TRIGGERS: BUILD_FAILURE=retry(3), TEST_FAILURE=retry(3)
+    %% STATUS: Fix=pending, Tests=pending, TestVerifyFix=pending, TestVerifyTests=pending, TestAudit=pending, ValidationGate=pending, UAT=pending
+
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    LoadInputs --> ReviewPlanFiles[Review plan_build.yml + plan_test.yml]
+    ReviewPlanFiles --> CheckInputs{All Inputs Found?}
+    CheckInputs -- "No: Missing" --> AskUser((Ask User for Clarification))
+    CheckInputs -- "Yes: Verified" --> EnterFix[Enter Fix Phase]
+
+    %% ========================================
+    %% PHASE 1: FIX (build-python)
+    %% ========================================
+    %% Tasks: CF-001 (naming.py branch param), CF-002 (plan.py call site)
+    %% Targets: naming.py, plan.py
+
+    subgraph Fix_SG ["P1: Fix Naming"]
+        EnterFix --> SpawnFix[Spawn build-python Agent]
+        SpawnFix --> FixResult{Branch Param Added?}
+        FixResult -- "No" --> CaptureFixFB[Capture Feedback]
+        CaptureFixFB --> CheckFixIter{Max Iterations?}
+        CheckFixIter -- "No" --> SpawnFix
+        CheckFixIter -- "Yes" --> EscalateFix((Escalate))
+        FixResult -- "Yes" --> FixComplete[Fix Complete]
+    end
+
+    FixComplete --> EnterTests[Enter Tests Phase]
+
+    %% ========================================
+    %% PHASE 2: TESTS (build-python)
+    %% ========================================
+    %% Tasks: CF-003 (branch param tests), CF-004 (registry lookup tests)
+    %% Targets: test_naming.py
+
+    subgraph Tests_SG ["P2: Write Tests"]
+        EnterTests --> SpawnTests[Spawn build-python Agent]
+        SpawnTests --> TestsResult{Tests Written?}
+        TestsResult -- "No" --> CaptureTestsFB[Capture Feedback]
+        CaptureTestsFB --> CheckTestsIter{Max Iterations?}
+        CheckTestsIter -- "No" --> SpawnTests
+        CheckTestsIter -- "Yes" --> EscalateTests((Escalate))
+        TestsResult -- "Yes" --> TestsComplete[Tests Complete]
+    end
+
+    TestsComplete --> EnterVerifyFix[Enter Verify Fix Phase]
+
+    %% ========================================
+    %% TEST PHASE 1: VERIFY FIX (test-runner)
+    %% ========================================
+    %% Tasks: CT-001, CT-002
+
+    subgraph VerifyFix_SG ["TP1: Verify Fix"]
+        EnterVerifyFix --> SpawnVerifyFix[Spawn test-runner Agent]
+        SpawnVerifyFix --> VerifyFixResult{Fix Verified?}
+        VerifyFixResult -- "No" --> SpawnFixPatch[Spawn build-python Fix]
+        SpawnFixPatch --> SpawnVerifyFix
+        VerifyFixResult -- "Yes" --> VerifyFixComplete[Fix Verified]
+    end
+
+    VerifyFixComplete --> EnterVerifyTests[Enter Verify Tests Phase]
+
+    %% ========================================
+    %% TEST PHASE 2: VERIFY TESTS (test-runner)
+    %% ========================================
+    %% Tasks: CT-003, CT-004
+
+    subgraph VerifyTests_SG ["TP2: Verify Tests"]
+        EnterVerifyTests --> SpawnVerifyTests[Spawn test-runner Agent]
+        SpawnVerifyTests --> VerifyTestsResult{Tests Verified?}
+        VerifyTestsResult -- "No" --> SpawnTestPatch[Spawn build-python Fix]
+        SpawnTestPatch --> SpawnVerifyTests
+        VerifyTestsResult -- "Yes" --> VerifyTestsComplete[Tests Verified]
+    end
+
+    VerifyTestsComplete --> EnterAudit[Enter Audit Phase]
+
+    %% ========================================
+    %% TEST PHASE 3: AUDIT (test-audit)
+    %% ========================================
+    %% Tasks: CT-005
+
+    subgraph Audit_SG ["TP3: Test Audit (MANDATORY)"]
+        EnterAudit --> SpawnAudit[Spawn test-audit Agent]
+        SpawnAudit --> AuditResult{Quality Passed?}
+        AuditResult -- "No" --> SpawnAuditFix[Spawn build-python Fix]
+        SpawnAuditFix --> SpawnAudit
+        AuditResult -- "Yes" --> AuditComplete[Audit Complete]
+    end
+
+    AuditComplete --> EnterValidation[Enter Validation Gate]
+
+    %% ========================================
+    %% TEST PHASE 4: VALIDATION GATE (test-runner)
+    %% ========================================
+    %% Tasks: CT-006 / CF-005
+
+    subgraph Validation_SG ["TP4: Regression Gate"]
+        EnterValidation --> SpawnValidation[Spawn test-runner Agent]
+        SpawnValidation --> ValidationResult{All Tests Pass?}
+        ValidationResult -- "No" --> SpawnValFix[Spawn build-python Fix]
+        SpawnValFix --> SpawnValidation
+        ValidationResult -- "Yes" --> ValidationComplete[Regression Gate Passed]
+    end
+
+    ValidationComplete --> EnterUAT[Enter UAT Phase]
+
+    %% ========================================
+    %% TEST PHASE 5: UAT (PRIMARY SUCCESS CRITERIA)
+    %% ========================================
+    %% Tasks: CT-007 (US-001), CT-008 (US-002), CT-009 (US-003), CT-010 (sign-off)
+    %% Agent: test-user-simulator
+
+    subgraph UAT_SG ["TP5: UAT (PRIMARY SUCCESS CRITERIA)"]
+        EnterUAT --> SpawnUAT[Spawn test-user-simulator Agent]
+        SpawnUAT --> UATResult{All Stories Pass?}
+        UATResult -- "No" --> SpawnUATFix[Spawn build-python Fix]
+        SpawnUATFix --> SpawnUAT
+        UATResult -- "Yes" --> UATComplete[UAT Complete]
+    end
+
+    %% ========================================
+    %% OUTPUT
+    %% ========================================
+    subgraph Output_SG ["Output"]
+        UATComplete --> ReportCompletion[Report Completion Status]
+        ReportCompletion --> ArchivePlan[Run: agentic plan move folder --plan 260208CF_cli_plan_init_fix]
+    end
+
+    ArchivePlan --> End((End: Plan Completed))
+
+    classDef dashedstroke stroke-dasharray: 5 5;

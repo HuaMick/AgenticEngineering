@@ -192,7 +192,8 @@ class QuestionQueue:
         text: str,
         context: str,
         severity: str,
-        asked_by: str = "agent"
+        asked_by: str = "agent",
+        suggested_answers: list[str] | None = None
     ) -> Question:
         """Create and persist a new question.
 
@@ -201,12 +202,13 @@ class QuestionQueue:
             context: Contextual information
             severity: Question severity (blocking/high/medium/low)
             asked_by: Who asked the question (default: "agent")
+            suggested_answers: Optional list of suggested answers (max 10 non-empty strings)
 
         Returns:
             Created Question object
 
         Raises:
-            ValueError: If severity is invalid
+            ValueError: If severity is invalid or suggested_answers validation fails
             TimeoutError: If lock acquisition fails
         """
         # Validate severity against QuestionSeverity enum
@@ -219,6 +221,34 @@ class QuestionQueue:
             )
             logger.error(error_msg)
             raise ValueError(error_msg)
+
+        # Validate suggested_answers if provided
+        if suggested_answers is not None:
+            if not isinstance(suggested_answers, list):
+                error_msg = "suggested_answers must be a list"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+
+            if len(suggested_answers) == 0:
+                error_msg = "suggested_answers must not be empty (use None for no suggestions)"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+
+            if len(suggested_answers) > 10:
+                error_msg = "suggested_answers cannot exceed 10 items (prevent abuse)"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+
+            for i, answer in enumerate(suggested_answers):
+                if not isinstance(answer, str):
+                    error_msg = f"suggested_answers[{i}] must be a string, got {type(answer).__name__}"
+                    logger.error(error_msg)
+                    raise ValueError(error_msg)
+
+                if not answer.strip():
+                    error_msg = f"suggested_answers[{i}] must not be empty or whitespace-only"
+                    logger.error(error_msg)
+                    raise ValueError(error_msg)
 
         # Use FileLock to prevent concurrent ID collisions
         lock = FileLock(self.pending_dir / ".lock")
@@ -244,7 +274,8 @@ class QuestionQueue:
                 severity=severity,
                 asked_by=asked_by,
                 created_at=time.time(),
-                status="pending"
+                status="pending",
+                suggested_answers=suggested_answers
             )
 
             # Convert to YAML using question_to_yaml()

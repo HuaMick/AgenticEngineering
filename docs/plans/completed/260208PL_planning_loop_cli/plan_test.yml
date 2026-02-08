@@ -1,0 +1,816 @@
+name: planning-loop-cli-test-plan
+worktree_path: /home/code/AgenticEngineering
+branch: main
+status: pending
+priority: high
+
+context: |
+  Test plan for the `agentic plan new` CLI command (260208PL). Validates all 5 build
+  phases: command scaffold, planner prompt template, orchestration auto-generation,
+  builder agent spawning, and end-to-end integration. Includes mandatory
+  test-audit-fix loops and UAT as primary success criteria.
+
+  Dependency: 260208CF (CLI Plan Init Folder Name Fix) must be complete before
+  integration and UAT phases can run against real plan init logic.
+
+objective: |
+  Verify the `agentic plan new` command works correctly end-to-end:
+  - Argument parsing and branch name generation
+  - Planner prompt template produces valid instructions
+  - Planner spawn and plan_build.yml validation
+  - Orchestration MMD auto-generation and validation
+  - Builder agent spawning with --execute flag
+  - Completion monitoring and auto-archive
+  - All user stories pass UAT validation
+
+dependencies:
+  - plan_id: "260208CF"
+    description: "Plan init fix - correct 2-char code extraction from branch name"
+    status: "in_progress"
+    blocking: true
+    rationale: "Integration and UAT phases rely on plan init producing correct folder names"
+
+affected_stories:
+  - "US-ORCH-001"  # Initiate Implementation Planning
+  - "US-ORCH-002"  # Main-First Planning Workflow
+  - "US-ORCH-005"  # Generate Orchestration MMD from Plan
+  - "US-ORCH-006"  # Human Approval Gate
+  - "US-CLI-010"   # Initialize Plan with Worktree
+
+impacted_files:
+  - path: modules/AgenticCLI/tests/test_plan_new.py
+    change_type: create
+    change_category: test
+    reason: "Unit tests for plan new scaffold, prompt template, spawn, and builder loop"
+  - path: modules/AgenticCLI/tests/test_planner_prompt.py
+    change_type: create
+    change_category: test
+    reason: "Dedicated tests for planner prompt template content and structure"
+  - path: modules/AgenticCLI/tests/integration/test_plan_new_e2e.py
+    change_type: create
+    change_category: test
+    reason: "End-to-end integration test for full plan new flow"
+
+impacted_artifacts:
+  - artifact_type: cli_command
+    artifact_identifier: "agentic plan new"
+    impact_type: behavior_change
+    description: "Validated by unit, integration, and UAT tests"
+    breaking_change: false
+  - artifact_type: template
+    artifact_identifier: "agenticcli.utils.planner_prompt"
+    impact_type: behavior_change
+    description: "Validated by prompt content and structure tests"
+    breaking_change: false
+
+loop_structures:
+  - id: loop_unit_test_fix
+    type: test-fix-loop
+    applies_to_phase: "T1: Command Scaffold Tests"
+    trigger: "After unit test creation completes"
+    description: |
+      Iterative testing for scaffold unit tests. Run tests, fix failures,
+      repeat until all pass.
+    exit_criteria:
+      success: "All scaffold unit tests pass"
+      max_iterations: 5
+      escalation: "Escalate to user with failing test details"
+    participants:
+      - agent: test-builder
+        role: "Creates and runs unit tests"
+      - agent: build-python
+        role: "Fixes failures identified by tests"
+
+  - id: loop_prompt_test_fix
+    type: test-fix-loop
+    applies_to_phase: "T2: Planner Prompt & Spawn Tests"
+    trigger: "After prompt and spawn test creation completes"
+    exit_criteria:
+      success: "All prompt template and spawn tests pass"
+      max_iterations: 5
+      escalation: "Escalate with failing test details"
+    participants:
+      - agent: test-builder
+        role: "Creates and runs prompt/spawn tests"
+      - agent: build-python
+        role: "Fixes failures"
+
+  - id: loop_integration_test_fix
+    type: test-fix-loop
+    applies_to_phase: "T3: Orchestration & Builder Tests"
+    trigger: "After integration test creation completes"
+    exit_criteria:
+      success: "All orchestration and builder tests pass"
+      max_iterations: 5
+      escalation: "Escalate with integration failure analysis"
+    participants:
+      - agent: test-builder
+        role: "Creates and runs integration tests"
+      - agent: build-python
+        role: "Fixes integration issues"
+
+  - id: loop_e2e_test_fix
+    type: test-fix-loop
+    applies_to_phase: "T4: End-to-End Integration Tests"
+    trigger: "After e2e test creation completes"
+    exit_criteria:
+      success: "Full end-to-end flow succeeds with mocked subprocess"
+      max_iterations: 5
+      escalation: "Escalate with e2e failure details"
+    participants:
+      - agent: test-builder
+        role: "Creates and runs e2e integration tests"
+      - agent: build-python
+        role: "Fixes e2e issues"
+
+  - id: loop_audit
+    type: audit-test-fix-loop
+    applies_to_phase: "T5: Test Audit"
+    trigger: "After all test phases pass"
+    description: |
+      MANDATORY audit to detect reward hacking, skipped tests, hardcoded paths,
+      and missing setup. Validates test quality before proceeding to UAT.
+    exit_criteria:
+      success: "Audit passes AND all tests still pass after corrections"
+      max_iterations: 3
+      escalation: "BLOCK UAT - audit failures must be resolved"
+    participants:
+      - agent: test-audit
+        role: "Audits test quality and detects issues"
+      - agent: test-builder
+        role: "Fixes audit-identified test issues"
+      - agent: build-python
+        role: "Fixes implementation issues revealed by audit"
+    mandatory: true
+
+  - id: loop_uat
+    type: user-story-validation-loop
+    applies_to_phase: "T6: UAT Validation"
+    trigger: "After audit passes"
+    description: |
+      User acceptance testing validates complete user journeys. PRIMARY SUCCESS
+      CRITERIA for this plan. Tests against US-ORCH-001, US-ORCH-002,
+      US-ORCH-005, US-ORCH-006, US-CLI-010.
+    exit_criteria:
+      success: "All user stories pass validation"
+      max_iterations: 5
+      escalation: "Escalate with user story failure details"
+    participants:
+      - agent: test-user-simulator
+        role: "Simulates user workflows and validates journeys"
+      - agent: build-python
+        role: "Fixes user-facing issues"
+    mandatory: true
+
+# =============================================================================
+# TEST PHASES
+# =============================================================================
+
+phases:
+  # ===========================================================================
+  # T1: Command Scaffold Tests (covers build Phase 1: PL_001, PL_002, PL_003)
+  # ===========================================================================
+  - name: "T1: Command Scaffold Tests"
+    execution: sequential
+    description: |
+      Unit tests validating the plan new subcommand registration, argument parsing,
+      branch name auto-generation, and cmd_new handler skeleton.
+    loop: test-fix-loop
+    stories:
+      - "US-CLI-010"
+    tasks:
+      - id: TPL_001
+        name: "Test plan new subcommand registration and argument parsing"
+        description: |
+          Verify `agentic plan new` is registered as a valid subcommand with correct
+          arguments: objective (positional), --branch, --description, --base, --execute,
+          --max-turns, --dangerously-skip-permissions.
+        status: completed
+        agent: test-builder
+        strategy: smoke-test
+        inputs:
+          - modules/AgenticCLI/src/agenticcli/cli.py
+          - modules/AgenticCLI/src/agenticcli/commands/plan.py
+        target_files:
+          - modules/AgenticCLI/tests/test_plan_new.py
+        guidance: |
+          1. Test `agentic plan new --help` shows all expected arguments
+          2. Test `agentic plan new` with no args shows usage error
+          3. Test positional objective is captured correctly
+          4. Test --branch overrides auto-generated branch name
+          5. Test --execute is a boolean store_true flag
+          6. Test --max-turns accepts integer with default 25
+          7. Test --dangerously-skip-permissions is store_true
+          8. Test --base defaults to "main"
+          9. Test plan.py handle() routes "new" to cmd_new
+        success_criteria:
+          - "All CLI argument parsing tests pass"
+          - "Missing objective triggers appropriate error"
+          - "All flags parsed correctly with defaults"
+
+      - id: TPL_002
+        name: "Test branch name auto-generation"
+        description: |
+          Verify branch name auto-generation from objective string produces
+          valid git branch slugs.
+        status: completed
+        agent: test-builder
+        strategy: smoke-test
+        inputs:
+          - modules/AgenticCLI/src/agenticcli/commands/plan.py
+        target_files:
+          - modules/AgenticCLI/tests/test_plan_new.py
+        guidance: |
+          Test cases for branch name generation:
+          1. "Add phone notifications" -> "plan-add-phone-notifications"
+          2. "Fix bug #123" -> valid slug (no special chars)
+          3. Very long objective -> truncated to reasonable branch name length
+          4. Objective with special chars (!@#$%) -> sanitized
+          5. Objective with multiple spaces -> single hyphens
+          6. --branch flag overrides auto-generation entirely
+          7. Empty objective -> error, not empty branch name
+        success_criteria:
+          - "Branch names are valid git refs"
+          - "Special characters properly sanitized"
+          - "Override via --branch works"
+
+      - id: TPL_003
+        name: "Test cmd_new folder creation delegation"
+        description: |
+          Verify cmd_new delegates to plan init logic to create the plan folder,
+          and returns the correct plan_folder path.
+        status: completed
+        agent: test-builder
+        strategy: smoke-test
+        inputs:
+          - modules/AgenticCLI/src/agenticcli/commands/plan.py
+        target_files:
+          - modules/AgenticCLI/tests/test_plan_new.py
+        guidance: |
+          1. Mock plan init internals (subprocess/git operations)
+          2. Verify cmd_new calls plan init logic with correct args
+          3. Verify plan folder path is returned in result dict
+          4. Verify result dict contains plan_folder, branch, objective keys
+          5. Verify placeholder messages for "not yet implemented" steps appear
+          6. Use tmp_path fixture for plan folder creation
+          7. Verify error when plan folder already exists
+        success_criteria:
+          - "Plan folder created at expected path"
+          - "Result dict has correct structure"
+          - "Placeholder steps print expected messages"
+
+  # ===========================================================================
+  # T2: Planner Prompt & Spawn Tests (covers build Phase 2: PL_004, PL_005, PL_006)
+  # ===========================================================================
+  - name: "T2: Planner Prompt & Spawn Tests"
+    execution: sequential
+    description: |
+      Tests for the planner prompt template content and the session spawn integration
+      that invokes the planner agent.
+    loop: test-fix-loop
+    stories:
+      - "US-ORCH-001"
+      - "US-ORCH-002"
+    tasks:
+      - id: TPL_004
+        name: "Test planner prompt template content"
+        description: |
+          Verify build_planner_prompt() generates a complete prompt containing
+          objective, plan folder, story discovery instructions, and UAT fence.
+        status: completed
+        agent: test-builder
+        strategy: smoke-test
+        inputs:
+          - modules/AgenticCLI/src/agenticcli/utils/planner_prompt.py
+          - modules/AgenticGuidance/assets/guidelines/planning-standard.yml
+        target_files:
+          - modules/AgenticCLI/tests/test_planner_prompt.py
+        guidance: |
+          1. Test prompt includes the objective string verbatim
+          2. Test prompt includes plan_folder path
+          3. Test prompt includes `agentic stories find` instruction
+          4. Test prompt references UAT mandatory fence
+          5. Test prompt references planning-standard.yml
+          6. Test prompt instructs planner to write plan_build.yml
+          7. Test prompt instructs planner to write README.md
+          8. Test prompt includes expected output format guidance
+          9. Test with context=None and context="extra context"
+          10. Test prompt is a non-empty string (sanity)
+        success_criteria:
+          - "Prompt contains all required sections"
+          - "UAT fence reference present"
+          - "Story discovery instruction present"
+
+      - id: TPL_005
+        name: "Test planner session spawn in cmd_new"
+        description: |
+          Verify cmd_new spawns a foreground claude session with the planner prompt
+          and passes through --max-turns and --dangerously-skip-permissions.
+        status: completed
+        agent: test-builder
+        strategy: smoke-test
+        inputs:
+          - modules/AgenticCLI/src/agenticcli/commands/plan.py
+          - modules/AgenticCLI/src/agenticcli/commands/session.py
+        target_files:
+          - modules/AgenticCLI/tests/test_plan_new.py
+        guidance: |
+          1. Mock subprocess.Popen to capture spawn command
+          2. Verify `claude` command is invoked with planner prompt
+          3. Verify --max-turns value is passed through
+          4. Verify --dangerously-skip-permissions passed when flag set
+          5. Verify --dangerously-skip-permissions NOT passed when flag unset
+          6. Verify session runs in foreground (not background)
+          7. Test error handling: subprocess fails -> appropriate error message
+        success_criteria:
+          - "Claude session spawned with correct arguments"
+          - "Flag pass-through works correctly"
+          - "Error on subprocess failure"
+
+      - id: TPL_006
+        name: "Test plan_build.yml validation after planner"
+        description: |
+          Verify cmd_new validates that plan_build.yml was written by the planner
+          and reports errors when missing or empty.
+        status: completed
+        agent: test-builder
+        strategy: smoke-test
+        inputs:
+          - modules/AgenticCLI/src/agenticcli/commands/plan.py
+        target_files:
+          - modules/AgenticCLI/tests/test_plan_new.py
+        guidance: |
+          1. Test: planner writes valid plan_build.yml -> cmd_new proceeds
+          2. Test: plan_build.yml missing after planner -> error reported
+          3. Test: plan_build.yml empty after planner -> error reported
+          4. Test: plan_build.yml invalid YAML -> error reported
+          5. Use tmp_path to simulate plan folder with/without the file
+          6. Mock planner subprocess to control file creation
+        success_criteria:
+          - "Valid plan_build.yml allows flow to continue"
+          - "Missing/empty plan_build.yml triggers clear error"
+          - "Invalid YAML detected"
+
+  # ===========================================================================
+  # T3: Orchestration & Builder Tests (covers build Phase 3: PL_007-PL_008
+  #                                    and build Phase 4: PL_009-PL_011)
+  # ===========================================================================
+  - name: "T3: Orchestration & Builder Tests"
+    execution: sequential
+    description: |
+      Tests for orchestration MMD auto-generation, validation, builder agent
+      spawning loop, and completion monitoring.
+    loop: test-fix-loop
+    stories:
+      - "US-ORCH-005"
+      - "US-ORCH-006"
+    tasks:
+      - id: TPL_007
+        name: "Test orchestration generate integration"
+        description: |
+          Verify cmd_new calls orchestration generation after planner completes
+          and handles generation failure gracefully.
+        status: completed
+        agent: test-builder
+        strategy: smoke-test
+        inputs:
+          - modules/AgenticCLI/src/agenticcli/commands/plan.py
+        target_files:
+          - modules/AgenticCLI/tests/test_plan_new.py
+        guidance: |
+          1. Mock orchestration generate command
+          2. Test: after planner, orchestration generation is called
+          3. Test: generation failure produces warning, not fatal error
+          4. Test: without --execute, cmd_new stops after orchestration
+          5. Test: successful generation produces orchestration_*.mmd file
+          6. Verify correct args passed to orchestration generate (plan path, force=True)
+        success_criteria:
+          - "Orchestration generation called automatically"
+          - "Failure is non-fatal warning"
+          - "Flow stops without --execute"
+
+      - id: TPL_008
+        name: "Test orchestration validation gate"
+        description: |
+          Verify orchestration validation runs after generation and blocks
+          --execute when validation fails.
+        status: completed
+        agent: test-builder
+        strategy: smoke-test
+        inputs:
+          - modules/AgenticCLI/src/agenticcli/commands/plan.py
+        target_files:
+          - modules/AgenticCLI/tests/test_plan_new.py
+        guidance: |
+          1. Mock orchestration validate command
+          2. Test: validation runs automatically after generation
+          3. Test: validation pass -> --execute can proceed
+          4. Test: validation fail -> --execute blocked with error message
+          5. Test: user instructed to fix issues and re-run
+        success_criteria:
+          - "Validation runs automatically"
+          - "Validation failure blocks --execute"
+          - "Clear error message on validation failure"
+
+      - id: TPL_009
+        name: "Test builder spawning loop with --execute"
+        description: |
+          Verify --execute spawns builder sessions for each task, respects
+          sequential phase ordering, and records session IDs.
+        status: completed
+        agent: test-builder
+        strategy: smoke-test
+        inputs:
+          - modules/AgenticCLI/src/agenticcli/commands/plan.py
+          - modules/AgenticCLI/src/agenticcli/commands/session.py
+        target_files:
+          - modules/AgenticCLI/tests/test_plan_new.py
+        guidance: |
+          1. Create mock plan_build.yml with 2 sequential phases, 3 tasks each
+          2. Mock subprocess.Popen for builder spawning
+          3. Test: --execute spawns a session for each task
+          4. Test: sequential phase ordering - phase 2 tasks start after phase 1 completes
+          5. Test: session IDs are captured from spawn output
+          6. Test: --dangerously-skip-permissions passed through to builder sessions
+          7. Test: progress summary printed after each phase
+        success_criteria:
+          - "One session spawned per task"
+          - "Phase ordering respected"
+          - "Session IDs recorded"
+
+      - id: TPL_010
+        name: "Test completion monitoring and auto-archive"
+        description: |
+          Verify auto-archive triggers when all tasks complete and incomplete
+          plans show remaining work.
+        status: completed
+        agent: test-builder
+        strategy: smoke-test
+        inputs:
+          - modules/AgenticCLI/src/agenticcli/commands/plan.py
+        target_files:
+          - modules/AgenticCLI/tests/test_plan_new.py
+        guidance: |
+          1. Test: all tasks completed -> auto-archive triggered
+          2. Test: partial completion -> remaining tasks listed
+          3. Test: auto-archive moves plan to completed/ directory
+          4. Test: final summary shows task count, phase status, archive status
+          5. Mock plan status checks and archive logic
+        success_criteria:
+          - "Auto-archive on full completion"
+          - "Remaining tasks listed on partial completion"
+          - "Summary output is accurate"
+
+  # ===========================================================================
+  # T4: End-to-End Integration Tests (covers build Phase 5: PL_012, PL_013)
+  # ===========================================================================
+  - name: "T4: End-to-End Integration Tests"
+    execution: sequential
+    description: |
+      Full end-to-end integration tests running the complete plan new flow
+      with mocked subprocess to validate the entire pipeline.
+    loop: test-fix-loop
+    stories:
+      - "US-ORCH-001"
+      - "US-ORCH-002"
+      - "US-ORCH-005"
+      - "US-CLI-010"
+    tasks:
+      - id: TPL_011
+        name: "E2E: plan new without --execute"
+        description: |
+          End-to-end test of the default flow: folder creation -> planner spawn ->
+          orchestration generation -> summary output. No builder execution.
+        status: completed
+        agent: test-builder
+        strategy: smoke-test
+        inputs:
+          - modules/AgenticCLI/src/agenticcli/commands/plan.py
+        target_files:
+          - modules/AgenticCLI/tests/integration/test_plan_new_e2e.py
+        guidance: |
+          1. Create mock planner that writes valid plan_build.yml to plan folder
+          2. Patch subprocess to use mock planner
+          3. Run cmd_new("Add phone notifications")
+          4. Assert: plan folder created with YYMMDDXX naming
+          5. Assert: plan_build.yml exists and is valid YAML
+          6. Assert: orchestration_*.mmd generated
+          7. Assert: no builder sessions spawned
+          8. Assert: summary output includes plan folder path and next steps
+          9. Use tmp_path for isolated test environment
+        success_criteria:
+          - "Complete non-execute flow succeeds end-to-end"
+          - "All artifacts created at expected paths"
+          - "No builder sessions spawned"
+
+      - id: TPL_012
+        name: "E2E: plan new with --execute"
+        description: |
+          End-to-end test of the full execution flow including builder spawning
+          and completion monitoring.
+        status: completed
+        agent: test-builder
+        strategy: smoke-test
+        inputs:
+          - modules/AgenticCLI/src/agenticcli/commands/plan.py
+        target_files:
+          - modules/AgenticCLI/tests/integration/test_plan_new_e2e.py
+        guidance: |
+          1. Create mock planner that writes valid plan_build.yml with 2 phases
+          2. Mock orchestration generation and validation (both succeed)
+          3. Mock builder session spawning (capture spawn commands)
+          4. Run cmd_new("Add phone notifications", execute=True)
+          5. Assert: planner runs first (foreground)
+          6. Assert: orchestration generated and validated
+          7. Assert: builder sessions spawned for each task
+          8. Assert: completion monitoring runs
+          9. Assert: summary output reflects execution status
+        success_criteria:
+          - "Complete execute flow succeeds end-to-end"
+          - "Builder sessions spawned after planner completes"
+          - "Completion monitoring reports status"
+
+      - id: TPL_013
+        name: "E2E: error recovery scenarios"
+        description: |
+          Test error paths in the end-to-end flow: planner failure, orchestration
+          failure, validation failure, builder failure.
+        status: completed
+        agent: test-builder
+        strategy: smoke-test
+        inputs:
+          - modules/AgenticCLI/src/agenticcli/commands/plan.py
+        target_files:
+          - modules/AgenticCLI/tests/integration/test_plan_new_e2e.py
+        guidance: |
+          1. Test: planner subprocess exits non-zero -> error message, flow stops
+          2. Test: planner runs but doesn't write plan_build.yml -> error, flow stops
+          3. Test: orchestration generation fails -> warning printed, --execute blocked
+          4. Test: orchestration validation fails -> --execute blocked
+          5. Test: builder session spawn fails -> error for that task, others continue
+          6. Verify each error path produces actionable error messages
+          7. Verify partial state is not corrupted (plan folder still usable)
+        success_criteria:
+          - "Each error path produces clear error message"
+          - "Failures don't corrupt plan folder state"
+          - "Downstream steps blocked appropriately"
+
+  # ===========================================================================
+  # T5: Test Audit (MANDATORY)
+  # ===========================================================================
+  - name: "T5: Test Audit"
+    execution: sequential
+    description: |
+      MANDATORY audit to validate test quality across all test phases. Catches
+      reward hacking, skipped tests, hardcoded paths, and missing assertions.
+      Must pass before UAT can proceed.
+    loop: audit-test-fix-loop
+    tasks:
+      - id: TPL_014
+        name: "Audit all plan new test files"
+        description: |
+          Comprehensive audit of all test files created in phases T1-T4 for
+          quality issues, reward hacking, and coverage gaps.
+        status: completed
+        agent: test-audit
+        inputs:
+          - modules/AgenticCLI/tests/test_plan_new.py
+          - modules/AgenticCLI/tests/test_planner_prompt.py
+          - modules/AgenticCLI/tests/integration/test_plan_new_e2e.py
+        guidance: |
+          Audit Checklist:
+          1. Skipped tests validation:
+             - Find all @pytest.mark.skip decorators
+             - Validate skip justification is legitimate
+             - Flag unjustified skips as failures
+
+          2. Reward hacking detection:
+             - Tests that mock too much (not testing real behavior)
+             - Tests with hardcoded paths (not portable - should use tmp_path)
+             - Tests that pass trivially without validating behavior
+             - Tests missing critical assertions
+             - Tests that only check return code, not output content
+
+          3. Coverage gaps:
+             - Error paths not tested (planner failure, orchestration failure)
+             - Edge cases missing (empty objective, special chars, long strings)
+             - Integration points not covered (plan init -> planner -> orchestrate flow)
+             - Flag pass-through not validated
+
+          4. Test quality issues:
+             - Missing cleanup (temp files, state files)
+             - Tests that modify global state
+             - Tests with race conditions
+             - Tests that depend on execution order
+             - Assertions that are too loose (e.g., "assert result" instead of specific checks)
+
+          5. Implementation validation:
+             - Verify tests actually call the implementation code
+             - Verify mocks are minimal and necessary
+             - Verify assertions check meaningful behavior
+             - Verify test names describe what they test
+
+          Generate audit report with PASS/FAIL for each test file.
+        success_criteria:
+          - "No unjustified skipped tests"
+          - "No reward hacking detected"
+          - "Coverage gaps identified and addressed"
+          - "All tests meet quality standards"
+          - "Audit report generated with specific findings"
+
+  # ===========================================================================
+  # T6: UAT Validation (MANDATORY - PRIMARY SUCCESS CRITERIA)
+  # ===========================================================================
+  - name: "T6: UAT Validation"
+    execution: sequential
+    description: |
+      MANDATORY user acceptance testing - PRIMARY SUCCESS CRITERIA.
+      Validates complete user journeys against affected stories:
+      US-ORCH-001, US-ORCH-002, US-ORCH-005, US-ORCH-006, US-CLI-010.
+    loop: user-story-validation-loop
+    tasks:
+      - id: TPL_015
+        name: "UAT: Initiate Implementation Planning (US-ORCH-001)"
+        description: |
+          Validate: As an orchestrator, I can initiate a complete planning workflow
+          with a single command.
+        status: completed
+        agent: test-user-simulator
+        strategy: agent-blind-test
+        inputs:
+          - docs/userstories/Orchestration/01_planning_workflow.yml
+          - modules/AgenticCLI/src/agenticcli/commands/plan.py
+        guidance: |
+          User Story: US-ORCH-001 - Initiate Implementation Planning
+
+          Persona: Developer starting a new feature
+
+          User Journey:
+          1. Developer runs: agentic plan new "Add phone notifications"
+             Expected: Plan folder created in docs/plans/live/ with YYMMDDXX naming
+          2. Verify planner agent is spawned with the objective
+          3. Verify plan_build.yml is written with phases and tasks
+          4. Verify output includes plan folder path and summary
+          5. Verify the command exits cleanly after planner completes
+
+          Acceptance Criteria:
+          - Single command triggers the full planning workflow
+          - Plan folder naming follows YYMMDDXX_description convention
+          - Planner agent receives the correct objective
+        success_criteria:
+          - "US-ORCH-001 acceptance criteria pass"
+          - "Single command creates plan folder and spawns planner"
+
+      - id: TPL_016
+        name: "UAT: Main-First Planning Workflow (US-ORCH-002)"
+        description: |
+          Validate: Plans are created in main worktree's docs/plans/live/ and
+          execution worktree is created for the branch.
+        status: completed
+        agent: test-user-simulator
+        strategy: agent-blind-test
+        inputs:
+          - docs/userstories/Orchestration/01_planning_workflow.yml
+          - modules/AgenticCLI/src/agenticcli/commands/plan.py
+        guidance: |
+          User Story: US-ORCH-002 - Main-First Planning Workflow
+
+          Persona: Developer following main-first workflow
+
+          User Journey:
+          1. Developer runs: agentic plan new "Add auth service" --branch auth-feature
+             Expected: Plan folder in main worktree's docs/plans/live/
+          2. Verify worktree/branch created for the feature
+          3. Verify plan files are accessible from main branch
+          4. Verify --base flag changes the base branch
+
+          Acceptance Criteria:
+          - Plan folder lives in main worktree docs/plans/live/
+          - Feature worktree is created with correct branch name
+          - --branch flag controls the feature branch name
+        success_criteria:
+          - "US-ORCH-002 acceptance criteria pass"
+          - "Plan folder in main, worktree created for branch"
+
+      - id: TPL_017
+        name: "UAT: Generate Orchestration MMD (US-ORCH-005)"
+        description: |
+          Validate: Orchestration MMD is auto-generated after planner completes.
+        status: completed
+        agent: test-user-simulator
+        strategy: agent-blind-test
+        inputs:
+          - docs/userstories/Orchestration/01_planning_workflow.yml
+          - modules/AgenticCLI/src/agenticcli/commands/plan.py
+        guidance: |
+          User Story: US-ORCH-005 - Generate Orchestration MMD from Plan
+
+          Persona: Developer reviewing generated plan
+
+          User Journey:
+          1. After planner completes, verify orchestration_*.mmd exists in plan folder
+          2. Verify MMD contains phase nodes matching plan_build.yml phases
+          3. Verify MMD contains agent routing metadata
+          4. Verify validation ran automatically after generation
+
+          Acceptance Criteria:
+          - Orchestration MMD auto-generated without manual command
+          - MMD structure matches plan_build.yml phases
+          - Validation runs automatically
+        success_criteria:
+          - "US-ORCH-005 acceptance criteria pass"
+          - "MMD auto-generated and validated"
+
+      - id: TPL_018
+        name: "UAT: Human Approval Gate (US-ORCH-006)"
+        description: |
+          Validate: Without --execute, flow stops for human review. With --execute,
+          auto-approval proceeds to builder spawning.
+        status: completed
+        agent: test-user-simulator
+        strategy: agent-blind-test
+        inputs:
+          - docs/userstories/Orchestration/01_planning_workflow.yml
+          - modules/AgenticCLI/src/agenticcli/commands/plan.py
+        guidance: |
+          User Story: US-ORCH-006 - Human Approval Gate
+
+          Persona: Developer deciding whether to auto-execute
+
+          User Journey:
+          1. Run without --execute: agentic plan new "Test feature"
+             Expected: Flow stops after orchestration, prints review instructions
+          2. Review generated plan_build.yml and orchestration MMD
+          3. Run with --execute: agentic plan new "Test feature" --execute
+             Expected: Auto-approves and proceeds to builder spawning
+
+          Acceptance Criteria:
+          - Default (no --execute): stops for review, prints next steps
+          - With --execute: auto-proceeds to builder spawning
+          - Human can review before execution
+        success_criteria:
+          - "US-ORCH-006 acceptance criteria pass"
+          - "Default stops for review, --execute auto-proceeds"
+
+      - id: TPL_019
+        name: "UAT: Initialize Plan with Worktree (US-CLI-010)"
+        description: |
+          Validate: Plan folder and worktree are created atomically via plan new.
+        status: completed
+        agent: test-user-simulator
+        strategy: agent-blind-test
+        inputs:
+          - docs/userstories/AgenticCLI/02_plan_management.yml
+          - modules/AgenticCLI/src/agenticcli/commands/plan.py
+        guidance: |
+          User Story: US-CLI-010 - Initialize Plan with Worktree
+
+          Persona: Developer creating a new plan
+
+          User Journey:
+          1. Run: agentic plan new "Phone notifications" --description "phone_notif"
+             Expected: Plan folder created with correct YYMMDDXX naming
+          2. Verify folder contains expected structure (live/, plan files)
+          3. Verify --description flag customizes folder suffix
+          4. Verify worktree created atomically with plan folder
+
+          Acceptance Criteria:
+          - Plan folder created with YYMMDDXX_description naming
+          - --description controls folder name suffix
+          - Worktree and plan folder created together
+        success_criteria:
+          - "US-CLI-010 acceptance criteria pass"
+          - "Folder naming and worktree creation work correctly"
+
+# =============================================================================
+# EXECUTION NOTES
+# =============================================================================
+
+execution_notes: |
+  TESTING LAYERS (planner decision):
+  - Local: Always test (validates developer workflow)
+  - Docker: Skip for unit/integration (no infrastructure changes)
+  - Cloud Build: Skip (no CI/CD changes)
+
+  UAT IS PRIMARY SUCCESS CRITERIA:
+  - Unit and integration tests validate implementation correctness
+  - UAT validates that features actually solve user problems
+  - All 5 user stories must pass for plan to be considered complete
+
+  AUDIT IS MANDATORY:
+  - Cannot skip test-audit-fix-loop phase (T5)
+  - Must catch reward hacking before UAT
+  - Must validate test quality and coverage
+
+  LOOP EXECUTION ORDER:
+  1. test-fix-loop (T1: scaffold tests)
+  2. test-fix-loop (T2: prompt & spawn tests)
+  3. test-fix-loop (T3: orchestration & builder tests)
+  4. test-fix-loop (T4: end-to-end integration)
+  5. audit-test-fix-loop (T5: MANDATORY)
+  6. user-story-validation-loop (T6: MANDATORY - primary success)
+
+  DEPENDENCY NOTE:
+  - 260208CF must complete before T4 and T6 phases run
+  - T1-T3 can use mocked plan init and run before 260208CF completes
+  - T4 e2e and T6 UAT require correct plan init folder naming

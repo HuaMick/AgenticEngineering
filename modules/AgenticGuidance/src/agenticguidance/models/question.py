@@ -57,6 +57,7 @@ class Question:
     answer: Optional[str] = None
     answered_at: Optional[float] = None
     answered_by: Optional[str] = None
+    suggested_answers: Optional[list[str]] = None
 
     def to_dict(self) -> dict:
         """Convert to dictionary for YAML serialization.
@@ -64,7 +65,7 @@ class Question:
         Returns:
             Dictionary representation of the question.
         """
-        return {
+        result = {
             "id": self.id,
             "text": self.text,
             "context": self.context,
@@ -76,6 +77,10 @@ class Question:
             "answered_at": self.answered_at,
             "answered_by": self.answered_by,
         }
+        # Only include suggested_answers if not None (keep YAML clean)
+        if self.suggested_answers is not None:
+            result["suggested_answers"] = self.suggested_answers
+        return result
 
     @classmethod
     def from_dict(cls, data: dict) -> "Question":
@@ -98,6 +103,7 @@ class Question:
             answer=data.get("answer"),
             answered_at=data.get("answered_at"),
             answered_by=data.get("answered_by"),
+            suggested_answers=data.get("suggested_answers"),
         )
 
     def mark_answered(self, answer: str, answered_by: str) -> None:

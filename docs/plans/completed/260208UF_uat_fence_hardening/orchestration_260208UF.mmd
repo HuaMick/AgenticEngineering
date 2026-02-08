@@ -1,0 +1,202 @@
+flowchart LR
+    %% ========================================
+    %% ORCHESTRATION: UAT Fence Hardening
+    %% ========================================
+    %% GOAL: Harden UAT fences across orchestration, planning, and executor agents
+    %% PROFILE: orchestrator
+    %%
+    %% PLAN_FOLDER: docs/plans/live/260208UF_uat_fence_hardening
+    %% PLAN_FILES: plan_build.yml, plan_test.yml
+    %%
+    %% PHASES: EscapeHatch, Gates, Contract, Coverage, TestEscapeHatch, TestGates, TestContract, TestCoverage
+    %% AGENT_ROUTING: EscapeHatch=teacher-update-guidance, Gates=teacher-update-guidance, Contract=teacher-update-guidance, Coverage=build-python, TestEscapeHatch=test-guidance-simulator, TestGates=test-guidance-simulator, TestContract=test-guidance-simulator, TestCoverage=test-builder
+    %% FEEDBACK_TRIGGERS: BUILD_FAILURE=retry(3), TEST_FAILURE=retry(3)
+    %% STATUS: EscapeHatch=pending, Gates=pending, Contract=pending, Coverage=pending, TestEscapeHatch=pending, TestGates=pending, TestContract=pending, TestCoverage=pending
+
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION
+    %% ========================================
+    LoadInputs --> ReviewPlanFiles[Review plan_build.yml + plan_test.yml]
+    ReviewPlanFiles --> CheckInputs{All Inputs Found?}
+    CheckInputs -- "No: Missing" --> AskUser((Ask User for Clarification))
+    CheckInputs -- "Yes: Verified" --> EnterEscapeHatch[Enter Escape Hatch Phase]
+
+    %% ========================================
+    %% PHASE 1: UNIFY ESCAPE HATCH RULES (guidance-only)
+    %% ========================================
+    %% Tasks: UF-001, UF-002, UF-003, UF-004, UF-005
+    %% Agent: teacher-update-guidance
+    %% Targets: planning-standard.yml, process.mmd, planner-test, planner-reviewer, planner-build
+
+    subgraph EscapeHatch_SG ["Unify Escape Hatch Rules Phase"]
+        EnterEscapeHatch --> SpawnEscapeHatch[Spawn teacher-update-guidance Agent]
+        SpawnEscapeHatch --> EscapeHatchResult{All 5 Files Updated?}
+
+        EscapeHatchResult -- "No: Issues" --> CaptureEscapeHatchFeedback[Capture Feedback]
+        CaptureEscapeHatchFeedback --> CheckEscapeHatchIterations{Max Iterations?}
+        CheckEscapeHatchIterations -- "No: Continue" --> SpawnEscapeHatch
+        CheckEscapeHatchIterations -- "Yes: Limit" --> EscalateEscapeHatch((Escalate: Phase 1 Failed))
+
+        EscapeHatchResult -- "Yes: Complete" --> EscapeHatchComplete[Escape Hatch Complete]
+    end
+
+    EscapeHatchComplete --> EnterGates[Enter Gates Phase]
+
+    %% ========================================
+    %% PHASE 2: HARDEN GATES (guidance-only)
+    %% ========================================
+    %% Tasks: UF-006, UF-007, UF-008
+    %% Agent: teacher-update-guidance
+    %% Targets: orchestration-planning process.mmd, executor process.yml, executor inputs.yml
+
+    subgraph Gates_SG ["Harden Gates Phase"]
+        EnterGates --> SpawnGates[Spawn teacher-update-guidance Agent]
+        SpawnGates --> GatesResult{All 3 Files Updated?}
+
+        GatesResult -- "No: Issues" --> CaptureGatesFeedback[Capture Feedback]
+        CaptureGatesFeedback --> CheckGatesIterations{Max Iterations?}
+        CheckGatesIterations -- "No: Continue" --> SpawnGates
+        CheckGatesIterations -- "Yes: Limit" --> EscalateGates((Escalate: Phase 2 Failed))
+
+        GatesResult -- "Yes: Complete" --> GatesComplete[Gates Complete]
+    end
+
+    GatesComplete --> EnterContract[Enter Contract Phase]
+
+    %% ========================================
+    %% PHASE 3: FIX OUTPUT CONTRACT (guidance-only)
+    %% ========================================
+    %% Tasks: UF-009, UF-010, UF-011
+    %% Agent: teacher-update-guidance
+    %% Targets: user-stories.yml, test-user-simulator process.yml, test-user-simulator inputs.yml
+
+    subgraph Contract_SG ["Fix Output Contract Phase"]
+        EnterContract --> SpawnContract[Spawn teacher-update-guidance Agent]
+        SpawnContract --> ContractResult{All 3 Files Updated?}
+
+        ContractResult -- "No: Issues" --> CaptureContractFeedback[Capture Feedback]
+        CaptureContractFeedback --> CheckContractIterations{Max Iterations?}
+        CheckContractIterations -- "No: Continue" --> SpawnContract
+        CheckContractIterations -- "Yes: Limit" --> EscalateContract((Escalate: Phase 3 Failed))
+
+        ContractResult -- "Yes: Complete" --> ContractComplete[Contract Complete]
+    end
+
+    ContractComplete --> EnterCoverage[Enter Coverage Phase]
+
+    %% ========================================
+    %% PHASE 4: COVERAGE VALIDATION + CLI (build-python)
+    %% ========================================
+    %% Tasks: UF-012, UF-013, UF-014
+    %% Agent: build-python
+    %% Targets: executor process.yml, plan.py, cli.py, test_plan_validate_fences.py
+
+    subgraph Coverage_SG ["Coverage Validation Phase"]
+        EnterCoverage --> SpawnCoverage[Spawn build-python Agent]
+        SpawnCoverage --> CoverageResult{Coverage + CLI Built?}
+
+        CoverageResult -- "No: Issues" --> CaptureCoverageFeedback[Capture Feedback]
+        CaptureCoverageFeedback --> CheckCoverageIterations{Max Iterations?}
+        CheckCoverageIterations -- "No: Continue" --> SpawnCoverage
+        CheckCoverageIterations -- "Yes: Limit" --> EscalateCoverage((Escalate: Phase 4 Failed))
+
+        CoverageResult -- "Yes: Complete" --> CoverageComplete[Coverage Complete]
+    end
+
+    CoverageComplete --> EnterTestEscapeHatch[Enter Test Phase: Escape Hatch]
+
+    %% ========================================
+    %% PHASE 5 UAT: TEST ESCAPE HATCH
+    %% ========================================
+    %% Tasks: TF-001, TF-002, TF-003
+    %% Agent: test-guidance-simulator
+
+    subgraph TestEscapeHatch_SG ["Test Escape Hatch UAT"]
+        EnterTestEscapeHatch --> SpawnTestEscapeHatch[Spawn test-guidance-simulator]
+        SpawnTestEscapeHatch --> TestEscapeHatchResult{Tests Pass?}
+
+        TestEscapeHatchResult -- "No: Failures" --> CaptureTestEscapeHatchFB[Capture Feedback]
+        CaptureTestEscapeHatchFB --> CheckTestEscapeHatchIter{Max Iterations?}
+        CheckTestEscapeHatchIter -- "No: Continue" --> SpawnFixEscapeHatch[Spawn teacher-update-guidance Fix]
+        SpawnFixEscapeHatch --> SpawnTestEscapeHatch
+        CheckTestEscapeHatchIter -- "Yes: Limit" --> EscalateTestEscapeHatch((Escalate: Test Phase 1 Failed))
+
+        TestEscapeHatchResult -- "Yes: Passed" --> TestEscapeHatchComplete[Test Escape Hatch Complete]
+    end
+
+    TestEscapeHatchComplete --> EnterTestGates[Enter Test Phase: Gates]
+
+    %% ========================================
+    %% PHASE 6 UAT: TEST GATES
+    %% ========================================
+    %% Tasks: TF-004, TF-005, TF-006, TF-007
+    %% Agent: test-guidance-simulator
+
+    subgraph TestGates_SG ["Test Gates UAT"]
+        EnterTestGates --> SpawnTestGates[Spawn test-guidance-simulator]
+        SpawnTestGates --> TestGatesResult{Tests Pass?}
+
+        TestGatesResult -- "No: Failures" --> CaptureTestGatesFB[Capture Feedback]
+        CaptureTestGatesFB --> CheckTestGatesIter{Max Iterations?}
+        CheckTestGatesIter -- "No: Continue" --> SpawnFixGates[Spawn teacher-update-guidance Fix]
+        SpawnFixGates --> SpawnTestGates
+        CheckTestGatesIter -- "Yes: Limit" --> EscalateTestGates((Escalate: Test Phase 2 Failed))
+
+        TestGatesResult -- "Yes: Passed" --> TestGatesComplete[Test Gates Complete]
+    end
+
+    TestGatesComplete --> EnterTestContract[Enter Test Phase: Contract]
+
+    %% ========================================
+    %% PHASE 7 UAT: TEST CONTRACT
+    %% ========================================
+    %% Tasks: TF-008, TF-009, TF-010
+    %% Agent: test-guidance-simulator
+
+    subgraph TestContract_SG ["Test Contract UAT"]
+        EnterTestContract --> SpawnTestContract[Spawn test-guidance-simulator]
+        SpawnTestContract --> TestContractResult{Tests Pass?}
+
+        TestContractResult -- "No: Failures" --> CaptureTestContractFB[Capture Feedback]
+        CaptureTestContractFB --> CheckTestContractIter{Max Iterations?}
+        CheckTestContractIter -- "No: Continue" --> SpawnFixContract[Spawn teacher-update-guidance Fix]
+        SpawnFixContract --> SpawnTestContract
+        CheckTestContractIter -- "Yes: Limit" --> EscalateTestContract((Escalate: Test Phase 3 Failed))
+
+        TestContractResult -- "Yes: Passed" --> TestContractComplete[Test Contract Complete]
+    end
+
+    TestContractComplete --> EnterTestCoverage[Enter Test Phase: Coverage]
+
+    %% ========================================
+    %% PHASE 8 UAT: TEST COVERAGE + CLI
+    %% ========================================
+    %% Tasks: TF-011, TF-012, TF-013, TF-014
+    %% Agent: test-builder (for pytest), test-runner (for execution)
+
+    subgraph TestCoverage_SG ["Test Coverage UAT"]
+        EnterTestCoverage --> SpawnTestCoverage[Spawn test-builder + test-runner]
+        SpawnTestCoverage --> TestCoverageResult{Tests Pass?}
+
+        TestCoverageResult -- "No: Failures" --> CaptureTestCoverageFB[Capture Feedback]
+        CaptureTestCoverageFB --> CheckTestCoverageIter{Max Iterations?}
+        CheckTestCoverageIter -- "No: Continue" --> SpawnFixCoverage[Spawn build-python Fix]
+        SpawnFixCoverage --> SpawnTestCoverage
+        CheckTestCoverageIter -- "Yes: Limit" --> EscalateTestCoverage((Escalate: Test Phase 4 Failed))
+
+        TestCoverageResult -- "Yes: Passed" --> TestCoverageComplete[Test Coverage Complete]
+    end
+
+    %% ========================================
+    %% OUTPUT PHASE
+    %% ========================================
+    subgraph Output_SG ["Output Subgraph"]
+        TestCoverageComplete --> ReportCompletion[Report Completion Status]
+        ReportCompletion --> ArchivePlan[Run: agentic plan move folder --plan 260208UF_uat_fence_hardening]
+    end
+
+    ArchivePlan --> End((End: Plan Completed))
+
+    classDef dashedstroke stroke-dasharray: 5 5;

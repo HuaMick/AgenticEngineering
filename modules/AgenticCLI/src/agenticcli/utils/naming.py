@@ -117,6 +117,7 @@ def generate_plan_folder_name(
     worktree_path: Path,
     description: str,
     date: datetime | None = None,
+    branch: str | None = None,
 ) -> str:
     """Generate plan folder name in YYMMDDXX_description format.
 
@@ -124,6 +125,7 @@ def generate_plan_folder_name(
         worktree_path: Path to the worktree directory.
         description: Human-readable description of the plan.
         date: Optional date to use (defaults to today).
+        branch: Optional branch name for worktree registry lookup.
 
     Returns:
         Folder name matching pattern YYMMDDXX_description.
@@ -134,12 +136,18 @@ def generate_plan_folder_name(
         ...     "naming convention audit"
         ... )
         '260115AG_naming_convention_audit'
+        >>> generate_plan_folder_name(
+        ...     Path("/home/code/AgenticEngineering-260208PN"),
+        ...     "phone notifications",
+        ...     branch="260208PN"
+        ... )
+        '260208PN_phone_notifications'
     """
     if date is None:
         date = datetime.now()
 
     date_prefix = date.strftime("%y%m%d")
-    worktree_id = get_worktree_id(worktree_path)
+    worktree_id = get_worktree_id(worktree_path, branch=branch)
     sanitized_desc = sanitize_description(description)
 
     return f"{date_prefix}{worktree_id}_{sanitized_desc}"

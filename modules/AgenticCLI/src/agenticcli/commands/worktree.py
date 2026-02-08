@@ -43,8 +43,10 @@ def handle(args, ctx=None):
         cmd_remove(args)
     elif args.worktree_command == "status":
         cmd_status(args)
+    elif args.worktree_command == "validate":
+        cmd_validate(args)
     else:
-        print("Usage: agentic worktree <create|list|remove|status>", file=sys.stderr)
+        print("Usage: agentic worktree <create|list|remove|status|validate>", file=sys.stderr)
         sys.exit(1)
 
 
@@ -472,6 +474,60 @@ completed_items: []
 """)
 
 
+def get_actual_worktrees(repo_root: Path) -> list[dict]:
+    """Parse `git worktree list --porcelain` and return structured data.
+
+    Args:
+        repo_root: Repository root path to run git from.
+
+    Returns:
+        List of dicts with 'path' and 'branch' keys.
+        Returns empty list on error.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "worktree", "list", "--porcelain"],
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=repo_root,
+        )
+    except subprocess.CalledProcessError:
+        return []
+
+    worktrees = []
+    current_wt = {}
+    for line in result.stdout.strip().split("\n"):
+        if line.startswith("worktree "):
+            if current_wt:
+                worktrees.append(current_wt)
+            current_wt = {"path": line.split(" ", 1)[1]}
+        elif line.startswith("branch "):
+            current_wt["branch"] = line.split(" ", 1)[1].replace("refs/heads/", "")
+        elif line.strip() == "":
+            continue
+    if current_wt:
+        worktrees.append(current_wt)
+
+    return worktrees
+
+
+def get_live_plan_folders(main_wt_path: Path) -> list[str]:
+    """Scan docs/plans/live/ in the given worktree and return plan folder names.
+
+    Args:
+        main_wt_path: Path to the main worktree root.
+
+    Returns:
+        Sorted list of directory names under docs/plans/live/.
+        Returns empty list if path doesn't exist.
+    """
+    plan_dir = main_wt_path / "docs" / "plans" / "live"
+    if not plan_dir.exists():
+        return []
+    return sorted(d.name for d in plan_dir.iterdir() if d.is_dir())
+
+
 def cmd_create(args):
     """Create a new worktree with planning folder."""
     from agenticcli.console import (
@@ -643,43 +699,17 @@ def cmd_list(args):
     repo_root = get_repo_root()
 
     # Get worktree list
-    try:
-        result = subprocess.run(
-            ["git", "worktree", "list", "--porcelain"],
-            capture_output=True,
-            text=True,
-            check=True,
-            cwd=repo_root,
-        )
-    except subprocess.CalledProcessError as e:
-        print_error(f"Error listing worktrees: {e}")
+    worktrees = get_actual_worktrees(repo_root)
+    if not worktrees:
+        print_error("No worktrees found or error listing worktrees")
         sys.exit(1)
-
-    # Parse worktree output
-    worktrees = []
-    current_wt = {}
-    for line in result.stdout.strip().split("\n"):
-        if line.startswith("worktree "):
-            if current_wt:
-                worktrees.append(current_wt)
-            current_wt = {"path": line.split(" ", 1)[1]}
-        elif line.startswith("branch "):
-            current_wt["branch"] = line.split(" ", 1)[1].replace("refs/heads/", "")
-        elif line.strip() == "":
-            continue
-    if current_wt:
-        worktrees.append(current_wt)
 
     # Load registry and find main worktree for Main-First Planning
     registry = load_worktree_registry(repo_root)
     main_wt_path = _find_main_worktree_path(worktrees)
 
     # Scan main worktree's plans
-    main_plan_folders = []
-    if main_wt_path:
-        main_plan_dir = Path(main_wt_path) / "docs" / "plans" / "live"
-        if main_plan_dir.exists():
-            main_plan_folders = [d.name for d in main_plan_dir.iterdir() if d.is_dir()]
+    main_plan_folders = get_live_plan_folders(Path(main_wt_path)) if main_wt_path else []
 
     # Build worktree data with plan folders
     worktree_data = []
@@ -760,35 +790,12 @@ def cmd_remove(args):
     repo_root = get_repo_root()
 
     # Find the worktree path for this branch
-    try:
-        result = subprocess.run(
-            ["git", "worktree", "list", "--porcelain"],
-            capture_output=True,
-            text=True,
-            check=True,
-            cwd=repo_root,
-        )
-    except subprocess.CalledProcessError as e:
-        print_error(f"Error listing worktrees: {e}")
-        sys.exit(1)
-
-    # Find worktree for branch
+    all_worktrees = get_actual_worktrees(repo_root)
     worktree_path = None
-    lines = result.stdout.strip().split("\n")
-    i = 0
-    while i < len(lines):
-        if lines[i].startswith("worktree "):
-            path = lines[i].split(" ", 1)[1]
-            # Check next lines for branch
-            for j in range(i + 1, min(i + 5, len(lines))):
-                if lines[j].startswith("branch "):
-                    wt_branch = lines[j].split(" ", 1)[1].replace("refs/heads/", "")
-                    if wt_branch == branch:
-                        worktree_path = path
-                        break
-                elif lines[j].startswith("worktree "):
-                    break
-        i += 1
+    for wt in all_worktrees:
+        if wt.get("branch") == branch:
+            worktree_path = wt["path"]
+            break
 
     if not worktree_path:
         print_error(f"No worktree found for branch '{branch}'")
@@ -990,4 +997,148 @@ def cmd_status(args):
     else:
         console.print("  [dim]No active plans[/dim]")
 
+    console.print()
+
+
+def cmd_validate(args):
+    """Validate worktree-plan synchronization.
+
+    Cross-references three data sources:
+    1. Actual git worktrees (git worktree list)
+    2. Worktree registry (docs/worktrees.yml)
+    3. Live plan folders (docs/plans/live/)
+
+    Reports orphaned plans, stale worktrees, and registry drift.
+    Exits with code 1 if any issues found.
+    """
+    repo_root = get_repo_root()
+
+    # Gather data from all three sources
+    actual_worktrees = get_actual_worktrees(repo_root)
+    registry = load_worktree_registry(repo_root)
+    main_wt_path = _find_main_worktree_path(actual_worktrees)
+    plan_folders = get_live_plan_folders(Path(main_wt_path)) if main_wt_path else []
+
+    # Collect actual branch names (excluding bare worktrees)
+    actual_branches = {wt["branch"] for wt in actual_worktrees if "branch" in wt}
+
+    # 1. Orphaned plans: plan folders with no matching worktree
+    orphaned_plans = []
+    for folder in plan_folders:
+        matched = False
+        for wt in actual_worktrees:
+            branch = wt.get("branch", "")
+            if not branch or branch in ("main", "master"):
+                continue
+            matches = _match_plans_to_branch([folder], branch, registry)
+            if matches:
+                matched = True
+                break
+        if not matched:
+            orphaned_plans.append(folder)
+
+    # 2. Stale worktrees: non-main worktrees with no matching plan
+    stale_worktrees = []
+    for wt in actual_worktrees:
+        branch = wt.get("branch", "")
+        if not branch or branch in ("main", "master"):
+            continue
+        matches = _match_plans_to_branch(plan_folders, branch, registry)
+        if not matches:
+            stale_worktrees.append({"path": wt["path"], "branch": branch})
+
+    # 3. Registry drift
+    # 3a. Registry entries with no matching actual worktree
+    missing_worktrees = []
+    for entry in registry:
+        reg_branch = entry.get("branch", "")
+        if reg_branch not in actual_branches:
+            missing_worktrees.append({
+                "branch": reg_branch,
+                "abbreviation": entry.get("abbreviation", ""),
+            })
+
+    # 3b. Actual non-main worktrees not in registry
+    registry_branches = {e.get("branch", "") for e in registry}
+    unregistered = []
+    for wt in actual_worktrees:
+        branch = wt.get("branch", "")
+        if not branch or branch in ("main", "master"):
+            continue
+        if branch not in registry_branches:
+            unregistered.append({"path": wt["path"], "branch": branch})
+
+    # Build result
+    validation_result = {
+        "orphaned_plans": orphaned_plans,
+        "stale_worktrees": stale_worktrees,
+        "registry_drift": {
+            "missing_worktrees": missing_worktrees,
+            "unregistered": unregistered,
+        },
+        "valid": (
+            not orphaned_plans
+            and not stale_worktrees
+            and not missing_worktrees
+            and not unregistered
+        ),
+    }
+
+    from agenticcli.console import is_json_output, print_json
+
+    if is_json_output():
+        print_json(validation_result)
+    else:
+        _print_validation_result(validation_result)
+
+    sys.exit(0 if validation_result["valid"] else 1)
+
+
+def _print_validation_result(result: dict):
+    """Print human-readable validation output."""
+    from agenticcli.console import console
+
+    console.print("\n[bold magenta]Worktree Validation[/bold magenta]\n")
+
+    # Orphaned plans
+    if result["orphaned_plans"]:
+        console.print("[yellow]Orphaned Plans[/yellow] (no matching worktree):")
+        for plan in result["orphaned_plans"]:
+            console.print(f"  [yellow]![/yellow] {plan}")
+    else:
+        console.print("[green]Orphaned Plans:[/green] none")
+
+    # Stale worktrees
+    if result["stale_worktrees"]:
+        console.print("[yellow]Stale Worktrees[/yellow] (no matching plan):")
+        for wt in result["stale_worktrees"]:
+            console.print(f"  [yellow]![/yellow] {wt['branch']} ({wt['path']})")
+    else:
+        console.print("[green]Stale Worktrees:[/green] none")
+
+    # Registry drift
+    drift = result["registry_drift"]
+    if drift["missing_worktrees"]:
+        console.print("[yellow]Registry Drift[/yellow] (entries without actual worktrees):")
+        for entry in drift["missing_worktrees"]:
+            console.print(f"  [yellow]![/yellow] {entry['branch']} (abbr: {entry['abbreviation']})")
+    if drift["unregistered"]:
+        console.print("[yellow]Unregistered Worktrees[/yellow] (not in registry):")
+        for wt in drift["unregistered"]:
+            console.print(f"  [yellow]![/yellow] {wt['branch']} ({wt['path']})")
+    if not drift["missing_worktrees"] and not drift["unregistered"]:
+        console.print("[green]Registry Drift:[/green] none")
+
+    # Summary
+    console.print()
+    if result["valid"]:
+        console.print("[bold green]All checks passed[/bold green]")
+    else:
+        issue_count = (
+            len(result["orphaned_plans"])
+            + len(result["stale_worktrees"])
+            + len(drift["missing_worktrees"])
+            + len(drift["unregistered"])
+        )
+        console.print(f"[bold red]{issue_count} issue(s) found[/bold red]")
     console.print()

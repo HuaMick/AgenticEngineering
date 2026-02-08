@@ -321,12 +321,25 @@ process:
         4. If ANY validation subgraph was skipped → BLOCK shutdown
         5. If ANY validation result != PASS → Return to fix phase
 
-        STORY VALIDATION CHECK:
+        STORY VALIDATION CHECK (references planning-standard.yml#escape_hatch_rules):
         6. If plan has affected_stories metadata:
            a. Verify UAT phase validated those specific stories
            b. Check story test results are captured (test_status field)
            c. FENCE: Cannot proceed to shutdown if affected stories have test_status=failed
-        7. If plan has no affected_stories and no no_stories_rationale → WARN (non-blocking)
+        7. If plan has no affected_stories and no no_stories_rationale:
+           a. Determine plan type from MMD metadata or plan YAML
+           b. If plan type in blocked_plan_types (build, test) → BLOCK (not WARN)
+           c. If plan type in allowed_plan_types (infrastructure, guidance, internal_tooling) → WARN (non-blocking)
+           d. If plan type unknown → BLOCK (fail-safe)
+        8. UAT SUBGRAPH CHECK:
+           a. If affected_stories present in plan metadata, scan MMD for UAT subgraph
+           b. If no UAT subgraph found but affected_stories exist → BLOCK
+              Error: "BLOCKED: Plan has affected_stories but no UAT subgraph in MMD."
+        9. STORY COVERAGE CHECK:
+           a. For each story ID in affected_stories, read test_status from story YAML
+           b. If ANY story has test_status=untested → BLOCK
+              Error: "BLOCKED: Story coverage incomplete. N/M stories untested: [IDs]"
+           c. Report coverage percentage: "Story coverage: N/M (X%)"
 
         FENCE: VALIDATION GATE
         Cannot proceed to shutdown_aggregate_status until:
