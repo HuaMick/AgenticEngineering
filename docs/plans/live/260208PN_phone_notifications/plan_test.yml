@@ -1,0 +1,841 @@
+name: Phone Notifications - Test Plan
+status: pending
+priority: high
+affected_stories:
+- 'US-CLI-062: Answer a Question'
+- 'US-CLI-065: Watch Questions with Tmux Notifications'
+- 'US-CLI-066: Run Question Watch as Daemon'
+- 'US-CLI-060: Ask a Question During Workflow'
+objective: 'Validate the phone notifications implementation across all 4 build phases:
+
+  ntfy client, config schema, interactive wizard, and suggested answers.
+
+  Each build phase has a corresponding test phase with test-fix loops,
+
+  followed by test-audit-fix loops to catch reward hacking, and a final
+
+  UAT phase as PRIMARY SUCCESS CRITERIA.
+
+  '
+loop_structures:
+- id: test_fix_loop
+  type: test-fix-loop
+  applies_to_phase: T1-T4 test phases
+  trigger: After test creation and execution
+  description: 'Run tests, fix failures, iterate until passing.
+
+    '
+  exit_criteria:
+    success: All tests pass
+    max_iterations: 5
+    escalation: Escalate to user with test results
+- id: audit_test_fix_loop
+  type: audit-test-fix-loop
+  applies_to_phase: T5-T8 audit phases
+  trigger: After test-fix-loop passes for each phase
+  description: 'Audit tests for reward hacking, weak assertions, and coverage gaps.
+
+    Fix issues found, re-run tests, iterate until audit passes.
+
+    '
+  exit_criteria:
+    success: Audit passes with no critical findings
+    max_iterations: 3
+    escalation: Escalate to user with audit results
+- id: uat_validation_loop
+  type: user-story-validation-loop
+  applies_to_phase: T9 UAT phase
+  trigger: After all test and audit phases complete
+  description: 'Execute user stories via test-user-simulator. Iterate on failures.
+
+    '
+  exit_criteria:
+    success: All affected user stories pass acceptance criteria
+    max_iterations: 3
+    escalation: Escalate to user with UAT results
+phases:
+- phase_id: T1_NTFY_TESTS
+  name: 'Phase T1: ntfy Notification Hook Tests'
+  status: completed
+  stories:
+  - US-CLI-065
+  - US-CLI-066
+  description: 'Test the ntfy client utility (PN-001), watcher hook integration (PN-002),
+
+    and unit tests from the build phase (PN-003).
+
+    '
+  loop:
+    type: test-fix-loop
+    maximum_iterations: 5
+    exit_conditions:
+      success:
+        condition: PASS
+        criteria: All ntfy tests pass
+      max_iterations:
+        action: escalate
+        reason: ntfy test failures persist
+  tasks:
+  - id: T1-001
+    name: Run ntfy client unit tests
+    status: completed
+    agent: test-runner
+    inputs:
+    - modules/AgenticCLI/tests/test_ntfy.py
+    - modules/AgenticCLI/src/agenticcli/utils/ntfy.py
+    guidance: 'Execute pytest on test_ntfy.py. Verify:
+
+      - TestSendNtfy tests (success, network failure, HTTP error, timeout, custom
+      server, tags)
+
+      - TestNotifyNewQuestion tests (blocking, high, medium severity, truncation)
+
+      - TestNtfyWatcherHook tests (configured send, no-topic skip, dedup)
+
+      All HTTP interactions must be mocked (no real network calls).
+
+      '
+    acceptance_criteria:
+    - All TestSendNtfy tests pass
+    - All TestNotifyNewQuestion tests pass
+    - All TestNtfyWatcherHook tests pass
+    - No real network calls made during tests
+  - id: T1-002
+    name: Verify ntfy watcher integration does not break existing watch tests
+    status: completed
+    agent: test-runner
+    depends_on:
+    - T1-001
+    inputs:
+    - modules/AgenticCLI/tests/
+    guidance: 'Run the full question command test suite to verify PN-002 watcher hook
+
+      changes did not break existing watch/daemon tests.
+
+      Execute: pytest modules/AgenticCLI/tests/ -k "question" --tb=short
+
+      '
+    acceptance_criteria:
+    - All existing question command tests still pass
+    - No regressions in watch or daemon functionality
+  - id: T1-003
+    name: Verify ntfy error isolation
+    status: completed
+    agent: test-runner
+    depends_on:
+    - T1-001
+    inputs:
+    - modules/AgenticCLI/tests/test_ntfy.py
+    guidance: 'Specifically verify that network errors in ntfy never propagate to
+
+      crash the watcher daemon. Run the failure-path tests and confirm
+
+      send_ntfy returns False without raising.
+
+      '
+    acceptance_criteria:
+    - URLError returns False, does not raise
+    - HTTPError returns False, does not raise
+    - Timeout returns False, does not raise
+    - Watcher daemon continues running after ntfy failure
+- phase_id: T2_CONFIG_TESTS
+  name: 'Phase T2: Configuration Schema Tests'
+  status: completed
+  stories:
+  - US-CLI-065
+  description: 'Test ntfy config keys (PN-004), validation (PN-005), and config unit
+    tests (PN-006).
+
+    '
+  loop:
+    type: test-fix-loop
+    maximum_iterations: 5
+    exit_conditions:
+      success:
+        condition: PASS
+        criteria: All config tests pass
+      max_iterations:
+        action: escalate
+        reason: Config test failures persist
+  tasks:
+  - id: T2-001
+    name: Run ntfy config unit tests
+    status: completed
+    agent: test-runner
+    inputs:
+    - modules/AgenticGuidance/tests/test_config_ntfy.py
+    - modules/AgenticGuidance/src/agenticguidance/services/config.py
+    guidance: 'Execute pytest on test_config_ntfy.py. Verify:
+
+      - TestNtfyConfigDefaults (empty topic, default server, enabled=True)
+
+      - TestNtfyConfigEnvVars (AGENTIC_NTFY_TOPIC, AGENTIC_NTFY_SERVER mapping)
+
+      - TestNtfyConfigValidation (valid URL, invalid URL rejected, empty topic ok,
+      boolean enabled)
+
+      '
+    acceptance_criteria:
+    - DEFAULT_CONFIG contains ntfy.topic, ntfy.server, ntfy.enabled
+    - Environment variable mapping works for topic and server
+    - Invalid server URL raises ValueError
+    - Empty topic accepted (opt-in design)
+  - id: T2-002
+    name: Verify existing config tests unaffected
+    status: completed
+    agent: test-runner
+    depends_on:
+    - T2-001
+    inputs:
+    - modules/AgenticGuidance/tests/
+    guidance: 'Run all config-related tests to verify PN-004/PN-005 changes did not
+
+      break existing config functionality.
+
+      Execute: pytest modules/AgenticGuidance/tests/ -k "config" --tb=short
+
+      '
+    acceptance_criteria:
+    - All pre-existing config tests pass
+    - No regressions in TieredConfigLoader behavior
+  - id: T2-003
+    name: Verify config CLI integration
+    status: completed
+    agent: test-runner
+    depends_on:
+    - T2-001
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/config.py
+    guidance: 'Test that `agentic config set ntfy.topic test-topic` and
+
+      `agentic config get ntfy.topic` work through the CLI layer.
+
+      Use subprocess or CLI test helpers to verify end-to-end config flow.
+
+      '
+    acceptance_criteria:
+    - config set ntfy.topic stores value
+    - config get ntfy.topic retrieves stored value
+    - config set ntfy.server with invalid URL shows error
+- phase_id: T3_WIZARD_TESTS
+  name: 'Phase T3: Interactive Wizard Tests'
+  status: completed
+  stories:
+  - US-CLI-062
+  description: 'Test interactive answer wizard (PN-007), --interactive flag (PN-008),
+
+    and wizard unit tests (PN-009).
+
+    '
+  loop:
+    type: test-fix-loop
+    maximum_iterations: 5
+    exit_conditions:
+      success:
+        condition: PASS
+        criteria: All wizard tests pass
+      max_iterations:
+        action: escalate
+        reason: Wizard test failures persist
+  tasks:
+  - id: T3-001
+    name: Run interactive wizard unit tests
+    status: completed
+    agent: test-runner
+    inputs:
+    - modules/AgenticCLI/tests/test_interactive_answer.py
+    - modules/AgenticCLI/src/agenticcli/utils/interactive_answer.py
+    guidance: 'Execute pytest on test_interactive_answer.py. Verify:
+
+      - TestInteractiveAnswerWizard (select suggested, custom, defer, confirm, no
+      suggestions, retries)
+
+      - TestAnswerCommandInteractive (flag launches wizard, non-interactive unchanged,
+      no question_id)
+
+      All input() calls must be mocked.
+
+      '
+    acceptance_criteria:
+    - Suggested answer selection returns correct text and confidence="high"
+    - Custom text input returns confidence=None
+    - Defer returns DEFER_SENTINEL
+    - Confirmation flow works (Y accepts, n re-prompts)
+    - Invalid input retries up to 3 times
+  - id: T3-002
+    name: Verify --interactive flag registered in Typer CLI
+    status: completed
+    agent: test-runner
+    depends_on:
+    - T3-001
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    guidance: 'Verify that `agentic question answer --help` shows the --interactive
+      / -i flag.
+
+      Run: agentic question answer --help and check output contains "--interactive".
+
+      '
+    acceptance_criteria:
+    - --interactive flag appears in help text
+    - -i short form appears in help text
+    - Flag is Optional[bool] defaulting to False
+  - id: T3-003
+    name: Verify existing answer command unaffected without --interactive
+    status: completed
+    agent: test-runner
+    depends_on:
+    - T3-001
+    inputs:
+    - modules/AgenticCLI/tests/
+    guidance: 'Run existing question answer tests WITHOUT --interactive flag to verify
+
+      no regressions in the standard answer flow.
+
+      Execute: pytest modules/AgenticCLI/tests/ -k "answer" --tb=short
+
+      '
+    acceptance_criteria:
+    - All pre-existing answer command tests pass
+    - Non-interactive flow unchanged
+- phase_id: T4_SUGGESTED_TESTS
+  name: 'Phase T4: Suggested Answers Tests'
+  status: completed
+  stories:
+  - US-CLI-060
+  - US-CLI-062
+  description: 'Test suggested_answers model field (PN-010), create_question param
+    (PN-011),
+
+    wizard wiring (PN-012), and suggested answers unit tests (PN-013).
+
+    '
+  loop:
+    type: test-fix-loop
+    maximum_iterations: 5
+    exit_conditions:
+      success:
+        condition: PASS
+        criteria: All suggested answers tests pass
+      max_iterations:
+        action: escalate
+        reason: Suggested answers test failures persist
+  tasks:
+  - id: T4-001
+    name: Run suggested answers unit tests
+    status: completed
+    agent: test-runner
+    inputs:
+    - modules/AgenticGuidance/tests/test_suggested_answers.py
+    - modules/AgenticGuidance/src/agenticguidance/models/question.py
+    - modules/AgenticGuidance/src/agenticguidance/services/question.py
+    guidance: 'Execute pytest on test_suggested_answers.py. Verify:
+
+      - TestQuestionSuggestedAnswers (default None, with values, to_dict include/omit,
+      from_dict, YAML round-trip)
+
+      - TestCreateQuestionSuggested (with suggestions, without, validation for empty
+      list/string/max 10)
+
+      - TestInteractiveWithSuggestions (displayed in wizard, [S] indicator)
+
+      '
+    acceptance_criteria:
+    - suggested_answers defaults to None
+    - to_dict includes field when set, omits when None
+    - from_dict parses list of strings correctly
+    - YAML round-trip preserves suggested_answers
+    - Backward compatibility: existing questions without field still parse
+    - Validation rejects empty list, empty strings, >10 items
+  - id: T4-002
+    name: Verify Question model backward compatibility
+    status: completed
+    agent: test-runner
+    depends_on:
+    - T4-001
+    inputs:
+    - modules/AgenticGuidance/tests/
+    guidance: 'Run all Question model tests to verify PN-010 did not break existing
+
+      Question serialization or deserialization.
+
+      Execute: pytest modules/AgenticGuidance/tests/ -k "question" --tb=short
+
+      '
+    acceptance_criteria:
+    - All pre-existing Question model tests pass
+    - Questions without suggested_answers parse as before
+    - No regressions in QuestionQueue operations
+  - id: T4-003
+    name: Verify --suggest flag in ask command
+    status: completed
+    agent: test-runner
+    depends_on:
+    - T4-001
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/question.py
+    guidance: 'Verify that `agentic question ask --help` shows the --suggest flag.
+
+      Run: agentic question ask --help and check output.
+
+      Then verify the flag correctly passes suggestions to create_question.
+
+      '
+    acceptance_criteria:
+    - --suggest flag appears in ask command help
+    - Multiple --suggest flags accepted
+    - Suggestions passed to create_question service
+- phase_id: T5_AUDIT_NTFY
+  name: 'Phase T5: Audit ntfy Tests'
+  status: completed
+  stories:
+  - US-CLI-065
+  - US-CLI-066
+  description: 'Audit ntfy test quality for reward hacking, weak assertions, and coverage
+    gaps.
+
+    '
+  loop:
+    type: audit-test-fix-loop
+    maximum_iterations: 3
+    exit_conditions:
+      success:
+        condition: PASS
+        criteria: Audit finds no critical issues in ntfy tests
+      max_iterations:
+        action: escalate
+        reason: Audit findings not resolved
+  tasks:
+  - id: T5-001
+    name: Audit ntfy test coverage and quality
+    status: completed
+    agent: test-audit
+    inputs:
+    - modules/AgenticCLI/tests/test_ntfy.py
+    - modules/AgenticCLI/src/agenticcli/utils/ntfy.py
+    - modules/AgenticCLI/src/agenticcli/commands/question.py
+    guidance: 'Audit test_ntfy.py for:
+
+      - Reward hacking: tests that pass trivially or assert on mocks not behavior
+
+      - Weak assertions: missing assert on return values, HTTP headers, body content
+
+      - Coverage gaps: untested error paths, missing edge cases
+
+      - Mock correctness: mocks match real interfaces (urllib.request)
+
+      - Deduplication logic: verify seen-question tracking tested properly
+
+      '
+    acceptance_criteria:
+    - No reward hacking patterns found
+    - All critical code paths have meaningful assertions
+    - Error isolation (network errors don't crash watcher) properly tested
+    - Mock signatures match real urllib.request interfaces
+- phase_id: T6_AUDIT_CONFIG
+  name: 'Phase T6: Audit Config Tests'
+  status: completed
+  stories:
+  - US-CLI-065
+  description: 'Audit config test quality for reward hacking and coverage gaps.
+
+    '
+  loop:
+    type: audit-test-fix-loop
+    maximum_iterations: 3
+    exit_conditions:
+      success:
+        condition: PASS
+        criteria: Audit finds no critical issues in config tests
+      max_iterations:
+        action: escalate
+        reason: Audit findings not resolved
+  tasks:
+  - id: T6-001
+    name: Audit config test coverage and quality
+    status: completed
+    agent: test-audit
+    inputs:
+    - modules/AgenticGuidance/tests/test_config_ntfy.py
+    - modules/AgenticGuidance/src/agenticguidance/services/config.py
+    guidance: 'Audit test_config_ntfy.py for:
+
+      - Reward hacking: tests that check dict keys exist without verifying values
+
+      - Weak assertions: missing validation of actual config loading behavior
+
+      - Coverage gaps: env var override not tested end-to-end, missing edge cases
+
+      - Integration: config set -> config get round-trip tested
+
+      - Validation: error messages are informative, not just "raises ValueError"
+
+      '
+    acceptance_criteria:
+    - Config defaults verified with correct values (not just key existence)
+    - Env var mapping tested with actual TieredConfigLoader
+    - Validation error messages checked for helpfulness
+    - No reward hacking patterns
+- phase_id: T7_AUDIT_WIZARD
+  name: 'Phase T7: Audit Interactive Wizard Tests'
+  status: pending
+  stories:
+  - US-CLI-062
+  description: 'Audit wizard test quality for reward hacking and coverage gaps.
+
+    '
+  loop:
+    type: audit-test-fix-loop
+    maximum_iterations: 3
+    exit_conditions:
+      success:
+        condition: PASS
+        criteria: Audit finds no critical issues in wizard tests
+      max_iterations:
+        action: escalate
+        reason: Audit findings not resolved
+  tasks:
+  - id: T7-001
+    name: Audit wizard test coverage and quality
+    status: pending
+    agent: test-audit
+    inputs:
+    - modules/AgenticCLI/tests/test_interactive_answer.py
+    - modules/AgenticCLI/src/agenticcli/utils/interactive_answer.py
+    - modules/AgenticCLI/src/agenticcli/commands/question.py
+    guidance: 'Audit test_interactive_answer.py for:
+
+      - Reward hacking: tests that mock too much (wizard never actually runs)
+
+      - Weak assertions: testing "called" but not "called with correct args"
+
+      - Coverage gaps: confirmation rejection loop, max retry exhaustion, display
+      width
+
+      - Input mocking: builtins.input properly mocked for all paths
+
+      - SSH compatibility: no terminal-specific features tested (should be plain input)
+
+      - DEFER_SENTINEL handling: defer path tested end-to-end
+
+      '
+    acceptance_criteria:
+    - Mock assertions verify call arguments, not just call count
+    - All user input paths tested (number, C, D, invalid, confirm Y/n)
+    - Display width constraint (<=60 chars) verified
+    - DEFER_SENTINEL correctly handled by cmd_answer
+- phase_id: T8_AUDIT_SUGGESTED
+  name: 'Phase T8: Audit Suggested Answers Tests'
+  status: completed
+  stories:
+  - US-CLI-060
+  - US-CLI-062
+  description: 'Audit suggested answers test quality for reward hacking and coverage
+    gaps.
+
+    '
+  loop:
+    type: audit-test-fix-loop
+    maximum_iterations: 3
+    exit_conditions:
+      success:
+        condition: PASS
+        criteria: Audit finds no critical issues in suggested answers tests
+      max_iterations:
+        action: escalate
+        reason: Audit findings not resolved
+  tasks:
+  - id: T8-001
+    name: Audit suggested answers test coverage and quality
+    status: completed
+    agent: test-audit
+    inputs:
+    - modules/AgenticGuidance/tests/test_suggested_answers.py
+    - modules/AgenticGuidance/src/agenticguidance/models/question.py
+    - modules/AgenticGuidance/src/agenticguidance/services/question.py
+    - modules/AgenticCLI/src/agenticcli/commands/question.py
+    guidance: 'Audit test_suggested_answers.py for:
+
+      - Reward hacking: YAML round-trip tests that serialize/deserialize trivial data
+
+      - Weak assertions: checking field exists but not checking value correctness
+
+      - Coverage gaps: boundary cases (exactly 10 suggestions, Unicode strings, very
+      long answers)
+
+      - Backward compatibility: explicitly test loading YAML files WITHOUT suggested_answers
+      field
+
+      - Validation: all error paths produce meaningful messages
+
+      - Integration: --suggest flag -> create_question -> YAML -> interactive wizard
+      end-to-end
+
+      '
+    acceptance_criteria:
+    - YAML round-trip tested with realistic data (not trivial)
+    - Backward compatibility explicitly verified with old-format YAML
+    - Validation boundaries tested (0, 1, 10, 11 suggestions)
+    - End-to-end integration path covered
+- phase_id: T9_UAT
+  name: 'Phase T9: UAT - User Acceptance Testing (PRIMARY SUCCESS CRITERIA)'
+  status: pending
+  stories:
+  - US-CLI-060
+  - US-CLI-062
+  - US-CLI-065
+  - US-CLI-066
+  description: 'MANDATORY UAT phase validating the complete phone notifications feature
+
+    against user story acceptance criteria. This is the PRIMARY SUCCESS CRITERIA
+
+    for the plan - all prior test phases are prerequisites.
+
+
+    Strategy: test-user-simulator
+
+    Rationale: CLI tool with interactive features requiring full user journey validation.
+
+    '
+  loop:
+    type: user-story-validation-loop
+    maximum_iterations: 3
+    exit_conditions:
+      success:
+        condition: PASS
+        criteria: All 4 user stories pass acceptance criteria
+      max_iterations:
+        action: escalate
+        reason: UAT failures not resolved after 3 iterations
+  tasks:
+  - id: T9-001
+    name: 'UAT: Watch questions with ntfy notifications (US-CLI-065)'
+    status: pending
+    agent: test-user-simulator
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/question.py
+    - modules/AgenticCLI/src/agenticcli/utils/ntfy.py
+    - modules/AgenticGuidance/src/agenticguidance/services/config.py
+    guidance: 'Simulate user journey for US-CLI-065: Watch Questions with Tmux Notifications
+
+      Extended to include ntfy push notifications.
+
+
+      Steps:
+
+      1. Configure ntfy topic: agentic config set ntfy.topic test-phone
+
+      2. Start question watcher: agentic question watch --plan <test-plan>
+
+      3. Create a test question in a second process
+
+      4. Verify ntfy notification would be sent (mock HTTP, check headers/body)
+
+      5. Verify tmux notification still works alongside ntfy
+
+      6. Verify deduplication: same question does not trigger second notification
+
+      7. Verify graceful handling when ntfy server unreachable
+
+
+      Use mock/tmp_path for isolation. Do not make real HTTP calls.
+
+      '
+    acceptance_criteria:
+    - ntfy push sent with correct topic, title, message, priority
+    - Tmux notifications unaffected by ntfy integration
+    - Dedup prevents duplicate notifications
+    - Network errors do not crash watcher
+  - id: T9-002
+    name: 'UAT: Run question watch as daemon with ntfy (US-CLI-066)'
+    status: pending
+    agent: test-user-simulator
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/question.py
+    - modules/AgenticCLI/src/agenticcli/services/question_watcher.py
+    guidance: 'Simulate user journey for US-CLI-066: Run Question Watch as Daemon
+
+      Extended to include ntfy in daemon mode.
+
+
+      Steps:
+
+      1. Configure ntfy topic
+
+      2. Start daemon: agentic question watch --daemon --plan <test-plan>
+
+      3. Verify daemon starts successfully
+
+      4. Create a pending question
+
+      5. Verify ntfy notification sent from daemon callback
+
+      6. Verify daemon survives ntfy network error
+
+      7. Stop daemon cleanly
+
+      '
+    acceptance_criteria:
+    - Daemon mode sends ntfy notifications
+    - Daemon does not crash on ntfy failures
+    - Daemon stop is clean
+  - id: T9-003
+    name: 'UAT: Answer a question interactively (US-CLI-062)'
+    status: pending
+    agent: test-user-simulator
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/question.py
+    - modules/AgenticCLI/src/agenticcli/utils/interactive_answer.py
+    guidance: 'Simulate user journey for US-CLI-062: Answer a Question
+
+      Extended with interactive wizard flow.
+
+
+      Steps:
+
+      1. Create a pending question with suggested answers
+
+      2. Run: agentic question answer --interactive (no question_id)
+
+      3. Verify pending questions listed with [S] indicator
+
+      4. Select a question by number
+
+      5. Verify wizard displays question text, severity, suggested answers
+
+      6. Select a suggested answer by number
+
+      7. Verify confirmation prompt
+
+      8. Confirm answer
+
+      9. Verify question moved to answered/ with correct text and confidence
+
+
+      Also test:
+
+      - Custom answer flow (select C, type answer)
+
+      - Defer flow (select D)
+
+      - Non-interactive flow still works: agentic question answer <id> --text "answer"
+
+      '
+    acceptance_criteria:
+    - Interactive wizard launches from CLI
+    - Suggested answers displayed as numbered options
+    - Selected answer persisted with confidence="high"
+    - Custom answer persisted with confidence=None
+    - Defer moves question to deferred state
+    - Non-interactive answer path unbroken
+  - id: T9-004
+    name: 'UAT: Ask a question with suggested answers (US-CLI-060)'
+    status: pending
+    agent: test-user-simulator
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/question.py
+    - modules/AgenticGuidance/src/agenticguidance/services/question.py
+    - modules/AgenticGuidance/src/agenticguidance/models/question.py
+    guidance: "Simulate user journey for US-CLI-060: Ask a Question During Workflow\n\
+      Extended with suggested answers support.\n\nSteps:\n1. Ask a question with suggestions:\n\
+      \   agentic question ask --text \"Use pytest or unittest?\" \\\n     --suggest\
+      \ \"Use pytest\" --suggest \"Use unittest\" --suggest \"Use both\" \\\n    \
+      \ --plan <test-plan>\n2. Verify question YAML file created in pending/\n3. Verify\
+      \ suggested_answers field in YAML contains all 3 suggestions\n4. Verify question\
+      \ without --suggest still works (backward compatible)\n5. Verify validation:\
+      \ empty suggest rejected, >10 suggestions rejected\n"
+    acceptance_criteria:
+    - --suggest flag creates question with suggested_answers
+    - Multiple --suggest values stored as list
+    - YAML file contains suggested_answers field
+    - Backward compatible: questions without suggestions parse correctly
+    - Validation enforced at CLI level
+  - id: T9-005
+    name: 'UAT: End-to-end notification-to-answer flow'
+    status: pending
+    agent: test-user-simulator
+    depends_on:
+    - T9-001
+    - T9-003
+    - T9-004
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/question.py
+    - modules/AgenticCLI/src/agenticcli/utils/ntfy.py
+    - modules/AgenticCLI/src/agenticcli/utils/interactive_answer.py
+    - modules/AgenticGuidance/src/agenticguidance/services/question.py
+    guidance: "Simulate the complete phone notification workflow end-to-end:\n\n1.\
+      \ Configure ntfy: agentic config set ntfy.topic my-phone\n2. Agent asks question\
+      \ with suggestions:\n   agentic question ask --text \"Deploy to prod?\" \\\n\
+      \     --suggest \"Yes, deploy now\" --suggest \"No, wait for review\"\n3. Watcher\
+      \ detects question -> ntfy push sent (verify mock HTTP)\n4. User answers interactively:\n\
+      \   agentic question answer --interactive\n5. User selects from suggestions\
+      \ -> answer persisted\n6. Verify full data flow: ask -> notify -> answer ->\
+      \ complete\n\nThis validates the complete user journey from phone notification\n\
+      receipt to interactive answer submission.\n"
+    acceptance_criteria:
+    - Complete flow works end-to-end without errors
+    - ntfy notification contains question text and severity
+    - Interactive wizard shows the suggested answers from the question
+    - Answer persisted correctly after selection
+    - No regressions in non-interactive paths
+test_strategy:
+- type: unit
+  scope: Phase-aligned unit tests for ntfy client, config schema, wizard, suggested
+    answers
+  location: modules/AgenticCLI/tests/, modules/AgenticGuidance/tests/
+- type: regression
+  scope: Existing question, config, and answer command tests
+  location: modules/AgenticCLI/tests/, modules/AgenticGuidance/tests/
+- type: audit
+  scope: Test quality audit for reward hacking, weak assertions, coverage gaps
+  location: test-audit agent per phase
+- type: uat
+  scope: User story acceptance testing via test-user-simulator
+  location: test-user-simulator agent spawns
+  stories:
+  - 'US-CLI-060: Ask a Question During Workflow'
+  - 'US-CLI-062: Answer a Question'
+  - 'US-CLI-065: Watch Questions with Tmux Notifications'
+  - 'US-CLI-066: Run Question Watch as Daemon'
+impacted_files:
+- path: modules/AgenticCLI/tests/test_ntfy.py
+  change_type: validate
+  change_category: test
+  reason: Unit tests for ntfy client and watcher hook
+- path: modules/AgenticGuidance/tests/test_config_ntfy.py
+  change_type: validate
+  change_category: test
+  reason: Unit tests for ntfy config schema and validation
+- path: modules/AgenticCLI/tests/test_interactive_answer.py
+  change_type: validate
+  change_category: test
+  reason: Unit tests for interactive wizard and CLI integration
+- path: modules/AgenticGuidance/tests/test_suggested_answers.py
+  change_type: validate
+  change_category: test
+  reason: Unit tests for suggested answers model, service, and CLI
+impacted_artifacts:
+- artifact_type: utility
+  artifact_identifier: ntfy.send_ntfy
+  impact_type: behavior_change
+  description: Validated by unit tests and UAT
+- artifact_type: utility
+  artifact_identifier: ntfy.notify_new_question
+  impact_type: behavior_change
+  description: Validated by unit tests and UAT
+- artifact_type: service
+  artifact_identifier: TieredConfigLoader (ntfy keys)
+  impact_type: behavior_change
+  description: Validated by config unit tests
+- artifact_type: utility
+  artifact_identifier: interactive_answer_wizard
+  impact_type: behavior_change
+  description: Validated by wizard tests and UAT
+- artifact_type: model
+  artifact_identifier: Question.suggested_answers
+  impact_type: behavior_change
+  description: Validated by model tests, YAML round-trip, and UAT
+- artifact_type: service
+  artifact_identifier: QuestionQueue.create_question
+  impact_type: behavior_change
+  description: Validated by service tests and UAT
