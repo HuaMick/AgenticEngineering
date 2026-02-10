@@ -1,5 +1,6 @@
 """Tests for worktree commands."""
 
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -627,3 +628,94 @@ class TestWorktreeValidateCLI:
         assert "registry_drift" in data
         assert "valid" in data
         assert data["valid"] is True
+
+
+class TestWorktreeSync:
+    """Tests for 'agentic worktree sync' command (WU-005)."""
+
+    def _write_workspace(self, repo_root: Path, folders: list[dict], settings: dict | None = None):
+        """Helper: write a .code-workspace JSON file in repo_root."""
+        workspace = {"folders": folders}
+        if settings:
+            workspace["settings"] = settings
+        ws_file = repo_root / "test.code-workspace"
+        ws_file.write_text(json.dumps(workspace, indent="\t"))
+        return ws_file
+
+    def _read_workspace(self, ws_file: Path) -> dict:
+        """Helper: read and parse a .code-workspace JSON file."""
+        return json.loads(ws_file.read_text())
+
+    def test_sync_removes_stale_entries(self, cli_runner, temp_repo):
+        """Sync removes workspace entries whose paths don't exist on disk."""
+        # Create a workspace file with one real entry (repo itself) and one stale
+        self._write_workspace(
+            temp_repo,
+            [
+                {"name": "Main", "path": "."},
+                {"name": "Gone worktree", "path": "../NonExistent-branch"},
+            ],
+            settings={"git.scanRepositories": [".", "../NonExistent-branch"]},
+        )
+
+        stdout, stderr, code = cli_runner(["worktree", "sync"])
+        assert code == 0
+        assert "stale" in stdout.lower() or "removed" in stdout.lower()
+
+        # Verify stale entry was removed
+        ws = self._read_workspace(temp_repo / "test.code-workspace")
+        paths = [f["path"] for f in ws["folders"]]
+        assert "../NonExistent-branch" not in paths
+        # The real entry (.) should remain
+        assert "." in paths
+
+        # git.scanRepositories should also be cleaned
+        scan_repos = ws.get("settings", {}).get("git.scanRepositories", [])
+        assert "../NonExistent-branch" not in scan_repos
+
+    def test_sync_adds_missing_entries(self, cli_runner, temp_repo):
+        """Sync adds workspace entries for worktrees not in the workspace file.
+
+        The main worktree (temp_repo) is a real git worktree. The workspace file
+        starts empty, so sync should add the main worktree as a missing entry.
+        """
+        # Create a workspace file with NO folder entries
+        self._write_workspace(temp_repo, [])
+
+        stdout, stderr, code = cli_runner(["worktree", "sync"])
+        assert code == 0
+        assert "added" in stdout.lower() or "missing" in stdout.lower()
+
+        # Verify the main worktree was added
+        ws = self._read_workspace(temp_repo / "test.code-workspace")
+        assert len(ws["folders"]) >= 1
+
+    def test_sync_no_workspace_file(self, cli_runner, temp_repo):
+        """Sync reports error when no .code-workspace file exists."""
+        # Ensure no workspace file exists
+        for f in temp_repo.glob("*.code-workspace"):
+            f.unlink()
+
+        stdout, stderr, code = cli_runner(["worktree", "sync"])
+        assert code == 1
+        combined = (stdout + stderr).lower()
+        assert "no .code-workspace" in combined or "workspace" in combined
+
+    def test_sync_idempotent(self, cli_runner, temp_repo):
+        """Running sync twice on an already-synced workspace produces no changes."""
+        # Create workspace with the main repo entry (matches actual worktree)
+        self._write_workspace(temp_repo, [{"name": "Main", "path": "."}])
+
+        # First sync — may add/remove to reach steady state
+        stdout1, stderr1, code1 = cli_runner(["worktree", "sync"])
+        assert code1 == 0
+
+        # Capture workspace state after first sync
+        ws_after_first = self._read_workspace(temp_repo / "test.code-workspace")
+
+        # Second sync — should be a no-op
+        stdout2, stderr2, code2 = cli_runner(["worktree", "sync"])
+        assert code2 == 0
+
+        ws_after_second = self._read_workspace(temp_repo / "test.code-workspace")
+        assert ws_after_first == ws_after_second

@@ -768,7 +768,7 @@ def cmd_init(args, ctx=None):
     """
     import subprocess
 
-    from agenticcli.commands.worktree import create_planning_folder
+    from agenticcli.commands.worktree import create_planning_folder, find_workspace_file, update_workspace_add
     from agenticcli.console import (
         console,
         is_json_output,
@@ -865,6 +865,17 @@ def cmd_init(args, ctx=None):
             print_error(f"Failed to create worktree: {e}")
             sys.exit(1)
 
+    # Update VS Code workspace file
+    workspace_file = find_workspace_file(repo_root)
+    if workspace_file and not worktree_exists:
+        workspace_updated = update_workspace_add(
+            workspace_file, worktree_path, branch, repo_name
+        )
+        if workspace_updated and not is_json_output():
+            console.print(f"  [green]Updated workspace file[/green] {workspace_file.name}")
+    else:
+        workspace_updated = False
+
     # Generate plan folder name using new naming algorithm
     plan_folder_name = generate_plan_folder_name(worktree_path, description, branch=branch)
 
@@ -921,6 +932,7 @@ phases:
         "plan_folder": str(plan_path),
         "plan_folder_name": plan_folder_name,
         "main_worktree": str(main_worktree_path),
+        "workspace_updated": workspace_updated,
     }
     if objective:
         result_data["objective"] = objective

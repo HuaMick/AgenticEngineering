@@ -852,6 +852,36 @@ def worktree_remove(
     worktree.handle(args)
 
 
+@worktree_app.command("status")
+def worktree_status():
+    """Show detailed status of current worktree."""
+    from agenticcli.commands import worktree
+    class Args:
+        worktree_command = "status"
+    args = Args()
+    worktree.handle(args)
+
+
+@worktree_app.command("validate")
+def worktree_validate():
+    """Validate worktree-plan synchronization."""
+    from agenticcli.commands import worktree
+    class Args:
+        worktree_command = "validate"
+    args = Args()
+    worktree.handle(args)
+
+
+@worktree_app.command("sync")
+def worktree_sync():
+    """Synchronize workspace file with actual worktrees."""
+    from agenticcli.commands import worktree
+    class Args:
+        worktree_command = "sync"
+    args = Args()
+    worktree.handle(args)
+
+
 # --- Prefs Commands ---
 @prefs_app.command("get")
 def prefs_get(

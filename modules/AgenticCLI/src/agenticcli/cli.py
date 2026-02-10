@@ -637,6 +637,15 @@ def worktree_validate():
     _worktree_handle(_ns(command="worktree", worktree_command="validate", json=_global["json"], debug=_global["debug"]))
 
 
+@worktree_app.command("sync")
+def worktree_sync():
+    """Synchronize workspace file with actual worktrees."""
+    _worktree_handle(_ns(
+        command="worktree", worktree_command="sync",
+        json=_global["json"], debug=_global["debug"],
+    ))
+
+
 # ===========================================================================
 # SESSION
 # ===========================================================================

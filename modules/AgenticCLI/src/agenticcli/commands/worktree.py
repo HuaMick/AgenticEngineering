@@ -45,8 +45,10 @@ def handle(args, ctx=None):
         cmd_status(args)
     elif args.worktree_command == "validate":
         cmd_validate(args)
+    elif args.worktree_command == "sync":
+        cmd_sync(args)
     else:
-        print("Usage: agentic worktree <create|list|remove|status|validate>", file=sys.stderr)
+        print("Usage: agentic worktree <create|list|remove|status|sync|validate>", file=sys.stderr)
         sys.exit(1)
 
 
@@ -1142,3 +1144,89 @@ def _print_validation_result(result: dict):
         )
         console.print(f"[bold red]{issue_count} issue(s) found[/bold red]")
     console.print()
+
+
+def cmd_sync(args):
+    """Synchronize workspace file with actual worktrees.
+
+    Removes stale entries for worktrees that no longer exist on disk.
+    Adds missing entries for worktrees not yet in the workspace file.
+    """
+    from agenticcli.console import (
+        is_json_output,
+        print_error,
+        print_info,
+        print_json,
+        print_success,
+    )
+
+    repo_root = get_repo_root()
+    workspace_file = find_workspace_file(repo_root)
+
+    if not workspace_file:
+        print_error("No .code-workspace file found in repository root")
+        sys.exit(1)
+
+    # Get actual worktree paths from git
+    actual_worktrees = get_actual_worktrees(repo_root)
+    actual_paths = {Path(wt["path"]).resolve() for wt in actual_worktrees}
+
+    # Read workspace JSON
+    try:
+        with open(workspace_file) as f:
+            workspace = json.load(f)
+    except (json.JSONDecodeError, OSError) as e:
+        print_error(f"Failed to read workspace file: {e}")
+        sys.exit(1)
+
+    workspace_dir = workspace_file.parent
+    folders = workspace.get("folders", [])
+
+    # Identify stale entries: folder paths that don't exist on disk
+    # OR don't match any actual git worktree
+    stale_paths = []
+    for entry in folders:
+        entry_path = (workspace_dir / entry.get("path", "")).resolve()
+        if not entry_path.exists() or (
+            entry_path.resolve() not in actual_paths
+            and entry_path.resolve() != repo_root.resolve()
+        ):
+            stale_paths.append(entry_path)
+
+    # Remove stale entries
+    removed = 0
+    for stale in stale_paths:
+        if update_workspace_remove(workspace_file, stale):
+            removed += 1
+            if not is_json_output():
+                print_info(f"Removed stale entry: {stale}")
+
+    # Re-read workspace after removals to get current state
+    try:
+        with open(workspace_file) as f:
+            workspace = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        workspace = {"folders": []}
+
+    # Identify workspace folder paths (resolved)
+    current_folder_paths = set()
+    for entry in workspace.get("folders", []):
+        current_folder_paths.add((workspace_dir / entry.get("path", "")).resolve())
+
+    # Add missing worktree entries
+    added = 0
+    repo_name = repo_root.name.split("-")[0] if "-" in repo_root.name else repo_root.name
+    for wt in actual_worktrees:
+        wt_path = Path(wt["path"]).resolve()
+        if wt_path not in current_folder_paths:
+            branch = wt.get("branch", wt_path.name)
+            if update_workspace_add(workspace_file, Path(wt["path"]), branch, repo_name):
+                added += 1
+                if not is_json_output():
+                    print_info(f"Added missing entry: {wt['path']} ({branch})")
+
+    # Report results
+    if is_json_output():
+        print_json({"removed": removed, "added": added})
+    else:
+        print_success(f"Removed {removed} stale entries, added {added} missing entries")

@@ -217,6 +217,100 @@ class TestPlanInit:
         assert (plan_folder / "plan_teach.yml").exists() or (plan_folder / "plan_build.yml").exists()
 
 
+class TestPlanInitWorkspaceUpdate:
+    """Tests for workspace file updates during plan init."""
+
+    def test_init_updates_workspace_on_new_worktree(self, cli_runner, temp_repo):
+        """Test init updates the workspace file when creating a new worktree."""
+        # Create a .code-workspace file
+        workspace_file = temp_repo / "test.code-workspace"
+        workspace_data = {"folders": [{"name": "main", "path": "."}], "settings": {}}
+        with open(workspace_file, "w") as f:
+            json.dump(workspace_data, f)
+
+        # Run plan init — this will create a new worktree (no pre-existing one)
+        branch = "ws-new"
+        stdout, stderr, code = cli_runner(
+            ["plan", "init", branch, "--description", "workspace test"]
+        )
+
+        assert code == 0
+
+        # Read workspace file and verify a folder entry was added
+        with open(workspace_file) as f:
+            updated = json.load(f)
+
+        assert len(updated["folders"]) == 2
+        new_entry = updated["folders"][1]
+        assert branch in new_entry["name"]
+        # Path should point to the worktree location (relative)
+        assert "repo-" + branch in new_entry["path"]
+
+    def test_init_no_duplicate_workspace_entry_on_reuse(self, cli_runner, temp_repo):
+        """Test init does NOT add a workspace entry when reusing an existing worktree."""
+        branch = "ws-reuse"
+        worktree_path = create_worktree_for_test(temp_repo, branch)
+
+        # Create a .code-workspace file that already has the worktree entry
+        workspace_data = {
+            "folders": [
+                {"name": "main", "path": "."},
+                {"name": f"repo ({branch})", "path": f"../{worktree_path.name}"},
+            ],
+            "settings": {},
+        }
+        workspace_file = temp_repo / "test.code-workspace"
+        with open(workspace_file, "w") as f:
+            json.dump(workspace_data, f)
+
+        # Run plan init — worktree already exists so it should be reused
+        stdout, stderr, code = cli_runner(
+            ["plan", "init", branch, "--description", "reuse test"]
+        )
+
+        assert code == 0
+        assert "existing worktree" in stdout.lower()
+
+        # Read workspace file and verify NO duplicate entry was added
+        with open(workspace_file) as f:
+            updated = json.load(f)
+
+        assert len(updated["folders"]) == 2  # Still only the original 2 entries
+
+    def test_init_json_includes_workspace_updated(self, cli_runner, temp_repo):
+        """Test JSON output includes workspace_updated key."""
+        # Create a .code-workspace file
+        workspace_file = temp_repo / "test.code-workspace"
+        workspace_data = {"folders": [{"name": "main", "path": "."}], "settings": {}}
+        with open(workspace_file, "w") as f:
+            json.dump(workspace_data, f)
+
+        branch = "ws-json"
+        stdout, stderr, code = cli_runner(
+            ["-j", "plan", "init", branch, "--description", "json ws test"]
+        )
+
+        assert code == 0
+        result = json.loads(stdout)
+        assert "workspace_updated" in result
+
+    def test_init_no_workspace_file_continues(self, cli_runner, temp_repo):
+        """Test init succeeds even when no .code-workspace file exists."""
+        # Ensure no .code-workspace files exist
+        for f in temp_repo.glob("*.code-workspace"):
+            f.unlink()
+
+        branch = "ws-none"
+        create_worktree_for_test(temp_repo, branch)
+
+        stdout, stderr, code = cli_runner(
+            ["plan", "init", branch, "--description", "no workspace"]
+        )
+
+        # Should succeed without error
+        assert code == 0
+
+
 class TestPlanInitEnforcement:
     """Tests for worktree enforcement in plan init."""
 
