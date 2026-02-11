@@ -1,0 +1,371 @@
+plan_id: 260208NB
+plan_name: ntfy Bidirectional Question Answering - Test Plan
+status: approved
+created: "2026-02-08"
+updated: "2026-02-08"
+
+test_file: modules/AgenticCLI/tests/test_ntfy.py
+
+phases:
+  - id: TP1
+    name: "Unit Tests - poll_ntfy()"
+    description: Tests for the new ntfy polling function
+    test_cases:
+      - id: TP1-TC1
+        name: "test_poll_success"
+        type: unit
+        target: agenticcli.utils.ntfy.poll_ntfy
+        description: |
+          Mock urlopen to return newline-delimited JSON with 2 messages.
+          Verify poll_ntfy returns a list of 2 dicts with id, time, message keys.
+        setup: |
+          - Mock urlopen to return BytesIO with ndjson content:
+            '{"id":"msg1","time":1707400000,"message":"Hello"}\n{"id":"msg2","time":1707400060,"message":"World"}\n'
+          - Mock response status 200
+        assertions:
+          - result is a list of length 2
+          - result[0]["id"] == "msg1"
+          - result[0]["message"] == "Hello"
+          - result[1]["id"] == "msg2"
+          - URL constructed as "https://ntfy.sh/test-topic/json?since=30m&poll=1"
+
+      - id: TP1-TC2
+        name: "test_poll_empty_response"
+        type: unit
+        target: agenticcli.utils.ntfy.poll_ntfy
+        description: Mock urlopen to return empty body. Verify empty list returned.
+        assertions:
+          - result == []
+
+      - id: TP1-TC3
+        name: "test_poll_network_error"
+        type: unit
+        target: agenticcli.utils.ntfy.poll_ntfy
+        description: Mock urlopen to raise URLError. Verify empty list returned (no exception).
+        assertions:
+          - result == []
+          - No exception raised
+
+      - id: TP1-TC4
+        name: "test_poll_http_error"
+        type: unit
+        target: agenticcli.utils.ntfy.poll_ntfy
+        description: Mock urlopen to raise HTTPError(403). Verify empty list returned.
+        assertions:
+          - result == []
+          - No exception raised
+
+      - id: TP1-TC5
+        name: "test_poll_invalid_json"
+        type: unit
+        target: agenticcli.utils.ntfy.poll_ntfy
+        description: Mock urlopen to return malformed JSON. Verify empty list returned.
+        assertions:
+          - result == []
+          - JSONDecodeError caught internally
+
+      - id: TP1-TC6
+        name: "test_poll_custom_server"
+        type: unit
+        target: agenticcli.utils.ntfy.poll_ntfy
+        description: Call with custom server URL. Verify URL construction.
+        assertions:
+          - Request URL starts with "https://custom.ntfy.io/my-topic/json"
+
+      - id: TP1-TC7
+        name: "test_poll_since_parameter"
+        type: unit
+        target: agenticcli.utils.ntfy.poll_ntfy
+        description: Call with since="1707400000". Verify since param in URL.
+        assertions:
+          - URL contains "since=1707400000"
+
+      - id: TP1-TC8
+        name: "test_poll_timeout_parameter"
+        type: unit
+        target: agenticcli.utils.ntfy.poll_ntfy
+        description: Verify urlopen is called with 5-second timeout.
+        assertions:
+          - urlopen called with timeout=5
+
+  - id: TP2
+    name: "Unit Tests - parse_question_id_from_message()"
+    description: Tests for the QID extraction helper
+    test_cases:
+      - id: TP2-TC1
+        name: "test_parse_valid_qid"
+        type: unit
+        target: agenticcli.utils.ntfy.parse_question_id_from_message
+        description: |
+          Input: "Some reply text\n\n[QID: Q-20260208-120000-abc1]"
+          Expected: "Q-20260208-120000-abc1"
+        assertions:
+          - Returns "Q-20260208-120000-abc1"
+
+      - id: TP2-TC2
+        name: "test_parse_no_qid"
+        type: unit
+        target: agenticcli.utils.ntfy.parse_question_id_from_message
+        description: |
+          Input: "Just some random text without any QID"
+          Expected: None
+        assertions:
+          - Returns None
+
+      - id: TP2-TC3
+        name: "test_parse_qid_in_quoted_reply"
+        type: unit
+        target: agenticcli.utils.ntfy.parse_question_id_from_message
+        description: |
+          Input: "Yes, use pytest.\n\n> Should we use pytest?\n> [QID: Q-20260208-120000-abc1]"
+          Expected: "Q-20260208-120000-abc1"
+        assertions:
+          - Returns "Q-20260208-120000-abc1"
+          - Works even when QID is in quoted text
+
+      - id: TP2-TC4
+        name: "test_parse_partial_match"
+        type: unit
+        target: agenticcli.utils.ntfy.parse_question_id_from_message
+        description: |
+          Input: "[QID: invalid-format]"
+          Expected: None (doesn't match Q-XXXXXXXX-XXXXXX-XXXX pattern)
+        assertions:
+          - Returns None
+
+      - id: TP2-TC5
+        name: "test_parse_qid_only"
+        type: unit
+        target: agenticcli.utils.ntfy.parse_question_id_from_message
+        description: |
+          Input: "[QID: Q-20260208-120000-abc1]"
+          Expected: "Q-20260208-120000-abc1" (just the QID, no surrounding text)
+        assertions:
+          - Returns "Q-20260208-120000-abc1"
+
+  - id: TP3
+    name: "Unit Tests - notify_new_question() updated message format"
+    description: Tests verifying the QID footer is included in notifications
+    test_cases:
+      - id: TP3-TC1
+        name: "test_message_includes_question_id"
+        type: unit
+        target: agenticcli.utils.ntfy.notify_new_question
+        description: |
+          Verify that the notification message body includes the QID footer.
+          Use FakeQuestion with id="Q-20260208-120000-abc1".
+        assertions:
+          - message ends with "[QID: Q-20260208-120000-abc1]"
+          - message contains "\n\n[QID:"
+
+      - id: TP3-TC2
+        name: "test_long_message_truncated_with_qid"
+        type: unit
+        target: agenticcli.utils.ntfy.notify_new_question
+        description: |
+          Text longer than 200 chars is truncated, then QID appended.
+          Total message = truncated_text(203 chars) + "\n\n" + QID footer.
+        assertions:
+          - Message starts with "AAA...AAA..."
+          - Message ends with "[QID: Q-20260208-120000-abc1]"
+          - Text portion truncated to 203 chars (200 + "...")
+
+      - id: TP3-TC3
+        name: "test_blocking_question_with_qid"
+        type: unit
+        target: agenticcli.utils.ntfy.notify_new_question
+        description: |
+          Blocking severity still maps to urgent priority.
+          Message includes QID footer.
+        assertions:
+          - priority == "urgent"
+          - tags == ["warning"]
+          - message contains "[QID:"
+
+  - id: TP4
+    name: "Unit Tests - NtfyReplyPoller"
+    description: Tests for the reply polling service
+    test_cases:
+      - id: TP4-TC1
+        name: "test_poller_processes_reply"
+        type: unit
+        target: agenticcli.services.question_watcher.NtfyReplyPoller._check_for_replies
+        description: |
+          Mock poll_ntfy to return a message with QID.
+          Mock QuestionQueue.answer_question.
+          Verify answer_question called with correct args.
+        setup: |
+          - Mock poll_ntfy returns [{"id":"m1","time":1707400000,"message":"Use pytest\n\n[QID: Q-20260208-120000-abc1]"}]
+          - Mock QuestionQueue.answer_question returns (question, answer)
+          - Mock send_ntfy for confirmation
+        assertions:
+          - answer_question called with question_id="Q-20260208-120000-abc1"
+          - answer_question called with answer_text="Use pytest"
+          - answer_question called with answered_by="ntfy-reply"
+          - send_ntfy called with title="Answer Received"
+
+      - id: TP4-TC2
+        name: "test_poller_skips_outgoing_notifications"
+        type: unit
+        target: agenticcli.services.question_watcher.NtfyReplyPoller._check_for_replies
+        description: |
+          Message starting with "New Question" should be skipped (it's our own notification).
+        setup: |
+          - Mock poll_ntfy returns [{"id":"m1","time":1707400000,"message":"New Question [BLOCKING]\nSome text\n\n[QID: Q-20260208-120000-abc1]"}]
+        assertions:
+          - answer_question NOT called
+
+      - id: TP4-TC3
+        name: "test_poller_deduplicates_messages"
+        type: unit
+        target: agenticcli.services.question_watcher.NtfyReplyPoller._check_for_replies
+        description: |
+          Same message ID should not be processed twice across poll cycles.
+        setup: |
+          - First call: poll_ntfy returns [{"id":"m1","time":1707400000,"message":"Yes\n\n[QID: Q-20260208-120000-abc1]"}]
+          - Second call: poll_ntfy returns same message
+        assertions:
+          - answer_question called exactly once across both calls
+
+      - id: TP4-TC4
+        name: "test_poller_handles_missing_question"
+        type: unit
+        target: agenticcli.services.question_watcher.NtfyReplyPoller._check_for_replies
+        description: |
+          When answer_question raises FileNotFoundError (question already answered),
+          the poller should log and continue without crashing.
+        setup: |
+          - Mock poll_ntfy returns message with QID
+          - Mock answer_question raises FileNotFoundError
+        assertions:
+          - No exception raised from _check_for_replies
+          - Error logged at debug level
+
+      - id: TP4-TC5
+        name: "test_poller_sends_confirmation"
+        type: unit
+        target: agenticcli.services.question_watcher.NtfyReplyPoller._check_for_replies
+        description: |
+          After successfully answering a question, a confirmation notification
+          is sent back via ntfy.
+        setup: |
+          - Mock poll_ntfy returns message with QID and answer text
+          - Mock answer_question succeeds
+        assertions:
+          - send_ntfy called with title="Answer Received"
+          - send_ntfy called with priority="low"
+          - send_ntfy called with tags=["white_check_mark"]
+
+      - id: TP4-TC6
+        name: "test_poller_extracts_answer_text"
+        type: unit
+        target: agenticcli.services.question_watcher.NtfyReplyPoller._check_for_replies
+        description: |
+          Answer text should be everything before the [QID:] tag, stripped.
+        setup: |
+          - Message: "  Use pytest for sure  \n\n[QID: Q-20260208-120000-abc1]"
+        assertions:
+          - answer_text passed to answer_question == "Use pytest for sure"
+
+      - id: TP4-TC7
+        name: "test_poller_skips_empty_answer"
+        type: unit
+        target: agenticcli.services.question_watcher.NtfyReplyPoller._check_for_replies
+        description: |
+          If the message is just a QID with no actual answer text, skip it.
+        setup: |
+          - Message: "[QID: Q-20260208-120000-abc1]"
+        assertions:
+          - answer_question NOT called
+
+      - id: TP4-TC8
+        name: "test_poller_updates_last_poll_time"
+        type: unit
+        target: agenticcli.services.question_watcher.NtfyReplyPoller._check_for_replies
+        description: |
+          After processing messages, _last_poll_time should be updated to
+          the newest message timestamp.
+        setup: |
+          - Mock poll_ntfy returns messages with times 1707400000 and 1707400060
+        assertions:
+          - poller._last_poll_time == "1707400060"
+
+  - id: TP5
+    name: "Unit Tests - _get_ntfy_config()"
+    description: Tests for the config extraction helper
+    test_cases:
+      - id: TP5-TC1
+        name: "test_returns_config_when_configured"
+        type: unit
+        target: agenticcli.commands.question._get_ntfy_config
+        description: preferences.yml has ntfy.topic and ntfy.server
+        assertions:
+          - 'Returns {"topic": "my-phone", "server": "https://ntfy.sh"}'
+
+      - id: TP5-TC2
+        name: "test_returns_none_when_no_prefs"
+        type: unit
+        target: agenticcli.commands.question._get_ntfy_config
+        description: No preferences.yml file exists
+        assertions:
+          - Returns None
+
+      - id: TP5-TC3
+        name: "test_returns_none_when_no_topic"
+        type: unit
+        target: agenticcli.commands.question._get_ntfy_config
+        description: preferences.yml has ntfy.topic=""
+        assertions:
+          - Returns None
+
+      - id: TP5-TC4
+        name: "test_returns_none_when_disabled"
+        type: unit
+        target: agenticcli.commands.question._get_ntfy_config
+        description: preferences.yml has ntfy.enabled=false
+        assertions:
+          - Returns None
+
+      - id: TP5-TC5
+        name: "test_default_server"
+        type: unit
+        target: agenticcli.commands.question._get_ntfy_config
+        description: preferences.yml has topic but no server key
+        assertions:
+          - 'Returns {"topic": "my-phone", "server": "https://ntfy.sh"}'
+
+  - id: TP6
+    name: "Integration Tests"
+    description: End-to-end flow tests using mocked network
+    test_cases:
+      - id: TP6-TC1
+        name: "test_end_to_end_question_reply_flow"
+        type: integration
+        description: |
+          Full flow test:
+          1. Create a question via QuestionQueue
+          2. Call notify_new_question (mocked send_ntfy)
+          3. Verify notification message contains QID
+          4. Simulate poll_ntfy returning a reply with that QID
+          5. Process reply via NtfyReplyPoller._check_for_replies
+          6. Verify question is now answered in the filesystem
+          7. Verify confirmation notification sent
+        setup: |
+          - Use tmp_path for plan directory
+          - Real QuestionQueue (filesystem-based)
+          - Mocked network calls (send_ntfy, urlopen)
+        assertions:
+          - Question created in pending/
+          - After reply processing, question moved to answered/
+          - Answer file contains correct answer text
+          - answered_by == "ntfy-reply"
+
+      - id: TP6-TC2
+        name: "test_reply_to_nonexistent_question"
+        type: integration
+        description: |
+          Reply references a question that doesn't exist.
+          Verify graceful handling (no crash, logged warning).
+        assertions:
+          - No exception raised
+          - No files created in answered/

@@ -1,0 +1,597 @@
+name: guidance-cli-alignment
+worktree_path: /home/code/AgenticEngineering
+branch: main
+status: active
+priority: high
+context: 'Multiple agent guidance files reference CLI commands with wrong signatures,
+
+  missing parameters, or behaviors that aren''t enforced. This causes agents to
+
+  generate commands that fail at runtime. Audit found 8 gaps; some were already
+
+  fixed in prior batches. This plan addresses the remaining gaps.
+
+
+  Pre-resolved open questions:
+
+  - Q1: Fix GUIDANCE to match CLI (CLI is source of truth)
+
+  - Q2: Keep generic prompt-based loop approach (no structured loop-type positional)
+
+  - Q3: Add --worktree as alias for --directory on session spawn
+
+  - Q4: Parallel task execution is DEFERRED
+
+
+  Gap status assessment (after prior fixes):
+
+  - Gap 1 (loop start syntax): ALREADY FIXED in cli-commands.yml and orchestration-executor/process.yml
+
+  - Gap 2 (session spawn --worktree): NEEDS CLI CHANGE - add --worktree alias
+
+  - Gap 3 (loop status required arg): ALREADY FIXED in cli-commands.yml
+
+  - Gap 4 (loop history flags): ALREADY FIXED in cli-commands.yml
+
+  - Gap 5 (short-name resolution): ALREADY FIXED in plans.yml
+
+  - Gap 6 (AGENT_ROUTING validation): NEEDS CLI CHANGE - enhance validation against
+  manifest.yml
+
+  - Gap 7 (loop type validation): NEEDS CLI CHANGE - validate loop types against agent-loops.yml
+
+  - Gap 8 (parallel task execution): DEFERRED per Q4
+
+  '
+objective: 'Fix remaining guidance-CLI alignment gaps: add --worktree alias to session
+  spawn,
+
+  enhance AGENT_ROUTING validation against manifest.yml, add loop type validation,
+
+  and verify all previously-fixed gaps are consistent across all guidance files.
+
+  '
+dependencies: []
+affected_stories: []
+impacted_artifacts:
+- artifact_type: cli_command
+  artifact_identifier: agentic session spawn --worktree
+  impact_type: modified
+  description: Add --worktree/-w as alias for --directory/-d
+  breaking_change: false
+- artifact_type: cli_command
+  artifact_identifier: agentic plan validate
+  impact_type: modified
+  description: Enhance AGENT_ROUTING validation to check manifest.yml spawns
+  breaking_change: false
+- artifact_type: guidance_file
+  artifact_identifier: cli-commands.yml
+  impact_type: modified
+  description: Document --worktree alias on session spawn
+  breaking_change: false
+open_questions:
+- id: Q1
+  question: Fix guidance or CLI for each gap?
+  status: ANSWERED
+  answer: Fix GUIDANCE to match CLI. CLI is source of truth.
+- id: Q2
+  question: Add structured loop-type pattern or keep generic prompt?
+  status: ANSWERED
+  answer: Keep generic prompt-based approach. No positional loop-type arg.
+- id: Q3
+  question: Add --worktree alias or just update docs?
+  status: ANSWERED
+  answer: Add --worktree as alias for --directory on session spawn.
+- id: Q4
+  question: Implement parallel task execution?
+  status: ANSWERED
+  answer: Deferred. Not a priority for this plan.
+phases:
+- name: 'Phase 1: Verify Already-Fixed Gaps'
+  id: P1
+  execution: sequential
+  description: 'Confirm that gaps 1, 3, 4, and 5 are fully fixed across ALL guidance
+    files
+
+    (not just cli-commands.yml). Scan every process.yml, inputs.yml, and asset
+
+    file for stale references.
+
+    '
+  tasks:
+  - id: GA_001
+    name: Audit all guidance files for stale loop start syntax
+    description: 'Search all .yml files under modules/AgenticGuidance/ for any reference
+      to
+
+      `agentic loop start <loop-type>` or `--plan` flag on loop start.
+
+      Verify zero hits. If any stale references found, fix them to match the
+
+      correct prompt-based syntax: agentic loop start --prompt <text>.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticGuidance/agents/
+    - modules/AgenticGuidance/assets/
+    - modules/AgenticGuidance/assets/definitions/cli-commands.yml
+    target_files:
+    - modules/AgenticGuidance/agents/
+    - modules/AgenticGuidance/assets/
+    guidance: "1. grep -r for patterns: \"loop start <\", \"loop start test-fix\"\
+      , \"loop start build\",\n   \"loop start --plan\" across all .yml files in AgenticGuidance\n\
+      2. If zero hits, mark as verified (no changes needed)\n3. If hits found, update\
+      \ each file to use correct syntax:\n   agentic loop start --prompt '...' [--entrypoint\
+      \ ...] [--max-iterations N]\n4. Verify cli-commands.yml:337 matches CLI cli.py:770-791\n"
+    success_criteria:
+    - Zero references to positional loop-type arg in any guidance file
+    - Zero references to --plan flag on loop start in any guidance file
+  - id: GA_002
+    name: Audit all guidance files for stale loop status/history syntax
+    description: 'Verify loop status shows loop-id as required (not optional) across
+      all
+
+      guidance files. Verify loop history has no positional arg, uses --active
+
+      and --status flags.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticGuidance/agents/
+    - modules/AgenticGuidance/assets/
+    target_files:
+    - modules/AgenticGuidance/agents/
+    - modules/AgenticGuidance/assets/
+    guidance: '1. Search for "loop status" across all .yml files
+
+      2. Verify all references show loop-id as required positional arg (not [optional])
+
+      3. Search for "loop history" across all .yml files
+
+      4. Verify no references show a positional loop-id arg
+
+      5. Fix any stale references found
+
+      '
+    success_criteria:
+    - All loop status references show required loop-id
+    - All loop history references use flags only (no positional arg)
+  - id: GA_003
+    name: Audit plans.yml short-name resolution documentation
+    description: 'Verify plans.yml correctly documents that short-name resolution
+      IS supported
+
+      via prefix matching. Ensure no other guidance file says "NOT supported".
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticGuidance/assets/definitions/plans.yml
+    - modules/AgenticGuidance/agents/
+    target_files:
+    - modules/AgenticGuidance/assets/definitions/plans.yml
+    - modules/AgenticGuidance/agents/
+    guidance: '1. Read plans.yml:78-99, verify it documents prefix matching correctly
+
+      2. grep -r for "short.name.*NOT" or "NOT.*supported.*short" across guidance
+
+      3. Fix any contradictory references
+
+      '
+    success_criteria:
+    - plans.yml documents short-name resolution with prefix matching
+    - No guidance file contradicts this (says "NOT supported")
+- name: 'Phase 2: Add --worktree Alias to Session Spawn'
+  id: P2
+  execution: sequential
+  description: 'Add --worktree/-w as an alias for --directory/-d on the session spawn
+    command.
+
+    This aligns with user expectations since worktree is a first-class concept.
+
+    Update guidance to document both flags.
+
+    '
+  tasks:
+  - id: GA_004
+    name: Add --worktree alias to session spawn in CLI
+    description: 'In cli.py, add --worktree/-w as a secondary option that maps to
+      the same
+
+      directory parameter in session spawn. If both --worktree and --directory
+
+      are provided, error out.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    guidance: "1. In session_spawn() function (cli.py:663-689), add:\n   worktree:\
+      \ Annotated[Optional[str], typer.Option(\"--worktree\", \"-w\", help=\"Worktree\
+      \ path (alias for --directory)\")] = None,\n2. Before _session_handle call,\
+      \ resolve directory:\n   if worktree and directory:\n       print_error(\"--worktree\
+      \ and --directory are mutually exclusive.\")\n       raise typer.Exit(1)\n \
+      \  effective_directory = worktree or directory\n3. Pass effective_directory\
+      \ as directory= in the _ns() call\n4. Also add --worktree alias to loop start\
+      \ command (cli.py:770-791) for consistency\n"
+    success_criteria:
+    - agentic session spawn --worktree /path works identically to --directory /path
+    - agentic session spawn --worktree X --directory Y shows mutual exclusion error
+    - agentic session spawn --help shows both --worktree and --directory
+  - id: GA_005
+    name: Update guidance to document --worktree alias
+    description: 'Update cli-commands.yml session spawn section to document --worktree/-w
+
+      as an alias for --directory/-d.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticGuidance/assets/definitions/cli-commands.yml
+    target_files:
+    - modules/AgenticGuidance/assets/definitions/cli-commands.yml
+    guidance: "1. In cli-commands.yml session spawn section (~line 267):\n   - Add\
+      \ --worktree/-w parameter documentation as alias for --directory\n   - Update\
+      \ command signature to show [--directory <path> | --worktree <path>]\n2. Update\
+      \ examples to show --worktree usage alongside --directory\n"
+    success_criteria:
+    - cli-commands.yml documents --worktree as alias for --directory
+    - Command signature shows both options
+  - id: GA_006
+    name: Add unit tests for --worktree alias
+    description: 'Test that --worktree works as alias and that mutual exclusion is
+      enforced.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/tests/test_session_commands.py
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    target_files:
+    - modules/AgenticCLI/tests/test_session_commands.py
+    guidance: '1. Test session spawn with --worktree passes directory correctly
+
+      2. Test session spawn with --worktree and --directory raises error
+
+      3. Test session spawn --help shows both flags
+
+      4. Mock subprocess to avoid actual session spawning
+
+      '
+    success_criteria:
+    - --worktree alias passes through to directory parameter
+    - Mutual exclusion error test passes
+    - All existing session tests still pass
+- name: 'Phase 3: Enhance AGENT_ROUTING Validation'
+  id: P3
+  execution: sequential
+  description: 'Upgrade plan validate and orchestration validate to check AGENT_ROUTING
+
+    against the actual agent manifest, not just a hardcoded set. The plan-mmd-schema
+
+    requires this as a hard fail for missing validation routing.
+
+    '
+  tasks:
+  - id: GA_007
+    name: Build dynamic agent type registry from manifest files
+    description: 'Create a utility function that discovers valid agent types by scanning
+
+      modules/AgenticGuidance/agents/ directory structure. Each subfolder
+
+      containing a manifest.yml is a valid agent type.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticGuidance/agents/
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    guidance: '1. Create function get_valid_agent_types() -> set[str]
+
+      2. Scan modules/AgenticGuidance/agents/**/ for directories with manifest.yml
+
+      3. Extract agent name from directory name (e.g., agents/build/build-python ->
+      build-python)
+
+      4. Return set of all discovered agent names
+
+      5. Cache result (agent types don''t change during a CLI invocation)
+
+      6. Fallback to current hardcoded set if scanning fails
+
+      '
+    success_criteria:
+    - Function discovers agent types from filesystem
+    - Returns set matching actual agents directory structure
+    - Graceful fallback if directory not found
+  - id: GA_008
+    name: Replace hardcoded valid_agent_types with dynamic registry
+    description: 'Update cmd_orchestration_validate to use get_valid_agent_types()
+      instead
+
+      of the hardcoded set at line 3777. Add manifest.yml spawns alignment check.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    - modules/AgenticGuidance/assets/specifications/plan-mmd-schema.yml
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    guidance: "1. In cmd_orchestration_validate (plan.py:3632), replace hardcoded\n\
+      \   valid_agent_types set (line 3777-3784) with call to get_valid_agent_types()\n\
+      2. Change invalid agent routing from warning to error (schema says hard fail)\n\
+      3. Optionally: if orchestrator manifest.yml exists, verify routed agents\n \
+      \  appear in its spawns list (per plan-mmd-schema.yml validation_rules_execution)\n"
+    success_criteria:
+    - Validation uses dynamic agent type discovery
+    - Invalid agent routing is now an error, not a warning
+    - Valid agent types match filesystem reality
+  - id: GA_009
+    name: Add tests for enhanced AGENT_ROUTING validation
+    description: 'Test the dynamic agent registry and enhanced validation with both
+      valid
+
+      and invalid agent types.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/tests/
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    target_files:
+    - modules/AgenticCLI/tests/test_plan.py
+    guidance: '1. Test get_valid_agent_types() discovers agents from test fixtures
+
+      2. Test validation with valid agent routing passes
+
+      3. Test validation with unknown agent type fails (error, not warning)
+
+      4. Test fallback behavior when agents directory is missing
+
+      5. Use tmp_path with mock agent directory structure
+
+      '
+    success_criteria:
+    - Dynamic discovery tested with mock filesystem
+    - Invalid agent type causes validation error
+    - Fallback to hardcoded set tested
+- name: 'Phase 4: Add Loop Type Awareness'
+  id: P4
+  execution: sequential
+  description: 'agent-loops.yml defines valid loop types (test-fix-loop, audit-test-fix-loop,
+
+    etc.). When guidance files reference loop types, the CLI should be able to
+
+    validate them. This is informational validation - the CLI doesn''t enforce
+
+    loop types at runtime (Q2: keep generic prompt approach) but can warn when
+
+    guidance references invalid loop types.
+
+    '
+  tasks:
+  - id: GA_010
+    name: Create loop type registry utility
+    description: 'Create a utility that reads agent-loops.yml and returns valid loop
+      type names.
+
+      Used by validation commands to check guidance files reference valid loop types.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticGuidance/assets/definitions/agent-loops.yml
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    guidance: "1. Create function get_valid_loop_types() -> set[str]\n2. Read agent-loops.yml,\
+      \ extract keys from loop_types section\n3. Return set: {test-fix-loop, audit-test-fix-loop,\
+      \ cleaner-dependency-loop,\n   documentation-loop, user-story-validation-loop,\
+      \ exploration-loop,\n   rlm-decomposition-loop, rlm-context-refinement-loop,\
+      \ planner-loop,\n   guidance-test-loop, agent-self-review, guidance-self-review-loop}\n\
+      4. Cache result\n5. Graceful fallback if file not found\n"
+    success_criteria:
+    - Function returns all loop types from agent-loops.yml
+    - Graceful fallback on missing file
+  - id: GA_011
+    name: Add loop type validation to plan validate
+    description: 'When plan_build.yml files reference loop_structures with a type
+      field,
+
+      validate the type against the known loop types from agent-loops.yml.
+
+      This is a warning (not error) since loop types are informational.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    - modules/AgenticGuidance/assets/definitions/agent-loops.yml
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    guidance: '1. In cmd_validate (plan.py:1554), after existing YAML validation:
+
+      2. For each plan_*.yml, check for loop_structures key
+
+      3. If present, for each loop with a type field, validate against get_valid_loop_types()
+
+      4. Unknown loop types generate a warning (not error)
+
+      5. Report: "Loop type ''X'' not defined in agent-loops.yml"
+
+      '
+    success_criteria:
+    - Plan validate warns on unknown loop types
+    - Known loop types pass without warning
+    - Warning (not error) - doesn't block validation
+  - id: GA_012
+    name: Add tests for loop type validation
+    description: 'Test loop type validation with valid and invalid loop types in plan
+      YAML.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/tests/test_plan.py
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    target_files:
+    - modules/AgenticCLI/tests/test_plan.py
+    guidance: '1. Test get_valid_loop_types() returns expected set
+
+      2. Test plan with valid loop_structures.type passes
+
+      3. Test plan with unknown loop type gets warning
+
+      4. Test plan without loop_structures passes (no false positives)
+
+      5. Use tmp_path with mock plan files
+
+      '
+    success_criteria:
+    - Valid loop types pass validation
+    - Unknown loop types generate warning
+    - Plans without loop structures validate cleanly
+- name: 'Phase 5: Cross-Guidance Consistency Sweep'
+  id: P5
+  execution: sequential
+  description: 'Final sweep across all process.yml, inputs.yml, and specification
+    files to
+
+    ensure every CLI command reference matches the actual CLI signatures. This
+
+    catches any stragglers not covered by gaps 1-8.
+
+    '
+  tasks:
+  - id: GA_013
+    name: Sweep all process.yml files for CLI command references
+    description: 'Search every process.yml for `agentic` command invocations.
+
+      Cross-reference each against cli-commands.yml and cli.py to verify
+
+      correct syntax. Fix any mismatches.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticGuidance/agents/
+    - modules/AgenticGuidance/assets/definitions/cli-commands.yml
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    target_files:
+    - modules/AgenticGuidance/agents/
+    guidance: "1. grep -r \"agentic \" in all process.yml files under agents/\n2.\
+      \ For each hit, verify the command syntax matches cli-commands.yml\n3. Key areas\
+      \ to check:\n   - session spawn uses --directory (and now --worktree)\n   -\
+      \ loop start uses --prompt/--entrypoint (not positional)\n   - loop status has\
+      \ required loop-id\n   - loop history uses flags (not positional)\n   - plan\
+      \ commands use correct --plan flag syntax\n4. Fix any mismatches found\n"
+    success_criteria:
+    - Every CLI command in process.yml files matches actual CLI syntax
+    - Zero stale command signatures remain
+  - id: GA_014
+    name: Sweep specification files for CLI references
+    description: 'Check orchestration-executor-specification.yml, plan-mmd-schema.yml,
+
+      and other spec files for CLI command references that may be stale.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticGuidance/assets/specifications/
+    - modules/AgenticGuidance/assets/definitions/cli-commands.yml
+    target_files:
+    - modules/AgenticGuidance/assets/specifications/
+    guidance: "1. Search all .yml files in assets/specifications/ for \"agentic\"\
+      \ references\n2. Verify each matches current CLI syntax\n3. Pay special attention\
+      \ to:\n   - orchestration-executor-specification.yml (previously had wrong loop\
+      \ syntax)\n   - plan-mmd-schema.yml (agent routing references)\n4. Fix any mismatches\n"
+    success_criteria:
+    - All specification file CLI references match actual CLI
+    - No stale command signatures in spec files
+- name: 'Phase 6: Integration Testing'
+  id: P6
+  execution: sequential
+  description: 'Run all tests to ensure changes don''t break existing functionality.
+
+    Verify the new --worktree alias and enhanced validation work end-to-end.
+
+    '
+  tasks:
+  - id: GA_015
+    name: Run full test suite
+    description: 'Execute pytest across AgenticCLI to verify no regressions from
+
+      the changes in phases 2-4.
+
+      '
+    status: completed
+    agent: test-runner
+    inputs:
+    - modules/AgenticCLI/tests/
+    target_files: []
+    guidance: '1. Run: python3 -m pytest modules/AgenticCLI/tests/ -v
+
+      2. Report all failures with context
+
+      3. If failures are pre-existing (not caused by our changes), note them
+
+      '
+    success_criteria:
+    - All tests pass (or failures are pre-existing and unrelated)
+    - No regressions from phases 2-4 changes
+  - id: GA_016
+    name: Manual verification of --worktree alias
+    description: 'Verify agentic session spawn --worktree --help shows the alias,
+
+      and that the mutual exclusion error works correctly.
+
+      '
+    status: completed
+    agent: test-runner
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    target_files: []
+    guidance: '1. Run: agentic session spawn --help
+
+      2. Verify --worktree/-w appears in help output
+
+      3. Verify --directory/-d still appears
+
+      4. Run: agentic plan validate --help (verify it still works)
+
+      '
+    success_criteria:
+    - --worktree appears in session spawn help
+    - --directory still present
+    - validate command still accessible
+success_criteria:
+- All previously-fixed gaps (1, 3, 4, 5) verified consistent across all guidance files
+- --worktree/-w alias added to session spawn and working
+- AGENT_ROUTING validation uses dynamic agent type discovery from filesystem
+- Invalid agent routing is error (not warning) in validation
+- Loop type validation warns on unknown types in plan files
+- All process.yml and specification files use correct CLI syntax
+- Full test suite passes with no regressions
+- Gap 8 (parallel task execution) explicitly deferred

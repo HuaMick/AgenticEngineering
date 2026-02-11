@@ -1,0 +1,204 @@
+# Implementation Plan: Fix Bootstrap Test Failures
+# Plan ID: 260211CO
+# Created: 2026-02-11
+
+name: "fix_bootstrap_tests"
+worktree_path: "/home/code/AgenticEngineering-plan-fix-11-test-plan-bootstrappy-failures-bootstrap-co"
+branch: "plan-fix-11-test-plan-bootstrappy-failures-bootstrap-co"
+status: "active"
+priority: "high"
+
+affected_stories:
+  - US-CLI-010  # Initialize Plan with Worktree (plan init behavior)
+
+context: |
+  cmd_bootstrap was refactored to delegate to cmd_init. The 11 tests in
+  test_plan_bootstrap.py still expect the old standalone bootstrap behavior.
+  Tests need updated mocking (subprocess instead of git.get_project_root)
+  and updated assertions (flat folder structure, new JSON keys, new exit codes).
+
+success_criteria:
+  - "All 11 tests in test_plan_bootstrap.py pass"
+  - "No regressions in other AgenticCLI tests"
+  - "Tests validate current cmd_init delegation behavior"
+
+open_questions: []
+
+phases:
+  # ============================================
+  # Phase 1: Fix Test Infrastructure
+  # ============================================
+  - name: "Fix Test Mocking and Assertions"
+    description: |
+      Update test_plan_bootstrap.py to properly mock the subprocess calls that
+      cmd_init uses, and update all assertions to match current behavior.
+    tasks:
+      - id: "FIX_001"
+        name: "Rewrite mock_git_context fixture to mock subprocess calls"
+        status: "pending"
+        guidance: |
+          The core issue: cmd_init uses subprocess.run(["git", "rev-parse", "--show-toplevel"])
+          instead of git.get_project_root(). The fixture must mock subprocess.run or monkeypatch
+          the subprocess calls so cmd_init operates on the temp git repo.
+
+          Approach: Mock subprocess.run to intercept git commands and return temp repo paths.
+          Also mock find_idle_worktrees to return [] (no idle worktrees to reuse).
+          Mock find_workspace_file to return None (no workspace file).
+          Mock generate_plan_folder_name to return a predictable name for assertions.
+
+          Key functions to mock in agenticcli.commands.plan or via subprocess:
+          - subprocess.run for "git rev-parse --show-toplevel" → return temp repo path
+          - subprocess.run for "git worktree list --porcelain" → return empty/temp worktree
+          - subprocess.run for "git worktree add ..." → create dir in temp
+          - find_main_worktree → return temp repo path
+          - find_idle_worktrees → return []
+          - find_workspace_file → return None
+          - update_workspace_add → no-op
+        target_files:
+          - "modules/AgenticCLI/tests/test_plan_bootstrap.py"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+          - "modules/AgenticCLI/src/agenticcli/commands/worktree.py"
+          - "modules/AgenticCLI/src/agenticcli/utils/naming.py"
+
+      - id: "FIX_002"
+        name: "Update folder structure assertions (remove live/ subfolder expectation)"
+        status: "pending"
+        guidance: |
+          cmd_init uses create_planning_folder() which creates a flat structure.
+          plan_build.yml is written directly to plan_path, NOT plan_path/live/.
+
+          Change all assertions from:
+            plan_folder / "live" / "plan_build.yml"  →  plan_folder / "plan_build.yml"
+            (plan_folder / "live").exists()           →  remove or check plan_folder.exists()
+
+          Affected tests:
+          - test_bootstrap_creates_folder_structure (line 90-91: asserts live/ exists)
+          - test_bootstrap_creates_plan_build_yml (line 111: asserts live/plan_build.yml)
+          - test_bootstrap_creates_plan_test_yml_stub (line 134: asserts live/plan_test.yml)
+          - test_bootstrap_yaml_is_valid (line 156: reads live/plan_build.yml)
+          - test_bootstrap_includes_worktree_path (line 276: reads live/plan_build.yml)
+          - test_bootstrap_creates_tasks_in_phases (line 301: reads live/plan_build.yml)
+        target_files:
+          - "modules/AgenticCLI/tests/test_plan_bootstrap.py"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+
+      - id: "FIX_003"
+        name: "Update JSON output assertions to match cmd_init output keys"
+        status: "pending"
+        guidance: |
+          cmd_init outputs: { worktree, worktree_created, worktree_reused, branch,
+          base, plan_folder, plan_folder_name, main_worktree, workspace_updated, objective }
+
+          Tests expect: { plan_id, plan_path, success, objective }
+
+          Update test_bootstrap_json_output to assert on the new keys:
+          - "plan_folder" instead of "plan_path"
+          - "plan_folder_name" instead of "plan_id"
+          - Remove "success" assertion (cmd_init doesn't output success boolean)
+          - "objective" is present when --objective is provided
+        target_files:
+          - "modules/AgenticCLI/tests/test_plan_bootstrap.py"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+
+      - id: "FIX_004"
+        name: "Update YAML content assertions to match cmd_init format"
+        status: "pending"
+        guidance: |
+          cmd_init writes plan_build.yml with fields: name, worktree_path, branch,
+          status, priority, context, phases (with one task).
+
+          Tests check: data["name"], data["branch"], data["status"], "objective" in data,
+          "phases" in data.
+
+          The "context" field contains the objective text. Update:
+          - "objective" in data → "context" in data (or keep if both are checked)
+          - Verify data["name"] matches description, not objective
+          - Verify data["status"] == "active"
+        target_files:
+          - "modules/AgenticCLI/tests/test_plan_bootstrap.py"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+
+      - id: "FIX_005"
+        name: "Fix error handling test assertions"
+        status: "pending"
+        guidance: |
+          test_bootstrap_existing_folder_returns_error:
+          - May need updated mock to ensure first call succeeds and second triggers exit(2)
+          - Verify the error message matches "Plan folder already exists"
+
+          test_bootstrap_fails_outside_git_repo:
+          - Must mock subprocess.run to raise CalledProcessError for git rev-parse
+          - Cannot just mock git.get_project_root since cmd_init doesn't use it
+          - Expected exit code is 1 (from cmd_init's except CalledProcessError handler)
+        target_files:
+          - "modules/AgenticCLI/tests/test_plan_bootstrap.py"
+        inputs:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+
+  # ============================================
+  # Phase 2: Verification
+  # ============================================
+  - name: "Test Verification"
+    description: "Run all bootstrap tests and full CLI test suite to confirm no regressions."
+    tasks:
+      - id: "VER_001"
+        name: "Run test_plan_bootstrap.py and verify all 11 tests pass"
+        status: "pending"
+        guidance: |
+          Run: python3 -m pytest modules/AgenticCLI/tests/test_plan_bootstrap.py -v
+          Expected: 11 passed, 0 failed
+          If any fail, loop back to Phase 1 to fix.
+        target_files:
+          - "modules/AgenticCLI/tests/test_plan_bootstrap.py"
+        inputs: []
+
+      - id: "VER_002"
+        name: "Run full AgenticCLI test suite for regression check"
+        status: "pending"
+        guidance: |
+          Run: python3 -m pytest modules/AgenticCLI/tests/ -v --tb=short
+          Ensure no tests that were previously passing now fail.
+          Focus on test files that test plan commands.
+        target_files:
+          - "modules/AgenticCLI/tests/"
+        inputs: []
+
+  # ============================================
+  # Phase 3: UAT (MANDATORY)
+  # ============================================
+  - name: "User Acceptance Testing"
+    description: |
+      Validate that the bootstrap test fixes correctly test the current cmd_init
+      behavior, anchored to US-CLI-010 acceptance criteria.
+    uat_strategy: "test-user-simulator"
+    user_stories:
+      - "US-CLI-010: Initialize Plan with Worktree"
+    acceptance_criteria:
+      - "All 11 tests in test_plan_bootstrap.py pass (0 failures)"
+      - "Tests mock subprocess calls correctly so no real git operations occur"
+      - "Tests validate flat folder structure (no live/ subfolder)"
+      - "Tests validate cmd_init JSON output format"
+      - "No regressions in other CLI tests"
+    tasks:
+      - id: "UAT_001"
+        name: "UAT: Execute test-user-simulator validation"
+        status: "pending"
+        guidance: |
+          Use test-user-simulator to validate US-CLI-010 acceptance criteria:
+          1. agentic plan init <branch> creates a git worktree
+          2. A plan folder is created in docs/plans/live/ with YYMMDDXX_description naming
+          3. The plan folder contains the required scaffold structure
+          4. Verify tests cover these acceptance criteria
+
+          Run the bootstrap tests one final time confirming:
+          - python3 -m pytest modules/AgenticCLI/tests/test_plan_bootstrap.py -v
+          - All 11 pass
+          - Tests verify the scaffolded structure matches create_planning_folder output
+        target_files:
+          - "modules/AgenticCLI/tests/test_plan_bootstrap.py"
+        inputs:
+          - "docs/userstories/AgenticCLI/02_plan_management.yml"

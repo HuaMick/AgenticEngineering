@@ -17,6 +17,14 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 import yaml
 
+pytestmark = pytest.mark.uat
+
+
+@pytest.fixture(autouse=True)
+def _block_real_ntfy():
+    """Override conftest safety net — these tests manage ntfy mocking themselves."""
+    yield
+
 
 @pytest.fixture
 def test_plan(tmp_path):
@@ -123,7 +131,8 @@ class TestUATWatchNtfyNotifications:
             # Verify headers
             assert "Title" in request.headers, "Missing Title header"
             assert "Priority" in request.headers, "Missing Priority header"
-            assert "NEW QUESTION" in request.headers["Title"].upper(), "Title missing question indicator"
+            # Sequential delivery uses "Question N of M" format
+            assert "QUESTION" in request.headers["Title"].upper(), "Title missing question indicator"
             assert request.headers["Priority"] in ["default", "high", "urgent"], "Invalid priority"
 
             # Verify message body
@@ -131,12 +140,13 @@ class TestUATWatchNtfyNotifications:
             assert "Test question for ntfy notification" in data, "Question text not in message"
 
     def test_deduplication_prevents_duplicate_notifications(self, test_plan, config_with_ntfy):
-        """Verify deduplication: same question does not trigger second notification."""
-        from agenticcli.commands.question import _send_ntfy_if_configured, _ntfy_seen_question_ids
-        from agenticguidance.services.question import QuestionQueue
+        """Verify deduplication: active question prevents second notification.
 
-        # Clear the dedup set
-        _ntfy_seen_question_ids.clear()
+        With sequential delivery, dedup is state-based: if current_question_id
+        is set, no new notification is sent.
+        """
+        from agenticcli.commands.question import _send_ntfy_if_configured
+        from agenticguidance.services.question import QuestionQueue
 
         with patch("agenticcli.utils.ntfy.urlopen") as mock_urlopen:
             mock_response = Mock()
@@ -145,22 +155,23 @@ class TestUATWatchNtfyNotifications:
             mock_urlopen.return_value = mock_response
 
             # Create a test question
-            question = create_test_question(test_plan, question_id="Q-DEDUP-TEST")
+            question = create_test_question(test_plan, question_id="Q-20260208-120000-dedu")
 
             service = QuestionQueue(test_plan)
             pending_questions = service.list_pending_questions()
 
-            # Send notification first time
+            # Send notification first time - sets current_question_id in state
             _send_ntfy_if_configured(test_plan, pending_questions)
             first_call_count = mock_urlopen.call_count
             assert first_call_count == 1, "First notification should be sent"
 
             # Send notification second time with same question
+            # State now has current_question_id set, so this should skip
             _send_ntfy_if_configured(test_plan, pending_questions)
             second_call_count = mock_urlopen.call_count
 
-            # Should still be 1 (dedup prevented second call)
-            assert second_call_count == 1, "Dedup should prevent duplicate notification"
+            # Should still be 1 (state-based dedup prevented second call)
+            assert second_call_count == 1, "Active question should prevent duplicate notification"
 
     def test_network_error_does_not_crash_watcher(self, test_plan, config_with_ntfy):
         """Verify graceful handling when ntfy server unreachable."""
@@ -339,11 +350,9 @@ class TestUATValidationChecklist:
         - Dedup prevents duplicate notifications
         - Network errors do not crash watcher
         """
-        from agenticcli.commands.question import _send_ntfy_if_configured, _ntfy_seen_question_ids
+        from agenticcli.commands.question import _send_ntfy_if_configured
         from agenticguidance.services.question import QuestionQueue
         from urllib.error import URLError
-
-        _ntfy_seen_question_ids.clear()
 
         # Criterion 1: ntfy push sent with correct parameters
         with patch("agenticcli.utils.ntfy.urlopen") as mock_urlopen:
@@ -352,7 +361,7 @@ class TestUATValidationChecklist:
             mock_response.close.return_value = None
             mock_urlopen.return_value = mock_response
 
-            question = create_test_question(test_plan, severity="blocking")
+            question = create_test_question(test_plan, severity="blocking", question_id="Q-20260208-120000-val1")
             service = QuestionQueue(test_plan)
             pending = service.list_pending_questions()
 
@@ -365,7 +374,7 @@ class TestUATValidationChecklist:
             assert "Priority" in request.headers
             criterion_1_pass = True
 
-        # Criterion 2: Dedup prevents duplicate notifications
+        # Criterion 2: State-based dedup prevents duplicate notifications
         with patch("agenticcli.utils.ntfy.urlopen") as mock_urlopen:
             mock_response = Mock()
             mock_response.getcode.return_value = 200
@@ -374,7 +383,7 @@ class TestUATValidationChecklist:
 
             _send_ntfy_if_configured(test_plan, pending)  # Same question again
 
-            # Should not be called (already in dedup set)
+            # Should not be called (current_question_id is set in state)
             criterion_2_pass = mock_urlopen.call_count == 0
 
         # Criterion 3: Network errors do not crash watcher

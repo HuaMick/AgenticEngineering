@@ -1,347 +1,380 @@
-# User Stories: Deployment and Infrastructure
-# Covers deploy agents: deploy-worktree, deploy-cicd, build agents
-
 stories:
-  # ============================================================================
-  # DEPLOY-WORKTREE (Worktree Management)
-  # ============================================================================
-
-  - id: "US-GD-140"
-    title: "Create Git Worktree for Feature Branch"
-    category: "deployment"
-    priority: "critical"
-    as_a: "deploy-worktree agent"
-    i_want: "to create git worktree for feature branch development"
-    so_that: "code development is isolated from main branch"
-    acceptance_criteria:
-      - "Create worktree at specified path"
-      - "Create and checkout feature branch"
-      - "Verify worktree creation successful"
-      - "Initialize VS Code workspace if requested"
-      - "Handle existing worktree gracefully"
-    related_agents:
-      - "deploy-worktree"
-    related_files:
-      - "modules/AgenticGuidance/agents/deploy/deploy-worktree/process.yml"
-    related_commands:
-      - "git worktree add <path> -b <branch>"
-
-  - id: "US-GD-141"
-    title: "Initialize Plan Folder Structure"
-    category: "deployment"
-    priority: "critical"
-    as_a: "deploy-worktree agent"
-    i_want: "to create plan folder structure in docs/plans/live/"
-    so_that: "plan files have consistent organization"
-    acceptance_criteria:
-      - "Create plan folder: docs/plans/live/YYMMDDXX_description/"
-      - "Create subdirectories: analysis/, reference/, questions/"
-      - "Create initial README.md with plan metadata"
-      - "Verify folder naming convention: YYMMDDXX_description"
-      - "Handle existing folder gracefully"
-    related_agents:
-      - "deploy-worktree"
-    related_commands:
-      - "agentic plan init <branch> --description <desc>"
-
-  - id: "US-GD-142"
-    title: "VS Code Workspace Configuration"
-    category: "deployment"
-    priority: "medium"
-    as_a: "deploy-worktree agent"
-    i_want: "to create VS Code workspace for feature development"
-    so_that: "developers have IDE configured for worktree"
-    acceptance_criteria:
-      - "Create .code-workspace file with worktree path"
-      - "Configure workspace settings for project"
-      - "Configure recommended extensions"
-      - "Configure Python interpreter path"
-      - "Open workspace in VS Code if requested"
-    related_agents:
-      - "deploy-worktree"
-
-  - id: "US-GD-143"
-    title: "Worktree Cleanup and Removal"
-    category: "deployment"
-    priority: "high"
-    as_a: "deploy-worktree agent"
-    i_want: "to remove worktree after feature completion"
-    so_that: "worktrees don't accumulate unnecessarily"
-    acceptance_criteria:
-      - "Verify branch merged to main before removal"
-      - "Check for uncommitted changes before removal"
-      - "Remove worktree using git worktree remove"
-      - "Clean up VS Code workspace file"
-      - "Handle active worktree sessions gracefully"
-    related_agents:
-      - "deploy-worktree"
-    related_commands:
-      - "git worktree remove <path>"
-
-  - id: "US-GD-144"
-    title: "Main-First Planning Workflow"
-    category: "deployment"
-    priority: "critical"
-    as_a: "deploy-worktree agent"
-    i_want: "to support main-first planning workflow"
-    so_that: "plans are visible in main worktree before execution"
-    acceptance_criteria:
-      - "Create plan folder in main worktree docs/plans/live/"
-      - "Create feature worktree for code implementation"
-      - "Plan visible from main worktree for all developers"
-      - "Code development happens in feature worktree"
-      - "Merge via staging to main after completion"
-    related_agents:
-      - "deploy-worktree"
-
-  # ============================================================================
-  # DEPLOY-CICD (CI/CD Pipeline)
-  # ============================================================================
-
-  - id: "US-GD-145"
-    title: "CI/CD Pipeline Configuration"
-    category: "deployment"
-    priority: "medium"
-    as_a: "deploy-cicd agent"
-    i_want: "to configure CI/CD pipeline for automated testing"
-    so_that: "code changes are validated before merge"
-    acceptance_criteria:
-      - "Create cloudbuild.yaml for Google Cloud Build"
-      - "Create Dockerfile.test for test environment"
-      - "Create GitHub Actions workflow if applicable"
-      - "Configure test execution steps"
-      - "Configure deployment steps"
-    related_agents:
-      - "deploy-cicd"
-    related_files:
-      - "modules/AgenticGuidance/agents/deploy/deploy-cicd/process.yml"
-    notes:
-      - "CAUTION: deploy-cicd is Guidance Only - CI/CD infrastructure not yet set up for AgenticGuidance module"
-
-  - id: "US-GD-146"
-    title: "CI/CD Infrastructure Status Check"
-    category: "deployment"
-    priority: "critical"
-    as_a: "planner-reviewer agent"
-    i_want: "to verify CI/CD infrastructure exists before planning CI/CD tasks"
-    so_that: "plans don't reference unimplemented infrastructure"
-    acceptance_criteria:
-      - "Check AgenticGuidance README Implementation Status"
-      - "Verify deploy-cicd status is 'Implemented' not 'Guidance Only'"
-      - "Verify cloudbuild.yaml exists in module"
-      - "Verify Dockerfile.test exists in module"
-      - "Block plans requiring CI/CD if infrastructure not ready"
-    related_agents:
-      - "planner-reviewer"
-      - "deploy-cicd"
-    related_files:
-      - "modules/AgenticGuidance/README.md"
-
-  - id: "US-GD-147"
-    title: "CI/CD Validation Phase"
-    category: "deployment"
-    priority: "medium"
-    as_a: "deploy-cicd agent"
-    i_want: "to validate CI/CD configuration before deployment"
-    so_that: "pipeline configuration is correct"
-    acceptance_criteria:
-      - "Validate cloudbuild.yaml syntax"
-      - "Validate Dockerfile.test builds successfully"
-      - "Validate test commands execute correctly"
-      - "Run smoke tests in CI environment"
-      - "Report validation results"
-    related_agents:
-      - "deploy-cicd"
-
-  # ============================================================================
-  # BUILD-PYTHON (Python Build)
-  # ============================================================================
-
-  - id: "US-GD-148"
-    title: "Python Build and Packaging"
-    category: "deployment"
-    priority: "high"
-    as_a: "build-python agent"
-    i_want: "to build Python packages for backend and CLI"
-    so_that: "code is packaged for distribution"
-    acceptance_criteria:
-      - "Build Python package using pyproject.toml"
-      - "Run pytest test suite"
-      - "Check code quality with ruff"
-      - "Build wheel and sdist distributions"
-      - "Verify package metadata"
-    related_agents:
-      - "build-python"
-    related_files:
-      - "modules/AgenticGuidance/agents/build/build-python/process.yml"
-    related_commands:
-      - "python3 -m build"
-      - "pytest"
-
-  - id: "US-GD-149"
-    title: "Python Dependency Management"
-    category: "deployment"
-    priority: "high"
-    as_a: "build-python agent"
-    i_want: "to manage Python dependencies correctly"
-    so_that: "builds are reproducible"
-    acceptance_criteria:
-      - "Verify pyproject.toml dependencies"
-      - "Create or update requirements.txt if needed"
-      - "Check for dependency conflicts"
-      - "Pin versions for reproducibility"
-      - "Document dependency rationale"
-    related_agents:
-      - "build-python"
-
-  - id: "US-GD-150"
-    title: "Python Installation Verification"
-    category: "deployment"
-    priority: "medium"
-    as_a: "build-python agent"
-    i_want: "to verify package installs correctly"
-    so_that: "users can install and use the package"
-    acceptance_criteria:
-      - "Install package in clean virtual environment"
-      - "Verify CLI commands are on PATH"
-      - "Run smoke tests against installed package"
-      - "Verify all modules importable"
-      - "Report installation issues"
-    related_agents:
-      - "build-python"
-
-  # ============================================================================
-  # BUILD-FLUTTER (Flutter Build)
-  # ============================================================================
-
-  - id: "US-GD-151"
-    title: "Flutter Build for Mobile and Web"
-    category: "deployment"
-    priority: "medium"
-    as_a: "build-flutter agent"
-    i_want: "to build Flutter applications for target platforms"
-    so_that: "frontend is packaged for distribution"
-    acceptance_criteria:
-      - "Build Flutter app for specified platform (iOS, Android, web)"
-      - "Run Flutter test suite"
-      - "Check code quality with flutter analyze"
-      - "Build release artifacts"
-      - "Verify build artifacts"
-    related_agents:
-      - "build-flutter"
-    related_files:
-      - "modules/AgenticGuidance/agents/build/build-flutter/process.yml"
-    related_commands:
-      - "flutter build <platform>"
-      - "flutter test"
-
-  - id: "US-GD-152"
-    title: "Flutter Dependency Management"
-    category: "deployment"
-    priority: "medium"
-    as_a: "build-flutter agent"
-    i_want: "to manage Flutter dependencies correctly"
-    so_that: "builds are reproducible"
-    acceptance_criteria:
-      - "Verify pubspec.yaml dependencies"
-      - "Run flutter pub get"
-      - "Check for dependency conflicts"
-      - "Pin versions for reproducibility"
-      - "Document dependency rationale"
-    related_agents:
-      - "build-flutter"
-
-  # ============================================================================
-  # BUILD AND DEPLOY INTEGRATION
-  # ============================================================================
-
-  - id: "US-GD-153"
-    title: "Build Phase in Orchestration"
-    category: "deployment"
-    priority: "high"
-    as_a: "orchestration-executor agent"
-    i_want: "to execute build phases using appropriate build agents"
-    so_that: "code is compiled and packaged correctly"
-    acceptance_criteria:
-      - "Route Python build tasks to build-python agent"
-      - "Route Flutter build tasks to build-flutter agent"
-      - "Execute build phases in dependency order"
-      - "Validate build artifacts before proceeding"
-      - "Handle build failures gracefully"
-    related_agents:
-      - "orchestration-executor"
-      - "build-python"
-      - "build-flutter"
-
-  - id: "US-GD-154"
-    title: "Deploy Phase in Orchestration"
-    category: "deployment"
-    priority: "medium"
-    as_a: "orchestration-executor agent"
-    i_want: "to execute deploy phases using deploy agents"
-    so_that: "infrastructure is configured correctly"
-    acceptance_criteria:
-      - "Route worktree tasks to deploy-worktree agent"
-      - "Route CI/CD tasks to deploy-cicd agent (if implemented)"
-      - "Execute deploy phases before build phases"
-      - "Validate infrastructure before code execution"
-      - "Handle deploy failures gracefully"
-    related_agents:
-      - "orchestration-executor"
-      - "deploy-worktree"
-      - "deploy-cicd"
-
-  - id: "US-GD-155"
-    title: "Absolute Paths in Configuration"
-    category: "deployment"
-    priority: "high"
-    as_a: "build or deploy agent"
-    i_want: "to use absolute paths in configuration files"
-    so_that: "work-from-anywhere is supported"
-    acceptance_criteria:
-      - "All file paths in plan files are absolute"
-      - "Worktree paths are absolute"
-      - "Config files use absolute paths"
-      - "Agents verify path absoluteness before use"
-      - "Relative paths rejected or converted to absolute"
-    related_agents:
-      - "build-python"
-      - "build-flutter"
-      - "deploy-worktree"
-
-  - id: "US-GD-156"
-    title: "Git Worktree and Branching Guidelines"
-    category: "deployment"
-    priority: "high"
-    as_a: "deploy-worktree agent"
-    i_want: "to follow git worktree and branching guidelines"
-    so_that: "git workflow is consistent across team"
-    acceptance_criteria:
-      - "Feature branches created from main"
-      - "Worktrees isolated by feature"
-      - "Merge via staging branch to main"
-      - "Clean up worktrees after merge"
-      - "Follow naming conventions for branches"
-    related_agents:
-      - "deploy-worktree"
-    related_files:
-      - "modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml"
-
-  - id: "US-GD-157"
-    title: "Environment Validation"
-    category: "deployment"
-    priority: "medium"
-    as_a: "build or deploy agent"
-    i_want: "to validate environment before build or deploy"
-    so_that: "missing dependencies are caught early"
-    acceptance_criteria:
-      - "Check required tools installed (python3, git, flutter, etc.)"
-      - "Check tool versions meet requirements"
-      - "Check required environment variables set"
-      - "Report missing or incorrect dependencies"
-      - "Suggest installation commands if possible"
-    related_agents:
-      - "build-python"
-      - "build-flutter"
-      - "deploy-worktree"
-      - "deploy-cicd"
+- id: US-GD-140
+  title: Create Git Worktree for Feature Branch
+  category: deployment
+  priority: critical
+  as_a: deploy-worktree agent
+  i_want: to create git worktree for feature branch development
+  so_that: code development is isolated from main branch
+  acceptance_criteria:
+  - Create worktree at specified path
+  - Create and checkout feature branch
+  - Verify worktree creation successful
+  - Initialize VS Code workspace if requested
+  - Handle existing worktree gracefully
+  related_agents:
+  - deploy-worktree
+  related_files:
+  - modules/AgenticGuidance/agents/deploy/deploy-worktree/process.yml
+  related_commands:
+  - git worktree add <path> -b <branch>
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-141
+  title: Initialize Plan Folder Structure
+  category: deployment
+  priority: critical
+  as_a: deploy-worktree agent
+  i_want: to create plan folder structure in docs/plans/live/
+  so_that: plan files have consistent organization
+  acceptance_criteria:
+  - 'Create plan folder: docs/plans/live/YYMMDDXX_description/'
+  - 'Create subdirectories: analysis/, reference/, questions/'
+  - Create initial README.md with plan metadata
+  - 'Verify folder naming convention: YYMMDDXX_description'
+  - Handle existing folder gracefully
+  related_agents:
+  - deploy-worktree
+  related_commands:
+  - agentic plan init <branch> --description <desc>
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-142
+  title: VS Code Workspace Configuration
+  category: deployment
+  priority: medium
+  as_a: deploy-worktree agent
+  i_want: to create VS Code workspace for feature development
+  so_that: developers have IDE configured for worktree
+  acceptance_criteria:
+  - Create .code-workspace file with worktree path
+  - Configure workspace settings for project
+  - Configure recommended extensions
+  - Configure Python interpreter path
+  - Open workspace in VS Code if requested
+  related_agents:
+  - deploy-worktree
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-143
+  title: Worktree Cleanup and Removal
+  category: deployment
+  priority: high
+  as_a: deploy-worktree agent
+  i_want: to remove worktree after feature completion
+  so_that: worktrees don't accumulate unnecessarily
+  acceptance_criteria:
+  - Verify branch merged to main before removal
+  - Check for uncommitted changes before removal
+  - Remove worktree using git worktree remove
+  - Clean up VS Code workspace file
+  - Handle active worktree sessions gracefully
+  related_agents:
+  - deploy-worktree
+  related_commands:
+  - git worktree remove <path>
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-144
+  title: Main-First Planning Workflow
+  category: deployment
+  priority: critical
+  as_a: deploy-worktree agent
+  i_want: to support main-first planning workflow
+  so_that: plans are visible in main worktree before execution
+  acceptance_criteria:
+  - Create plan folder in main worktree docs/plans/live/
+  - Create feature worktree for code implementation
+  - Plan visible from main worktree for all developers
+  - Code development happens in feature worktree
+  - Merge via staging to main after completion
+  related_agents:
+  - deploy-worktree
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-145
+  title: CI/CD Pipeline Configuration
+  category: deployment
+  priority: medium
+  as_a: deploy-cicd agent
+  i_want: to configure CI/CD pipeline for automated testing
+  so_that: code changes are validated before merge
+  acceptance_criteria:
+  - Create cloudbuild.yaml for Google Cloud Build
+  - Create Dockerfile.test for test environment
+  - Create GitHub Actions workflow if applicable
+  - Configure test execution steps
+  - Configure deployment steps
+  related_agents:
+  - deploy-cicd
+  related_files:
+  - modules/AgenticGuidance/agents/deploy/deploy-cicd/process.yml
+  notes:
+  - 'CAUTION: deploy-cicd is Guidance Only - CI/CD infrastructure not yet set up for
+    AgenticGuidance module'
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-146
+  title: CI/CD Infrastructure Status Check
+  category: deployment
+  priority: critical
+  as_a: planner-reviewer agent
+  i_want: to verify CI/CD infrastructure exists before planning CI/CD tasks
+  so_that: plans don't reference unimplemented infrastructure
+  acceptance_criteria:
+  - Check AgenticGuidance README Implementation Status
+  - Verify deploy-cicd status is 'Implemented' not 'Guidance Only'
+  - Verify cloudbuild.yaml exists in module
+  - Verify Dockerfile.test exists in module
+  - Block plans requiring CI/CD if infrastructure not ready
+  related_agents:
+  - planner-reviewer
+  - deploy-cicd
+  related_files:
+  - modules/AgenticGuidance/README.md
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-147
+  title: CI/CD Validation Phase
+  category: deployment
+  priority: medium
+  as_a: deploy-cicd agent
+  i_want: to validate CI/CD configuration before deployment
+  so_that: pipeline configuration is correct
+  acceptance_criteria:
+  - Validate cloudbuild.yaml syntax
+  - Validate Dockerfile.test builds successfully
+  - Validate test commands execute correctly
+  - Run smoke tests in CI environment
+  - Report validation results
+  related_agents:
+  - deploy-cicd
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-148
+  title: Python Build and Packaging
+  category: deployment
+  priority: high
+  as_a: build-python agent
+  i_want: to build Python packages for backend and CLI
+  so_that: code is packaged for distribution
+  acceptance_criteria:
+  - Build Python package using pyproject.toml
+  - Run pytest test suite
+  - Check code quality with ruff
+  - Build wheel and sdist distributions
+  - Verify package metadata
+  related_agents:
+  - build-python
+  related_files:
+  - modules/AgenticGuidance/agents/build/build-python/process.yml
+  related_commands:
+  - python3 -m build
+  - pytest
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-149
+  title: Python Dependency Management
+  category: deployment
+  priority: high
+  as_a: build-python agent
+  i_want: to manage Python dependencies correctly
+  so_that: builds are reproducible
+  acceptance_criteria:
+  - Verify pyproject.toml dependencies
+  - Create or update requirements.txt if needed
+  - Check for dependency conflicts
+  - Pin versions for reproducibility
+  - Document dependency rationale
+  related_agents:
+  - build-python
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-150
+  title: Python Installation Verification
+  category: deployment
+  priority: medium
+  as_a: build-python agent
+  i_want: to verify package installs correctly
+  so_that: users can install and use the package
+  acceptance_criteria:
+  - Install package in clean virtual environment
+  - Verify CLI commands are on PATH
+  - Run smoke tests against installed package
+  - Verify all modules importable
+  - Report installation issues
+  related_agents:
+  - build-python
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-151
+  title: Flutter Build for Mobile and Web
+  category: deployment
+  priority: medium
+  as_a: build-flutter agent
+  i_want: to build Flutter applications for target platforms
+  so_that: frontend is packaged for distribution
+  acceptance_criteria:
+  - Build Flutter app for specified platform (iOS, Android, web)
+  - Run Flutter test suite
+  - Check code quality with flutter analyze
+  - Build release artifacts
+  - Verify build artifacts
+  related_agents:
+  - build-flutter
+  related_files:
+  - modules/AgenticGuidance/agents/build/build-flutter/process.yml
+  related_commands:
+  - flutter build <platform>
+  - flutter test
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-152
+  title: Flutter Dependency Management
+  category: deployment
+  priority: medium
+  as_a: build-flutter agent
+  i_want: to manage Flutter dependencies correctly
+  so_that: builds are reproducible
+  acceptance_criteria:
+  - Verify pubspec.yaml dependencies
+  - Run flutter pub get
+  - Check for dependency conflicts
+  - Pin versions for reproducibility
+  - Document dependency rationale
+  related_agents:
+  - build-flutter
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-153
+  title: Build Phase in Orchestration
+  category: deployment
+  priority: high
+  as_a: orchestration-executor agent
+  i_want: to execute build phases using appropriate build agents
+  so_that: code is compiled and packaged correctly
+  acceptance_criteria:
+  - Route Python build tasks to build-python agent
+  - Route Flutter build tasks to build-flutter agent
+  - Execute build phases in dependency order
+  - Validate build artifacts before proceeding
+  - Handle build failures gracefully
+  related_agents:
+  - orchestration-executor
+  - build-python
+  - build-flutter
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-154
+  title: Deploy Phase in Orchestration
+  category: deployment
+  priority: medium
+  as_a: orchestration-executor agent
+  i_want: to execute deploy phases using deploy agents
+  so_that: infrastructure is configured correctly
+  acceptance_criteria:
+  - Route worktree tasks to deploy-worktree agent
+  - Route CI/CD tasks to deploy-cicd agent (if implemented)
+  - Execute deploy phases before build phases
+  - Validate infrastructure before code execution
+  - Handle deploy failures gracefully
+  related_agents:
+  - orchestration-executor
+  - deploy-worktree
+  - deploy-cicd
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-155
+  title: Absolute Paths in Configuration
+  category: deployment
+  priority: high
+  as_a: build or deploy agent
+  i_want: to use absolute paths in configuration files
+  so_that: work-from-anywhere is supported
+  acceptance_criteria:
+  - All file paths in plan files are absolute
+  - Worktree paths are absolute
+  - Config files use absolute paths
+  - Agents verify path absoluteness before use
+  - Relative paths rejected or converted to absolute
+  related_agents:
+  - build-python
+  - build-flutter
+  - deploy-worktree
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-156
+  title: Git Worktree and Branching Guidelines
+  category: deployment
+  priority: high
+  as_a: deploy-worktree agent
+  i_want: to follow git worktree and branching guidelines
+  so_that: git workflow is consistent across team
+  acceptance_criteria:
+  - Feature branches created from main
+  - Worktrees isolated by feature
+  - Merge via staging branch to main
+  - Clean up worktrees after merge
+  - Follow naming conventions for branches
+  related_agents:
+  - deploy-worktree
+  related_files:
+  - modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-157
+  title: Environment Validation
+  category: deployment
+  priority: medium
+  as_a: build or deploy agent
+  i_want: to validate environment before build or deploy
+  so_that: missing dependencies are caught early
+  acceptance_criteria:
+  - Check required tools installed (python3, git, flutter, etc.)
+  - Check tool versions meet requirements
+  - Check required environment variables set
+  - Report missing or incorrect dependencies
+  - Suggest installation commands if possible
+  related_agents:
+  - build-python
+  - build-flutter
+  - deploy-worktree
+  - deploy-cicd
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null

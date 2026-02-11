@@ -106,14 +106,12 @@ class TestPlanWorkflowSequence:
         assert code == 0
         assert "Created planning folder" in stdout
 
-        # Verify folder structure
+        # Verify flattened folder structure (plan_*.yml files directly in folder)
         plan_path = integration_repo / "docs" / "plans" / "live" / "test-feature"
         assert plan_path.exists()
-        assert (plan_path / "live").exists()
-        assert (plan_path / "completed").exists()
-        # Check for any of the expected placeholder files
-        live_files = list((plan_path / "live").glob("*.yml"))
-        assert len(live_files) >= 1, "Expected at least one YAML file in live/"
+        # Flattened structure: plan_*.yml files directly in plan_path
+        plan_files = list(plan_path.glob("plan_*.yml"))
+        assert len(plan_files) >= 1, "Expected at least one plan_*.yml file"
 
         # Step 2: Check plan status
         stdout, stderr, code = cli_in_repo("plan", "status")
@@ -130,8 +128,8 @@ class TestPlanWorkflowSequence:
         # Scaffold
         cli_in_repo("plan", "scaffold", "json-test")
 
-        # Create a plan file with tasks
-        plan_path = integration_repo / "docs" / "plans" / "live" / "json-test" / "live"
+        # Create a plan file with tasks (flattened: directly in plan folder)
+        plan_path = integration_repo / "docs" / "plans" / "live" / "json-test"
         plan_content = {
             "plan": {
                 "name": "JSON Test Plan",

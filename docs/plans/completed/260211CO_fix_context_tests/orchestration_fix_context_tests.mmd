@@ -1,0 +1,62 @@
+%% =============================================================================
+%% GOAL: Execute plan tasks
+%% =============================================================================
+%% PROFILE: Orchestration-fix_context_tests
+%% INPUT_PATH: /home/code/AgenticEngineering/docs/plans/live/260211CO_fix_context_tests/plan_build.yml
+%%
+%% PHASES:
+%%   P1: Initial Research and Planning
+%%
+%% AGENT_ROUTING: P1 -> build-python
+%% STATUS: P1=pending
+%% FEEDBACK_TRIGGERS: TEST_FAILURE -> test-fix-loop, BUILD_FAILURE -> escalate
+%% =============================================================================
+
+flowchart LR
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    LoadInputs --> ReviewInputs[Review All Listed Inputs]
+    ReviewInputs --> CheckInputs{All Inputs Found?}
+
+    CheckInputs -- "No: Missing" --> SearchInputs[Search for Missing Inputs]
+    SearchInputs --> Found{Found?}
+    Found -- "Yes: Update paths" --> UpdateRefs[Update References]
+    UpdateRefs --> ReviewInputs
+    Found -- "No: Stop" --> AskUser((Ask User for Clarification))
+
+    CheckInputs -- "Yes: Verified" --> Phase1
+
+    %% ========================================
+    %% PHASE 1: INITIAL RESEARCH AND PLANNING
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: IM_001
+
+    subgraph P1_SG ["Initial Research and Planning"]
+        Phase1[Enter Initial Research and Planning] --> SpawnAgent1[Spawn build-python Agent]
+        SpawnAgent1 --> Task_P1_1[IM_001: Research existing implementation]
+        Task_P1_1 --> Phase1Complete[Initial Research and Planning Complete]
+    end
+
+
+    %% ========================================
+    %% FINALIZATION
+    %% ========================================
+    Phase1Complete --> UpdatePlanStatus[Update Plan Status: completed]
+    %% agentic plan move folder --plan <path>
+    UpdatePlanStatus --> ArchivePlan[Archive to docs/plans/completed/]
+    ArchivePlan --> End((End: Plan Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef entrypoint fill:#90EE90,stroke:#228B22
+    classDef exitpoint fill:#FFB6C1,stroke:#DC143C
+    classDef userpoint fill:#87CEEB,stroke:#4682B4
+    classDef keyaction fill:#FFD700,stroke:#DAA520
+    class Start entrypoint
+    class End exitpoint
+    class AskUser userpoint

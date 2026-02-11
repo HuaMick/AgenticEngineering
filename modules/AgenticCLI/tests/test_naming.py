@@ -56,15 +56,21 @@ class TestGetWorktreeId:
         path = Path("/home/code/Repo-FeatureBranch")
         assert get_worktree_id(path) == "FE"
 
+    def test_branch_with_yymmddxx_pattern_extracts_directly(self):
+        """Branch matching YYMMDDXX pattern extracts code directly."""
+        path = Path("/home/code/Repo-260208PN")
+        result = get_worktree_id(path, branch="260208PN")
+        assert result == "PN"
+
     @patch("agenticcli.commands.worktree.lookup_abbreviation", return_value="PN")
     @patch(
         "agenticcli.commands.worktree.load_worktree_registry",
-        return_value=[{"branch": "260208PN", "abbreviation": "PN"}],
+        return_value=[{"branch": "my-feature", "abbreviation": "PN"}],
     )
     def test_branch_triggers_registry_lookup(self, mock_registry, mock_lookup):
-        """Registry abbreviation is used when branch is provided and found."""
-        path = Path("/home/code/Repo-260208PN")
-        result = get_worktree_id(path, branch="260208PN")
+        """Registry abbreviation is used when branch doesn't match YYMMDDXX pattern."""
+        path = Path("/home/code/Repo-myfeature")
+        result = get_worktree_id(path, branch="my-feature")
         assert result == "PN"
         mock_registry.assert_called()
         mock_lookup.assert_called()

@@ -235,11 +235,11 @@ class TestBlindTreatment:
         # Document expected improvements
         assert treatment_sc_rate == 0.9  # 90%
         assert baseline_sc_rate == 0.6  # 60%
-        assert sc_improvement == 0.3  # 30 percentage point improvement
+        assert sc_improvement == pytest.approx(0.3)  # 30 percentage point improvement
 
         assert treatment_tf_rate == 1.0  # 100%
         assert baseline_tf_rate == 0.7  # 70%
-        assert tf_improvement == 0.3  # 30 percentage point improvement
+        assert tf_improvement == pytest.approx(0.3)  # 30 percentage point improvement
 
         # Binary metrics improvement
         mmd_improved = treatment["mmd_generated"] and not baseline["mmd_generated"]
@@ -268,7 +268,7 @@ class TestBlindTreatment:
         baseline_rate = 0.65
         treatment_rate = 0.80
         improvement = treatment_rate - baseline_rate
-        assert improvement == 0.15, f"Improvement {improvement:.1%} at threshold"
+        assert improvement == pytest.approx(0.15), f"Improvement {improvement:.1%} at threshold"
 
     @pytest.mark.skip(reason="Manual experiment - pairing guide")
     def test_baseline_treatment_pairing(self):

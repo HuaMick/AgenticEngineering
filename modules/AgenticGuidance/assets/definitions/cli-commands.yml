@@ -264,34 +264,42 @@ cli_commands:
     # Session management commands for spawning and managing Claude Code sessions
     # Sessions enable parallel execution across multiple worktrees/contexts
     spawn:
-      command: "agentic session spawn --role <agent-role> [--worktree <path>] [--plan <plan-folder>] [-j]"
+      command: "agentic session spawn --role <agent-role> [--directory <path> | --worktree <path>] [--plan <plan-folder>] [--task <task-id>] [-b] [-j]"
       description: |
         Spawn a new Claude Code session for parallel agent execution.
-        Sessions run in isolated contexts and can target specific worktrees.
+        Sessions run in isolated contexts and can target specific directories.
 
         Returns session ID and connection details for monitoring.
-        Automatically handles CCI bootstrap for the spawned agent.
+        Note: --role and --task are mutually exclusive.
+        Note: --directory and --worktree are mutually exclusive (--worktree is an alias for --directory).
       parameters:
-        --role/-r: "Agent role identifier for the session (e.g., build-python, test-runner)"
-        --worktree/-w: "Target worktree path for session execution (optional)"
-        --plan/-p: "Plan folder path for task context (optional)"
+        --prompt/-p: "Direct prompt string for the session"
+        --role: "Agent role identifier for the session (e.g., build-python, test-runner)"
+        --task: "Task ID to spawn agent for (mutually exclusive with --role)"
+        --plan: "Plan folder name for task context (optional)"
+        --max-turns/-m: "Maximum agentic turns"
+        --background/-b: "Run session in background"
+        --directory/-d: "Working directory for session execution (optional)"
+        --worktree/-w: "Worktree path for session execution (alias for --directory, mutually exclusive)"
+        --dangerously-skip-permissions: "Skip permission prompts"
         -j: "Output in JSON format for machine parsing"
       json_output:
         session_id: "Unique identifier for the spawned session"
         role: "Agent role assigned to session"
-        worktree: "Worktree path if specified"
+        directory: "Working directory if specified"
         plan: "Plan folder path if specified"
         status: "Session status (running, pending)"
         pid: "Process ID of the session"
       exit_codes:
         0: "Success - session spawned"
         1: "Invalid role or role not found"
-        2: "Worktree path does not exist"
+        2: "Directory path does not exist"
         3: "Session spawn failed"
       examples:
         - "agentic session spawn --role build-python -j"
-        - "agentic session spawn -r test-runner --worktree /home/code/MyProject-feature"
-        - "agentic session spawn --role orchestration-executor --plan docs/plans/live/260127XX_feature"
+        - "agentic session spawn --role test-runner --directory /home/code/MyProject-feature -b"
+        - "agentic session spawn --role test-runner --worktree /home/code/MyProject-feature -b"
+        - "agentic session spawn --role orchestration-executor --plan 260127XX_feature --dangerously-skip-permissions"
 
     list:
       command: "agentic session list [-j]"
@@ -327,72 +335,74 @@ cli_commands:
 
   loop:
     # Ralph Loop management commands for iterative agent workflows
-    # Loops provide structured iteration patterns for test-fix, build-validate cycles
-    # Reference: modules/AgenticGuidance/assets/definitions/agent-loops.yml
+    # Loops are prompt-driven with configurable iteration limits
     start:
-      command: "agentic loop start <loop-type> [--plan <plan-folder>] [--max-iterations <n>] [-j]"
+      command: "agentic loop start --prompt <text> [--entrypoint <name>] [--max-iterations <n>] [--completion-promise <text>] [-b] [-d <dir> | -w <dir>] [-j]"
       description: |
         Start a Ralph Loop for iterative agent execution.
-        Loop types define iteration patterns (test-fix, build-validate, etc.).
+        Loops are driven by a prompt (or entrypoint) rather than a loop-type positional arg.
 
-        Loops automatically manage iteration state and escalation triggers.
-        Reference: modules/AgenticGuidance/assets/definitions/agent-loops.yml
+        The prompt defines the iteration goal, and --completion-promise sets the
+        exit condition text that must appear in output to terminate the loop.
+        Note: --directory and --worktree are mutually exclusive (--worktree is an alias for --directory).
       parameters:
-        loop-type: "Loop type from agent-loops.yml (e.g., test-fix-loop, build-validate-loop)"
-        --plan/-p: "Plan folder path for loop context"
-        --max-iterations/-m: "Maximum iterations before escalation (default from loop definition)"
+        --prompt/-p: "Direct prompt string for the loop"
+        --prompt-file/-f: "Read prompt from file instead of inline"
+        --entrypoint/-e: "Entrypoint reference (alternative to --prompt)"
+        --max-iterations/-m: "Maximum iterations before stopping (default: 10)"
+        --completion-promise/-c: "Text that must appear in output to complete loop"
+        --background/-b: "Run loop in background"
+        --directory/-d: "Working directory for the loop"
+        --worktree/-w: "Worktree path for the loop (alias for --directory, mutually exclusive)"
+        --output/-o: "Output file path"
+        --dangerously-skip-permissions: "Skip permission prompts"
         -j: "Output in JSON format"
       json_output:
         loop_id: "Unique identifier for the loop instance"
-        loop_type: "Type of loop started"
-        plan: "Plan folder if specified"
         max_iterations: "Maximum iterations configured"
-        current_iteration: "Current iteration number (starts at 1)"
         status: "Loop status (running, pending)"
       exit_codes:
         0: "Success - loop started"
-        1: "Invalid loop type"
-        2: "Plan folder not found"
+        1: "Missing prompt/entrypoint"
         3: "Loop start failed"
       examples:
-        - "agentic loop start test-fix-loop -j"
-        - "agentic loop start build-validate-loop --plan docs/plans/live/260127XX_feature"
-        - "agentic loop start guidance-test-loop --max-iterations 3"
+        - "agentic loop start --prompt 'Run tests and fix failures' --max-iterations 5 -j"
+        - "agentic loop start --entrypoint test-fix --completion-promise 'All tests pass' -b"
+        - "agentic loop start --prompt-file loop_prompt.md -m 3 -d /home/code/MyProject"
 
     stop:
-      command: "agentic loop stop <loop-id>"
+      command: "agentic loop stop <loop-id> [--force]"
       description: "Stop a running Ralph Loop"
       parameters:
-        loop-id: "Loop ID to stop"
+        loop-id: "Loop ID to stop (required)"
+        --force/-f: "Force kill the loop"
       exit_codes:
         0: "Success - loop stopped"
         1: "Loop not found"
         2: "Loop already stopped"
 
     status:
-      command: "agentic loop status [<loop-id>] [-j]"
-      description: "Get status of active loops or a specific loop"
+      command: "agentic loop status <loop-id> [-j]"
+      description: "Get status of a specific loop"
       parameters:
-        loop-id: "Optional loop ID for specific loop status"
+        loop-id: "Loop ID to check (required)"
         -j: "Output in JSON format"
       json_output:
         loop_id: "Loop identifier"
-        loop_type: "Type of loop"
-        status: "Current status (running, completed, failed, stopped, escalated)"
+        status: "Current status (running, completed, failed, stopped)"
         current_iteration: "Current iteration number"
         max_iterations: "Maximum iterations allowed"
-        last_result: "Result of last iteration (pass, fail)"
-        history: "Array of iteration results"
 
     history:
-      command: "agentic loop history [<loop-id>] [--limit <n>] [-j]"
-      description: "Show history of loop iterations and results"
+      command: "agentic loop history [--active] [--status <filter>] [--limit <n>] [-j]"
+      description: "Show past loop executions"
       parameters:
-        loop-id: "Optional loop ID for specific loop history"
-        --limit/-l: "Limit number of history entries (default: 10)"
+        --active/-a: "Show only active loops"
+        --status/-s: "Filter by loop status"
+        --limit/-l: "Max loops to show (default: 20)"
         -j: "Output in JSON format"
       json_output:
-        entries: "Array of loop history entries with iteration, result, timestamp, details"
+        entries: "Array of loop history entries with id, status, iterations, timestamps"
 
   entrypoint:
     # Entrypoint management commands for session context bootstrapping
@@ -511,4 +521,4 @@ usage_notes:
     - "JSON output (-j flag) available for machine-parseable responses"
     - "CCI context commands (context bootstrap, context role, etc.) provide deterministic context retrieval"
     - "Session commands enable parallel Claude Code execution across worktrees"
-    - "Loop commands manage iterative workflows (test-fix, build-validate cycles)"
+    - "Loop commands manage iterative workflows via prompt-driven iteration"

@@ -12,6 +12,8 @@ from unittest.mock import Mock, patch
 import pytest
 import yaml
 
+pytestmark = pytest.mark.uat
+
 
 @pytest.fixture
 def plan_with_pending_question(tmp_path):

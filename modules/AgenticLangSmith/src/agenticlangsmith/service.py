@@ -153,7 +153,8 @@ class LangSmithService:
         """
         try:
             # Build kwargs for list_runs
-            kwargs: dict[str, Any] = {"limit": limit}
+            # LangSmith API max limit is 100
+            kwargs: dict[str, Any] = {"limit": min(limit, 100)}
 
             if project_name:
                 kwargs["project_name"] = project_name
@@ -205,15 +206,16 @@ class LangSmithService:
             projects = self._client.list_projects()
             result = []
             for project in projects:
+                created_at = getattr(project, "created_at", None)
                 result.append({
                     "id": str(project.id),
                     "name": project.name,
-                    "description": project.description,
+                    "description": getattr(project, "description", None),
                     "created_at": (
-                        project.created_at.isoformat() if project.created_at else None
+                        created_at.isoformat() if created_at else None
                     ),
                     "run_count": getattr(project, "run_count", None),
-                    "extra": project.extra,
+                    "extra": getattr(project, "extra", None),
                 })
             return result
         except Exception as e:

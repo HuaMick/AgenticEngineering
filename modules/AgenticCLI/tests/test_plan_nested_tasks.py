@@ -63,6 +63,8 @@ def nested_task_plan():
         plan_file = plan_dir / "plan_build.yml"
         with open(plan_file, "w") as f:
             yaml.dump(plan_content, f, default_flow_style=False)
+        # EN-006: task start requires orchestration MMD
+        (plan_dir / "orchestration_build.mmd").write_text("graph TD\n  A-->B\n")
         yield plan_dir
 
 
@@ -95,6 +97,8 @@ def nested_task_plan_with_task_id():
         plan_file = plan_dir / "plan_build.yml"
         with open(plan_file, "w") as f:
             yaml.dump(plan_content, f, default_flow_style=False)
+        # EN-006: task start requires orchestration MMD
+        (plan_dir / "orchestration_build.mmd").write_text("graph TD\n  A-->B\n")
         yield plan_dir
 
 
@@ -372,6 +376,8 @@ class TestEdgeCases:
             plan_file = plan_dir / "plan_build.yml"
             with open(plan_file, "w") as f:
                 yaml.dump(plan_content, f, default_flow_style=False)
+            # EN-006: task start requires orchestration MMD
+            (plan_dir / "orchestration_build.mmd").write_text("graph TD\n  A-->B\n")
 
             stdout, stderr, code = cli_runner(
                 ["plan", "task", "start", "TEST-TASK_001-v2", "--plan", str(plan_dir)]

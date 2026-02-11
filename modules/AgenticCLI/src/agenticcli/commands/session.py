@@ -4,14 +4,18 @@ Commands for spawning, listing, stopping, and monitoring Claude Code sessions.
 """
 
 import json
+import logging
 import os
 import signal
 import subprocess
 import sys
+import time
 import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 def _get_sessions_dir() -> Path:
@@ -96,6 +100,100 @@ def _is_process_running(pid: int) -> bool:
         return False
 
 
+def _capture_langsmith_trace(session_data: dict) -> bool:
+    """Capture LangSmith trace for a completed background session.
+
+    Reads the stdout log to extract the Claude Code session_id,
+    finds the transcript path, and calls the stop hook to submit traces.
+    This is needed because --print mode sessions don't fire Stop hooks.
+
+    Args:
+        session_data: Session data dict with stdout_log path.
+
+    Returns:
+        True if trace was captured, False otherwise.
+    """
+    if session_data.get("trace_captured"):
+        return True
+
+    stdout_log = session_data.get("stdout_log")
+    if not stdout_log or not Path(stdout_log).exists():
+        return False
+
+    # Extract Claude Code session_id from JSON output in stdout log
+    claude_session_id = None
+    try:
+        with open(stdout_log) as f:
+            content = f.read().strip()
+        if content:
+            # The last line of --output-format json output is the result JSON
+            for line in reversed(content.splitlines()):
+                line = line.strip()
+                if line.startswith("{"):
+                    try:
+                        result = json.loads(line)
+                        claude_session_id = result.get("session_id")
+                        if claude_session_id:
+                            break
+                    except json.JSONDecodeError:
+                        continue
+    except OSError:
+        return False
+
+    if not claude_session_id:
+        return False
+
+    # Find transcript path
+    # Claude Code stores transcripts at ~/.claude/projects/<project-hash>/<session-id>.jsonl
+    working_dir = session_data.get("working_dir", os.getcwd())
+    # Convert working dir to Claude Code project hash format
+    project_hash = working_dir.replace("/", "-")
+    if project_hash.startswith("-"):
+        project_hash = project_hash  # Keep leading dash
+    transcript_dir = Path.home() / ".claude" / "projects" / project_hash
+    transcript_path = transcript_dir / f"{claude_session_id}.jsonl"
+
+    if not transcript_path.exists():
+        # Try common project paths
+        claude_projects = Path.home() / ".claude" / "projects"
+        if claude_projects.exists():
+            for proj_dir in claude_projects.iterdir():
+                candidate = proj_dir / f"{claude_session_id}.jsonl"
+                if candidate.exists():
+                    transcript_path = candidate
+                    break
+
+    if not transcript_path.exists():
+        return False
+
+    # Call the stop hook with the session data
+    hook_path = Path.home() / ".claude" / "hooks" / "stop_hook.sh"
+    if not hook_path.exists():
+        return False
+
+    hook_input = json.dumps({
+        "session_id": claude_session_id,
+        "transcript_path": str(transcript_path),
+        "hook_event_name": "Stop",
+        "stop_hook_active": False,
+    })
+
+    try:
+        subprocess.run(
+            ["bash", str(hook_path)],
+            input=hook_input,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        session_data["trace_captured"] = True
+        session_data["claude_session_id"] = claude_session_id
+        _save_session(session_data)
+        return True
+    except (subprocess.TimeoutExpired, OSError):
+        return False
+
+
 def _update_session_status(session_data: dict) -> dict:
     """Update session status based on process state.
 
@@ -111,7 +209,213 @@ def _update_session_status(session_data: dict) -> dict:
             session_data["status"] = "completed"
             session_data["ended_at"] = datetime.now().isoformat()
             _save_session(session_data)
+            # Capture trace for background sessions
+            if session_data.get("background"):
+                _capture_langsmith_trace(session_data)
     return session_data
+
+
+def _spawn_diagnostic_planner(stuck_session: dict) -> str | None:
+    """Spawn a diagnostic planner for a stuck session.
+
+    Creates a new background session that investigates why the original
+    session became stuck and creates a remediation plan if needed.
+    Only spawns once per stuck session.
+
+    Args:
+        stuck_session: Session data dict of the stuck session.
+
+    Returns:
+        New session ID if diagnostic was spawned, None otherwise.
+    """
+    if stuck_session.get("diagnostic_spawned", False):
+        return None
+
+    session_id = stuck_session["session_id"]
+    prompt_excerpt = stuck_session.get("prompt", "")[:200]
+
+    prompt = (
+        f"Your role is DIAGNOSTIC PLANNER. A session has become stuck/unhealthy.\n\n"
+        f"## Stuck Session Details\n"
+        f"- Session ID: {session_id[:8]}\n"
+        f"- Started: {stuck_session.get('started_at', 'unknown')}\n"
+        f"- Status: {stuck_session.get('status', 'unknown')}\n"
+        f"- PID: {stuck_session.get('pid', 'unknown')}\n"
+        f"- Prompt excerpt: {prompt_excerpt}...\n\n"
+        f"## Your Task\n"
+        f"1. Investigate what went wrong (check logs at ~/.agentic/sessions/logs/{session_id}.*.log)\n"
+        f"2. Determine if this is a one-off or systemic issue\n"
+        f"3. If systemic, create a planning folder to address the root cause\n"
+        f"4. If one-off, document findings and exit\n\n"
+        f"Exit when investigation is complete."
+    )
+
+    # Build command for background spawn
+    new_session_id = str(uuid.uuid4())
+    cmd = ["claude", "--print", "--dangerously-skip-permissions", "--max-turns", "10", prompt]
+
+    logs_dir = _get_logs_dir()
+    stdout_log = open(logs_dir / f"{new_session_id}.stdout.log", "w")
+    stderr_log = open(logs_dir / f"{new_session_id}.stderr.log", "w")
+
+    try:
+        process = subprocess.Popen(
+            cmd,
+            cwd=stuck_session.get("working_dir", "."),
+            stdin=subprocess.DEVNULL,
+            stdout=stdout_log,
+            stderr=stderr_log,
+            start_new_session=True,
+        )
+    except (FileNotFoundError, OSError):
+        return None
+    finally:
+        stdout_log.close()
+        stderr_log.close()
+
+    # Save diagnostic session
+    diag_session = {
+        "session_id": new_session_id,
+        "pid": process.pid,
+        "prompt": prompt,
+        "max_turns": 10,
+        "status": "running",
+        "started_at": datetime.now().isoformat(),
+        "ended_at": None,
+        "background": True,
+        "working_dir": stuck_session.get("working_dir", "."),
+        "command": " ".join(cmd),
+        "last_activity": datetime.now().isoformat(),
+        "stdout_log": str(logs_dir / f"{new_session_id}.stdout.log"),
+        "stderr_log": str(logs_dir / f"{new_session_id}.stderr.log"),
+        "metadata": {"diagnostic_for": session_id},
+    }
+    _save_session(diag_session)
+
+    # Mark original session
+    sessions_dir = _get_sessions_dir()
+    session_path = sessions_dir / f"{session_id}.json"
+    if session_path.exists():
+        data = json.loads(session_path.read_text())
+        data["diagnostic_spawned"] = True
+        data["diagnostic_session_id"] = new_session_id
+        session_path.write_text(json.dumps(data, indent=2))
+
+    return new_session_id
+
+
+def _check_tmux_session(session_id: str) -> bool | None:
+    """Check if a tmux session exists for the given session ID.
+
+    Args:
+        session_id: Session ID to check as tmux session name.
+
+    Returns:
+        True if tmux session exists, False if it doesn't,
+        None if tmux is not installed or check timed out.
+    """
+    try:
+        result = subprocess.run(
+            ["tmux", "has-session", "-t", session_id],
+            capture_output=True, timeout=5,
+        )
+        return result.returncode == 0
+    except FileNotFoundError:
+        return None
+    except subprocess.TimeoutExpired:
+        return None
+
+
+def _check_session_health(session: dict) -> dict:
+    """Evaluate session health from multiple signals.
+
+    Checks PID liveness, log file size, and log recency to determine
+    whether a session is healthy, stale, or unhealthy.
+
+    Args:
+        session: Session data dict.
+
+    Returns:
+        Dict with keys: healthy (bool), signals (list[dict]),
+        stale (bool), stale_minutes (int).
+    """
+    signals = []
+    session_id = session.get("session_id", "")
+    pid = session.get("pid")
+    status = session.get("status", "")
+
+    # Signal 1: PID alive check
+    pid_alive = _is_process_running(pid) if pid else False
+    signals.append({
+        "name": "pid_alive",
+        "ok": pid_alive,
+        "detail": f"PID {pid} {'alive' if pid_alive else 'dead'}",
+    })
+
+    # Signal 2: Log file size check
+    logs_dir = _get_logs_dir()
+    stdout_path = logs_dir / f"{session_id}.stdout.log"
+    stderr_path = logs_dir / f"{session_id}.stderr.log"
+    stdout_bytes = stdout_path.stat().st_size if stdout_path.exists() else 0
+    stderr_bytes = stderr_path.stat().st_size if stderr_path.exists() else 0
+    total_bytes = stdout_bytes + stderr_bytes
+    has_output = total_bytes > 0
+    signals.append({
+        "name": "has_output",
+        "ok": has_output,
+        "detail": f"Log size: {total_bytes} bytes (stdout={stdout_bytes}, stderr={stderr_bytes})",
+    })
+
+    # Signal 3: Log file recency (mtime)
+    log_mtime = None
+    for p in [stdout_path, stderr_path]:
+        if p.exists():
+            mtime = p.stat().st_mtime
+            if log_mtime is None or mtime > log_mtime:
+                log_mtime = mtime
+
+    if log_mtime:
+        minutes_since_write = (time.time() - log_mtime) / 60
+    else:
+        # Fall back to started_at
+        started_at = session.get("started_at", "")
+        if started_at:
+            try:
+                dt = datetime.fromisoformat(started_at)
+                minutes_since_write = (datetime.now() - dt).total_seconds() / 60
+            except ValueError:
+                minutes_since_write = 999
+        else:
+            minutes_since_write = 999
+
+    stale_threshold = 10  # minutes
+    is_stale = status == "running" and minutes_since_write > stale_threshold
+    signals.append({
+        "name": "recent_activity",
+        "ok": not is_stale,
+        "detail": f"Last activity: {int(minutes_since_write)}m ago",
+    })
+
+    # Signal 4: tmux session existence (only for background sessions)
+    if session.get("background") and status == "running":
+        tmux_exists = _check_tmux_session(session_id)
+        if tmux_exists is not None:
+            signals.append({
+                "name": "tmux_session",
+                "ok": tmux_exists,
+                "detail": f"tmux session {'exists' if tmux_exists else 'missing'}",
+            })
+
+    # Overall health
+    healthy = pid_alive and (has_output or status != "running")
+    stale = is_stale
+
+    return {
+        "healthy": healthy,
+        "signals": signals,
+        "stale": stale,
+        "stale_minutes": int(minutes_since_write),
+    }
 
 
 def handle(args, ctx=None):
@@ -129,8 +433,12 @@ def handle(args, ctx=None):
         cmd_stop(args, ctx)
     elif args.session_command == "status":
         cmd_status(args, ctx)
+    elif args.session_command == "health":
+        cmd_health(args, ctx)
+    elif args.session_command == "logs":
+        cmd_logs(args, ctx)
     else:
-        print("Usage: agentic session <spawn|list|stop|status>", file=sys.stderr)
+        print("Usage: agentic session <spawn|list|stop|status|health|logs>", file=sys.stderr)
         sys.exit(1)
 
 
@@ -257,7 +565,7 @@ def cmd_spawn(args, ctx=None):
         args: Parsed command arguments with prompt, max_turns, background.
         ctx: Optional CLIContext.
     """
-    from agenticcli.console import console, get_status, is_json_output, print_error, print_json, print_success
+    from agenticcli.console import console, get_status, is_json_output, print_error, print_json, print_success, print_warning
     from agenticcli.utils.tokens import (
         context_usage_percent,
         estimate_tokens,
@@ -276,6 +584,12 @@ def cmd_spawn(args, ctx=None):
         if not plan_folder:
             print_error(f"Plan folder not found: {plan_name}")
             sys.exit(1)
+
+    # Warn if plan has pending questions (informational only)
+    if plan_folder:
+        from agenticcli.commands.plan import has_pending_questions
+        if has_pending_questions(plan_folder):
+            print_warning(f"Plan {plan_folder.name} has pending questions. Check: agentic question list --plan {plan_folder.name}")
 
     # Validate: --task requires --plan
     if task_id and not plan_folder:
@@ -308,6 +622,10 @@ def cmd_spawn(args, ctx=None):
         cmd.append("--dangerously-skip-permissions")
     if max_turns:
         cmd.extend(["--max-turns", str(max_turns)])
+    # Use JSON output for background sessions to capture Claude Code session_id
+    # This enables post-completion LangSmith trace capture
+    if background:
+        cmd.extend(["--output-format", "json"])
     cmd.append(prompt)
 
     # Estimate token usage from prompt
@@ -339,19 +657,54 @@ def cmd_spawn(args, ctx=None):
             stdout_log = open(logs_dir / f"{session_id}.stdout.log", "w")
             stderr_log = open(logs_dir / f"{session_id}.stderr.log", "w")
 
-            process = subprocess.Popen(
-                cmd,
-                cwd=working_dir,
-                stdin=subprocess.DEVNULL,
-                stdout=stdout_log,
-                stderr=stderr_log,
-                start_new_session=True,
-            )
+            try:
+                process = subprocess.Popen(
+                    cmd,
+                    cwd=working_dir,
+                    stdin=subprocess.DEVNULL,
+                    stdout=stdout_log,
+                    stderr=stderr_log,
+                    start_new_session=True,
+                )
+            finally:
+                # Close file handles in parent process; child inherits the FDs
+                stdout_log.close()
+                stderr_log.close()
+
             session_data["pid"] = process.pid
             session_data["status"] = "running"
+            session_data["last_activity"] = session_data["started_at"]
             session_data["stdout_log"] = str(logs_dir / f"{session_id}.stdout.log")
             session_data["stderr_log"] = str(logs_dir / f"{session_id}.stderr.log")
             _save_session(session_data)
+
+            # Auto-start ntfy question watch-daemon for this plan
+            if plan_folder:
+                try:
+                    from agenticcli.commands.question import _ensure_watch_daemon
+                    started, reason = _ensure_watch_daemon(plan_folder)
+                    if started:
+                        logger.info("Auto-started question watch-daemon for %s", plan_folder.name)
+                except Exception as e:
+                    logger.debug("Failed to auto-start watch-daemon: %s", e)
+
+            # Check for immediate spawn failure
+            time.sleep(1)
+            if not _is_process_running(process.pid):
+                session_data["status"] = "failed"
+                session_data["ended_at"] = datetime.now().isoformat()
+                session_data["error"] = "Process died immediately after spawn"
+                _save_session(session_data)
+                if is_json_output():
+                    print_json({
+                        "session_id": session_id,
+                        "pid": process.pid,
+                        "status": "failed",
+                        "error": "Process died immediately after spawn",
+                    })
+                else:
+                    print_error(f"Session {session_id[:8]} failed immediately after spawn (PID: {process.pid})")
+                return
 
             if is_json_output():
                 print_json({
@@ -370,6 +723,16 @@ def cmd_spawn(args, ctx=None):
             session_data["pid"] = os.getpid()  # Current process for tracking
             session_data["status"] = "running"
             _save_session(session_data)
+
+            # Auto-start ntfy question watch-daemon for this plan
+            if plan_folder:
+                try:
+                    from agenticcli.commands.question import _ensure_watch_daemon
+                    started, reason = _ensure_watch_daemon(plan_folder)
+                    if started:
+                        logger.info("Auto-started question watch-daemon for %s", plan_folder.name)
+                except Exception as e:
+                    logger.debug("Failed to auto-start watch-daemon: %s", e)
 
             # Display context metrics before starting
             if not is_json_output():
@@ -432,8 +795,40 @@ def cmd_spawn(args, ctx=None):
         sys.exit(1)
 
 
+def _format_relative_time(iso_str: str) -> str:
+    """Convert an ISO timestamp to a human-readable relative time string.
+
+    Args:
+        iso_str: ISO format timestamp string.
+
+    Returns:
+        Relative time string like "just now", "2m ago", "1h ago", "3d ago", or "Feb 01".
+    """
+    if not iso_str:
+        return ""
+    try:
+        dt = datetime.fromisoformat(iso_str)
+        delta = datetime.now() - dt
+        total_seconds = int(delta.total_seconds())
+
+        if total_seconds < 60:
+            return "just now"
+        elif total_seconds < 3600:
+            return f"{total_seconds // 60}m ago"
+        elif total_seconds < 86400:
+            return f"{total_seconds // 3600}h ago"
+        elif total_seconds < 604800:
+            return f"{total_seconds // 86400}d ago"
+        else:
+            return dt.strftime("%b %d")
+    except (ValueError, TypeError):
+        return iso_str
+
+
 def cmd_list(args, ctx=None):
-    """List all Claude Code sessions.
+    """List Claude Code sessions.
+
+    By default shows only running/starting sessions. Use --all to show all.
 
     Args:
         args: Parsed command arguments.
@@ -441,67 +836,136 @@ def cmd_list(args, ctx=None):
     """
     from agenticcli.console import console, is_json_output, print_header, print_json
 
-    sessions = _list_all_sessions()
+    all_sessions = _list_all_sessions()
 
     # Update status for running sessions
-    for session in sessions:
+    for session in all_sessions:
         _update_session_status(session)
 
-    # Filter by active if requested
-    active_only = getattr(args, "active", False)
-    if active_only:
-        sessions = [s for s in sessions if s.get("status") == "running"]
+    total_count = len(all_sessions)
+
+    # Default: show only active (running/starting). --all shows everything.
+    show_all = getattr(args, "show_all", False)
+    if show_all:
+        sessions = all_sessions
+    else:
+        sessions = [s for s in all_sessions if s.get("status") in ("running", "starting")]
+
+    # Compute health for running sessions
+    health_data = {}
+    for session in sessions:
+        if session.get("status") in ("running", "starting"):
+            health_data[session["session_id"]] = _check_session_health(session)
 
     if is_json_output():
+        # Enrich running sessions with health data in JSON output
+        enriched = []
+        for s in sessions:
+            s_copy = dict(s)
+            if s["session_id"] in health_data:
+                s_copy["health"] = health_data[s["session_id"]]
+            enriched.append(s_copy)
         print_json({
-            "sessions": sessions,
+            "sessions": enriched,
             "count": len(sessions),
+            "total": total_count,
+            "filtered": not show_all,
         })
         return
 
     print_header("Claude Code Sessions")
 
     if not sessions:
-        console.print("[dim]No sessions found[/dim]")
+        if show_all:
+            console.print("[dim]No sessions found[/dim]")
+        else:
+            console.print("[dim]No active sessions[/dim]")
+            if total_count > 0:
+                console.print(f"[dim]{total_count} session(s) total — use --all to see all[/dim]")
         return
 
     # Display as table
     from rich.table import Table
 
     table = Table(show_header=True, header_style="bold cyan")
-    table.add_column("Session ID", style="yellow", width=12)
-    table.add_column("PID", style="white", width=8)
-    table.add_column("Status", style="green", width=12)
-    table.add_column("Started", style="dim", width=20)
-    table.add_column("Prompt", style="dim", max_width=40)
+    table.add_column("ID", style="yellow", width=10)
+    table.add_column("Status", width=10)
+    table.add_column("Health", width=8)
+    table.add_column("Age", style="dim", width=10)
+    table.add_column("PID", style="white", width=7)
+    table.add_column("Description", style="dim", no_wrap=False)
 
     status_colors = {
         "running": "green",
         "completed": "blue",
         "failed": "red",
         "starting": "yellow",
+        "stopped": "yellow",
     }
 
-    for session in sorted(sessions, key=lambda s: s.get("started_at", ""), reverse=True):
-        session_id = session.get("session_id", "")[:8]  # Truncate UUID
+    stale_count = 0
+
+    for session in sorted(all_sessions if show_all else sessions, key=lambda s: s.get("started_at", ""), reverse=True):
+        if not show_all and session.get("status") not in ("running", "starting"):
+            continue
+        session_id = session.get("session_id", "")[:8]
         pid = str(session.get("pid", "N/A"))
         status = session.get("status", "unknown")
         status_color = status_colors.get(status, "white")
-        started_at = session.get("started_at", "")[:19]  # Truncate ISO timestamp
-        prompt = session.get("prompt", "")[:40]  # Truncate prompt
-        if len(session.get("prompt", "")) > 40:
-            prompt += "..."
+        age = _format_relative_time(session.get("started_at", ""))
+        prompt = session.get("prompt", "")
+        # Clean up prompt for display: replace newlines, truncate to 60 chars
+        prompt = prompt.replace("\n", " ").replace("\r", "")
+        if len(prompt) > 60:
+            prompt = prompt[:60] + "..."
+
+        # Health column
+        health = health_data.get(session.get("session_id", ""))
+        if health:
+            if health["stale"]:
+                health_display = f"[yellow]STALE[/yellow]"
+                status_display = f"[yellow]running (stale {health['stale_minutes']}m)[/yellow]"
+                stale_count += 1
+            elif health["healthy"]:
+                health_display = "[green]OK[/green]"
+                status_display = f"[{status_color}]{status}[/{status_color}]"
+            else:
+                health_display = "[red]FAIL[/red]"
+                status_display = f"[{status_color}]{status}[/{status_color}]"
+        else:
+            health_display = "[dim]-[/dim]"
+            status_display = f"[{status_color}]{status}[/{status_color}]"
 
         table.add_row(
             session_id,
+            status_display,
+            health_display,
+            age,
             pid,
-            f"[{status_color}]{status}[/{status_color}]",
-            started_at,
             prompt,
         )
 
     console.print(table)
-    console.print(f"\n[dim]Total: {len(sessions)} session(s)[/dim]")
+
+    if stale_count > 0:
+        console.print(f"\n[yellow]Warning: {stale_count} session(s) appear stale. Use 'agentic session health <id>' for details.[/yellow]")
+
+    # Status summary
+    from collections import Counter
+    status_counts = Counter(s.get("status", "unknown") for s in all_sessions)
+    summary_parts = []
+    for s in ("running", "starting", "completed", "stopped", "failed"):
+        count = status_counts.get(s, 0)
+        if count > 0:
+            color = status_colors.get(s, "white")
+            summary_parts.append(f"[{color}]{count} {s}[/{color}]")
+
+    if show_all:
+        console.print(f"\n[dim]{', '.join(summary_parts)}[/dim]")
+    else:
+        console.print(f"\n[dim]Showing {len(sessions)} active of {total_count} total (use --all to see all)[/dim]")
+        if summary_parts:
+            console.print(f"[dim]{', '.join(summary_parts)}[/dim]")
 
 
 def cmd_stop(args, ctx=None):
@@ -567,6 +1031,10 @@ def cmd_stop(args, ctx=None):
         session["ended_at"] = datetime.now().isoformat()
         _save_session(session)
 
+        # Capture trace before reporting success
+        if session.get("background"):
+            _capture_langsmith_trace(session)
+
         if is_json_output():
             print_json({
                 "session_id": session["session_id"],
@@ -582,6 +1050,9 @@ def cmd_stop(args, ctx=None):
         session["status"] = "completed"
         session["ended_at"] = datetime.now().isoformat()
         _save_session(session)
+        # Capture trace for background sessions
+        if session.get("background"):
+            _capture_langsmith_trace(session)
         if is_json_output():
             print_json({
                 "session_id": session["session_id"],
@@ -691,3 +1162,149 @@ def cmd_status(args, ctx=None):
                     console.print(f"[red]{content}[/red]")
                 else:
                     console.print("[dim](empty)[/dim]")
+
+    # Show health warnings for background running sessions
+    if session.get("background") and status == "running":
+        health = _check_session_health(session)
+        unhealthy_signals = [s for s in health["signals"] if not s["ok"]]
+        if unhealthy_signals:
+            console.print("\n[bold yellow]Health Warnings:[/bold yellow]")
+            for sig in unhealthy_signals:
+                console.print(f"  [yellow]! {sig['name']}: {sig['detail']}[/yellow]")
+
+
+def cmd_health(args, ctx=None):
+    """Check health/vitality of a session.
+
+    Evaluates PID liveness, log file output, and activity recency
+    to determine overall session health.
+
+    Args:
+        args: Parsed command arguments with session_id.
+        ctx: Optional CLIContext.
+    """
+    from agenticcli.console import console, is_json_output, print_error, print_json
+
+    session_id_prefix = getattr(args, "session_id", "")
+    json_output = is_json_output() or getattr(args, "json_output", False)
+
+    sessions_dir = _get_sessions_dir()
+    matches = [f for f in sessions_dir.glob("*.json")
+               if f.stem.startswith(session_id_prefix)]
+
+    if not matches:
+        print_error(f"No session found matching '{session_id_prefix}'")
+        return
+
+    if len(matches) > 1:
+        print_error(f"Ambiguous ID '{session_id_prefix}' matches {len(matches)} sessions")
+        return
+
+    session = json.loads(matches[0].read_text())
+    _update_session_status(session)
+
+    health = _check_session_health(session)
+
+    if json_output:
+        result = {"session_id": session["session_id"], **health}
+        # Auto-spawn diagnostic for JSON output too
+        if health["stale"] or not health["healthy"]:
+            if not session.get("diagnostic_spawned", False):
+                new_id = _spawn_diagnostic_planner(session)
+                if new_id:
+                    result["diagnostic_spawned"] = new_id
+            else:
+                result["diagnostic_session_id"] = session.get("diagnostic_session_id")
+        print(json.dumps(result, indent=2))
+        return
+
+    # Rich display
+    console.print(f"\n[bold]Session Health: {session['session_id'][:8]}[/bold]")
+    console.print(f"Status: {session.get('status', 'unknown')}")
+    console.print(f"PID: {session.get('pid', 'N/A')}")
+    console.print()
+
+    for sig in health["signals"]:
+        icon = "[green]OK[/green]" if sig["ok"] else "[red]FAIL[/red]"
+        console.print(f"  {icon}  {sig['name']}: {sig['detail']}")
+
+    console.print()
+    if health["healthy"] and not health["stale"]:
+        console.print("[green bold]Verdict: HEALTHY[/green bold]")
+    elif health["stale"]:
+        console.print(f"[yellow bold]Verdict: STALE ({health['stale_minutes']}m since last activity)[/yellow bold]")
+    else:
+        console.print("[red bold]Verdict: UNHEALTHY[/red bold]")
+
+    # Auto-spawn diagnostic planner for unhealthy/stale sessions
+    if health["stale"] or not health["healthy"]:
+        if not session.get("diagnostic_spawned", False):
+            new_id = _spawn_diagnostic_planner(session)
+            if new_id:
+                if json_output:
+                    pass  # Already returned above
+                else:
+                    console.print(f"\n[cyan]Auto-spawned diagnostic session: {new_id[:8]}[/cyan]")
+        else:
+            diag_id = session.get("diagnostic_session_id", "unknown")[:8]
+            if not json_output:
+                console.print(f"\n[dim]Diagnostic already spawned: {diag_id}[/dim]")
+
+
+def cmd_logs(args, ctx=None):
+    """View logs for a session.
+
+    Shows the last N lines of stdout or stderr log output for a session.
+    Supports following the log with --follow.
+
+    Args:
+        args: Parsed command arguments with session_id.
+        ctx: Optional CLIContext.
+    """
+    from agenticcli.console import console, print_error
+
+    session_id_prefix = getattr(args, "session_id", "")
+    show_stderr = getattr(args, "stderr", False)
+    num_lines = getattr(args, "lines", 50)
+    follow = getattr(args, "follow", False)
+
+    sessions_dir = _get_sessions_dir()
+    matches = [f for f in sessions_dir.glob("*.json")
+               if f.stem.startswith(session_id_prefix)]
+
+    if not matches:
+        print_error(f"No session found matching '{session_id_prefix}'")
+        return
+
+    if len(matches) > 1:
+        print_error(f"Ambiguous ID '{session_id_prefix}' matches {len(matches)} sessions")
+        return
+
+    session = json.loads(matches[0].read_text())
+    logs_dir = _get_logs_dir()
+    suffix = "stderr" if show_stderr else "stdout"
+    log_path = logs_dir / f"{session['session_id']}.{suffix}.log"
+
+    if not log_path.exists():
+        console.print(f"[yellow]No {suffix} log file found for session {session['session_id'][:8]}[/yellow]")
+        return
+
+    file_size = log_path.stat().st_size
+    if file_size == 0:
+        console.print(f"[yellow]{suffix} log is empty (0 bytes) for session {session['session_id'][:8]}[/yellow]")
+        return
+
+    if follow:
+        try:
+            subprocess.run(["tail", "-f", str(log_path)], check=False)
+        except KeyboardInterrupt:
+            pass
+        return
+
+    # Read last N lines
+    lines = log_path.read_text().splitlines()
+    display_lines = lines[-num_lines:] if len(lines) > num_lines else lines
+    if len(lines) > num_lines:
+        console.print(f"[dim]... showing last {num_lines} of {len(lines)} lines ...[/dim]")
+    for line in display_lines:
+        console.print(line)

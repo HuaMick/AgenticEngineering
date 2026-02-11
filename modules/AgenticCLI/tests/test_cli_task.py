@@ -82,7 +82,7 @@ class TestTaskListParser:
             ["plan", "task", "list", "--status", "invalid_status"]
         )
         assert code != 0
-        assert "invalid choice" in stderr.lower()
+        assert "invalid" in stderr.lower()
 
     def test_list_accepts_verbose_flag(self, cli_runner):
         """Test --verbose flag is recognized."""
@@ -153,7 +153,7 @@ class TestTaskAddParser:
             "--priority", "critical"  # invalid
         ])
         assert code != 0
-        assert "invalid choice" in stderr.lower()
+        assert "invalid" in stderr.lower()
 
     def test_add_accepts_phase_option(self, cli_runner):
         """Test --phase option is recognized."""

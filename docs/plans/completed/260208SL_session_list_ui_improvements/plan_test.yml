@@ -1,0 +1,451 @@
+name: session-list-ui-improvements-test-plan
+worktree_path: /home/code/AgenticEngineering
+branch: main
+status: pending
+priority: medium
+context: 'Test plan for the session list UI improvements (260208SL). Validates the
+  three
+
+  build phases: default filtering inversion, table layout improvements, and
+
+  existing test updates.
+
+
+  Key test file: modules/AgenticCLI/tests/test_session_commands.py
+
+  Implementation file: modules/AgenticCLI/src/agenticcli/commands/session.py
+
+
+  The existing test file already has a TestSessionListCommand class with tests
+
+  for empty list, list with sessions, active-only filter, and JSON output.
+
+  These need to be updated to reflect the new default behavior.
+
+  '
+objective: 'Verify the session list UI improvements work correctly:
+
+  - Default filtering shows only running/starting sessions
+
+  - --all flag shows all sessions
+
+  - Relative time formatting works correctly
+
+  - Table layout improvements display properly
+
+  - Status summary line is accurate
+
+  - JSON output respects filtering
+
+  - No regressions in other session commands
+
+  '
+dependencies: []
+affected_stories: []
+impacted_files:
+- path: modules/AgenticCLI/tests/test_session_commands.py
+  change_type: modify
+  change_category: test
+  reason: Update existing tests and add new tests for UI improvements
+impacted_artifacts:
+- artifact_type: cli_command
+  artifact_identifier: agentic session list
+  impact_type: behavior_change
+  description: Validated by unit tests
+  breaking_change: false
+loop_structures:
+- id: loop_unit_test_fix
+  type: test-fix-loop
+  applies_to_phase: 'T1: Default Filtering Tests'
+  trigger: After filtering tests created
+  exit_criteria:
+    success: All filtering tests pass
+    max_iterations: 5
+    escalation: Escalate with failing test details
+  participants:
+  - agent: test-builder
+    role: Creates and runs unit tests
+  - agent: build-python
+    role: Fixes failures
+- id: loop_layout_test_fix
+  type: test-fix-loop
+  applies_to_phase: 'T2: Table Layout Tests'
+  trigger: After layout tests created
+  exit_criteria:
+    success: All layout tests pass
+    max_iterations: 5
+    escalation: Escalate with test details
+  participants:
+  - agent: test-builder
+    role: Creates and runs tests
+  - agent: build-python
+    role: Fixes failures
+- id: loop_audit
+  type: audit-test-fix-loop
+  applies_to_phase: 'T3: Test Audit'
+  trigger: After all test phases pass
+  description: 'MANDATORY audit to validate test quality. Catches reward hacking,
+
+    skipped tests, and missing assertions.
+
+    '
+  exit_criteria:
+    success: Audit passes AND all tests still pass after corrections
+    max_iterations: 3
+    escalation: BLOCK - audit failures must be resolved
+  participants:
+  - agent: test-audit
+    role: Audits test quality
+  - agent: test-builder
+    role: Fixes audit-identified issues
+  mandatory: true
+- id: loop_uat
+  type: user-story-validation-loop
+  applies_to_phase: 'T4: UAT Validation'
+  trigger: After audit passes
+  description: 'User acceptance testing validates the improved session list experience.
+
+    PRIMARY SUCCESS CRITERIA for this plan.
+
+    '
+  exit_criteria:
+    success: All user acceptance criteria pass
+    max_iterations: 3
+    escalation: Escalate with UAT failure details
+  participants:
+  - agent: test-user-simulator
+    role: Simulates user workflows
+  - agent: build-python
+    role: Fixes user-facing issues
+  mandatory: true
+phases:
+- name: 'T1: Default Filtering Tests'
+  execution: sequential
+  description: 'Tests validating the inverted default filtering behavior and --all
+    flag.
+
+    '
+  loop: test-fix-loop
+  tasks:
+  - id: TSL_001
+    name: Test default shows only running/starting sessions
+    description: 'Verify that cmd_list with show_all=False (default) filters to only
+
+      sessions with status "running" or "starting".
+
+      '
+    status: completed
+    agent: test-builder
+    strategy: smoke-test
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    - modules/AgenticCLI/tests/test_session_commands.py
+    target_files:
+    - modules/AgenticCLI/tests/test_session_commands.py
+    guidance: '1. Create a mix of sessions: 2 running, 1 completed, 1 failed, 1 stopped
+
+      2. Call cmd_list with show_all=False
+
+      3. Assert only the 2 running sessions appear in output
+
+      4. Assert completed/failed/stopped sessions do NOT appear
+
+      5. Mock _is_process_running to return True for running sessions
+
+      6. Test both human and JSON output modes
+
+      '
+    success_criteria:
+    - Only running/starting sessions shown by default
+    - Completed/failed/stopped sessions hidden
+  - id: TSL_002
+    name: Test --all flag shows all sessions
+    description: 'Verify that cmd_list with show_all=True shows all sessions
+
+      regardless of status.
+
+      '
+    status: completed
+    agent: test-builder
+    strategy: smoke-test
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    target_files:
+    - modules/AgenticCLI/tests/test_session_commands.py
+    guidance: '1. Create sessions with mixed statuses (running, completed, failed,
+      stopped)
+
+      2. Call cmd_list with show_all=True
+
+      3. Assert ALL sessions appear in output
+
+      4. Verify in both human and JSON output modes
+
+      5. Verify session count reflects all sessions
+
+      '
+    success_criteria:
+    - All sessions shown when --all is used
+    - JSON output includes all sessions
+  - id: TSL_003
+    name: Test empty active sessions message
+    description: 'Verify the appropriate message when no active sessions exist
+
+      but completed sessions do exist.
+
+      '
+    status: completed
+    agent: test-builder
+    strategy: smoke-test
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    target_files:
+    - modules/AgenticCLI/tests/test_session_commands.py
+    guidance: '1. Create only completed/stopped sessions (no running)
+
+      2. Call cmd_list with show_all=False
+
+      3. Assert message says "No active sessions" (not "No sessions found")
+
+      4. Assert hint about --all is shown
+
+      5. Test completely empty state too (no sessions at all)
+
+      '
+    success_criteria:
+    - '''No active sessions'' message shown when no running sessions'
+    - Hint about --all flag shown
+    - Empty state still works correctly
+- name: 'T2: Table Layout Tests'
+  execution: sequential
+  description: 'Tests for the improved table layout, relative time formatting,
+
+    and status summary line.
+
+    '
+  loop: test-fix-loop
+  tasks:
+  - id: TSL_004
+    name: Test relative time formatting
+    description: 'Unit test the _format_relative_time helper function with various
+
+      time deltas.
+
+      '
+    status: completed
+    agent: test-builder
+    strategy: smoke-test
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    target_files:
+    - modules/AgenticCLI/tests/test_session_commands.py
+    guidance: '1. Test "just now" for timestamps < 60 seconds ago
+
+      2. Test "Nm ago" for timestamps 1-59 minutes ago
+
+      3. Test "Nh ago" for timestamps 1-23 hours ago
+
+      4. Test "Nd ago" for timestamps 1-6 days ago
+
+      5. Test month+day format for timestamps >= 7 days ago
+
+      6. Test graceful fallback on invalid/empty strings
+
+      7. Use monkeypatch or freezegun to control datetime.now()
+
+      '
+    success_criteria:
+    - All time ranges produce correct relative time strings
+    - Edge cases handled (just now boundary, day boundary)
+    - Invalid input returns fallback gracefully
+  - id: TSL_005
+    name: Test description column shows prompt excerpt
+    description: 'Verify the Description column shows first 60 chars of prompt
+
+      with proper truncation and newline handling.
+
+      '
+    status: completed
+    agent: test-builder
+    strategy: smoke-test
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    target_files:
+    - modules/AgenticCLI/tests/test_session_commands.py
+    guidance: '1. Create session with short prompt (< 60 chars) -> no truncation
+
+      2. Create session with long prompt (> 60 chars) -> truncated with "..."
+
+      3. Create session with multi-line prompt -> newlines replaced with spaces
+
+      4. Create session with empty prompt -> shows empty or "N/A"
+
+      5. Verify in table output (Rich Table rendering)
+
+      '
+    success_criteria:
+    - Short prompts displayed in full
+    - Long prompts truncated at 60 chars with '...'
+    - Newlines in prompts replaced with spaces
+  - id: TSL_006
+    name: Test status summary line
+    description: 'Verify the status summary line at the bottom of the table output
+
+      shows correct counts by status.
+
+      '
+    status: completed
+    agent: test-builder
+    strategy: smoke-test
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    target_files:
+    - modules/AgenticCLI/tests/test_session_commands.py
+    guidance: '1. Create 2 running, 3 completed, 1 failed sessions
+
+      2. Call cmd_list with show_all=True
+
+      3. Assert summary line contains "2 running"
+
+      4. Assert summary line contains "3 completed"
+
+      5. Assert summary line contains "1 failed"
+
+      6. Test default (active-only) shows hint: "Showing N active of M total"
+
+      7. Test with only one status type (e.g., all running)
+
+      '
+    success_criteria:
+    - Summary line shows correct counts per status
+    - Only non-zero counts shown
+    - Active-only mode shows total count hint
+- name: 'T3: Test Audit'
+  execution: sequential
+  description: 'MANDATORY audit to validate test quality. Must pass before UAT.
+
+    '
+  loop: audit-test-fix-loop
+  tasks:
+  - id: TSL_007
+    name: Audit session list test quality
+    description: 'Comprehensive audit of all session list tests for quality issues.
+
+      '
+    status: completed
+    agent: test-audit
+    inputs:
+    - modules/AgenticCLI/tests/test_session_commands.py
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    guidance: 'Audit Checklist:
+
+      1. Skipped tests: Find @pytest.mark.skip decorators, validate justification
+
+      2. Reward hacking: Tests that mock too much, hardcoded paths, trivial assertions
+
+      3. Coverage gaps: Error paths, edge cases, both output modes (human/JSON)
+
+      4. Test quality: Missing cleanup, global state modification, loose assertions
+
+      5. Implementation validation: Tests actually call implementation code
+
+      6. New behavior tested: Default filtering, --all flag, relative time, summary
+
+      '
+    success_criteria:
+    - No unjustified skipped tests
+    - No reward hacking detected
+    - Coverage gaps identified and addressed
+- name: 'T4: UAT Validation'
+  execution: sequential
+  description: 'MANDATORY user acceptance testing - PRIMARY SUCCESS CRITERIA.
+
+    Validates the improved session list experience from a user perspective.
+
+    '
+  loop: user-story-validation-loop
+  tasks:
+  - id: TSL_008
+    name: 'UAT: Default session list shows only active sessions'
+    description: 'Validate that a user running `agentic session list` sees only their
+
+      active sessions, not cluttered by old completed ones.
+
+      '
+    status: completed
+    agent: test-user-simulator
+    strategy: agent-blind-test
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    guidance: "User Journey:\n1. User has 10+ sessions (mix of running, completed,\
+      \ failed)\n2. User runs: agentic session list\n   Expected: Only running sessions\
+      \ shown (not polluted by completed)\n3. User sees a hint about using --all to\
+      \ see all sessions\n4. User runs: agentic session list --all\n   Expected: All\
+      \ sessions shown with status summary\n\nAcceptance Criteria:\n- Default view\
+      \ is clean and uncluttered\n- Active sessions are clearly visible\n- Hint about\
+      \ --all is discoverable\n"
+    success_criteria:
+    - Default view shows only active sessions
+    - --all shows complete history
+    - Transition between views is intuitive
+  - id: TSL_009
+    name: 'UAT: Improved readability of session list'
+    description: 'Validate that the improved table layout is more readable than before.
+
+      '
+    status: completed
+    agent: test-user-simulator
+    strategy: agent-blind-test
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    guidance: "User Journey:\n1. User runs: agentic session list --all\n2. User sees:\n\
+      \   - Session ID (8 chars, readable)\n   - Status with color coding\n   - Relative\
+      \ time (\"2h ago\" not \"2026-02-08T10:00:00\")\n   - PID for process management\n\
+      \   - Description showing meaningful prompt excerpt (60 chars)\n3. User sees\
+      \ status summary at bottom (\"2 running, 5 completed\")\n4. User can quickly\
+      \ identify which sessions are doing what\n\nAcceptance Criteria:\n- Relative\
+      \ time is more scannable than ISO timestamps\n- Description column provides\
+      \ context about session purpose\n- Status summary gives quick overview\n- Table\
+      \ fits in a standard 120-char terminal width\n"
+    success_criteria:
+    - Relative time is human-readable
+    - Description column shows useful prompt excerpt
+    - Status summary present and accurate
+    - Table layout fits standard terminal
+execution_notes: 'TESTING LAYERS:
+
+  - Local: Always test (validates developer workflow)
+
+  - Docker: Skip (no infrastructure changes)
+
+  - Cloud Build: Skip (no CI/CD changes)
+
+
+  UAT IS PRIMARY SUCCESS CRITERIA:
+
+  - Unit tests validate implementation correctness
+
+  - UAT validates the improved user experience
+
+  - Both UAT stories must pass for plan to be considered complete
+
+
+  AUDIT IS MANDATORY:
+
+  - Cannot skip test-audit-fix-loop phase (T3)
+
+  - Must validate test quality before UAT
+
+
+  LOOP EXECUTION ORDER:
+
+  1. test-fix-loop (T1: filtering tests)
+
+  2. test-fix-loop (T2: layout tests)
+
+  3. audit-test-fix-loop (T3: MANDATORY)
+
+  4. user-story-validation-loop (T4: MANDATORY - primary success)
+
+  '

@@ -234,21 +234,29 @@ def update_workspace_add(workspace_file: Path, worktree_path: Path, branch: str,
             # Not relative, use ../<path> format
             relative_path = f"../{worktree_path.name}"
 
-        # Add to folders array
+        # Add or update folders array
         folder_entry = {
             "name": f"{repo_name} ({branch})",
             "path": relative_path
         }
         if "folders" not in workspace:
             workspace["folders"] = []
-        workspace["folders"].append(folder_entry)
+        
+        # Check for existing entry with same path
+        existing_idx = next((i for i, f in enumerate(workspace["folders"]) if f.get("path") == relative_path), -1)
+        if existing_idx >= 0:
+            workspace["folders"][existing_idx] = folder_entry
+        else:
+            workspace["folders"].append(folder_entry)
 
         # Add to git.scanRepositories
         if "settings" not in workspace:
             workspace["settings"] = {}
         if "git.scanRepositories" not in workspace["settings"]:
             workspace["settings"]["git.scanRepositories"] = ["."]
-        workspace["settings"]["git.scanRepositories"].append(relative_path)
+        
+        if relative_path not in workspace["settings"]["git.scanRepositories"]:
+            workspace["settings"]["git.scanRepositories"].append(relative_path)
 
         # Write back
         with open(workspace_file, "w") as f:
@@ -514,6 +522,45 @@ def get_actual_worktrees(repo_root: Path) -> list[dict]:
     return worktrees
 
 
+def find_idle_worktrees(repo_root: Path) -> list[dict]:
+    """Find worktrees that have no active agent sessions.
+
+    Checks all non-main worktrees against running sessions to determine
+    which ones are idle and available for reuse.
+
+    Args:
+        repo_root: Repository root path.
+
+    Returns:
+        List of worktree dicts (with 'path' and 'branch') that have
+        no active sessions. Excludes main/master worktrees.
+    """
+    from agenticcli.commands.session import _is_process_running, _list_all_sessions
+
+    worktrees = get_actual_worktrees(repo_root)
+
+    # Get active session working directories
+    active_dirs = set()
+    for session in _list_all_sessions():
+        if session.get("status") in ("running", "starting"):
+            pid = session.get("pid")
+            if pid and _is_process_running(pid):
+                wd = session.get("working_dir", "")
+                if wd:
+                    active_dirs.add(str(Path(wd).resolve()))
+
+    idle = []
+    for wt in worktrees:
+        branch = wt.get("branch", "")
+        if branch in ("main", "master"):
+            continue
+        wt_path = str(Path(wt["path"]).resolve())
+        if wt_path not in active_dirs:
+            idle.append(wt)
+
+    return idle
+
+
 def get_live_plan_folders(main_wt_path: Path) -> list[str]:
     """Scan docs/plans/live/ in the given worktree and return plan folder names.
 
@@ -528,6 +575,103 @@ def get_live_plan_folders(main_wt_path: Path) -> list[str]:
     if not plan_dir.exists():
         return []
     return sorted(d.name for d in plan_dir.iterdir() if d.is_dir())
+
+
+def worktree_has_live_plans(worktree_path: Path, main_wt_path: Path, registry: list[dict]) -> bool:
+    """Check if a worktree has any remaining live plans.
+
+    Looks for plan folders in the main worktree's docs/plans/live/ that
+    match the given worktree's branch.
+
+    Args:
+        worktree_path: Path to the worktree to check.
+        main_wt_path: Path to the main worktree.
+        registry: Worktree registry entries.
+
+    Returns:
+        True if the worktree has live plans, False otherwise.
+    """
+    # Get the branch for this worktree
+    worktrees = get_actual_worktrees(main_wt_path)
+    branch = None
+    for wt in worktrees:
+        if str(Path(wt["path"]).resolve()) == str(worktree_path.resolve()):
+            branch = wt.get("branch")
+            break
+
+    if not branch or branch in ("main", "master"):
+        return True  # Never report main as having no plans
+
+    plan_folders = get_live_plan_folders(main_wt_path)
+    matched = _match_plans_to_branch(plan_folders, branch, registry)
+    return len(matched) > 0
+
+
+def cleanup_worktree_if_idle(
+    worktree_branch: str,
+    repo_root: Path,
+    main_wt_path: Path,
+) -> dict:
+    """Remove a worktree if it has no live plans and no active sessions.
+
+    Called after plan archival to clean up worktrees that are no longer needed.
+
+    Args:
+        worktree_branch: Branch name of the worktree to potentially clean up.
+        repo_root: Repository root path.
+        main_wt_path: Path to the main worktree.
+
+    Returns:
+        Dict with 'cleaned' (bool), 'reason' (str), and optionally 'path' (str).
+    """
+    if worktree_branch in ("main", "master"):
+        return {"cleaned": False, "reason": "main/master worktree is protected"}
+
+    # Find the worktree path
+    worktrees = get_actual_worktrees(repo_root)
+    wt_path = None
+    for wt in worktrees:
+        if wt.get("branch") == worktree_branch:
+            wt_path = wt["path"]
+            break
+
+    if not wt_path:
+        return {"cleaned": False, "reason": f"no worktree found for branch '{worktree_branch}'"}
+
+    # Check for remaining live plans
+    registry = load_worktree_registry(repo_root)
+    if worktree_has_live_plans(Path(wt_path), main_wt_path, registry):
+        return {"cleaned": False, "reason": "worktree still has live plans"}
+
+    # Check for active sessions
+    from agenticcli.commands.session import _is_process_running, _list_all_sessions
+
+    resolved_wt = str(Path(wt_path).resolve())
+    for session in _list_all_sessions():
+        if session.get("status") in ("running", "starting"):
+            pid = session.get("pid")
+            if pid and _is_process_running(pid):
+                wd = session.get("working_dir", "")
+                if wd and str(Path(wd).resolve()) == resolved_wt:
+                    return {"cleaned": False, "reason": "worktree has active session"}
+
+    # Safe to remove: no plans, no sessions
+    try:
+        subprocess.run(
+            ["git", "worktree", "remove", str(wt_path)],
+            check=True,
+            cwd=repo_root,
+            capture_output=True,
+        )
+
+        # Update workspace file
+        workspace_file = find_workspace_file(repo_root)
+        if workspace_file:
+            update_workspace_remove(workspace_file, Path(wt_path))
+
+        return {"cleaned": True, "path": wt_path, "reason": "no live plans, no active sessions"}
+    except subprocess.CalledProcessError as e:
+        return {"cleaned": False, "reason": f"git worktree remove failed: {e}"}
 
 
 def cmd_create(args):

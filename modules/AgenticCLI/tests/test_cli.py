@@ -135,14 +135,14 @@ class TestFlagShortcuts:
         assert "status" in data
 
     def test_help_shows_aliases(self, cli_runner):
-        """Test main help shows aliases in epilog."""
+        """Test main help shows primary command names."""
         result = cli_runner(["--help"])
         assert result.returncode == 0
-        # Check aliases are mentioned
-        assert "(wt)" in result.stdout
-        assert "(cfg)" in result.stdout
-        assert "(tpl)" in result.stdout
-        assert "(st)" in result.stdout
-        assert "(mf)" in result.stdout
+        # Typer uses hidden commands for aliases, so check primary names instead
+        assert "worktree" in result.stdout
+        assert "config" in result.stdout
+        assert "template" in result.stdout
+        assert "stories" in result.stdout
+        assert "manifest" in result.stdout
         # Check -j flag is documented
-        assert "-j, --json" in result.stdout
+        assert "-j" in result.stdout or "--json" in result.stdout

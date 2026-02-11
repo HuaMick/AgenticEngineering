@@ -1,0 +1,163 @@
+plan_name: "Fix Loop Integration Tests (Typer Bridge Verification)"
+worktree: 260211CO_fix_loop_tests
+branch: main
+status: approved
+target_project_path: /home/code/AgenticEngineering
+objective: >
+  Fix 5 test_loop_integration.py failures related to loop subcommand
+  registration and Typer bridge issues. Loop status, history, and handle
+  routing tests were reported failing.
+
+context: >
+  Investigation reveals all 44 tests in test_loop_integration.py already pass.
+  The loop subcommand is correctly registered in cli.py as a Typer sub-app
+  (loop_app, lines 800-871) with bridge functions that pass loop_command
+  attribute to the handle() function in commands/loop.py. The reported failures
+  were likely resolved by prior fix plans (260211AE series) that addressed
+  CLI subcommand registration drift and Typer bridge attribute mismatches.
+
+  The test file uses direct imports of agenticcli.commands.loop and calls
+  cmd_start, cmd_stop, cmd_status, cmd_history, and handle() directly with
+  SimpleNamespace args, bypassing the Typer bridge entirely. This means the
+  tests validate the loop command module's internal logic rather than the
+  CLI integration layer.
+
+affected_stories:
+  - US-CLI-034
+  - US-CLI-035
+  - US-CLI-036
+
+phases:
+- phase_id: verify_01
+  name: Verify All Tests Pass
+  status: pending
+  dependencies: []
+  tasks:
+  - task_id: verify_01_01
+    description: Run all 44 test_loop_integration.py tests and confirm they pass
+    status: pending
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_loop_integration.py
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/loop.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
+    guidance: >
+      Run: python3 -m pytest modules/AgenticCLI/tests/test_loop_integration.py -v
+
+      Verify all 44 tests pass. The test classes to validate:
+      - TestLoopHelperFunctions (6 tests): _get_loops_dir, save/load, list, update
+      - TestResolvePrompt (7 tests): string, file, entrypoint resolution
+      - TestLoopStartCommand (6 tests): background, foreground, output, JSON
+      - TestLoopStopCommand (5 tests): requires ID, not found, completed, running, force
+      - TestLoopStatusCommand (5 tests): requires ID, not found, display, iterations, JSON
+      - TestLoopHistoryCommand (6 tests): empty, with loops, active, filter, limit, JSON
+      - TestLoopHandleRouting (5 tests): start, stop, status, history, invalid
+      - TestIterationTracking (4 tests): created, completed, failed, stopped
+    success_criteria:
+    - All 44 tests pass with exit code 0
+    - No test failures or errors
+
+  - task_id: verify_01_02
+    description: Verify loop subcommand registration in cli.py is correct
+    status: pending
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/loop.py
+    guidance: >
+      Inspect cli.py to confirm the loop Typer sub-app is properly registered:
+      1. loop_app = typer.Typer() is created (line 802)
+      2. app.add_typer(loop_app, name="loop") registers it (line 803)
+      3. _loop_handle() bridge function builds correct SimpleNamespace (line 806)
+      4. loop_start, loop_stop, loop_status, loop_history commands are registered
+      5. Each bridge passes loop_command= attribute matching handle() routing
+      6. "loop" is listed in GLOBAL_COMMANDS set (line 1674)
+
+      Verify the bridge attribute names match what handle() expects:
+      - handle() reads args.loop_command (start/stop/status/history)
+      - cmd_start() reads: prompt, prompt_file, entrypoint, max_iterations,
+        completion_promise, background, directory, output, dangerously_skip_permissions
+      - cmd_stop() reads: loop_id, force
+      - cmd_status() reads: loop_id
+      - cmd_history() reads: active, status, limit
+    success_criteria:
+    - loop_app registered with app.add_typer
+    - All 4 subcommands (start/stop/status/history) registered
+    - Bridge attribute names match handle() expectations
+    - "loop" in GLOBAL_COMMANDS
+
+  - task_id: verify_01_03
+    description: Run broader CLI test suite to check for regressions
+    status: pending
+    target_files: []
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/
+    guidance: >
+      Run the broader test suite to ensure no regressions:
+      python3 -m pytest modules/AgenticCLI/tests/ -v --tb=short -x
+
+      Focus on tests that might be affected by loop/session changes:
+      - test_loop_integration.py (44 tests)
+      - test_session_commands.py (session management)
+      - Any other tests importing loop or session modules
+
+      If failures are found in other test files, document them but do NOT
+      fix them (they belong to separate plans).
+    success_criteria:
+    - test_loop_integration.py tests all pass
+    - No new regressions caused by loop module
+
+- phase_id: uat_01
+  name: User Acceptance Testing
+  status: pending
+  dependencies:
+  - verify_01
+  tasks:
+  - task_id: uat_01_01
+    description: >
+      UAT validation of loop CLI commands against user story acceptance criteria
+      (US-CLI-034, US-CLI-035, US-CLI-036)
+    status: pending
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_loop_integration.py
+    inputs:
+    - /home/code/AgenticEngineering/docs/userstories/AgenticCLI/03_session_and_loop.yml
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/loop.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
+    guidance: >
+      Validate test coverage against user story acceptance criteria:
+
+      US-CLI-034 (Start Ralph Loop):
+      - Test covers: --prompt, --prompt-file, --entrypoint, --max-iterations,
+        --completion-promise, --background, --directory, --output flags
+      - Verify test_start_background_success covers background mode
+      - Verify test_start_foreground_success covers foreground mode
+      - Verify loop metadata persisted to ~/.agentic/loops/
+
+      US-CLI-035 (Stop Running Loop):
+      - Test covers: SIGTERM, SIGKILL (--force), partial ID matching, idempotent stop
+      - Verify test_stop_running_loop uses SIGTERM
+      - Verify test_stop_with_force uses SIGKILL
+      - Verify test_stop_completed_loop is idempotent
+
+      US-CLI-036 (Monitor Loop Progress):
+      - Test covers: iteration count, status display, history, --active, --status filter
+      - Verify test_status_displays_loop_info shows Max Iterations, Current Iteration
+      - Verify test_history_with_loops shows loop ID and history
+      - Verify JSON output is tested for status and history
+
+      Strategy: test-user-simulator (automated test coverage validation)
+    success_criteria:
+    - All US-CLI-034 acceptance criteria have test coverage
+    - All US-CLI-035 acceptance criteria have test coverage
+    - All US-CLI-036 acceptance criteria have test coverage
+    - No acceptance criteria gaps identified
+
+success_criteria:
+- All 44 tests in test_loop_integration.py pass
+- Loop subcommand registration is correct in cli.py
+- Bridge attribute names match handle() expectations
+- No regressions in related test files
+- UAT validates coverage of US-CLI-034, US-CLI-035, US-CLI-036
+
+open_questions: []

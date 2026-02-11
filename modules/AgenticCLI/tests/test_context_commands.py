@@ -153,6 +153,8 @@ def plan_cli_runner(plan_repo):
         return CLIResult(stdout, stderr, exit_code)
 
     yield run_cli
+    from agenticcli.console import set_json_output
+    set_json_output(False)
     os.chdir(original_cwd)
 
 
@@ -180,7 +182,7 @@ class TestContextBootstrap:
 
     def test_bootstrap_returns_json(self, plan_cli_runner):
         """Test bootstrap with -j returns valid JSON."""
-        stdout, stderr, code = plan_cli_runner(["context", "bootstrap", "-j"])
+        stdout, stderr, code = plan_cli_runner(["-j", "context", "bootstrap"])
         assert code == 0
 
         # Should return valid JSON
@@ -191,7 +193,7 @@ class TestContextBootstrap:
     def test_bootstrap_with_role(self, plan_cli_runner):
         """Test bootstrap with explicit --role argument."""
         stdout, stderr, code = plan_cli_runner(
-            ["context", "bootstrap", "--role", "planner-build", "-j"]
+            ["-j", "context", "bootstrap", "--role", "planner-build"]
         )
         assert code == 0
 
@@ -211,7 +213,7 @@ class TestContextRole:
 
     def test_role_returns_json(self, plan_cli_runner):
         """Test role command returns JSON for valid role."""
-        stdout, stderr, code = plan_cli_runner(["context", "role", "build", "-j"])
+        stdout, stderr, code = plan_cli_runner(["-j", "context", "role", "build-python"])
         # May return empty/null if role not found, but should not error
         assert code == 0
 
@@ -227,7 +229,7 @@ class TestContextTask:
 
     def test_task_returns_json(self, plan_cli_runner):
         """Test task command returns JSON."""
-        stdout, stderr, code = plan_cli_runner(["context", "task", "-j"])
+        stdout, stderr, code = plan_cli_runner(["-j", "context", "task"])
         assert code == 0
 
         # Should return task info or null
@@ -238,15 +240,16 @@ class TestContextTask:
 
     def test_task_resolves_from_plan(self, plan_cli_runner, plan_repo):
         """Test task command finds task from Main-First plan."""
-        stdout, stderr, code = plan_cli_runner(["context", "task", "-j"])
+        stdout, stderr, code = plan_cli_runner(["-j", "context", "task"])
         assert code == 0
 
         # Try to parse - may be null or a task
         if stdout.strip() and stdout.strip() != "null":
             data = json.loads(stdout)
             if data:
-                # If we got a task, check structure
-                assert "id" in data or "name" in data or "status" in data
+                # Response wraps task in {"plan_folder": ..., "task": {...}}
+                task = data.get("task", data)
+                assert "id" in task or "name" in task or "status" in task
 
 
 class TestContextInputs:
@@ -254,7 +257,7 @@ class TestContextInputs:
 
     def test_inputs_returns_json(self, plan_cli_runner):
         """Test inputs command returns JSON."""
-        stdout, stderr, code = plan_cli_runner(["context", "inputs", "-j"])
+        stdout, stderr, code = plan_cli_runner(["-j", "context", "inputs", "--role", "build-python"])
         assert code == 0
 
         # Should return JSON (may be empty object)
@@ -265,7 +268,7 @@ class TestContextInputs:
     def test_inputs_with_role(self, plan_cli_runner):
         """Test inputs command with --role argument."""
         stdout, stderr, code = plan_cli_runner(
-            ["context", "inputs", "--role", "build", "-j"]
+            ["-j", "context", "inputs", "--role", "build-python"]
         )
         assert code == 0
 
@@ -286,17 +289,19 @@ class TestContextIntegration:
     def test_bootstrap_then_task_consistent(self, plan_cli_runner):
         """Test that bootstrap and task commands return consistent data."""
         # Get bootstrap context
-        bootstrap_result = plan_cli_runner(["context", "bootstrap", "-j"])
+        bootstrap_result = plan_cli_runner(["-j", "context", "bootstrap"])
         assert bootstrap_result.returncode == 0
         bootstrap_data = json.loads(bootstrap_result.stdout)
 
         # Get task directly
-        task_result = plan_cli_runner(["context", "task", "-j"])
+        task_result = plan_cli_runner(["-j", "context", "task"])
         assert task_result.returncode == 0
 
         # If bootstrap has a current_task, task command should return same info
         if bootstrap_data.get("current_task") and task_result.stdout.strip() != "null":
-            task_data = json.loads(task_result.stdout)
+            task_response = json.loads(task_result.stdout)
+            # Task response wraps in {"plan_folder": ..., "task": {...}}
+            task_data = task_response.get("task", task_response) if task_response else None
             if task_data and bootstrap_data["current_task"]:
                 # Both should reference same task
                 assert (
@@ -306,7 +311,7 @@ class TestContextIntegration:
 
     def test_bootstrap_cli_commands_valid(self, plan_cli_runner):
         """Test that cli_commands in bootstrap output are valid commands."""
-        stdout, stderr, code = plan_cli_runner(["context", "bootstrap", "-j"])
+        stdout, stderr, code = plan_cli_runner(["-j", "context", "bootstrap"])
         assert code == 0
 
         data = json.loads(stdout)

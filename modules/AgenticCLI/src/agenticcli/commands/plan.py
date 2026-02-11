@@ -10,6 +10,118 @@ from pathlib import Path
 
 import yaml
 
+# Cache for dynamic agent type discovery
+_agent_types_cache: set | None = None
+
+# Fallback set used when filesystem scanning fails
+_FALLBACK_AGENT_TYPES = {
+    "build-python", "build-flutter",
+    "deploy-worktree", "deploy-cicd",
+    "orchestration-executor", "orchestration-planning", "orchestration-friction",
+    "planner-build", "planner-test", "planner-guidance", "planner-cleaning",
+    "planner-reviewer", "planner-audit", "planner-orchestration", "planner-guidance-testing",
+    "teacher-update-guidance", "teacher-update-assets", "teacher-trace-diagnostics",
+    "test-runner", "test-builder", "test-guidance-simulator", "test-final-output",
+    "test-audit", "test-user-simulator", "test-service",
+}
+
+
+def get_valid_agent_types(agents_dir: Path | None = None) -> set[str]:
+    """Discover valid agent types by scanning the agents directory.
+
+    Scans modules/AgenticGuidance/agents/**/ for directories that represent
+    agent types (leaf directories under category folders). Falls back to a
+    hardcoded set if the directory is not found.
+
+    Args:
+        agents_dir: Optional override for the agents directory path.
+
+    Returns:
+        Set of valid agent type names (e.g., {"build-python", "test-runner"}).
+    """
+    global _agent_types_cache
+    use_cache = agents_dir is None
+    if use_cache and _agent_types_cache is not None:
+        return _agent_types_cache
+
+    if agents_dir is None:
+        # Walk up from this file to find the repo root
+        # plan.py -> commands/ -> agenticcli/ -> src/ -> AgenticCLI/ -> modules/ -> repo root
+        repo_root = Path(__file__).resolve().parents[5]
+        agents_dir = repo_root / "modules" / "AgenticGuidance" / "agents"
+
+    if not agents_dir.is_dir():
+        return _FALLBACK_AGENT_TYPES
+
+    agent_types = set()
+    for category_dir in agents_dir.iterdir():
+        if not category_dir.is_dir():
+            continue
+        for agent_dir in category_dir.iterdir():
+            if agent_dir.is_dir() and not agent_dir.name.startswith("."):
+                agent_types.add(agent_dir.name)
+
+    if not agent_types:
+        return _FALLBACK_AGENT_TYPES
+
+    if use_cache:
+        _agent_types_cache = agent_types
+    return agent_types
+
+
+# Cache for loop type discovery
+_loop_types_cache: set | None = None
+
+# Fallback set used when agent-loops.yml cannot be read
+_FALLBACK_LOOP_TYPES = {
+    "test-fix-loop", "audit-test-fix-loop", "cleaner-dependency-loop",
+    "documentation-loop", "user-story-validation-loop", "exploration-loop",
+    "rlm-decomposition-loop", "rlm-context-refinement-loop", "rlm_loop_selection",
+    "planner-loop", "guidance-test-loop", "agent-self-review", "guidance-self-review-loop",
+}
+
+
+def get_valid_loop_types(loops_file: Path | None = None) -> set[str]:
+    """Read valid loop types from agent-loops.yml.
+
+    Extracts keys from the loop_types section of agent-loops.yml. Falls back
+    to a hardcoded set if the file is not found or cannot be parsed.
+
+    Args:
+        loops_file: Optional override for the agent-loops.yml file path.
+
+    Returns:
+        Set of valid loop type names (e.g., {"test-fix-loop", "planner-loop"}).
+    """
+    global _loop_types_cache
+    use_cache = loops_file is None
+    if use_cache and _loop_types_cache is not None:
+        return _loop_types_cache
+
+    if loops_file is None:
+        repo_root = Path(__file__).resolve().parents[5]
+        loops_file = repo_root / "modules" / "AgenticGuidance" / "assets" / "definitions" / "agent-loops.yml"
+
+    if not loops_file.is_file():
+        return _FALLBACK_LOOP_TYPES
+
+    try:
+        with open(loops_file) as f:
+            content = yaml.safe_load(f)
+        loop_types_section = content.get("loop_types", {})
+        if not loop_types_section or not isinstance(loop_types_section, dict):
+            return _FALLBACK_LOOP_TYPES
+        loop_types = set(loop_types_section.keys())
+    except Exception:
+        return _FALLBACK_LOOP_TYPES
+
+    if not loop_types:
+        return _FALLBACK_LOOP_TYPES
+
+    if use_cache:
+        _loop_types_cache = loop_types
+    return loop_types
+
 
 def _get_phases_from_content(content: dict) -> list:
     """Get phases from either root or nested under plan.
@@ -103,6 +215,126 @@ def is_plan_fully_completed(plan_folder: Path) -> bool:
 
     # All tasks must be completed
     return completed_tasks == total_tasks
+
+
+def has_pending_questions(plan_path: Path) -> bool:
+    """Check if a plan has unanswered questions in its pending queue.
+
+    Args:
+        plan_path: Path to the plan folder.
+
+    Returns:
+        True if any pending question YAML files exist, False otherwise.
+    """
+    pending_dir = plan_path / "questions" / "pending"
+    if not pending_dir.is_dir():
+        return False
+    return any(pending_dir.glob("*.yml"))
+
+
+def _get_plan_branch(plan_path: Path) -> str | None:
+    """Extract the branch name associated with a plan folder.
+
+    Checks plan YAML files for 'branch' or 'worktree_path' fields,
+    then falls back to matching the plan folder abbreviation against
+    the worktree registry.
+
+    Args:
+        plan_path: Path to the plan folder.
+
+    Returns:
+        Branch name string, or None if not determinable.
+    """
+    # Try plan_build.yml first (most likely to have branch info)
+    for yaml_name in ["plan_build.yml", "plan_teach.yml"]:
+        yaml_file = plan_path / yaml_name
+        if not yaml_file.exists():
+            continue
+        try:
+            content = yaml.safe_load(yaml_file.read_text())
+            if not content:
+                continue
+
+            # Check root-level branch field
+            branch = content.get("branch")
+            if branch and branch.strip() and branch.strip() not in ("main", "master", ""):
+                return branch.strip().strip('"').strip("'")
+
+            # Check nested under plan:
+            plan_data = content.get("plan", {})
+            if plan_data:
+                branch = plan_data.get("branch")
+                if branch and branch.strip() and branch.strip() not in ("main", "master", ""):
+                    return branch.strip().strip('"').strip("'")
+
+            # Check worktree_path (extract branch from path name)
+            wt_path = content.get("worktree_path") or (plan_data or {}).get("worktree")
+            if wt_path and isinstance(wt_path, str):
+                wt_path = wt_path.strip().strip('"').strip("'")
+                wt_name = Path(wt_path).name
+                # Pattern: RepoName-branch
+                if "-" in wt_name:
+                    return wt_name.split("-", 1)[1]
+        except yaml.YAMLError:
+            continue
+
+    # Fallback: match plan folder abbreviation against worktree registry
+    folder_name = plan_path.name
+    if len(folder_name) >= 8 and folder_name[6:8].isalpha():
+        abbr = folder_name[6:8]
+        try:
+            import subprocess
+            result = subprocess.run(
+                ["git", "rev-parse", "--show-toplevel"],
+                capture_output=True, text=True, check=True,
+            )
+            repo_root = Path(result.stdout.strip())
+            from agenticcli.commands.worktree import load_worktree_registry
+            registry = load_worktree_registry(repo_root)
+            for entry in registry:
+                if entry.get("abbreviation") == abbr:
+                    return entry.get("branch")
+        except Exception:
+            pass
+
+    return None
+
+
+def _try_worktree_cleanup_after_archive(plan_path: Path):
+    """Attempt worktree cleanup after a plan is archived.
+
+    Called after successful plan archival. Checks if the worktree
+    associated with the archived plan has any remaining live plans.
+    If not (and no active sessions), removes the worktree.
+
+    Args:
+        plan_path: Path to the plan folder (before archival).
+    """
+    import subprocess
+
+    branch = _get_plan_branch(plan_path)
+    if not branch or branch in ("main", "master"):
+        return
+
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, check=True,
+        )
+        repo_root = Path(result.stdout.strip())
+    except subprocess.CalledProcessError:
+        return
+
+    main_worktree_path = find_main_worktree(repo_root)
+    if main_worktree_path is None:
+        main_worktree_path = repo_root
+
+    from agenticcli.commands.worktree import cleanup_worktree_if_idle
+
+    cleanup_result = cleanup_worktree_if_idle(branch, repo_root, main_worktree_path)
+    if cleanup_result.get("cleaned"):
+        from agenticcli.console import print_info
+        print_info(f"Auto-cleaned worktree: {cleanup_result.get('path')}")
 
 
 def handle(args, ctx=None):
@@ -691,22 +923,29 @@ def cmd_new(args, ctx=None):
                     print_info("[Step 5] Checking plan completion status...")
 
                 if is_plan_fully_completed(plan_folder):
-                    if not is_json_output():
-                        print_success("All tasks completed!")
-                        print_info("Auto-archiving plan...")
+                    if has_pending_questions(plan_folder):
+                        if not is_json_output():
+                            print_warning("All tasks completed but unanswered questions remain. Skipping auto-archive.")
+                            print_warning("Answer questions with: agentic question list --plan " + plan_folder.name)
+                    else:
+                        if not is_json_output():
+                            print_success("All tasks completed!")
+                            print_info("Auto-archiving plan...")
 
-                    # Archive the plan
-                    archive_args = SimpleNamespace(path=str(plan_folder))
-                    try:
-                        # Call cmd_archive - it handles the move
-                        cmd_archive(archive_args)
-                        if not is_json_output():
-                            print_success("Plan archived to docs/plans/completed/")
-                    except Exception as e:
-                        if not is_json_output():
-                            print_warning(f"Auto-archive failed: {e}")
-                            print_warning("  You can archive manually with:")
-                            print_warning(f"  agentic plan archive {plan_folder}")
+                        # Archive the plan
+                        archive_args = SimpleNamespace(path=str(plan_folder))
+                        try:
+                            # Call cmd_archive - it handles the move
+                            cmd_archive(archive_args)
+                            if not is_json_output():
+                                print_success("Plan archived to docs/plans/completed/")
+                            # Auto-cleanup: remove worktree if no more live plans
+                            _try_worktree_cleanup_after_archive(plan_folder)
+                        except Exception as e:
+                            if not is_json_output():
+                                print_warning(f"Auto-archive failed: {e}")
+                                print_warning("  You can archive manually with:")
+                                print_warning(f"  agentic plan archive {plan_folder}")
                 else:
                     if not is_json_output():
                         # Count remaining tasks
@@ -843,27 +1082,72 @@ def cmd_init(args, ctx=None):
         pass
 
     # Determine final worktree path
+    worktree_reused = False
     if worktree_exists:
         worktree_path = existing_worktree_path
         if not is_json_output():
             print_info(f"Using existing worktree at {worktree_path}")
     else:
-        # Create worktree
-        if not is_json_output():
-            print_info(f"Creating worktree for branch '{branch}' at {worktree_path}")
+        # Worktree reuse: check for idle worktrees before creating new ones.
+        # Per error-driven-planning-protocol: only create new worktree if
+        # ALL existing worktrees have active sessions.
+        from agenticcli.commands.worktree import find_idle_worktrees
 
-        try:
-            subprocess.run(
-                ["git", "worktree", "add", "-b", branch, str(worktree_path), base],
-                check=True,
-                cwd=repo_root,
-                capture_output=is_json_output(),
-            )
+        idle_worktrees = find_idle_worktrees(repo_root)
+        if idle_worktrees:
+            # Reuse the first idle worktree by switching its branch
+            reuse_wt = idle_worktrees[0]
+            reuse_path = Path(reuse_wt["path"])
+            old_branch = reuse_wt.get("branch", "unknown")
+
             if not is_json_output():
-                console.print(f"  [green]Created worktree[/green] at {worktree_path}")
-        except subprocess.CalledProcessError as e:
-            print_error(f"Failed to create worktree: {e}")
-            sys.exit(1)
+                print_info(f"Reusing idle worktree at {reuse_path} (was on '{old_branch}')")
+
+            # Create the new branch from base and checkout in the idle worktree
+            try:
+                subprocess.run(
+                    ["git", "branch", branch, base],
+                    check=True,
+                    cwd=repo_root,
+                    capture_output=True,
+                )
+            except subprocess.CalledProcessError:
+                pass  # Branch may already exist, that's OK
+
+            try:
+                subprocess.run(
+                    ["git", "checkout", branch],
+                    check=True,
+                    cwd=str(reuse_path),
+                    capture_output=is_json_output(),
+                )
+                worktree_path = reuse_path
+                worktree_reused = True
+                if not is_json_output():
+                    console.print(f"  [green]Switched worktree[/green] to branch '{branch}'")
+            except subprocess.CalledProcessError as e:
+                # Checkout failed (e.g., dirty working tree), fall through to create new
+                if not is_json_output():
+                    print_info(f"Cannot reuse worktree (checkout failed), creating new one")
+                worktree_reused = False
+
+        if not worktree_reused:
+            # Create new worktree (last resort)
+            if not is_json_output():
+                print_info(f"Creating worktree for branch '{branch}' at {worktree_path}")
+
+            try:
+                subprocess.run(
+                    ["git", "worktree", "add", "-b", branch, str(worktree_path), base],
+                    check=True,
+                    cwd=repo_root,
+                    capture_output=is_json_output(),
+                )
+                if not is_json_output():
+                    console.print(f"  [green]Created worktree[/green] at {worktree_path}")
+            except subprocess.CalledProcessError as e:
+                print_error(f"Failed to create worktree: {e}")
+                sys.exit(1)
 
     # Update VS Code workspace file
     workspace_file = find_workspace_file(repo_root)
@@ -926,7 +1210,8 @@ phases:
     # Output results
     result_data = {
         "worktree": str(worktree_path),
-        "worktree_created": not worktree_exists,
+        "worktree_created": not worktree_exists and not worktree_reused,
+        "worktree_reused": worktree_reused,
         "branch": branch,
         "base": base,
         "plan_folder": str(plan_path),
@@ -957,6 +1242,7 @@ phases:
 def cmd_scaffold(args):
     """Create planning folder structure."""
     from agenticcli.commands.worktree import create_planning_folder
+    from agenticcli.console import is_json_output, print_json
 
     name = args.name
     worktree = Path(args.worktree) if args.worktree else Path.cwd()
@@ -968,8 +1254,11 @@ def cmd_scaffold(args):
         sys.exit(1)
 
     create_planning_folder(plan_path)
-    print(f"Created planning folder: {plan_path}")
-    print(f"  (flattened structure: plan files directly in folder)")
+    if is_json_output():
+        print_json({"name": name, "path": str(plan_path), "folder": str(plan_path)})
+    else:
+        print(f"Created planning folder: {plan_path}")
+        print(f"  (flattened structure: plan files directly in folder)")
 
 
 def cmd_status(args):
@@ -1421,7 +1710,7 @@ def cmd_validate(args):
     """
     from agenticcli.console import is_json_output, print_json
 
-    plan_path = Path(args.path)
+    plan_path = find_plan_folder(args.path)
     strict = getattr(args, "strict", False)
     errors = []
     warnings = []
@@ -1553,6 +1842,31 @@ def cmd_validate(args):
             elif result["status"] == "WARN":
                 warnings.append(f"Fence {fence_name}: {result['message']}")
 
+    # Loop type validation: check loop_structures.type against agent-loops.yml
+    valid_loop_types = get_valid_loop_types()
+    for yaml_file in yaml_files:
+        try:
+            content = yaml.safe_load(yaml_file.read_text())
+            if not content:
+                continue
+            # Check root-level loop_structures
+            loop_structures = content.get("loop_structures", [])
+            # Also check under plan: key
+            if not loop_structures and isinstance(content.get("plan"), dict):
+                loop_structures = content["plan"].get("loop_structures", [])
+            if not loop_structures or not isinstance(loop_structures, list):
+                continue
+            for loop in loop_structures:
+                if not isinstance(loop, dict):
+                    continue
+                loop_type = loop.get("type")
+                if loop_type and loop_type not in valid_loop_types:
+                    warnings.append(
+                        f"{yaml_file.name}: Loop type '{loop_type}' not defined in agent-loops.yml"
+                    )
+        except (yaml.YAMLError, Exception):
+            continue
+
     # Determine overall validation result
     has_errors = len(errors) > 0
     overall_status = "FAIL" if has_errors else ("WARN" if warnings else "PASS")
@@ -1648,7 +1962,7 @@ def cmd_task_complete(args):
     After marking the task complete, checks if all tasks in the plan are
     completed and triggers auto-archival if so (unless --no-archive is set).
     """
-    from agenticcli.console import print_info, print_success
+    from agenticcli.console import print_info, print_success, print_warning
 
     task_id = args.task_id
     plan_path = find_plan_folder(args.plan)
@@ -1659,21 +1973,27 @@ def cmd_task_complete(args):
 
     # Check if all tasks are completed and trigger auto-archival
     if not no_archive and is_plan_fully_completed(plan_path):
-        print_info("All tasks completed. Auto-archiving plan...")
-        try:
-            from agenticguidance.services import MoveResult, PlanMovementWorkflow
+        if has_pending_questions(plan_path):
+            print_warning("All tasks completed but unanswered questions remain. Skipping auto-archive.")
+            print_warning("Answer questions with: agentic question list --plan " + plan_path.name)
+        else:
+            print_info("All tasks completed. Auto-archiving plan...")
+            try:
+                from agenticguidance.services import MoveResult, PlanMovementWorkflow
 
-            workflow = PlanMovementWorkflow(plan_path)
-            # Use silent=True for auto-archive: no prompts, skips git checks
-            result = workflow.archive_plan_folder(dry_run=False, silent=True)
+                workflow = PlanMovementWorkflow(plan_path)
+                # Use silent=True for auto-archive: no prompts, skips git checks
+                result = workflow.archive_plan_folder(dry_run=False, silent=True)
 
-            if result.result == MoveResult.SUCCESS:
-                print_success(result.message)
-            else:
-                # Archive failed but task update succeeded - don't fail the command
-                print(f"Auto-archive skipped: {result.message}", file=sys.stderr)
-        except ImportError:
-            print("Auto-archive unavailable: PlanMovementWorkflow not found", file=sys.stderr)
+                if result.result == MoveResult.SUCCESS:
+                    print_success(result.message)
+                    # Auto-cleanup: remove worktree if no more live plans
+                    _try_worktree_cleanup_after_archive(plan_path)
+                else:
+                    # Archive failed but task update succeeded - don't fail the command
+                    print(f"Auto-archive skipped: {result.message}", file=sys.stderr)
+            except ImportError:
+                print("Auto-archive unavailable: PlanMovementWorkflow not found", file=sys.stderr)
 
 
 def _update_task_status(plan_path: Path, task_id: str, new_status: str):
@@ -1753,14 +2073,7 @@ def cmd_task_prefill(args, ctx=None):
         print_table,
     )
 
-    # TaskPresetWorkflow will be created in Phase 3
-    # For now, stub the import and show informative error
-    try:
-        from agenticguidance.services import TaskPresetWorkflow
-    except ImportError:
-        print_error("TaskPresetWorkflow not yet available")
-        print_info("This feature will be available after Phase 3 implementation.")
-        sys.exit(1)
+    from agenticcli.workflows.task_workflow import TaskPresetWorkflow
 
     preset_name = args.preset
     plan_path = find_plan_folder(getattr(args, "plan", None))
@@ -2095,10 +2408,7 @@ def cmd_archive(args):
     """Copy plan to completed folder."""
     import shutil
 
-    plan_path = Path(args.path)
-    if not plan_path.exists():
-        print(f"Error: Plan folder not found: {plan_path}", file=sys.stderr)
-        sys.exit(1)
+    plan_path = find_plan_folder(args.path)
 
     # Determine destination
     # Go up from live/FOLDER to docs/plans/completed/
@@ -2669,33 +2979,42 @@ def cmd_task_update(args, ctx=None):
 
     # Check if all tasks are completed and trigger auto-archival
     if new_status == "completed" and not no_archive and is_plan_fully_completed(plan_path):
-        if is_json_output():
-            # For JSON output, we'll add archive info to the response
-            pass  # Archival info will be printed separately
-        print_info("All tasks completed. Auto-archiving plan...")
-        try:
-            from agenticguidance.services import MoveResult, PlanMovementWorkflow
-
-            workflow = PlanMovementWorkflow(plan_path)
-            # Use silent=True for auto-archive: no prompts, skips git checks
-            result = workflow.archive_plan_folder(dry_run=False, silent=True)
-
+        if has_pending_questions(plan_path):
+            print_warning("All tasks completed but unanswered questions remain. Skipping auto-archive.")
+            print_warning("Answer questions with: agentic question list --plan " + plan_path.name)
             if is_json_output():
-                print_json({
-                    "auto_archive": True,
-                    "archive_result": result.result.value,
-                    "archive_message": result.message,
-                    "destination": getattr(result, "destination", None),
-                })
-            else:
+                print_json({"auto_archive": False, "reason": "pending_questions"})
+        else:
+            if is_json_output():
+                # For JSON output, we'll add archive info to the response
+                pass  # Archival info will be printed separately
+            print_info("All tasks completed. Auto-archiving plan...")
+            try:
+                from agenticguidance.services import MoveResult, PlanMovementWorkflow
+
+                workflow = PlanMovementWorkflow(plan_path)
+                # Use silent=True for auto-archive: no prompts, skips git checks
+                result = workflow.archive_plan_folder(dry_run=False, silent=True)
+
+                if is_json_output():
+                    print_json({
+                        "auto_archive": True,
+                        "archive_result": result.result.value,
+                        "archive_message": result.message,
+                        "destination": getattr(result, "destination", None),
+                    })
                 if result.result == MoveResult.SUCCESS:
-                    print_success(result.message)
+                    if not is_json_output():
+                        print_success(result.message)
+                    # Auto-cleanup: remove worktree if no more live plans
+                    _try_worktree_cleanup_after_archive(plan_path)
                 else:
-                    # Archive failed but task update succeeded - don't fail the command
-                    print(f"Auto-archive skipped: {result.message}", file=sys.stderr)
-        except ImportError:
-            if not is_json_output():
-                print("Auto-archive unavailable: PlanMovementWorkflow not found", file=sys.stderr)
+                    if not is_json_output():
+                        # Archive failed but task update succeeded - don't fail the command
+                        print(f"Auto-archive skipped: {result.message}", file=sys.stderr)
+            except ImportError:
+                if not is_json_output():
+                    print("Auto-archive unavailable: PlanMovementWorkflow not found", file=sys.stderr)
 
 
 def cmd_task_current(args, ctx=None):
@@ -3152,7 +3471,7 @@ def _determine_agent_type(phase_name: str, phase_id: str) -> str:
         phase_id: The ID of the phase.
 
     Returns:
-        Agent type string (builder, tester, test-builder, etc.)
+        Agent type string matching a valid agent type (e.g., build-python, test-builder).
     """
     name_lower = phase_name.lower()
     id_lower = phase_id.lower()
@@ -3163,14 +3482,18 @@ def _determine_agent_type(phase_name: str, phase_id: str) -> str:
 
     # Check for documentation phases
     if any(kw in name_lower for kw in ["doc", "documentation", "readme", "guide"]):
-        return "builder"
+        return "build-python"
 
     # Check for cleanup/audit phases
     if any(kw in name_lower for kw in ["cleanup", "clean", "audit", "archive"]):
-        return "builder"
+        return "planner-cleaning"
 
-    # Default to builder for build/implementation phases
-    return "builder"
+    # Check for deploy-related phases
+    if any(kw in name_lower for kw in ["deploy", "release", "cicd", "ci/cd"]):
+        return "deploy-cicd"
+
+    # Default to build-python for build/implementation phases
+    return "build-python"
 
 
 def _generate_phase_subgraph(phase: dict, phase_index: int) -> list[str]:
@@ -3627,38 +3950,31 @@ def cmd_orchestration_validate(args, ctx=None):
 
     # --- Validation 3: Agent routing valid ---
     # Extract AGENT_ROUTING comments and validate format
-    # Expected patterns: P1 -> builder-python, P2 -> test-runner, etc.
-    valid_agent_types = {
-        "builder", "builder-python", "builder-typescript", "builder-go",
-        "test-runner", "test-builder", "test-guidance-simulator",
-        "planner", "planner-build", "planner-test", "planner-guidance",
-        "documentation-writer", "documentation",
-        "orchestration", "orchestration-executor",
-        "reviewer", "code-reviewer",
-    }
+    # Uses dynamic agent type discovery from filesystem (with fallback)
+    valid_agent_types = get_valid_agent_types()
 
-    # Find AGENT_ROUTING lines in MMD
-    routing_pattern = r"%%\s*AGENT_ROUTING:\s*(.+)"
+    # Find AGENT_ROUTING lines in MMD (supports both %% and # comment styles)
+    routing_pattern = r"(?:%%|#)\s*AGENT_ROUTING:\s*(.+)"
     routing_matches = re.findall(routing_pattern, mmd_content)
 
     for routing_line in routing_matches:
         # Parse individual routings (comma-separated)
+        # Supports both "Phase -> agent-type" and "Phase=agent-type" formats
         routings = routing_line.split(",")
         for routing in routings:
             routing = routing.strip()
-            # Parse "P1 -> builder-python" format
-            match = re.match(r"(\w+)\s*->\s*(\S+)", routing)
+            match = re.match(r"(\w+)\s*(?:->|=)\s*(\S+)", routing)
             if match:
                 route_phase_id, agent_type = match.groups()
                 agent_type = agent_type.strip().lower()
 
-                # Check if agent type is valid
+                # Check if agent type is valid (error, not warning - per plan-mmd-schema.yml)
                 if agent_type not in valid_agent_types:
-                    warnings.append({
+                    errors.append({
                         "type": "invalid_agent_routing",
                         "phase_id": route_phase_id,
                         "agent_type": agent_type,
-                        "message": f"Unknown agent type '{agent_type}' for phase {route_phase_id}",
+                        "message": f"Unknown agent type '{agent_type}' for phase {route_phase_id}. Valid types: {', '.join(sorted(valid_agent_types))}",
                     })
 
                 # Check if routed phase exists in YAML (if we have yaml_phase_ids)

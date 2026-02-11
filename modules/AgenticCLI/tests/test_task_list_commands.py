@@ -196,7 +196,7 @@ class TestTaskList:
 
     def test_task_list_json_output(self, task_cli_runner):
         """Test task list with -j returns JSON."""
-        stdout, stderr, code = task_cli_runner(["plan", "task", "list", "-j"])
+        stdout, stderr, code = task_cli_runner(["-j", "plan", "task", "list"])
         assert code == 0
 
         # Should be valid JSON
@@ -209,7 +209,7 @@ class TestTaskList:
         """Test task list filtering by status."""
         # Try filtering by pending status
         stdout, stderr, code = task_cli_runner(
-            ["plan", "task", "list", "--status", "pending", "-j"]
+            ["-j", "plan", "task", "list", "--status", "pending"]
         )
         assert code == 0
 
@@ -227,7 +227,7 @@ class TestTaskCurrent:
 
     def test_task_current_returns_task(self, task_cli_runner):
         """Test task current returns the in-progress or next pending task."""
-        stdout, stderr, code = task_cli_runner(["plan", "task", "current", "-j"])
+        stdout, stderr, code = task_cli_runner(["-j", "plan", "task", "current"])
         assert code == 0
 
         if stdout.strip() and stdout.strip() != "null":
@@ -238,7 +238,7 @@ class TestTaskCurrent:
 
     def test_task_current_prefers_in_progress(self, task_cli_runner):
         """Test task current prefers in_progress over pending."""
-        stdout, stderr, code = task_cli_runner(["plan", "task", "current", "-j"])
+        stdout, stderr, code = task_cli_runner(["-j", "plan", "task", "current"])
         assert code == 0
 
         if stdout.strip() and stdout.strip() != "null":
@@ -260,7 +260,7 @@ class TestTaskUpdate:
     def test_task_update_changes_status(self, task_cli_runner, task_repo):
         """Test task update actually changes task status in file."""
         # Get current task first
-        current_result = task_cli_runner(["plan", "task", "current", "-j"])
+        current_result = task_cli_runner(["-j", "plan", "task", "current"])
         if current_result.stdout.strip() and current_result.stdout.strip() != "null":
             current_data = json.loads(current_result.stdout)
             if current_data and current_data.get("id"):
@@ -315,11 +315,11 @@ class TestTaskIntegration:
     def test_list_then_current_consistent(self, task_cli_runner):
         """Test that list and current return consistent data."""
         # Get list
-        list_result = task_cli_runner(["plan", "task", "list", "-j"])
+        list_result = task_cli_runner(["-j", "plan", "task", "list"])
         assert list_result.returncode == 0
 
         # Get current
-        current_result = task_cli_runner(["plan", "task", "current", "-j"])
+        current_result = task_cli_runner(["-j", "plan", "task", "current"])
         assert current_result.returncode == 0
 
         # If current has a task, it should be in the list
@@ -340,7 +340,7 @@ class TestTaskIntegration:
     def test_update_then_current_reflects_change(self, task_cli_runner):
         """Test that updating a task's status is reflected in current."""
         # Get current task
-        current_result = task_cli_runner(["plan", "task", "current", "-j"])
+        current_result = task_cli_runner(["-j", "plan", "task", "current"])
 
         if current_result.stdout.strip() and current_result.stdout.strip() != "null":
             current_task = json.loads(current_result.stdout)
@@ -362,7 +362,7 @@ class TestTaskIntegration:
                 )
 
                 # Get current again - should now return different task
-                new_current_result = task_cli_runner(["plan", "task", "current", "-j"])
+                new_current_result = task_cli_runner(["-j", "plan", "task", "current"])
 
                 if (
                     new_current_result.stdout.strip()
@@ -387,7 +387,7 @@ class TestTaskStatus:
     def test_task_status_shows_task_details(self, task_cli_runner):
         """Test task status command shows task details."""
         # First get a valid task ID
-        list_result = task_cli_runner(["plan", "task", "list", "-j"])
+        list_result = task_cli_runner(["-j", "plan", "task", "list"])
         if list_result.stdout.strip():
             task_list = json.loads(list_result.stdout)
             if isinstance(task_list, list) and task_list:

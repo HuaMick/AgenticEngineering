@@ -30,16 +30,15 @@ def create_worktree_for_test(temp_repo: Path, branch: str, base: str = "main") -
 class TestPlanInit:
     """Tests for 'agentic plan init' command."""
 
-    def test_init_requires_existing_worktree(self, cli_runner, temp_repo):
-        """Test init fails when worktree doesn't exist (enforcement policy)."""
+    def test_init_auto_creates_worktree(self, cli_runner, temp_repo):
+        """Test init auto-creates worktree when it doesn't exist."""
         stdout, stderr, code = cli_runner(
             ["plan", "init", "nonexistent-branch", "--description", "my feature"]
         )
 
-        # Should fail with error about missing worktree
-        assert code == 1
-        assert "no worktree found" in stderr.lower() or "no worktree found" in stdout.lower()
-        assert "agentic worktree create" in stderr.lower() or "agentic worktree create" in stdout.lower()
+        # Should succeed by auto-creating the worktree
+        assert code == 0
+        assert "Plan initialized" in stdout or "plan" in stdout.lower()
 
     def test_init_with_existing_worktree(self, cli_runner, temp_repo):
         """Test init succeeds with existing worktree."""
@@ -314,15 +313,15 @@ class TestPlanInitWorkspaceUpdate:
 class TestPlanInitEnforcement:
     """Tests for worktree enforcement in plan init."""
 
-    def test_init_error_message_includes_worktree_create_hint(self, cli_runner, temp_repo):
-        """Test error message includes hint to use worktree create."""
+    def test_init_auto_creates_worktree_for_new_branch(self, cli_runner, temp_repo):
+        """Test init auto-creates worktree for a new branch."""
         stdout, stderr, code = cli_runner(
             ["plan", "init", "no-worktree", "--description", "test"]
         )
 
-        assert code == 1
-        combined = stdout.lower() + stderr.lower()
-        assert "agentic worktree create" in combined
+        # Should succeed by auto-creating the worktree
+        assert code == 0
+        assert "Plan initialized" in stdout or "plan" in stdout.lower()
 
     def test_init_prevents_duplicate_plans_for_branch(self, cli_runner, temp_repo):
         """Test init prevents creating duplicate plans for same branch."""

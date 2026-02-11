@@ -10,16 +10,12 @@ import yaml
 
 @pytest.fixture
 def plan_folder(temp_repo):
-    """Create a plan folder with test structure."""
+    """Create a plan folder with flattened test structure."""
     plan_path = temp_repo / "docs" / "plans" / "live" / "260103AE_test"
-    live_dir = plan_path / "live"
-    completed_dir = plan_path / "completed"
+    plan_path.mkdir(parents=True, exist_ok=True)
 
-    live_dir.mkdir(parents=True, exist_ok=True)
-    completed_dir.mkdir(parents=True, exist_ok=True)
-
-    # Create a feature file with tasks
-    feature_file = live_dir / "feature_test.yml"
+    # Flattened structure: YAML files directly in plan folder
+    feature_file = plan_path / "feature_test.yml"
     feature_data = {
         "feature": {
             "name": "Test Feature",
@@ -33,8 +29,8 @@ def plan_folder(temp_repo):
     with open(feature_file, "w") as f:
         yaml.dump(feature_data, f)
 
-    # Create placeholder completed file
-    completed_file = completed_dir / "plan_completed.yml"
+    # Create placeholder completed file directly in plan folder
+    completed_file = plan_path / "plan_completed.yml"
     completed_file.write_text("# Completed tasks\n")
 
     return plan_path
@@ -84,8 +80,8 @@ class TestPlanMovementWorkflow:
         assert result.result == MoveResult.SUCCESS
         assert "dry-run" in result.message
 
-        # Verify no changes were made
-        completed_file = plan_folder / "completed" / "plan_completed.yml"
+        # Verify no changes were made (flattened: completed file directly in plan folder)
+        completed_file = plan_folder / "plan_completed.yml"
         data = yaml.safe_load(completed_file.read_text())
         assert data is None or "completed_tasks" not in data
 
@@ -93,8 +89,8 @@ class TestPlanMovementWorkflow:
         """Test that completed file is created if missing."""
         from agenticguidance.services import MoveResult, PlanMovementWorkflow
 
-        # Remove existing completed file
-        completed_file = plan_folder / "completed" / "plan_completed.yml"
+        # Remove existing completed file (flattened: directly in plan folder)
+        completed_file = plan_folder / "plan_completed.yml"
         completed_file.unlink()
 
         workflow = PlanMovementWorkflow(plan_folder)
@@ -211,8 +207,9 @@ class TestFolderArchive:
         # Check destination exists
         dest = Path(result.destination)
         assert dest.exists()
-        assert (dest / "live").exists()
-        assert (dest / "completed").exists()
+        # Flattened structure: YAML files directly in destination
+        assert (dest / "feature_test.yml").exists()
+        assert (dest / "plan_completed.yml").exists()
 
     def test_archive_dry_run(self, plan_folder):
         """Test archive dry run doesn't make changes."""
@@ -248,15 +245,12 @@ class TestMoveCommands:
 
     def test_move_task_not_found(self, cli_runner, temp_repo):
         """Test plan move task with non-existent task."""
-        # Create minimal plan structure
+        # Create minimal plan structure (flattened)
         plan_dir = temp_repo / "docs" / "plans" / "live" / "test_plan"
-        live_dir = plan_dir / "live"
-        completed_dir = plan_dir / "completed"
-        live_dir.mkdir(parents=True)
-        completed_dir.mkdir(parents=True)
+        plan_dir.mkdir(parents=True)
 
-        # Create empty feature file
-        (live_dir / "feature.yml").write_text("feature: {phases: []}\n")
+        # Create empty feature file directly in plan folder
+        (plan_dir / "feature.yml").write_text("feature: {phases: []}\n")
 
         stdout, stderr, code = cli_runner(["plan", "move", "task", "99.99", "--force"])
         assert code == 1
@@ -264,10 +258,9 @@ class TestMoveCommands:
 
     def test_move_no_subcommand(self, cli_runner, temp_repo):
         """Test plan move without subcommand shows usage."""
-        # Create minimal structure
+        # Create minimal structure (flattened)
         plan_dir = temp_repo / "docs" / "plans" / "live" / "test_plan"
-        (plan_dir / "live").mkdir(parents=True)
-        (plan_dir / "completed").mkdir(parents=True)
+        plan_dir.mkdir(parents=True)
 
         stdout, stderr, code = cli_runner(["plan", "move"])
         # Should show usage (Typer returns exit code 2 for missing required subcommand)

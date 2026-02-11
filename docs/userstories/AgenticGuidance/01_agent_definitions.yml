@@ -1,173 +1,190 @@
-# User Stories: Agent Definitions
-# Covers agent manifests, role discovery, and agent category structure
-
 stories:
-  # ============================================================================
-  # AGENT DISCOVERY
-  # ============================================================================
-
-  - id: "US-GD-001"
-    title: "Discover Available Agents"
-    category: "agent_definitions"
-    priority: "critical"
-    as_a: "orchestration agent routing work to specialists"
-    i_want: "to discover all available agent definitions and their capabilities"
-    so_that: "I can route tasks to the correct agent based on requirements"
-    acceptance_criteria:
-      - "Agent definitions are organized in modules/AgenticGuidance/agents/ by category"
-      - "Each agent has a manifest.yml declaring name, description, and capabilities"
-      - "Agent categories include: orchestration, planner, build, test, teacher, deploy"
-      - "agentic manifest list shows all agents across all categories"
-      - "agentic manifest show <path> displays a specific agent's manifest"
-      - "24 active agents are discoverable (2 deprecated agents excluded)"
-    related_commands:
-      - "agentic manifest list"
-      - "agentic manifest show ./agents/planner/planner-build"
-    related_agents:
-      - "orchestration-executor"
-      - "orchestration-planning"
-
-  - id: "US-GD-002"
-    title: "Validate Agent Manifest"
-    category: "agent_definitions"
-    priority: "high"
-    as_a: "developer adding a new agent"
-    i_want: "to validate that an agent manifest is well-formed"
-    so_that: "the agent is discoverable and correctly configured before deployment"
-    acceptance_criteria:
-      - "agentic manifest validate <path> checks manifest.yml structure"
-      - "Validates required fields: name, description, version, purpose"
-      - "Validates that referenced process.yml and inputs.yml files exist"
-      - "Reports missing or malformed fields with clear messages"
-      - "Returns exit code 0 on success, non-zero on failure"
-    related_commands:
-      - "agentic manifest validate ./agents/planner/planner-build"
-
-  - id: "US-GD-003"
-    title: "Agent Category Organization"
-    category: "agent_definitions"
-    priority: "high"
-    as_a: "developer understanding the agent ecosystem"
-    i_want: "to see agents organized by their category (orchestration, planner, build, test, teacher, deploy)"
-    so_that: "I understand the agent taxonomy and can find the right agent for a task"
-    acceptance_criteria:
-      - "Orchestration agents (3 active): orchestration-planning, orchestration-executor, orchestration-friction"
-      - "Planner agents (7): planner-build, planner-test, planner-cleaning, planner-guidance, planner-guidance-testing, planner-reviewer, planner-audit"
-      - "Test agents (7): test-runner, test-audit, test-final-output, test-guidance-simulator, test-builder, test-service, test-user-simulator"
-      - "Teacher agents (3): teacher-update-guidance, teacher-update-assets, teacher-trace-diagnostics"
-      - "Build agents (2): build-python, build-flutter"
-      - "Deploy agents (2): deploy-worktree, deploy-cicd"
-      - "Each category folder is self-contained with agent subfolders"
-    related_agents:
-      - "orchestration-executor"
-    related_files:
-      - "modules/AgenticGuidance/agents/README.md"
-
-  # ============================================================================
-  # AGENT MANIFEST STRUCTURE
-  # ============================================================================
-
-  - id: "US-GD-004"
-    title: "Agent Manifest Required Fields"
-    category: "agent_definitions"
-    priority: "critical"
-    as_a: "developer creating agent manifest"
-    i_want: "to include all required fields in manifest.yml"
-    so_that: "agent is properly documented and discoverable"
-    acceptance_criteria:
-      - "name: Agent identifier (e.g., planner-build)"
-      - "description: Brief description of agent purpose"
-      - "version: Version string (e.g., 2.0)"
-      - "purpose: Detailed explanation of agent role"
-      - "Manifest references process.yml (or process.mmd) for behavioral guidance"
-      - "Manifest references inputs.yml for context requirements"
-    related_files:
-      - "modules/AgenticGuidance/agents/*/manifest.yml"
-
-  - id: "US-GD-005"
-    title: "Agent Spawning Declarations"
-    category: "agent_definitions"
-    priority: "high"
-    as_a: "orchestration agent"
-    i_want: "to see which agents can be spawned by an orchestrator"
-    so_that: "I know my delegation capabilities"
-    acceptance_criteria:
-      - "Orchestrator manifest includes 'spawns:' section"
-      - "Each spawn declares: agent, purpose, when (conditions)"
-      - "Spawn declarations act as fence - only listed agents may be spawned"
-      - "Example: orchestration-planning spawns planner-build, planner-test, planner-reviewer"
-    related_agents:
-      - "orchestration-planning"
-      - "orchestration-executor"
-    related_files:
-      - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/manifest.yml"
-
-  - id: "US-GD-006"
-    title: "Agent Output Declarations"
-    category: "agent_definitions"
-    priority: "high"
-    as_a: "agent creating artifacts"
-    i_want: "to declare my expected outputs in manifest"
-    so_that: "downstream agents know what artifacts to expect"
-    acceptance_criteria:
-      - "Manifest includes 'outputs:' section listing artifacts"
-      - "Each output declares: name, path_template, description, required"
-      - "Example: planner-build outputs plan_live_build.yml and orchestration_*.mmd"
-      - "Output declarations enable validation of completeness"
-    related_files:
-      - "modules/AgenticGuidance/agents/planner/planner-build/manifest.yml"
-
-  - id: "US-GD-007"
-    title: "Agent Versioning"
-    category: "agent_definitions"
-    priority: "medium"
-    as_a: "developer maintaining agents"
-    i_want: "to version agent guidance"
-    so_that: "breaking changes are tracked and communicated"
-    acceptance_criteria:
-      - "Version scheme: X.Y where X = architecture version, Y = iteration"
-      - "Version 2.0 = reference layer architecture"
-      - "Version increments when guidance structure changes"
-      - "Version documented in manifest.yml"
-    related_files:
-      - "modules/AgenticGuidance/agents/*/manifest.yml"
-
-  # ============================================================================
-  # AGENT RESPONSIBILITY BOUNDARIES
-  # ============================================================================
-
-  - id: "US-GD-008"
-    title: "Agent vs CLI Responsibility"
-    category: "agent_definitions"
-    priority: "critical"
-    as_a: "developer designing agent vs CLI split"
-    i_want: "to understand when to use agents vs CLI"
-    so_that: "I maintain clear responsibility boundaries"
-    acceptance_criteria:
-      - "Agents handle: judgment, interpretation, novel situations"
-      - "CLI handles: deterministic operations, validation, state queries"
-      - "Agents do NOT: naming conventions, schema validation, mechanical file ops"
-      - "CLI does NOT: code generation, error diagnosis, plan creation"
-      - "Clear boundaries prevent interpretation variance"
-    related_files:
-      - "modules/AgenticGuidance/README.md"
-      - "modules/AgenticGuidance/assets/guidelines/tool-offloading.yml"
-
-  - id: "US-GD-009"
-    title: "Agent Context Discovery via CCI"
-    category: "agent_definitions"
-    priority: "critical"
-    as_a: "agent bootstrapping at session start"
-    i_want: "to discover my context via CLI Context Injection (CCI)"
-    so_that: "I load current context instead of stale static files"
-    acceptance_criteria:
-      - "Agent invokes: agentic context bootstrap --role <agent-role> -j"
-      - "CLI returns: process.yml, inputs.yml, referenced assets"
-      - "Bootstrap output is JSON for machine parsing"
-      - "Agent does NOT use Read/Glob tools during bootstrap"
-      - "Context loading is deterministic and consistent"
-    related_commands:
-      - "agentic context bootstrap --role planner-build -j"
-      - "agentic plan task current -j"
-    related_files:
-      - "modules/AgenticGuidance/README.md"
+- id: US-GD-001
+  title: Discover Available Agents
+  category: agent_definitions
+  priority: critical
+  as_a: orchestration agent routing work to specialists
+  i_want: to discover all available agent definitions and their capabilities
+  so_that: I can route tasks to the correct agent based on requirements
+  acceptance_criteria:
+  - Agent definitions are organized in modules/AgenticGuidance/agents/ by category
+  - Each agent has a manifest.yml declaring name, description, and capabilities
+  - 'Agent categories include: orchestration, planner, build, test, teacher, deploy'
+  - agentic manifest list shows all agents across all categories
+  - agentic manifest show <path> displays a specific agent's manifest
+  - 24 active agents are discoverable (2 deprecated agents excluded)
+  related_commands:
+  - agentic manifest list
+  - agentic manifest show ./agents/planner/planner-build
+  related_agents:
+  - orchestration-executor
+  - orchestration-planning
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-002
+  title: Validate Agent Manifest
+  category: agent_definitions
+  priority: high
+  as_a: developer adding a new agent
+  i_want: to validate that an agent manifest is well-formed
+  so_that: the agent is discoverable and correctly configured before deployment
+  acceptance_criteria:
+  - agentic manifest validate <path> checks manifest.yml structure
+  - 'Validates required fields: name, description, version, purpose'
+  - Validates that referenced process.yml and inputs.yml files exist
+  - Reports missing or malformed fields with clear messages
+  - Returns exit code 0 on success, non-zero on failure
+  related_commands:
+  - agentic manifest validate ./agents/planner/planner-build
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-003
+  title: Agent Category Organization
+  category: agent_definitions
+  priority: high
+  as_a: developer understanding the agent ecosystem
+  i_want: to see agents organized by their category (orchestration, planner, build,
+    test, teacher, deploy)
+  so_that: I understand the agent taxonomy and can find the right agent for a task
+  acceptance_criteria:
+  - 'Orchestration agents (3 active): orchestration-planning, orchestration-executor,
+    orchestration-friction'
+  - 'Planner agents (7): planner-build, planner-test, planner-cleaning, planner-guidance,
+    planner-guidance-testing, planner-reviewer, planner-audit'
+  - 'Test agents (7): test-runner, test-audit, test-final-output, test-guidance-simulator,
+    test-builder, test-service, test-user-simulator'
+  - 'Teacher agents (3): teacher-update-guidance, teacher-update-assets, teacher-trace-diagnostics'
+  - 'Build agents (2): build-python, build-flutter'
+  - 'Deploy agents (2): deploy-worktree, deploy-cicd'
+  - Each category folder is self-contained with agent subfolders
+  related_agents:
+  - orchestration-executor
+  related_files:
+  - modules/AgenticGuidance/agents/README.md
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-004
+  title: Agent Manifest Required Fields
+  category: agent_definitions
+  priority: critical
+  as_a: developer creating agent manifest
+  i_want: to include all required fields in manifest.yml
+  so_that: agent is properly documented and discoverable
+  acceptance_criteria:
+  - 'name: Agent identifier (e.g., planner-build)'
+  - 'description: Brief description of agent purpose'
+  - 'version: Version string (e.g., 2.0)'
+  - 'purpose: Detailed explanation of agent role'
+  - Manifest references process.yml (or process.mmd) for behavioral guidance
+  - Manifest references inputs.yml for context requirements
+  related_files:
+  - modules/AgenticGuidance/agents/*/manifest.yml
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-005
+  title: Agent Spawning Declarations
+  category: agent_definitions
+  priority: high
+  as_a: orchestration agent
+  i_want: to see which agents can be spawned by an orchestrator
+  so_that: I know my delegation capabilities
+  acceptance_criteria:
+  - Orchestrator manifest includes 'spawns:' section
+  - 'Each spawn declares: agent, purpose, when (conditions)'
+  - Spawn declarations act as fence - only listed agents may be spawned
+  - 'Example: orchestration-planning spawns planner-build, planner-test, planner-reviewer'
+  related_agents:
+  - orchestration-planning
+  - orchestration-executor
+  related_files:
+  - modules/AgenticGuidance/agents/orchestration/orchestration-planning/manifest.yml
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-006
+  title: Agent Output Declarations
+  category: agent_definitions
+  priority: high
+  as_a: agent creating artifacts
+  i_want: to declare my expected outputs in manifest
+  so_that: downstream agents know what artifacts to expect
+  acceptance_criteria:
+  - Manifest includes 'outputs:' section listing artifacts
+  - 'Each output declares: name, path_template, description, required'
+  - 'Example: planner-build outputs plan_live_build.yml and orchestration_*.mmd'
+  - Output declarations enable validation of completeness
+  related_files:
+  - modules/AgenticGuidance/agents/planner/planner-build/manifest.yml
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-007
+  title: Agent Versioning
+  category: agent_definitions
+  priority: medium
+  as_a: developer maintaining agents
+  i_want: to version agent guidance
+  so_that: breaking changes are tracked and communicated
+  acceptance_criteria:
+  - 'Version scheme: X.Y where X = architecture version, Y = iteration'
+  - Version 2.0 = reference layer architecture
+  - Version increments when guidance structure changes
+  - Version documented in manifest.yml
+  related_files:
+  - modules/AgenticGuidance/agents/*/manifest.yml
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-008
+  title: Agent vs CLI Responsibility
+  category: agent_definitions
+  priority: critical
+  as_a: developer designing agent vs CLI split
+  i_want: to understand when to use agents vs CLI
+  so_that: I maintain clear responsibility boundaries
+  acceptance_criteria:
+  - 'Agents handle: judgment, interpretation, novel situations'
+  - 'CLI handles: deterministic operations, validation, state queries'
+  - 'Agents do NOT: naming conventions, schema validation, mechanical file ops'
+  - 'CLI does NOT: code generation, error diagnosis, plan creation'
+  - Clear boundaries prevent interpretation variance
+  related_files:
+  - modules/AgenticGuidance/README.md
+  - modules/AgenticGuidance/assets/guidelines/tool-offloading.yml
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-009
+  title: Agent Context Discovery via CCI
+  category: agent_definitions
+  priority: critical
+  as_a: agent bootstrapping at session start
+  i_want: to discover my context via CLI Context Injection (CCI)
+  so_that: I load current context instead of stale static files
+  acceptance_criteria:
+  - 'Agent invokes: agentic context bootstrap --role <agent-role> -j'
+  - 'CLI returns: process.yml, inputs.yml, referenced assets'
+  - Bootstrap output is JSON for machine parsing
+  - Agent does NOT use Read/Glob tools during bootstrap
+  - Context loading is deterministic and consistent
+  related_commands:
+  - agentic context bootstrap --role planner-build -j
+  - agentic plan task current -j
+  related_files:
+  - modules/AgenticGuidance/README.md
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null

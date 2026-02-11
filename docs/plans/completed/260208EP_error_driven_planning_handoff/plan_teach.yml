@@ -1,0 +1,393 @@
+name: 260208EP - Error-Driven Planning Handoff (Guidance)
+objective: "Update agent guidance so that ANY agent encountering errors immediately\
+  \ hands off to a planner agent.\n\nKEY PRINCIPLE: Non-planner agents (testers, builders,\
+  \ deployers) do NOT classify or decide scope.\nThey just report errors and hand\
+  \ off. PLANNERS decide:\n- Is this in-scope? \u2192 Update existing plan\n- Is this\
+  \ out-of-scope? \u2192 Create new planning folder\n- What's urgent vs deferrable?\n\
+  \nWORKTREE SELECTION (Hard Gate):\n- CLI BLOCKS worktrees with active sessions \u2014\
+  \ not available for selection\n- Multiple plans per worktree are allowed\n- Only\
+  \ create new worktree if ALL existing worktrees have active sessions\n"
+status: pending
+affected_stories: []
+no_stories_rationale: "Guidance-only changes \u2014 no user-facing functionality modified"
+phases:
+- id: P1
+  name: Define Error-Driven Planning Protocol
+  description: 'Create the formal protocol definition as a shared asset that all agents
+    reference.
+
+    This is the foundational artifact that all guidance updates point to.
+
+    '
+  execution: sequential
+  tasks:
+  - id: T_001
+    name: Create error-driven-planning-protocol.yml asset
+    description: "Create a new shared asset at:\nmodules/AgenticGuidance/assets/definitions/error-driven-planning-protocol.yml\n\
+      \nKEY PRINCIPLE: Non-planner agents do NOT decide scope. They just report and\
+      \ hand off.\nPLANNERS decide: in-scope (update existing plan) vs out-of-scope\
+      \ (new plan).\n\nProtocol sections:\n\n1. ERROR HANDOFF (for non-planner agents):\n\
+      \   Any agent encountering an error:\n   a. Capture error context:\n      -\
+      \ error_details: full error output\n      - affected_files: files involved\n\
+      \      - current_plan: the plan being executed\n      - discovery_context: what\
+      \ the agent was doing\n   b. Immediately spawn orchestration-planning session\
+      \ with error context\n   c. Continue current work (non-blocking) OR stop if\
+      \ blocking error\n\n2. PLANNER TRIAGE (for planner agents receiving error handoff):\n\
+      \   Planner decides:\n   - Is this in-scope? \u2192 Update existing plan, add\
+      \ tasks to address\n   - Is this out-of-scope? \u2192 Create new planning folder\n\
+      \   - What's urgent vs deferrable?\n   - Priority: CRITICAL (blocks), HIGH,\
+      \ MEDIUM, LOW\n\n3. WORKTREE SELECTION (Hard Gate):\n   - CLI BLOCKS worktrees\
+      \ with active sessions \u2014 not available\n   - Multiple plans per worktree\
+      \ are allowed\n   - Only create new worktree if ALL have active sessions\n \
+      \  - Selection enforced by CLI, not by agent judgment\n\n4. NAMING (standard\
+      \ conventions):\n   - Use standard plan naming: YYMMDDXX_description\n   - NO\
+      \ special \"ER\" (Error Remediation) code \u2014 just regular planning\n   -\
+      \ Examples: 260208CL_cli_test_failures, 260208IS_import_boundary_fixes\n"
+    target_files:
+    - modules/AgenticGuidance/assets/definitions/error-driven-planning-protocol.yml
+    success_criteria:
+    - Protocol YAML file exists with all sections defined
+    - Planner-decides-scope model clearly documented
+    - Hard gate worktree selection documented
+    - "No ER naming convention \u2014 uses standard naming"
+    priority: HIGH
+    status: completed
+- id: P2
+  name: Add ERROR_REQUIRES_PLANNING Feedback Trigger
+  description: 'Extend the existing feedback trigger system in the MMD spec and executor
+    specification
+
+    with a new trigger type: ERROR_REQUIRES_PLANNING. This trigger fires when an agent
+
+    detects an out-of-scope error that needs a new planning folder (not a re-plan
+    of
+
+    the current plan).
+
+    '
+  execution: sequential
+  tasks:
+  - id: T_002
+    name: Add ERROR_REQUIRES_PLANNING to plan-mmd-schema.yml
+    description: "Add a new standard trigger to the feedback_triggers section of:\n\
+      modules/AgenticGuidance/assets/specifications/plan-mmd-schema.yml\n\nNew trigger\
+      \ definition:\nERROR_REQUIRES_PLANNING:\n  description: \"Agent discovered out-of-scope\
+      \ error requiring new planning session\"\n  detection:\n    output_patterns:\n\
+      \      - \"out_of_scope_error: true\"\n      - \"remediation_plan_needed: true\"\
+      \n      - \"error_outside_plan_scope: true\"\n  typical_action: \"Create new\
+      \ planning folder, log in current plan, continue execution\"\n  context_package:\
+      \ \"error_type, error_details, discovery_context, affected_files, suggested_plan_name\"\
+      \n  note: |\n    Unlike other triggers that cause RE-PLANNING of the current\
+      \ plan,\n    this trigger spawns a SEPARATE planning folder for future remediation.\n\
+      \    The current plan continues execution \u2014 this is non-blocking by default\n\
+      \    unless priority is CRITICAL.\n\nAlso add to trigger_to_action_mapping:\n\
+      - trigger: \"ERROR_REQUIRES_PLANNING\"\n  action: \"Spawn new planning folder\
+      \ via CLI\"\n  target_node: \"SpawnRemediationPlan\"\n  context_package: \"\
+      error_type, error_details, discovery_context, suggested_plan_name, priority\"\
+      \n"
+    target_files:
+    - modules/AgenticGuidance/assets/specifications/plan-mmd-schema.yml
+    success_criteria:
+    - ERROR_REQUIRES_PLANNING trigger defined in standard_triggers
+    - Trigger-to-action mapping added
+    - Detection patterns defined
+    - Context package documented
+    priority: HIGH
+    status: completed
+  - id: T_003
+    name: Add ERROR_REQUIRES_PLANNING to orchestration-executor-specification.yml
+    description: "Add a new section under feedback_triggers.trigger_types in:\nmodules/AgenticGuidance/assets/specifications/orchestration-executor-specification.yml\n\
+      \nNew section (after UAT_FAILURE, before max_iterations_handling):\n\nERROR_REQUIRES_PLANNING:\n\
+      \  description: \"Agent discovered error outside current plan scope that needs\
+      \ separate remediation\"\n  detection:\n    output_patterns:\n      - \"out_of_scope_error:\
+      \ true\"\n      - \"remediation_plan_needed: true\"\n      - \"spawned_planning_folder:\
+      \ <folder_name>\"\n    agent_output:\n      - \"Agent reports error context\
+      \ with error_outside_plan_scope flag\"\n      - \"Agent may have already created\
+      \ planning folder\"\n\n  priority_levels:\n    critical:\n      severity: \"\
+      CRITICAL\"\n      response: \"Pause current execution, ensure remediation plan\
+      \ created, await user decision\"\n      blocking: true\n    high:\n      severity:\
+      \ \"HIGH\"\n      response: \"Log remediation plan, continue current execution\"\
+      \n      blocking: false\n    medium:\n      severity: \"MEDIUM\"\n      response:\
+      \ \"Log remediation plan, continue current execution\"\n      blocking: false\n\
+      \    low:\n      severity: \"LOW\"\n      response: \"Log for tracking, optionally\
+      \ create plan\"\n      blocking: false\n\n  response_actions:\n    create_remediation_plan:\
+      \ |\n      1. If agent did not already create plan folder:\n         - Generate\
+      \ plan name: YYMMDDER_<error_type>_<description>\n         - Create folder:\
+      \ agentic plan init --name <plan_name>\n         - Write seed file with error\
+      \ context\n      2. Log remediation plan reference in current plan's execution\
+      \ report\n      3. If CRITICAL: Pause and ask user whether to continue or address\
+      \ first\n      4. If HIGH/MEDIUM/LOW: Continue execution, report at shutdown\n\
+      \n    executor_tracking: |\n      Maintain a remediation_plans_spawned list\
+      \ in the execution report:\n      - plan_name: string\n      - error_type: string\n\
+      \      - priority: CRITICAL|HIGH|MEDIUM|LOW\n      - spawned_by: agent that\
+      \ detected the issue\n      - current_plan: plan that was executing when discovered\n"
+    target_files:
+    - modules/AgenticGuidance/assets/specifications/orchestration-executor-specification.yml
+    success_criteria:
+    - ERROR_REQUIRES_PLANNING section added with detection, priorities, and actions
+    - Priority levels defined with blocking behavior
+    - Response actions include both agent-initiated and executor-initiated paths
+    - Executor tracking list defined for remediation plans
+    priority: HIGH
+    status: completed
+- id: P3
+  name: Update Orchestration Executor Guidance
+  description: 'Update the orchestration executor''s process.yml and docs/prompts/orchestration_executor.md
+
+    to handle the new ERROR_REQUIRES_PLANNING trigger and track remediation plans.
+
+    '
+  execution: sequential
+  tasks:
+  - id: T_004
+    name: Update orchestration_executor.md prompt
+    description: "Update docs/prompts/orchestration_executor.md to add:\n\n1. In the\
+      \ \"Handle feedback triggers\" section (after STORY_REGRESSION):\n   Add ERROR_REQUIRES_PLANNING\
+      \ trigger handling:\n   - `ERROR_REQUIRES_PLANNING`: Agent found out-of-scope\
+      \ error\n     - If agent already created plan folder: Log reference, continue\n\
+      \     - If agent reported error without creating folder: Create folder via CLI\n\
+      \     - If CRITICAL priority: Pause execution, ask user\n     - Track in remediation_plans_spawned\
+      \ list\n\n2. In the CRITICAL RULES section:\n   Add: \"Track all ERROR_REQUIRES_PLANNING\
+      \ triggers in execution report\"\n   Add: \"Report remediation plans at shutdown\
+      \ alongside phase report\"\n\n3. In the Shutdown Sequence:\n   Add step between\
+      \ aggregate status and archive:\n   \"Report Remediation Plans: List all planning\
+      \ folders spawned during execution\n    with error context and priority. These\
+      \ require follow-up orchestration.\"\n"
+    target_files:
+    - docs/prompts/orchestration_executor.md
+    success_criteria:
+    - ERROR_REQUIRES_PLANNING appears in feedback triggers list
+    - Handling protocol defined (log, create if needed, block if CRITICAL)
+    - Remediation plan tracking mentioned in shutdown
+    - Critical rules updated
+    priority: HIGH
+    status: completed
+  - id: T_005
+    name: Update orchestration-executor process.yml
+    description: "Update modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml:\n\
+      \n1. In loop_evaluate_triggers step, add after STORY_REGRESSION:\n   ERROR_REQUIRES_PLANNING:\n\
+      \     - Condition: Agent reports out-of-scope error requiring new planning session\n\
+      \     - Action:\n       - If agent created folder: Log in remediation_plans_spawned\n\
+      \       - If agent did not: Create via `agentic plan init --name YYMMDDER_<type>_<desc>`\n\
+      \       - If CRITICAL: Transition to blocked, ask user\n       - Otherwise:\
+      \ Continue execution\n\n2. In shutdown_generate_report step, add:\n   - Remediation\
+      \ plans spawned (list of folders)\n   - Error contexts for each\n\n3. In outputs\
+      \ section, add:\n   - name: \"remediation_plans_spawned\"\n     description:\
+      \ \"List of new planning folders created for out-of-scope errors\"\n     schema:\n\
+      \       - plan_name: \"string\"\n         error_type: \"string\"\n         priority:\
+      \ \"enum(CRITICAL, HIGH, MEDIUM, LOW)\"\n         spawned_by: \"string - agent\
+      \ name\"\n"
+    target_files:
+    - modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml
+    success_criteria:
+    - ERROR_REQUIRES_PLANNING trigger handling added to loop step
+    - Remediation plans included in shutdown report
+    - New output schema defined
+    priority: HIGH
+    status: completed
+- id: P4
+  name: Update Build Agent Guidance
+  description: 'Add error-driven planning protocol to build agents so they can detect
+
+    and report out-of-scope errors during build phases.
+
+    '
+  execution: parallel
+  tasks:
+  - id: T_006
+    name: Update build-python process.yml
+    description: "Update modules/AgenticGuidance/agents/build/build-python/process.yml\
+      \ to add:\n\n1. After the \"Execute and test\" step (step 7), add a new step:\n\
+      \   \"Error-Driven Planning Check:\n    After verifying and testing your build,\
+      \ assess any errors encountered:\n\n    FOR EACH error in issues_encountered:\n\
+      \      IF error is WITHIN current plan scope (files you were asked to build/modify):\n\
+      \        \u2192 Fix inline (existing behavior)\n      IF error is OUTSIDE current\
+      \ plan scope:\n        \u2192 Report as out-of-scope error in build_report output\n\
+      \        \u2192 Set out_of_scope_error: true\n        \u2192 Include: error_type,\
+      \ error_details, affected_files, suggested_plan_name\n        \u2192 Continue\
+      \ with your build (do NOT block on out-of-scope issues)\n\n    Examples of out-of-scope\
+      \ errors:\n    - Import errors from modules NOT in your plan's target_files\n\
+      \    - Failing tests for code you did NOT modify\n    - Dependency version conflicts\
+      \ from other packages\n    - Configuration files that need updating for unrelated\
+      \ reasons\n\n    Reference: modules/AgenticGuidance/assets/definitions/error-driven-planning-protocol.yml\"\
+      \n\n2. In the outputs section, add to build_report schema:\n   out_of_scope_errors:\n\
+      \     - error_type: \"string\"\n       error_details: \"string\"\n       affected_files:\
+      \ \"array of strings\"\n       suggested_plan_name: \"string\"\n       priority:\
+      \ \"enum(CRITICAL, HIGH, MEDIUM, LOW)\"\n"
+    target_files:
+    - modules/AgenticGuidance/agents/build/build-python/process.yml
+    success_criteria:
+    - Error-driven planning check step added after build verification
+    - In-scope vs out-of-scope decision criteria clear
+    - Out-of-scope error reporting schema in build_report
+    - Examples provided for build context
+    priority: HIGH
+    status: completed
+  - id: T_007
+    name: Update build-flutter process.yml
+    description: 'Apply equivalent changes as T_006 to:
+
+      modules/AgenticGuidance/agents/build/build-flutter/process.yml
+
+
+      Same pattern: add error-driven planning check step and out_of_scope_errors output.
+
+      Adapt examples for Flutter context:
+
+      - Dart analysis errors from packages NOT in plan scope
+
+      - Widget test failures for components not being modified
+
+      - pubspec.yaml dependency conflicts from other packages
+
+      '
+    target_files:
+    - modules/AgenticGuidance/agents/build/build-flutter/process.yml
+    success_criteria:
+    - Error-driven planning check step added
+    - Flutter-specific examples provided
+    - Out-of-scope error reporting in build_report
+    priority: MEDIUM
+    status: completed
+- id: P5
+  name: Update Test Agent Guidance
+  description: "Update test agent guidance to follow simple handoff model:\nTesters\
+    \ just report errors and hand off to planners \u2014 NO classification, NO scope\
+    \ decisions.\n"
+  execution: parallel
+  tasks:
+  - id: T_008
+    name: Update test-runner process.yml
+    description: "Update modules/AgenticGuidance/agents/test/test-runner/process.yml:\n\
+      \nSIMPLIFIED HANDOFF MODEL:\nWhen test-runner encounters ANY failures:\n1. Capture\
+      \ error context:\n   - test_failures: list of failed tests with error output\n\
+      \   - affected_files: files involved\n   - current_plan: plan being executed\n\
+      2. Immediately spawn orchestration-planning session with error context\n3. Continue\
+      \ reporting (non-blocking) \u2014 let planner decide what to do\n\nFENCE: test-runner\
+      \ does NOT classify, prioritize, or decide scope.\nJust report and hand off.\
+      \ Planners decide everything.\n\nRemove any existing classification logic (in_scope,\
+      \ pre_existing_debt, etc.)\n"
+    target_files:
+    - modules/AgenticGuidance/agents/test/test-runner/process.yml
+    success_criteria:
+    - "Simple handoff model implemented \u2014 no classification"
+    - Spawns orchestration-planning on any failure
+    - 'FENCE maintained: test-runner is observation-only'
+    priority: HIGH
+    status: completed
+  - id: T_009
+    name: Update test-audit process.yml
+    description: 'Update modules/AgenticGuidance/agents/test/test-audit/process.yml:
+
+
+      SIMPLIFIED HANDOFF MODEL:
+
+      When test-audit finds ANY issues:
+
+      1. Capture all findings (no classification needed)
+
+      2. Spawn orchestration-planning session with findings
+
+      3. Planners decide which are in-scope vs out-of-scope
+
+
+      FENCE: test-audit does NOT classify or decide scope.
+
+      Just report all findings and hand off.
+
+      '
+    target_files:
+    - modules/AgenticGuidance/agents/test/test-audit/process.yml
+    success_criteria:
+    - "Simple handoff model \u2014 no classification"
+    - Spawns planning session with all findings
+    - 'FENCE maintained: observation-only'
+    priority: MEDIUM
+    status: completed
+  - id: T_010
+    name: Update test-builder process.yml
+    description: 'Update modules/AgenticGuidance/agents/test/test-builder/process.yml:
+
+
+      SIMPLIFIED HANDOFF MODEL:
+
+      When test-builder encounters issues while creating tests:
+
+      1. Capture the issue context
+
+      2. Spawn orchestration-planning session
+
+      3. Planners decide how to address
+
+
+      No classification, no scope decisions.
+
+      '
+    target_files:
+    - modules/AgenticGuidance/agents/test/test-builder/process.yml
+    success_criteria:
+    - "Simple handoff model \u2014 no classification"
+    - Spawns planning session on issues
+    priority: MEDIUM
+    status: completed
+- id: P6
+  name: Update Deploy Agent Guidance
+  description: 'Add error-driven planning protocol to deploy agents for CI/CD drift
+    detection.
+
+    '
+  execution: sequential
+  tasks:
+  - id: T_011
+    name: Update deploy-cicd process.yml
+    description: "Update modules/AgenticGuidance/agents/deploy/deploy-cicd/process.yml\
+      \ to add:\n\n1. When auditing CI/CD configuration, classify findings:\n\n  \
+      \ PLAN-RELATED DRIFT: CI/CD changes needed due to current plan\n   \u2192 Report\
+      \ as normal finding (existing behavior)\n\n   PRE-EXISTING DRIFT: CI/CD configuration\
+      \ was already out of sync\n   \u2192 Flag as pre_existing_debt\n   \u2192 Set\
+      \ remediation_plan_needed: true\n   \u2192 Suggest plan name: YYMMDDER_cicd_drift_<config_file>\n\
+      \   \u2192 Do NOT attempt to fix \u2014 just report\n\n2. In cicd_audit_report\
+      \ output, add:\n   pre_existing_drift:\n     - config_file: \"string\"\n   \
+      \    drift_description: \"string\"\n       remediation_plan_needed: \"boolean\"\
+      \n       suggested_plan_name: \"string\"\n"
+    target_files:
+    - modules/AgenticGuidance/agents/deploy/deploy-cicd/process.yml
+    success_criteria:
+    - Plan-related vs pre-existing drift classification
+    - pre_existing_drift section in output
+    - Examples for CI/CD context
+    priority: MEDIUM
+    status: completed
+- id: P7
+  name: Update Agent Loop Definitions
+  description: 'Add error-driven planning awareness to the agent loop definitions
+
+    so that loops can track and report out-of-scope errors discovered during iterations.
+
+    '
+  execution: sequential
+  tasks:
+  - id: T_012
+    name: Add error-driven-planning section to agent-loops.yml
+    description: "Update modules/AgenticGuidance/assets/definitions/agent-loops.yml\
+      \ to add:\n\n1. A new top-level section (after exit_conditions):\n\nerror_driven_planning:\n\
+      \  concept: |\n    During any loop iteration, agents may discover errors outside\
+      \ the current\n    plan's scope. These are NOT retry conditions \u2014 they\
+      \ are opportunities for\n    systematic improvement via new planning sessions.\n\
+      \n  protocol_reference: \"modules/AgenticGuidance/assets/definitions/error-driven-planning-protocol.yml\"\
+      \n\n  loop_behavior: |\n    When an agent within a loop reports out_of_scope_error:\n\
+      \    1. The orchestrator logs the error and suggested remediation plan\n   \
+      \ 2. The loop CONTINUES (out-of-scope errors do NOT consume iterations)\n  \
+      \  3. At loop exit, all out-of-scope errors are aggregated\n    4. Orchestrator\
+      \ creates remediation plans for HIGH+ priority errors\n\n  does_not_affect:\n\
+      \    - \"Iteration count (out-of-scope errors are separate from in-scope retries)\"\
+      \n    - \"Loop exit conditions (these are still based on in-scope success criteria)\"\
+      \n    - \"Max iterations (only in-scope failures count)\"\n"
+    target_files:
+    - modules/AgenticGuidance/assets/definitions/agent-loops.yml
+    success_criteria:
+    - error_driven_planning section added
+    - Clear that out-of-scope errors don't consume iterations
+    - Protocol reference included
+    priority: MEDIUM
+    status: completed

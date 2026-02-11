@@ -1,0 +1,825 @@
+name: session-management-robustness
+worktree_path: /home/code/AgenticEngineering
+branch: main
+status: active
+priority: high
+context: |
+  A spawned session (3f12baeb) ran for 57 minutes but got stuck with empty logs,
+  missing tmux session, stale 'running' status, and no mechanism to detect the failure.
+
+  Root causes: no heartbeat/watchdog, log file descriptor leak (files opened but never
+  explicitly closed), no tmux existence check in status, and no stale session detection.
+
+  Key files:
+  - modules/AgenticCLI/src/agenticcli/commands/session.py (CLI commands, ~800 lines)
+  - modules/AgenticCLI/src/agenticcli/cli.py (Typer command registration)
+  - modules/AgenticGuidance/src/agenticguidance/services/claude_session.py (SessionStateService)
+  - modules/AgenticGuidance/src/agenticguidance/services/session.py (tmux SessionService)
+
+  Current session spawning (cmd_spawn background mode, lines ~337-354):
+  - Opens stdout/stderr log files with open() but never explicitly closes them
+  - Passes file handles to subprocess.Popen with start_new_session=True
+  - Saves session JSON with status="running" but never updates it again
+  - _update_session_status() only checks if PID is alive via os.kill(pid, 0)
+
+  SessionStateService (claude_session.py):
+  - SessionEntry dataclass with status, pid, started_at, ended_at fields
+  - cleanup_dead_processes() marks dead PIDs as FAILED
+  - No last_activity or heartbeat tracking
+  - No log file size monitoring
+
+  Session JSON stored at: ~/.agentic/sessions/{session_id}.json
+  Log files at: ~/.agentic/sessions/logs/{session_id}.stdout.log and .stderr.log
+
+objective: |
+  Make session management robust against stuck/zombie sessions by:
+  1. Tracking last_activity timestamp in session JSON
+  2. Fixing log file descriptor management (proper close after spawn)
+  3. Adding `agentic session health <id>` command for detailed vitality check
+  4. Adding `agentic session logs <id>` command for log viewing
+  5. Showing stale warnings in `agentic session list` for sessions with no recent activity
+  6. Adding tmux session existence check to status/health commands
+
+dependencies: []
+affected_stories: []
+impacted_artifacts:
+- artifact_type: cli_command
+  artifact_identifier: agentic session health
+  impact_type: new
+  description: New command to check session vitality (PID, tmux, logs, activity)
+  breaking_change: false
+- artifact_type: cli_command
+  artifact_identifier: agentic session logs
+  impact_type: new
+  description: New command to view stdout/stderr logs for a session
+  breaking_change: false
+- artifact_type: cli_command
+  artifact_identifier: agentic session list
+  impact_type: modification
+  description: Shows stale warning for sessions with no recent activity
+  breaking_change: false
+- artifact_type: cli_command
+  artifact_identifier: agentic session spawn
+  impact_type: modification
+  description: Proper log file handle management, last_activity tracking
+  breaking_change: false
+- artifact_type: service
+  artifact_identifier: agenticguidance.services.claude_session.SessionEntry
+  impact_type: modification
+  description: New last_activity and log_bytes fields
+  breaking_change: false
+open_questions: []
+
+phases:
+- name: 'Phase 1: Session Health Infrastructure'
+  execution: sequential
+  description: |
+    Add last_activity tracking to SessionEntry, fix log file descriptor management
+    in cmd_spawn, and add log size monitoring. This is the foundation for all
+    subsequent health detection features.
+
+  tasks:
+  - id: SM_001
+    name: Add last_activity and log_bytes fields to SessionEntry
+    description: |
+      Extend SessionEntry dataclass in claude_session.py with:
+      - last_activity: Optional[str] = None (ISO timestamp of last known activity)
+      - log_bytes: Optional[int] = None (combined stdout+stderr log file size)
+      These fields enable stale detection and log monitoring.
+    status: pending
+    agent: build-python
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/claude_session.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/claude_session.py
+    guidance: |
+      1. Add to SessionEntry dataclass (after exit_code field):
+         last_activity: Optional[str] = None
+         log_bytes: Optional[int] = None
+
+      2. Update SessionEntry.to_dict() to include the new fields
+
+      3. Update SessionEntry.from_dict() to load the new fields with defaults
+
+      4. Add method SessionEntry.update_activity(timestamp: Optional[str] = None)
+         - Sets last_activity to provided timestamp or datetime.now().isoformat()
+
+      5. Add method to SessionStateService:
+         def refresh_activity(self, session_id: str) -> Optional[SessionEntry]:
+           """Update last_activity and log_bytes from filesystem state."""
+           - Load session
+           - Check log file sizes at session's stdout_log and stderr_log paths
+           - Set log_bytes = sum of both file sizes
+           - Set last_activity = max(file mtime of log files, current last_activity)
+           - Save and return updated session
+    success_criteria:
+    - SessionEntry has last_activity and log_bytes fields
+    - to_dict/from_dict handle new fields with backward compatibility
+    - refresh_activity updates fields from filesystem state
+
+  - id: SM_002
+    name: Fix log file descriptor management in cmd_spawn
+    description: |
+      Fix the background spawn to properly manage log file descriptors.
+      Currently files are opened but never explicitly closed, which can cause
+      empty logs if the process dies before Python GC runs.
+    status: pending
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    guidance: |
+      In cmd_spawn background mode (around lines 337-354):
+
+      1. After subprocess.Popen(), close the file handles immediately:
+         ```
+         stdout_log = open(logs_dir / f"{session_id}.stdout.log", "w")
+         stderr_log = open(logs_dir / f"{session_id}.stderr.log", "w")
+         try:
+             process = subprocess.Popen(
+                 cmd, cwd=working_dir,
+                 stdin=subprocess.DEVNULL,
+                 stdout=stdout_log, stderr=stderr_log,
+                 start_new_session=True,
+             )
+         finally:
+             stdout_log.close()
+             stderr_log.close()
+         ```
+         The subprocess inherits the file descriptors, so closing them in the
+         parent process is correct - the child process still writes to them.
+
+      2. After saving session JSON, write a verification check:
+         - Wait 1 second (time.sleep(1))
+         - Check if process is still running via _is_process_running(pid)
+         - If not running, update status to "failed" and warn user
+         - This catches immediate spawn failures
+
+      3. Set last_activity = started_at in the session data dict when saving
+    success_criteria:
+    - Log file handles are explicitly closed after Popen
+    - Immediate spawn failure is detected within 1 second
+    - last_activity is set on spawn
+    - No change to existing foreground mode behavior
+
+  - id: SM_003
+    name: Add _check_session_health helper function
+    description: |
+      Create a reusable health check function that evaluates multiple signals
+      to determine session vitality. This will be used by both the health
+      command and the list command.
+    status: pending
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    - modules/AgenticGuidance/src/agenticguidance/services/claude_session.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    guidance: |
+      Add function near the other helpers (after _update_session_status):
+
+      def _check_session_health(session: dict) -> dict:
+          """Evaluate session health from multiple signals.
+
+          Returns dict with:
+            healthy: bool - overall health status
+            signals: list[dict] - individual health signals
+            stale: bool - True if session appears stuck
+            stale_minutes: int - minutes since last activity
+          """
+
+          signals = []
+          session_id = session.get("session_id", "")
+          pid = session.get("pid")
+          status = session.get("status", "")
+
+          # Signal 1: PID alive check
+          pid_alive = _is_process_running(pid) if pid else False
+          signals.append({
+              "name": "pid_alive",
+              "ok": pid_alive,
+              "detail": f"PID {pid} {'alive' if pid_alive else 'dead'}"
+          })
+
+          # Signal 2: Log file size check
+          logs_dir = _get_logs_dir()
+          stdout_path = logs_dir / f"{session_id}.stdout.log"
+          stderr_path = logs_dir / f"{session_id}.stderr.log"
+          stdout_bytes = stdout_path.stat().st_size if stdout_path.exists() else 0
+          stderr_bytes = stderr_path.stat().st_size if stderr_path.exists() else 0
+          total_bytes = stdout_bytes + stderr_bytes
+          has_output = total_bytes > 0
+          signals.append({
+              "name": "has_output",
+              "ok": has_output,
+              "detail": f"Log size: {total_bytes} bytes (stdout={stdout_bytes}, stderr={stderr_bytes})"
+          })
+
+          # Signal 3: Log file recency (mtime)
+          log_mtime = None
+          for p in [stdout_path, stderr_path]:
+              if p.exists():
+                  mtime = p.stat().st_mtime
+                  if log_mtime is None or mtime > log_mtime:
+                      log_mtime = mtime
+          if log_mtime:
+              minutes_since_write = (time.time() - log_mtime) / 60
+          else:
+              # Fall back to started_at
+              started_at = session.get("started_at", "")
+              if started_at:
+                  try:
+                      dt = datetime.fromisoformat(started_at)
+                      minutes_since_write = (datetime.now() - dt).total_seconds() / 60
+                  except ValueError:
+                      minutes_since_write = 999
+              else:
+                  minutes_since_write = 999
+
+          stale_threshold = 10  # minutes
+          is_stale = status == "running" and minutes_since_write > stale_threshold
+          signals.append({
+              "name": "recent_activity",
+              "ok": not is_stale,
+              "detail": f"Last activity: {int(minutes_since_write)}m ago"
+          })
+
+          # Overall health
+          healthy = pid_alive and (has_output or status != "running")
+          stale = is_stale
+
+          return {
+              "healthy": healthy,
+              "signals": signals,
+              "stale": stale,
+              "stale_minutes": int(minutes_since_write),
+          }
+
+      Import time at top of file if not already imported.
+    success_criteria:
+    - Function checks PID, log size, and log recency
+    - Returns structured health dict
+    - Stale detection uses 10-minute threshold
+    - Handles missing files and edge cases gracefully
+
+- name: 'Phase 2: New CLI Commands'
+  execution: sequential
+  description: |
+    Add `agentic session health <id>` and `agentic session logs <id>` commands.
+    These give operators direct visibility into session state.
+
+  tasks:
+  - id: SM_004
+    name: Add 'agentic session health' command
+    description: |
+      New command that shows detailed health status for a session: PID check,
+      tmux check, log file status, activity recency, and overall health verdict.
+    status: pending
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    guidance: |
+      1. In session.py, add cmd_health function:
+
+      def cmd_health(args, ctx=None):
+          """Check health/vitality of a session."""
+          session_id_prefix = getattr(args, "session_id", "")
+          json_output = getattr(args, "json_output", False)
+
+          sessions_dir = _get_sessions_dir()
+          # Resolve partial ID (same pattern as cmd_status)
+          matches = [f for f in sessions_dir.glob("*.json")
+                     if f.stem.startswith(session_id_prefix)]
+          if not matches:
+              console.print(f"[red]No session found matching '{session_id_prefix}'[/red]")
+              return
+          if len(matches) > 1:
+              console.print(f"[red]Ambiguous ID '{session_id_prefix}' matches {len(matches)} sessions[/red]")
+              return
+
+          session = json.loads(matches[0].read_text())
+          _update_session_status(session, matches[0])
+
+          health = _check_session_health(session)
+
+          if json_output:
+              print(json.dumps({"session_id": session["session_id"], **health}, indent=2))
+              return
+
+          # Rich display
+          console.print(f"\n[bold]Session Health: {session['session_id'][:8]}[/bold]")
+          console.print(f"Status: {session.get('status', 'unknown')}")
+          console.print(f"PID: {session.get('pid', 'N/A')}")
+          console.print()
+
+          for signal in health["signals"]:
+              icon = "[green]OK[/green]" if signal["ok"] else "[red]FAIL[/red]"
+              console.print(f"  {icon}  {signal['name']}: {signal['detail']}")
+
+          console.print()
+          if health["healthy"] and not health["stale"]:
+              console.print("[green bold]Verdict: HEALTHY[/green bold]")
+          elif health["stale"]:
+              console.print(f"[yellow bold]Verdict: STALE ({health['stale_minutes']}m since last activity)[/yellow bold]")
+          else:
+              console.print("[red bold]Verdict: UNHEALTHY[/red bold]")
+
+      2. In session.py handle() router, add:
+         elif sub == "health":
+             cmd_health(args, ctx)
+
+      3. In cli.py, register the health command:
+         @session_app.command("health")
+         def session_health(
+             session_id: Annotated[str, typer.Argument(help="Session ID (or prefix)")],
+             json_output: Annotated[bool, typer.Option("-j", "--json", help="JSON output")] = False,
+         ):
+             """Check health and vitality of a session."""
+             _session_handle(_ns(command="session", session_command="health",
+                                 session_id=session_id, json_output=json_output))
+    success_criteria:
+    - 'agentic session health <id>' displays PID, log, activity health signals
+    - Shows HEALTHY/STALE/UNHEALTHY verdict
+    - JSON output mode works with -j flag
+    - Partial ID matching works
+
+  - id: SM_005
+    name: Add 'agentic session logs' command
+    description: |
+      New command to view stdout/stderr logs for a session. Supports
+      --follow (tail -f), --stderr (show stderr instead of stdout),
+      and --lines N (last N lines).
+    status: pending
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    guidance: |
+      1. In session.py, add cmd_logs function:
+
+      def cmd_logs(args, ctx=None):
+          """View logs for a session."""
+          session_id_prefix = getattr(args, "session_id", "")
+          show_stderr = getattr(args, "stderr", False)
+          num_lines = getattr(args, "lines", 50)
+          follow = getattr(args, "follow", False)
+
+          sessions_dir = _get_sessions_dir()
+          # Resolve partial ID
+          matches = [f for f in sessions_dir.glob("*.json")
+                     if f.stem.startswith(session_id_prefix)]
+          if not matches:
+              console.print(f"[red]No session found matching '{session_id_prefix}'[/red]")
+              return
+          if len(matches) > 1:
+              console.print(f"[red]Ambiguous ID '{session_id_prefix}' matches {len(matches)} sessions[/red]")
+              return
+
+          session = json.loads(matches[0].read_text())
+          logs_dir = _get_logs_dir()
+          suffix = "stderr" if show_stderr else "stdout"
+          log_path = logs_dir / f"{session['session_id']}.{suffix}.log"
+
+          if not log_path.exists():
+              console.print(f"[yellow]No {suffix} log file found for session {session['session_id'][:8]}[/yellow]")
+              return
+
+          file_size = log_path.stat().st_size
+          if file_size == 0:
+              console.print(f"[yellow]{suffix} log is empty (0 bytes) for session {session['session_id'][:8]}[/yellow]")
+              return
+
+          if follow:
+              # Use subprocess to tail -f
+              import subprocess as sp
+              try:
+                  sp.run(["tail", "-f", str(log_path)], check=False)
+              except KeyboardInterrupt:
+                  pass
+              return
+
+          # Read last N lines
+          lines = log_path.read_text().splitlines()
+          display_lines = lines[-num_lines:] if len(lines) > num_lines else lines
+          if len(lines) > num_lines:
+              console.print(f"[dim]... showing last {num_lines} of {len(lines)} lines ...[/dim]")
+          for line in display_lines:
+              console.print(line)
+
+      2. In session.py handle() router, add:
+         elif sub == "logs":
+             cmd_logs(args, ctx)
+
+      3. In cli.py, register the logs command:
+         @session_app.command("logs")
+         def session_logs(
+             session_id: Annotated[str, typer.Argument(help="Session ID (or prefix)")],
+             stderr: Annotated[bool, typer.Option("--stderr", help="Show stderr instead of stdout")] = False,
+             lines: Annotated[int, typer.Option("-n", "--lines", help="Number of lines to show")] = 50,
+             follow: Annotated[bool, typer.Option("-f", "--follow", help="Follow log output (tail -f)")] = False,
+         ):
+             """View stdout/stderr logs for a session."""
+             _session_handle(_ns(command="session", session_command="logs",
+                                 session_id=session_id, stderr=stderr,
+                                 lines=lines, follow=follow))
+    success_criteria:
+    - 'agentic session logs <id>' shows last 50 lines of stdout
+    - --stderr shows stderr log instead
+    - -n 100 shows last 100 lines
+    - -f follows the log (tail -f)
+    - Handles missing/empty log files gracefully
+
+- name: 'Phase 3: Stale Detection in List and Status'
+  execution: sequential
+  description: |
+    Integrate health signals into existing commands: show stale warnings
+    in session list, and check tmux existence in status.
+
+  tasks:
+  - id: SM_006
+    name: Add stale warning to session list output
+    description: |
+      When `agentic session list` shows running sessions, check for staleness
+      and display a warning indicator next to stale sessions.
+    status: pending
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    guidance: |
+      In cmd_list (around the table row construction):
+
+      1. For each session with status "running", call _check_session_health(session)
+
+      2. If health["stale"], modify the status display:
+         - Instead of "[green]running[/green]"
+         - Show "[yellow]running (stale {N}m)[/yellow]"
+
+      3. Add a "Health" column to the table (after Status):
+         - Healthy running: "[green]OK[/green]"
+         - Stale running: "[yellow]STALE[/yellow]"
+         - Completed/stopped/failed: "[dim]-[/dim]"
+
+      4. If any sessions are stale, add a warning line after the table:
+         "[yellow]Warning: {N} session(s) appear stale. Use 'agentic session health <id>' for details.[/yellow]"
+
+      5. In JSON output mode, include health data for each running session:
+         Add "health" key to each session dict in the JSON array
+    success_criteria:
+    - Stale sessions show yellow warning in list
+    - Health column shows OK/STALE for running sessions
+    - Warning message shown when stale sessions detected
+    - JSON output includes health data
+    - No performance impact for completed sessions (skip health check)
+
+  - id: SM_007
+    name: Add tmux existence check to status and health commands
+    description: |
+      For sessions spawned via tmux, verify the tmux session still exists.
+      This catches the case where tmux dies but the process continues.
+    status: pending
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    - modules/AgenticGuidance/src/agenticguidance/services/session.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    guidance: |
+      1. Add a _check_tmux_session(session_id: str) -> bool helper:
+         - Run: subprocess.run(["tmux", "has-session", "-t", session_id],
+                               capture_output=True, timeout=5)
+         - Return True if return code is 0
+         - Return False if return code is non-zero
+         - Return None if tmux is not installed or times out
+
+      2. In _check_session_health(), add a tmux signal:
+         - Only check if session has metadata indicating it was tmux-spawned
+           (check for "tmux_session" in session metadata or if a tmux session
+           name matching the session_id prefix exists)
+         - Add signal: {"name": "tmux_session", "ok": bool, "detail": "..."}
+
+      3. In cmd_status, after showing session details:
+         - If session is background and running, call _check_session_health()
+         - Display any unhealthy signals as warnings
+    success_criteria:
+    - tmux session existence is checked when relevant
+    - Missing tmux session shown as health warning
+    - Gracefully handles tmux not installed
+    - Does not add tmux check for non-tmux sessions
+
+- name: 'Phase 4: Update Existing Tests'
+  execution: sequential
+  description: |
+    Update existing test files to cover new functionality and ensure
+    no regressions in existing behavior.
+
+  tasks:
+  - id: SM_008
+    name: Add tests for SessionEntry new fields and refresh_activity
+    description: |
+      Test the new last_activity, log_bytes fields and refresh_activity method
+      in the service layer tests.
+    status: pending
+    agent: build-python
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/claude_session.py
+    - modules/AgenticGuidance/tests/test_services_claude_session.py
+    target_files:
+    - modules/AgenticGuidance/tests/test_services_claude_session.py
+    guidance: |
+      Add tests in TestSessionEntry class:
+
+      1. test_session_entry_new_fields_defaults:
+         - Create SessionEntry, verify last_activity=None, log_bytes=None
+
+      2. test_session_entry_to_dict_includes_new_fields:
+         - Set last_activity and log_bytes, verify they appear in to_dict()
+
+      3. test_session_entry_from_dict_backward_compatible:
+         - Load from dict WITHOUT last_activity/log_bytes, verify defaults
+
+      4. test_update_activity:
+         - Call update_activity(), verify last_activity is set
+
+      Add tests in TestSessionStateService class:
+
+      5. test_refresh_activity_updates_log_bytes:
+         - Create session with known log file paths
+         - Create dummy log files with known sizes
+         - Call refresh_activity(session_id)
+         - Verify log_bytes == sum of file sizes
+
+      6. test_refresh_activity_updates_last_activity:
+         - Create session and log files
+         - Call refresh_activity
+         - Verify last_activity is set to log file mtime
+    success_criteria:
+    - New fields have default value tests
+    - Backward compatibility tested
+    - refresh_activity updates from filesystem
+    - All existing tests still pass
+
+  - id: SM_009
+    name: Add tests for health check, health command, and logs command
+    description: |
+      Add tests for _check_session_health, cmd_health, and cmd_logs
+      in the CLI test file.
+    status: pending
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    - modules/AgenticCLI/tests/test_session_commands.py
+    target_files:
+    - modules/AgenticCLI/tests/test_session_commands.py
+    guidance: |
+      Add new test classes:
+
+      class TestSessionHealth:
+          def test_health_healthy_session(self, tmp_path):
+              # Create session JSON + non-empty log files with recent mtime
+              # Call cmd_health, verify HEALTHY verdict
+
+          def test_health_stale_session(self, tmp_path):
+              # Create session JSON + log files with old mtime (>10m)
+              # Mock time or set old mtime via os.utime
+              # Call cmd_health, verify STALE verdict
+
+          def test_health_dead_pid(self, tmp_path):
+              # Create session JSON with non-existent PID
+              # Call cmd_health, verify UNHEALTHY verdict
+
+          def test_health_empty_logs(self, tmp_path):
+              # Create session JSON + empty log files (0 bytes)
+              # Call cmd_health, verify has_output signal is FAIL
+
+          def test_health_json_output(self, tmp_path):
+              # Call cmd_health with json_output=True
+              # Parse JSON output, verify structure
+
+      class TestSessionLogs:
+          def test_logs_shows_stdout(self, tmp_path):
+              # Create session + stdout log with known content
+              # Call cmd_logs, verify output shown
+
+          def test_logs_shows_stderr(self, tmp_path):
+              # Create session + stderr log with known content
+              # Call cmd_logs with stderr=True, verify stderr shown
+
+          def test_logs_lines_limit(self, tmp_path):
+              # Create log with 100 lines
+              # Call cmd_logs with lines=10
+              # Verify only last 10 lines shown
+
+          def test_logs_empty_file(self, tmp_path):
+              # Create empty log file
+              # Call cmd_logs, verify warning message
+
+          def test_logs_missing_file(self, tmp_path):
+              # No log file exists
+              # Call cmd_logs, verify error message
+
+      class TestStaleWarningInList:
+          def test_list_shows_stale_warning(self, tmp_path):
+              # Create a running session with old log mtime
+              # Call cmd_list, verify stale warning appears
+
+          def test_list_healthy_no_warning(self, tmp_path):
+              # Create a running session with recent log activity
+              # Call cmd_list, verify no stale warning
+
+      Use monkeypatch to override _get_sessions_dir and _get_logs_dir
+      to point to tmp_path. Mock _is_process_running as needed.
+    success_criteria:
+    - Health check tests cover healthy, stale, dead, empty-log scenarios
+    - Logs command tests cover stdout, stderr, line limit, empty, missing
+    - Stale warning in list is tested
+    - All tests use tmp_path isolation
+    - All tests pass
+
+- name: 'Phase 5: Auto-Spawn Diagnostic Planner'
+  execution: sequential
+  description: |
+    When a stuck/unhealthy session is detected, automatically spawn a DIAGNOSTIC
+    PLANNER session to investigate and create a remediation plan if needed.
+    Track diagnostics spawned per session to prevent infinite spawn loops.
+
+  tasks:
+  - id: SM_010
+    name: Add diagnostic_spawned field to session JSON schema
+    description: |
+      Add a `diagnostic_spawned: bool` field to session JSON schema to track
+      whether a diagnostic session has already been spawned for this stuck session.
+      This is the critical safeguard against infinite spawn loops.
+    status: pending
+    agent: build-python
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/claude_session.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/claude_session.py
+    guidance: |
+      1. Add to SessionEntry dataclass:
+         diagnostic_spawned: bool = False
+         diagnostic_session_id: Optional[str] = None  # ID of the spawned diagnostic session
+
+      2. Update to_dict/from_dict to include these fields
+
+      3. Add method:
+         def mark_diagnostic_spawned(self, diagnostic_session_id: str):
+             self.diagnostic_spawned = True
+             self.diagnostic_session_id = diagnostic_session_id
+    success_criteria:
+    - SessionEntry has diagnostic_spawned and diagnostic_session_id fields
+    - Fields default to False/None
+    - mark_diagnostic_spawned() sets both fields
+
+  - id: SM_011
+    name: Implement auto-spawn diagnostic in health check
+    description: |
+      When `agentic session health` or `agentic session list` detects an unhealthy
+      or stale session that hasn't already had a diagnostic spawned, automatically
+      spawn a DIAGNOSTIC PLANNER session and record it in the original session JSON.
+    status: pending
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    guidance: |
+      1. Add helper function _spawn_diagnostic_planner(stuck_session: dict) -> Optional[str]:
+         """Spawn a diagnostic planner for a stuck session. Returns new session ID or None."""
+
+         # Check if already spawned
+         if stuck_session.get("diagnostic_spawned", False):
+             return None
+
+         session_id = stuck_session["session_id"]
+         prompt = f'''Your role is DIAGNOSTIC PLANNER. A session has become stuck/unhealthy.
+
+      ## Stuck Session Details
+      - Session ID: {session_id[:8]}
+      - Started: {stuck_session.get("started_at", "unknown")}
+      - Status: {stuck_session.get("status", "unknown")}
+      - PID: {stuck_session.get("pid", "unknown")}
+      - Prompt excerpt: {stuck_session.get("prompt", "")[:200]}...
+
+      ## Your Task
+      1. Investigate what went wrong (check logs at ~/.agentic/sessions/logs/{session_id}.*.log)
+      2. Determine if this is a one-off or systemic issue
+      3. If systemic, create a planning folder to address the root cause
+      4. If one-off, document findings and exit
+
+      Exit when investigation is complete.'''
+
+         # Spawn with low max_turns (diagnostic should be quick)
+         from .session import cmd_spawn
+         from types import SimpleNamespace
+
+         args = SimpleNamespace(
+             prompt=prompt,
+             max_turns=10,  # Limit diagnostic scope
+             background=True,
+             working_dir=stuck_session.get("working_dir", "."),
+             resume=None,
+             dangerously_skip_permissions=True,
+         )
+
+         # This returns the new session_id
+         result = cmd_spawn(args, ctx=None)
+         new_session_id = result  # Assuming cmd_spawn returns session ID
+
+         # Mark the original session as having diagnostic spawned
+         sessions_dir = _get_sessions_dir()
+         session_path = sessions_dir / f"{session_id}.json"
+         if session_path.exists():
+             data = json.loads(session_path.read_text())
+             data["diagnostic_spawned"] = True
+             data["diagnostic_session_id"] = new_session_id
+             session_path.write_text(json.dumps(data, indent=2))
+
+         return new_session_id
+
+      2. In cmd_health, after displaying health verdict:
+         if health["stale"] or not health["healthy"]:
+             if not session.get("diagnostic_spawned", False):
+                 new_id = _spawn_diagnostic_planner(session)
+                 if new_id:
+                     console.print(f"[cyan]Auto-spawned diagnostic session: {new_id[:8]}[/cyan]")
+             else:
+                 diag_id = session.get("diagnostic_session_id", "unknown")[:8]
+                 console.print(f"[dim]Diagnostic already spawned: {diag_id}[/dim]")
+
+      3. In cmd_list, when displaying stale sessions:
+         - Do NOT auto-spawn from list (too noisy)
+         - Just show: "[yellow]Use 'agentic session health <id>' to diagnose[/yellow]"
+    success_criteria:
+    - Diagnostic spawned only ONCE per stuck session
+    - Original session JSON tracks diagnostic_spawned=true
+    - cmd_health auto-spawns diagnostic for unhealthy sessions
+    - cmd_list does NOT auto-spawn (just shows hint)
+    - Diagnostic prompt includes stuck session context
+    - max_turns limited to 10 to prevent runaway diagnostics
+
+  - id: SM_012
+    name: Add tests for diagnostic auto-spawn
+    description: |
+      Test the diagnostic auto-spawn feature ensuring it only spawns once
+      and correctly marks the session.
+    status: pending
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    - modules/AgenticCLI/tests/test_session_commands.py
+    target_files:
+    - modules/AgenticCLI/tests/test_session_commands.py
+    guidance: |
+      Add test class TestDiagnosticAutoSpawn:
+
+      1. test_diagnostic_spawns_for_stale_session:
+         - Create a stale session (old log mtime, running status)
+         - Mock cmd_spawn to capture the call
+         - Call cmd_health
+         - Verify cmd_spawn called with diagnostic prompt
+         - Verify original session marked diagnostic_spawned=True
+
+      2. test_diagnostic_only_spawns_once:
+         - Create session with diagnostic_spawned=True
+         - Call cmd_health
+         - Verify cmd_spawn NOT called
+         - Verify message about existing diagnostic shown
+
+      3. test_diagnostic_not_spawned_for_healthy:
+         - Create healthy session (recent activity, alive PID)
+         - Call cmd_health
+         - Verify cmd_spawn NOT called
+
+      4. test_list_does_not_auto_spawn:
+         - Create stale session
+         - Call cmd_list
+         - Verify cmd_spawn NOT called
+         - Verify hint message shown
+    success_criteria:
+    - Diagnostic spawn tested for stale session
+    - Once-only spawn verified
+    - Healthy sessions don't trigger spawn
+    - List command doesn't spawn
+
+success_criteria:
+- 'agentic session health <id>' shows detailed vitality check
+- 'agentic session logs <id>' shows session output logs
+- Stale sessions are visually flagged in session list
+- Log file descriptors are properly closed after spawn
+- SessionEntry tracks last_activity and log_bytes
+- tmux session existence is checked in health command
+- Unhealthy sessions auto-spawn diagnostic planner (max 1 per session)
+- All new and existing tests pass
+- No regressions in session spawn, stop, status, or list commands
+

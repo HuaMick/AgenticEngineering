@@ -10,8 +10,8 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# Track question IDs already notified via ntfy (dedup across callback invocations)
-_ntfy_seen_question_ids: set[str] = set()
+# Module-level reply poller singleton (started on first question ask)
+_reply_poller: "NtfyReplyPoller | None" = None
 
 
 def handle(args, ctx=None):
@@ -71,6 +71,56 @@ def _get_service(plan_path: Path):
         sys.exit(1)
 
 
+def _search_completed_plans(name: str) -> Path | None:
+    """Search docs/plans/completed/ for a plan matching *name*.
+
+    Uses the same prefix-match logic as ``find_plan_folder`` uses for
+    ``live/``: exact match wins, otherwise the first alphabetical prefix
+    match is returned.
+
+    Args:
+        name: Folder name or prefix to search for.
+
+    Returns:
+        Path to the matching completed plan folder, or ``None``.
+    """
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        repo_root = Path(result.stdout.strip())
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+
+    completed_dir = repo_root / "docs" / "plans" / "completed"
+    if not completed_dir.exists():
+        return None
+
+    search_name = Path(name).name or name
+    exact_match = None
+    partial_matches: list[Path] = []
+
+    for item in completed_dir.iterdir():
+        if item.is_dir():
+            if item.name == search_name:
+                exact_match = item
+                break
+            elif item.name.startswith(search_name):
+                partial_matches.append(item)
+
+    if exact_match:
+        return exact_match
+    if partial_matches:
+        partial_matches.sort(key=lambda p: p.name)
+        return partial_matches[0]
+    return None
+
+
 def _get_plan_path(args, ctx=None) -> Path:
     """Detect or validate plan path from args or context.
 
@@ -92,8 +142,17 @@ def _get_plan_path(args, ctx=None) -> Path:
     if plan_arg:
         plan_path = Path(plan_arg).resolve()
         if not plan_path.exists():
-            print_error(f"Plan path does not exist: {plan_path}")
-            sys.exit(1)
+            # Try find_plan_folder (searches live/)
+            try:
+                from agenticcli.commands.plan import find_plan_folder
+
+                plan_path = find_plan_folder(plan_arg)
+            except SystemExit:
+                # find_plan_folder exits on not found; search completed/ too
+                plan_path = _search_completed_plans(plan_arg)
+                if not plan_path:
+                    print_error(f"Plan path not found in live or completed: {plan_arg}")
+                    sys.exit(1)
         if not plan_path.is_dir():
             print_error(f"Plan path is not a directory: {plan_path}")
             sys.exit(1)
@@ -524,6 +583,15 @@ def cmd_ask(args, ctx=None):
         print_error(f"Failed to create question: {e}")
         sys.exit(1)
 
+    # Auto-notify via ntfy (fire-and-forget, errors logged but not raised)
+    try:
+        _send_ntfy_if_configured(plan_path, [question])
+    except Exception as e:
+        logger.debug("Auto-notify on ask failed: %s", e)
+
+    # Auto-start reply poller so answers from phone are picked up
+    _ensure_reply_poller(plan_path)
+
     # Output
     if is_json_output():
         print_json(question.to_dict())
@@ -661,6 +729,20 @@ def cmd_watch(args, ctx=None):
         except Exception as e:
             console.print(f"[red]Error processing question change: {e}[/red]")
 
+    # Start ntfy reply poller if configured
+    ntfy_config = _get_ntfy_config()
+    poller = None
+    if ntfy_config:
+        from agenticcli.services.question_watcher import NtfyReplyPoller
+
+        poller = NtfyReplyPoller(
+            plan_path=plan_path,
+            topic=ntfy_config["topic"],
+            server=ntfy_config.get("server", "https://ntfy.sh"),
+        )
+        poller.start()
+        console.print("[green]ntfy reply polling active[/green]")
+
     # Start watcher
     try:
         observer = start_question_watcher(plan_path, on_questions_changed, daemon=False)
@@ -669,6 +751,8 @@ def cmd_watch(args, ctx=None):
         # Set up signal handler for clean shutdown
         def signal_handler(sig, frame):
             console.print("\n[yellow]Stopping watcher...[/yellow]")
+            if poller:
+                poller.stop()
             stop_question_watcher(observer)
             sys.exit(0)
 
@@ -681,6 +765,8 @@ def cmd_watch(args, ctx=None):
 
     except KeyboardInterrupt:
         console.print("\n[yellow]Stopping watcher...[/yellow]")
+        if poller:
+            poller.stop()
         stop_question_watcher(observer)
     except Exception as e:
         print_error(f"Watcher error: {e}")
@@ -691,82 +777,57 @@ def cmd_watch_daemon(args, ctx=None):
     """Start question watcher in background as daemon.
 
     Implements: agentic question watch-daemon [--plan PATH]
-    """
-    import json
-    import subprocess
 
+    Delegates to _ensure_watch_daemon for the actual daemon start logic.
+    """
     from agenticcli.console import print_error, print_success, print_warning
 
     plan_path = _get_plan_path(args, ctx)
 
-    # Check if state tracking is available
-    try:
-        from agenticcli.services.state import ProcessStateRegistry
-    except ImportError:
-        print_error(
-            "ProcessStateRegistry not available. "
-            "Cannot track daemon state without state service."
-        )
-        sys.exit(1)
+    started, reason = _ensure_watch_daemon(plan_path)
 
-    # Initialize state registry
-    registry = ProcessStateRegistry()
+    if started:
+        # Retrieve PID from state registry for the success message
+        try:
+            from agenticcli.services.state import ProcessStateRegistry
 
-    # Check if watcher is already running for this plan
-    state_key = f"question_watcher_{plan_path.name}"
-    existing_state = registry.get_state(state_key)
+            registry = ProcessStateRegistry()
+            state_key = f"question_watcher_{plan_path.name}"
+            state = registry.get_state(state_key)
+            pid = state.get("pid", "unknown") if state else "unknown"
+        except Exception:
+            pid = "unknown"
 
-    if existing_state and existing_state.get("status") == "running":
-        pid = existing_state.get("pid")
+        print_success(f"Question watcher started in background (PID: {pid})")
+        print(f"Plan: {plan_path}")
+        print("Use 'agentic question watch-stop' to stop the watcher")
+
+    elif reason == "already_running":
+        # Retrieve PID for the warning message
+        try:
+            from agenticcli.services.state import ProcessStateRegistry
+
+            registry = ProcessStateRegistry()
+            state_key = f"question_watcher_{plan_path.name}"
+            state = registry.get_state(state_key)
+            pid = state.get("pid", "unknown") if state else "unknown"
+        except Exception:
+            pid = "unknown"
+
         print_warning(f"Question watcher already running for {plan_path.name} (PID: {pid})")
         print("Use 'agentic question watch-stop' to stop the existing watcher first.")
         sys.exit(1)
 
-    # Start watcher in background using subprocess
-    try:
-        # Use nohup to detach from terminal
-        cmd = [
-            "nohup",
-            "python3",
-            "-c",
-            f"from pathlib import Path; "
-            f"from agenticcli.services.question_watcher import start_question_watcher, stop_question_watcher; "
-            f"import time; "
-            f"plan_path = Path('{plan_path}'); "
-            f"def callback(): pass; "
-            f"observer = start_question_watcher(plan_path, callback, daemon=False); "
-            f"try:\n"
-            f"    while True: time.sleep(1)\n"
-            f"except KeyboardInterrupt:\n"
-            f"    stop_question_watcher(observer)",
-        ]
-
-        # Start process in background
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            stdin=subprocess.DEVNULL,
-            start_new_session=True,
+    elif reason == "ntfy_not_configured":
+        print_error(
+            "ntfy is not configured. "
+            "Set ntfy.topic in your preferences to enable the watch daemon."
         )
+        sys.exit(1)
 
-        # Register in state
-        registry.register_process(
-            state_key,
-            process.pid,
-            metadata={
-                "plan_path": str(plan_path),
-                "plan_name": plan_path.name,
-                "command": "question watch-daemon",
-            },
-        )
-
-        print_success(f"Question watcher started in background (PID: {process.pid})")
-        print(f"Plan: {plan_path}")
-        print("Use 'agentic question watch-stop' to stop the watcher")
-
-    except Exception as e:
-        print_error(f"Failed to start daemon: {e}")
+    else:
+        # reason == "error"
+        print_error("Failed to start daemon. Check logs for details.")
         sys.exit(1)
 
 
@@ -835,19 +896,151 @@ def cmd_watch_stop(args, ctx=None):
         print_success(f"Stopped {stopped_count} watcher(s)")
 
 
-def _send_ntfy_if_configured(plan_path: Path, questions: list) -> None:
-    """Send ntfy push notifications for NEW pending questions.
+def _ensure_watch_daemon(plan_path: Path) -> tuple[bool, str]:
+    """Idempotently ensure a question watch-daemon is running for a plan.
 
-    Reads ntfy.topic from user preferences. If not configured, returns
-    silently (ntfy is opt-in). Deduplicates by tracking previously-seen
-    question IDs in the module-level _ntfy_seen_question_ids set.
+    Checks ntfy configuration, verifies no existing daemon is alive, and
+    starts a background watcher process if needed. Safe to call from any
+    context — never raises to the caller.
 
     Args:
         plan_path: Path to plan folder.
-        questions: List of Question objects (pending).
-    """
-    global _ntfy_seen_question_ids
 
+    Returns:
+        Tuple of (started, reason) where reason is one of:
+        "started", "already_running", "ntfy_not_configured", "error".
+    """
+    import os
+    import subprocess
+
+    try:
+        # 1. Check ntfy configuration
+        config = _get_ntfy_config()
+        if not config:
+            logger.debug("_ensure_watch_daemon: ntfy not configured, skipping")
+            return (False, "ntfy_not_configured")
+
+        # 2. Import state registry
+        try:
+            from agenticcli.services.state import ProcessStateRegistry
+        except ImportError:
+            logger.debug("_ensure_watch_daemon: ProcessStateRegistry not available")
+            return (False, "error")
+
+        registry = ProcessStateRegistry()
+        state_key = f"question_watcher_{plan_path.name}"
+
+        # 3. Check for existing running watcher
+        existing_state = registry.get_state(state_key)
+        if existing_state and existing_state.get("status") == "running":
+            pid = existing_state.get("pid")
+            if pid:
+                try:
+                    os.kill(pid, 0)
+                    # PID is alive — daemon already running
+                    logger.debug(
+                        "_ensure_watch_daemon: already running for %s (PID %d)",
+                        plan_path.name,
+                        pid,
+                    )
+                    return (False, "already_running")
+                except (ProcessLookupError, OSError):
+                    # PID is dead — clean up stale state before proceeding
+                    logger.info(
+                        "_ensure_watch_daemon: stale PID %d for %s, cleaning up",
+                        pid,
+                        plan_path.name,
+                    )
+                    registry.mark_stopped(state_key)
+
+        # 4. Start daemon via subprocess (same pattern as cmd_watch_daemon)
+        cmd = [
+            "nohup",
+            "python3",
+            "-c",
+            f"from pathlib import Path; "
+            f"from agenticcli.services.question_watcher import start_question_watcher, stop_question_watcher; "
+            f"import time; "
+            f"plan_path = Path('{plan_path}'); "
+            f"def callback(): pass; "
+            f"observer = start_question_watcher(plan_path, callback, daemon=False); "
+            f"try:\n"
+            f"    while True: time.sleep(1)\n"
+            f"except KeyboardInterrupt:\n"
+            f"    stop_question_watcher(observer)",
+        ]
+
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+
+        # 5. Register in state registry
+        registry.register_process(
+            state_key,
+            process.pid,
+            metadata={
+                "plan_path": str(plan_path),
+                "plan_name": plan_path.name,
+                "command": "question watch-daemon",
+            },
+        )
+
+        logger.info(
+            "_ensure_watch_daemon: started for %s (PID %d)",
+            plan_path.name,
+            process.pid,
+        )
+        return (True, "started")
+
+    except Exception as e:
+        logger.debug("_ensure_watch_daemon: error: %s", e)
+        return (False, "error")
+
+
+def _ensure_reply_poller(plan_path: Path) -> None:
+    """Start an NtfyReplyPoller if ntfy is configured and one isn't running.
+
+    The poller runs in a daemon thread and auto-answers questions when the
+    user replies via ntfy from their phone. Only one poller is started per
+    process (module-level singleton).
+
+    Args:
+        plan_path: Path to plan folder.
+    """
+    global _reply_poller
+
+    # Already running
+    if _reply_poller is not None and _reply_poller._running:
+        return
+
+    config = _get_ntfy_config()
+    if not config:
+        return
+
+    try:
+        from agenticcli.services.question_watcher import NtfyReplyPoller
+
+        _reply_poller = NtfyReplyPoller(
+            plan_path=plan_path,
+            topic=config["topic"],
+            server=config.get("server", "https://ntfy.sh"),
+        )
+        _reply_poller.start()
+        logger.debug("Auto-started reply poller for %s", plan_path.name)
+    except Exception as e:
+        logger.debug("Failed to start reply poller: %s", e)
+
+
+def _get_ntfy_config() -> dict | None:
+    """Read ntfy configuration from user preferences.
+
+    Returns dict with 'topic' and 'server' keys, or None if ntfy
+    is not configured or disabled.
+    """
     try:
         from agenticcli.commands.config import get_config_dir
 
@@ -855,7 +1048,7 @@ def _send_ntfy_if_configured(plan_path: Path, questions: list) -> None:
         prefs_file = config_dir / "preferences.yml"
 
         if not prefs_file.exists():
-            return
+            return None
 
         import yaml
 
@@ -864,26 +1057,57 @@ def _send_ntfy_if_configured(plan_path: Path, questions: list) -> None:
 
         topic = ntfy_config.get("topic", "")
         if not topic:
-            return
+            return None
 
-        # Check enabled flag (default True if absent)
         if not ntfy_config.get("enabled", True):
+            return None
+
+        return {
+            "topic": topic,
+            "server": ntfy_config.get("server", "https://ntfy.sh"),
+        }
+    except Exception:
+        return None
+
+
+def _send_ntfy_if_configured(plan_path: Path, questions: list) -> None:
+    """Send ntfy notification for the first unsent pending question only.
+
+    Uses NtfyQuestionAgent for sequential delivery. Only sends a new
+    question notification if no question is currently active (waiting
+    for user reply).
+
+    Args:
+        plan_path: Path to plan folder.
+        questions: List of Question objects (pending).
+    """
+    try:
+        config = _get_ntfy_config()
+        if not config:
             return
 
-        server = ntfy_config.get("server", "https://ntfy.sh")
+        from agenticcli.services.ntfy_question_agent import (
+            NtfyQuestionAgent,
+            load_state,
+        )
 
-        from agenticcli.utils.ntfy import notify_new_question
+        state = load_state(plan_path)
 
-        for q in questions:
-            q_id = q.id if hasattr(q, "id") else q.get("id", "")
-            if not q_id or q_id in _ntfy_seen_question_ids:
-                continue
+        # If there's already a current question, don't send another
+        if state.current_question_id:
+            logger.debug("ntfy: current question active (%s), skipping",
+                         state.current_question_id)
+            return
 
-            _ntfy_seen_question_ids.add(q_id)
-            success = notify_new_question(topic, q, server)
-            logger.debug(
-                "ntfy notification for %s: %s", q_id, "sent" if success else "failed"
-            )
+        # Sort pending by created_at, send only the first
+        pending = [q for q in questions if getattr(q, "status", "") == "pending"]
+        if not pending:
+            return
+
+        pending.sort(key=lambda q: getattr(q, "created_at", 0))
+
+        agent = NtfyQuestionAgent(plan_path, config["topic"], config["server"])
+        agent._handle_next(state)
 
     except Exception as e:
         logger.debug("ntfy notification error: %s", e)

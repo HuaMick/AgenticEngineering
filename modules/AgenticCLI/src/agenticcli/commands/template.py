@@ -247,9 +247,9 @@ def _inject_phases(content: str, phases: list[dict]) -> str:
     phases_yaml = "\n".join(phases_yaml_lines)
 
     # Pattern to match the phases section in YAML
-    # Matches from "phases:" to the next top-level key or end of plan section
-    # This handles multi-line phases blocks
-    pattern = r"(  phases:\n)((?:    - [^\n]*\n(?:      [^\n]*\n)*)+)"
+    # Matches "  phases:" followed by all lines indented with 4+ spaces
+    # (including nested tasks at 6, 8, 10+ spaces and blank lines between phases)
+    pattern = r"(  phases:\n)((?:(?:[ ]{4,}[^\n]*|)\n)*)"
 
     def replace_phases(match):
         return f"  phases:\n{phases_yaml}\n"
@@ -377,7 +377,7 @@ def _try_jinja2_render(template_type: str, context: dict) -> str | None:
     Returns None if Jinja2 template not found.
     """
     try:
-        from agenticguidance.services import TemplateContext, TemplateWorkflow
+        from agenticcli.workflows.template_workflow import TemplateContext, TemplateWorkflow
 
         workflow = TemplateWorkflow()
         jinja_template = f"{template_type}_plan.yml.j2"
@@ -416,8 +416,10 @@ def cmd_generate(args):
 
     context = _get_context()
 
-    # Try Jinja2 first, fall back to simple templates
-    content = _try_jinja2_render(template_type, context)
+    # Try Jinja2 first, fall back to simple templates.
+    # Skip Jinja2 when custom phases are requested since _inject_phases
+    # requires the simple template format with a `phases:` section.
+    content = None if phases_str else _try_jinja2_render(template_type, context)
     if content is None:
         # Fall back to simple string formatting
         template = TEMPLATES[template_type]

@@ -101,7 +101,7 @@ class TestPhaseAddToEmptyPlan:
     def test_phase_add_to_empty_plan(self, empty_plan, cli_runner):
         """Test adding a phase to a plan with no phases."""
         stdout, stderr, code = cli_runner(
-            ["plan", "phase", "add", "P1", "Initial Setup", "--plan", str(empty_plan)]
+            ["plan", "phase", "add", "--id", "P1", "--name", "Initial Setup", "--plan", str(empty_plan)]
         )
         assert code == 0
         assert "Added phase" in stdout
@@ -123,8 +123,8 @@ class TestPhaseAddToEmptyPlan:
                 "plan",
                 "phase",
                 "add",
-                "P1",
-                "Setup Phase",
+                "--id", "P1",
+                "--name", "Setup Phase",
                 "--description",
                 "Initialize project dependencies",
                 "--plan",
@@ -148,8 +148,8 @@ class TestPhaseAddToExistingPhases:
                 "plan",
                 "phase",
                 "add",
-                "P3",
-                "Phase 3 - Testing",
+                "--id", "P3",
+                "--name", "Phase 3 - Testing",
                 "--plan",
                 str(plan_with_phases),
             ]
@@ -176,8 +176,8 @@ class TestPhaseAddToExistingPhases:
                 "plan",
                 "phase",
                 "add",
-                "P1",
-                "Duplicate Phase",
+                "--id", "P1",
+                "--name", "Duplicate Phase",
                 "--plan",
                 str(plan_with_phases),
             ]
@@ -197,8 +197,8 @@ class TestPhaseAddToExistingPhases:
                 "plan",
                 "phase",
                 "add",
-                "NP2",
-                "Nested Phase 2",
+                "--id", "NP2",
+                "--name", "Nested Phase 2",
                 "--plan",
                 str(plan_with_nested_structure),
             ]
@@ -515,7 +515,7 @@ class TestPhaseAddEdgeCases:
                 yaml.dump({"name": "test"}, f)
 
             stdout, stderr, code = cli_runner(
-                ["plan", "phase", "add", "P1", "Test Phase", "--plan", str(plan_dir)]
+                ["plan", "phase", "add", "--id", "P1", "--name", "Test Phase", "--plan", str(plan_dir)]
             )
             assert code != 0
             assert "plan_build.yml not found" in stderr
@@ -527,8 +527,8 @@ class TestPhaseAddEdgeCases:
                 "plan",
                 "phase",
                 "add",
-                "P1-BUILD_V2",
-                "Build Phase V2",
+                "--id", "P1-BUILD_V2",
+                "--name", "Build Phase V2",
                 "--plan",
                 str(empty_plan),
             ]
@@ -544,7 +544,7 @@ class TestPhaseAddEdgeCases:
         import json
 
         stdout, stderr, code = cli_runner(
-            ["-j", "plan", "phase", "add", "P1", "Test Phase", "--plan", str(empty_plan)]
+            ["-j", "plan", "phase", "add", "--id", "P1", "--name", "Test Phase", "--plan", str(empty_plan)]
         )
         assert code == 0
         result = json.loads(stdout)

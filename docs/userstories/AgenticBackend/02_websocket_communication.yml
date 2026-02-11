@@ -1,322 +1,376 @@
-# User Stories: Backend WebSocket Communication
-# Covers real-time bidirectional communication between clients and Claude Code sessions
-
 stories:
-  # ============================================================================
-  # DESKTOP WEBSOCKET CONNECTION
-  # ============================================================================
+- id: US-BACKEND-WS-001
+  title: Desktop WebSocket Connection
+  category: websocket_desktop
+  priority: critical
+  as_a: desktop CLI user
+  i_want: to establish a WebSocket connection using my session_id
+  so_that: I can send and receive real-time messages with paired clients
+  acceptance_criteria:
+  - Desktop connects to GET /ws/desktop/{session_id}
+  - WebSocket connection is accepted if session exists
+  - Connection is rejected with error if session_id is invalid UUID
+  - Connection is rejected if session doesn't exist (404)
+  - Session state transitions to 'desktop_connected' on successful connection
+  - WebSocket is registered with session for message routing
+  related_endpoints:
+  - GET /ws/desktop/{session_id}
+  related_legacy:
+  - modules/legacy/MyAgents/projects/RemoteAgents/src/agent_remote/services/relay/api/websockets.py
+  technical_notes: '- Use FastAPI WebSocket support
 
-  - id: "US-BACKEND-WS-001"
-    title: "Desktop WebSocket Connection"
-    category: "websocket_desktop"
-    priority: "critical"
-    as_a: "desktop CLI user"
-    i_want: "to establish a WebSocket connection using my session_id"
-    so_that: "I can send and receive real-time messages with paired clients"
-    acceptance_criteria:
-      - "Desktop connects to GET /ws/desktop/{session_id}"
-      - "WebSocket connection is accepted if session exists"
-      - "Connection is rejected with error if session_id is invalid UUID"
-      - "Connection is rejected if session doesn't exist (404)"
-      - "Session state transitions to 'desktop_connected' on successful connection"
-      - "WebSocket is registered with session for message routing"
-    related_endpoints:
-      - "GET /ws/desktop/{session_id}"
-    related_legacy:
-      - "modules/legacy/MyAgents/projects/RemoteAgents/src/agent_remote/services/relay/api/websockets.py"
-    technical_notes: |
-      - Use FastAPI WebSocket support
-      - Workflow: RelayWorkflow.handle_desktop_connect()
+    - Workflow: RelayWorkflow.handle_desktop_connect()
 
-  - id: "US-BACKEND-WS-002"
-    title: "Desktop Message Routing"
-    category: "websocket_desktop"
-    priority: "critical"
-    as_a: "desktop CLI user"
-    i_want: "to send messages to paired client via WebSocket"
-    so_that: "I can communicate bidirectionally in real-time"
-    acceptance_criteria:
-      - "Desktop sends EncryptedBlob messages via WebSocket"
-      - "Messages are validated as EncryptedBlob type"
-      - "Messages are routed to paired client if connected"
-      - "Routing errors send Error message back to desktop"
-      - "Non-EncryptedBlob messages are rejected with error"
-      - "Connection stays open on routing failures (client might not be connected yet)"
-    related_endpoints:
-      - "GET /ws/desktop/{session_id}"
-    related_legacy:
-      - "modules/legacy/MyAgents/projects/RemoteAgents/src/agent_remote/services/relay/api/websockets.py"
-    technical_notes: |
-      - Workflow: RelayWorkflow.route_message()
-      - Use PeerRole.DESKTOP for sender identification
+    '
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-BACKEND-WS-002
+  title: Desktop Message Routing
+  category: websocket_desktop
+  priority: critical
+  as_a: desktop CLI user
+  i_want: to send messages to paired client via WebSocket
+  so_that: I can communicate bidirectionally in real-time
+  acceptance_criteria:
+  - Desktop sends EncryptedBlob messages via WebSocket
+  - Messages are validated as EncryptedBlob type
+  - Messages are routed to paired client if connected
+  - Routing errors send Error message back to desktop
+  - Non-EncryptedBlob messages are rejected with error
+  - Connection stays open on routing failures (client might not be connected yet)
+  related_endpoints:
+  - GET /ws/desktop/{session_id}
+  related_legacy:
+  - modules/legacy/MyAgents/projects/RemoteAgents/src/agent_remote/services/relay/api/websockets.py
+  technical_notes: '- Workflow: RelayWorkflow.route_message()
 
-  - id: "US-BACKEND-WS-003"
-    title: "Desktop Disconnect Handling"
-    category: "websocket_desktop"
-    priority: "critical"
-    as_a: "backend service"
-    i_want: "to clean up sessions when desktop disconnects"
-    so_that: "resources are freed and clients are notified"
-    acceptance_criteria:
-      - "WebSocketDisconnect exception triggers cleanup"
-      - "Session is closed and removed from repository"
-      - "Connected client WebSocket is closed gracefully"
-      - "Cleanup is logged for monitoring"
-      - "Errors during cleanup are caught and logged"
-    related_endpoints:
-      - "GET /ws/desktop/{session_id}"
-    technical_notes: |
-      - Use try/finally block for cleanup
-      - Workflow: RelayWorkflow.close_session()
+    - Use PeerRole.DESKTOP for sender identification
 
-  # ============================================================================
-  # CLIENT WEBSOCKET CONNECTION
-  # ============================================================================
+    '
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-BACKEND-WS-003
+  title: Desktop Disconnect Handling
+  category: websocket_desktop
+  priority: critical
+  as_a: backend service
+  i_want: to clean up sessions when desktop disconnects
+  so_that: resources are freed and clients are notified
+  acceptance_criteria:
+  - WebSocketDisconnect exception triggers cleanup
+  - Session is closed and removed from repository
+  - Connected client WebSocket is closed gracefully
+  - Cleanup is logged for monitoring
+  - Errors during cleanup are caught and logged
+  related_endpoints:
+  - GET /ws/desktop/{session_id}
+  technical_notes: '- Use try/finally block for cleanup
 
-  - id: "US-BACKEND-WS-010"
-    title: "Client WebSocket Connection with Pairing"
-    category: "websocket_client"
-    priority: "critical"
-    as_a: "web client user"
-    i_want: "to connect using a pairing code and establish encryption"
-    so_that: "I can communicate securely with the desktop session"
-    acceptance_criteria:
-      - "Client connects to GET /ws/client/{pairing_code}"
-      - "WebSocket connection is accepted if pairing code format is valid"
-      - "Connection is rejected if pairing code format is invalid"
-      - "First message must be SessionPair with client_public_key"
-      - "Workflow pairs client and transitions session to 'paired' state"
-      - "SessionPaired message is sent to both client and desktop"
-      - "SessionPaired includes public keys for E2E encryption setup"
-    related_endpoints:
-      - "GET /ws/client/{pairing_code}"
-    related_legacy:
-      - "modules/legacy/MyAgents/projects/RemoteAgents/src/agent_remote/services/relay/api/websockets.py"
-    technical_notes: |
-      - Workflow: RelayWorkflow.handle_client_pair()
-      - Protocol messages: SessionPair, SessionPaired
+    - Workflow: RelayWorkflow.close_session()
 
-  - id: "US-BACKEND-WS-011"
-    title: "Client Message Routing"
-    category: "websocket_client"
-    priority: "critical"
-    as_a: "web client user"
-    i_want: "to send messages to desktop via WebSocket"
-    so_that: "I can communicate bidirectionally in real-time"
-    acceptance_criteria:
-      - "After pairing, client sends EncryptedBlob messages"
-      - "Messages are validated as EncryptedBlob type"
-      - "Messages are routed to desktop if connected"
-      - "Routing errors send Error message back to client"
-      - "Non-EncryptedBlob messages are rejected with error"
-      - "Connection stays open on routing failures"
-    related_endpoints:
-      - "GET /ws/client/{pairing_code}"
-    technical_notes: |
-      - Workflow: RelayWorkflow.route_message()
-      - Use PeerRole.CLIENT for sender identification
+    '
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-BACKEND-WS-010
+  title: Client WebSocket Connection with Pairing
+  category: websocket_client
+  priority: critical
+  as_a: web client user
+  i_want: to connect using a pairing code and establish encryption
+  so_that: I can communicate securely with the desktop session
+  acceptance_criteria:
+  - Client connects to GET /ws/client/{pairing_code}
+  - WebSocket connection is accepted if pairing code format is valid
+  - Connection is rejected if pairing code format is invalid
+  - First message must be SessionPair with client_public_key
+  - Workflow pairs client and transitions session to 'paired' state
+  - SessionPaired message is sent to both client and desktop
+  - SessionPaired includes public keys for E2E encryption setup
+  related_endpoints:
+  - GET /ws/client/{pairing_code}
+  related_legacy:
+  - modules/legacy/MyAgents/projects/RemoteAgents/src/agent_remote/services/relay/api/websockets.py
+  technical_notes: '- Workflow: RelayWorkflow.handle_client_pair()
 
-  - id: "US-BACKEND-WS-012"
-    title: "Client Disconnect Handling"
-    category: "websocket_client"
-    priority: "critical"
-    as_a: "backend service"
-    i_want: "to clean up sessions when client disconnects"
-    so_that: "resources are freed and desktop is notified"
-    acceptance_criteria:
-      - "WebSocketDisconnect exception triggers cleanup"
-      - "Session is closed and removed from repository"
-      - "Connected desktop WebSocket is closed gracefully"
-      - "Cleanup only happens if pairing completed"
-      - "Cleanup is logged for monitoring"
-    related_endpoints:
-      - "GET /ws/client/{pairing_code}"
+    - Protocol messages: SessionPair, SessionPaired
 
-  - id: "US-BACKEND-WS-013"
-    title: "Pairing Error Handling"
-    category: "websocket_client"
-    priority: "high"
-    as_a: "web client user"
-    i_want: "to receive clear errors if pairing fails"
-    so_that: "I know whether to retry or use a different code"
-    acceptance_criteria:
-      - "Invalid pairing code returns Error with code ERROR_PAIRING_CODE_INVALID"
-      - "Expired session returns Error with code ERROR_SESSION_EXPIRED"
-      - "Already paired session returns Error with code ERROR_SESSION_ALREADY_PAIRED"
-      - "Missing SessionPair message returns Error with code ERROR_INVALID_MESSAGE"
-      - "Error messages are sent before closing WebSocket"
-    related_legacy:
-      - "modules/legacy/MyAgents/projects/RemoteAgents/src/agent_remote/shared/protocol/relay_messages.py"
-    technical_notes: |
-      - Define error codes as constants
-      - Use WebSocketManager.close() for error + close
+    '
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-BACKEND-WS-011
+  title: Client Message Routing
+  category: websocket_client
+  priority: critical
+  as_a: web client user
+  i_want: to send messages to desktop via WebSocket
+  so_that: I can communicate bidirectionally in real-time
+  acceptance_criteria:
+  - After pairing, client sends EncryptedBlob messages
+  - Messages are validated as EncryptedBlob type
+  - Messages are routed to desktop if connected
+  - Routing errors send Error message back to client
+  - Non-EncryptedBlob messages are rejected with error
+  - Connection stays open on routing failures
+  related_endpoints:
+  - GET /ws/client/{pairing_code}
+  technical_notes: '- Workflow: RelayWorkflow.route_message()
 
-  # ============================================================================
-  # WEBSOCKET LIFECYCLE
-  # ============================================================================
+    - Use PeerRole.CLIENT for sender identification
 
-  - id: "US-BACKEND-WS-020"
-    title: "WebSocket Keepalive"
-    category: "websocket_lifecycle"
-    priority: "high"
-    as_a: "backend service"
-    i_want: "to send periodic keepalive pings"
-    so_that: "I can detect stale connections and prevent proxy timeouts"
-    acceptance_criteria:
-      - "Keepalive task sends ping every 30 seconds"
-      - "Keepalive runs in background asyncio task"
-      - "Task is cancelled on WebSocket disconnect"
-      - "Failed ping triggers disconnect and cleanup"
-      - "Keepalive is started after connection acceptance"
-    related_legacy:
-      - "modules/legacy/MyAgents/projects/RemoteAgents/src/agent_remote/services/relay/infrastructure/websocket_manager.py"
-    technical_notes: |
-      - Use asyncio.create_task()
-      - WebSocketManager.start_keepalive()
+    '
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-BACKEND-WS-012
+  title: Client Disconnect Handling
+  category: websocket_client
+  priority: critical
+  as_a: backend service
+  i_want: to clean up sessions when client disconnects
+  so_that: resources are freed and desktop is notified
+  acceptance_criteria:
+  - WebSocketDisconnect exception triggers cleanup
+  - Session is closed and removed from repository
+  - Connected desktop WebSocket is closed gracefully
+  - Cleanup only happens if pairing completed
+  - Cleanup is logged for monitoring
+  related_endpoints:
+  - GET /ws/client/{pairing_code}
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-BACKEND-WS-013
+  title: Pairing Error Handling
+  category: websocket_client
+  priority: high
+  as_a: web client user
+  i_want: to receive clear errors if pairing fails
+  so_that: I know whether to retry or use a different code
+  acceptance_criteria:
+  - Invalid pairing code returns Error with code ERROR_PAIRING_CODE_INVALID
+  - Expired session returns Error with code ERROR_SESSION_EXPIRED
+  - Already paired session returns Error with code ERROR_SESSION_ALREADY_PAIRED
+  - Missing SessionPair message returns Error with code ERROR_INVALID_MESSAGE
+  - Error messages are sent before closing WebSocket
+  related_legacy:
+  - modules/legacy/MyAgents/projects/RemoteAgents/src/agent_remote/shared/protocol/relay_messages.py
+  technical_notes: '- Define error codes as constants
 
-  - id: "US-BACKEND-WS-021"
-    title: "WebSocket Connection Registry"
-    category: "websocket_lifecycle"
-    priority: "high"
-    as_a: "backend service"
-    i_want: "to maintain a registry of active WebSocket connections"
-    so_that: "I can route messages and monitor connection status"
-    acceptance_criteria:
-      - "WebSocketManager tracks all active connections"
-      - "Connections are indexed by session_id"
-      - "Registry supports lookup by session_id for routing"
-      - "Registry is updated on connect and disconnect"
-      - "Registry can be queried for health checks"
-    technical_notes: |
-      - Implement WebSocketManager.register/unregister()
-      - Store in-memory dict of session_id -> WebSocket
+    - Use WebSocketManager.close() for error + close
 
-  - id: "US-BACKEND-WS-022"
-    title: "Graceful WebSocket Shutdown"
-    category: "websocket_lifecycle"
-    priority: "medium"
-    as_a: "backend service"
-    i_want: "to close all WebSockets gracefully during shutdown"
-    so_that: "clients receive proper disconnect notifications"
-    acceptance_criteria:
-      - "FastAPI lifespan shutdown event triggers close_all()"
-      - "All registered WebSockets are closed with reason 'server_shutdown'"
-      - "Shutdown waits up to 5 seconds for graceful close"
-      - "Sessions are cleaned up during shutdown"
-      - "Shutdown completes even if individual closes fail"
-    technical_notes: |
-      - Use FastAPI lifespan context manager
-      - Implement WebSocketManager.close_all()
+    '
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-BACKEND-WS-020
+  title: WebSocket Keepalive
+  category: websocket_lifecycle
+  priority: high
+  as_a: backend service
+  i_want: to send periodic keepalive pings
+  so_that: I can detect stale connections and prevent proxy timeouts
+  acceptance_criteria:
+  - Keepalive task sends ping every 30 seconds
+  - Keepalive runs in background asyncio task
+  - Task is cancelled on WebSocket disconnect
+  - Failed ping triggers disconnect and cleanup
+  - Keepalive is started after connection acceptance
+  related_legacy:
+  - modules/legacy/MyAgents/projects/RemoteAgents/src/agent_remote/services/relay/infrastructure/websocket_manager.py
+  technical_notes: '- Use asyncio.create_task()
 
-  # ============================================================================
-  # MESSAGE PROTOCOL
-  # ============================================================================
+    - WebSocketManager.start_keepalive()
 
-  - id: "US-BACKEND-WS-030"
-    title: "Message Type Validation"
-    category: "message_protocol"
-    priority: "critical"
-    as_a: "backend service"
-    i_want: "to validate message types at WebSocket boundary"
-    so_that: "only valid protocol messages are processed"
-    acceptance_criteria:
-      - "All messages are validated against protocol schema"
-      - "EncryptedBlob messages have: type, nonce (base64), ciphertext (base64)"
-      - "SessionPair messages have: type, client_public_key (bytes)"
-      - "Error messages have: type, code, message"
-      - "Invalid JSON returns Error with code ERROR_INVALID_MESSAGE"
-      - "Unknown message types return Error"
-    related_legacy:
-      - "modules/legacy/MyAgents/projects/RemoteAgents/src/agent_remote/shared/protocol/"
-    technical_notes: |
-      - Use Pydantic models for message validation
-      - BaseMessage with discriminated union for type field
+    '
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-BACKEND-WS-021
+  title: WebSocket Connection Registry
+  category: websocket_lifecycle
+  priority: high
+  as_a: backend service
+  i_want: to maintain a registry of active WebSocket connections
+  so_that: I can route messages and monitor connection status
+  acceptance_criteria:
+  - WebSocketManager tracks all active connections
+  - Connections are indexed by session_id
+  - Registry supports lookup by session_id for routing
+  - Registry is updated on connect and disconnect
+  - Registry can be queried for health checks
+  technical_notes: '- Implement WebSocketManager.register/unregister()
 
-  - id: "US-BACKEND-WS-031"
-    title: "Message Serialization"
-    category: "message_protocol"
-    priority: "high"
-    as_a: "backend service"
-    i_want: "to serialize messages consistently"
-    so_that: "all clients can parse messages reliably"
-    acceptance_criteria:
-      - "Messages are sent as JSON"
-      - "Bytes fields are base64-encoded"
-      - "Type field uses snake_case convention"
-      - "Timestamps are ISO 8601 format"
-      - "Null fields are omitted from JSON"
-    technical_notes: |
-      - Use Pydantic model_dump(exclude_none=True)
-      - Custom serializers for bytes -> base64
+    - Store in-memory dict of session_id -> WebSocket
 
-  - id: "US-BACKEND-WS-032"
-    title: "Bidirectional Message Flow"
-    category: "message_protocol"
-    priority: "critical"
-    as_a: "backend service"
-    i_want: "to route messages bidirectionally between desktop and client"
-    so_that: "both peers can communicate without polling"
-    acceptance_criteria:
-      - "Desktop -> Client routing works immediately after pairing"
-      - "Client -> Desktop routing works immediately after pairing"
-      - "Messages are delivered in order (FIFO)"
-      - "Failed delivery to one peer doesn't block the other"
-      - "Both peers can send simultaneously (no locking)"
-    technical_notes: |
-      - Use async send to avoid blocking
-      - Session stores references to both WebSockets
+    '
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-BACKEND-WS-022
+  title: Graceful WebSocket Shutdown
+  category: websocket_lifecycle
+  priority: medium
+  as_a: backend service
+  i_want: to close all WebSockets gracefully during shutdown
+  so_that: clients receive proper disconnect notifications
+  acceptance_criteria:
+  - FastAPI lifespan shutdown event triggers close_all()
+  - All registered WebSockets are closed with reason 'server_shutdown'
+  - Shutdown waits up to 5 seconds for graceful close
+  - Sessions are cleaned up during shutdown
+  - Shutdown completes even if individual closes fail
+  technical_notes: '- Use FastAPI lifespan context manager
 
-  # ============================================================================
-  # MONITORING AND DEBUGGING
-  # ============================================================================
+    - Implement WebSocketManager.close_all()
 
-  - id: "US-BACKEND-WS-040"
-    title: "WebSocket Connection Metrics"
-    category: "monitoring"
-    priority: "medium"
-    as_a: "administrator"
-    i_want: "to see metrics about WebSocket connections"
-    so_that: "I can monitor system health and capacity"
-    acceptance_criteria:
-      - "GET /api/metrics/websockets returns connection stats"
-      - "Stats include: total_connections, desktop_connections, client_connections"
-      - "Stats include: messages_sent, messages_received, errors"
-      - "Stats are updated in real-time"
-      - "Stats can be reset for testing"
-    related_endpoints:
-      - "GET /api/metrics/websockets"
+    '
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-BACKEND-WS-030
+  title: Message Type Validation
+  category: message_protocol
+  priority: critical
+  as_a: backend service
+  i_want: to validate message types at WebSocket boundary
+  so_that: only valid protocol messages are processed
+  acceptance_criteria:
+  - All messages are validated against protocol schema
+  - 'EncryptedBlob messages have: type, nonce (base64), ciphertext (base64)'
+  - 'SessionPair messages have: type, client_public_key (bytes)'
+  - 'Error messages have: type, code, message'
+  - Invalid JSON returns Error with code ERROR_INVALID_MESSAGE
+  - Unknown message types return Error
+  related_legacy:
+  - modules/legacy/MyAgents/projects/RemoteAgents/src/agent_remote/shared/protocol/
+  technical_notes: '- Use Pydantic models for message validation
 
-  - id: "US-BACKEND-WS-041"
-    title: "Connection Logging"
-    category: "monitoring"
-    priority: "medium"
-    as_a: "developer"
-    i_want: "to see detailed logs of WebSocket lifecycle events"
-    so_that: "I can debug connection issues"
-    acceptance_criteria:
-      - "Log: WebSocket connection accepted (session_id, peer_role)"
-      - "Log: WebSocket pairing completed (session_id, client_public_key)"
-      - "Log: Message routed (session_id, sender, type)"
-      - "Log: WebSocket disconnected (session_id, reason)"
-      - "Log: Errors with full context (session_id, error, stack trace)"
-      - "Logs use structured format (JSON) for parsing"
-    technical_notes: |
-      - Use Python logging with JSON formatter
-      - Include session_id in all log records
+    - BaseMessage with discriminated union for type field
 
-  - id: "US-BACKEND-WS-042"
-    title: "Message Tracing"
-    category: "monitoring"
-    priority: "low"
-    as_a: "developer"
-    i_want: "to trace individual messages through the relay"
-    so_that: "I can debug routing issues and performance"
-    acceptance_criteria:
-      - "Each message gets a trace_id (UUID)"
-      - "Trace ID is logged on receive, route, and send"
-      - "Optional header includes trace_id in message metadata"
-      - "Tracing can be enabled per-session for debugging"
-      - "Tracing adds minimal overhead (<1ms per message)"
-    technical_notes: |
-      - Store trace_id in message metadata
-      - Use context vars for async trace propagation
+    '
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-BACKEND-WS-031
+  title: Message Serialization
+  category: message_protocol
+  priority: high
+  as_a: backend service
+  i_want: to serialize messages consistently
+  so_that: all clients can parse messages reliably
+  acceptance_criteria:
+  - Messages are sent as JSON
+  - Bytes fields are base64-encoded
+  - Type field uses snake_case convention
+  - Timestamps are ISO 8601 format
+  - Null fields are omitted from JSON
+  technical_notes: '- Use Pydantic model_dump(exclude_none=True)
+
+    - Custom serializers for bytes -> base64
+
+    '
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-BACKEND-WS-032
+  title: Bidirectional Message Flow
+  category: message_protocol
+  priority: critical
+  as_a: backend service
+  i_want: to route messages bidirectionally between desktop and client
+  so_that: both peers can communicate without polling
+  acceptance_criteria:
+  - Desktop -> Client routing works immediately after pairing
+  - Client -> Desktop routing works immediately after pairing
+  - Messages are delivered in order (FIFO)
+  - Failed delivery to one peer doesn't block the other
+  - Both peers can send simultaneously (no locking)
+  technical_notes: '- Use async send to avoid blocking
+
+    - Session stores references to both WebSockets
+
+    '
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-BACKEND-WS-040
+  title: WebSocket Connection Metrics
+  category: monitoring
+  priority: medium
+  as_a: administrator
+  i_want: to see metrics about WebSocket connections
+  so_that: I can monitor system health and capacity
+  acceptance_criteria:
+  - GET /api/metrics/websockets returns connection stats
+  - 'Stats include: total_connections, desktop_connections, client_connections'
+  - 'Stats include: messages_sent, messages_received, errors'
+  - Stats are updated in real-time
+  - Stats can be reset for testing
+  related_endpoints:
+  - GET /api/metrics/websockets
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-BACKEND-WS-041
+  title: Connection Logging
+  category: monitoring
+  priority: medium
+  as_a: developer
+  i_want: to see detailed logs of WebSocket lifecycle events
+  so_that: I can debug connection issues
+  acceptance_criteria:
+  - 'Log: WebSocket connection accepted (session_id, peer_role)'
+  - 'Log: WebSocket pairing completed (session_id, client_public_key)'
+  - 'Log: Message routed (session_id, sender, type)'
+  - 'Log: WebSocket disconnected (session_id, reason)'
+  - 'Log: Errors with full context (session_id, error, stack trace)'
+  - Logs use structured format (JSON) for parsing
+  technical_notes: '- Use Python logging with JSON formatter
+
+    - Include session_id in all log records
+
+    '
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-BACKEND-WS-042
+  title: Message Tracing
+  category: monitoring
+  priority: low
+  as_a: developer
+  i_want: to trace individual messages through the relay
+  so_that: I can debug routing issues and performance
+  acceptance_criteria:
+  - Each message gets a trace_id (UUID)
+  - Trace ID is logged on receive, route, and send
+  - Optional header includes trace_id in message metadata
+  - Tracing can be enabled per-session for debugging
+  - Tracing adds minimal overhead (<1ms per message)
+  technical_notes: '- Store trace_id in message metadata
+
+    - Use context vars for async trace propagation
+
+    '
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null

@@ -27,8 +27,12 @@ def handle(args, ctx=None):
         cmd_report(args)
     elif args.stories_command == "untested":
         cmd_untested(args)
+    elif args.stories_command == "batch-update":
+        cmd_batch_update(args)
+    elif args.stories_command == "affected":
+        cmd_affected(args)
     else:
-        print("Usage: agentic stories [find|init|cat|status|update|report|untested]", file=sys.stderr)
+        print("Usage: agentic stories [find|init|cat|status|update|report|untested|batch-update|affected]", file=sys.stderr)
         sys.exit(1)
 
 
@@ -572,7 +576,7 @@ def cmd_report(args):
     stories = _collect_all_stories(project_filter=project_filter)
 
     # Tally
-    counts = {"pass": 0, "fail": 0, "skip": 0, "untested": 0}
+    counts = {"pass": 0, "fail": 0, "skip": 0, "regression": 0, "untested": 0}
     for s in stories:
         ts = s.get("test_status", "untested")
         if ts in counts:
@@ -588,6 +592,7 @@ def cmd_report(args):
             "pass": counts["pass"],
             "fail": counts["fail"],
             "skip": counts["skip"],
+            "regression": counts["regression"],
             "untested": counts["untested"],
             "project_filter": project_filter,
         })
@@ -598,11 +603,12 @@ def cmd_report(args):
         title += f" (project: {project_filter})"
     print_header(title)
 
-    console.print(f"  [green]Pass:[/green]     {counts['pass']}")
-    console.print(f"  [red]Fail:[/red]     {counts['fail']}")
-    console.print(f"  [yellow]Skip:[/yellow]     {counts['skip']}")
-    console.print(f"  [dim]Untested:[/dim] {counts['untested']}")
-    console.print(f"  [bold]Total:[/bold]    {total}")
+    console.print(f"  [green]Pass:[/green]       {counts['pass']}")
+    console.print(f"  [red]Fail:[/red]       {counts['fail']}")
+    console.print(f"  [red]Regression:[/red] {counts['regression']}")
+    console.print(f"  [yellow]Skip:[/yellow]       {counts['skip']}")
+    console.print(f"  [dim]Untested:[/dim]   {counts['untested']}")
+    console.print(f"  [bold]Total:[/bold]      {total}")
 
     if total > 0:
         pct = (counts["pass"] / total) * 100
@@ -649,3 +655,183 @@ def cmd_untested(args):
             console.print(f"    [cyan]{s['id']}[/cyan]: {title}")
 
     console.print(f"\n  [bold]Total untested:[/bold] {len(untested)}")
+
+
+def _find_affected_story_ids(plan_folder: str) -> list[str]:
+    """Find affected story IDs for a plan by reading plan YAML files.
+
+    Searches plan_build.yml, plan_test.yml, and user_stories.yml for
+    affected_stories lists.
+    """
+    plan_dir = None
+    for base in [Path.cwd() / "docs" / "plans" / "live",
+                 Path.cwd() / "docs" / "plans" / "completed"]:
+        candidate = base / plan_folder
+        if candidate.exists():
+            plan_dir = candidate
+            break
+
+    if not plan_dir:
+        return []
+
+    story_ids = []
+    # Check plan_build.yml, plan_test.yml, user_stories.yml
+    for filename in ["plan_build.yml", "plan_test.yml", "user_stories.yml"]:
+        f = plan_dir / filename
+        if not f.exists():
+            continue
+        try:
+            content = yaml.safe_load(f.read_text())
+        except yaml.YAMLError:
+            continue
+        if not content or not isinstance(content, dict):
+            continue
+        affected = content.get("affected_stories", [])
+        if isinstance(affected, list):
+            for item in affected:
+                # Items may be plain IDs or "ID: description" strings
+                sid = str(item).split(":")[0].strip().strip('"').strip("'")
+                if sid and sid not in story_ids:
+                    story_ids.append(sid)
+
+    return story_ids
+
+
+def cmd_batch_update(args):
+    """Update all affected stories in a plan at once."""
+    from agenticcli.console import console, is_json_output, print_error, print_json, print_success
+
+    plan_folder = args.plan
+    story_ids = _find_affected_story_ids(plan_folder)
+
+    if not story_ids:
+        if is_json_output():
+            print_json({"error": f"No affected_stories found for plan: {plan_folder}"})
+        else:
+            print_error(f"No affected_stories found for plan: {plan_folder}")
+        sys.exit(1)
+
+    updated = []
+    errors = []
+    now = datetime.now(timezone.utc).isoformat()
+
+    for story_id in story_ids:
+        story_file = _find_story_file_by_id(story_id)
+        if not story_file:
+            errors.append({"id": story_id, "error": "Story not found"})
+            continue
+
+        try:
+            content = yaml.safe_load(story_file.read_text())
+        except yaml.YAMLError:
+            errors.append({"id": story_id, "error": "YAML parse error"})
+            continue
+
+        if not content or not isinstance(content, dict):
+            errors.append({"id": story_id, "error": "Invalid file"})
+            continue
+
+        found = False
+        for key in ("stories", "user_stories"):
+            items = content.get(key, [])
+            if not isinstance(items, list):
+                continue
+            for story in items:
+                if isinstance(story, dict) and story.get("id") == story_id:
+                    story["test_status"] = args.status
+                    story["last_tested"] = now
+                    story["tested_by_plan"] = plan_folder
+                    if args.notes:
+                        story["test_notes"] = args.notes
+                    found = True
+                    break
+            if found:
+                break
+
+        if found:
+            story_file.write_text(yaml.dump(content, sort_keys=False, default_flow_style=False))
+            updated.append(story_id)
+        else:
+            errors.append({"id": story_id, "error": "ID not found in file"})
+
+    if is_json_output():
+        print_json({
+            "plan": plan_folder,
+            "status": args.status,
+            "updated": updated,
+            "errors": errors,
+            "count": len(updated),
+        })
+        return
+
+    if updated:
+        print_success(f"Updated {len(updated)} stories to {args.status}")
+        for sid in updated:
+            console.print(f"  [green]{sid}[/green]")
+
+    if errors:
+        for err in errors:
+            console.print(f"  [red]{err['id']}[/red]: {err['error']}")
+
+
+def cmd_affected(args):
+    """List affected stories for a plan with their test status."""
+    from agenticcli.console import console, is_json_output, print_error, print_header, print_json
+
+    plan_folder = args.plan
+    story_ids = _find_affected_story_ids(plan_folder)
+
+    if not story_ids:
+        if is_json_output():
+            print_json({"error": f"No affected_stories found for plan: {plan_folder}"})
+        else:
+            print_error(f"No affected_stories found for plan: {plan_folder}")
+        sys.exit(1)
+
+    results = []
+    for story_id in story_ids:
+        story_file = _find_story_file_by_id(story_id)
+        if not story_file:
+            results.append({"id": story_id, "title": "(not found)", "test_status": "unknown", "file": None})
+            continue
+
+        story, _ = _find_story_in_file(story_file, story_id)
+        if story:
+            results.append({
+                "id": story_id,
+                "title": story.get("title", story.get("name", "")),
+                "test_status": story.get("test_status", "untested"),
+                "last_tested": story.get("last_tested"),
+                "tested_by_plan": story.get("tested_by_plan"),
+                "file": str(story_file),
+            })
+        else:
+            results.append({"id": story_id, "title": "(not found)", "test_status": "unknown", "file": str(story_file)})
+
+    if is_json_output():
+        print_json({
+            "plan": plan_folder,
+            "affected_stories": results,
+            "count": len(results),
+        })
+        return
+
+    print_header(f"Affected Stories: {plan_folder}")
+
+    for r in results:
+        ts = r["test_status"]
+        if ts == "pass":
+            status_str = "[green]pass[/green]"
+        elif ts == "fail":
+            status_str = "[red]fail[/red]"
+        elif ts == "regression":
+            status_str = "[red]regression[/red]"
+        elif ts == "skip":
+            status_str = "[yellow]skip[/yellow]"
+        else:
+            status_str = f"[dim]{ts}[/dim]"
+
+        title = r.get("title", "")[:50]
+        console.print(f"  [cyan]{r['id']}[/cyan]: {title} [{status_str}]")
+
+    console.print(f"\n  [bold]Total:[/bold] {len(results)} affected stories")

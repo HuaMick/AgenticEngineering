@@ -412,3 +412,215 @@ class TestMigrationScript:
 
         # File should be unchanged
         assert story_file.read_text() == original_text
+
+
+class TestStoriesUpdateRegression:
+    """Tests for regression status support."""
+
+    def test_update_regression(self, cli_runner, userstories_dir):
+        """Test updating a story to regression status."""
+        stdout, stderr, code = cli_runner([
+            "stories", "update", "US-TEST-001", "--status", "regression"
+        ])
+        assert code == 0
+        assert "Updated" in stdout
+
+        content = yaml.safe_load(
+            (userstories_dir / "TestProject" / "01_tests.yml").read_text()
+        )
+        story = next(s for s in content["stories"] if s["id"] == "US-TEST-001")
+        assert story["test_status"] == "regression"
+        assert story["last_tested"] is not None
+
+    def test_report_includes_regression(self, cli_runner, userstories_dir):
+        """Test that report includes regression count."""
+        # First set a story to regression
+        cli_runner([
+            "stories", "update", "US-TEST-001", "--status", "regression"
+        ])
+
+        stdout, stderr, code = cli_runner(["stories", "report"])
+        assert code == 0
+        assert "Regression" in stdout
+
+    def test_report_json_includes_regression(self, cli_runner, userstories_dir):
+        """Test that JSON report includes regression count."""
+        cli_runner([
+            "stories", "update", "US-TEST-001", "--status", "regression"
+        ])
+
+        stdout, stderr, code = cli_runner(["--json", "stories", "report"])
+        assert code == 0
+        data = json.loads(stdout)
+        assert "regression" in data
+        assert data["regression"] == 1
+
+
+class TestStoriesBatchUpdate:
+    """Tests for 'agentic stories batch-update' command."""
+
+    @pytest.fixture
+    def plan_with_stories(self, userstories_dir):
+        """Create a plan with affected_stories referencing test stories."""
+        temp_repo = userstories_dir.parent.parent
+        plan_dir = temp_repo / "docs" / "plans" / "live" / "260210XX_test_plan"
+        plan_dir.mkdir(parents=True, exist_ok=True)
+
+        plan_build = {
+            "description": "Test plan",
+            "affected_stories": ["US-TEST-001", "US-TEST-002"],
+        }
+        (plan_dir / "plan_build.yml").write_text(
+            yaml.dump(plan_build, sort_keys=False)
+        )
+        return plan_dir
+
+    def test_batch_update_help(self, cli_runner):
+        """Test batch-update --help."""
+        stdout, stderr, code = cli_runner(["stories", "batch-update", "--help"])
+        assert code == 0
+        assert "batch-update" in stdout.lower() or "batch" in stdout.lower()
+
+    def test_batch_update_pass(self, cli_runner, plan_with_stories, userstories_dir):
+        """Test batch updating all affected stories to pass."""
+        stdout, stderr, code = cli_runner([
+            "stories", "batch-update",
+            "--plan", "260210XX_test_plan",
+            "--status", "pass",
+        ])
+        assert code == 0
+        assert "Updated 2 stories" in stdout
+
+        # Verify both stories were updated
+        content = yaml.safe_load(
+            (userstories_dir / "TestProject" / "01_tests.yml").read_text()
+        )
+        for story in content["stories"]:
+            if story["id"] in ("US-TEST-001", "US-TEST-002"):
+                assert story["test_status"] == "pass"
+                assert story["tested_by_plan"] == "260210XX_test_plan"
+                assert story["last_tested"] is not None
+
+    def test_batch_update_with_notes(self, cli_runner, plan_with_stories, userstories_dir):
+        """Test batch update with notes."""
+        stdout, stderr, code = cli_runner([
+            "stories", "batch-update",
+            "--plan", "260210XX_test_plan",
+            "--status", "pass",
+            "--notes", "All passed via batch",
+        ])
+        assert code == 0
+
+        content = yaml.safe_load(
+            (userstories_dir / "TestProject" / "01_tests.yml").read_text()
+        )
+        story = next(s for s in content["stories"] if s["id"] == "US-TEST-001")
+        assert story["test_notes"] == "All passed via batch"
+
+    def test_batch_update_no_stories(self, cli_runner, userstories_dir):
+        """Test batch update when plan has no affected_stories."""
+        # Create plan without affected_stories
+        temp_repo = userstories_dir.parent.parent
+        plan_dir = temp_repo / "docs" / "plans" / "live" / "260210YY_empty"
+        plan_dir.mkdir(parents=True, exist_ok=True)
+        (plan_dir / "plan_build.yml").write_text(
+            yaml.dump({"description": "Empty"}, sort_keys=False)
+        )
+
+        stdout, stderr, code = cli_runner([
+            "stories", "batch-update",
+            "--plan", "260210YY_empty",
+            "--status", "pass",
+        ])
+        assert code == 1
+
+    def test_batch_update_json(self, cli_runner, plan_with_stories, userstories_dir):
+        """Test batch update with JSON output."""
+        stdout, stderr, code = cli_runner([
+            "--json", "stories", "batch-update",
+            "--plan", "260210XX_test_plan",
+            "--status", "pass",
+        ])
+        assert code == 0
+        data = json.loads(stdout)
+        assert data["count"] == 2
+        assert "US-TEST-001" in data["updated"]
+        assert "US-TEST-002" in data["updated"]
+        assert data["plan"] == "260210XX_test_plan"
+
+    def test_batch_update_nonexistent_plan(self, cli_runner, userstories_dir):
+        """Test batch update with plan that doesn't exist."""
+        stdout, stderr, code = cli_runner([
+            "stories", "batch-update",
+            "--plan", "nonexistent_plan",
+            "--status", "pass",
+        ])
+        assert code == 1
+
+
+class TestStoriesAffected:
+    """Tests for 'agentic stories affected' command."""
+
+    @pytest.fixture
+    def plan_with_stories(self, userstories_dir):
+        """Create a plan with affected_stories referencing test stories."""
+        temp_repo = userstories_dir.parent.parent
+        plan_dir = temp_repo / "docs" / "plans" / "live" / "260210XX_test_plan"
+        plan_dir.mkdir(parents=True, exist_ok=True)
+
+        plan_build = {
+            "description": "Test plan",
+            "affected_stories": ["US-TEST-001", "US-TEST-002"],
+        }
+        (plan_dir / "plan_build.yml").write_text(
+            yaml.dump(plan_build, sort_keys=False)
+        )
+        return plan_dir
+
+    def test_affected_help(self, cli_runner):
+        """Test stories affected --help."""
+        stdout, stderr, code = cli_runner(["stories", "affected", "--help"])
+        assert code == 0
+
+    def test_affected_basic(self, cli_runner, plan_with_stories, userstories_dir):
+        """Test listing affected stories for a plan."""
+        stdout, stderr, code = cli_runner([
+            "stories", "affected", "--plan", "260210XX_test_plan"
+        ])
+        assert code == 0
+        assert "US-TEST-001" in stdout
+        assert "US-TEST-002" in stdout
+
+    def test_affected_json(self, cli_runner, plan_with_stories, userstories_dir):
+        """Test affected with JSON output."""
+        stdout, stderr, code = cli_runner([
+            "--json", "stories", "affected", "--plan", "260210XX_test_plan"
+        ])
+        assert code == 0
+        data = json.loads(stdout)
+        assert data["count"] == 2
+        assert data["plan"] == "260210XX_test_plan"
+        ids = [s["id"] for s in data["affected_stories"]]
+        assert "US-TEST-001" in ids
+        assert "US-TEST-002" in ids
+        # Check test_status is included
+        for s in data["affected_stories"]:
+            assert "test_status" in s
+
+    def test_affected_no_plan(self, cli_runner, userstories_dir):
+        """Test affected with nonexistent plan."""
+        stdout, stderr, code = cli_runner([
+            "stories", "affected", "--plan", "nonexistent_plan"
+        ])
+        assert code == 1
+
+    def test_affected_shows_test_status(self, cli_runner, plan_with_stories, userstories_dir):
+        """Test that affected shows current test_status from story files."""
+        # US-TEST-001 has test_status=pass in the fixture
+        stdout, stderr, code = cli_runner([
+            "--json", "stories", "affected", "--plan", "260210XX_test_plan"
+        ])
+        assert code == 0
+        data = json.loads(stdout)
+        story_001 = next(s for s in data["affected_stories"] if s["id"] == "US-TEST-001")
+        assert story_001["test_status"] == "pass"

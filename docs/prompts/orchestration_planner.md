@@ -20,6 +20,9 @@ agentic --json plan list
 
 # 4. Check specific plan status (positional argument, not --plan flag)
 agentic --json plan status <folder>
+
+# 5. Get current task
+agentic --json plan task current
 ```
 
 ---
@@ -50,6 +53,11 @@ Before determining phases for any plan, discover affected user stories:
 ```bash
 # Discover stories related to the plan's objective
 agentic --json stories find --project <relevant_project>
+
+# Additional story commands available:
+agentic stories status <story_id>        # Check test status for a story
+agentic stories report --project <name>  # Pass/fail/untested summary
+agentic stories untested --project <name> # Stories needing validation
 ```
 
 - Record `affected_stories` in plan metadata
@@ -73,10 +81,22 @@ agentic --json stories find --project <relevant_project>
    - Spawn `planner-reviewer` agent with plan folder path
    - If rejected: Fix issues (max 3 iterations)
 
-4. **Generate MMD** — directly or via CLI session:
-   - For straightforward plans, the orchestrator can write the MMD itself
-   - For complex plans, spawn via CLI: `agentic session spawn --role planner-orchestration --plan <folder> -b`
+4. **Generate MMD** — directly or via CLI:
+
+   **Option A: Use CLI orchestration generate command:**
+   ```bash
+   agentic plan orchestration generate --plan <folder>
+   ```
+
+   **Option B: Spawn via CLI session (for complex plans):**
+   ```bash
+   agentic session spawn --role planner-orchestration --plan <folder> -b
+   ```
+
+   **Option C: Write the MMD directly** (for straightforward plans)
+
    - The MMD must include AGENT_ROUTING metadata mapping phases to agent types
+   - Validate after generation: `agentic plan orchestration validate --plan <folder>`
    - If failed: Retry (max 3 attempts), then escalate
 
 ### Step 3: Approval Gate
@@ -104,12 +124,12 @@ Repeat for each plan. When all plans have orchestration MMDs, output completion 
 | Generic Type | Specific Agents |
 |--------------|-----------------|
 | builder | build-python, build-flutter |
-| tester | test-runner, test-builder, test-guidance-simulator, test-user-simulator, test-service, test-audit |
+| tester | test-runner, test-builder, test-guidance-simulator, test-user-simulator, test-service |
 | deployer | deploy-cicd, deploy-worktree |
 | teacher | teacher-update-guidance, teacher-update-assets, teacher-trace-diagnostics |
 | cleaner | planner-cleaning |
 | auditor | test-audit, test-final-output |
-| planner | planner-build, planner-test, planner-reviewer, planner-orchestration, planner-guidance, planner-guidance-testing |
+| planner | planner-build, planner-test, planner-reviewer, planner-orchestration, planner-guidance, planner-guidance-testing, planner-audit |
 
 ---
 
@@ -145,12 +165,44 @@ If ANY command fails:
 
 ---
 
+## PLAN MANAGEMENT COMMANDS
+
+### Phase Management
+```bash
+agentic plan phase list --plan <folder>                          # List all phases
+agentic plan phase add --id P3 --name "Testing" --plan <folder>  # Add a new phase
+agentic plan phase update P1 --status completed --plan <folder>  # Update phase status
+```
+
+### Task Management
+```bash
+agentic plan task list --plan <folder>                           # List all tasks
+agentic plan task current --plan <folder>                        # Get next task to work on
+agentic plan task add "Description" --plan <folder> --phase P1   # Add new task
+agentic plan task status <task_id> --plan <folder>               # Detailed task status
+```
+
+### Orchestration MMD
+```bash
+agentic plan orchestration generate --plan <folder>              # Generate MMD from plan YAML
+agentic plan orchestration validate --plan <folder>              # Validate MMD against plan
+```
+
+### Plan Validation
+```bash
+agentic plan validate <path>                                     # Validate plan structure
+agentic plan validate <path> --strict --check-fences             # Strict validation with fences
+```
+
+---
+
 ## CRITICAL RULES
 
 ### HITL Question Queue
 If spawned planners need clarification, they may create blocking questions:
 - Check: `agentic question list --plan <folder>`
-- Answer: `agentic question answer <question_id>`
+- Show: `agentic question show <question_id> --plan <folder>`
+- Answer: `agentic question answer <question_id> --text "answer"`
 - Defer: `agentic question defer <question_id>`
 Questions block task completion until answered.
 
@@ -159,10 +211,64 @@ Questions block task completion until answered.
 - Record `affected_stories` or `no_stories_rationale` in plan metadata
 - Story context must be available for planner-build and planner-test agents
 
-### Never Bypass the CLI
-- If `agentic` commands fail, DO NOT work around them manually
-- STOP and diagnose the issue
-- The CLI is the source of truth - if it's broken, fix it first
+### DOGFOOD RULE — CLI Error Recovery Protocol
+
+**CRITICAL: When any CLI issue is encountered during planning, you MUST follow this protocol immediately. Do NOT work around CLI errors manually.**
+
+**Trigger Conditions** — Any of these MUST trigger the protocol:
+- Session spawn fails (`agentic session spawn` returns error)
+- Plan commands error (`agentic plan task start/complete` fails)
+- Task resolution fails (task_id not found, wrong field names)
+- Import/syntax errors in CLI modules
+- Any `agentic` command exits non-zero
+
+**Mandatory Recovery Steps:**
+
+1. **Diagnose** — Capture the exact error output
+   ```bash
+   agentic --json plan list   # Verify CLI is responsive
+   agentic --version          # Check basic health
+   ```
+
+2. **Create a remediation plan** — Use `agentic plan init` with a descriptive name
+   ```bash
+   agentic plan init <branch> --description 'fix: <describe the CLI issue>'
+   ```
+
+3. **Plan the fix** — Spawn a planner-build session to design the remediation
+   ```bash
+   agentic session spawn --role planner-build --plan <new-plan-folder> -b --dangerously-skip-permissions
+   ```
+
+4. **Execute the fix** — Spawn build-python sessions to implement
+   ```bash
+   agentic session spawn --role build-python --plan <new-plan-folder> -b --dangerously-skip-permissions
+   ```
+
+5. **Verify** — Confirm the CLI issue is resolved
+   ```bash
+   agentic --version && agentic plan list
+   cd /home/code/AgenticEngineering/modules/AgenticCLI && python3 -m pytest tests/ -x -v
+   ```
+
+6. **Resume** — Return to the original plan and continue from where you left off.
+
+**Common CLI Pitfalls:**
+
+| Pitfall | Wrong | Right |
+|---------|-------|-------|
+| `--json` flag position | `agentic plan list -j` | `agentic --json plan list` |
+| Plan file naming | `plan.yml`, `build.yml` | `plan_build.yml`, `plan_test.yml`, `plan_teach.yml` |
+| Task ID field | `id: P1-T1` in some contexts | Use `task_id` — check plan YAML for actual field name |
+| `--role` vs `--task` | `--role build-python --task P1-T1` | Use ONE: `--role` OR `--task` (mutually exclusive) |
+| Plan folder path | `260210OP_my_plan` (bare name) | `docs/plans/live/260210OP_my_plan` (full path for `ls`, bare name for `--plan`) |
+| Manual plan edits | Editing `plan_build.yml` status fields directly | `agentic plan task start/complete <id> --plan <folder>` |
+
+**FENCE:**
+- You MUST NOT skip any step in this protocol
+- You MUST NOT continue planning while CLI is broken
+- You MUST NOT manually work around CLI errors (e.g., editing YAML directly)
+- The CLI is the source of truth — if it's broken, fix it FIRST
 
 ### Planning Constraints
 - Use `agentic plan task start/complete` for every step
@@ -175,6 +281,11 @@ Questions block task completion until answered.
 - Correct: `agentic --json plan list`
 - Wrong: `agentic plan list -j` (will error)
 
+### Session Spawn Flags
+- `--role` and `--task` are **mutually exclusive** — never use both together
+- Use `--role` for phase-level agent spawns
+- Use `--task` for task-level spawns (role inferred from task's agent field)
+
 ### Fence: Guidance Modification
 - If modifying agent roles (adding/changing agents), trigger an audit task
 - Ensure new roles don't break existing agent inheritance
@@ -182,6 +293,7 @@ Questions block task completion until answered.
 ### MMD Generation
 - For straightforward plans, the orchestrator can write the MMD directly
 - For complex plans, delegate via CLI: `agentic session spawn --role planner-orchestration --plan <folder> -b`
+- Or use: `agentic plan orchestration generate --plan <folder>`
 - Do NOT spawn `planner-orchestration` via the inline Task tool — it is not a registered subagent_type
 
 ---
@@ -190,12 +302,13 @@ Questions block task completion until answered.
 
 ### CLI Failure Protocol
 
-If ANY `agentic` command fails:
+If ANY `agentic` command fails, follow the **DOGFOOD RULE** (see CRITICAL RULES above):
 1. Log the exact error
 2. DO NOT mark task as complete
-3. Spawn `test-runner` to diagnose CLI health
-4. Create remediation task if needed
-5. Output: `<promise>CLI failure detected. Remediation required before continuing.</promise>`
+3. Create remediation plan via `agentic plan init`
+4. Spawn `planner-build` to plan the fix, then `build-python` to implement
+5. Verify fix, then resume
+6. Output: `<promise>CLI failure detected. Remediation required before continuing.</promise>`
 
 ### Repeated Failures
 1. Create detailed failure report in plan's `analysis/` folder

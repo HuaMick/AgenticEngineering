@@ -108,6 +108,33 @@ process:
         * This allows the builder agents to know what to fix.
       - Always report back to the orchestration agent with a summary.
       - STRICTLY ADHERE to the rule: DO NOT FIX ANYTHING.
+    - |
+      Error-Driven Planning Handoff:
+      Reference: modules/AgenticGuidance/assets/definitions/error-driven-planning-protocol.yml
+
+      When ANY test failures are encountered:
+      1. Capture error context:
+         - error_details: Full test failure output (error messages, stack traces)
+         - affected_files: Files involved in the failures
+         - current_plan: Plan folder being executed when failures were found
+         - discovery_context: "test-runner executing test suite for [scope]"
+      2. Spawn orchestration-planning session with the error context package
+      3. Continue reporting (non-blocking) — let the planner decide what to do
+
+      Include in your output:
+        out_of_scope_error: true
+        error_context:
+          error_details: "<full failure output>"
+          affected_files: ["<files>"]
+          current_plan: "<plan folder path>"
+          discovery_context: "<what you were testing>"
+
+      FENCE: test-runner MUST NOT:
+      - Classify errors as in-scope vs out-of-scope
+      - Assign priority levels (CRITICAL, HIGH, etc.)
+      - Decide whether to create a new plan or update the existing one
+      - Suggest remediation strategies
+      Just capture context and hand off. Planners decide everything.
 
   guidelines:
     # Core guidelines: See modules/AgenticGuidance/assets/guidelines/ (fix-the-source.yml, context-minimisation.yml, response-audit.yml, testing.yml, reward-hacking-prevention.yml, safety.yml)
@@ -122,3 +149,7 @@ process:
     - |
       Report exactly what happened. Do not hallucinate passes or suppress failures.
       Provide evidence-based reporting per inputs.yml (actual test output, error messages, logs).
+    - |
+      Error-Driven Planning Protocol:
+      Reference: modules/AgenticGuidance/assets/definitions/error-driven-planning-protocol.yml
+      On ANY failure, capture context and spawn orchestration-planning. Do NOT classify or prioritize.

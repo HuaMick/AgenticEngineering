@@ -27,6 +27,17 @@ process:
         - "compose_drift"      # Differences between cloudbuild and compose
         - "platform_issues"    # Root user, path dependency issues
         - "recommended_fixes"  # List of {file, change, reason}
+        - "pre_existing_drift" # Drift that pre-dates current plan (needs separate remediation)
+      pre_existing_drift_schema:
+        type: "array"
+        description: "CI/CD drift that existed before the current plan — requires separate remediation"
+        items:
+          type: "object"
+          fields:
+            - config_file: "string — the CI/CD file with pre-existing drift"
+            - drift_description: "string — what is out of sync and why"
+            - remediation_plan_needed: "boolean — always true for pre-existing drift"
+            - suggested_plan_name: "string — standard naming e.g. YYMMDDXX_cicd_drift_<config>"
 
     - name: "validation_status"
       type: "string"
@@ -71,6 +82,27 @@ process:
     - Validate pytest.ini settings per inputs.yml#pytest_configuration and inputs.yml#ci_coverage_strategy
     - Validate docker-compose.test.yml per inputs.yml#compose_validation
     - Check platform-specific test considerations per inputs.yml#platform_compatibility
+    - |
+      Classify CI/CD drift findings:
+
+      PLAN-RELATED DRIFT: CI/CD changes needed because of current plan work
+        → Report as normal finding (existing behavior)
+        → Fix inline as part of current CI/CD audit
+
+      PRE-EXISTING DRIFT: CI/CD configuration was already out of sync before this plan
+        → Flag as pre_existing_drift in cicd_audit_report output
+        → Capture: config_file, drift_description, suggested_plan_name
+        → Do NOT attempt to fix — just report for planner triage
+        → Set remediation_plan_needed: true
+
+      Examples of pre-existing drift:
+        - Dockerfile.test references packages removed in a prior refactor
+        - cloudbuild.yaml runs test targets that no longer exist
+        - pytest.ini markers defined but no tests use them
+        - docker-compose.test.yml volume mounts stale paths
+
+      Reference: modules/AgenticGuidance/assets/definitions/error-driven-planning-protocol.yml
+
     - Report findings in structured format per inputs.yml#cicd_maintenance and outputs schema
 
   guidelines:

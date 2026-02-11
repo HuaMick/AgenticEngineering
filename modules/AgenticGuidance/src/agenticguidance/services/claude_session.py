@@ -70,6 +70,10 @@ class SessionEntry:
     error: Optional[str] = None
     exit_code: Optional[int] = None
     metadata: dict = field(default_factory=dict)
+    last_activity: Optional[str] = None
+    log_bytes: Optional[int] = None
+    diagnostic_spawned: bool = False
+    diagnostic_session_id: Optional[str] = None
 
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
@@ -87,6 +91,10 @@ class SessionEntry:
             "error": self.error,
             "exit_code": self.exit_code,
             "metadata": self.metadata,
+            "last_activity": self.last_activity,
+            "log_bytes": self.log_bytes,
+            "diagnostic_spawned": self.diagnostic_spawned,
+            "diagnostic_session_id": self.diagnostic_session_id,
         }
 
     @classmethod
@@ -106,6 +114,10 @@ class SessionEntry:
             error=data.get("error"),
             exit_code=data.get("exit_code"),
             metadata=data.get("metadata", {}),
+            last_activity=data.get("last_activity"),
+            log_bytes=data.get("log_bytes"),
+            diagnostic_spawned=data.get("diagnostic_spawned", False),
+            diagnostic_session_id=data.get("diagnostic_session_id"),
         )
 
     @classmethod
@@ -145,6 +157,23 @@ class SessionEntry:
             background=background,
             metadata=metadata or {},
         )
+
+    def update_activity(self, timestamp: Optional[str] = None) -> None:
+        """Update last_activity to the given or current timestamp.
+
+        Args:
+            timestamp: ISO timestamp string. Defaults to now.
+        """
+        self.last_activity = timestamp or datetime.now().isoformat()
+
+    def mark_diagnostic_spawned(self, diagnostic_session_id: str) -> None:
+        """Mark that a diagnostic session has been spawned for this session.
+
+        Args:
+            diagnostic_session_id: ID of the spawned diagnostic session.
+        """
+        self.diagnostic_spawned = True
+        self.diagnostic_session_id = diagnostic_session_id
 
 
 class SessionStateService:
@@ -412,6 +441,48 @@ class SessionStateService:
             return True
         except OSError:
             return False
+
+    def refresh_activity(self, session_id: str) -> Optional[SessionEntry]:
+        """Update last_activity and log_bytes from filesystem state.
+
+        Checks log file sizes and modification times to update the
+        session's activity tracking fields.
+
+        Args:
+            session_id: The session UUID.
+
+        Returns:
+            Updated SessionEntry if found, None otherwise.
+        """
+        entry = self.load(session_id)
+        if entry is None:
+            return None
+
+        logs_dir = self.sessions_dir / "logs"
+        stdout_path = logs_dir / f"{session_id}.stdout.log"
+        stderr_path = logs_dir / f"{session_id}.stderr.log"
+
+        # Calculate combined log size
+        total_bytes = 0
+        log_mtime = None
+        for log_path in [stdout_path, stderr_path]:
+            if log_path.exists():
+                stat = log_path.stat()
+                total_bytes += stat.st_size
+                mtime = stat.st_mtime
+                if log_mtime is None or mtime > log_mtime:
+                    log_mtime = mtime
+
+        entry.log_bytes = total_bytes
+
+        # Update last_activity to the most recent of log mtime or existing last_activity
+        if log_mtime is not None:
+            log_activity = datetime.fromtimestamp(log_mtime).isoformat()
+            if entry.last_activity is None or log_activity > entry.last_activity:
+                entry.last_activity = log_activity
+
+        self.save(entry)
+        return entry
 
     def get_by_pid(self, pid: int) -> Optional[SessionEntry]:
         """Find a session by its process ID.

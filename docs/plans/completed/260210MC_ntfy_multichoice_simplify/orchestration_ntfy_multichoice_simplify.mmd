@@ -1,0 +1,97 @@
+%% =============================================================================
+%% GOAL: Simplify the ntfy question notification system and add multi-choice answer support.
+Remove severity gating so all questions trigger push notifications regardless of severity level.
+Add lettered multi-choice formatting (A/B/C/D) in notification bodies when questions have suggested_answers.
+Parse letter replies from phone and map them to the corresponding suggested answer text.
+
+%% =============================================================================
+%% PROFILE: Orchestration-260210MC_ntfy_multichoice_simplify
+%% INPUT_PATH: /home/code/AgenticEngineering/docs/plans/live/260210MC_ntfy_multichoice_simplify/plan_build.yml
+%%
+%% PHASES:
+%%   build_01: Remove Severity Gating from Notifications
+%%   test_01: Update Tests for Simplified Notifications and Multi-Choice
+%%
+%% AGENT_ROUTING: build_01 -> builder, test_01 -> test-builder
+%% STATUS: build_01=pending, test_01=pending
+%% FEEDBACK_TRIGGERS: TEST_FAILURE -> test-fix-loop, BUILD_FAILURE -> escalate
+%% =============================================================================
+
+flowchart LR
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    LoadInputs --> ReviewInputs[Review All Listed Inputs]
+    ReviewInputs --> CheckInputs{All Inputs Found?}
+
+    CheckInputs -- "No: Missing" --> SearchInputs[Search for Missing Inputs]
+    SearchInputs --> Found{Found?}
+    Found -- "Yes: Update paths" --> UpdateRefs[Update References]
+    UpdateRefs --> ReviewInputs
+    Found -- "No: Stop" --> AskUser((Ask User for Clarification))
+
+    CheckInputs -- "Yes: Verified" --> Phase1
+
+    %% ========================================
+    %% PHASE 1: REMOVE SEVERITY GATING FROM NOTIFICATIONS
+    %% ========================================
+    %% AGENT_ROUTING: builder agent
+    %% Tasks: build_01_01, build_01_02, build_01_03
+
+    subgraph build_01_SG ["Remove Severity Gating from Notifications"]
+        Phase1[Enter Remove Severity Gating from Notifications] --> SpawnAgent1[Spawn builder Agent]
+        SpawnAgent1 --> Task_build_01_1[build_01_01: Remove severity check in _send_ntfy_if_c]
+        Task_build_01_1 --> Task_build_01_2[build_01_02: Update notify_new_question() to format m]
+        Task_build_01_2 --> Task_build_01_3[build_01_03: Add letter parsing in NtfyReplyPoller to]
+        Task_build_01_3 --> Phase1Complete[Remove Severity Gating from Notifications Complete]
+    end
+
+    Phase1Complete --> Phase2
+
+    %% ========================================
+    %% PHASE 2: UPDATE TESTS FOR SIMPLIFIED NOTIFICATIONS AND MULTI-CHOICE
+    %% ========================================
+    %% AGENT_ROUTING: test-builder agent with test-fix loop
+    %% LOOP_DEFINITION: test-fix-loop
+    %% MAX_ITERATIONS: 5
+
+    subgraph Testing2_SG ["Update Tests for Simplified Notifications and Multi-Choice (Test-Fix-Loop)"]
+        Phase2[Enter Update Tests for Simplified Notifications and Multi-Choice] --> SpawnTestBuilder2[Spawn test-builder Agent]
+        SpawnTestBuilder2 --> RunTests2[Run Tests]
+        RunTests2 --> TestsPassed2{Tests Passed?}
+
+        %% Test-Fix Loop: retry path
+        TestsPassed2 -- "No: Fix in Iteration" --> SpawnBuilderFix2[Spawn builder Agent for Fixes]
+        SpawnBuilderFix2 --> ApplyFixes2[Apply Implementation Fixes]
+        ApplyFixes2 --> RunTests2
+
+        %% Success path
+        TestsPassed2 -- "Yes: All Pass" --> Phase2Complete[Update Tests for Simplified Notifications and Multi-Choice Complete]
+    end
+
+    %% Escalation path for persistent test failures
+    TestsPassed2 -- "No: Escalate" --> CheckIterations2{Max Iterations Reached?}
+    CheckIterations2 -- "No" --> SpawnTestBuilder2
+    CheckIterations2 -- "Yes" --> EscalateTests2((Ask User: Test Failures Persist))
+
+
+    %% ========================================
+    %% FINALIZATION
+    %% ========================================
+    Phase2Complete --> UpdatePlanStatus[Update Plan Status: completed]
+    %% agentic plan move folder --plan <path>
+    UpdatePlanStatus --> ArchivePlan[Archive to docs/plans/completed/]
+    ArchivePlan --> End((End: Plan Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef entrypoint fill:#90EE90,stroke:#228B22
+    classDef exitpoint fill:#FFB6C1,stroke:#DC143C
+    classDef userpoint fill:#87CEEB,stroke:#4682B4
+    classDef keyaction fill:#FFD700,stroke:#DAA520
+    class Start entrypoint
+    class End exitpoint
+    class AskUser,EscalateTests2 userpoint

@@ -1,365 +1,397 @@
-# User Stories: Service Layer
-# Covers PlanService, TaskService, QuestionService, state management
-
 stories:
-  # ============================================================================
-  # PLANSERVICE (Plan CRUD Operations)
-  # ============================================================================
-
-  - id: "US-GD-120"
-    title: "Plan CRUD Operations"
-    category: "services"
-    priority: "critical"
-    as_a: "CLI or agent managing plans"
-    i_want: "to use PlanService for plan CRUD operations"
-    so_that: "plan data access is programmatic and consistent"
-    acceptance_criteria:
-      - "PlanService provides create, read, update, delete operations"
-      - "Handles both modern (phases[].tasks[]) and legacy (plan.tasks[]) structures"
-      - "Uses FileLock for atomic operations"
-      - "Returns PlanData dataclass for type safety"
-      - "Validates plan structure against schema"
-    related_services:
-      - "PlanService"
-    related_files:
-      - "modules/AgenticGuidance/src/agenticguidance/services/plan.py"
-
-  - id: "US-GD-121"
-    title: "Plan Data Validation"
-    category: "services"
-    priority: "high"
-    as_a: "PlanService"
-    i_want: "to validate plan data against schema"
-    so_that: "only well-formed plans are persisted"
-    acceptance_criteria:
-      - "Validate required fields: name, worktree_path, branch, status, objective, phases"
-      - "Validate status enum: planning, active, needs_review, blocked, completed"
-      - "Validate priority enum: critical, high, medium, low"
-      - "Validate phase structure"
-      - "Return validation errors with specific field paths"
-    related_services:
-      - "PlanService"
-    related_files:
-      - "modules/AgenticGuidance/assets/specifications/plan-schema.yml"
-
-  - id: "US-GD-122"
-    title: "Plan Movement Workflow"
-    category: "services"
-    priority: "high"
-    as_a: "PlanService"
-    i_want: "to automate plan archival when completed"
-    so_that: "completed plans are moved to docs/plans/completed/"
-    acceptance_criteria:
-      - "Detect when all tasks are completed"
-      - "Check git status before moving folder"
-      - "Move plan folder from live/ to completed/"
-      - "Preserve plan structure and history"
-      - "Handle git conflicts gracefully"
-      - "Return MoveResult: SUCCESS, SKIPPED, FAILED"
-    related_services:
-      - "PlanService"
-      - "GitSafetyChecker"
-    related_files:
-      - "modules/AgenticGuidance/src/agenticguidance/services/plan.py"
-
-  - id: "US-GD-123"
-    title: "Plan Listing and Discovery"
-    category: "services"
-    priority: "high"
-    as_a: "CLI listing plans"
-    i_want: "to discover all plans in live/, completed/, deferred/"
-    so_that: "users can see all plan states"
-    acceptance_criteria:
-      - "List all plans in docs/plans/live/"
-      - "List all plans in docs/plans/completed/"
-      - "List all plans in docs/plans/deferred/"
-      - "Return plan metadata: name, status, branch, objective"
-      - "Support filtering by status, priority, branch"
-    related_services:
-      - "PlanService"
-    related_commands:
-      - "agentic plan list"
-      - "agentic plan list --status active"
-
-  # ============================================================================
-  # TASKSERVICE (Task CRUD Operations)
-  # ============================================================================
-
-  - id: "US-GD-124"
-    title: "Task CRUD Operations"
-    category: "services"
-    priority: "critical"
-    as_a: "CLI or agent managing tasks"
-    i_want: "to use TaskService for task CRUD operations"
-    so_that: "task data access is programmatic and consistent"
-    acceptance_criteria:
-      - "TaskService provides create, read, update, delete operations"
-      - "Handles both modern (phases[].tasks[]) and legacy (tasks[]) structures"
-      - "Uses FileLock for atomic operations"
-      - "Returns Task dataclass for type safety"
-      - "Validates task structure"
-    related_services:
-      - "TaskService"
-    related_files:
-      - "modules/AgenticGuidance/src/agenticguidance/services/task.py"
-
-  - id: "US-GD-125"
-    title: "Task Status Management"
-    category: "services"
-    priority: "critical"
-    as_a: "CLI updating task status"
-    i_want: "to transition task status through workflow states"
-    so_that: "task progress is tracked accurately"
-    acceptance_criteria:
-      - "TaskStatus enum: PENDING, IN_PROGRESS, COMPLETED"
-      - "Validate status transitions (pending -> in_progress -> completed)"
-      - "Set completed_date when status transitions to completed"
-      - "Atomic status updates using FileLock"
-      - "Return success/failure indication"
-    related_services:
-      - "TaskService"
-    related_commands:
-      - "agentic plan task start <id> --plan <folder>"
-      - "agentic plan task complete <id> --plan <folder>"
-
-  - id: "US-GD-126"
-    title: "Task Discovery"
-    category: "services"
-    priority: "high"
-    as_a: "agent executing tasks"
-    i_want: "to discover current and next tasks in a plan"
-    so_that: "I know what work to execute"
-    acceptance_criteria:
-      - "Get current task (first IN_PROGRESS task)"
-      - "Get next task (first PENDING task)"
-      - "Get all tasks in a phase"
-      - "Get all tasks with specific status"
-      - "Return Task dataclass with full metadata"
-    related_services:
-      - "TaskService"
-    related_commands:
-      - "agentic plan task current --plan <folder>"
-      - "agentic plan task next --plan <folder>"
-
-  - id: "US-GD-127"
-    title: "Task Movement to Completed"
-    category: "services"
-    priority: "medium"
-    as_a: "TaskService"
-    i_want: "to move completed tasks to plan_completed.yml"
-    so_that: "active plan files remain focused on pending work"
-    acceptance_criteria:
-      - "Detect when task transitions to COMPLETED"
-      - "Move task from plan_build.yml to plan_completed.yml"
-      - "Preserve task metadata and history"
-      - "Atomic move operation using FileLock"
-      - "Trigger plan archival when all tasks completed"
-    related_services:
-      - "TaskService"
-      - "PlanService"
-
-  # ============================================================================
-  # QUESTIONSERVICE (Question/Answer Workflow)
-  # ============================================================================
-
-  - id: "US-GD-128"
-    title: "Question Queue Management"
-    category: "services"
-    priority: "high"
-    as_a: "agent encountering ambiguity"
-    i_want: "to use QuestionQueue to ask questions"
-    so_that: "I can get human input to proceed"
-    acceptance_criteria:
-      - "Create question with unique ID: Q-YYYYMMDD-HHMMSS-RAND"
-      - "Store question in plan_folder/questions/pending/"
-      - "Question includes: id, text, context, severity, created_at"
-      - "QuestionSeverity enum: BLOCKING, HIGH, MEDIUM, LOW"
-      - "Question saved as YAML file"
-    related_services:
-      - "QuestionQueue"
-    related_files:
-      - "modules/AgenticGuidance/src/agenticguidance/services/question.py"
-      - "modules/AgenticGuidance/src/agenticguidance/models/question.py"
-
-  - id: "US-GD-129"
-    title: "Answer Question Workflow"
-    category: "services"
-    priority: "high"
-    as_a: "human answering questions"
-    i_want: "to provide answers that move questions to answered/"
-    so_that: "agents can consume answers and proceed"
-    acceptance_criteria:
-      - "Answer includes: answer_text, confidence, answered_at, answered_by"
-      - "AnswerConfidence enum: HIGH, MEDIUM, LOW"
-      - "Move question from pending/ to answered/"
-      - "Preserve original question in answered file"
-      - "Atomic move operation using FileLock"
-    related_services:
-      - "QuestionQueue"
-    related_commands:
-      - "agentic question answer <id> --plan <folder>"
-
-  - id: "US-GD-130"
-    title: "Question Discovery"
-    category: "services"
-    priority: "medium"
-    as_a: "CLI or voice interface"
-    i_want: "to discover pending and answered questions"
-    so_that: "users can see question status"
-    acceptance_criteria:
-      - "List all pending questions"
-      - "List all answered questions"
-      - "Get specific question by ID"
-      - "Filter by severity"
-      - "Return Question dataclass with full metadata"
-    related_services:
-      - "QuestionQueue"
-    related_commands:
-      - "agentic question list --plan <folder>"
-      - "agentic question list --status pending"
-
-  - id: "US-GD-131"
-    title: "Question Formatting for Voice"
-    category: "services"
-    priority: "medium"
-    as_a: "voice interface consuming questions"
-    i_want: "to format questions for audio output"
-    so_that: "questions are clear when spoken"
-    acceptance_criteria:
-      - "Format question text for speech synthesis"
-      - "Include context summary"
-      - "Indicate severity through phrasing"
-      - "Provide multiple choice options if applicable"
-      - "Format answer options for speech"
-    related_services:
-      - "QuestionQueue"
-    related_files:
-      - "modules/AgenticCLI/src/agenticcli/utils/question_formatter.py"
-
-  # ============================================================================
-  # STATE MANAGEMENT (FileLock, Atomic Operations)
-  # ============================================================================
-
-  - id: "US-GD-132"
-    title: "Atomic File Operations"
-    category: "services"
-    priority: "critical"
-    as_a: "service writing YAML files"
-    i_want: "to use FileLock for atomic operations"
-    so_that: "concurrent access doesn't corrupt data"
-    acceptance_criteria:
-      - "FileLock provides exclusive access to YAML files"
-      - "Lock acquired before read-modify-write operations"
-      - "Lock released after operation completes or fails"
-      - "Lock prevents race conditions from concurrent agents/CLI"
-      - "Lock timeout configurable with sensible default"
-    related_services:
-      - "FileLock"
-    related_files:
-      - "modules/AgenticGuidance/src/agenticguidance/services/state.py"
-
-  - id: "US-GD-133"
-    title: "YAML Root-Level Keys Convention"
-    category: "services"
-    priority: "critical"
-    as_a: "service reading/writing plan files"
-    i_want: "to use root-level keys (not nested under 'plan:')"
-    so_that: "plan file structure is consistent"
-    acceptance_criteria:
-      - "Plan files use root-level keys: phases:, tasks:, name:, etc."
-      - "NOT nested under 'plan:' key"
-      - "Services handle both legacy and modern formats for backward compatibility"
-      - "New files always use root-level keys"
-      - "Migration path from legacy to modern format"
-    related_services:
-      - "PlanService"
-      - "TaskService"
-    related_files:
-      - "modules/AgenticGuidance/src/agenticguidance/services/plan.py"
-      - "modules/AgenticGuidance/src/agenticguidance/services/task.py"
-
-  - id: "US-GD-134"
-    title: "Git Safety Checks"
-    category: "services"
-    priority: "high"
-    as_a: "service moving or deleting files"
-    i_want: "to check git status before potentially destructive operations"
-    so_that: "uncommitted changes are not lost"
-    acceptance_criteria:
-      - "GitSafetyChecker verifies no uncommitted changes"
-      - "Check specific path or entire repo"
-      - "Prevent folder moves with uncommitted changes"
-      - "Warn user about uncommitted changes"
-      - "Provide option to commit or stash changes first"
-    related_services:
-      - "GitSafetyChecker"
-    related_files:
-      - "modules/AgenticGuidance/src/agenticguidance/services/plan.py"
-
-  # ============================================================================
-  # SERVICE LAYER ARCHITECTURE
-  # ============================================================================
-
-  - id: "US-GD-135"
-    title: "Domain -> Workflow -> Entrypoint Pattern"
-    category: "services"
-    priority: "high"
-    as_a: "developer creating new services"
-    i_want: "to follow Domain -> Workflow -> Entrypoint pattern"
-    so_that: "services are consistently structured"
-    acceptance_criteria:
-      - "Domain: Core business logic (PlanService, TaskService, QuestionQueue)"
-      - "Workflow: Orchestrates domain services for specific use cases"
-      - "Entrypoint: CLI commands or API endpoints that invoke workflows"
-      - "Services are independent and self-contained"
-      - "Services maintain clear boundaries"
-    related_services:
-      - "PlanService"
-      - "TaskService"
-      - "QuestionQueue"
-    related_files:
-      - "modules/AgenticGuidance/src/agenticguidance/services/"
-
-  - id: "US-GD-136"
-    title: "Service Layer Testing"
-    category: "services"
-    priority: "high"
-    as_a: "developer testing services"
-    i_want: "to have comprehensive service layer tests"
-    so_that: "service behavior is validated and regressions prevented"
-    acceptance_criteria:
-      - "Unit tests for each service class"
-      - "Integration tests for service interactions"
-      - "Test fixtures for plan and task data"
-      - "Mock file system for isolation"
-      - "Test concurrent access scenarios"
-    related_services:
-      - "PlanService"
-      - "TaskService"
-      - "QuestionQueue"
-    related_files:
-      - "modules/AgenticGuidance/tests/test_services_plan_service.py"
-      - "modules/AgenticGuidance/tests/test_services_task.py"
-      - "modules/AgenticGuidance/tests/test_services_question.py"
-
-  - id: "US-GD-137"
-    title: "Service Data Models"
-    category: "services"
-    priority: "high"
-    as_a: "developer using services"
-    i_want: "to use typed dataclasses for service data"
-    so_that: "data structures are clear and type-safe"
-    acceptance_criteria:
-      - "PlanData dataclass for plan data"
-      - "Task dataclass for task data"
-      - "Question dataclass for question data"
-      - "Answer dataclass for answer data"
-      - "Enums for status, severity, priority"
-      - "Dataclasses have from_dict and to_dict methods"
-    related_services:
-      - "PlanService"
-      - "TaskService"
-      - "QuestionQueue"
-    related_files:
-      - "modules/AgenticGuidance/src/agenticguidance/models/"
-      - "modules/AgenticGuidance/src/agenticguidance/models/question.py"
+- id: US-GD-120
+  title: Plan CRUD Operations
+  category: services
+  priority: critical
+  as_a: CLI or agent managing plans
+  i_want: to use PlanService for plan CRUD operations
+  so_that: plan data access is programmatic and consistent
+  acceptance_criteria:
+  - PlanService provides create, read, update, delete operations
+  - Handles both modern (phases[].tasks[]) and legacy (plan.tasks[]) structures
+  - Uses FileLock for atomic operations
+  - Returns PlanData dataclass for type safety
+  - Validates plan structure against schema
+  related_services:
+  - PlanService
+  related_files:
+  - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-121
+  title: Plan Data Validation
+  category: services
+  priority: high
+  as_a: PlanService
+  i_want: to validate plan data against schema
+  so_that: only well-formed plans are persisted
+  acceptance_criteria:
+  - 'Validate required fields: name, worktree_path, branch, status, objective, phases'
+  - 'Validate status enum: planning, active, needs_review, blocked, completed'
+  - 'Validate priority enum: critical, high, medium, low'
+  - Validate phase structure
+  - Return validation errors with specific field paths
+  related_services:
+  - PlanService
+  related_files:
+  - modules/AgenticGuidance/assets/specifications/plan-schema.yml
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-122
+  title: Plan Movement Workflow
+  category: services
+  priority: high
+  as_a: PlanService
+  i_want: to automate plan archival when completed
+  so_that: completed plans are moved to docs/plans/completed/
+  acceptance_criteria:
+  - Detect when all tasks are completed
+  - Check git status before moving folder
+  - Move plan folder from live/ to completed/
+  - Preserve plan structure and history
+  - Handle git conflicts gracefully
+  - 'Return MoveResult: SUCCESS, SKIPPED, FAILED'
+  related_services:
+  - PlanService
+  - GitSafetyChecker
+  related_files:
+  - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-123
+  title: Plan Listing and Discovery
+  category: services
+  priority: high
+  as_a: CLI listing plans
+  i_want: to discover all plans in live/, completed/, deferred/
+  so_that: users can see all plan states
+  acceptance_criteria:
+  - List all plans in docs/plans/live/
+  - List all plans in docs/plans/completed/
+  - List all plans in docs/plans/deferred/
+  - 'Return plan metadata: name, status, branch, objective'
+  - Support filtering by status, priority, branch
+  related_services:
+  - PlanService
+  related_commands:
+  - agentic plan list
+  - agentic plan list --status active
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-124
+  title: Task CRUD Operations
+  category: services
+  priority: critical
+  as_a: CLI or agent managing tasks
+  i_want: to use TaskService for task CRUD operations
+  so_that: task data access is programmatic and consistent
+  acceptance_criteria:
+  - TaskService provides create, read, update, delete operations
+  - Handles both modern (phases[].tasks[]) and legacy (tasks[]) structures
+  - Uses FileLock for atomic operations
+  - Returns Task dataclass for type safety
+  - Validates task structure
+  related_services:
+  - TaskService
+  related_files:
+  - modules/AgenticGuidance/src/agenticguidance/services/task.py
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-125
+  title: Task Status Management
+  category: services
+  priority: critical
+  as_a: CLI updating task status
+  i_want: to transition task status through workflow states
+  so_that: task progress is tracked accurately
+  acceptance_criteria:
+  - 'TaskStatus enum: PENDING, IN_PROGRESS, COMPLETED'
+  - Validate status transitions (pending -> in_progress -> completed)
+  - Set completed_date when status transitions to completed
+  - Atomic status updates using FileLock
+  - Return success/failure indication
+  related_services:
+  - TaskService
+  related_commands:
+  - agentic plan task start <id> --plan <folder>
+  - agentic plan task complete <id> --plan <folder>
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-126
+  title: Task Discovery
+  category: services
+  priority: high
+  as_a: agent executing tasks
+  i_want: to discover current and next tasks in a plan
+  so_that: I know what work to execute
+  acceptance_criteria:
+  - Get current task (first IN_PROGRESS task)
+  - Get next task (first PENDING task)
+  - Get all tasks in a phase
+  - Get all tasks with specific status
+  - Return Task dataclass with full metadata
+  related_services:
+  - TaskService
+  related_commands:
+  - agentic plan task current --plan <folder>
+  - agentic plan task next --plan <folder>
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-127
+  title: Task Movement to Completed
+  category: services
+  priority: medium
+  as_a: TaskService
+  i_want: to move completed tasks to plan_completed.yml
+  so_that: active plan files remain focused on pending work
+  acceptance_criteria:
+  - Detect when task transitions to COMPLETED
+  - Move task from plan_build.yml to plan_completed.yml
+  - Preserve task metadata and history
+  - Atomic move operation using FileLock
+  - Trigger plan archival when all tasks completed
+  related_services:
+  - TaskService
+  - PlanService
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-128
+  title: Question Queue Management
+  category: services
+  priority: high
+  as_a: agent encountering ambiguity
+  i_want: to use QuestionQueue to ask questions
+  so_that: I can get human input to proceed
+  acceptance_criteria:
+  - 'Create question with unique ID: Q-YYYYMMDD-HHMMSS-RAND'
+  - Store question in plan_folder/questions/pending/
+  - 'Question includes: id, text, context, severity, created_at'
+  - 'QuestionSeverity enum: BLOCKING, HIGH, MEDIUM, LOW'
+  - Question saved as YAML file
+  related_services:
+  - QuestionQueue
+  related_files:
+  - modules/AgenticGuidance/src/agenticguidance/services/question.py
+  - modules/AgenticGuidance/src/agenticguidance/models/question.py
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-129
+  title: Answer Question Workflow
+  category: services
+  priority: high
+  as_a: human answering questions
+  i_want: to provide answers that move questions to answered/
+  so_that: agents can consume answers and proceed
+  acceptance_criteria:
+  - 'Answer includes: answer_text, confidence, answered_at, answered_by'
+  - 'AnswerConfidence enum: HIGH, MEDIUM, LOW'
+  - Move question from pending/ to answered/
+  - Preserve original question in answered file
+  - Atomic move operation using FileLock
+  related_services:
+  - QuestionQueue
+  related_commands:
+  - agentic question answer <id> --plan <folder>
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-130
+  title: Question Discovery
+  category: services
+  priority: medium
+  as_a: CLI or voice interface
+  i_want: to discover pending and answered questions
+  so_that: users can see question status
+  acceptance_criteria:
+  - List all pending questions
+  - List all answered questions
+  - Get specific question by ID
+  - Filter by severity
+  - Return Question dataclass with full metadata
+  related_services:
+  - QuestionQueue
+  related_commands:
+  - agentic question list --plan <folder>
+  - agentic question list --status pending
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-131
+  title: Question Formatting for Voice
+  category: services
+  priority: medium
+  as_a: voice interface consuming questions
+  i_want: to format questions for audio output
+  so_that: questions are clear when spoken
+  acceptance_criteria:
+  - Format question text for speech synthesis
+  - Include context summary
+  - Indicate severity through phrasing
+  - Provide multiple choice options if applicable
+  - Format answer options for speech
+  related_services:
+  - QuestionQueue
+  related_files:
+  - modules/AgenticCLI/src/agenticcli/utils/question_formatter.py
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-132
+  title: Atomic File Operations
+  category: services
+  priority: critical
+  as_a: service writing YAML files
+  i_want: to use FileLock for atomic operations
+  so_that: concurrent access doesn't corrupt data
+  acceptance_criteria:
+  - FileLock provides exclusive access to YAML files
+  - Lock acquired before read-modify-write operations
+  - Lock released after operation completes or fails
+  - Lock prevents race conditions from concurrent agents/CLI
+  - Lock timeout configurable with sensible default
+  related_services:
+  - FileLock
+  related_files:
+  - modules/AgenticGuidance/src/agenticguidance/services/state.py
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-133
+  title: YAML Root-Level Keys Convention
+  category: services
+  priority: critical
+  as_a: service reading/writing plan files
+  i_want: to use root-level keys (not nested under 'plan:')
+  so_that: plan file structure is consistent
+  acceptance_criteria:
+  - 'Plan files use root-level keys: phases:, tasks:, name:, etc.'
+  - NOT nested under 'plan:' key
+  - Services handle both legacy and modern formats for backward compatibility
+  - New files always use root-level keys
+  - Migration path from legacy to modern format
+  related_services:
+  - PlanService
+  - TaskService
+  related_files:
+  - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+  - modules/AgenticGuidance/src/agenticguidance/services/task.py
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-134
+  title: Git Safety Checks
+  category: services
+  priority: high
+  as_a: service moving or deleting files
+  i_want: to check git status before potentially destructive operations
+  so_that: uncommitted changes are not lost
+  acceptance_criteria:
+  - GitSafetyChecker verifies no uncommitted changes
+  - Check specific path or entire repo
+  - Prevent folder moves with uncommitted changes
+  - Warn user about uncommitted changes
+  - Provide option to commit or stash changes first
+  related_services:
+  - GitSafetyChecker
+  related_files:
+  - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-135
+  title: Domain -> Workflow -> Entrypoint Pattern
+  category: services
+  priority: high
+  as_a: developer creating new services
+  i_want: to follow Domain -> Workflow -> Entrypoint pattern
+  so_that: services are consistently structured
+  acceptance_criteria:
+  - 'Domain: Core business logic (PlanService, TaskService, QuestionQueue)'
+  - 'Workflow: Orchestrates domain services for specific use cases'
+  - 'Entrypoint: CLI commands or API endpoints that invoke workflows'
+  - Services are independent and self-contained
+  - Services maintain clear boundaries
+  related_services:
+  - PlanService
+  - TaskService
+  - QuestionQueue
+  related_files:
+  - modules/AgenticGuidance/src/agenticguidance/services/
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-136
+  title: Service Layer Testing
+  category: services
+  priority: high
+  as_a: developer testing services
+  i_want: to have comprehensive service layer tests
+  so_that: service behavior is validated and regressions prevented
+  acceptance_criteria:
+  - Unit tests for each service class
+  - Integration tests for service interactions
+  - Test fixtures for plan and task data
+  - Mock file system for isolation
+  - Test concurrent access scenarios
+  related_services:
+  - PlanService
+  - TaskService
+  - QuestionQueue
+  related_files:
+  - modules/AgenticGuidance/tests/test_services_plan_service.py
+  - modules/AgenticGuidance/tests/test_services_task.py
+  - modules/AgenticGuidance/tests/test_services_question.py
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-137
+  title: Service Data Models
+  category: services
+  priority: high
+  as_a: developer using services
+  i_want: to use typed dataclasses for service data
+  so_that: data structures are clear and type-safe
+  acceptance_criteria:
+  - PlanData dataclass for plan data
+  - Task dataclass for task data
+  - Question dataclass for question data
+  - Answer dataclass for answer data
+  - Enums for status, severity, priority
+  - Dataclasses have from_dict and to_dict methods
+  related_services:
+  - PlanService
+  - TaskService
+  - QuestionQueue
+  related_files:
+  - modules/AgenticGuidance/src/agenticguidance/models/
+  - modules/AgenticGuidance/src/agenticguidance/models/question.py
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null

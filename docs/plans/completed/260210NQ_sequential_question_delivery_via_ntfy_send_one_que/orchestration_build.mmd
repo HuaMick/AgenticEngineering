@@ -1,0 +1,61 @@
+flowchart LR
+    %% GOAL: Implement sequential question delivery via ntfy with NtfyQuestionAgent
+    %% PROFILE: Orchestration-Build
+    %% OUTPUT: NtfyQuestionAgent service, refactored question commands, tests
+    %% GUIDELINE: Sequential build - all phases target overlapping files
+    %% INPUT_PATH: modules/AgenticGuidance/agents/orchestration/orchestration-executor/inputs.yml
+
+    # AGENT_ROUTING: Build -> build-python, Testing -> build-python, Validation -> test-runner, Audit -> test-final-output
+    # STATUS: Build=pending, Testing=pending, Validation=pending
+
+    Start((Start)) --> LoadPlan[Load plan_build.yml]
+
+    %% ========================================
+    %% BUILD PHASES (Sequential - overlapping files)
+    %% ========================================
+    %% Phases build_01 through build_04 all target ntfy_question_agent.py
+    %% Must execute sequentially within a single build-python session
+
+    subgraph Build_SG ["Build Implementation Subgraph"]
+        LoadPlan --> SpawnBuild[Spawn build-python Agent]
+        SpawnBuild --> BuildDone{Build Complete?}
+        BuildDone -- "Yes" --> TestPhase
+        BuildDone -- "No: Fix" --> SpawnBuild
+    end
+
+    %% ========================================
+    %% TEST PHASE
+    %% ========================================
+    %% Phase test_01: Create and run unit tests + UAT
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.test-fix-loop
+    %% MAX_ITERATIONS: 5 (per test-fix-loop definition)
+    %% ESCALATION: If max iterations reached without tests passing, stop and Ask User
+
+    subgraph Testing_SG ["Testing Subgraph"]
+        TestPhase[Enter Test Phase] --> SpawnTestBuild[Spawn build-python Agent]
+        SpawnTestBuild --> RunTests[Spawn test-runner]
+        RunTests --> TestsPassed{Tests Passed?}
+        TestsPassed -- "Yes" --> Validation
+        TestsPassed -- "No: Fix in Iteration" --> SpawnTestBuild
+        TestsPassed -- "No: Escalate" --> AskUser((Ask User for Clarification))
+    end
+
+    %% ========================================
+    %% VALIDATION PHASE
+    %% ========================================
+    subgraph Validation_SG ["Validation Subgraph"]
+        Validation[Run Full Test Suite] --> SpawnValidation[Spawn test-runner]
+        SpawnValidation --> ValidationPassed{All Tests Pass?}
+        ValidationPassed -- "Yes" --> Archive
+        ValidationPassed -- "No" --> AskUser
+    end
+
+    %% ========================================
+    %% FINALIZATION
+    %% ========================================
+    Archive[Archive Plan] --> End((End))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef dashedstroke stroke-dasharray: 5 5;

@@ -1,7 +1,8 @@
 """Tests for 'agentic plan bootstrap' command.
 
-Tests for the plan bootstrap command that combines init logic with
-immediate scaffolding of plan_build.yml.
+Tests for the plan bootstrap command that delegates to cmd_init.
+cmd_init uses subprocess.run for git operations and creates a flat
+plan folder structure (no live/ subfolder inside the plan folder).
 """
 
 import json
@@ -54,13 +55,73 @@ def temp_git_repo(tmp_path):
 
 @pytest.fixture
 def mock_git_context(temp_git_repo, monkeypatch):
-    """Mock git utility functions to use temp repo."""
-    from agenticcli.utils import git
-    from agenticcli.commands import plan
+    """Mock all external dependencies used by cmd_init.
 
-    monkeypatch.setattr(git, "get_project_root", lambda: temp_git_repo)
-    monkeypatch.setattr(plan, "find_main_worktree", lambda root: root)
-    return temp_git_repo
+    cmd_init uses subprocess.run for git operations (rev-parse, worktree list,
+    worktree add), plus helper functions for idle worktrees, workspace files,
+    and plan folder naming. All must be mocked to isolate tests.
+    """
+    from agenticcli.commands import plan as plan_mod
+
+    repo = temp_git_repo
+
+    # Mock subprocess.run to intercept git commands while allowing others
+    original_subprocess_run = subprocess.run
+
+    def mock_subprocess_run(cmd, *args, **kwargs):
+        if isinstance(cmd, list) and cmd[0] == "git":
+            joined = " ".join(cmd)
+            if "rev-parse --show-toplevel" in joined:
+                result = MagicMock()
+                result.stdout = str(repo) + "\n"
+                result.returncode = 0
+                return result
+            elif "worktree list --porcelain" in joined:
+                result = MagicMock()
+                result.stdout = f"worktree {repo}\nbranch refs/heads/main\n\n"
+                result.returncode = 0
+                return result
+            elif "worktree add" in joined:
+                # Simulate worktree creation by making the directory
+                # Find the path argument (after -b <branch>)
+                try:
+                    b_idx = cmd.index("-b")
+                    wt_path = Path(cmd[b_idx + 2])
+                except (ValueError, IndexError):
+                    wt_path = Path(cmd[-2]) if len(cmd) > 2 else None
+                if wt_path:
+                    wt_path.mkdir(parents=True, exist_ok=True)
+                result = MagicMock()
+                result.returncode = 0
+                return result
+            elif "branch" in joined and "checkout" not in joined:
+                # git branch <name> <base> - just succeed
+                result = MagicMock()
+                result.returncode = 0
+                return result
+            elif "checkout" in joined:
+                result = MagicMock()
+                result.returncode = 0
+                return result
+        # Non-git commands: pass through
+        return original_subprocess_run(cmd, *args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", mock_subprocess_run)
+
+    # Mock find_main_worktree to return the temp repo (it's the "main" worktree)
+    monkeypatch.setattr(plan_mod, "find_main_worktree", lambda root: repo)
+
+    # Mock find_idle_worktrees to return [] (no idle worktrees to reuse)
+    monkeypatch.setattr(
+        "agenticcli.commands.worktree.find_idle_worktrees", lambda root: []
+    )
+
+    # Mock find_workspace_file to return None (no workspace file)
+    monkeypatch.setattr(
+        "agenticcli.commands.worktree.find_workspace_file", lambda root: None
+    )
+
+    return repo
 
 
 class TestPlanBootstrap:
@@ -80,15 +141,15 @@ class TestPlanBootstrap:
             with patch("builtins.print"):
                 plan.cmd_bootstrap(args)
 
-        # Verify plan folder was created
+        # Verify plan folder was created under docs/plans/live/
         plans_dir = mock_git_context / "docs" / "plans" / "live"
         plan_folders = list(plans_dir.glob("*_new_feature"))
         assert len(plan_folders) == 1
         plan_folder = plan_folders[0]
 
-        # Verify live subfolder exists
-        assert (plan_folder / "live").exists()
-        assert (plan_folder / "live").is_dir()
+        # Flat structure: plan folder exists directly (no live/ subfolder inside)
+        assert plan_folder.exists()
+        assert plan_folder.is_dir()
 
     def test_bootstrap_creates_plan_build_yml(self, mock_git_context):
         """Test bootstrap creates plan_build.yml file."""
@@ -108,11 +169,12 @@ class TestPlanBootstrap:
         plan_folders = list(plans_dir.glob("*_new_feature"))
         plan_folder = plan_folders[0]
 
-        plan_build_file = plan_folder / "live" / "plan_build.yml"
+        # Flat structure: plan_build.yml directly in plan folder
+        plan_build_file = plan_folder / "plan_build.yml"
         assert plan_build_file.exists()
 
     def test_bootstrap_creates_plan_test_yml_stub(self, mock_git_context):
-        """Test bootstrap creates plan_test.yml stub (if implemented)."""
+        """Test bootstrap creates plan folder (plan_test.yml is optional)."""
         from agenticcli.commands import plan
 
         args = SimpleNamespace(
@@ -129,10 +191,7 @@ class TestPlanBootstrap:
         plan_folders = list(plans_dir.glob("*_new_feature"))
         plan_folder = plan_folders[0]
 
-        # Note: Current implementation may not create plan_test.yml
-        # This test verifies expected behavior if it's added
-        plan_test_file = plan_folder / "live" / "plan_test.yml"
-        # For now, we just check if the folder exists
+        # Plan folder exists (plan_test.yml creation depends on create_planning_folder)
         assert plan_folder.exists()
 
     def test_bootstrap_yaml_is_valid(self, mock_git_context):
@@ -153,17 +212,18 @@ class TestPlanBootstrap:
         plan_folders = list(plans_dir.glob("*_new_feature"))
         plan_folder = plan_folders[0]
 
-        plan_build_file = plan_folder / "live" / "plan_build.yml"
+        # Flat structure: plan_build.yml directly in plan folder
+        plan_build_file = plan_folder / "plan_build.yml"
 
         # Should be valid YAML
         with open(plan_build_file) as f:
             data = yaml.safe_load(f)
 
-        # Verify expected fields
+        # Verify expected fields from cmd_init's plan_build template
         assert data["name"] == "new feature"
         assert data["branch"] == "test-branch"
         assert data["status"] == "active"
-        assert "objective" in data
+        assert "context" in data  # cmd_init writes objective into "context" field
         assert "phases" in data
 
     def test_bootstrap_existing_folder_returns_error(self, mock_git_context, capsys):
@@ -181,9 +241,11 @@ class TestPlanBootstrap:
             with patch("builtins.print"):
                 plan.cmd_bootstrap(args)
 
-        # Try to create again with same description
+        # Try to create again with same description - should exit(2)
         with pytest.raises(SystemExit) as exc_info:
-            plan.cmd_bootstrap(args)
+            with patch("agenticcli.console.is_json_output", return_value=False):
+                with patch("builtins.print"):
+                    plan.cmd_bootstrap(args)
 
         assert exc_info.value.code == 2
         captured = capsys.readouterr()
@@ -207,11 +269,14 @@ class TestPlanBootstrap:
         captured = capsys.readouterr()
         output = json.loads(captured.out)
 
-        assert "plan_id" in output
-        assert "plan_path" in output
+        # cmd_init outputs these keys (not the old plan_id/plan_path/success)
+        assert "plan_folder_name" in output
+        assert "plan_folder" in output
         assert "objective" in output
-        assert output["success"] is True
         assert output["objective"] == "Implement new feature"
+        assert "worktree" in output
+        assert "branch" in output
+        assert output["branch"] == "test-branch"
 
     def test_bootstrap_uses_branch_as_default_description(self, mock_git_context):
         """Test bootstrap uses branch as description when not provided."""
@@ -247,6 +312,8 @@ class TestPlanBootstrap:
 
         plans_dir = mock_git_context / "docs" / "plans" / "live"
         plan_folders = list(plans_dir.iterdir())
+        # Filter to only our test folder (exclude other dirs)
+        plan_folders = [f for f in plan_folders if f.is_dir() and "bug_fix" in f.name]
         assert len(plan_folders) == 1
         plan_folder = plan_folders[0]
 
@@ -273,7 +340,8 @@ class TestPlanBootstrap:
         plan_folders = list(plans_dir.glob("*_test"))
         plan_folder = plan_folders[0]
 
-        plan_build_file = plan_folder / "live" / "plan_build.yml"
+        # Flat structure: plan_build.yml directly in plan folder
+        plan_build_file = plan_folder / "plan_build.yml"
         with open(plan_build_file) as f:
             data = yaml.safe_load(f)
 
@@ -287,7 +355,7 @@ class TestPlanBootstrap:
         args = SimpleNamespace(
             branch="test-branch",
             objective="Test objective",
-            description="test",
+            description="test tasks",
         )
 
         with patch("agenticcli.console.is_json_output", return_value=False):
@@ -295,10 +363,11 @@ class TestPlanBootstrap:
                 plan.cmd_bootstrap(args)
 
         plans_dir = mock_git_context / "docs" / "plans" / "live"
-        plan_folders = list(plans_dir.glob("*_test"))
+        plan_folders = list(plans_dir.glob("*_test_tasks"))
         plan_folder = plan_folders[0]
 
-        plan_build_file = plan_folder / "live" / "plan_build.yml"
+        # Flat structure: plan_build.yml directly in plan folder
+        plan_build_file = plan_folder / "plan_build.yml"
         with open(plan_build_file) as f:
             data = yaml.safe_load(f)
 
@@ -314,10 +383,18 @@ class TestPlanBootstrapErrors:
     def test_bootstrap_fails_outside_git_repo(self, tmp_path, monkeypatch, capsys):
         """Test bootstrap fails when not in a git repository."""
         from agenticcli.commands import plan
-        from agenticcli.utils import git
 
-        # Mock to return None (not in git repo)
-        monkeypatch.setattr(git, "get_project_root", lambda: None)
+        # Mock subprocess.run to raise CalledProcessError for git rev-parse
+        # (cmd_init uses subprocess.run, not git.get_project_root)
+        original_subprocess_run = subprocess.run
+
+        def mock_subprocess_run(cmd, *args, **kwargs):
+            if isinstance(cmd, list) and cmd[0] == "git":
+                if "rev-parse" in cmd:
+                    raise subprocess.CalledProcessError(128, cmd)
+            return original_subprocess_run(cmd, *args, **kwargs)
+
+        monkeypatch.setattr(subprocess, "run", mock_subprocess_run)
 
         args = SimpleNamespace(
             branch="test-branch",
@@ -326,7 +403,9 @@ class TestPlanBootstrapErrors:
         )
 
         with pytest.raises(SystemExit) as exc_info:
-            plan.cmd_bootstrap(args)
+            with patch("agenticcli.console.is_json_output", return_value=False):
+                with patch("builtins.print"):
+                    plan.cmd_bootstrap(args)
 
         assert exc_info.value.code == 1
         captured = capsys.readouterr()

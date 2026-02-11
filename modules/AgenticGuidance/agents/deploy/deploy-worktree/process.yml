@@ -75,12 +75,18 @@ process:
       Run: `agentic plan init <branch> --description <desc> --base <base-branch>`
 
       This single command handles ALL of the following:
-      - Git worktree creation (or reuses existing worktree for branch)
+      - Worktree reuse: checks for idle worktrees (no active sessions) before creating new ones
+      - Git worktree creation only if no idle worktree is available (last resort)
       - Plan folder naming with YYMMDDXX_description convention (enforced by CLI)
       - Planning folder scaffolding in MAIN worktree (docs/plans/live/<folder_name>/)
       - Subdirectory creation (live/, completed/, analysis/, audit/)
       - README.md template creation
       - VS Code workspace file update
+
+      Worktree reuse behavior:
+      1. If a worktree already exists for the branch → reuse it
+      2. If no worktree exists but idle (session-free) worktrees are available → reuse one
+      3. Only if ALL existing worktrees have active sessions → create a new worktree
 
       Exit codes:
       - 0: Success, worktree and folder created
@@ -89,7 +95,7 @@ process:
       - 3: Invalid branch name or description
 
       For JSON output use: `agentic plan init <branch> --description <desc> --json`
-      JSON response includes: worktree, worktree_created, branch, plan_folder, plan_folder_name, main_worktree
+      JSON response includes: worktree, worktree_created, worktree_reused, branch, plan_folder, plan_folder_name, main_worktree
 
       NOTE: Do NOT create folders manually. The CLI enforces naming convention
       and Main-First Planning behavior programmatically, eliminating agent errors.

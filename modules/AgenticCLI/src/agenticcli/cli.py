@@ -475,7 +475,7 @@ def stories_status(id: str = typer.Argument(..., help="Story ID")):
 @stories_app.command("update")
 def stories_update(
     id: str = typer.Argument(..., help="Story ID"),
-    status: Annotated[str, typer.Option("--status", "-s", help="Test result: pass, fail, skip")] = ...,
+    status: Annotated[str, typer.Option("--status", "-s", help="Test result: pass, fail, skip, regression")] = ...,
     notes: Annotated[Optional[str], typer.Option("--notes", "-n", help="Test notes")] = None,
     plan: Annotated[Optional[str], typer.Option("--plan", help="Plan folder")] = None,
 ):
@@ -501,6 +501,32 @@ def stories_untested(
 ):
     """List stories needing validation."""
     _stories_handle(_ns(command="stories", stories_command="untested", json=_global["json"], debug=_global["debug"], project=project))
+
+
+@stories_app.command("batch-update")
+def stories_batch_update(
+    plan: Annotated[str, typer.Option("--plan", help="Plan folder name")] = ...,
+    status: Annotated[str, typer.Option("--status", "-s", help="Test result: pass, fail, skip, regression")] = ...,
+    notes: Annotated[Optional[str], typer.Option("--notes", "-n", help="Test notes")] = None,
+):
+    """Update all affected stories in a plan at once."""
+    _stories_handle(_ns(
+        command="stories", stories_command="batch-update",
+        json=_global["json"], debug=_global["debug"],
+        plan=plan, status=status, notes=notes,
+    ))
+
+
+@stories_app.command("affected")
+def stories_affected(
+    plan: Annotated[str, typer.Option("--plan", help="Plan folder name")] = ...,
+):
+    """List affected stories for a plan with their test status."""
+    _stories_handle(_ns(
+        command="stories", stories_command="affected",
+        json=_global["json"], debug=_global["debug"],
+        plan=plan,
+    ))
 
 
 # ===========================================================================
@@ -647,6 +673,14 @@ def worktree_sync():
 
 
 # ===========================================================================
+# RALPH (plan orchestration loop)
+# ===========================================================================
+
+from agenticcli.commands.ralph import app as ralph_app
+app.add_typer(ralph_app, name="ralph")
+
+
+# ===========================================================================
 # SESSION
 # ===========================================================================
 
@@ -670,6 +704,7 @@ def session_spawn(
     max_turns: Annotated[Optional[int], typer.Option("--max-turns", "-m", help="Maximum agentic turns")] = None,
     background: Annotated[bool, typer.Option("--background", "-b", help="Run in background")] = False,
     directory: Annotated[Optional[str], typer.Option("--directory", "-d", help="Working directory")] = None,
+    worktree: Annotated[Optional[str], typer.Option("--worktree", "-w", help="Worktree path (alias for --directory)")] = None,
     dangerously_skip_permissions: Annotated[bool, typer.Option(
         "--dangerously-skip-permissions", help="Skip permission prompts")] = False,
 ):
@@ -680,22 +715,29 @@ def session_spawn(
         print_error("--role and --task are mutually exclusive.")
         raise typer.Exit(1)
 
+    # Mutual exclusion check (--worktree and --directory cannot both be set)
+    if worktree and directory:
+        from agenticcli.console import print_error
+        print_error("--worktree and --directory are mutually exclusive.")
+        raise typer.Exit(1)
+    effective_directory = worktree or directory
+
     _session_handle(_ns(
         command="session", session_command="spawn",
         json=_global["json"], debug=_global["debug"],
         prompt=prompt, role=role, task=task, plan=plan,
         max_turns=max_turns, background=background,
-        directory=directory,
+        directory=effective_directory,
         dangerously_skip_permissions=dangerously_skip_permissions,
     ))
 
 
 @session_app.command("list")
 def session_list(
-    active: Annotated[bool, typer.Option("--active", "-a", help="Show only active sessions")] = False,
+    all_sessions: Annotated[bool, typer.Option("--all", "-a", help="Show all sessions including completed")] = False,
 ):
-    """List all sessions."""
-    _session_handle(_ns(command="session", session_command="list", json=_global["json"], debug=_global["debug"], active=active))
+    """List sessions (active only by default, use --all for all)."""
+    _session_handle(_ns(command="session", session_command="list", json=_global["json"], debug=_global["debug"], show_all=all_sessions))
 
 
 @session_app.command("stop")
@@ -724,6 +766,35 @@ def session_status(
     ))
 
 
+@session_app.command("health")
+def session_health(
+    session_id: Annotated[str, typer.Argument(help="Session ID (or prefix)")],
+    json_output: Annotated[bool, typer.Option("-j", "--json", help="JSON output")] = False,
+):
+    """Check health and vitality of a session."""
+    _session_handle(_ns(
+        command="session", session_command="health",
+        json=_global["json"], debug=_global["debug"],
+        session_id=session_id, json_output=json_output,
+    ))
+
+
+@session_app.command("logs")
+def session_logs(
+    session_id: Annotated[str, typer.Argument(help="Session ID (or prefix)")],
+    stderr: Annotated[bool, typer.Option("--stderr", help="Show stderr instead of stdout")] = False,
+    lines: Annotated[int, typer.Option("-n", "--lines", help="Number of lines to show")] = 50,
+    follow: Annotated[bool, typer.Option("-f", "--follow", help="Follow log output (tail -f)")] = False,
+):
+    """View stdout/stderr logs for a session."""
+    _session_handle(_ns(
+        command="session", session_command="logs",
+        json=_global["json"], debug=_global["debug"],
+        session_id=session_id, stderr=stderr,
+        lines=lines, follow=follow,
+    ))
+
+
 # ===========================================================================
 # LOOP
 # ===========================================================================
@@ -748,17 +819,25 @@ def loop_start(
     completion_promise: Annotated[Optional[str], typer.Option("--completion-promise", "-c", help="Completion text")] = None,
     background: Annotated[bool, typer.Option("--background", "-b", help="Run in background")] = False,
     directory: Annotated[Optional[str], typer.Option("--directory", "-d", help="Working directory")] = None,
+    worktree: Annotated[Optional[str], typer.Option("--worktree", "-w", help="Worktree path (alias for --directory)")] = None,
     output: Annotated[Optional[str], typer.Option("--output", "-o", help="Output file path")] = None,
     dangerously_skip_permissions: Annotated[bool, typer.Option(
         "--dangerously-skip-permissions", help="Skip permission prompts")] = False,
 ):
     """Start a Ralph Loop with a prompt."""
+    # Mutual exclusion check (--worktree and --directory cannot both be set)
+    if worktree and directory:
+        from agenticcli.console import print_error
+        print_error("--worktree and --directory are mutually exclusive.")
+        raise typer.Exit(1)
+    effective_directory = worktree or directory
+
     _loop_handle(_ns(
         command="loop", loop_command="start",
         json=_global["json"], debug=_global["debug"],
         prompt=prompt, prompt_file=prompt_file, entrypoint=entrypoint,
         max_iterations=max_iterations, completion_promise=completion_promise,
-        background=background, directory=directory, output=output,
+        background=background, directory=effective_directory, output=output,
         dangerously_skip_permissions=dangerously_skip_permissions,
     ))
 
@@ -789,6 +868,74 @@ def loop_history(
         command="loop", loop_command="history",
         json=_global["json"], debug=_global["debug"],
         active=active, status=status, limit=limit,
+    ))
+
+
+# ===========================================================================
+# PLANNER
+# ===========================================================================
+
+planner_app = typer.Typer(help="Automated orchestration planning loop", no_args_is_help=True)
+app.add_typer(planner_app, name="planner")
+
+
+def _planner_handle(args):
+    cli_ctx = _get_ctx(_global["json"], _global["debug"])
+    _stability_banner("planner")
+    from agenticcli.commands import planner
+    planner.handle(args, ctx=cli_ctx)
+
+
+@planner_app.command("start")
+def planner_start(
+    max_iterations: Annotated[int, typer.Option("--max-iterations", "-m", help="Max iterations")] = 10,
+    background: Annotated[bool, typer.Option("--background", "-b", help="Run in background")] = False,
+    completion_promise: Annotated[Optional[str], typer.Option("--completion-promise", "-c", help="Completion text")] = None,
+    project: Annotated[Optional[str], typer.Option("--project", "-p", help="Project filter for story discovery")] = None,
+    directory: Annotated[Optional[str], typer.Option("--directory", "-d", help="Working directory")] = None,
+    worktree: Annotated[Optional[str], typer.Option("--worktree", "-w", help="Worktree path (alias for --directory)")] = None,
+    dangerously_skip_permissions: Annotated[bool, typer.Option(
+        "--dangerously-skip-permissions", help="Skip permission prompts")] = False,
+):
+    """Start the orchestration planner loop."""
+    if worktree and directory:
+        from agenticcli.console import print_error
+        print_error("--worktree and --directory are mutually exclusive.")
+        raise typer.Exit(1)
+    effective_directory = worktree or directory
+
+    _planner_handle(_ns(
+        command="planner", planner_command="start",
+        json=_global["json"], debug=_global["debug"],
+        max_iterations=max_iterations, background=background,
+        completion_promise=completion_promise, project=project,
+        directory=effective_directory,
+        dangerously_skip_permissions=dangerously_skip_permissions,
+    ))
+
+
+@planner_app.command("stop")
+def planner_stop(
+    planner_id: str = typer.Argument(..., help="Planner loop ID to stop"),
+    force: Annotated[bool, typer.Option("--force", "-f", help="Force kill")] = False,
+):
+    """Stop a running planner loop."""
+    _planner_handle(_ns(
+        command="planner", planner_command="stop",
+        json=_global["json"], debug=_global["debug"],
+        planner_id=planner_id, force=force,
+    ))
+
+
+@planner_app.command("status")
+def planner_status(
+    planner_id: Annotated[Optional[str], typer.Argument(help="Planner loop ID (omit for all)")] = None,
+):
+    """Show planner loop status."""
+    _planner_handle(_ns(
+        command="planner", planner_command="status",
+        json=_global["json"], debug=_global["debug"],
+        planner_id=planner_id,
     ))
 
 
@@ -1129,7 +1276,7 @@ def context_task(
 
 @context_app.command("inputs")
 def context_inputs(
-    role: Annotated[str, typer.Option("--role", "-r", help="Role ID")] = ...,
+    role: Annotated[Optional[str], typer.Option("--role", "-r", help="Role ID")] = None,
     resolve: Annotated[bool, typer.Option("--resolve", help="Expand layer references")] = False,
 ):
     """Returns input files for a role with path resolution."""
@@ -1242,23 +1389,33 @@ def plan_scaffold(
 
 # --- plan status ---
 @plan_app.command("status")
-def plan_status(path: Optional[str] = typer.Argument(None, help="Path to plan folder")):
+def plan_status(
+    path: Optional[str] = typer.Argument(None, help="Path to plan folder"),
+    plan: Annotated[Optional[str], typer.Option("--plan", "-p", help="Plan folder path (takes priority over positional)")] = None,
+):
     """Show plan status and task summary."""
-    _plan_handle(_ns(command="plan", plan_command="status", json=_global["json"], debug=_global["debug"], path=path))
+    resolved = plan or path
+    _plan_handle(_ns(command="plan", plan_command="status", json=_global["json"], debug=_global["debug"], path=resolved))
 
 
 # --- plan validate ---
 @plan_app.command("validate")
 def plan_validate(
-    path: str = typer.Argument(..., help="Path to plan folder"),
+    path: Optional[str] = typer.Argument(None, help="Path to plan folder"),
+    plan: Annotated[Optional[str], typer.Option("--plan", "-p", help="Plan folder path (takes priority over positional)")] = None,
     strict: Annotated[bool, typer.Option("--strict", help="Fail on stub templates")] = False,
     check_fences: Annotated[bool, typer.Option("--check-fences", help="Validate UAT fence compliance")] = False,
 ):
     """Validate plan folder structure and YAML."""
+    resolved = plan or path
+    if not resolved:
+        from agenticcli.console import print_error
+        print_error("Path is required. Usage: agentic plan validate <path> or --plan <path>")
+        raise typer.Exit(1)
     _plan_handle(_ns(
         command="plan", plan_command="validate",
         json=_global["json"], debug=_global["debug"],
-        path=path, strict=strict, check_fences=check_fences,
+        path=resolved, strict=strict, check_fences=check_fences,
     ))
 
 
@@ -1271,9 +1428,17 @@ def plan_list():
 
 # --- plan archive ---
 @plan_app.command("archive")
-def plan_archive(path: str = typer.Argument(..., help="Path to plan folder to archive")):
+def plan_archive(
+    path: Optional[str] = typer.Argument(None, help="Path to plan folder to archive"),
+    plan: Annotated[Optional[str], typer.Option("--plan", "-p", help="Plan folder path (takes priority over positional)")] = None,
+):
     """Copy plan to completed folder."""
-    _plan_handle(_ns(command="plan", plan_command="archive", json=_global["json"], debug=_global["debug"], path=path))
+    resolved = plan or path
+    if not resolved:
+        from agenticcli.console import print_error
+        print_error("Path is required. Usage: agentic plan archive <path> or --plan <path>")
+        raise typer.Exit(1)
+    _plan_handle(_ns(command="plan", plan_command="archive", json=_global["json"], debug=_global["debug"], path=resolved))
 
 
 # --- plan unarchive ---
@@ -1337,10 +1502,24 @@ def plan_task_prefill(
     ))
 
 
+def _validate_status(value: str) -> str:
+    valid = ["all", "pending", "in_progress", "completed"]
+    if value not in valid:
+        raise typer.BadParameter(f"Invalid choice: '{value}'. Choose from: {', '.join(valid)}")
+    return value
+
+
+def _validate_priority(value: str) -> str:
+    valid = ["low", "medium", "high"]
+    if value not in valid:
+        raise typer.BadParameter(f"Invalid choice: '{value}'. Choose from: {', '.join(valid)}")
+    return value
+
+
 @plan_task_app.command("list")
 def plan_task_list(
     plan: Annotated[Optional[str], typer.Option("--plan", "-p", help="Plan path")] = None,
-    status: Annotated[str, typer.Option("--status", "-s", help="Filter by status")] = "all",
+    status: Annotated[str, typer.Option("--status", "-s", help="Filter by status", callback=_validate_status)] = "all",
     verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Show full details")] = False,
 ):
     """Show all tasks in current plan folder."""
@@ -1370,7 +1549,7 @@ def plan_task_add(
     plan: Annotated[Optional[str], typer.Option("--plan", "-p", help="Plan path")] = None,
     phase: Annotated[Optional[str], typer.Option("--phase", "-ph", help="Phase ID")] = None,
     id: Annotated[Optional[str], typer.Option("--id", help="Custom task ID")] = None,
-    priority: Annotated[str, typer.Option("--priority", help="Task priority")] = "medium",
+    priority: Annotated[str, typer.Option("--priority", help="Task priority", callback=_validate_priority)] = "medium",
 ):
     """Add new task to plan."""
     _plan_handle(_ns(
@@ -1573,7 +1752,8 @@ def plan_stories_test(
 GLOBAL_COMMANDS = {
     "setup", "config", "cfg", "preferences", "prefs", "pref",
     "update", "rebuild", "health", "state", "session", "loop",
-    "env", "langsmith", "ls", "completion", "question",
+    "env", "langsmith", "ls", "completion", "question", "ralph",
+    "planner",
 }
 
 PROJECT_COMMANDS = {

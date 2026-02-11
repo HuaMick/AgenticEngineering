@@ -92,6 +92,11 @@ class TaskService:
                 allow_unicode=True,
             )
 
+    @staticmethod
+    def _get_task_id(task_data: dict) -> str:
+        """Extract task ID from dict, checking both 'id' and 'task_id' keys."""
+        return task_data.get("id") or task_data.get("task_id") or ""
+
     def _task_dict_to_dataclass(self, task_data: dict) -> Task:
         """Convert task dictionary to Task dataclass.
 
@@ -110,12 +115,12 @@ class TaskService:
             status = TaskStatus.PENDING
 
         return Task(
-            id=task_data.get("id", ""),
+            id=self._get_task_id(task_data),
             name=task_data.get("name", ""),
             description=task_data.get("description", ""),
             status=status,
             agent=task_data.get("agent"),
-            inputs=task_data.get("inputs", []),
+            inputs=task_data.get("inputs") or task_data.get("file_inputs", []),
             target_files=task_data.get("target_files", []),
             guidance=task_data.get("guidance"),
             completed_date=task_data.get("completed_date"),
@@ -143,13 +148,13 @@ class TaskService:
             for phase in phases:
                 tasks = phase.get("tasks", [])
                 for task_data in tasks:
-                    if task_data.get("id") == task_id:
+                    if self._get_task_id(task_data) == task_id:
                         return self._task_dict_to_dataclass(task_data)
 
         # Fall back to root-level tasks[] for backward compatibility
         root_tasks = data.get("tasks", [])
         for task_data in root_tasks:
-            if task_data.get("id") == task_id:
+            if self._get_task_id(task_data) == task_id:
                 return self._task_dict_to_dataclass(task_data)
 
         return None
@@ -257,7 +262,7 @@ class TaskService:
                     for phase in phases:
                         tasks = phase.get("tasks", [])
                         for task_data in tasks:
-                            if task_data.get("id") == task_id:
+                            if self._get_task_id(task_data) == task_id:
                                 task_data["status"] = status.value
                                 # Add completed_date if status is completed
                                 if status == TaskStatus.COMPLETED:
@@ -271,7 +276,7 @@ class TaskService:
                 if not task_found:
                     root_tasks = data.get("tasks", [])
                     for task_data in root_tasks:
-                        if task_data.get("id") == task_id:
+                        if self._get_task_id(task_data) == task_id:
                             task_data["status"] = status.value
                             # Add completed_date if status is completed
                             if status == TaskStatus.COMPLETED:

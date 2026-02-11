@@ -58,12 +58,12 @@ def main():
                     show_agent_help(agent_name, json_output=json_output, bootstrap=bootstrap)
                     sys.exit(0)
 
+    # Handle -h alias for --help (works for both backends)
+    if len(sys.argv) >= 2 and sys.argv[1] == "-h":
+        sys.argv[1] = "--help"
+
     # Route to appropriate backend
     if _use_typer():
-        # Handle -h alias: Typer only recognizes --help, so translate -h for users
-        if len(sys.argv) >= 2 and sys.argv[1] == "-h":
-            sys.argv[1] = "--help"
-
         # Handle no-args: Typer shows help via no_args_is_help but exits with code 0
         if len(sys.argv) == 1:
             from agenticcli.cli import run_cli

@@ -1,0 +1,204 @@
+flowchart LR
+    %% ========================================
+    %% ORCHESTRATION: Guidance-CLI Alignment
+    %% ========================================
+    %% GOAL: Fix remaining guidance-CLI alignment gaps across all agent guidance files
+    %% PROFILE: orchestrator
+    %%
+    %% PLAN_FOLDER: docs/plans/live/260208GA_guidance_cli_alignment
+    %% PLAN_FILES: plan_build.yml
+    %%
+    %% PHASES: VerifyFixed, WorktreeAlias, AgentRouting, LoopTypes, ConsistencySweep, IntegrationTest
+    %% AGENT_ROUTING: VerifyFixed=build-python, WorktreeAlias=build-python, AgentRouting=build-python, LoopTypes=build-python, ConsistencySweep=build-python, IntegrationTest=test-runner
+    %% FEEDBACK_TRIGGERS: TEST_FAILURE=retry(3), BUILD_FAILURE=retry(3)
+    %% STATUS: VerifyFixed=pending, WorktreeAlias=pending, AgentRouting=pending, LoopTypes=pending, ConsistencySweep=pending, IntegrationTest=pending
+
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION
+    %% ========================================
+    LoadInputs --> ReviewPlanFiles[Review plan_build.yml]
+    ReviewPlanFiles --> CheckInputs{All Inputs Found?}
+    CheckInputs -- "No: Missing" --> AskUser((Ask User for Clarification))
+    CheckInputs -- "Yes: Verified" --> EnterP1[Enter Phase 1: Verify Already-Fixed Gaps]
+
+    %% ========================================
+    %% PHASE 1: VERIFY ALREADY-FIXED GAPS (PARALLEL)
+    %% ========================================
+    %% Tasks: GA_001, GA_002, GA_003
+    %% Agent: build-python
+    %% These are independent audits — safe to parallelize
+    %% Verifies gaps 1, 3, 4, 5 are fully fixed across ALL guidance files
+
+    subgraph VerifyFixed_SG ["Phase 1: Verify Already-Fixed Gaps"]
+        %% Track A: Audit loop start syntax (GA_001)
+        EnterP1 --> SpawnGA001[Spawn build-python: GA_001 - Audit stale loop start syntax]
+        SpawnGA001 --> GA001Result{GA_001 Complete?}
+        GA001Result -- "No: Issues Found" --> FixGA001[Spawn build-python: Fix stale loop references]
+        FixGA001 --> GA001Result
+        GA001Result -- "Yes: Verified" --> GA001Done[GA_001 Complete]
+
+        %% Track B: Audit loop status/history syntax (GA_002)
+        EnterP1 --> SpawnGA002[Spawn build-python: GA_002 - Audit loop status/history syntax]
+        SpawnGA002 --> GA002Result{GA_002 Complete?}
+        GA002Result -- "No: Issues Found" --> FixGA002[Spawn build-python: Fix stale status/history refs]
+        FixGA002 --> GA002Result
+        GA002Result -- "Yes: Verified" --> GA002Done[GA_002 Complete]
+
+        %% Track C: Audit plans.yml short-name resolution (GA_003)
+        EnterP1 --> SpawnGA003[Spawn build-python: GA_003 - Audit short-name resolution docs]
+        SpawnGA003 --> GA003Result{GA_003 Complete?}
+        GA003Result -- "No: Issues Found" --> FixGA003[Spawn build-python: Fix contradictory short-name refs]
+        FixGA003 --> GA003Result
+        GA003Result -- "Yes: Verified" --> GA003Done[GA_003 Complete]
+    end
+
+    GA001Done --> P1Gate{All P1 Tracks Complete?}
+    GA002Done --> P1Gate
+    GA003Done --> P1Gate
+    P1Gate -- "Yes" --> EnterP2[Enter Phase 2: Add --worktree Alias]
+
+    %% ========================================
+    %% PHASE 2: ADD --WORKTREE ALIAS (SEQUENTIAL)
+    %% ========================================
+    %% Tasks: GA_004, GA_005, GA_006
+    %% Agent: build-python
+    %% Sequential: CLI change -> guidance update -> tests
+
+    subgraph WorktreeAlias_SG ["Phase 2: Add --worktree Alias"]
+        EnterP2 --> SpawnGA004[Spawn build-python: GA_004 - Add --worktree alias to CLI]
+        SpawnGA004 --> GA004Result{GA_004 Complete?}
+        GA004Result -- "No: Build Error" --> RetryGA004[Retry GA_004]
+        RetryGA004 --> SpawnGA004
+        GA004Result -- "Yes: CLI Updated" --> SpawnGA005[Spawn build-python: GA_005 - Update guidance docs]
+
+        SpawnGA005 --> GA005Result{GA_005 Complete?}
+        GA005Result -- "No: Issues" --> RetryGA005[Retry GA_005]
+        RetryGA005 --> SpawnGA005
+        GA005Result -- "Yes: Docs Updated" --> SpawnGA006[Spawn build-python: GA_006 - Add unit tests]
+
+        SpawnGA006 --> GA006Result{GA_006 Tests Pass?}
+        GA006Result -- "No: Test Failure" --> RetryGA006[Retry GA_006 Fix]
+        RetryGA006 --> SpawnGA006
+        GA006Result -- "Yes: Tests Pass" --> P2Done[Phase 2 Complete]
+    end
+
+    P2Done --> EnterP3[Enter Phase 3: Enhance AGENT_ROUTING Validation]
+
+    %% ========================================
+    %% PHASE 3: ENHANCE AGENT_ROUTING VALIDATION (SEQUENTIAL)
+    %% ========================================
+    %% Tasks: GA_007, GA_008, GA_009
+    %% Agent: build-python
+    %% Sequential: registry -> replace hardcoded -> tests
+
+    subgraph AgentRouting_SG ["Phase 3: Enhance AGENT_ROUTING Validation"]
+        EnterP3 --> SpawnGA007[Spawn build-python: GA_007 - Build dynamic agent registry]
+        SpawnGA007 --> GA007Result{GA_007 Complete?}
+        GA007Result -- "No: Build Error" --> RetryGA007[Retry GA_007]
+        RetryGA007 --> SpawnGA007
+        GA007Result -- "Yes: Registry Built" --> SpawnGA008[Spawn build-python: GA_008 - Replace hardcoded types]
+
+        SpawnGA008 --> GA008Result{GA_008 Complete?}
+        GA008Result -- "No: Build Error" --> RetryGA008[Retry GA_008]
+        RetryGA008 --> SpawnGA008
+        GA008Result -- "Yes: Validation Enhanced" --> SpawnGA009[Spawn build-python: GA_009 - Add validation tests]
+
+        SpawnGA009 --> GA009Result{GA_009 Tests Pass?}
+        GA009Result -- "No: Test Failure" --> RetryGA009[Retry GA_009 Fix]
+        RetryGA009 --> SpawnGA009
+        GA009Result -- "Yes: Tests Pass" --> P3Done[Phase 3 Complete]
+    end
+
+    P3Done --> EnterP4[Enter Phase 4: Add Loop Type Awareness]
+
+    %% ========================================
+    %% PHASE 4: ADD LOOP TYPE AWARENESS (SEQUENTIAL)
+    %% ========================================
+    %% Tasks: GA_010, GA_011, GA_012
+    %% Agent: build-python
+    %% Sequential: registry -> validation -> tests
+
+    subgraph LoopTypes_SG ["Phase 4: Add Loop Type Awareness"]
+        EnterP4 --> SpawnGA010[Spawn build-python: GA_010 - Create loop type registry]
+        SpawnGA010 --> GA010Result{GA_010 Complete?}
+        GA010Result -- "No: Build Error" --> RetryGA010[Retry GA_010]
+        RetryGA010 --> SpawnGA010
+        GA010Result -- "Yes: Registry Built" --> SpawnGA011[Spawn build-python: GA_011 - Add loop type validation]
+
+        SpawnGA011 --> GA011Result{GA_011 Complete?}
+        GA011Result -- "No: Build Error" --> RetryGA011[Retry GA_011]
+        RetryGA011 --> SpawnGA011
+        GA011Result -- "Yes: Validation Added" --> SpawnGA012[Spawn build-python: GA_012 - Add loop type tests]
+
+        SpawnGA012 --> GA012Result{GA_012 Tests Pass?}
+        GA012Result -- "No: Test Failure" --> RetryGA012[Retry GA_012 Fix]
+        RetryGA012 --> SpawnGA012
+        GA012Result -- "Yes: Tests Pass" --> P4Done[Phase 4 Complete]
+    end
+
+    P4Done --> EnterP5[Enter Phase 5: Cross-Guidance Consistency Sweep]
+
+    %% ========================================
+    %% PHASE 5: CROSS-GUIDANCE CONSISTENCY SWEEP (PARALLEL)
+    %% ========================================
+    %% Tasks: GA_013, GA_014
+    %% Agent: build-python
+    %% Independent file sets — safe to parallelize
+
+    subgraph ConsistencySweep_SG ["Phase 5: Cross-Guidance Consistency Sweep"]
+        %% Track A: Sweep process.yml files (GA_013)
+        EnterP5 --> SpawnGA013[Spawn build-python: GA_013 - Sweep process.yml CLI refs]
+        SpawnGA013 --> GA013Result{GA_013 Complete?}
+        GA013Result -- "No: Mismatches Found" --> FixGA013[Spawn build-python: Fix process.yml mismatches]
+        FixGA013 --> GA013Result
+        GA013Result -- "Yes: All Correct" --> GA013Done[GA_013 Complete]
+
+        %% Track B: Sweep specification files (GA_014)
+        EnterP5 --> SpawnGA014[Spawn build-python: GA_014 - Sweep specification CLI refs]
+        SpawnGA014 --> GA014Result{GA_014 Complete?}
+        GA014Result -- "No: Mismatches Found" --> FixGA014[Spawn build-python: Fix specification mismatches]
+        FixGA014 --> GA014Result
+        GA014Result -- "Yes: All Correct" --> GA014Done[GA_014 Complete]
+    end
+
+    GA013Done --> P5Gate{All P5 Tracks Complete?}
+    GA014Done --> P5Gate
+    P5Gate -- "Yes" --> EnterP6[Enter Phase 6: Integration Testing]
+
+    %% ========================================
+    %% PHASE 6: INTEGRATION TESTING (SEQUENTIAL)
+    %% ========================================
+    %% Tasks: GA_015, GA_016
+    %% Agent: test-runner
+    %% Sequential: full test suite -> manual verification
+
+    subgraph IntegrationTest_SG ["Phase 6: Integration Testing"]
+        EnterP6 --> SpawnGA015[Spawn test-runner: GA_015 - Run full test suite]
+        SpawnGA015 --> GA015Result{GA_015 All Tests Pass?}
+        GA015Result -- "No: Regressions" --> TriageGA015{Regression from our changes?}
+        TriageGA015 -- "Yes: Our regression" --> EscalateToFix((Escalate: Fix Regressions Before Continuing))
+        TriageGA015 -- "No: Pre-existing" --> NotePreExisting[Note Pre-Existing Failures]
+        NotePreExisting --> SpawnGA016[Spawn test-runner: GA_016 - Verify --worktree help output]
+        GA015Result -- "Yes: All Pass" --> SpawnGA016
+
+        SpawnGA016 --> GA016Result{GA_016 Complete?}
+        GA016Result -- "No: Missing" --> EscalateGA016((Escalate: --worktree Not Visible in Help))
+        GA016Result -- "Yes: Verified" --> P6Done[Phase 6 Complete]
+    end
+
+    %% ========================================
+    %% OUTPUT PHASE
+    %% ========================================
+    subgraph Output_SG ["Output Subgraph"]
+        P6Done --> ReportCompletion[Report Completion Status]
+        ReportCompletion --> ArchivePlan[Run: agentic plan move folder --plan 260208GA_guidance_cli_alignment]
+    end
+
+    ArchivePlan --> End((End: Plan Completed))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef dashedstroke stroke-dasharray: 5 5;

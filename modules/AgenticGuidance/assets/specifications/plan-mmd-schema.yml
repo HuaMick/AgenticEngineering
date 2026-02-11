@@ -620,7 +620,11 @@ agent_routing:
 
   validation_routing_required:
     rule: "Validation and Audit subgraphs MUST have AGENT_ROUTING entries"
-    enforcement: "HARD - executor refuses to start if validation phases lack routing"
+    enforcement: "EXPECTED - executor should refuse to start if validation phases lack routing"
+    cli_validation: |
+      `agentic plan validate` checks AGENT_ROUTING format and agent type validity
+      but does not yet enforce the validation-subgraph routing requirement.
+      Enforcement relies on executor runtime behavior.
     description: |
       Any subgraph with "Validation" or "Audit" in the name MUST have a
       corresponding AGENT_ROUTING entry. This ensures validation phases
@@ -709,6 +713,22 @@ feedback_triggers:
       affected_agents:
         - "test-final-output"
 
+    ERROR_REQUIRES_PLANNING:
+      description: "Agent discovered out-of-scope error requiring new planning session"
+      detection:
+        output_patterns:
+          - "out_of_scope_error: true"
+          - "remediation_plan_needed: true"
+          - "error_outside_plan_scope: true"
+      typical_action: "Create new planning folder, log in current plan, continue execution"
+      context_package: "error_type, error_details, discovery_context, affected_files, suggested_plan_name"
+      note: |
+        Unlike other triggers that cause RE-PLANNING of the current plan,
+        this trigger spawns a SEPARATE planning folder for future remediation.
+        The current plan continues execution — this is non-blocking by default
+        unless priority is CRITICAL.
+      protocol_reference: "modules/AgenticGuidance/assets/definitions/error-driven-planning-protocol.yml"
+
   trigger_to_action_mapping:
     description: |
       Standard mapping from triggers to workflow actions:
@@ -738,6 +758,11 @@ feedback_triggers:
         action: "Re-plan with audit findings"
         target_node: "DelegatePlanning"
         context_package: "audit_findings, severity, affected_outputs"
+
+      - trigger: "ERROR_REQUIRES_PLANNING"
+        action: "Spawn new planning folder via CLI"
+        target_node: "SpawnRemediationPlan"
+        context_package: "error_type, error_details, discovery_context, suggested_plan_name, priority"
 
   loop_connection:
     description: |

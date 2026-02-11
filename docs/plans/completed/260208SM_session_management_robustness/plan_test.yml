@@ -1,0 +1,526 @@
+name: session-management-robustness-test-plan
+worktree_path: /home/code/AgenticEngineering
+branch: main
+status: pending
+priority: high
+context: 'Test plan for Session Management Robustness (260208SM). Validates the four
+
+  build phases: health infrastructure, new CLI commands, stale detection
+
+  integration, and test updates.
+
+
+  Key test files:
+
+  - modules/AgenticCLI/tests/test_session_commands.py (CLI command tests)
+
+  - modules/AgenticGuidance/tests/test_services_claude_session.py (service tests)
+
+
+  Implementation files:
+
+  - modules/AgenticCLI/src/agenticcli/commands/session.py
+
+  - modules/AgenticCLI/src/agenticcli/cli.py
+
+  - modules/AgenticGuidance/src/agenticguidance/services/claude_session.py
+
+  '
+objective: 'Verify session management robustness features work correctly:
+
+  - SessionEntry new fields (last_activity, log_bytes) with backward compat
+
+  - Log file descriptor management fix
+
+  - _check_session_health evaluates PID, logs, activity signals correctly
+
+  - `agentic session health` command displays correct verdicts
+
+  - `agentic session logs` command shows log content with options
+
+  - Stale warnings appear in session list for stuck sessions
+
+  - tmux existence check works when applicable
+
+  - No regressions in existing session commands
+
+  '
+dependencies: []
+affected_stories: []
+impacted_files:
+- path: modules/AgenticCLI/tests/test_session_commands.py
+  change_type: modify
+  change_category: test
+  reason: Add tests for health, logs, stale detection
+- path: modules/AgenticGuidance/tests/test_services_claude_session.py
+  change_type: modify
+  change_category: test
+  reason: Add tests for new SessionEntry fields and refresh_activity
+impacted_artifacts:
+- artifact_type: cli_command
+  artifact_identifier: agentic session health
+  impact_type: new
+  description: Validated by unit tests and UAT
+  breaking_change: false
+- artifact_type: cli_command
+  artifact_identifier: agentic session logs
+  impact_type: new
+  description: Validated by unit tests and UAT
+  breaking_change: false
+loop_structures:
+- id: loop_health_test_fix
+  type: test-fix-loop
+  applies_to_phase: 'T1: Health Infrastructure Tests'
+  trigger: After health infrastructure tests created
+  exit_criteria:
+    success: All health infrastructure tests pass
+    max_iterations: 5
+    escalation: Escalate with failing test details
+  participants:
+  - agent: test-builder
+    role: Creates and runs unit tests
+  - agent: build-python
+    role: Fixes failures
+- id: loop_command_test_fix
+  type: test-fix-loop
+  applies_to_phase: 'T2: New Command Tests'
+  trigger: After command tests created
+  exit_criteria:
+    success: All command tests pass
+    max_iterations: 5
+    escalation: Escalate with test details
+  participants:
+  - agent: test-builder
+    role: Creates and runs tests
+  - agent: build-python
+    role: Fixes failures
+- id: loop_integration_test_fix
+  type: test-fix-loop
+  applies_to_phase: 'T3: Integration Tests'
+  trigger: After integration tests created
+  exit_criteria:
+    success: All integration tests pass
+    max_iterations: 5
+    escalation: Escalate with test details
+  participants:
+  - agent: test-builder
+    role: Creates and runs tests
+  - agent: build-python
+    role: Fixes failures
+- id: loop_audit
+  type: audit-test-fix-loop
+  applies_to_phase: 'T4: Test Audit'
+  trigger: After all test phases pass
+  description: 'MANDATORY audit to validate test quality. Catches reward hacking,
+
+    skipped tests, and missing assertions.
+
+    '
+  exit_criteria:
+    success: Audit passes AND all tests still pass after corrections
+    max_iterations: 3
+    escalation: BLOCK - audit failures must be resolved
+  participants:
+  - agent: test-audit
+    role: Audits test quality
+  - agent: test-builder
+    role: Fixes audit-identified issues
+  mandatory: true
+- id: loop_uat
+  type: user-story-validation-loop
+  applies_to_phase: 'T5: UAT Validation'
+  trigger: After audit passes
+  description: 'User acceptance testing validates session robustness from operator
+    perspective.
+
+    PRIMARY SUCCESS CRITERIA for this plan.
+
+    '
+  exit_criteria:
+    success: All user acceptance criteria pass
+    max_iterations: 3
+    escalation: Escalate with UAT failure details
+  participants:
+  - agent: test-user-simulator
+    role: Simulates operator workflows
+  - agent: build-python
+    role: Fixes user-facing issues
+  mandatory: true
+phases:
+- name: 'T1: Health Infrastructure Tests'
+  execution: sequential
+  description: 'Tests for SessionEntry new fields, log file management fix, and
+
+    _check_session_health helper function.
+
+    '
+  loop: test-fix-loop
+  tasks:
+  - id: TSM_001
+    name: Test SessionEntry last_activity and log_bytes fields
+    description: 'Verify new fields have correct defaults, serialize/deserialize correctly,
+
+      and are backward compatible with existing session JSON files.
+
+      '
+    status: completed
+    agent: test-builder
+    strategy: smoke-test
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/claude_session.py
+    - modules/AgenticGuidance/tests/test_services_claude_session.py
+    target_files:
+    - modules/AgenticGuidance/tests/test_services_claude_session.py
+    guidance: '1. Test default values: Create SessionEntry, assert last_activity=None,
+      log_bytes=None
+
+      2. Test to_dict includes new fields when set
+
+      3. Test from_dict with missing fields (backward compat) - should get defaults
+
+      4. Test update_activity sets timestamp
+
+      5. Test refresh_activity with mock log files
+
+      '
+    success_criteria:
+    - Default values are None
+    - Serialization round-trips correctly
+    - Old JSON without new fields loads successfully
+  - id: TSM_002
+    name: Test _check_session_health function
+    description: 'Unit test the health check function across multiple scenarios:
+
+      healthy session, stale session, dead PID, empty logs.
+
+      '
+    status: completed
+    agent: test-builder
+    strategy: smoke-test
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    - modules/AgenticCLI/tests/test_session_commands.py
+    target_files:
+    - modules/AgenticCLI/tests/test_session_commands.py
+    guidance: "1. Test healthy session: PID alive + non-empty logs + recent mtime\n\
+      \   -> healthy=True, stale=False\n2. Test stale session: PID alive + non-empty\
+      \ logs + old mtime (>10m)\n   -> healthy=True, stale=True, stale_minutes > 10\n\
+      3. Test dead PID: PID not alive\n   -> healthy=False, pid_alive signal is ok=False\n\
+      4. Test empty logs: PID alive + 0-byte log files\n   -> has_output signal is\
+      \ ok=False\n5. Test missing log files: no log files exist\n   -> has_output\
+      \ signal is ok=False, falls back to started_at for activity\n6. Test completed\
+      \ session: status != \"running\"\n   -> stale=False regardless of activity age\n\
+      Use monkeypatch for _is_process_running and tmp_path for log files.\n"
+    success_criteria:
+    - All health scenarios produce correct signals
+    - Stale threshold (10 minutes) works correctly
+    - Edge cases handled (missing files, completed sessions)
+  - id: TSM_003
+    name: Test log file descriptor management fix
+    description: 'Verify that log file handles are closed after Popen in background
+      spawn,
+
+      and that immediate spawn failures are detected.
+
+      '
+    status: completed
+    agent: test-builder
+    strategy: smoke-test
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    - modules/AgenticCLI/tests/test_session_commands.py
+    target_files:
+    - modules/AgenticCLI/tests/test_session_commands.py
+    guidance: "1. Mock subprocess.Popen and open() to verify:\n   - open() is called\
+      \ for stdout and stderr log files\n   - After Popen, both file handles have\
+      \ .close() called\n2. Test immediate spawn failure detection:\n   - Mock Popen\
+      \ to return a process that dies immediately\n   - Mock _is_process_running to\
+      \ return False after spawn\n   - Verify session status is updated to \"failed\"\
+      \n3. Test last_activity is set in session data on spawn\n"
+    success_criteria:
+    - File handles are closed after Popen
+    - Immediate spawn failure is caught
+    - last_activity set on spawn
+- name: 'T2: New Command Tests'
+  execution: sequential
+  description: 'Tests for the new `agentic session health` and `agentic session logs`
+    commands.
+
+    '
+  loop: test-fix-loop
+  tasks:
+  - id: TSM_004
+    name: Test session health command
+    description: 'Test cmd_health with various session states and output modes.
+
+      '
+    status: completed
+    agent: test-builder
+    strategy: smoke-test
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    - modules/AgenticCLI/tests/test_session_commands.py
+    target_files:
+    - modules/AgenticCLI/tests/test_session_commands.py
+    guidance: "class TestSessionHealthCommand:\n  1. test_health_healthy_session:\n\
+      \     - Create running session JSON + non-empty recent log files\n     - Mock\
+      \ _is_process_running -> True\n     - Call cmd_health, verify \"HEALTHY\" in\
+      \ output\n\n  2. test_health_stale_session:\n     - Create running session +\
+      \ log files with old mtime\n     - Use os.utime to set mtime 20 minutes ago\n\
+      \     - Call cmd_health, verify \"STALE\" in output\n\n  3. test_health_unhealthy_session:\n\
+      \     - Create running session, mock PID dead\n     - Call cmd_health, verify\
+      \ \"UNHEALTHY\" in output\n\n  4. test_health_json_output:\n     - Call cmd_health\
+      \ with json_output=True\n     - Parse stdout as JSON, verify keys: session_id,\
+      \ healthy, signals, stale\n\n  5. test_health_partial_id:\n     - Resolve session\
+      \ by first 8 chars\n     - Verify correct session found\n\n  6. test_health_no_match:\n\
+      \     - Call with non-existent ID\n     - Verify error message\n"
+    success_criteria:
+    - All three verdicts tested (HEALTHY, STALE, UNHEALTHY)
+    - JSON output structure validated
+    - Partial ID matching works
+    - Error handling for missing sessions
+  - id: TSM_005
+    name: Test session logs command
+    description: 'Test cmd_logs with various scenarios: stdout, stderr, line limits,
+
+      empty logs, missing logs.
+
+      '
+    status: completed
+    agent: test-builder
+    strategy: smoke-test
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    - modules/AgenticCLI/tests/test_session_commands.py
+    target_files:
+    - modules/AgenticCLI/tests/test_session_commands.py
+    guidance: "class TestSessionLogsCommand:\n  1. test_logs_stdout_default:\n   \
+      \  - Create session + stdout log with 10 lines\n     - Call cmd_logs, verify\
+      \ lines appear in output\n\n  2. test_logs_stderr:\n     - Create session +\
+      \ stderr log\n     - Call cmd_logs with stderr=True\n     - Verify stderr content\
+      \ shown\n\n  3. test_logs_line_limit:\n     - Create log with 100 lines\n  \
+      \   - Call cmd_logs with lines=10\n     - Verify only last 10 lines shown\n\
+      \     - Verify \"showing last 10 of 100 lines\" message\n\n  4. test_logs_empty_file:\n\
+      \     - Create 0-byte log file\n     - Call cmd_logs, verify \"empty (0 bytes)\"\
+      \ message\n\n  5. test_logs_missing_file:\n     - No log file at all\n     -\
+      \ Call cmd_logs, verify \"No ... log file found\" message\n\n  6. test_logs_no_session:\n\
+      \     - Call with non-existent session ID\n     - Verify error message\n"
+    success_criteria:
+    - stdout and stderr modes work
+    - Line limit works correctly
+    - Empty and missing files handled gracefully
+    - Error messages are clear
+- name: 'T3: Integration Tests'
+  execution: sequential
+  description: 'Tests for stale warning integration in session list and tmux checks.
+
+    '
+  loop: test-fix-loop
+  tasks:
+  - id: TSM_006
+    name: Test stale warning in session list
+    description: 'Verify that session list shows stale warnings for stuck sessions
+
+      and healthy indicators for active ones.
+
+      '
+    status: completed
+    agent: test-builder
+    strategy: smoke-test
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    - modules/AgenticCLI/tests/test_session_commands.py
+    target_files:
+    - modules/AgenticCLI/tests/test_session_commands.py
+    guidance: "1. test_list_stale_session_warning:\n   - Create 2 running sessions:\
+      \ one healthy (recent logs), one stale (old logs)\n   - Mock _is_process_running\
+      \ -> True for both\n   - Call cmd_list, verify stale warning appears for one\
+      \ session\n   - Verify \"STALE\" appears in output\n\n2. test_list_all_healthy_no_warning:\n\
+      \   - Create running sessions with recent log activity\n   - Call cmd_list,\
+      \ verify no stale warnings\n\n3. test_list_completed_no_health_check:\n   -\
+      \ Create completed sessions\n   - Call cmd_list with show_all=True\n   - Verify\
+      \ no health check performed for completed sessions\n   - Verify \"-\" in health\
+      \ column for completed sessions\n\n4. test_list_json_includes_health:\n   -\
+      \ Create running sessions\n   - Call cmd_list with json_output=True\n   - Parse\
+      \ JSON, verify \"health\" key present for running sessions\n"
+    success_criteria:
+    - Stale sessions show warning in list
+    - Healthy sessions show OK
+    - Completed sessions skip health check
+    - JSON output includes health data
+  - id: TSM_007
+    name: Test tmux existence check
+    description: 'Test the tmux session existence check helper and its integration
+
+      into the health check signals.
+
+      '
+    status: completed
+    agent: test-builder
+    strategy: smoke-test
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    target_files:
+    - modules/AgenticCLI/tests/test_session_commands.py
+    guidance: "1. test_check_tmux_session_exists:\n   - Mock subprocess.run to return\
+      \ code 0\n   - Verify _check_tmux_session returns True\n\n2. test_check_tmux_session_missing:\n\
+      \   - Mock subprocess.run to return code 1\n   - Verify _check_tmux_session\
+      \ returns False\n\n3. test_check_tmux_not_installed:\n   - Mock subprocess.run\
+      \ to raise FileNotFoundError\n   - Verify _check_tmux_session returns None\n\
+      \n4. test_health_includes_tmux_signal:\n   - Create session with tmux metadata\n\
+      \   - Mock _check_tmux_session\n   - Verify tmux signal appears in health check\
+      \ results\n"
+    success_criteria:
+    - tmux existence check works for existing/missing/unavailable tmux
+    - Health check includes tmux signal when relevant
+    - Graceful handling when tmux is not installed
+- name: 'T4: Test Audit'
+  execution: sequential
+  description: 'MANDATORY audit to validate test quality. Must pass before UAT.
+
+    '
+  loop: audit-test-fix-loop
+  tasks:
+  - id: TSM_008
+    name: Audit session management test quality
+    description: 'Comprehensive audit of all session management tests for quality
+      issues.
+
+      '
+    status: completed
+    agent: test-audit
+    inputs:
+    - modules/AgenticCLI/tests/test_session_commands.py
+    - modules/AgenticGuidance/tests/test_services_claude_session.py
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    - modules/AgenticGuidance/src/agenticguidance/services/claude_session.py
+    guidance: 'Audit Checklist:
+
+      1. Skipped tests: Find @pytest.mark.skip decorators, validate justification
+
+      2. Reward hacking: Tests that mock too much, hardcoded returns, trivial assertions
+
+      3. Coverage gaps: Error paths, edge cases, both output modes (human/JSON)
+
+      4. Test quality: Missing cleanup, global state modification, loose assertions
+
+      5. Implementation validation: Tests actually call implementation code
+
+      6. New behavior tested: Health check, logs command, stale detection, tmux check
+
+      7. File descriptor fix: Verify close() is tested, not just Popen
+
+      8. Backward compatibility: Old session JSON without new fields still works
+
+      '
+    success_criteria:
+    - No unjustified skipped tests
+    - No reward hacking detected
+    - Coverage gaps identified and addressed
+- name: 'T5: UAT Validation'
+  execution: sequential
+  description: 'MANDATORY user acceptance testing - PRIMARY SUCCESS CRITERIA.
+
+    Validates session management robustness from an operator perspective.
+
+    '
+  loop: user-story-validation-loop
+  tasks:
+  - id: TSM_009
+    name: 'UAT: Operator detects and investigates stuck session'
+    description: 'Validate that an operator can detect a stuck session and investigate
+
+      it using the new health and logs commands.
+
+      '
+    status: completed
+    agent: test-user-simulator
+    strategy: agent-blind-test
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    guidance: "User Journey:\n1. Operator runs: agentic session list\n   Expected:\
+      \ Sees running sessions with Health column\n   Expected: Stale session shows\
+      \ yellow \"STALE\" warning\n2. Operator notices stale session, runs: agentic\
+      \ session health <id>\n   Expected: Sees detailed health signals (PID, logs,\
+      \ activity)\n   Expected: Sees \"STALE\" verdict with minutes since last activity\n\
+      3. Operator checks logs: agentic session logs <id>\n   Expected: Sees last 50\
+      \ lines of stdout, or \"empty (0 bytes)\" warning\n4. Operator checks stderr:\
+      \ agentic session logs <id> --stderr\n   Expected: Sees stderr output or appropriate\
+      \ warning\n5. Operator decides to stop stuck session: agentic session stop <id>\n\
+      \nAcceptance Criteria:\n- Stuck session is clearly visible in session list\n\
+      - Health command provides actionable diagnostic information\n- Logs command\
+      \ allows inspecting session output\n- Full investigate-and-stop workflow is\
+      \ intuitive\n"
+    success_criteria:
+    - Stale session is visually flagged in list
+    - Health command provides clear verdict and signals
+    - Logs command shows content or explains why it's empty
+    - Workflow from detection to resolution is smooth
+  - id: TSM_010
+    name: 'UAT: Background session spawn with proper log capture'
+    description: 'Validate that newly spawned background sessions properly capture
+      logs
+
+      and have correct health tracking from the start.
+
+      '
+    status: completed
+    agent: test-user-simulator
+    strategy: agent-blind-test
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    guidance: "User Journey:\n1. Operator spawns a background session:\n   agentic\
+      \ session spawn --prompt \"Test task\" -b\n   Expected: Session created with\
+      \ status \"running\"\n2. Operator checks session immediately:\n   agentic session\
+      \ health <id>\n   Expected: Shows health status with last_activity set\n3. Operator\
+      \ views logs:\n   agentic session logs <id>\n   Expected: Shows any output produced\
+      \ so far\n4. If session fails immediately:\n   Expected: Status is \"failed\"\
+      \ (not stuck as \"running\")\n   Expected: Health check shows PID dead signal\n\
+      \nAcceptance Criteria:\n- Spawned sessions have last_activity from the start\n\
+      - Log files are being written to (not empty due to fd leak)\n- Immediate failures\
+      \ are detected within seconds\n- Health check works from the moment of spawn\n"
+    success_criteria:
+    - last_activity set on spawn
+    - Log files capture output correctly
+    - Immediate failures detected
+    - Health check works immediately after spawn
+execution_notes: 'TESTING LAYERS:
+
+  - Local: Always test (validates developer workflow)
+
+  - Docker: Skip (no infrastructure changes)
+
+  - Cloud Build: Skip (no CI/CD changes)
+
+
+  UAT IS PRIMARY SUCCESS CRITERIA:
+
+  - Unit tests validate implementation correctness
+
+  - UAT validates the operator experience for detecting stuck sessions
+
+  - Both UAT stories must pass for plan to be considered complete
+
+
+  AUDIT IS MANDATORY:
+
+  - Cannot skip test-audit-fix-loop phase (T4)
+
+  - Must validate test quality before UAT
+
+
+  LOOP EXECUTION ORDER:
+
+  1. test-fix-loop (T1: health infrastructure tests)
+
+  2. test-fix-loop (T2: new command tests)
+
+  3. test-fix-loop (T3: integration tests)
+
+  4. audit-test-fix-loop (T4: MANDATORY)
+
+  5. user-story-validation-loop (T5: MANDATORY - primary success)
+
+  '

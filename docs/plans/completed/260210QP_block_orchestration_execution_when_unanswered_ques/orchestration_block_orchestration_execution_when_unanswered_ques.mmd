@@ -1,0 +1,168 @@
+%% =============================================================================
+%% GOAL: Execute plan tasks
+%% =============================================================================
+%% PROFILE: Orchestration-260210QP_block_orchestration_execution_when_unanswered_ques
+%% INPUT_PATH: /home/code/AgenticEngineering/docs/plans/live/260210QP_block_orchestration_execution_when_unanswered_ques/plan_build.yml
+%%
+%% PHASES:
+%%   P1: Utility function: has_pending_questions
+%%   P2: Auto-archive gate (3 call sites)
+%%   P3: Orchestration prompt question gate
+%%   P4: Session spawn question warning
+%%   P5: Question list for completed/archived plans
+%%   P6: Unit tests
+%%   P7: Verification
+%%
+%% AGENT_ROUTING: P1 -> builder, P2 -> builder, P3 -> builder, P4 -> builder, P5 -> builder, P6 -> test-builder, P7 -> builder
+%% STATUS: P1=pending, P2=pending, P3=pending, P4=pending, P5=pending, P6=pending, P7=pending
+%% FEEDBACK_TRIGGERS: TEST_FAILURE -> test-fix-loop, BUILD_FAILURE -> escalate
+%% =============================================================================
+
+flowchart LR
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    LoadInputs --> ReviewInputs[Review All Listed Inputs]
+    ReviewInputs --> CheckInputs{All Inputs Found?}
+
+    CheckInputs -- "No: Missing" --> SearchInputs[Search for Missing Inputs]
+    SearchInputs --> Found{Found?}
+    Found -- "Yes: Update paths" --> UpdateRefs[Update References]
+    UpdateRefs --> ReviewInputs
+    Found -- "No: Stop" --> AskUser((Ask User for Clarification))
+
+    CheckInputs -- "Yes: Verified" --> Phase1
+
+    %% ========================================
+    %% PHASE 1: UTILITY FUNCTION: HAS_PENDING_QUESTIONS
+    %% ========================================
+    %% AGENT_ROUTING: builder agent
+    %% Tasks: P1-T1
+
+    subgraph P1_SG ["Utility function: has_pending_questions"]
+        Phase1[Enter Utility function: has_pending_questions] --> SpawnAgent1[Spawn builder Agent]
+        SpawnAgent1 --> Task_P1_1[P1-T1: Add a function `has_pending_questions(pl]
+        Task_P1_1 --> Phase1Complete[Utility function: has_pending_questions Complete]
+    end
+
+    Phase1Complete --> Phase2
+
+    %% ========================================
+    %% PHASE 2: AUTO-ARCHIVE GATE (3 CALL SITES)
+    %% ========================================
+    %% AGENT_ROUTING: builder agent
+    %% Tasks: P2-T1, P2-T2, P2-T3
+
+    subgraph P2_SG ["Auto-archive gate (3 call sites)"]
+        Phase2[Enter Auto-archive gate (3 call sites)] --> SpawnAgent2[Spawn builder Agent]
+        SpawnAgent2 --> Task_P2_1[P2-T1: In cmd_task_complete() around line 1939,]
+        Task_P2_1 --> Task_P2_2[P2-T2: In the orchestrate-execute flow around l]
+        Task_P2_2 --> Task_P2_3[P2-T3: In the Typer-based task update function ]
+        Task_P2_3 --> Phase2Complete[Auto-archive gate (3 call sites) Complete]
+    end
+
+    Phase2Complete --> Phase3
+
+    %% ========================================
+    %% PHASE 3: ORCHESTRATION PROMPT QUESTION GATE
+    %% ========================================
+    %% AGENT_ROUTING: builder agent
+    %% Tasks: P3-T1
+
+    subgraph P3_SG ["Orchestration prompt question gate"]
+        Phase3[Enter Orchestration prompt question gate] --> SpawnAgent3[Spawn builder Agent]
+        SpawnAgent3 --> Task_P3_1[P3-T1: Edit docs/prompts/orchestration.md. In t]
+        Task_P3_1 --> Phase3Complete[Orchestration prompt question gate Complete]
+    end
+
+    Phase3Complete --> Phase4
+
+    %% ========================================
+    %% PHASE 4: SESSION SPAWN QUESTION WARNING
+    %% ========================================
+    %% AGENT_ROUTING: builder agent
+    %% Tasks: P4-T1
+
+    subgraph P4_SG ["Session spawn question warning"]
+        Phase4[Enter Session spawn question warning] --> SpawnAgent4[Spawn builder Agent]
+        SpawnAgent4 --> Task_P4_1[P4-T1: In cmd_spawn() in session.py, after plan]
+        Task_P4_1 --> Phase4Complete[Session spawn question warning Complete]
+    end
+
+    Phase4Complete --> Phase5
+
+    %% ========================================
+    %% PHASE 5: QUESTION LIST FOR COMPLETED/ARCHIVED PLANS
+    %% ========================================
+    %% AGENT_ROUTING: builder agent
+    %% Tasks: P5-T1
+
+    subgraph P5_SG ["Question list for completed/archived plans"]
+        Phase5[Enter Question list for completed/archived plans] --> SpawnAgent5[Spawn builder Agent]
+        SpawnAgent5 --> Task_P5_1[P5-T1: In question.py's _get_plan_path(), the a]
+        Task_P5_1 --> Phase5Complete[Question list for completed/archived plans Complete]
+    end
+
+    Phase5Complete --> Phase6
+
+    %% ========================================
+    %% PHASE 6: UNIT TESTS
+    %% ========================================
+    %% AGENT_ROUTING: test-builder agent with test-fix loop
+    %% LOOP_DEFINITION: test-fix-loop
+    %% MAX_ITERATIONS: 5
+
+    subgraph Testing6_SG ["Unit tests (Test-Fix-Loop)"]
+        Phase6[Enter Unit tests] --> SpawnTestBuilder6[Spawn test-builder Agent]
+        SpawnTestBuilder6 --> RunTests6[Run Tests]
+        RunTests6 --> TestsPassed6{Tests Passed?}
+
+        %% Test-Fix Loop: retry path
+        TestsPassed6 -- "No: Fix in Iteration" --> SpawnBuilderFix6[Spawn builder Agent for Fixes]
+        SpawnBuilderFix6 --> ApplyFixes6[Apply Implementation Fixes]
+        ApplyFixes6 --> RunTests6
+
+        %% Success path
+        TestsPassed6 -- "Yes: All Pass" --> Phase6Complete[Unit tests Complete]
+    end
+
+    %% Escalation path for persistent test failures
+    TestsPassed6 -- "No: Escalate" --> CheckIterations6{Max Iterations Reached?}
+    CheckIterations6 -- "No" --> SpawnTestBuilder6
+    CheckIterations6 -- "Yes" --> EscalateTests6((Ask User: Test Failures Persist))
+
+    Phase6Complete --> Phase7
+
+    %% ========================================
+    %% PHASE 7: VERIFICATION
+    %% ========================================
+    %% AGENT_ROUTING: builder agent
+    %% Tasks: P7-T1
+
+    subgraph P7_SG ["Verification"]
+        Phase7[Enter Verification] --> SpawnAgent7[Spawn builder Agent]
+        SpawnAgent7 --> Task_P7_1[P7-T1: Run the full test suite to verify no reg]
+        Task_P7_1 --> Phase7Complete[Verification Complete]
+    end
+
+
+    %% ========================================
+    %% FINALIZATION
+    %% ========================================
+    Phase7Complete --> UpdatePlanStatus[Update Plan Status: completed]
+    %% agentic plan move folder --plan <path>
+    UpdatePlanStatus --> ArchivePlan[Archive to docs/plans/completed/]
+    ArchivePlan --> End((End: Plan Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef entrypoint fill:#90EE90,stroke:#228B22
+    classDef exitpoint fill:#FFB6C1,stroke:#DC143C
+    classDef userpoint fill:#87CEEB,stroke:#4682B4
+    classDef keyaction fill:#FFD700,stroke:#DAA520
+    class Start entrypoint
+    class End exitpoint
+    class AskUser,EscalateTests6 userpoint

@@ -1,0 +1,261 @@
+# Error-Driven Planning Protocol
+# Defines how agents handle errors discovered outside current plan scope.
+#
+# KEY PRINCIPLE: Non-planner agents do NOT classify or decide scope.
+# They capture context and hand off. PLANNERS decide everything.
+#
+# Reference: docs/plans/live/260208EP_error_driven_planning_handoff/
+
+error_driven_planning_protocol:
+  definition: |
+    Protocol for handling errors discovered outside the scope of the current plan.
+    When any agent encounters an error it cannot resolve within its current plan,
+    it captures context and hands off to a planner agent. The planner — not the
+    discovering agent — decides whether the error is in-scope or out-of-scope,
+    and what action to take.
+
+  scope: |
+    Applies to ALL agent types during plan execution.
+    Complements (does not replace) existing feedback triggers like TEST_FAILURE
+    and BUILD_FAILURE, which handle in-scope re-planning.
+
+  # ============================================================
+  # SECTION 1: ERROR HANDOFF (for non-planner agents)
+  # ============================================================
+  error_handoff:
+    principle: |
+      Non-planner agents (builders, testers, deployers, auditors) do NOT classify
+      errors as in-scope vs out-of-scope. They do NOT decide priority or remediation
+      strategy. They just capture context and hand off to a planner.
+
+    when_to_hand_off: |
+      Any error the agent cannot fix inline within its current task's target_files.
+      When in doubt, hand off — planners can always dismiss if trivial.
+
+    protocol:
+      step_1_capture_context:
+        name: "Capture Error Context"
+        description: "Record everything the planner needs to make a decision."
+        fields:
+          error_details:
+            type: "string"
+            description: "Full error output or description"
+          affected_files:
+            type: "array<string>"
+            description: "Files involved in the error"
+          current_plan:
+            type: "string"
+            description: "Plan folder being executed when error was found"
+          discovery_context:
+            type: "string"
+            description: "What the agent was doing when it found the error"
+
+      step_2_spawn_planning_session:
+        name: "Spawn Orchestration-Planning Session"
+        description: |
+          Immediately spawn an orchestration-planning session with the error context.
+          Do NOT attempt to classify, prioritize, or fix the error yourself.
+        action: "Spawn orchestration-planning with error context package"
+
+      step_3_continue_or_stop:
+        name: "Continue or Stop"
+        description: |
+          If the error blocks your current task (e.g., compilation failure): stop and report.
+          If the error does not block your current task: continue working, let the planner
+          handle the error asynchronously.
+
+    output_fields:
+      description: "Include in the agent's standard output for orchestrator consumption."
+      schema:
+        out_of_scope_error: true
+        error_context:
+          error_details: "<full error output>"
+          affected_files: ["<files>"]
+          current_plan: "<plan folder path>"
+          discovery_context: "<what agent was doing>"
+
+    fence: |
+      FENCE: Non-planner agents MUST NOT:
+      - Classify errors as in-scope vs out-of-scope
+      - Assign priority levels (CRITICAL, HIGH, etc.)
+      - Decide whether to create a new plan or update the existing one
+      - Suggest plan names or remediation strategies
+      Just capture context and hand off. Planners decide everything.
+
+  # ============================================================
+  # SECTION 2: PLANNER TRIAGE (for planner agents)
+  # ============================================================
+  planner_triage:
+    principle: |
+      Only planner agents decide scope, priority, and remediation strategy.
+      When a planner receives an error handoff, it triages the error and
+      takes the appropriate action.
+
+    triage_decisions:
+      in_scope:
+        description: "Error is within the current plan's scope"
+        conditions:
+          - "Error is in the current plan's target_files"
+          - "Error was caused by changes made during current plan execution"
+          - "Error is a known iteration scenario (test-fix-loop, build retry)"
+        action: |
+          Update the existing plan: add tasks to address the error,
+          adjust success criteria if needed, continue execution.
+
+      out_of_scope:
+        description: "Error is outside the current plan's scope"
+        conditions:
+          - "Error is NOT in the current plan's target_files"
+          - "Error pre-dates the current plan (was already broken)"
+          - "Error affects modules/packages outside current plan scope"
+          - "Error reveals systemic infrastructure issues"
+          - "Test failures exist for code not touched by current plan"
+          - "CI/CD configuration drift unrelated to current changes"
+        action: |
+          Create a new planning folder using standard naming convention.
+          Log the new plan reference in the current plan's execution report.
+          Continue current plan execution (unless CRITICAL).
+
+    priority_classification:
+      description: "Planner assigns priority based on impact assessment."
+      levels:
+        CRITICAL:
+          description: "Blocks current plan execution"
+          action: "Create plan immediately, may pause current execution"
+          examples:
+            - "Import error prevents build from compiling at all"
+            - "Shared fixture corruption breaks all tests"
+        HIGH:
+          description: "Degrades plan quality but doesn't block"
+          action: "Create plan, continue current execution"
+          examples:
+            - "Pre-existing test failures inflate failure count"
+            - "Dependency version conflict causes intermittent errors"
+        MEDIUM:
+          description: "Technical debt discovered during work"
+          action: "Create plan, continue current execution"
+          examples:
+            - "Outdated configuration files found"
+            - "Dead code or unused imports in related modules"
+        LOW:
+          description: "Minor issues worth tracking"
+          action: "Log in output, optionally create plan"
+          examples:
+            - "Style inconsistencies in files not being modified"
+            - "Missing type hints in adjacent code"
+
+    error_type_vocabulary:
+      description: |
+        Common error types for planner use when classifying handoffs.
+        These are for planner reference only — non-planner agents do not use these.
+      types:
+        - "pre_existing_debt"
+        - "systemic_issue"
+        - "missing_dependency"
+        - "configuration_drift"
+        - "test_infrastructure"
+        - "import_boundary"
+        - "cross_module_breakage"
+
+  # ============================================================
+  # SECTION 3: WORKTREE SELECTION (Hard Gate)
+  # ============================================================
+  worktree_selection:
+    principle: |
+      Worktree selection is enforced by the CLI, not by agent judgment.
+      Agents do not choose worktrees — the CLI gates selection based on
+      active session status.
+
+    hard_gate_rules:
+      rule_1_blocked_worktrees:
+        description: "CLI BLOCKS worktrees with active sessions"
+        detail: "Worktrees that have a running agent session are not available for selection."
+
+      rule_2_multiple_plans_allowed:
+        description: "Multiple plans per worktree are allowed"
+        detail: |
+          A worktree can host multiple planning folders simultaneously.
+          Plans are independent — they share the worktree but not state.
+
+      rule_3_new_worktree_creation:
+        description: "Only create new worktree if ALL existing worktrees have active sessions"
+        detail: |
+          Before creating a new worktree, the CLI checks if any existing worktree
+          is available (no active session). New worktree creation is a last resort.
+
+    auto_cleanup:
+      description: "Worktrees are auto-cleaned when their last plan archives"
+      detail: |
+        When a plan is archived (via auto-archive or manual archive), the CLI
+        checks if the associated worktree has any remaining live plans.
+        If the worktree is idle (no live plans, no active sessions), it is
+        automatically removed along with its VS Code workspace entry.
+
+    enforcement: |
+      Selection and cleanup are enforced programmatically by the CLI.
+      Agents MUST NOT attempt to evaluate worktree availability themselves.
+      Use CLI commands; the CLI will reject invalid selections.
+      Worktree reuse and cleanup happen automatically — agents do not
+      need to manage worktree lifecycle.
+
+  # ============================================================
+  # SECTION 4: NAMING CONVENTION (Standard — No Special Codes)
+  # ============================================================
+  naming_convention:
+    principle: |
+      Error-driven plans use the SAME naming convention as all other plans.
+      There is NO special naming code for error remediation.
+
+    pattern: "YYMMDDXX_description"
+    description: |
+      Standard plan naming. XX is derived from the worktree path suffix,
+      enforced by the CLI via 'agentic plan init'.
+
+    examples:
+      - name: "260208CL_cli_test_failures"
+        context: "Test runner found pre-existing test failures in CLI module"
+      - name: "260208AG_import_boundary_fixes"
+        context: "Build agent found broken imports in AgenticGuidance services"
+      - name: "260208CL_cicd_drift_dockerfile"
+        context: "Deploy agent found Dockerfile.test out of sync"
+      - name: "260208AG_pyyaml_version_conflict"
+        context: "Build agent found PyYAML version conflict"
+
+    anti_pattern: |
+      DO NOT use a special "ER" (Error Remediation) naming code.
+      Error-driven plans are regular plans — they follow the same naming,
+      the same lifecycle, and the same archival rules as any other plan.
+
+    cli_enforcement: |
+      Use 'agentic plan init <branch> --description <desc>' to generate names.
+      The CLI enforces naming programmatically — agents should NOT construct
+      plan names manually.
+
+  # ============================================================
+  # INTEGRATION POINTS
+  # ============================================================
+  integration_points:
+    with_feedback_triggers: |
+      ERROR_REQUIRES_PLANNING is a feedback trigger type that complements
+      TEST_FAILURE and BUILD_FAILURE. Unlike those triggers which cause
+      re-planning of the current plan, ERROR_REQUIRES_PLANNING spawns
+      a SEPARATE plan for future remediation.
+
+    with_agent_loops: |
+      Out-of-scope errors discovered during loop iterations:
+      - Do NOT count toward loop iteration limits
+      - Are aggregated across iterations
+      - Are reported at loop exit
+      - Planner creates plans for HIGH+ priority errors after loop completes
+
+    with_orchestrator: |
+      The orchestrator tracks all spawned remediation plans:
+      - Logs each in remediation_plans_spawned list
+      - Reports all at shutdown
+      - CRITICAL priority plans may pause execution
+      - Plans are NOT automatically executed (require separate orchestration)
+
+  related:
+    - "modules/AgenticGuidance/assets/definitions/plans.yml"
+    - "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+    - "modules/AgenticGuidance/assets/definitions/role-separation.yml"

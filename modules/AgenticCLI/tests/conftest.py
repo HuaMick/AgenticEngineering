@@ -13,6 +13,18 @@ import yaml
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 
+@pytest.fixture(autouse=True)
+def _block_real_ntfy():
+    """Safety net: prevent any test from sending real ntfy notifications.
+
+    Patches _get_ntfy_config to return None so ntfy code paths are skipped.
+    Tests that intentionally test ntfy should override this fixture in their
+    module by defining their own _block_real_ntfy that yields without patching.
+    """
+    with patch("agenticcli.commands.question._get_ntfy_config", return_value=None):
+        yield
+
+
 @pytest.fixture
 def temp_dir():
     """Create a temporary directory for tests."""
@@ -56,6 +68,11 @@ def temp_repo(temp_dir):
     }
     with open(plan_folder / "plan_test.yml", "w") as f:
         yaml.dump(sample_plan, f)
+
+    # Create a minimal orchestration MMD file (EN-006 requires it for task start)
+    (plan_folder / "orchestration_test.mmd").write_text(
+        "flowchart TD\n  P01[Phase 1] --> P02[Phase 2]\n"
+    )
 
     yield repo_dir
 
@@ -165,6 +182,10 @@ def cli_runner(temp_repo):
         return CLIResult(stdout, stderr, exit_code)
 
     yield run_cli
+
+    # Reset global state that may have been set by --json flag
+    from agenticcli.console import set_json_output
+    set_json_output(False)
 
     # Restore cwd
     os.chdir(original_cwd)

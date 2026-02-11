@@ -106,8 +106,39 @@ process:
       REPORT FINDINGS: Output per inputs.yml#audit_reporting format.
       Include: package path, user story results, skip audit results, test quality issues, structural issues.
       Constraints: inputs.yml#audit_constraints (do not fix, do not run tests).
+    - |
+      Error-Driven Planning Handoff:
+      Reference: modules/AgenticGuidance/assets/definitions/error-driven-planning-protocol.yml
+
+      When ANY issues are found during the audit:
+      1. Capture all findings as error context:
+         - error_details: Full description of all issues found (quality issues, skip violations, structural problems, story failures)
+         - affected_files: All files involved in the findings
+         - current_plan: Plan folder being executed when findings were discovered
+         - discovery_context: "test-audit reviewing [package path]"
+      2. Spawn orchestration-planning session with the findings context package
+      3. Continue reporting (non-blocking) — let the planner decide what to do
+
+      Include in your output:
+        out_of_scope_error: true
+        error_context:
+          error_details: "<all findings>"
+          affected_files: ["<files>"]
+          current_plan: "<plan folder path>"
+          discovery_context: "<what you were auditing>"
+
+      FENCE: test-audit MUST NOT:
+      - Classify findings as in-scope vs out-of-scope
+      - Assign priority levels (CRITICAL, HIGH, etc.)
+      - Decide whether to create a new plan or update the existing one
+      - Suggest remediation strategies
+      Just capture all findings and hand off. Planners decide everything.
 
   guidelines:
     # Core guidelines: See modules/AgenticGuidance/assets/guidelines/
     # Audit specifics: See inputs.yml for audit_role, audit_checks, skip_pattern_audit, audit_constraints
     # NOTE: Behavioral constraints defined in inputs.yml#audit_constraints (single source of truth)
+    - |
+      Error-Driven Planning Protocol:
+      Reference: modules/AgenticGuidance/assets/definitions/error-driven-planning-protocol.yml
+      On ANY finding, capture context and spawn orchestration-planning. Do NOT classify or prioritize.

@@ -1,198 +1,215 @@
-# User Stories: Process Files and Input Configurations
-# Covers process.yml, inputs.yml, and the Reference Layer Architecture
-
 stories:
-  # ============================================================================
-  # PROCESS FILES
-  # ============================================================================
-
-  - id: "US-GD-010"
-    title: "Agent Process Guidance"
-    category: "process_files"
-    priority: "critical"
-    as_a: "agent executing a task"
-    i_want: "to follow a structured process defined in process.yml"
-    so_that: "my work is consistent and follows established patterns"
-    acceptance_criteria:
-      - "Each agent has a process.yml defining step-by-step execution guidance"
-      - "Process files include paths (sequential steps), fences (constraints), and signposts (decision hints)"
-      - "Process files are versioned and maintained by teacher agents"
-      - "agentic context bootstrap --role <id> retrieves the process.yml content"
-      - "Process files are concise enough to fit in an agent's context window"
-    related_commands:
-      - "agentic context bootstrap --role planner-build"
-    related_agents:
-      - "teacher-update-guidance"
-    related_files:
-      - "modules/AgenticGuidance/agents/*/process.yml"
-
-  - id: "US-GD-011"
-    title: "Process File Structure"
-    category: "process_files"
-    priority: "high"
-    as_a: "teacher agent creating process files"
-    i_want: "to structure process.yml consistently"
-    so_that: "agents can parse and follow guidance reliably"
-    acceptance_criteria:
-      - "Process includes: goal, steps, constraints, decision_points"
-      - "Steps are sequential and actionable"
-      - "Constraints define boundaries (fences)"
-      - "Decision points provide guidance (signposts)"
-      - "Process is under 5KB for context efficiency"
-    related_agents:
-      - "teacher-update-guidance"
-
-  - id: "US-GD-012"
-    title: "Process.mmd for Complex Workflows"
-    category: "process_files"
-    priority: "medium"
-    as_a: "agent executing complex workflow"
-    i_want: "to use process.mmd for visual workflow representation"
-    so_that: "complex workflows are easier to understand"
-    acceptance_criteria:
-      - "Some agents use process.mmd instead of process.yml"
-      - "MMD provides flowchart visualization of workflow"
-      - "MMD includes metadata for workflow execution"
-      - "Example: orchestration-planning uses process.mmd"
-    related_agents:
-      - "orchestration-planning"
-      - "orchestration-friction"
-    related_files:
-      - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
-
-  # ============================================================================
-  # INPUT FILES
-  # ============================================================================
-
-  - id: "US-GD-013"
-    title: "Input File Declarations"
-    category: "input_files"
-    priority: "critical"
-    as_a: "agent needing reference material"
-    i_want: "to have a declarative list of input files that I need for my work"
-    so_that: "I load exactly the context I need without over-fetching"
-    acceptance_criteria:
-      - "Each agent has an inputs.yml declaring required file references"
-      - "Input files use location: paths for file discovery"
-      - "Paths are resolved as module-relative (not starting with docs/) or repo-relative (starting with docs/)"
-      - "Layer references allow shared input configurations"
-      - "agentic context bootstrap --role <id> retrieves resolved input content"
-    related_commands:
-      - "agentic context bootstrap --role build-python"
-    related_agents:
-      - "teacher-update-guidance"
-    related_files:
-      - "modules/AgenticGuidance/agents/*/inputs.yml"
-
-  - id: "US-GD-014"
-    title: "Input File Structure"
-    category: "input_files"
-    priority: "high"
-    as_a: "developer creating inputs.yml"
-    i_want: "to structure inputs.yml consistently"
-    so_that: "context loading is predictable"
-    acceptance_criteria:
-      - "Inputs include: layers (shared configs), files (specific references)"
-      - "Layers reference shared input configs from assets/inputs/"
-      - "Files use location: path for absolute or relative paths"
-      - "Files include reason: field explaining why needed"
-      - "Transitive loading: layers can reference other layers"
-    related_files:
-      - "modules/AgenticGuidance/agents/*/inputs.yml"
-
-  - id: "US-GD-015"
-    title: "Path Resolution Convention"
-    category: "input_files"
-    priority: "high"
-    as_a: "agent resolving file paths"
-    i_want: "to resolve paths consistently"
-    so_that: "files are discovered correctly"
-    acceptance_criteria:
-      - "Paths NOT starting with 'docs/' resolved against AgenticGuidance module root"
-      - "Paths starting with 'docs/' resolved against target repository root"
-      - "Module-relative: assets/definitions/plans.yml"
-      - "Repo-relative: docs/plans/live/260207XX_example/"
-      - "CLI resolves paths before returning to agent"
-    related_commands:
-      - "agentic context bootstrap --role <id>"
-
-  # ============================================================================
-  # REFERENCE LAYER ARCHITECTURE
-  # ============================================================================
-
-  - id: "US-GD-016"
-    title: "Shared Input Layers"
-    category: "reference_layers"
-    priority: "high"
-    as_a: "guidance maintainer reducing duplication"
-    i_want: "to define shared input layers that multiple agents reference"
-    so_that: "common context is maintained in one place instead of duplicated per agent"
-    acceptance_criteria:
-      - "Core System layer (core-system.yml) provides plan structure and architecture patterns"
-      - "Core Guidelines layer (core-guidelines.yml) provides universal principles"
-      - "Planner Core layers provide planner-specific context"
-      - "Category-specific layers (planner-shared.yml, test-shared.yml, etc.) provide role context"
-      - "Agents reference layers in their inputs.yml files"
-      - "Layer changes propagate to all agents that reference them"
-      - "11 shared input configurations exist in assets/inputs/"
-    related_agents:
-      - "teacher-update-guidance"
-      - "teacher-update-assets"
-    related_files:
-      - "modules/AgenticGuidance/assets/inputs/"
-
-  - id: "US-GD-017"
-    title: "Context Minimization"
-    category: "reference_layers"
-    priority: "high"
-    as_a: "agent operating within context window limits"
-    i_want: "to load only the context I need for my current task"
-    so_that: "I avoid context rot and maintain reasoning quality"
-    acceptance_criteria:
-      - "Agents load context via CCI bootstrap, not by reading all guidance files"
-      - "Input layers are tiered: core (universal) -> category (role-specific) -> task (current work)"
-      - "Bootstrap returns only the relevant subset of guidance for the active role and task"
-      - "Context usage can be estimated before session spawn"
-      - "Large files are excluded from bootstrap and loaded on-demand"
-    related_commands:
-      - "agentic context bootstrap --role build-python"
-    related_agents:
-      - "orchestration-executor"
-    related_files:
-      - "modules/AgenticGuidance/assets/guidelines/context-minimisation.yml"
-
-  - id: "US-GD-018"
-    title: "Layer Transitive Loading"
-    category: "reference_layers"
-    priority: "medium"
-    as_a: "guidance maintainer creating layers"
-    i_want: "to reference layers from other layers"
-    so_that: "layer composition is flexible"
-    acceptance_criteria:
-      - "Layer can include 'layers:' section referencing other layers"
-      - "Transitive loading prevents circular dependencies"
-      - "Example: planner-shared.yml references core-system.yml and core-guidelines.yml"
-      - "CLI resolves all transitive layers before returning content"
-    related_files:
-      - "modules/AgenticGuidance/assets/inputs/planner-shared.yml"
-
-  # ============================================================================
-  # PATHS, FENCES, AND SIGNPOSTS
-  # ============================================================================
-
-  - id: "US-GD-019"
-    title: "Paths, Fences, and Signposts in Process Files"
-    category: "process_files"
-    priority: "critical"
-    as_a: "agent using process.yml"
-    i_want: "to understand paths, fences, and signposts in guidance"
-    so_that: "I have clear direction without overconstraint"
-    acceptance_criteria:
-      - "Paths: Sequential steps through workflow (what to do)"
-      - "Fences: Boundaries constraining behavior (what NOT to do)"
-      - "Signposts: Directional hints for decisions (when X, consider Y)"
-      - "Process.yml balances guidance with agent autonomy"
-      - "Guidance avoids overspecification"
-    related_files:
-      - "modules/AgenticGuidance/assets/definitions/path.yml"
-      - "modules/AgenticGuidance/assets/definitions/guidance-artifacts.yml"
+- id: US-GD-010
+  title: Agent Process Guidance
+  category: process_files
+  priority: critical
+  as_a: agent executing a task
+  i_want: to follow a structured process defined in process.yml
+  so_that: my work is consistent and follows established patterns
+  acceptance_criteria:
+  - Each agent has a process.yml defining step-by-step execution guidance
+  - Process files include paths (sequential steps), fences (constraints), and signposts
+    (decision hints)
+  - Process files are versioned and maintained by teacher agents
+  - agentic context bootstrap --role <id> retrieves the process.yml content
+  - Process files are concise enough to fit in an agent's context window
+  related_commands:
+  - agentic context bootstrap --role planner-build
+  related_agents:
+  - teacher-update-guidance
+  related_files:
+  - modules/AgenticGuidance/agents/*/process.yml
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-011
+  title: Process File Structure
+  category: process_files
+  priority: high
+  as_a: teacher agent creating process files
+  i_want: to structure process.yml consistently
+  so_that: agents can parse and follow guidance reliably
+  acceptance_criteria:
+  - 'Process includes: goal, steps, constraints, decision_points'
+  - Steps are sequential and actionable
+  - Constraints define boundaries (fences)
+  - Decision points provide guidance (signposts)
+  - Process is under 5KB for context efficiency
+  related_agents:
+  - teacher-update-guidance
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-012
+  title: Process.mmd for Complex Workflows
+  category: process_files
+  priority: medium
+  as_a: agent executing complex workflow
+  i_want: to use process.mmd for visual workflow representation
+  so_that: complex workflows are easier to understand
+  acceptance_criteria:
+  - Some agents use process.mmd instead of process.yml
+  - MMD provides flowchart visualization of workflow
+  - MMD includes metadata for workflow execution
+  - 'Example: orchestration-planning uses process.mmd'
+  related_agents:
+  - orchestration-planning
+  - orchestration-friction
+  related_files:
+  - modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-013
+  title: Input File Declarations
+  category: input_files
+  priority: critical
+  as_a: agent needing reference material
+  i_want: to have a declarative list of input files that I need for my work
+  so_that: I load exactly the context I need without over-fetching
+  acceptance_criteria:
+  - Each agent has an inputs.yml declaring required file references
+  - 'Input files use location: paths for file discovery'
+  - Paths are resolved as module-relative (not starting with docs/) or repo-relative
+    (starting with docs/)
+  - Layer references allow shared input configurations
+  - agentic context bootstrap --role <id> retrieves resolved input content
+  related_commands:
+  - agentic context bootstrap --role build-python
+  related_agents:
+  - teacher-update-guidance
+  related_files:
+  - modules/AgenticGuidance/agents/*/inputs.yml
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-014
+  title: Input File Structure
+  category: input_files
+  priority: high
+  as_a: developer creating inputs.yml
+  i_want: to structure inputs.yml consistently
+  so_that: context loading is predictable
+  acceptance_criteria:
+  - 'Inputs include: layers (shared configs), files (specific references)'
+  - Layers reference shared input configs from assets/inputs/
+  - 'Files use location: path for absolute or relative paths'
+  - 'Files include reason: field explaining why needed'
+  - 'Transitive loading: layers can reference other layers'
+  related_files:
+  - modules/AgenticGuidance/agents/*/inputs.yml
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-015
+  title: Path Resolution Convention
+  category: input_files
+  priority: high
+  as_a: agent resolving file paths
+  i_want: to resolve paths consistently
+  so_that: files are discovered correctly
+  acceptance_criteria:
+  - Paths NOT starting with 'docs/' resolved against AgenticGuidance module root
+  - Paths starting with 'docs/' resolved against target repository root
+  - 'Module-relative: assets/definitions/plans.yml'
+  - 'Repo-relative: docs/plans/live/260207XX_example/'
+  - CLI resolves paths before returning to agent
+  related_commands:
+  - agentic context bootstrap --role <id>
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-016
+  title: Shared Input Layers
+  category: reference_layers
+  priority: high
+  as_a: guidance maintainer reducing duplication
+  i_want: to define shared input layers that multiple agents reference
+  so_that: common context is maintained in one place instead of duplicated per agent
+  acceptance_criteria:
+  - Core System layer (core-system.yml) provides plan structure and architecture patterns
+  - Core Guidelines layer (core-guidelines.yml) provides universal principles
+  - Planner Core layers provide planner-specific context
+  - Category-specific layers (planner-shared.yml, test-shared.yml, etc.) provide role
+    context
+  - Agents reference layers in their inputs.yml files
+  - Layer changes propagate to all agents that reference them
+  - 11 shared input configurations exist in assets/inputs/
+  related_agents:
+  - teacher-update-guidance
+  - teacher-update-assets
+  related_files:
+  - modules/AgenticGuidance/assets/inputs/
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-017
+  title: Context Minimization
+  category: reference_layers
+  priority: high
+  as_a: agent operating within context window limits
+  i_want: to load only the context I need for my current task
+  so_that: I avoid context rot and maintain reasoning quality
+  acceptance_criteria:
+  - Agents load context via CCI bootstrap, not by reading all guidance files
+  - 'Input layers are tiered: core (universal) -> category (role-specific) -> task
+    (current work)'
+  - Bootstrap returns only the relevant subset of guidance for the active role and
+    task
+  - Context usage can be estimated before session spawn
+  - Large files are excluded from bootstrap and loaded on-demand
+  related_commands:
+  - agentic context bootstrap --role build-python
+  related_agents:
+  - orchestration-executor
+  related_files:
+  - modules/AgenticGuidance/assets/guidelines/context-minimisation.yml
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-018
+  title: Layer Transitive Loading
+  category: reference_layers
+  priority: medium
+  as_a: guidance maintainer creating layers
+  i_want: to reference layers from other layers
+  so_that: layer composition is flexible
+  acceptance_criteria:
+  - Layer can include 'layers:' section referencing other layers
+  - Transitive loading prevents circular dependencies
+  - 'Example: planner-shared.yml references core-system.yml and core-guidelines.yml'
+  - CLI resolves all transitive layers before returning content
+  related_files:
+  - modules/AgenticGuidance/assets/inputs/planner-shared.yml
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-019
+  title: Paths, Fences, and Signposts in Process Files
+  category: process_files
+  priority: critical
+  as_a: agent using process.yml
+  i_want: to understand paths, fences, and signposts in guidance
+  so_that: I have clear direction without overconstraint
+  acceptance_criteria:
+  - 'Paths: Sequential steps through workflow (what to do)'
+  - 'Fences: Boundaries constraining behavior (what NOT to do)'
+  - 'Signposts: Directional hints for decisions (when X, consider Y)'
+  - Process.yml balances guidance with agent autonomy
+  - Guidance avoids overspecification
+  related_files:
+  - modules/AgenticGuidance/assets/definitions/path.yml
+  - modules/AgenticGuidance/assets/definitions/guidance-artifacts.yml
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null

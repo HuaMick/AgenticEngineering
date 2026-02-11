@@ -1,0 +1,143 @@
+description: "UAT User Story Integration - Close the gap between story infrastructure and adoption"
+plan_type: build
+created: "2026-02-10"
+
+affected_stories:
+  - "US-CLI-114"   # Update Story Test Status (adding regression support)
+  - "US-CLI-115"   # Story Test Report (coverage % now meaningful)
+  - "US-CLI-116"   # List Untested Stories
+  - "US-ORCH-039"  # User story schema defines test metadata fields
+  - "US-ORCH-040"  # Test user simulator writes back story status
+  - "US-ORCH-041"  # Executor validates full story coverage
+  - "US-ORCH-042"  # CLI fence validation command
+
+phases:
+  - id: P1
+    name: "Migrate stories - add test_status fields"
+    description: "Run existing migration script to add test metadata to all 540 stories"
+    tasks:
+      - id: P1-T1
+        name: "Run migration dry-run to preview changes"
+        status: completed
+        agent: build-python
+        success_criteria:
+          - "python3 scripts/migrate_stories.py --dry-run reports 540 stories to update"
+      - id: P1-T2
+        name: "Run migration for real"
+        status: completed
+        agent: build-python
+        depends_on: [P1-T1]
+        success_criteria:
+          - "python3 scripts/migrate_stories.py updates all story files"
+          - "All 540 stories now have test_status, last_tested, test_notes, tested_by_plan fields"
+      - id: P1-T3
+        name: "Verify migration results"
+        status: completed
+        agent: build-python
+        depends_on: [P1-T2]
+        success_criteria:
+          - "agentic stories report shows 540 total with 540 untested"
+          - "agentic --json stories report returns valid JSON with correct counts"
+
+  - id: P2
+    name: "CLI enhancements - regression status + batch update"
+    description: "Add regression to CLI status choices and add batch-update command"
+    tasks:
+      - id: P2-T1
+        name: "Add regression to update command status choices"
+        status: completed
+        agent: build-python
+        success_criteria:
+          - "CLI help for stories update shows pass|fail|skip|regression"
+          - "agentic stories update <id> --status regression works correctly"
+          - "Aligns CLI with schema in user-stories.yml which already defines regression"
+        files:
+          - "modules/AgenticCLI/src/agenticcli/cli.py"
+          - "modules/AgenticCLI/src/agenticcli/commands/stories.py"
+      - id: P2-T2
+        name: "Add batch-update command for multi-story updates"
+        status: completed
+        agent: build-python
+        success_criteria:
+          - "agentic stories batch-update --plan <folder> --status pass updates all affected stories"
+          - "Reads affected_stories from plan's user_stories.yml or plan_build.yml"
+          - "Updates each story's test_status, last_tested, tested_by_plan"
+          - "Reports count of updated stories"
+          - "JSON output supported"
+        files:
+          - "modules/AgenticCLI/src/agenticcli/commands/stories.py"
+          - "modules/AgenticCLI/src/agenticcli/cli.py"
+      - id: P2-T3
+        name: "Add tests for new CLI functionality"
+        status: completed
+        agent: build-python
+        depends_on: [P2-T1, P2-T2]
+        success_criteria:
+          - "test_update_regression test passes"
+          - "test_batch_update tests pass (happy path + no affected_stories + nonexistent story)"
+          - "All existing tests still pass"
+        files:
+          - "modules/AgenticCLI/tests/test_stories.py"
+
+  - id: P3
+    name: "Plan-story linkage - affected command + validate fences"
+    description: "Add CLI commands for querying plan-story links and validating fences"
+    tasks:
+      - id: P3-T1
+        name: "Add agentic stories affected command"
+        status: completed
+        agent: build-python
+        success_criteria:
+          - "agentic stories affected --plan <folder> lists affected stories for a plan"
+          - "Reads affected_stories from plan_build.yml, plan_test.yml, or user_stories.yml"
+          - "Shows story ID, title, and current test_status"
+          - "JSON output supported"
+        files:
+          - "modules/AgenticCLI/src/agenticcli/commands/stories.py"
+          - "modules/AgenticCLI/src/agenticcli/cli.py"
+      - id: P3-T2
+        name: "Add --check-fences to agentic plan validate (already existed)"
+        status: completed
+        agent: build-python
+        success_criteria:
+          - "agentic plan validate <path> --check-fences performs 3 fence checks"
+          - "Fence 1: story discovery - has affected_stories or no_stories_rationale"
+          - "Fence 2: UAT existence - MMD has UAT subgraph"
+          - "Fence 3: story coverage - all affected stories have test_status != untested"
+          - "Exit 0 if all pass, exit 1 if any fail"
+        files:
+          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+          - "modules/AgenticCLI/src/agenticcli/cli.py"
+      - id: P3-T3
+        name: "Add tests for affected + validate fences"
+        status: completed
+        agent: build-python
+        depends_on: [P3-T1, P3-T2]
+        success_criteria:
+          - "test_stories_affected tests pass (with/without plan, JSON output)"
+          - "test_plan_validate_fences tests pass (all 3 fences, pass/fail cases)"
+          - "All existing tests still pass"
+        files:
+          - "modules/AgenticCLI/tests/test_stories.py"
+          - "modules/AgenticCLI/tests/test_plan_validate_fences.py"
+
+  - id: P4
+    name: "Verification"
+    description: "Run full test suite and verify end-to-end"
+    tasks:
+      - id: P4-T1
+        name: "Run full test suite"
+        status: completed
+        agent: test-runner
+        depends_on: [P1-T3, P2-T3, P3-T3]
+        success_criteria:
+          - "pytest modules/AgenticCLI/tests/test_stories.py passes"
+          - "pytest modules/AgenticCLI/tests/ passes (no regressions)"
+      - id: P4-T2
+        name: "Verify agentic stories report shows real data"
+        status: completed
+        agent: build-python
+        depends_on: [P1-T3]
+        success_criteria:
+          - "agentic stories report shows 540 total stories"
+          - "Coverage percentage reflects actual test status"

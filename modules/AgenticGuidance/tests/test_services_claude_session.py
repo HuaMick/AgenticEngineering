@@ -662,3 +662,231 @@ class TestSessionStateServiceEdgeCases:
 
         assert loaded is not None
         assert loaded.session_id == entry.session_id
+
+
+class TestSessionEntryNewFields:
+    """Tests for last_activity and log_bytes fields."""
+
+    def test_new_fields_default_values(self):
+        """Test that new fields default to None."""
+        entry = SessionEntry(
+            session_id="test-1",
+            pid=1000,
+            prompt="Task",
+            status="running",
+            started_at="2024-01-15T10:00:00",
+            working_dir="/tmp",
+            command="cmd",
+        )
+        assert entry.last_activity is None
+        assert entry.log_bytes is None
+
+    def test_to_dict_includes_new_fields(self):
+        """Test that to_dict includes last_activity and log_bytes."""
+        entry = SessionEntry(
+            session_id="test-2",
+            pid=1000,
+            prompt="Task",
+            status="running",
+            started_at="2024-01-15T10:00:00",
+            working_dir="/tmp",
+            command="cmd",
+            last_activity="2024-01-15T10:05:00",
+            log_bytes=1024,
+        )
+        d = entry.to_dict()
+        assert d["last_activity"] == "2024-01-15T10:05:00"
+        assert d["log_bytes"] == 1024
+
+    def test_to_dict_new_fields_none(self):
+        """Test that to_dict includes None values for unset new fields."""
+        entry = SessionEntry(
+            session_id="test-3",
+            pid=1000,
+            prompt="Task",
+            status="running",
+            started_at="2024-01-15T10:00:00",
+            working_dir="/tmp",
+            command="cmd",
+        )
+        d = entry.to_dict()
+        assert "last_activity" in d
+        assert d["last_activity"] is None
+        assert "log_bytes" in d
+        assert d["log_bytes"] is None
+
+    def test_from_dict_backward_compatible(self):
+        """Test that from_dict handles missing new fields with defaults."""
+        data = {
+            "session_id": "test-4",
+            "pid": 1000,
+            "prompt": "Old session",
+            "started_at": "2024-01-01T08:00:00",
+            "working_dir": "/tmp",
+            "command": "cmd",
+        }
+        entry = SessionEntry.from_dict(data)
+        assert entry.last_activity is None
+        assert entry.log_bytes is None
+
+    def test_from_dict_with_new_fields(self):
+        """Test that from_dict loads new fields when present."""
+        data = {
+            "session_id": "test-5",
+            "pid": 1000,
+            "prompt": "Task",
+            "started_at": "2024-01-15T10:00:00",
+            "working_dir": "/tmp",
+            "command": "cmd",
+            "last_activity": "2024-01-15T10:10:00",
+            "log_bytes": 2048,
+        }
+        entry = SessionEntry.from_dict(data)
+        assert entry.last_activity == "2024-01-15T10:10:00"
+        assert entry.log_bytes == 2048
+
+    def test_update_activity_sets_timestamp(self):
+        """Test update_activity sets last_activity."""
+        entry = SessionEntry(
+            session_id="test-6",
+            pid=1000,
+            prompt="Task",
+            status="running",
+            started_at="2024-01-15T10:00:00",
+            working_dir="/tmp",
+            command="cmd",
+        )
+        assert entry.last_activity is None
+        entry.update_activity()
+        assert entry.last_activity is not None
+        # Should be a valid ISO timestamp
+        datetime.fromisoformat(entry.last_activity)
+
+    def test_update_activity_with_explicit_timestamp(self):
+        """Test update_activity with explicit timestamp."""
+        entry = SessionEntry(
+            session_id="test-7",
+            pid=1000,
+            prompt="Task",
+            status="running",
+            started_at="2024-01-15T10:00:00",
+            working_dir="/tmp",
+            command="cmd",
+        )
+        entry.update_activity("2024-06-15T12:00:00")
+        assert entry.last_activity == "2024-06-15T12:00:00"
+
+    def test_roundtrip_with_new_fields(self):
+        """Test to_dict/from_dict roundtrip preserves new fields."""
+        entry = SessionEntry(
+            session_id="test-8",
+            pid=1000,
+            prompt="Task",
+            status="running",
+            started_at="2024-01-15T10:00:00",
+            working_dir="/tmp",
+            command="cmd",
+            last_activity="2024-01-15T10:05:00",
+            log_bytes=512,
+        )
+        restored = SessionEntry.from_dict(entry.to_dict())
+        assert restored.last_activity == entry.last_activity
+        assert restored.log_bytes == entry.log_bytes
+
+
+class TestRefreshActivity:
+    """Tests for SessionStateService.refresh_activity."""
+
+    @pytest.fixture
+    def service_with_logs(self, tmp_path):
+        """Create a service with a logs subdirectory."""
+        sessions_dir = tmp_path / "sessions"
+        sessions_dir.mkdir()
+        logs_dir = sessions_dir / "logs"
+        logs_dir.mkdir()
+        service = SessionStateService(sessions_dir=sessions_dir)
+        return service, logs_dir
+
+    def test_refresh_activity_updates_log_bytes(self, service_with_logs):
+        """Test that refresh_activity updates log_bytes from file sizes."""
+        service, logs_dir = service_with_logs
+        entry = SessionEntry.create(
+            pid=os.getpid(),
+            prompt="Task",
+            working_dir="/tmp",
+            command="cmd",
+        )
+        service.save(entry)
+
+        # Create log files with known sizes
+        stdout_log = logs_dir / f"{entry.session_id}.stdout.log"
+        stderr_log = logs_dir / f"{entry.session_id}.stderr.log"
+        stdout_log.write_text("x" * 100)
+        stderr_log.write_text("y" * 50)
+
+        result = service.refresh_activity(entry.session_id)
+
+        assert result is not None
+        assert result.log_bytes == 150
+
+    def test_refresh_activity_updates_last_activity(self, service_with_logs):
+        """Test that refresh_activity updates last_activity from log mtime."""
+        service, logs_dir = service_with_logs
+        entry = SessionEntry.create(
+            pid=os.getpid(),
+            prompt="Task",
+            working_dir="/tmp",
+            command="cmd",
+        )
+        service.save(entry)
+
+        stdout_log = logs_dir / f"{entry.session_id}.stdout.log"
+        stdout_log.write_text("some output")
+
+        result = service.refresh_activity(entry.session_id)
+
+        assert result is not None
+        assert result.last_activity is not None
+
+    def test_refresh_activity_nonexistent_session(self, service_with_logs):
+        """Test refresh_activity returns None for missing session."""
+        service, _ = service_with_logs
+        result = service.refresh_activity("nonexistent-id")
+        assert result is None
+
+    def test_refresh_activity_no_log_files(self, service_with_logs):
+        """Test refresh_activity with no log files."""
+        service, _ = service_with_logs
+        entry = SessionEntry.create(
+            pid=os.getpid(),
+            prompt="Task",
+            working_dir="/tmp",
+            command="cmd",
+        )
+        service.save(entry)
+
+        result = service.refresh_activity(entry.session_id)
+
+        assert result is not None
+        assert result.log_bytes == 0
+
+    def test_refresh_activity_persists(self, service_with_logs):
+        """Test that refresh_activity saves the updated entry."""
+        service, logs_dir = service_with_logs
+        entry = SessionEntry.create(
+            pid=os.getpid(),
+            prompt="Task",
+            working_dir="/tmp",
+            command="cmd",
+        )
+        service.save(entry)
+
+        stdout_log = logs_dir / f"{entry.session_id}.stdout.log"
+        stdout_log.write_text("output data")
+
+        service.refresh_activity(entry.session_id)
+
+        # Reload and verify persistence
+        reloaded = service.load(entry.session_id)
+        assert reloaded.log_bytes > 0
+        assert reloaded.last_activity is not None

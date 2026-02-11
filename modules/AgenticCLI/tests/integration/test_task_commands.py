@@ -119,11 +119,10 @@ class TestTaskListCommand:
     def plan_with_tasks(self, temp_repo):
         """Create plan folder with tasks for testing list."""
         plan_path = temp_repo / "docs" / "plans" / "live" / "260120CL_list_test"
-        (plan_path / "live").mkdir(parents=True)
-        (plan_path / "completed").mkdir()
+        plan_path.mkdir(parents=True, exist_ok=True)
 
-        # Create plan file with tasks
-        plan_file = plan_path / "live" / "plan_live_test.yml"
+        # Create plan file with tasks (flattened: directly in plan_path)
+        plan_file = plan_path / "plan_build.yml"
         plan_content = {
             "name": "test-plan",
             "phases": [
@@ -232,10 +231,9 @@ class TestTaskStatusCommand:
     def plan_with_detailed_task(self, temp_repo):
         """Create plan with task having full details."""
         plan_path = temp_repo / "docs" / "plans" / "live" / "260120CL_status_test"
-        (plan_path / "live").mkdir(parents=True)
-        (plan_path / "completed").mkdir()
+        plan_path.mkdir(parents=True, exist_ok=True)
 
-        plan_file = plan_path / "live" / "plan_live_test.yml"
+        plan_file = plan_path / "plan_build.yml"
         plan_content = {
             "name": "status-test-plan",
             "phases": [
@@ -321,11 +319,10 @@ class TestTaskAddCommand:
     def empty_plan(self, temp_repo):
         """Create plan folder with minimal structure."""
         plan_path = temp_repo / "docs" / "plans" / "live" / "260120CL_add_test"
-        (plan_path / "live").mkdir(parents=True)
-        (plan_path / "completed").mkdir()
+        plan_path.mkdir(parents=True, exist_ok=True)
 
-        # Create minimal plan file
-        plan_file = plan_path / "live" / "plan_live_build.yml"
+        # Create minimal plan file (flattened: directly in plan_path)
+        plan_file = plan_path / "plan_build.yml"
         plan_content = {
             "name": "add-test-plan",
             "phases": [
@@ -354,7 +351,7 @@ class TestTaskAddCommand:
         assert "Added" in result.stdout
 
         # Verify task was added
-        plan_file = empty_plan / "live" / "plan_live_build.yml"
+        plan_file = empty_plan / "plan_build.yml"
         content = yaml.safe_load(plan_file.read_text())
         tasks = content["phases"][0]["tasks"]
         assert len(tasks) == 1
@@ -371,7 +368,7 @@ class TestTaskAddCommand:
         assert result.returncode == 0
 
         # Verify priority was set
-        plan_file = empty_plan / "live" / "plan_live_build.yml"
+        plan_file = empty_plan / "plan_build.yml"
         content = yaml.safe_load(plan_file.read_text())
         tasks = content["phases"][0]["tasks"]
         assert tasks[0]["priority"] == "high"
@@ -387,7 +384,7 @@ class TestTaskAddCommand:
         assert result.returncode == 0
 
         # Verify custom ID was used
-        plan_file = empty_plan / "live" / "plan_live_build.yml"
+        plan_file = empty_plan / "plan_build.yml"
         content = yaml.safe_load(plan_file.read_text())
         tasks = content["phases"][0]["tasks"]
         assert tasks[0]["task_id"] == "custom_999"
@@ -402,7 +399,7 @@ class TestTaskAddCommand:
         assert result.returncode == 0
 
         # Verify ID was auto-generated
-        plan_file = empty_plan / "live" / "plan_live_build.yml"
+        plan_file = empty_plan / "plan_build.yml"
         content = yaml.safe_load(plan_file.read_text())
         tasks = content["phases"][0]["tasks"]
         assert tasks[0]["task_id"] is not None
@@ -438,7 +435,7 @@ class TestTaskAddCommand:
         assert result2.returncode == 0
 
         # Verify both tasks exist
-        plan_file = empty_plan / "live" / "plan_live_build.yml"
+        plan_file = empty_plan / "plan_build.yml"
         content = yaml.safe_load(plan_file.read_text())
         tasks = content["phases"][0]["tasks"]
         assert len(tasks) == 2

@@ -79,15 +79,27 @@ main_first_policy:
 cli_usage:
   path_requirements:
     description: |
-      Plan commands require full paths to plan folders. Short-name resolution
-      is NOT supported. Always use the full path from the repository root.
+      Plan commands accept full paths or short names. The CLI supports
+      short-name resolution: partial folder names are matched against
+      docs/plans/live/ using prefix matching (startswith).
+
+      Resolution order:
+      1. If path exists as-is (full or relative path), use it directly
+      2. If not found, search docs/plans/live/ for exact folder name match
+      3. If no exact match, find folders starting with the given prefix
+      4. If multiple prefix matches, first alphabetically is used
     correct_usage:
       - "agentic plan task complete build_01 --plan docs/plans/live/260128AG_example"
-      - "agentic plan archive docs/plans/live/260128AG_example"
+      - "agentic plan task complete build_01 --plan 260128AG_example"
+      - "agentic plan task complete build_01 --plan 260128AG"
       - "agentic plan status --plan docs/plans/live/260128AG_example"
-    incorrect_usage:
-      - "agentic plan task complete build_01 --plan 260128AG_example  # Short name not resolved"
-      - "agentic plan archive example  # Must use full path"
+    short_name_examples:
+      - input: "260128AG"
+        resolves_to: "docs/plans/live/260128AG_example"
+        note: "Prefix match against folder names in docs/plans/live/"
+      - input: "260128AG_example"
+        resolves_to: "docs/plans/live/260128AG_example"
+        note: "Exact folder name match"
 
   archival_commands:
     archive:
@@ -121,7 +133,6 @@ cli_usage:
       - "Task update succeeds even if auto-archive fails"
 
   known_limitations:
-    - "Short-name resolution not supported - must use full paths"
     - "Archive command copies but does not remove source folder"
     - "Task move does not remove from source file (copy-not-move pattern)"
 

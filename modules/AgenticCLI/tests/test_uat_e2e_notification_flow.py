@@ -21,6 +21,14 @@ from urllib.error import URLError
 import pytest
 import yaml
 
+pytestmark = pytest.mark.uat
+
+
+@pytest.fixture(autouse=True)
+def _block_real_ntfy():
+    """Override conftest safety net — these tests manage ntfy mocking themselves."""
+    yield
+
 
 @pytest.fixture
 def plan_with_config(tmp_path):
@@ -66,29 +74,57 @@ def mock_ntfy_http():
         yield mock_urlopen
 
 
-def test_e2e_ask_notify_answer_flow(plan_with_config, mock_ntfy_http, monkeypatch, capsys):
+def test_e2e_ask_notify_answer_flow(plan_with_config, monkeypatch, capsys):
     """Test complete end-to-end flow: ask -> notify -> answer -> complete.
 
     This is the PRIMARY UAT test for T9-005, validating the entire user journey
     from phone notification receipt to interactive answer submission.
+
+    Since cmd_ask() now auto-notifies via ntfy, we patch at the agenticcli.utils.ntfy
+    module level (where urlopen is imported) to intercept the auto-notification.
     """
     from agenticcli.commands import question
 
     plan_path, config_dir = plan_with_config
 
+    # Reset state for clean test
+    question._reply_poller = None
+
     # Mock config directory to use our tmp_path config
     monkeypatch.setattr('agenticcli.commands.config.get_config_dir', lambda: config_dir)
 
-    # STEP 1: Agent asks question with suggestions
-    args_ask = SimpleNamespace()
-    args_ask.text = "Deploy to prod?"
-    args_ask.severity = "high"
-    args_ask.context = "Release decision"
-    args_ask.suggest = ["Yes, deploy now", "No, wait for review"]
-    args_ask.plan = str(plan_path)
+    # Patch urlopen at the correct module level so auto-notify in cmd_ask() is intercepted
+    with patch('agenticcli.utils.ntfy.urlopen') as mock_urlopen:
+        mock_response = Mock()
+        mock_response.getcode.return_value = 200
+        mock_response.close.return_value = None
+        mock_urlopen.return_value = mock_response
 
-    # Execute ask command
-    question.cmd_ask(args_ask, ctx=None)
+        # STEP 1: Agent asks question with suggestions (auto-notifies via ntfy)
+        args_ask = SimpleNamespace()
+        args_ask.text = "Deploy to prod?"
+        args_ask.severity = "high"
+        args_ask.context = "Release decision"
+        args_ask.suggest = ["Yes, deploy now", "No, wait for review"]
+        args_ask.plan = str(plan_path)
+
+        question.cmd_ask(args_ask, ctx=None)
+
+        # STEP 2: Verify auto-notify sent ntfy notification during cmd_ask()
+        assert mock_urlopen.called, "cmd_ask() should auto-send ntfy notification"
+
+        # Verify HTTP request details from auto-notify
+        call_args = mock_urlopen.call_args
+        request = call_args[0][0]
+
+        assert request.get_full_url() == "https://ntfy.sh/my-phone"
+        # Sequential delivery uses "Question N of M" format
+        assert "Question 1 of 1" in request.headers.get("Title", "")
+        assert request.headers.get("Priority") == "high"
+        assert request.headers.get("Tags") == "question"
+
+        request_data = request.data.decode('utf-8')
+        assert "Deploy to prod?" in request_data
 
     # Verify question created in pending/
     pending_dir = plan_path / "questions" / "pending"
@@ -106,41 +142,6 @@ def test_e2e_ask_notify_answer_flow(plan_with_config, mock_ntfy_http, monkeypatc
     assert question_data["severity"] == "high"
     assert question_data["suggested_answers"] == ["Yes, deploy now", "No, wait for review"]
     assert question_data["status"] == "pending"
-
-    # STEP 2: Simulate watcher detecting question and sending ntfy notification
-    from agenticguidance.services.question import QuestionQueue
-    from agenticguidance.models.question import yaml_to_question
-
-    service = QuestionQueue(plan_path)
-    pending_questions = service.list_pending_questions()
-
-    assert len(pending_questions) == 1
-    q = pending_questions[0]
-
-    # Call ntfy notification function directly (simulates watcher callback)
-    from agenticcli.utils.ntfy import notify_new_question
-
-    success = notify_new_question("my-phone", q, server="https://ntfy.sh")
-
-    # STEP 3: Verify ntfy HTTP call was made with correct parameters
-    assert success is True, "ntfy notification should succeed"
-    assert mock_ntfy_http.called, "HTTP request should be made to ntfy.sh"
-
-    # Verify HTTP request details
-    call_args = mock_ntfy_http.call_args
-    request = call_args[0][0]  # First positional arg is the Request object
-
-    # Verify URL
-    assert request.get_full_url() == "https://ntfy.sh/my-phone"
-
-    # Verify headers
-    assert request.headers.get("Title") == "New Question [HIGH]"
-    assert request.headers.get("Priority") == "high"
-    assert request.headers.get("Tags") == "question"
-
-    # Verify message body contains question text
-    request_data = request.data.decode('utf-8')
-    assert "Deploy to prod?" in request_data
 
     # STEP 4: User answers interactively via wizard
     # Mock user inputs:
@@ -189,6 +190,54 @@ def test_e2e_ask_notify_answer_flow(plan_with_config, mock_ntfy_http, monkeypatc
     # FINAL VERIFICATION: Complete data flow
     # ask -> notify -> answer -> complete
     # All steps completed successfully without errors
+
+
+def test_e2e_medium_severity_auto_notifies(plan_with_config, monkeypatch):
+    """Medium severity questions now auto-notify during cmd_ask().
+
+    All severities trigger phone notifications so the user can reply
+    from their phone with a letter choice.
+    """
+    from agenticcli.commands import question
+
+    plan_path, config_dir = plan_with_config
+
+    # Reset state for clean test
+    question._reply_poller = None
+
+    # Mock config directory
+    monkeypatch.setattr('agenticcli.commands.config.get_config_dir', lambda: config_dir)
+
+    # Patch urlopen to track if it gets called
+    with patch('agenticcli.utils.ntfy.urlopen') as mock_urlopen:
+        mock_response = Mock()
+        mock_response.getcode.return_value = 200
+        mock_response.close.return_value = None
+        mock_urlopen.return_value = mock_response
+
+        # Create question with medium severity
+        args_ask = SimpleNamespace()
+        args_ask.text = "Non-urgent question?"
+        args_ask.severity = "medium"
+        args_ask.context = "Low priority"
+        args_ask.suggest = ["Yes", "No"]
+        args_ask.plan = str(plan_path)
+
+        question.cmd_ask(args_ask, ctx=None)
+
+        # Auto-notify should be called for medium severity (all severities notify now)
+        assert mock_urlopen.called, "cmd_ask() should auto-send ntfy for medium severity"
+
+        # Verify the notification has correct priority for medium
+        request = mock_urlopen.call_args[0][0]
+        # Sequential delivery uses "Question N of M" format
+        assert "Question 1 of 1" in request.headers.get("Title", "")
+        assert request.headers.get("Priority") == "default"
+
+    # Question should be created in pending/
+    pending_dir = plan_path / "questions" / "pending"
+    pending_files = list(pending_dir.glob("Q-*.yml"))
+    assert len(pending_files) == 1, "Question should be created in pending/"
 
 
 def test_e2e_flow_with_custom_answer(plan_with_config, mock_ntfy_http, monkeypatch):
@@ -283,6 +332,95 @@ def test_e2e_flow_with_ntfy_network_error(plan_with_config, monkeypatch):
     answered_dir = plan_path / "questions" / "answered"
     answered_files = list(answered_dir.glob("Q-*.yml"))
     assert len(answered_files) >= 1, "Answer should be persisted despite ntfy failure"
+
+
+def test_e2e_ask_notify_answer_flow_medium_severity(plan_with_config, monkeypatch, capsys):
+    """UAT: Medium severity questions auto-notify and complete the full flow.
+
+    User journey:
+    1. Agent asks medium severity question with suggestions
+    2. Phone notification sent automatically (all severities now notify)
+    3. User answers interactively via wizard
+    4. Answer persisted correctly
+    """
+    from agenticcli.commands import question
+
+    plan_path, config_dir = plan_with_config
+
+    # Reset dedup state for clean test
+    question._reply_poller = None
+
+    monkeypatch.setattr('agenticcli.commands.config.get_config_dir', lambda: config_dir)
+
+    with patch('agenticcli.utils.ntfy.urlopen') as mock_urlopen:
+        mock_response = Mock()
+        mock_response.getcode.return_value = 200
+        mock_response.close.return_value = None
+        mock_urlopen.return_value = mock_response
+
+        # STEP 1: Create medium-severity question
+        args_ask = SimpleNamespace()
+        args_ask.text = "Should we refactor this module?"
+        args_ask.severity = "medium"
+        args_ask.context = "Code quality discussion"
+        args_ask.suggest = ["Yes", "No", "Later"]
+        args_ask.plan = str(plan_path)
+
+        question.cmd_ask(args_ask, ctx=None)
+
+        # STEP 2: Verify auto-notify was called (medium now notifies)
+        assert mock_urlopen.called, "cmd_ask() should auto-send ntfy for medium severity"
+
+        request = mock_urlopen.call_args[0][0]
+        # Sequential delivery uses "Question N of M" format
+        assert "Question 1 of 1" in request.headers.get("Title", "")
+        assert request.headers.get("Priority") == "default"
+
+        request_data = request.data.decode('utf-8')
+        assert "Should we refactor this module?" in request_data
+
+    # Verify question created in pending/ (note: auto-notify sets current_question_id
+    # so the question may still be in pending since _handle_next doesn't move it)
+    pending_dir = plan_path / "questions" / "pending"
+    pending_files = list(pending_dir.glob("Q-*.yml"))
+    assert len(pending_files) == 1, "Question should be created in pending/"
+
+    question_file = pending_files[0]
+    question_id = question_file.stem
+
+    with open(question_file, 'r') as f:
+        question_data = yaml.safe_load(f)
+
+    assert question_data["text"] == "Should we refactor this module?"
+    assert question_data["severity"] == "medium"
+    assert question_data["suggested_answers"] == ["Yes", "No", "Later"]
+    assert question_data["status"] == "pending"
+
+    # STEP 3: User answers interactively via wizard (select "Later")
+    inputs = iter(["1", "3", "Y"])
+    monkeypatch.setattr('builtins.input', lambda *args: next(inputs))
+
+    args_answer = SimpleNamespace()
+    args_answer.interactive = True
+    args_answer.plan = str(plan_path)
+
+    question.cmd_answer(args_answer, ctx=None)
+
+    # STEP 4: Verify answer persisted correctly
+    answered_dir = plan_path / "questions" / "answered"
+    answered_answer_file = answered_dir / f"{question_id}.yml"
+
+    assert answered_answer_file.exists(), "Answer file should exist"
+
+    with open(answered_answer_file, 'r') as f:
+        answer_data = yaml.safe_load(f)
+
+    assert answer_data["answer_text"] == "Later"
+    assert answer_data["confidence"] == "high"  # Suggested answer -> high confidence
+    assert answer_data["answered_by"] == "human"
+
+    # Verify question removed from pending/
+    assert not question_file.exists(), "Question should be removed from pending/"
 
 
 def test_e2e_flow_ntfy_contains_severity_and_text(plan_with_config, monkeypatch):
@@ -459,6 +597,103 @@ def test_e2e_multiple_questions_with_deduplication(plan_with_config, monkeypatch
         assert pending_questions[0].id != pending_questions[1].id
 
 
+def test_e2e_multichoice_letter_reply(plan_with_config, monkeypatch):
+    """UAT: Multi-choice question notification with letter reply mapping.
+
+    User journey:
+    1. Agent asks question with 3 suggested answers
+    2. Phone notification shows A/B/C options
+    3. User replies with 'B' from phone
+    4. System maps 'B' to second suggested answer
+    5. Answer saved with mapped text, not letter
+    """
+    from agenticcli.commands import question
+
+    plan_path, config_dir = plan_with_config
+
+    # Reset dedup state for clean test
+    question._reply_poller = None
+
+    monkeypatch.setattr('agenticcli.commands.config.get_config_dir', lambda: config_dir)
+
+    # STEP 1: Agent asks question with 3 suggested answers
+    with patch('agenticcli.utils.ntfy.urlopen') as mock_urlopen:
+        mock_response = Mock()
+        mock_response.getcode.return_value = 200
+        mock_response.close.return_value = None
+        mock_urlopen.return_value = mock_response
+
+        args_ask = SimpleNamespace()
+        args_ask.text = "Which database should we use?"
+        args_ask.severity = "high"
+        args_ask.context = "Architecture decision"
+        args_ask.suggest = ["PostgreSQL", "MySQL", "SQLite"]
+        args_ask.plan = str(plan_path)
+
+        question.cmd_ask(args_ask, ctx=None)
+
+        # STEP 2: Verify notification shows A/B/C options
+        assert mock_urlopen.called, "Auto-notify should fire"
+        request = mock_urlopen.call_args[0][0]
+        request_data = request.data.decode('utf-8')
+
+        assert "A) PostgreSQL" in request_data
+        assert "B) MySQL" in request_data
+        assert "C) SQLite" in request_data
+
+    # Get the question ID from pending
+    pending_dir = plan_path / "questions" / "pending"
+    pending_files = list(pending_dir.glob("Q-*.yml"))
+    assert len(pending_files) == 1
+    question_id = pending_files[0].stem
+
+    # STEP 3: Simulate user replying 'B' from phone via NtfyQuestionAgent
+    # The agent has state.current_question_id set from the auto-notify
+    from agenticcli.services.ntfy_question_agent import NtfyQuestionAgent, load_state
+
+    # Verify state was set by auto-notify
+    state = load_state(plan_path)
+    assert state.current_question_id == question_id, "Auto-notify should set current_question_id"
+
+    agent = NtfyQuestionAgent(plan_path, "my-phone", "https://ntfy.sh")
+
+    with patch('agenticcli.services.ntfy_question_agent.send_ntfy', return_value=True) as mock_confirm:
+        result = agent.handle_reply("B")
+
+        # STEP 4: Verify confirmation notification was sent
+        assert mock_confirm.called, "Confirmation notification should be sent"
+        # Result should contain mapped answer "MySQL", not the letter "B"
+        assert "MySQL" in result
+
+    # STEP 5: Verify answer saved with mapped text, not letter
+    answered_dir = plan_path / "questions" / "answered"
+    answered_answer_file = answered_dir / f"{question_id}.yml"
+
+    assert answered_answer_file.exists(), "Answer file should exist after letter reply"
+
+    with open(answered_answer_file, 'r') as f:
+        answer_data = yaml.safe_load(f)
+
+    # Critical assertion: answer is "MySQL" (mapped from B), not the letter "B"
+    assert answer_data["answer_text"] == "MySQL", (
+        f"Expected mapped answer 'MySQL' but got '{answer_data['answer_text']}'"
+    )
+    assert answer_data["answered_by"] == "ntfy-reply"
+
+    # Verify question moved out of pending
+    assert not pending_files[0].exists(), "Question should be removed from pending/"
+
+    # Verify question file in answered
+    answered_question_file = answered_dir / f"{question_id}_question.yml"
+    assert answered_question_file.exists(), "Question should be in answered/"
+
+    with open(answered_question_file, 'r') as f:
+        updated_question = yaml.safe_load(f)
+
+    assert updated_question["status"] == "answered"
+    assert updated_question["answer"] == "MySQL"
+
+
 def test_e2e_flow_complete_validation_checklist(plan_with_config, monkeypatch):
     """COMPREHENSIVE E2E validation checklist for T9-005 acceptance criteria.
 
@@ -567,3 +802,112 @@ def test_e2e_flow_complete_validation_checklist(plan_with_config, monkeypatch):
     assert answer_data2["confidence"] == "medium"
 
     # ALL CRITERIA VALIDATED SUCCESSFULLY
+
+
+def test_e2e_sequential_question_delivery(plan_with_config, monkeypatch):
+    """UAT: Sequential question delivery - one at a time.
+
+    User journey:
+    1. Three questions are created
+    2. Only first question is sent as notification
+    3. User answers first question via ntfy reply
+    4. User says 'next' to get second question
+    5. User answers second question
+    6. User says 'next' to get third question
+    7. User answers third question
+    8. User says 'next' - receives 'no more questions' summary
+    """
+    plan_path, config_dir = plan_with_config
+    monkeypatch.setattr('agenticcli.commands.config.get_config_dir', lambda: config_dir)
+
+    from agenticguidance.services.question import QuestionQueue
+    from agenticcli.services.ntfy_question_agent import (
+        NtfyQuestionAgent,
+        load_state,
+    )
+
+    # Create 3 questions
+    service = QuestionQueue(plan_path)
+    questions = []
+    for i in range(3):
+        q = service.create_question(
+            text=f"Question {i + 1}?",
+            context=f"Context {i + 1}",
+            severity="medium",
+            asked_by="test-agent",
+            suggested_answers=["Yes", "No"] if i == 0 else None,
+        )
+        questions.append(q)
+        time.sleep(0.01)
+
+    # Track notifications sent
+    ntfy_calls = []
+
+    with patch('agenticcli.services.ntfy_question_agent.send_ntfy', return_value=True) as mock_send:
+        mock_send.side_effect = lambda *args, **kwargs: ntfy_calls.append(kwargs) or True
+
+        agent = NtfyQuestionAgent(plan_path, "my-phone", "https://ntfy.sh")
+
+        # STEP 1: Say 'next' to get first question
+        result = agent.handle_reply("next")
+        assert result is None  # Notification sent via send_ntfy
+        assert len(ntfy_calls) == 1
+        assert "Question 1 of 3" in ntfy_calls[0]["title"]
+
+        # Verify state
+        state = load_state(plan_path)
+        assert state.current_question_id == questions[0].id
+        assert state.answered_count == 0
+
+        # STEP 2: Answer first question with letter 'A' (maps to "Yes")
+        ntfy_calls.clear()
+        result = agent.handle_reply("A")
+        assert "Yes" in result  # Mapped from "A"
+
+        state = load_state(plan_path)
+        assert state.current_question_id is None
+        assert state.answered_count == 1
+
+        # STEP 3: Say 'next' to get second question
+        ntfy_calls.clear()
+        result = agent.handle_reply("next")
+        assert result is None
+        assert len(ntfy_calls) == 1
+        assert "Question 1 of 2" in ntfy_calls[0]["title"]  # 2 remaining
+
+        state = load_state(plan_path)
+        assert state.current_question_id == questions[1].id
+
+        # STEP 4: Answer second question with free text
+        ntfy_calls.clear()
+        result = agent.handle_reply("Use PostgreSQL")
+        assert "Use PostgreSQL" in result
+
+        state = load_state(plan_path)
+        assert state.current_question_id is None
+        assert state.answered_count == 2
+
+        # STEP 5: Say 'next' to get third question
+        ntfy_calls.clear()
+        result = agent.handle_reply("next")
+        assert result is None
+        assert len(ntfy_calls) == 1
+        assert "Question 1 of 1" in ntfy_calls[0]["title"]  # 1 remaining
+
+        state = load_state(plan_path)
+        assert state.current_question_id == questions[2].id
+
+        # STEP 6: Answer third question
+        ntfy_calls.clear()
+        result = agent.handle_reply("Agreed")
+        assert "Agreed" in result
+
+        state = load_state(plan_path)
+        assert state.current_question_id is None
+        assert state.answered_count == 3
+
+        # STEP 7: Say 'next' - should say no more questions
+        ntfy_calls.clear()
+        result = agent.handle_reply("next")
+        assert "No more questions" in result
+        assert "3 answered" in result

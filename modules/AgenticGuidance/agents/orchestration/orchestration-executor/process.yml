@@ -21,6 +21,13 @@ process:
       description: "Status of each phase with timestamps"
     - name: "state_updates"
       description: "Updated STATUS in MMD header and plan YAML files"
+    - name: "remediation_plans_spawned"
+      description: "List of new planning folders created for out-of-scope errors discovered during execution"
+      schema:
+        - plan_name: "string"
+          error_type: "string"
+          priority: "enum(CRITICAL, HIGH, MEDIUM, LOW)"
+          spawned_by: "string - agent that detected the issue"
 
   # =============================================================================
   # EXECUTION PROTOCOL
@@ -69,10 +76,13 @@ process:
         CLI LOOP MANAGEMENT (for iterative workflows):
         When starting test-fix or build-validate loops, use CLI loop commands:
         ```bash
-        # Start a Ralph Loop
-        agentic loop start <loop-type> --plan <plan-folder> -j
+        # Start a Ralph Loop with a prompt
+        agentic loop start --prompt 'Run tests and fix failures' --max-iterations 5 -j
 
-        # Check loop status
+        # Start a Ralph Loop with an entrypoint
+        agentic loop start --entrypoint test-fix --completion-promise 'All tests pass' -b
+
+        # Check loop status (loop-id is required)
         agentic loop status <loop-id> -j
         ```
 
@@ -280,6 +290,19 @@ process:
             - If >= MAX_ITERATIONS: Transition to blocked with regression details
           - Note: Story regressions are high-priority - they indicate broken user journeys
 
+        ERROR_REQUIRES_PLANNING:
+          - Condition: Agent reports out-of-scope error requiring new planning session
+            (output contains out_of_scope_error: true or remediation_plan_needed: true)
+          - Action:
+            - If agent already created planning folder: Log in remediation_plans_spawned
+            - If agent did not create folder: Create via `agentic plan init`
+            - If CRITICAL priority: Transition to blocked, ask user whether to continue or address first
+            - If HIGH/MEDIUM/LOW: Log in remediation_plans_spawned, continue execution
+          - Note: Unlike TEST_FAILURE/BUILD_FAILURE which re-plan the current plan,
+            this trigger spawns a SEPARATE planning folder for future remediation.
+            Out-of-scope errors do NOT consume loop iterations.
+          - Reference: modules/AgenticGuidance/assets/definitions/error-driven-planning-protocol.yml
+
         If NO triggers fire, proceed to phase completion.
 
     - id: "loop_complete_phase"
@@ -384,6 +407,9 @@ process:
         - Agents used per phase
         - Any warnings or issues
         - Feedback triggers that fired
+        - Remediation plans spawned (from ERROR_REQUIRES_PLANNING triggers):
+          list each plan_name, error_type, priority, and spawned_by agent.
+          These require follow-up orchestration and are NOT auto-executed.
 
     - id: "shutdown_persist_state"
       name: "Persist Final State"
@@ -444,6 +470,10 @@ process:
     - "  2. `agentic plan task start <task_id> --plan <folder>` before spawning agent"
     - "  3. Spawn appropriate agent for the task"
     - "  4. `agentic plan task complete <task_id> --plan <folder>` when agent succeeds"
+    # QUESTION WATCHING
+    - "Before starting phase execution loop, start question watcher daemon: `agentic question watch-daemon --plan <plan_folder_path>`"
+    - "This ensures agent-created questions trigger phone notifications and replies are auto-resolved"
+    - "After execution completes (shutdown), stop the watcher: `agentic question watch-stop`"
     # EXECUTION RULES
     - "Execute phases in order defined by MMD flowchart"
     - "Only spawn agents listed in manifest spawns fence"

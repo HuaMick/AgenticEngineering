@@ -1,134 +1,161 @@
-# User Stories: Session Lifecycle Management
-# Covers create, attach, list, kill, status, and cleanup operations
-
 stories:
-  - id: "US-TMUX-001"
-    title: "Create New Tmux Session"
-    category: "session_lifecycle"
-    priority: "critical"
-    as_a: "developer or orchestration agent"
-    i_want: "to create a new tmux session with optional worktree and plan links"
-    so_that: "I can isolate agent work in dedicated terminal sessions"
-    acceptance_criteria:
-      - "agentic-tmux session create <name> creates a new detached tmux session"
-      - "Session is registered in ~/.config/agenticcli/sessions.json"
-      - "The --worktree flag links the session to a git worktree directory"
-      - "The --plan flag associates the session with a plan folder"
-      - "Session starts in the worktree directory if provided"
-      - "Returns session metadata including name, state, and timestamps"
-      - "Fails gracefully if session name already exists"
-      - "Fails gracefully if tmux is not installed"
-      - "JSON output supported with --json flag"
-    related_commands:
-      - "agentic-tmux session create my-session"
-      - "agentic-tmux session create agent-1 --worktree /path/to/worktree"
-      - "agentic-tmux session create task-001 --plan docs/plans/live/YYMMDDXX_desc"
-    notes: |
-      Uses SessionService.create() from AgenticGuidance for business logic.
-      Session creation is idempotent - if tmux session exists, returns error.
+- id: US-TMUX-001
+  title: Create New Tmux Session
+  category: session_lifecycle
+  priority: critical
+  as_a: developer or orchestration agent
+  i_want: to create a new tmux session with optional worktree and plan links
+  so_that: I can isolate agent work in dedicated terminal sessions
+  acceptance_criteria:
+  - agentic-tmux session create <name> creates a new detached tmux session
+  - Session is registered in ~/.config/agenticcli/sessions.json
+  - The --worktree flag links the session to a git worktree directory
+  - The --plan flag associates the session with a plan folder
+  - Session starts in the worktree directory if provided
+  - Returns session metadata including name, state, and timestamps
+  - Fails gracefully if session name already exists
+  - Fails gracefully if tmux is not installed
+  - JSON output supported with --json flag
+  related_commands:
+  - agentic-tmux session create my-session
+  - agentic-tmux session create agent-1 --worktree /path/to/worktree
+  - agentic-tmux session create task-001 --plan docs/plans/live/YYMMDDXX_desc
+  notes: 'Uses SessionService.create() from AgenticGuidance for business logic.
 
-  - id: "US-TMUX-002"
-    title: "Attach to Existing Session"
-    category: "session_lifecycle"
-    priority: "critical"
-    as_a: "developer"
-    i_want: "to attach to an existing tmux session by name"
-    so_that: "I can view and interact with running agent sessions"
-    acceptance_criteria:
-      - "agentic-tmux session attach <name> attaches to the named session"
-      - "Uses os.execvp to replace the CLI process with tmux attach"
-      - "Navigates to worktree directory if session has linked worktree"
-      - "Fails gracefully if session does not exist"
-      - "Fails gracefully if tmux is not installed"
-    related_commands:
-      - "agentic-tmux session attach my-session"
-    notes: |
-      The CLI prepares the attach command but lets tmux handle the actual
-      attachment via os.execvp for proper terminal handling.
+    Session creation is idempotent - if tmux session exists, returns error.
 
-  - id: "US-TMUX-003"
-    title: "List All Sessions"
-    category: "session_lifecycle"
-    priority: "high"
-    as_a: "developer managing multiple agents"
-    i_want: "to see all tmux sessions with their status and metadata"
-    so_that: "I can monitor running agents and identify dead sessions"
-    acceptance_criteria:
-      - "agentic-tmux session list displays all sessions in table format"
-      - "Shows session name, state (running/dead), attached status, worktree"
-      - "State is color-coded (green for running, red for dead)"
-      - "Includes both registered sessions and unregistered tmux sessions"
-      - "Updates state dynamically by querying tmux"
-      - "JSON output supported with --json flag"
-      - "Empty state shows 'No sessions found' message"
-    related_commands:
-      - "agentic-tmux session list"
-      - "agentic-tmux session list --json"
-    notes: |
-      Merges registry data with live tmux session data for accurate status.
-      Worktree paths truncated to 28 chars for table readability.
+    '
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-TMUX-002
+  title: Attach to Existing Session
+  category: session_lifecycle
+  priority: critical
+  as_a: developer
+  i_want: to attach to an existing tmux session by name
+  so_that: I can view and interact with running agent sessions
+  acceptance_criteria:
+  - agentic-tmux session attach <name> attaches to the named session
+  - Uses os.execvp to replace the CLI process with tmux attach
+  - Navigates to worktree directory if session has linked worktree
+  - Fails gracefully if session does not exist
+  - Fails gracefully if tmux is not installed
+  related_commands:
+  - agentic-tmux session attach my-session
+  notes: 'The CLI prepares the attach command but lets tmux handle the actual
 
-  - id: "US-TMUX-004"
-    title: "Kill Session"
-    category: "session_lifecycle"
-    priority: "high"
-    as_a: "developer cleaning up resources"
-    i_want: "to terminate a tmux session and remove it from the registry"
-    so_that: "I can free resources and clean up completed or stuck sessions"
-    acceptance_criteria:
-      - "agentic-tmux session kill <name> terminates the tmux session"
-      - "Removes session from registry after successful kill"
-      - "The --force flag forces kill even if clients are attached"
-      - "Without --force, refuses to kill sessions with attached clients"
-      - "If session is already dead, removes it from registry"
-      - "Returns success message after kill"
-      - "JSON output supported with --json flag"
-    related_commands:
-      - "agentic-tmux session kill my-session"
-      - "agentic-tmux session kill agent-1 --force"
-    notes: |
-      Uses tmux kill-session command. Force flag bypasses attached client check.
+    attachment via os.execvp for proper terminal handling.
 
-  - id: "US-TMUX-005"
-    title: "Show Session Status"
-    category: "session_lifecycle"
-    priority: "medium"
-    as_a: "developer debugging an agent session"
-    i_want: "to see detailed metadata about a specific session"
-    so_that: "I can understand its configuration and current state"
-    acceptance_criteria:
-      - "agentic-tmux session status <name> shows detailed session info"
-      - "Displays name, state, attached status, window count"
-      - "Shows creation timestamp in readable format"
-      - "Includes worktree path if linked"
-      - "Includes plan folder if linked"
-      - "Shows custom metadata if present"
-      - "Without name argument, shows summary statistics"
-      - "Summary includes total sessions, running count, attached count"
-      - "JSON output supported with --json flag"
-    related_commands:
-      - "agentic-tmux session status my-session"
-      - "agentic-tmux session status"
-      - "agentic-tmux session status agent-1 --json"
-    notes: |
-      Single session view provides full details. No-argument view provides
-      aggregate statistics across all sessions.
+    '
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-TMUX-003
+  title: List All Sessions
+  category: session_lifecycle
+  priority: high
+  as_a: developer managing multiple agents
+  i_want: to see all tmux sessions with their status and metadata
+  so_that: I can monitor running agents and identify dead sessions
+  acceptance_criteria:
+  - agentic-tmux session list displays all sessions in table format
+  - Shows session name, state (running/dead), attached status, worktree
+  - State is color-coded (green for running, red for dead)
+  - Includes both registered sessions and unregistered tmux sessions
+  - Updates state dynamically by querying tmux
+  - JSON output supported with --json flag
+  - Empty state shows 'No sessions found' message
+  related_commands:
+  - agentic-tmux session list
+  - agentic-tmux session list --json
+  notes: 'Merges registry data with live tmux session data for accurate status.
 
-  - id: "US-TMUX-006"
-    title: "Cleanup Dead Sessions"
-    category: "session_lifecycle"
-    priority: "low"
-    as_a: "developer maintaining clean state"
-    i_want: "to remove dead sessions from the registry automatically"
-    so_that: "the registry stays synchronized with actual tmux state"
-    acceptance_criteria:
-      - "SessionService.cleanup_dead() removes registry entries for dead sessions"
-      - "Dead sessions are those in registry but not in tmux list-sessions"
-      - "Returns count of cleaned up sessions"
-      - "Does not affect running sessions"
-      - "Can be called manually or automatically on operations"
-    related_commands:
-      - "SessionService.cleanup_dead() (internal API)"
-    notes: |
-      This is primarily an internal service method but could be exposed as
-      'agentic-tmux session cleanup' if needed.
+    Worktree paths truncated to 28 chars for table readability.
+
+    '
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-TMUX-004
+  title: Kill Session
+  category: session_lifecycle
+  priority: high
+  as_a: developer cleaning up resources
+  i_want: to terminate a tmux session and remove it from the registry
+  so_that: I can free resources and clean up completed or stuck sessions
+  acceptance_criteria:
+  - agentic-tmux session kill <name> terminates the tmux session
+  - Removes session from registry after successful kill
+  - The --force flag forces kill even if clients are attached
+  - Without --force, refuses to kill sessions with attached clients
+  - If session is already dead, removes it from registry
+  - Returns success message after kill
+  - JSON output supported with --json flag
+  related_commands:
+  - agentic-tmux session kill my-session
+  - agentic-tmux session kill agent-1 --force
+  notes: 'Uses tmux kill-session command. Force flag bypasses attached client check.
+
+    '
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-TMUX-005
+  title: Show Session Status
+  category: session_lifecycle
+  priority: medium
+  as_a: developer debugging an agent session
+  i_want: to see detailed metadata about a specific session
+  so_that: I can understand its configuration and current state
+  acceptance_criteria:
+  - agentic-tmux session status <name> shows detailed session info
+  - Displays name, state, attached status, window count
+  - Shows creation timestamp in readable format
+  - Includes worktree path if linked
+  - Includes plan folder if linked
+  - Shows custom metadata if present
+  - Without name argument, shows summary statistics
+  - Summary includes total sessions, running count, attached count
+  - JSON output supported with --json flag
+  related_commands:
+  - agentic-tmux session status my-session
+  - agentic-tmux session status
+  - agentic-tmux session status agent-1 --json
+  notes: 'Single session view provides full details. No-argument view provides
+
+    aggregate statistics across all sessions.
+
+    '
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-TMUX-006
+  title: Cleanup Dead Sessions
+  category: session_lifecycle
+  priority: low
+  as_a: developer maintaining clean state
+  i_want: to remove dead sessions from the registry automatically
+  so_that: the registry stays synchronized with actual tmux state
+  acceptance_criteria:
+  - SessionService.cleanup_dead() removes registry entries for dead sessions
+  - Dead sessions are those in registry but not in tmux list-sessions
+  - Returns count of cleaned up sessions
+  - Does not affect running sessions
+  - Can be called manually or automatically on operations
+  related_commands:
+  - SessionService.cleanup_dead() (internal API)
+  notes: 'This is primarily an internal service method but could be exposed as
+
+    ''agentic-tmux session cleanup'' if needed.
+
+    '
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null

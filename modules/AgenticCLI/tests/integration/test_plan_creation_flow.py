@@ -151,11 +151,10 @@ class TestFullPlanCreationFlow:
         # Verify plan folder was created
         plan_path = integration_repo / "docs" / "plans" / "live" / "integration-test"
         assert plan_path.exists(), "Plan folder was not created"
-        assert (plan_path / "live").exists(), "live/ subfolder missing"
-        assert (plan_path / "completed").exists(), "completed/ subfolder missing"
 
         # Step 2: Generate build template with objective and phases
-        output_file = plan_path / "live" / "plan_build.yml"
+        # Flattened structure: plan files directly in plan folder
+        output_file = plan_path / "plan_build.yml"
         stdout, stderr, code = cli_in_repo(
             "template", "generate", "build",
             "--objective", "Build integration test feature with full workflow",
@@ -251,7 +250,7 @@ class TestFullPlanCreationFlow:
         assert plan_path.exists()
 
         # Generate template to file (no JSON needed for file output)
-        output_file = plan_path / "live" / "plan_build.yml"
+        output_file = plan_path / "plan_build.yml"
         stdout, stderr, code = cli_in_repo(
             "template", "generate", "build",
             "--phases", "P1:Build,P2:Test",
@@ -299,7 +298,7 @@ class TestFullPlanCreationFlow:
         assert code == 0
 
         plan_path = integration_repo / "docs" / "plans" / "live" / "criteria-test"
-        output_file = plan_path / "live" / "plan_build.yml"
+        output_file = plan_path / "plan_build.yml"
 
         # Generate template with objective, phases, and success criteria
         stdout, stderr, code = cli_in_repo(
@@ -343,7 +342,7 @@ class TestFullPlanCreationFlow:
 
         # Setup plan file and orchestration
         plan_path = integration_repo / "docs" / "plans" / "live" / "idempotent-test"
-        output_file = plan_path / "live" / "plan_build.yml"
+        output_file = plan_path / "plan_build.yml"
 
         cli_in_repo(
             "template", "generate", "build",
@@ -462,7 +461,7 @@ class TestPlanCreationEdgeCases:
         assert code == 0
 
         plan_path = edge_case_repo / "docs" / "plans" / "live" / "test-special"
-        output_file = plan_path / "live" / "plan_build.yml"
+        output_file = plan_path / "plan_build.yml"
 
         # Generate template with special characters in objective
         stdout, stderr, code = edge_cli(
@@ -486,7 +485,7 @@ class TestPlanCreationEdgeCases:
         plan_path = edge_case_repo / "docs" / "plans" / "live" / "empty-phases"
 
         # Create plan file with empty phases
-        plan_file = plan_path / "live" / "plan_build.yml"
+        plan_file = plan_path / "plan_build.yml"
         plan_content = {
             "name": "empty-phases-plan",
             "objective": "Test empty phases handling",
@@ -512,7 +511,7 @@ class TestPlanCreationEdgeCases:
         assert code == 0
 
         plan_path = edge_case_repo / "docs" / "plans" / "live" / "list-test"
-        output_file = plan_path / "live" / "plan_build.yml"
+        output_file = plan_path / "plan_build.yml"
 
         # Generate template
         edge_cli(
@@ -623,7 +622,7 @@ class TestPlanCreationValidation:
         validation_cli("plan", "scaffold", "validate-test")
 
         plan_path = validation_repo / "docs" / "plans" / "live" / "validate-test"
-        output_file = plan_path / "live" / "plan_build.yml"
+        output_file = plan_path / "plan_build.yml"
 
         # Generate template with multiple phases
         validation_cli(
@@ -661,7 +660,7 @@ class TestPlanCreationValidation:
         validation_cli("plan", "scaffold", "json-validate")
 
         plan_path = validation_repo / "docs" / "plans" / "live" / "json-validate"
-        output_file = plan_path / "live" / "plan_build.yml"
+        output_file = plan_path / "plan_build.yml"
 
         validation_cli(
             "template", "generate", "build",

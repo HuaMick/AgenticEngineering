@@ -1,0 +1,113 @@
+name: 260208EP - Error-Driven Planning Handoff (Build)
+objective: 'Implement the error-driven planning protocol asset and integrate it into
+  the
+
+  orchestration executor''s runtime behavior. This plan covers the code/configuration
+
+  artifacts that the guidance updates (plan_teach.yml) reference.
+
+  '
+status: pending
+affected_stories: []
+no_stories_rationale: "Infrastructure/guidance plumbing \u2014 no user-facing functionality"
+phases:
+- id: P1
+  name: Create Protocol Asset
+  description: 'Create the error-driven-planning-protocol.yml shared asset that defines
+
+    the formal protocol for when and how agents spawn remediation planning folders.
+
+    '
+  execution: sequential
+  tasks:
+  - id: T_B001
+    name: Create error-driven-planning-protocol.yml
+    description: "Create: modules/AgenticGuidance/assets/definitions/error-driven-planning-protocol.yml\n\
+      \nStructure the file with these sections:\n\nerror_driven_planning_protocol:\n\
+      \  definition: |\n    Protocol for agents to spawn new planning folders when\
+      \ they discover\n    errors outside the scope of their current plan execution.\n\
+      \n  scope: |\n    This protocol applies to ALL agent types during plan execution.\n\
+      \    It complements (does not replace) existing feedback triggers.\n\n  decision_criteria:\n\
+      \    spawn_new_plan:\n      description: \"When to create a NEW planning folder\"\
+      \n      conditions:\n        - \"Error is NOT in the current plan's target_files\"\
+      \n        - \"Error pre-dates the current plan (was already broken)\"\n    \
+      \    - \"Error affects modules/packages outside current plan scope\"\n     \
+      \   - \"Error reveals systemic infrastructure issues\"\n        - \"Error involves\
+      \ missing or misconfigured dependencies\"\n        - \"Test failures exist for\
+      \ code not touched by current plan\"\n        - \"CI/CD configuration drift\
+      \ unrelated to current changes\"\n\n    use_existing_triggers:\n      description:\
+      \ \"When to use standard feedback triggers instead\"\n      conditions:\n  \
+      \      - \"Error is in current plan's target_files or success criteria\"\n \
+      \       - \"Error was caused by changes made during current plan execution\"\
+      \n        - \"Error is a known iteration scenario (test-fix-loop, build retry)\"\
+      \n        - \"Previous plan iteration already addressed the same error type\"\
+      \n\n  protocol_steps:\n    step_1_capture_context:\n      name: \"Capture Error\
+      \ Context\"\n      fields:\n        error_type:\n          type: \"enum\"\n\
+      \          values:\n            - \"pre_existing_debt\"\n            - \"systemic_issue\"\
+      \n            - \"missing_dependency\"\n            - \"configuration_drift\"\
+      \n            - \"test_infrastructure\"\n            - \"import_boundary\"\n\
+      \            - \"cross_module_breakage\"\n          description: \"Classification\
+      \ of the out-of-scope error\"\n        error_details:\n          type: \"string\"\
+      \n          description: \"Full error output or description\"\n        discovery_context:\n\
+      \          type: \"string\"\n          description: \"What the agent was doing\
+      \ when it found the error\"\n        affected_files:\n          type: \"array<string>\"\
+      \n          description: \"Files involved in the error\"\n        current_plan:\n\
+      \          type: \"string\"\n          description: \"Plan folder being executed\
+      \ (for reference)\"\n        priority:\n          type: \"enum\"\n         \
+      \ values: [\"CRITICAL\", \"HIGH\", \"MEDIUM\", \"LOW\"]\n          description:\
+      \ \"How urgently this needs remediation\"\n\n    step_2_classify_priority:\n\
+      \      name: \"Classify Priority\"\n      levels:\n        CRITICAL:\n     \
+      \     description: \"Blocks current plan execution\"\n          action: \"Spawn\
+      \ plan immediately, may pause current execution\"\n          examples:\n   \
+      \         - \"Import error prevents build from compiling at all\"\n        \
+      \    - \"Shared fixture corruption breaks all tests\"\n        HIGH:\n     \
+      \     description: \"Degrades plan quality but doesn't block\"\n          action:\
+      \ \"Spawn plan, continue current execution\"\n          examples:\n        \
+      \    - \"Pre-existing test failures inflate failure count\"\n            - \"\
+      Dependency version conflict causes intermittent errors\"\n        MEDIUM:\n\
+      \          description: \"Technical debt discovered during work\"\n        \
+      \  action: \"Spawn plan, continue current execution\"\n          examples:\n\
+      \            - \"Outdated configuration files found\"\n            - \"Dead\
+      \ code or unused imports in related modules\"\n        LOW:\n          description:\
+      \ \"Minor issues worth tracking\"\n          action: \"Log in output, optionally\
+      \ spawn plan\"\n          examples:\n            - \"Style inconsistencies in\
+      \ files not being modified\"\n            - \"Missing type hints in adjacent\
+      \ code\"\n\n    step_3_report_in_output:\n      name: \"Report in Agent Output\"\
+      \n      description: |\n        Include out-of-scope errors in the agent's standard\
+      \ output.\n        The orchestrator reads these and handles planning folder\
+      \ creation.\n      output_fields:\n        out_of_scope_error: true\n      \
+      \  remediation_plan_needed: true\n        error_context:\n          error_type:\
+      \ \"<classification>\"\n          error_details: \"<details>\"\n          affected_files:\
+      \ [\"<files>\"]\n          suggested_plan_name: \"YYMMDDER_<type>_<description>\"\
+      \n          priority: \"<level>\"\n\n  naming_convention:\n    pattern: \"YYMMDDER_<error_type>_<brief_description>\"\
+      \n    code: \"ER\"\n    code_meaning: \"Error Remediation\"\n    examples:\n\
+      \      - name: \"260208ER_import_errors_agenticguidance_services\"\n       \
+      \ error_type: \"import_boundary\"\n        context: \"Build agent found broken\
+      \ imports in services module\"\n      - name: \"260208ER_test_debt_cli_commands\"\
+      \n        error_type: \"pre_existing_debt\"\n        context: \"Test runner\
+      \ found 12 pre-existing test failures in CLI\"\n      - name: \"260208ER_cicd_drift_dockerfile_sync\"\
+      \n        error_type: \"configuration_drift\"\n        context: \"Deploy agent\
+      \ found Dockerfile.test out of sync\"\n      - name: \"260208ER_missing_dep_pyyaml_version\"\
+      \n        error_type: \"missing_dependency\"\n        context: \"Build agent\
+      \ found PyYAML version conflict\"\n\n  integration_points:\n    with_feedback_triggers:\
+      \ |\n      ERROR_REQUIRES_PLANNING is a new feedback trigger type.\n      Unlike\
+      \ TEST_FAILURE/BUILD_FAILURE which cause RE-PLANNING of the current plan,\n\
+      \      ERROR_REQUIRES_PLANNING spawns a SEPARATE plan for future remediation.\n\
+      \n    with_agent_loops: |\n      Out-of-scope errors discovered during loop\
+      \ iterations:\n      - Do NOT count toward loop iteration limits\n      - Are\
+      \ aggregated across iterations\n      - Are reported at loop exit\n      - Orchestrator\
+      \ creates plans for HIGH+ priority errors\n\n    with_orchestrator: |\n    \
+      \  The orchestrator tracks all spawned remediation plans:\n      - Logs each\
+      \ in remediation_plans_spawned list\n      - Reports all at shutdown\n     \
+      \ - CRITICAL priority plans may pause execution\n      - Plans are NOT automatically\
+      \ executed (require separate orchestration)\n"
+    target_files:
+    - modules/AgenticGuidance/assets/definitions/error-driven-planning-protocol.yml
+    success_criteria:
+    - File exists with all sections populated
+    - Decision criteria clearly distinguish spawn vs existing triggers
+    - Priority levels defined with examples
+    - Naming convention documented
+    - Integration points with existing systems documented
+    priority: HIGH
+    status: completed

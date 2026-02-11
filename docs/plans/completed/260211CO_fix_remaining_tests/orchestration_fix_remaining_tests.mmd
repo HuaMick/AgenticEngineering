@@ -1,0 +1,164 @@
+%% =============================================================================
+%% GOAL: Fix 11 remaining test failures across 6 files caused by behavioral differences between the old argparse CLI and the new Typer CLI backend. The strategy is to update tests to match Typer behavior where appropriate, and add missing Typer constraints where the CLI should actually reject invalid input.
+
+%% =============================================================================
+%% PROFILE: Orchestration-260211CO_fix_remaining_tests
+%% INPUT_PATH: /home/code/AgenticEngineering/docs/plans/live/260211CO_fix_remaining_tests/plan_build.yml
+%%
+%% PHASES:
+%%   P1: Fix Test Assertions to Match Typer Behavior
+%%   P2: Add Typer Input Validation Constraints
+%%   P3: Test Verification
+%%   P4_UAT: User Acceptance Testing
+%%
+%% AGENT_ROUTING: P1 -> test-builder, P2 -> test-builder, P3 -> test-builder, P4_UAT -> test-builder
+%% STATUS: P1=pending, P2=pending, P3=pending, P4_UAT=pending
+%% FEEDBACK_TRIGGERS: TEST_FAILURE -> test-fix-loop, BUILD_FAILURE -> escalate
+%% =============================================================================
+
+flowchart LR
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    LoadInputs --> ReviewInputs[Review All Listed Inputs]
+    ReviewInputs --> CheckInputs{All Inputs Found?}
+
+    CheckInputs -- "No: Missing" --> SearchInputs[Search for Missing Inputs]
+    SearchInputs --> Found{Found?}
+    Found -- "Yes: Update paths" --> UpdateRefs[Update References]
+    UpdateRefs --> ReviewInputs
+    Found -- "No: Stop" --> AskUser((Ask User for Clarification))
+
+    CheckInputs -- "Yes: Verified" --> Phase1
+
+    %% ========================================
+    %% PHASE 1: FIX TEST ASSERTIONS TO MATCH TYPER BEHAVIOR
+    %% ========================================
+    %% AGENT_ROUTING: test-builder agent with test-fix loop
+    %% LOOP_DEFINITION: test-fix-loop
+    %% MAX_ITERATIONS: 5
+
+    subgraph Testing1_SG ["Fix Test Assertions to Match Typer Behavior (Test-Fix-Loop)"]
+        Phase1[Enter Fix Test Assertions to Match Typer Behavior] --> SpawnTestBuilder1[Spawn test-builder Agent]
+        SpawnTestBuilder1 --> RunTests1[Run Tests]
+        RunTests1 --> TestsPassed1{Tests Passed?}
+
+        %% Test-Fix Loop: retry path
+        TestsPassed1 -- "No: Fix in Iteration" --> SpawnBuilderFix1[Spawn builder Agent for Fixes]
+        SpawnBuilderFix1 --> ApplyFixes1[Apply Implementation Fixes]
+        ApplyFixes1 --> RunTests1
+
+        %% Success path
+        TestsPassed1 -- "Yes: All Pass" --> Phase1Complete[Fix Test Assertions to Match Typer Behavior Complete]
+    end
+
+    %% Escalation path for persistent test failures
+    TestsPassed1 -- "No: Escalate" --> CheckIterations1{Max Iterations Reached?}
+    CheckIterations1 -- "No" --> SpawnTestBuilder1
+    CheckIterations1 -- "Yes" --> EscalateTests1((Ask User: Test Failures Persist))
+
+    Phase1Complete --> Phase2
+
+    %% ========================================
+    %% PHASE 2: ADD TYPER INPUT VALIDATION CONSTRAINTS
+    %% ========================================
+    %% AGENT_ROUTING: test-builder agent with test-fix loop
+    %% LOOP_DEFINITION: test-fix-loop
+    %% MAX_ITERATIONS: 5
+
+    subgraph Testing2_SG ["Add Typer Input Validation Constraints (Test-Fix-Loop)"]
+        Phase2[Enter Add Typer Input Validation Constraints] --> SpawnTestBuilder2[Spawn test-builder Agent]
+        SpawnTestBuilder2 --> RunTests2[Run Tests]
+        RunTests2 --> TestsPassed2{Tests Passed?}
+
+        %% Test-Fix Loop: retry path
+        TestsPassed2 -- "No: Fix in Iteration" --> SpawnBuilderFix2[Spawn builder Agent for Fixes]
+        SpawnBuilderFix2 --> ApplyFixes2[Apply Implementation Fixes]
+        ApplyFixes2 --> RunTests2
+
+        %% Success path
+        TestsPassed2 -- "Yes: All Pass" --> Phase2Complete[Add Typer Input Validation Constraints Complete]
+    end
+
+    %% Escalation path for persistent test failures
+    TestsPassed2 -- "No: Escalate" --> CheckIterations2{Max Iterations Reached?}
+    CheckIterations2 -- "No" --> SpawnTestBuilder2
+    CheckIterations2 -- "Yes" --> EscalateTests2((Ask User: Test Failures Persist))
+
+    Phase2Complete --> Phase3
+
+    %% ========================================
+    %% PHASE 3: TEST VERIFICATION
+    %% ========================================
+    %% AGENT_ROUTING: test-builder agent with test-fix loop
+    %% LOOP_DEFINITION: test-fix-loop
+    %% MAX_ITERATIONS: 5
+
+    subgraph Testing3_SG ["Test Verification (Test-Fix-Loop)"]
+        Phase3[Enter Test Verification] --> SpawnTestBuilder3[Spawn test-builder Agent]
+        SpawnTestBuilder3 --> RunTests3[Run Tests]
+        RunTests3 --> TestsPassed3{Tests Passed?}
+
+        %% Test-Fix Loop: retry path
+        TestsPassed3 -- "No: Fix in Iteration" --> SpawnBuilderFix3[Spawn builder Agent for Fixes]
+        SpawnBuilderFix3 --> ApplyFixes3[Apply Implementation Fixes]
+        ApplyFixes3 --> RunTests3
+
+        %% Success path
+        TestsPassed3 -- "Yes: All Pass" --> Phase3Complete[Test Verification Complete]
+    end
+
+    %% Escalation path for persistent test failures
+    TestsPassed3 -- "No: Escalate" --> CheckIterations3{Max Iterations Reached?}
+    CheckIterations3 -- "No" --> SpawnTestBuilder3
+    CheckIterations3 -- "Yes" --> EscalateTests3((Ask User: Test Failures Persist))
+
+    Phase3Complete --> Phase4
+
+    %% ========================================
+    %% PHASE 4: USER ACCEPTANCE TESTING
+    %% ========================================
+    %% AGENT_ROUTING: test-builder agent with test-fix loop
+    %% LOOP_DEFINITION: test-fix-loop
+    %% MAX_ITERATIONS: 5
+
+    subgraph Testing4_SG ["User Acceptance Testing (Test-Fix-Loop)"]
+        Phase4[Enter User Acceptance Testing] --> SpawnTestBuilder4[Spawn test-builder Agent]
+        SpawnTestBuilder4 --> RunTests4[Run Tests]
+        RunTests4 --> TestsPassed4{Tests Passed?}
+
+        %% Test-Fix Loop: retry path
+        TestsPassed4 -- "No: Fix in Iteration" --> SpawnBuilderFix4[Spawn builder Agent for Fixes]
+        SpawnBuilderFix4 --> ApplyFixes4[Apply Implementation Fixes]
+        ApplyFixes4 --> RunTests4
+
+        %% Success path
+        TestsPassed4 -- "Yes: All Pass" --> Phase4Complete[User Acceptance Testing Complete]
+    end
+
+    %% Escalation path for persistent test failures
+    TestsPassed4 -- "No: Escalate" --> CheckIterations4{Max Iterations Reached?}
+    CheckIterations4 -- "No" --> SpawnTestBuilder4
+    CheckIterations4 -- "Yes" --> EscalateTests4((Ask User: Test Failures Persist))
+
+
+    %% ========================================
+    %% FINALIZATION
+    %% ========================================
+    Phase4Complete --> UpdatePlanStatus[Update Plan Status: completed]
+    %% agentic plan move folder --plan <path>
+    UpdatePlanStatus --> ArchivePlan[Archive to docs/plans/completed/]
+    ArchivePlan --> End((End: Plan Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef entrypoint fill:#90EE90,stroke:#228B22
+    classDef exitpoint fill:#FFB6C1,stroke:#DC143C
+    classDef userpoint fill:#87CEEB,stroke:#4682B4
+    classDef keyaction fill:#FFD700,stroke:#DAA520
+    class Start entrypoint
+    class End exitpoint
+    class AskUser,EscalateTests1,EscalateTests2,EscalateTests3,EscalateTests4 userpoint

@@ -5,10 +5,20 @@ Tests the --suggest flag for creating questions with suggested answer options.
 
 import os
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 import yaml
+
+pytestmark = pytest.mark.uat
+
+
+@pytest.fixture(autouse=True)
+def _neutralize_ntfy():
+    """Prevent real ntfy notifications and reply poller threads during tests."""
+    with patch("agenticcli.commands.question._send_ntfy_if_configured"), \
+         patch("agenticcli.commands.question._ensure_reply_poller"):
+        yield
 
 
 @pytest.fixture

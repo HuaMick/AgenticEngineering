@@ -1,0 +1,250 @@
+name: session-list-ui-improvements
+worktree_path: /home/code/AgenticEngineering
+branch: main
+status: active
+priority: medium
+context: 'The `agentic session list` command currently shows ALL sessions (completed,
+  failed,
+
+  stopped, running) by default. Over time this becomes polluted with old sessions,
+
+  making it hard to see what''s actually running. Columns are too narrow to read,
+
+  the prompt is truncated at 40 chars, and timestamps use raw ISO format.
+
+
+  The existing implementation lives in:
+
+  - modules/AgenticCLI/src/agenticcli/commands/session.py (cmd_list function, lines
+  435-504)
+
+  - modules/AgenticCLI/src/agenticcli/cli.py (session_list Typer command, lines 684-689)
+
+
+  The session list uses Rich Table for display. Session data is stored as JSON files
+
+  in ~/.agentic/sessions/*.json. Each session has: session_id, pid, prompt, status,
+
+  started_at, ended_at, background, working_dir, estimated_tokens, context_usage_percent.
+
+
+  Current --active flag filters to running-only but is opt-in. We need to invert the
+
+  default so running sessions are shown by default, and --all shows everything.
+
+  '
+objective: 'Improve the session list UI to:
+
+  1. Show only running/starting sessions by default (was: show all)
+
+  2. Add --all flag to show all sessions including completed/stopped/failed
+
+  3. Widen description column to 60 chars and show meaningful prompt excerpt
+
+  4. Replace raw ISO timestamps with relative time ("2m ago", "1h ago", "3d ago")
+
+  5. Improve column widths for better readability
+
+  6. Add status summary line ("2 running, 5 completed, 1 failed")
+
+  '
+dependencies: []
+affected_stories: []
+impacted_artifacts:
+- artifact_type: cli_command
+  artifact_identifier: agentic session list
+  impact_type: behavior_change
+  description: Default changes from showing all sessions to showing only active (running/starting)
+  breaking_change: true
+- artifact_type: cli_module
+  artifact_identifier: agenticcli.commands.session:cmd_list
+  impact_type: modification
+  description: Updated table layout, filtering logic, relative time formatting
+  breaking_change: false
+open_questions: []
+phases:
+- name: 'Phase 1: Invert Default Filtering and Add --all Flag'
+  execution: sequential
+  description: 'Change the default behavior of `agentic session list` to show only
+
+    running/starting sessions. Add --all flag to show all sessions.
+
+    Remove the now-redundant --active flag (since active is the default).
+
+    '
+  tasks:
+  - id: SL_001
+    name: Add --all flag to CLI entrypoint and update default filtering
+    description: 'In cli.py, replace the --active flag with --all flag on session_list.
+
+      In session.py cmd_list, invert the filtering logic so that by default
+
+      only running/starting sessions are shown, and --all shows everything.
+
+
+      Currently:
+
+      - `--active` (default False) filters to running only when True
+
+      - Default shows all sessions
+
+
+      Target:
+
+      - `--all` (default False) shows all sessions when True
+
+      - Default shows only running/starting sessions
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    guidance: "1. In cli.py line 684-689, change session_list function:\n   - Remove\
+      \ `active` parameter\n   - Add `all_sessions: Annotated[bool, typer.Option(\"\
+      --all\", help=\"Show all sessions including completed\")] = False`\n   - Pass\
+      \ `show_all=all_sessions` instead of `active=active` in the _ns()\n\n2. In session.py\
+      \ cmd_list (line 435-504):\n   - Change `active_only = getattr(args, \"active\"\
+      , False)` to `show_all = getattr(args, \"show_all\", False)`\n   - Invert filtering:\
+      \ when NOT show_all, filter to running/starting only\n   - When show_all, show\
+      \ everything (no filter)\n   - Update the \"No sessions found\" message to distinguish:\n\
+      \     \"No active sessions\" (default) vs \"No sessions found\" (--all)\n\n\
+      3. Update JSON output similarly: default returns only active, --all returns\
+      \ all.\n"
+    success_criteria:
+    - '`agentic session list` shows only running/starting sessions'
+    - '`agentic session list --all` shows all sessions'
+    - JSON output respects the same filtering
+    - --active flag removed (replaced by default behavior)
+- name: 'Phase 2: Improve Table Layout and Add Relative Time'
+  execution: sequential
+  description: 'Improve the Rich Table layout: widen description column, add relative
+
+    time display, improve column widths, and add status summary.
+
+    '
+  tasks:
+  - id: SL_002
+    name: Add relative time helper function
+    description: 'Create a _format_relative_time(iso_timestamp) helper in session.py
+
+      that converts ISO timestamps to human-readable relative times.
+
+
+      Examples: "just now", "2m ago", "1h ago", "3h ago", "1d ago", "3d ago"
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    guidance: "1. Add function _format_relative_time(iso_str: str) -> str near the\
+      \ top helpers\n2. Parse ISO timestamp with datetime.fromisoformat()\n3. Calculate\
+      \ delta from datetime.now()\n4. Return:\n   - < 60 seconds: \"just now\"\n \
+      \  - < 60 minutes: \"{n}m ago\"\n   - < 24 hours: \"{n}h ago\"\n   - < 7 days:\
+      \ \"{n}d ago\"\n   - >= 7 days: the original date portion \"Feb 01\"\n5. Handle\
+      \ parsing errors gracefully (return the original string)\n"
+    success_criteria:
+    - Function converts ISO timestamps to relative time strings
+    - Graceful fallback on invalid input
+  - id: SL_003
+    name: Redesign table layout in cmd_list
+    description: 'Update the Rich Table in cmd_list to improve readability:
+
+      - Session ID: 8 chars (unchanged)
+
+      - Status: 10 chars with color
+
+      - Age: relative time from started_at
+
+      - PID: 7 chars
+
+      - Description: first 60 chars of prompt with "..." truncation
+
+      - Drop the raw "Started" column (replaced by "Age")
+
+      - Add status summary line at bottom
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    guidance: "1. Update table columns in cmd_list:\n   table.add_column(\"ID\", style=\"\
+      yellow\", width=10)\n   table.add_column(\"Status\", width=10)\n   table.add_column(\"\
+      Age\", style=\"dim\", width=10)\n   table.add_column(\"PID\", style=\"white\"\
+      , width=7)\n   table.add_column(\"Description\", style=\"dim\", no_wrap=False)\n\
+      \n2. For Description column:\n   - Use first 60 chars of prompt\n   - Add \"\
+      ...\" if truncated\n   - Replace newlines with spaces for display\n\n3. For\
+      \ Age column:\n   - Use _format_relative_time(session.get(\"started_at\", \"\
+      \"))\n\n4. Add status summary at bottom:\n   Count sessions by status, display\
+      \ like:\n   \"[dim]2 running, 5 completed, 1 failed[/dim]\"\n   Only show status\
+      \ categories that have counts > 0.\n\n5. When showing only active (default),\
+      \ the summary should still\n   indicate how many total sessions exist:\n   \"\
+      [dim]Showing 2 active of 8 total (use --all to see all)[/dim]\"\n"
+    success_criteria:
+    - Table columns are wider and more readable
+    - Age shows relative time instead of ISO timestamps
+    - Description shows 60 chars of prompt
+    - Status summary line appears at bottom
+    - Hint about --all shown when filtering
+- name: 'Phase 3: Update Existing Tests'
+  execution: sequential
+  description: 'Update existing tests in test_session_commands.py to reflect the
+
+    new default filtering behavior and table layout changes.
+
+    '
+  tasks:
+  - id: SL_004
+    name: Update TestSessionListCommand tests for new defaults
+    description: 'Update the existing tests in test_session_commands.py to match the
+
+      new behavior where default shows active-only and --all shows everything.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/tests/test_session_commands.py
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    target_files:
+    - modules/AgenticCLI/tests/test_session_commands.py
+    guidance: '1. Update test_list_empty: args should use show_all=False, message
+      may change
+
+      2. Update test_list_with_sessions: running session should appear by default
+
+      3. Update test_list_active_only: rename/update since active is now default
+
+      4. Add test for --all flag showing completed sessions
+
+      5. Update test_list_json_output: verify JSON filtering
+
+      6. Update TestSessionHandleRouting.test_handle_routes_to_list: use show_all=False
+
+      7. Ensure sample_session_data fixtures still work (status="running" will show
+      by default)
+
+      '
+    success_criteria:
+    - All existing test patterns updated for new arg names
+    - Default filtering tested (shows running only)
+    - --all flag tested (shows all sessions)
+    - All tests pass
+success_criteria:
+- '`agentic session list` shows only running/starting sessions by default'
+- '`agentic session list --all` shows all sessions'
+- Table columns are readable with relative time and wider description
+- Status summary line shows session counts
+- JSON output respects filtering flags
+- All existing tests updated and passing
+- No regressions in session spawn, stop, or status commands

@@ -1,0 +1,310 @@
+name: 260208EP - Error-Driven Planning Handoff (Test)
+objective: 'Validate that the error-driven planning protocol is correctly integrated
+
+  across all agent guidance files and that the protocol produces expected
+
+  behavior when agents encounter out-of-scope errors.
+
+  '
+status: pending
+affected_stories: []
+no_stories_rationale: "Guidance-only changes \u2014 validation is guidance-completeness\
+  \ focused"
+phases:
+- id: P1
+  name: Protocol Asset Validation
+  description: 'Verify the error-driven-planning-protocol.yml asset is complete,
+
+    self-consistent, and referenceable by all agent guidance files.
+
+    '
+  execution: sequential
+  tasks:
+  - id: T_T001
+    name: Validate protocol asset completeness
+    description: "Read modules/AgenticGuidance/assets/definitions/error-driven-planning-protocol.yml\n\
+      and verify:\n1. All 5 required sections present (definition, decision_criteria,\
+      \ protocol_steps, naming_convention, integration_points)\n2. Decision criteria\
+      \ are unambiguous \u2014 no overlap between \"spawn new plan\" and \"use existing\
+      \ triggers\"\n3. Priority levels cover all severity ranges with examples\n4.\
+      \ Naming convention includes pattern, code, and at least 3 examples\n5. Integration\
+      \ points reference correct existing files\n"
+    target_files:
+    - modules/AgenticGuidance/assets/definitions/error-driven-planning-protocol.yml
+    success_criteria:
+    - All 5 sections present and populated
+    - No ambiguity in decision criteria
+    - File is valid YAML
+    priority: HIGH
+    status: completed
+- id: P2
+  name: Guidance Integration Validation
+  description: 'Verify all updated agent guidance files correctly reference the protocol
+
+    and include the required output schema extensions.
+
+    '
+  execution: parallel
+  tasks:
+  - id: T_T002
+    name: Validate orchestration executor guidance updates
+    description: 'Check that:
+
+      1. docs/prompts/orchestration_executor.md includes ERROR_REQUIRES_PLANNING in
+      feedback triggers
+
+      2. orchestration-executor process.yml includes the trigger in loop_evaluate_triggers
+
+      3. orchestration-executor-specification.yml has the ERROR_REQUIRES_PLANNING
+      section
+
+      4. plan-mmd-schema.yml has the trigger in standard_triggers and trigger_to_action_mapping
+
+      5. All four files are self-consistent (same trigger name, same context fields)
+
+      '
+    target_files:
+    - docs/prompts/orchestration_executor.md
+    - modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml
+    - modules/AgenticGuidance/assets/specifications/orchestration-executor-specification.yml
+    - modules/AgenticGuidance/assets/specifications/plan-mmd-schema.yml
+    success_criteria:
+    - ERROR_REQUIRES_PLANNING present in all 4 files
+    - Consistent trigger name and context fields across files
+    - Priority handling documented in executor
+    priority: HIGH
+    status: completed
+  - id: T_T003
+    name: Validate build agent guidance updates
+    description: 'Check that:
+
+      1. build-python process.yml has error-driven planning check step
+
+      2. build-python process.yml has out_of_scope_errors in output schema
+
+      3. build-flutter process.yml has equivalent changes
+
+      4. Both reference the protocol asset
+
+      '
+    target_files:
+    - modules/AgenticGuidance/agents/build/build-python/process.yml
+    - modules/AgenticGuidance/agents/build/build-flutter/process.yml
+    success_criteria:
+    - Error-driven planning check step present in both
+    - Out-of-scope error output schema in both
+    - Protocol reference present
+    priority: HIGH
+    status: completed
+  - id: T_T004
+    name: Validate test agent guidance updates
+    description: 'Check that:
+
+      1. test-runner process.yml has failure classification (in_scope, pre_existing_debt,
+      systemic_issue)
+
+      2. test-runner FENCE is maintained (still observation-only)
+
+      3. test-audit process.yml has out_of_scope_findings
+
+      4. test-builder process.yml has out_of_scope_issues
+
+      '
+    target_files:
+    - modules/AgenticGuidance/agents/test/test-runner/process.yml
+    - modules/AgenticGuidance/agents/test/test-audit/process.yml
+    - modules/AgenticGuidance/agents/test/test-builder/process.yml
+    success_criteria:
+    - Failure classification present in test-runner
+    - test-runner FENCE preserved (no fix/debug)
+    - Out-of-scope sections in test-audit and test-builder
+    priority: HIGH
+    status: completed
+  - id: T_T005
+    name: Validate deploy agent guidance updates
+    description: 'Check that:
+
+      1. deploy-cicd process.yml has pre_existing_drift classification
+
+      2. deploy-cicd process.yml has pre_existing_drift in output schema
+
+      '
+    target_files:
+    - modules/AgenticGuidance/agents/deploy/deploy-cicd/process.yml
+    success_criteria:
+    - Drift classification present
+    - pre_existing_drift output section present
+    priority: MEDIUM
+    status: completed
+  - id: T_T006
+    name: Validate agent-loops.yml updates
+    description: 'Check that:
+
+      1. agent-loops.yml has error_driven_planning section
+
+      2. Section correctly states out-of-scope errors don''t consume iterations
+
+      3. Protocol reference is correct
+
+      '
+    target_files:
+    - modules/AgenticGuidance/assets/definitions/agent-loops.yml
+    success_criteria:
+    - error_driven_planning section present
+    - Iteration non-consumption documented
+    priority: MEDIUM
+    status: completed
+- id: P3
+  name: Scenario Walkthrough Validation
+  description: 'Walk through concrete scenarios to verify the protocol handles
+
+    real-world error cases correctly end-to-end.
+
+    '
+  execution: sequential
+  tasks:
+  - id: T_T007
+    name: 'Scenario: Build agent finds pre-existing import errors'
+    description: 'Trace through the protocol for this scenario:
+
+      - build-python is executing plan 260208XX_new_feature
+
+      - During compilation, it finds ImportError in agenticguidance.services.foo
+
+      - This module is NOT in the plan''s target_files
+
+
+      Expected behavior:
+
+      1. build-python classifies as out_of_scope_error (import_boundary)
+
+      2. build-python sets remediation_plan_needed: true
+
+      3. build-python suggests name: 260208ER_import_errors_services_foo
+
+      4. build-python continues with its build (does NOT block)
+
+      5. Orchestrator receives build_report with out_of_scope_errors
+
+      6. Orchestrator creates planning folder (or logs if agent already did)
+
+      7. Current plan execution continues normally
+
+      8. Remediation plan reported at shutdown
+
+
+      Verify the guidance supports each step of this flow.
+
+      '
+    target_files: []
+    success_criteria:
+    - Each step of the scenario is supported by written guidance
+    - No gaps in the handoff between agent output and executor handling
+    priority: HIGH
+    status: completed
+  - id: T_T008
+    name: 'Scenario: Test runner finds pre-existing test debt'
+    description: 'Trace through the protocol for this scenario:
+
+      - test-runner runs pytest for plan 260208XX_new_feature
+
+      - 3 tests fail: 1 from current plan changes, 2 were already failing
+
+      - The 2 pre-existing failures are in test_cli_legacy.py (not in plan scope)
+
+
+      Expected behavior:
+
+      1. test-runner classifies 1 failure as in_scope, 2 as pre_existing_debt
+
+      2. In-scope failure triggers normal TEST_FAILURE feedback
+
+      3. Pre-existing failures get remediation_plan_needed: true
+
+      4. test-runner suggests: 260208ER_test_debt_cli_legacy
+
+      5. Orchestrator handles TEST_FAILURE normally for in-scope failure
+
+      6. Orchestrator creates separate remediation plan for pre-existing debt
+
+      7. Loop iteration count only increments for the in-scope failure
+
+      '
+    target_files: []
+    success_criteria:
+    - Classification logic correctly separates in-scope from pre-existing
+    - Loop iteration counting is correct (only in-scope counts)
+    - Two different handling paths are clear
+    priority: HIGH
+    status: completed
+  - id: T_T009
+    name: 'Scenario: CRITICAL error blocks current plan'
+    description: 'Trace through the protocol for this scenario:
+
+      - build-python finds that a shared conftest.py is corrupted
+
+      - This prevents ALL tests from running, including current plan''s tests
+
+      - Priority: CRITICAL (blocks current execution)
+
+
+      Expected behavior:
+
+      1. build-python classifies as CRITICAL out_of_scope_error (test_infrastructure)
+
+      2. Orchestrator receives CRITICAL priority error
+
+      3. Orchestrator PAUSES current execution (blocking behavior for CRITICAL)
+
+      4. Orchestrator creates remediation plan: 260208ER_test_infra_conftest_corruption
+
+      5. Orchestrator asks user: "Critical out-of-scope error found. Address now or
+      continue?"
+
+      6. User decides whether to remediate first or continue
+
+
+      Verify CRITICAL priority handling differs from HIGH/MEDIUM/LOW.
+
+      '
+    target_files: []
+    success_criteria:
+    - CRITICAL priority triggers blocking behavior
+    - User decision gate exists for CRITICAL
+    - Non-CRITICAL priorities are non-blocking
+    priority: HIGH
+    status: completed
+- id: P4
+  name: Audit Phase
+  description: Final quality review of all guidance changes.
+  execution: sequential
+  tasks:
+  - id: T_T010
+    name: Cross-reference audit
+    description: 'Verify all cross-references between files are valid:
+
+      1. All agent process.yml files that reference error-driven-planning-protocol.yml
+      use correct path
+
+      2. orchestration-executor-specification.yml ERROR_REQUIRES_PLANNING section
+      references match
+
+      3. plan-mmd-schema.yml trigger definition matches executor specification
+
+      4. agent-loops.yml error_driven_planning section references correct protocol
+      file
+
+      5. No orphaned references (files mentioned that don''t exist)
+
+      '
+    target_files:
+    - modules/AgenticGuidance/assets/definitions/error-driven-planning-protocol.yml
+    - modules/AgenticGuidance/assets/specifications/orchestration-executor-specification.yml
+    - modules/AgenticGuidance/assets/specifications/plan-mmd-schema.yml
+    - modules/AgenticGuidance/assets/definitions/agent-loops.yml
+    success_criteria:
+    - All cross-references resolve to existing files
+    - Naming is consistent across all files
+    - No orphaned references
+    priority: HIGH
+    status: completed

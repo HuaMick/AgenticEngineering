@@ -1,0 +1,343 @@
+name: Fix Workspace Update Bug in plan.py cmd_init
+status: active
+priority: high
+context: 'The `agentic plan init` command (plan.py:cmd_init at line 757) creates or
+  reuses a
+
+  worktree but never updates the VS Code .code-workspace file. The sibling command
+
+  `agentic worktree create` (worktree.py:cmd_create at line 531) correctly calls
+
+  find_workspace_file() and update_workspace_add() after worktree creation (lines
+  614-618),
+
+  but cmd_init bypasses worktree.py:cmd_create and runs `git worktree add` directly
+
+  (line 857), so the workspace file is never updated.
+
+
+  Additionally, there is no way to clean stale entries from the workspace file when
+
+  worktrees are removed outside the CLI (e.g., manual `git worktree remove`). A new
+
+  `agentic worktree sync` subcommand is needed to prune entries for worktrees that
+
+  no longer exist.
+
+
+  Key functions already available in worktree.py:
+
+  - find_workspace_file(repo_root) -> Path | None  (line 198)
+
+  - update_workspace_add(workspace_file, worktree_path, branch, repo_name) -> bool  (line
+  211)
+
+  - update_workspace_remove(workspace_file, worktree_path) -> bool  (line 260)
+
+  '
+affected_stories:
+- US-WORKSPACE-001
+- US-WORKSPACE-002
+- US-WORKSPACE-003
+impacted_artifacts:
+- artifact_type: cli_module
+  artifact_identifier: modules/AgenticCLI/src/agenticcli/commands/plan.py
+  impact_type: behavior_change
+  description: Add workspace update calls in cmd_init after worktree creation/reuse
+  breaking_change: false
+- artifact_type: cli_module
+  artifact_identifier: modules/AgenticCLI/src/agenticcli/commands/worktree.py
+  impact_type: new_function
+  description: Add cmd_sync() function for workspace sync/prune and register in handle()
+  breaking_change: false
+- artifact_type: cli_module
+  artifact_identifier: modules/AgenticCLI/src/agenticcli/cli.py
+  impact_type: new_command
+  description: Register worktree sync subcommand in Typer CLI
+  breaking_change: false
+- artifact_type: test_file
+  artifact_identifier: modules/AgenticCLI/tests/test_plan_init.py
+  impact_type: behavior_change
+  description: Add tests for workspace update in plan init
+  breaking_change: false
+- artifact_type: test_file
+  artifact_identifier: modules/AgenticCLI/tests/test_worktree.py
+  impact_type: new_tests
+  description: Add tests for worktree sync/prune command
+  breaking_change: false
+phases:
+- phase_id: P1_FIX_PLAN_INIT
+  name: Add Workspace Update to cmd_init
+  status: pending
+  stories:
+  - US-WORKSPACE-001
+  - US-WORKSPACE-002
+  execution: sequential
+  tasks:
+  - id: WU-001
+    name: Add workspace update after worktree creation in cmd_init
+    status: completed
+    description: "In plan.py:cmd_init (line 757), after the worktree is created or\
+      \ reused\n(lines 846-866), add workspace file update calls using the existing\n\
+      find_workspace_file() and update_workspace_add() from worktree.py.\n\nThe fix\
+      \ covers two code paths:\n1. New worktree created (line 856-866): call update_workspace_add\
+      \ after success\n2. Existing worktree reused (line 846-849): call update_workspace_add\n\
+      \   (idempotent - update_workspace_add appends, so check for duplicates first)\n"
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    - modules/AgenticCLI/src/agenticcli/commands/worktree.py
+    guidance: "1. Add import at top of cmd_init (after existing worktree import at\
+      \ line 771):\n   from agenticcli.commands.worktree import find_workspace_file,\
+      \ update_workspace_add\n\n2. After the worktree creation/reuse block (after\
+      \ line 866, before\n   \"Generate plan folder name\" comment at line 868), add:\n\
+      \n   # Update VS Code workspace file\n   workspace_file = find_workspace_file(repo_root)\n\
+      \   if workspace_file and not worktree_exists:\n       workspace_updated = update_workspace_add(\n\
+      \           workspace_file, worktree_path, branch, repo_name\n       )\n   \
+      \    if workspace_updated and not is_json_output():\n           console.print(f\"\
+      \  [green]Updated workspace file[/green] {workspace_file.name}\")\n\n3. Add\
+      \ workspace_updated to result_data dict (after line 918):\n   result_data[\"\
+      workspace_updated\"] = workspace_updated if workspace_file else False\n\nNOTE:\
+      \ Only update workspace when worktree was newly created (not worktree_exists),\n\
+      because if worktree already existed, cmd_create or a previous cmd_init already\n\
+      added it. This prevents duplicate entries.\n"
+    success_criteria:
+    - cmd_init calls find_workspace_file after worktree creation
+    - cmd_init calls update_workspace_add when worktree is newly created
+    - Workspace is NOT updated when reusing existing worktree (prevents duplicates)
+    - workspace_updated field present in JSON output
+    - User sees "Updated workspace file" message in non-JSON mode
+- phase_id: P2_SYNC_COMMAND
+  name: Add Worktree Sync/Prune Subcommand
+  status: pending
+  stories:
+  - US-WORKSPACE-003
+  execution: sequential
+  tasks:
+  - id: WU-002
+    name: Implement cmd_sync in worktree.py
+    status: completed
+    description: 'Add a new cmd_sync() function to worktree.py that:
+
+      1. Lists all git worktrees via `git worktree list --porcelain`
+
+      2. Reads the .code-workspace file
+
+      3. Removes workspace entries whose paths don''t match any existing worktree
+
+      4. Optionally adds missing entries for worktrees not in the workspace
+
+      '
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/worktree.py
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/worktree.py
+    guidance: "1. Add cmd_sync after cmd_validate (after line ~1050):\n\n   def cmd_sync(args):\n\
+      \       \"\"\"Synchronize workspace file with actual worktrees.\n\n       Removes\
+      \ stale entries for worktrees that no longer exist.\n       Adds missing entries\
+      \ for worktrees not in the workspace.\n       \"\"\"\n\n2. Implementation steps:\n\
+      \   a. Get repo_root via get_repo_root()\n   b. Find workspace file via find_workspace_file(repo_root)\n\
+      \   c. If no workspace file, print error and exit\n   d. Get list of actual\
+      \ worktree paths from `git worktree list --porcelain`\n   e. Read workspace\
+      \ JSON, iterate folders array\n   f. For each folder entry, resolve its path\
+      \ and check if it exists\n      on disk AND is in the git worktree list\n  \
+      \ g. Remove entries that point to non-existent worktrees (call\n      update_workspace_remove\
+      \ for each stale entry)\n   h. For each worktree NOT in workspace folders, call\
+      \ update_workspace_add\n   i. Report: \"Removed N stale entries, added M missing\
+      \ entries\"\n\n3. Add \"sync\" to the handle() router (line 48):\n   elif args.worktree_command\
+      \ == \"sync\":\n       cmd_sync(args)\n\n4. Update the else message to include\
+      \ \"sync\"\n"
+    success_criteria:
+    - cmd_sync removes stale workspace entries for non-existent worktrees
+    - cmd_sync adds missing entries for worktrees not in workspace
+    - cmd_sync reports what was changed
+    - cmd_sync handles no-workspace-file gracefully
+    - cmd_sync is routed via handle()
+  - id: WU-003
+    name: Register worktree sync in Typer CLI
+    status: completed
+    description: 'Add the `sync` subcommand to the worktree_app Typer group in cli.py,
+
+      following the same pattern as other worktree subcommands.
+
+      '
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    guidance: "1. After the worktree_validate command (line ~637), add:\n\n   @worktree_app.command(\"\
+      sync\")\n   def worktree_sync():\n       \"\"\"Synchronize workspace file with\
+      \ actual worktrees.\"\"\"\n       _worktree_handle(_ns(\n           command=\"\
+      worktree\", worktree_command=\"sync\",\n           json=_global[\"json\"], debug=_global[\"\
+      debug\"],\n       ))\n"
+    success_criteria:
+    - '''agentic worktree sync'' is a valid CLI command'
+    - Routes to worktree.cmd_sync via handle()
+- phase_id: P3_TESTS
+  name: Add Tests
+  status: pending
+  stories:
+  - US-WORKSPACE-001
+  - US-WORKSPACE-002
+  - US-WORKSPACE-003
+  execution: sequential
+  tasks:
+  - id: WU-004
+    name: Add workspace update tests to test_plan_init.py
+    status: completed
+    description: 'Add tests to test_plan_init.py that verify cmd_init updates the
+      workspace
+
+      file when creating a new worktree, and does NOT update when reusing an
+
+      existing worktree.
+
+      '
+    target_files:
+    - modules/AgenticCLI/tests/test_plan_init.py
+    inputs:
+    - modules/AgenticCLI/tests/test_plan_init.py
+    - modules/AgenticCLI/tests/conftest.py
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    guidance: "Add a new test class TestPlanInitWorkspaceUpdate after TestPlanInit\
+      \ (after line ~218):\n\n1. test_init_updates_workspace_on_new_worktree:\n  \
+      \ - Create a .code-workspace file in temp_repo with basic structure:\n     {\"\
+      folders\": [{\"name\": \"main\", \"path\": \".\"}], \"settings\": {}}\n   -\
+      \ Run plan init with a new branch\n   - Read the workspace file and verify a\
+      \ new folder entry was added\n   - Verify the entry path points to the worktree\
+      \ location\n\n2. test_init_no_duplicate_workspace_entry_on_reuse:\n   - Create\
+      \ a .code-workspace file with an existing entry for the worktree\n   - Create\
+      \ a worktree manually (create_worktree_for_test)\n   - Run plan init with the\
+      \ same branch (reuses worktree)\n   - Read workspace file and verify NO duplicate\
+      \ entry was added\n\n3. test_init_json_includes_workspace_updated:\n   - Create\
+      \ a .code-workspace file\n   - Run plan init with -j flag\n   - Parse JSON output\
+      \ and verify \"workspace_updated\" key exists\n\n4. test_init_no_workspace_file_continues:\n\
+      \   - Ensure no .code-workspace file exists\n   - Run plan init\n   - Verify\
+      \ it succeeds (exit 0) without error about workspace\n\nPattern: Write the workspace\
+      \ file as JSON with json.dump, read it back\nwith json.load to verify entries.\
+      \ Use the existing cli_runner and\ntemp_repo fixtures.\n"
+    success_criteria:
+    - Test verifies workspace is updated on new worktree creation
+    - Test verifies no duplicate entry on worktree reuse
+    - Test verifies JSON output includes workspace_updated
+    - Test verifies graceful handling when no workspace file exists
+  - id: WU-005
+    name: Add worktree sync tests to test_worktree.py
+    status: completed
+    description: 'Add tests for the new worktree sync command that verify stale entry
+
+      removal and missing entry addition.
+
+      '
+    target_files:
+    - modules/AgenticCLI/tests/test_worktree.py
+    inputs:
+    - modules/AgenticCLI/tests/test_worktree.py
+    - modules/AgenticCLI/tests/conftest.py
+    - modules/AgenticCLI/src/agenticcli/commands/worktree.py
+    guidance: "Add a new test class TestWorktreeSync:\n\n1. test_sync_removes_stale_entries:\n\
+      \   - Create a workspace file with an entry pointing to a non-existent path\n\
+      \   - Create a real worktree for the test\n   - Run `agentic worktree sync`\n\
+      \   - Verify the stale entry was removed\n   - Verify the real worktree entry\
+      \ remains\n\n2. test_sync_adds_missing_entries:\n   - Create a worktree manually\n\
+      \   - Create a workspace file WITHOUT an entry for that worktree\n   - Run `agentic\
+      \ worktree sync`\n   - Verify the missing worktree was added to the workspace\n\
+      \n3. test_sync_no_workspace_file:\n   - Ensure no .code-workspace file exists\n\
+      \   - Run `agentic worktree sync`\n   - Verify appropriate error message\n\n\
+      4. test_sync_idempotent:\n   - Create a workspace file that's already in sync\n\
+      \   - Run sync twice\n   - Verify workspace file unchanged and no errors\n\n\
+      Pattern: Use cli_runner fixture. Create workspace files in temp_repo\nroot with\
+      \ .code-workspace extension. Use create_worktree_for_test\nhelper (or adapt\
+      \ from test_plan_init.py).\n"
+    success_criteria:
+    - Test verifies stale entries are removed
+    - Test verifies missing entries are added
+    - Test verifies error when no workspace file
+    - Test verifies idempotency
+- phase_id: P4_PROCESS_REVIEW
+  name: Review and Update deploy-worktree Process
+  status: pending
+  execution: sequential
+  tasks:
+  - id: WU-007
+    name: Update deploy-worktree process.yml to document workspace auto-update
+    status: completed
+    description: 'Review the deploy-worktree agent process (modules/AgenticGuidance/agents/deploy/deploy-worktree/process.yml)
+
+      and ensure it documents that workspace file updates are now handled automatically
+
+      by `agentic plan init`. The process already claims "VS Code workspace file update"
+
+      is handled by the CLI, but the outputs section expects a `workspace_updated`
+      boolean.
+
+      Verify the process accurately reflects the fixed behavior.
+
+
+      Also review the deploy-worktree inputs.yml to ensure workspace file references
+
+      are consistent with the auto-update behavior.
+
+      '
+    target_files:
+    - modules/AgenticGuidance/agents/deploy/deploy-worktree/process.yml
+    - modules/AgenticGuidance/agents/deploy/deploy-worktree/inputs.yml
+    guidance: '1. Read both process.yml and inputs.yml
+
+      2. Verify the process steps accurately describe workspace auto-update behavior
+
+      3. Ensure outputs.workspace_updated is documented as automatically set by CLI
+
+      4. If any steps suggest manual workspace file manipulation, remove them
+
+      5. Add a note that `agentic worktree sync` can fix drift if workspace gets out
+      of sync
+
+      '
+    success_criteria:
+    - deploy-worktree process accurately describes automatic workspace updates
+    - No references to manual workspace file manipulation
+    - workspace_updated output documented as automatic
+    - '''agentic worktree sync'' mentioned as recovery mechanism'
+- phase_id: P5_VALIDATION
+  name: Validation Gate
+  status: pending
+  stories:
+  - US-WORKSPACE-001
+  - US-WORKSPACE-002
+  - US-WORKSPACE-003
+  execution: sequential
+  tasks:
+  - id: WU-006
+    name: Run full test suite and verify no regressions
+    status: completed
+    description: 'Run the complete AgenticCLI test suite to confirm all existing tests
+
+      pass alongside the new tests.
+
+      '
+    target_files: []
+    guidance: '1. Run: python3 -m pytest modules/AgenticCLI/tests/test_plan_init.py
+      -v
+
+      2. Run: python3 -m pytest modules/AgenticCLI/tests/test_worktree.py -v
+
+      3. Run: python3 -m pytest modules/AgenticCLI/tests/ -v
+
+      4. All tests must pass with no import errors or fixture failures
+
+      '
+    success_criteria:
+    - All test_plan_init.py tests pass including new workspace update tests
+    - All test_worktree.py tests pass including new sync tests
+    - No regressions in other AgenticCLI tests
+success_criteria:
+- cmd_init updates .code-workspace file when creating a new worktree
+- cmd_init does NOT add duplicate workspace entries when reusing existing worktree
+- JSON output from cmd_init includes workspace_updated field
+- '`agentic worktree sync` removes stale workspace entries for non-existent worktrees'
+- '`agentic worktree sync` adds missing entries for worktrees not in workspace'
+- deploy-worktree process.yml accurately documents automatic workspace updates
+- All existing tests pass (no regressions)
+- New tests cover workspace update in plan init and worktree sync command

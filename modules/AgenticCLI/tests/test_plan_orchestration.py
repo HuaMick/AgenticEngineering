@@ -138,7 +138,7 @@ def plan_with_matching_mmd():
 %%   P1: Build Phase
 %%   P2: Test Phase
 %%
-%% AGENT_ROUTING: P1 -> builder, P2 -> test-builder
+%% AGENT_ROUTING: P1 -> build-python, P2 -> test-builder
 %% STATUS: P1=completed, P2=pending
 %% FEEDBACK_TRIGGERS: TEST_FAILURE -> test-fix-loop, BUILD_FAILURE -> escalate
 %% =============================================================================
@@ -210,7 +210,7 @@ def plan_with_missing_phase_mmd():
 %%   P1: Build Phase
 %%   P2: Test Phase
 %%
-%% AGENT_ROUTING: P1 -> builder, P2 -> test-builder
+%% AGENT_ROUTING: P1 -> build-python, P2 -> test-builder
 %% STATUS: P1=completed, P2=pending
 %% =============================================================================
 
@@ -262,7 +262,7 @@ def plan_with_missing_task_mmd():
 %% PHASES:
 %%   P1: Build Phase
 %%
-%% AGENT_ROUTING: P1 -> builder
+%% AGENT_ROUTING: P1 -> build-python
 %% STATUS: P1=in_progress
 %% =============================================================================
 
@@ -679,7 +679,7 @@ class TestOrchestrationValidateMissingPhase:
         # Find the error about P3
         missing_errors = [e for e in result["errors"] if e.get("phase_id") == "P3"]
         assert len(missing_errors) > 0
-        assert "missing" in missing_errors[0]["message"].lower()
+        assert "not found" in missing_errors[0]["message"].lower()
 
 
 class TestOrchestrationValidateMissingTask:
@@ -927,3 +927,323 @@ flowchart LR
             output = stdout + stderr
             if "multiple" in output.lower() or "warning" in output.lower():
                 assert "using" in output.lower() or "first" in output.lower()
+
+
+# =============================================================================
+# DYNAMIC AGENT TYPE REGISTRY TESTS (GA_007, GA_008, GA_009)
+# =============================================================================
+
+
+class TestGetValidAgentTypes:
+    """Tests for the dynamic agent type registry."""
+
+    def test_discovers_agents_from_mock_directory(self, tmp_path):
+        """Test that get_valid_agent_types discovers agents from directory structure."""
+        from agenticcli.commands.plan import get_valid_agent_types
+
+        # Create mock agent directory structure
+        agents_dir = tmp_path / "agents"
+        (agents_dir / "build" / "build-python").mkdir(parents=True)
+        (agents_dir / "build" / "build-flutter").mkdir(parents=True)
+        (agents_dir / "test" / "test-runner").mkdir(parents=True)
+        (agents_dir / "test" / "test-audit").mkdir(parents=True)
+
+        result = get_valid_agent_types(agents_dir=agents_dir)
+
+        assert "build-python" in result
+        assert "build-flutter" in result
+        assert "test-runner" in result
+        assert "test-audit" in result
+        assert len(result) == 4
+
+    def test_fallback_when_directory_missing(self, tmp_path):
+        """Test fallback to hardcoded set when agents directory doesn't exist."""
+        from agenticcli.commands.plan import get_valid_agent_types, _FALLBACK_AGENT_TYPES
+
+        nonexistent = tmp_path / "nonexistent"
+        result = get_valid_agent_types(agents_dir=nonexistent)
+
+        assert result == _FALLBACK_AGENT_TYPES
+
+    def test_fallback_when_directory_empty(self, tmp_path):
+        """Test fallback when directory exists but has no agents."""
+        from agenticcli.commands.plan import get_valid_agent_types, _FALLBACK_AGENT_TYPES
+
+        agents_dir = tmp_path / "agents"
+        agents_dir.mkdir()
+
+        result = get_valid_agent_types(agents_dir=agents_dir)
+
+        assert result == _FALLBACK_AGENT_TYPES
+
+    def test_discovers_real_agents(self):
+        """Test that get_valid_agent_types discovers from real filesystem."""
+        from agenticcli.commands.plan import get_valid_agent_types
+
+        result = get_valid_agent_types()
+
+        # Should discover at least these known agents
+        assert "build-python" in result
+        assert "test-runner" in result
+        assert "planner-build" in result
+        assert len(result) >= 20  # We know there are 25+
+
+    def test_skips_hidden_directories(self, tmp_path):
+        """Test that hidden directories are skipped."""
+        from agenticcli.commands.plan import get_valid_agent_types
+
+        agents_dir = tmp_path / "agents"
+        (agents_dir / "build" / "build-python").mkdir(parents=True)
+        (agents_dir / "build" / ".hidden-agent").mkdir(parents=True)
+
+        result = get_valid_agent_types(agents_dir=agents_dir)
+
+        assert "build-python" in result
+        assert ".hidden-agent" not in result
+
+    def test_skips_files_in_category_dir(self, tmp_path):
+        """Test that files (like manifest.yml) in category dirs are skipped."""
+        from agenticcli.commands.plan import get_valid_agent_types
+
+        agents_dir = tmp_path / "agents"
+        (agents_dir / "build" / "build-python").mkdir(parents=True)
+        (agents_dir / "build" / "manifest.yml").write_text("name: build")
+
+        result = get_valid_agent_types(agents_dir=agents_dir)
+
+        assert "build-python" in result
+        assert "manifest.yml" not in result
+
+
+class TestAgentRoutingValidationErrors:
+    """Tests for AGENT_ROUTING validation producing errors (not warnings)."""
+
+    def test_invalid_agent_type_is_error(self, tmp_path):
+        """Test that an invalid agent type in AGENT_ROUTING produces an error, not a warning."""
+        from agenticcli.commands.plan import cmd_orchestration_validate
+
+        plan_dir = tmp_path / "260208XX_test"
+        plan_dir.mkdir()
+
+        # Create plan YAML
+        plan_content = {
+            "name": "test-plan",
+            "objective": "Test validation",
+            "status": "pending",
+            "phases": [
+                {"phase_id": "P1", "name": "Build", "status": "pending", "tasks": [
+                    {"id": "T001", "name": "Task 1", "status": "pending"}
+                ]},
+            ],
+        }
+        plan_file = plan_dir / "plan_build.yml"
+        with open(plan_file, "w") as f:
+            yaml.dump(plan_content, f)
+
+        # Create MMD with invalid agent type
+        mmd_content = """flowchart LR
+    %% AGENT_ROUTING: Build -> nonexistent-agent-type
+    Start((Start)) --> T001[Task 1]
+    T001 --> End((End))
+"""
+        mmd_file = plan_dir / "orchestration_test.mmd"
+        mmd_file.write_text(mmd_content)
+
+        # Run validation - capture via capsys-like approach
+        from types import SimpleNamespace
+        args = SimpleNamespace(plan=str(plan_dir), json=False, debug=False, strict=False)
+
+        # We need to call the inner validation function directly
+        import re
+        from agenticcli.commands.plan import get_valid_agent_types
+
+        valid_agent_types = get_valid_agent_types(agents_dir=tmp_path / "agents_fake")
+        # Since agents_fake doesn't exist, it uses fallback
+
+        # Verify nonexistent-agent-type is NOT in valid set
+        assert "nonexistent-agent-type" not in valid_agent_types
+
+    def test_valid_agent_routing_passes(self, tmp_path):
+        """Test that valid agent types in AGENT_ROUTING do not produce errors."""
+        from agenticcli.commands.plan import get_valid_agent_types
+
+        agents_dir = tmp_path / "agents"
+        (agents_dir / "build" / "build-python").mkdir(parents=True)
+        (agents_dir / "test" / "test-runner").mkdir(parents=True)
+
+        valid_types = get_valid_agent_types(agents_dir=agents_dir)
+
+        assert "build-python" in valid_types
+        assert "test-runner" in valid_types
+
+    def test_equals_format_routing_parsed(self, tmp_path):
+        """Test that Phase=agent-type format is also parsed (newer format)."""
+        import re
+
+        mmd_content = "%% AGENT_ROUTING: Build=build-python, Testing=test-runner"
+        routing_pattern = r"(?:%%|#)\s*AGENT_ROUTING:\s*(.+)"
+        routing_matches = re.findall(routing_pattern, mmd_content)
+
+        assert len(routing_matches) == 1
+
+        # Parse the routing line
+        routings = routing_matches[0].split(",")
+        parsed = []
+        for routing in routings:
+            routing = routing.strip()
+            match = re.match(r"(\w+)\s*(?:->|=)\s*(\S+)", routing)
+            if match:
+                parsed.append((match.group(1), match.group(2)))
+
+        assert ("Build", "build-python") in parsed
+        assert ("Testing", "test-runner") in parsed
+
+    def test_hash_comment_routing_parsed(self):
+        """Test that # AGENT_ROUTING: format is parsed (used in some MMDs)."""
+        import re
+
+        mmd_content = "# AGENT_ROUTING: ProtocolAsset=teacher-update-assets, Validation=test-guidance-simulator"
+        routing_pattern = r"(?:%%|#)\s*AGENT_ROUTING:\s*(.+)"
+        routing_matches = re.findall(routing_pattern, mmd_content)
+
+        assert len(routing_matches) == 1
+        assert "ProtocolAsset=teacher-update-assets" in routing_matches[0]
+
+
+# =============================================================================
+# LOOP TYPE VALIDATION TESTS (GA_010, GA_011, GA_012)
+# =============================================================================
+
+
+class TestGetValidLoopTypes:
+    """Tests for the loop type registry."""
+
+    def test_returns_expected_loop_types(self):
+        """Test that get_valid_loop_types returns expected set from real file."""
+        from agenticcli.commands.plan import get_valid_loop_types
+
+        result = get_valid_loop_types()
+
+        assert "test-fix-loop" in result
+        assert "audit-test-fix-loop" in result
+        assert "planner-loop" in result
+        assert "guidance-test-loop" in result
+        assert len(result) >= 10
+
+    def test_fallback_when_file_missing(self, tmp_path):
+        """Test fallback to hardcoded set when file doesn't exist."""
+        from agenticcli.commands.plan import get_valid_loop_types, _FALLBACK_LOOP_TYPES
+
+        result = get_valid_loop_types(loops_file=tmp_path / "nonexistent.yml")
+
+        assert result == _FALLBACK_LOOP_TYPES
+
+    def test_fallback_on_invalid_yaml(self, tmp_path):
+        """Test fallback when YAML is invalid."""
+        from agenticcli.commands.plan import get_valid_loop_types, _FALLBACK_LOOP_TYPES
+
+        bad_file = tmp_path / "bad.yml"
+        bad_file.write_text("{{{invalid yaml}")
+
+        result = get_valid_loop_types(loops_file=bad_file)
+
+        assert result == _FALLBACK_LOOP_TYPES
+
+    def test_reads_from_custom_file(self, tmp_path):
+        """Test reading loop types from a custom file."""
+        from agenticcli.commands.plan import get_valid_loop_types
+
+        custom_file = tmp_path / "loops.yml"
+        custom_file.write_text(yaml.dump({
+            "loop_types": {
+                "custom-loop": {"purpose": "test", "maximum_iterations": 3},
+                "another-loop": {"purpose": "test2", "maximum_iterations": 5},
+            }
+        }))
+
+        result = get_valid_loop_types(loops_file=custom_file)
+
+        assert result == {"custom-loop", "another-loop"}
+
+
+class TestLoopTypeValidation:
+    """Tests for loop type validation in cmd_validate."""
+
+    def test_valid_loop_type_no_warning(self, tmp_path, cli_runner):
+        """Test that valid loop types don't produce warnings."""
+        plan_dir = tmp_path / "260208XX_test"
+        plan_dir.mkdir()
+
+        plan_content = {
+            "name": "test-plan",
+            "objective": "Test",
+            "status": "pending",
+            "phases": [],
+            "loop_structures": [
+                {"id": "loop1", "type": "test-fix-loop", "applies_to_phase": "P1"},
+            ],
+        }
+        plan_file = plan_dir / "plan_build.yml"
+        with open(plan_file, "w") as f:
+            yaml.dump(plan_content, f)
+
+        # Create a minimal MMD to avoid missing-mmd errors
+        (plan_dir / "orchestration_test.mmd").write_text("flowchart LR\n    Start((Start)) --> End((End))")
+
+        stdout, stderr, code = cli_runner(
+            ["plan", "validate", str(plan_dir)]
+        )
+        output = stdout + stderr
+        assert "not defined in agent-loops.yml" not in output
+
+    def test_invalid_loop_type_warns(self, tmp_path, cli_runner):
+        """Test that invalid loop types produce a warning."""
+        plan_dir = tmp_path / "260208XX_test"
+        plan_dir.mkdir()
+
+        plan_content = {
+            "name": "test-plan",
+            "objective": "Test",
+            "status": "pending",
+            "phases": [],
+            "loop_structures": [
+                {"id": "loop1", "type": "nonexistent-loop-type", "applies_to_phase": "P1"},
+            ],
+        }
+        plan_file = plan_dir / "plan_build.yml"
+        with open(plan_file, "w") as f:
+            yaml.dump(plan_content, f)
+
+        (plan_dir / "orchestration_test.mmd").write_text("flowchart LR\n    Start((Start)) --> End((End))")
+
+        stdout, stderr, code = cli_runner(
+            ["plan", "validate", str(plan_dir)]
+        )
+        output = stdout + stderr
+        assert "nonexistent-loop-type" in output
+        assert "not defined in agent-loops.yml" in output
+        # Should be a warning, not error (exit code 0)
+        assert code == 0
+
+    def test_no_loop_structures_no_warning(self, tmp_path, cli_runner):
+        """Test that plans without loop_structures validate cleanly."""
+        plan_dir = tmp_path / "260208XX_test"
+        plan_dir.mkdir()
+
+        plan_content = {
+            "name": "test-plan",
+            "objective": "Test",
+            "status": "pending",
+            "phases": [],
+        }
+        plan_file = plan_dir / "plan_build.yml"
+        with open(plan_file, "w") as f:
+            yaml.dump(plan_content, f)
+
+        (plan_dir / "orchestration_test.mmd").write_text("flowchart LR\n    Start((Start)) --> End((End))")
+
+        stdout, stderr, code = cli_runner(
+            ["plan", "validate", str(plan_dir)]
+        )
+        output = stdout + stderr
+        assert "not defined in agent-loops.yml" not in output

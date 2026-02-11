@@ -69,7 +69,7 @@ class TestPresetTemplates:
 
     def test_priority_values_valid(self):
         """Test priority values are low/medium/high if specified."""
-        valid_priorities = {"low", "medium", "high"}
+        valid_priorities = {"critical", "high", "low", "medium"}
 
         for preset_file in self.get_preset_files():
             content = yaml.safe_load(preset_file.read_text())

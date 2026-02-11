@@ -1,0 +1,183 @@
+%% =============================================================================
+%% GOAL: Execute plan tasks
+%% =============================================================================
+%% PROFILE: Orchestration-260211PL_planner_loop_cli_command
+%% INPUT_PATH: /home/code/AgenticEngineering/docs/plans/live/260211PL_planner_loop_cli_command/plan_build.yml
+%%
+%% PHASES:
+%%   P1: Planner workflow service
+%%   P2: CLI command registration
+%%   P3: Background execution and state management
+%%   P4: Integration with orchestration planner prompt
+%%   P5: Session management and monitoring
+%%   P6: Unit tests
+%%   P7: Verification and integration testing
+%%
+%% AGENT_ROUTING: P1 -> build-python, P2 -> build-python, P3 -> build-python, P4 -> build-python, P5 -> build-python, P6 -> test-builder, P7 -> test-builder
+%% STATUS: P1=pending, P2=pending, P3=pending, P4=pending, P5=pending, P6=pending, P7=pending
+%% FEEDBACK_TRIGGERS: TEST_FAILURE -> test-fix-loop, BUILD_FAILURE -> escalate
+%% =============================================================================
+
+flowchart LR
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    LoadInputs --> ReviewInputs[Review All Listed Inputs]
+    ReviewInputs --> CheckInputs{All Inputs Found?}
+
+    CheckInputs -- "No: Missing" --> SearchInputs[Search for Missing Inputs]
+    SearchInputs --> Found{Found?}
+    Found -- "Yes: Update paths" --> UpdateRefs[Update References]
+    UpdateRefs --> ReviewInputs
+    Found -- "No: Stop" --> AskUser((Ask User for Clarification))
+
+    CheckInputs -- "Yes: Verified" --> Phase1
+
+    %% ========================================
+    %% PHASE 1: PLANNER WORKFLOW SERVICE
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: P1-T1, P1-T2
+
+    subgraph P1_SG ["Planner workflow service"]
+        Phase1[Enter Planner workflow service] --> SpawnAgent1[Spawn build-python Agent]
+        SpawnAgent1 --> Task_P1_1[P1-T1: Create modules/AgenticCLI/src/agenticcli]
+        Task_P1_1 --> Task_P1_2[P1-T2: In the same planner_loop.py file, add a ]
+        Task_P1_2 --> Phase1Complete[Planner workflow service Complete]
+    end
+
+    Phase1Complete --> Phase2
+
+    %% ========================================
+    %% PHASE 2: CLI COMMAND REGISTRATION
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: P2-T1, P2-T2
+
+    subgraph P2_SG ["CLI command registration"]
+        Phase2[Enter CLI command registration] --> SpawnAgent2[Spawn build-python Agent]
+        SpawnAgent2 --> Task_P2_1[P2-T1: Create modules/AgenticCLI/src/agenticcli]
+        Task_P2_1 --> Task_P2_2[P2-T2: Add the 'planner' command group to modul]
+        Task_P2_2 --> Phase2Complete[CLI command registration Complete]
+    end
+
+    Phase2Complete --> Phase3
+
+    %% ========================================
+    %% PHASE 3: BACKGROUND EXECUTION AND STATE MANAGEMENT
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: P3-T1, P3-T2
+
+    subgraph P3_SG ["Background execution and state management"]
+        Phase3[Enter Background execution and state management] --> SpawnAgent3[Spawn build-python Agent]
+        SpawnAgent3 --> Task_P3_1[P3-T1: In the planner command handler (commands]
+        Task_P3_1 --> Task_P3_2[P3-T2: In cmd_start(), implement background exe]
+        Task_P3_2 --> Phase3Complete[Background execution and state management Complete]
+    end
+
+    Phase3Complete --> Phase4
+
+    %% ========================================
+    %% PHASE 4: INTEGRATION WITH ORCHESTRATION PLANNER PROMPT
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: P4-T1
+
+    subgraph P4_SG ["Integration with orchestration planner prompt"]
+        Phase4[Enter Integration with orchestration planner prompt] --> SpawnAgent4[Spawn build-python Agent]
+        SpawnAgent4 --> Task_P4_1[P4-T1: In PlannerLoopWorkflow, implement prompt]
+        Task_P4_1 --> Phase4Complete[Integration with orchestration planner prompt Complete]
+    end
+
+    Phase4Complete --> Phase5
+
+    %% ========================================
+    %% PHASE 5: SESSION MANAGEMENT AND MONITORING
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: P5-T1
+
+    subgraph P5_SG ["Session management and monitoring"]
+        Phase5[Enter Session management and monitoring] --> SpawnAgent5[Spawn build-python Agent]
+        SpawnAgent5 --> Task_P5_1[P5-T1: In PlannerLoopWorkflow, implement sessio]
+        Task_P5_1 --> Phase5Complete[Session management and monitoring Complete]
+    end
+
+    Phase5Complete --> Phase6
+
+    %% ========================================
+    %% PHASE 6: UNIT TESTS
+    %% ========================================
+    %% AGENT_ROUTING: test-builder agent with test-fix loop
+    %% LOOP_DEFINITION: test-fix-loop
+    %% MAX_ITERATIONS: 5
+
+    subgraph Testing6_SG ["Unit tests (Test-Fix-Loop)"]
+        Phase6[Enter Unit tests] --> SpawnTestBuilder6[Spawn test-builder Agent]
+        SpawnTestBuilder6 --> RunTests6[Run Tests]
+        RunTests6 --> TestsPassed6{Tests Passed?}
+
+        %% Test-Fix Loop: retry path
+        TestsPassed6 -- "No: Fix in Iteration" --> SpawnBuilderFix6[Spawn builder Agent for Fixes]
+        SpawnBuilderFix6 --> ApplyFixes6[Apply Implementation Fixes]
+        ApplyFixes6 --> RunTests6
+
+        %% Success path
+        TestsPassed6 -- "Yes: All Pass" --> Phase6Complete[Unit tests Complete]
+    end
+
+    %% Escalation path for persistent test failures
+    TestsPassed6 -- "No: Escalate" --> CheckIterations6{Max Iterations Reached?}
+    CheckIterations6 -- "No" --> SpawnTestBuilder6
+    CheckIterations6 -- "Yes" --> EscalateTests6((Ask User: Test Failures Persist))
+
+    Phase6Complete --> Phase7
+
+    %% ========================================
+    %% PHASE 7: VERIFICATION AND INTEGRATION TESTING
+    %% ========================================
+    %% AGENT_ROUTING: test-builder agent with test-fix loop
+    %% LOOP_DEFINITION: test-fix-loop
+    %% MAX_ITERATIONS: 5
+
+    subgraph Testing7_SG ["Verification and integration testing (Test-Fix-Loop)"]
+        Phase7[Enter Verification and integration testing] --> SpawnTestBuilder7[Spawn test-builder Agent]
+        SpawnTestBuilder7 --> RunTests7[Run Tests]
+        RunTests7 --> TestsPassed7{Tests Passed?}
+
+        %% Test-Fix Loop: retry path
+        TestsPassed7 -- "No: Fix in Iteration" --> SpawnBuilderFix7[Spawn builder Agent for Fixes]
+        SpawnBuilderFix7 --> ApplyFixes7[Apply Implementation Fixes]
+        ApplyFixes7 --> RunTests7
+
+        %% Success path
+        TestsPassed7 -- "Yes: All Pass" --> Phase7Complete[Verification and integration testing Complete]
+    end
+
+    %% Escalation path for persistent test failures
+    TestsPassed7 -- "No: Escalate" --> CheckIterations7{Max Iterations Reached?}
+    CheckIterations7 -- "No" --> SpawnTestBuilder7
+    CheckIterations7 -- "Yes" --> EscalateTests7((Ask User: Test Failures Persist))
+
+
+    %% ========================================
+    %% FINALIZATION
+    %% ========================================
+    Phase7Complete --> UpdatePlanStatus[Update Plan Status: completed]
+    %% agentic plan move folder --plan <path>
+    UpdatePlanStatus --> ArchivePlan[Archive to docs/plans/completed/]
+    ArchivePlan --> End((End: Plan Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef entrypoint fill:#90EE90,stroke:#228B22
+    classDef exitpoint fill:#FFB6C1,stroke:#DC143C
+    classDef userpoint fill:#87CEEB,stroke:#4682B4
+    classDef keyaction fill:#FFD700,stroke:#DAA520
+    class Start entrypoint
+    class End exitpoint
+    class AskUser,EscalateTests6,EscalateTests7 userpoint

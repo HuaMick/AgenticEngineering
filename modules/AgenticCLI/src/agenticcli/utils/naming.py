@@ -37,6 +37,12 @@ def get_worktree_id(worktree_path: Path, branch: str | None = None) -> str:
         >>> get_worktree_id(Path("/home/code/MyProject"))
         'MY'
     """
+    # Try extracting 2-letter code directly from branch name (YYMMDDXX pattern)
+    if branch:
+        branch_match = re.match(r"^\d{6}([A-Za-z]{2})", branch)
+        if branch_match:
+            return branch_match.group(1).upper()
+
     # Try registry lookup if branch is provided
     if branch:
         try:
@@ -59,6 +65,11 @@ def get_worktree_id(worktree_path: Path, branch: str | None = None) -> str:
     else:
         # No hyphen: use directory name
         suffix = dir_name
+
+    # If suffix matches YYMMDDXX pattern, extract just the 2-letter code
+    suffix_match = re.match(r"^\d{6}([A-Za-z]{2})", suffix)
+    if suffix_match:
+        return suffix_match.group(1).upper()
 
     if len(suffix) >= 2:
         return suffix[:2].upper()

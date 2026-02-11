@@ -1,0 +1,1012 @@
+plan_name: Sequential Question Delivery via ntfy
+worktree: 260210NQ_sequential_question_delivery_via_ntfy_send_one_que
+branch: main
+status: planning
+target_project_path: /home/code/AgenticEngineering
+objective: >
+  Replace batch-notify approach with sequential one-at-a-time question delivery
+  via ntfy. Only the first pending question is sent as a notification. The user
+  replies with an answer (letter or free text), then says 'next' to receive the
+  next pending question. A new NtfyQuestionAgent service class handles all
+  incoming ntfy replies with pattern-matching intent detection, maintaining a
+  current-question pointer per plan in a state file.
+context: >
+  Currently all pending questions are sent as notifications at once via
+  _send_ntfy_if_configured(). When the user replies from their phone, it's
+  hard to know which question they're answering because multiple questions
+  flood the phone simultaneously.
+
+
+  The existing NtfyReplyPoller in question_watcher.py already handles polling
+  and basic letter-to-answer mapping. This plan refactors that into a proper
+  NtfyQuestionAgent that owns the question queue state, intent detection, and
+  reply routing. The agent is a Python service class (not a Claude Code agent)
+  that runs inside the watch-daemon process.
+
+
+  The QuestionQueue service (agenticguidance.services.question) provides
+  create_question, get_question, list_pending_questions, and answer_question
+  methods. Questions live in questions/pending/ and questions/answered/ as
+  YAML files with IDs like Q-YYYYMMDD-HHMMSS-XXXX.
+
+
+  The ntfy utility module (agenticcli.utils.ntfy) provides send_ntfy,
+  poll_ntfy, parse_question_id_from_message, and notify_new_question.
+
+phases:
+- phase_id: build_01
+  name: Question Queue State File
+  status: pending
+  dependencies: []
+  tasks:
+  - task_id: build_01_01
+    description: Create NtfyQueueState dataclass and YAML persistence in ntfy_question_agent.py
+    status: pending
+    file_inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/services/question_watcher.py
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/src/agenticguidance/services/question.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/services/ntfy_question_agent.py
+    guidance: >
+      Create a new file: modules/AgenticCLI/src/agenticcli/services/ntfy_question_agent.py
+
+
+      Define NtfyQueueState dataclass:
+
+      ```python
+      @dataclasses.dataclass
+      class NtfyQueueState:
+          current_question_id: str | None = None  # QID of question last sent to user
+          sent_at: float | None = None             # Unix timestamp when sent
+          answered_count: int = 0                   # Questions answered in this session
+      ```
+
+
+      Add load/save functions:
+
+      ```python
+      def _state_path(plan_path: Path) -> Path:
+          return plan_path / "questions" / "ntfy_state.yml"
+
+      def load_state(plan_path: Path) -> NtfyQueueState:
+          path = _state_path(plan_path)
+          if not path.exists():
+              return NtfyQueueState()
+          data = yaml.safe_load(path.read_text()) or {}
+          return NtfyQueueState(
+              current_question_id=data.get("current_question_id"),
+              sent_at=data.get("sent_at"),
+              answered_count=data.get("answered_count", 0),
+          )
+
+      def save_state(plan_path: Path, state: NtfyQueueState) -> None:
+          path = _state_path(plan_path)
+          path.parent.mkdir(parents=True, exist_ok=True)
+          data = dataclasses.asdict(state)
+          tmp = path.with_suffix(".tmp")
+          tmp.write_text(yaml.dump(data, default_flow_style=False))
+          tmp.rename(path)  # Atomic on same filesystem
+      ```
+
+
+      Use atomic write (tmp + rename) for concurrent safety. The state file
+      lives at questions/ntfy_state.yml within the plan folder.
+    success_criteria:
+    - NtfyQueueState dataclass has current_question_id, sent_at, answered_count fields
+    - load_state returns default NtfyQueueState when file doesn't exist
+    - save_state writes YAML atomically via tmp+rename
+    - State file path is questions/ntfy_state.yml
+
+- phase_id: build_02
+  name: Intent Detection and Reply Router
+  status: pending
+  dependencies:
+  - build_01
+  tasks:
+  - task_id: build_02_01
+    description: Implement intent detection with pattern matching in NtfyQuestionAgent
+    status: pending
+    file_inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/services/question_watcher.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/services/ntfy_question_agent.py
+    guidance: >
+      Add an Intent enum and detect_intent function to ntfy_question_agent.py:
+
+
+      ```python
+      import enum
+      import re
+
+      class Intent(enum.Enum):
+          ANSWER_LETTER = "answer_letter"      # Single letter A-J
+          ANSWER_TEXT = "answer_text"           # Free-text answer
+          NEXT_QUESTION = "next_question"       # 'next', 'next question', 'skip'
+          LIST_QUESTIONS = "list_questions"     # 'list', 'how many'
+          MORE_INFO = "more_info"              # 'discuss', 'more info', '?'
+
+      # Patterns checked in order - first match wins
+      _INTENT_PATTERNS: list[tuple[re.Pattern, Intent]] = [
+          (re.compile(r'^(next|next question|skip)$', re.IGNORECASE), Intent.NEXT_QUESTION),
+          (re.compile(r'^(list|how many|how many\?)$', re.IGNORECASE), Intent.LIST_QUESTIONS),
+          (re.compile(r'^(discuss|more info|\?|details|explain)$', re.IGNORECASE), Intent.MORE_INFO),
+          (re.compile(r'^[A-Ja-j]$'), Intent.ANSWER_LETTER),
+      ]
+
+      def detect_intent(text: str) -> Intent:
+          text = text.strip()
+          for pattern, intent in _INTENT_PATTERNS:
+              if pattern.match(text):
+                  return intent
+          return Intent.ANSWER_TEXT  # Default: free-text answer
+      ```
+
+
+      Key design decisions:
+
+      - Order matters: check command patterns before letter check so 'D' for
+        'discuss' isn't misinterpreted (but 'discuss' is full word so safe)
+
+      - Single character A-J only matches ANSWER_LETTER; multi-character strings
+        default to ANSWER_TEXT even if they start with a letter
+
+      - Case-insensitive matching for all command patterns
+
+      - Extensible: voice transcriptions will use the same detect_intent function
+    success_criteria:
+    - Intent enum has ANSWER_LETTER, ANSWER_TEXT, NEXT_QUESTION, LIST_QUESTIONS, MORE_INFO
+    - 'next', 'Next', 'NEXT QUESTION', 'skip' all return NEXT_QUESTION
+    - 'list', 'how many' return LIST_QUESTIONS
+    - 'discuss', 'more info', '?' return MORE_INFO
+    - Single letters A-J (upper/lower) return ANSWER_LETTER
+    - Multi-word text returns ANSWER_TEXT
+    - Empty string after strip returns ANSWER_TEXT
+
+  - task_id: build_02_02
+    description: Implement NtfyQuestionAgent class with handle_reply router
+    status: pending
+    file_inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/services/question_watcher.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/utils/ntfy.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/services/ntfy_question_agent.py
+    guidance: >
+      Add the NtfyQuestionAgent class to ntfy_question_agent.py. This is the
+      central router for all ntfy reply handling.
+
+
+      ```python
+      class NtfyQuestionAgent:
+          """Lightweight reply router for ntfy question interactions.
+
+          Not an LLM agent - uses pattern matching for intent detection.
+          Maintains current-question pointer via NtfyQueueState.
+          Designed to be extended for voice input later.
+          """
+
+          def __init__(self, plan_path: Path, topic: str, server: str = "https://ntfy.sh"):
+              self._plan_path = plan_path
+              self._topic = topic
+              self._server = server
+
+          def handle_reply(self, text: str) -> str | None:
+              """Route an incoming reply to the appropriate handler.
+
+              Args:
+                  text: Raw reply text from ntfy or voice transcription.
+
+              Returns:
+                  Response message to send back via ntfy, or None if no response needed.
+              """
+              intent = detect_intent(text)
+              state = load_state(self._plan_path)
+
+              if intent == Intent.NEXT_QUESTION:
+                  return self._handle_next(state)
+              elif intent == Intent.LIST_QUESTIONS:
+                  return self._handle_list(state)
+              elif intent == Intent.MORE_INFO:
+                  return self._handle_more_info(state)
+              elif intent == Intent.ANSWER_LETTER:
+                  return self._handle_answer_letter(text.strip().upper(), state)
+              else:  # ANSWER_TEXT
+                  return self._handle_answer_text(text.strip(), state)
+      ```
+
+
+      Each _handle_* method should:
+
+      1. Load state, perform action, save state
+
+      2. Return a string response to send back via ntfy (or None)
+
+      3. Log actions at appropriate levels
+    success_criteria:
+    - NtfyQuestionAgent.__init__ takes plan_path, topic, server
+    - handle_reply routes to correct handler based on detect_intent result
+    - Each Intent value has a corresponding _handle_* method
+    - handle_reply returns str response or None
+    - State is loaded at start and saved after mutations
+
+  - task_id: build_02_03
+    description: Implement _handle_next to send the next pending question
+    status: pending
+    file_inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/utils/ntfy.py
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/src/agenticguidance/services/question.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/services/ntfy_question_agent.py
+    guidance: >
+      Implement _handle_next on NtfyQuestionAgent:
+
+
+      ```python
+      def _handle_next(self, state: NtfyQueueState) -> str | None:
+          """Send the next pending question to the user."""
+          from agenticguidance.services.question import QuestionQueue
+
+          service = QuestionQueue(self._plan_path)
+          pending = service.list_pending_questions()
+
+          # Sort by created_at for FIFO ordering
+          pending.sort(key=lambda q: q.created_at)
+
+          if not pending:
+              msg = f"No more questions pending. {state.answered_count} answered this session."
+              send_ntfy(self._topic, title="All Done", message=msg,
+                        server=self._server, tags=["white_check_mark"])
+              return msg
+
+          question = pending[0]
+          position = 1
+          total = len(pending)
+
+          # Format and send notification
+          self._send_question_notification(question, position, total)
+
+          # Update state
+          state.current_question_id = question.id
+          state.sent_at = time.time()
+          save_state(self._plan_path, state)
+
+          return None  # Notification already sent via _send_question_notification
+      ```
+
+
+      The _send_question_notification helper formats the question with position
+      info and hint text (implemented in build_03_01).
+    success_criteria:
+    - Returns pending questions sorted by created_at (FIFO)
+    - When no pending questions, sends summary with answered count
+    - Sends first pending question as notification with position info
+    - Updates state with current_question_id and sent_at
+    - Saves state after update
+
+  - task_id: build_02_04
+    description: Implement _handle_answer_letter and _handle_answer_text
+    status: pending
+    file_inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/services/question_watcher.py
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/src/agenticguidance/services/question.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/services/ntfy_question_agent.py
+    guidance: >
+      Implement answer handlers on NtfyQuestionAgent:
+
+
+      ```python
+      def _handle_answer_letter(self, letter: str, state: NtfyQueueState) -> str | None:
+          """Handle a single-letter answer (A-J) mapped to suggested answers."""
+          if not state.current_question_id:
+              return self._handle_answer_text(letter, state)
+
+          from agenticguidance.services.question import QuestionQueue
+          service = QuestionQueue(self._plan_path)
+          question = service.get_question(state.current_question_id)
+
+          if not question or not question.suggested_answers:
+              return self._handle_answer_text(letter, state)
+
+          letter_index = ord(letter) - ord('A')
+          if 0 <= letter_index < len(question.suggested_answers):
+              answer_text = question.suggested_answers[letter_index]
+              logger.info("Mapped '%s' to: %s", letter, answer_text)
+          else:
+              answer_text = letter  # Invalid index, use literal
+
+          return self._submit_answer(state, answer_text)
+
+      def _handle_answer_text(self, text: str, state: NtfyQueueState) -> str | None:
+          """Handle a free-text answer."""
+          if not state.current_question_id:
+              # No current question - ignore or send hint
+              return "No question is active. Say 'next' to get a question."
+          return self._submit_answer(state, text)
+
+      def _submit_answer(self, state: NtfyQueueState, answer_text: str) -> str | None:
+          """Submit answer for the current question and update state."""
+          from agenticguidance.services.question import QuestionQueue
+          service = QuestionQueue(self._plan_path)
+
+          try:
+              service.answer_question(
+                  state.current_question_id,
+                  answer_text,
+                  answered_by="ntfy-reply",
+              )
+          except FileNotFoundError:
+              logger.debug("Question %s already answered", state.current_question_id)
+              return "Question was already answered."
+          except Exception as e:
+              logger.warning("Failed to answer %s: %s", state.current_question_id, e)
+              return f"Error saving answer: {e}"
+
+          # Update state
+          state.answered_count += 1
+          state.current_question_id = None
+          state.sent_at = None
+          save_state(self._plan_path, state)
+
+          # Send confirmation
+          msg = f"Answer saved: {answer_text[:80]}"
+          send_ntfy(self._topic, title="Answer Received",
+                    message=f"{msg}\n\nSay 'next' for next question.",
+                    priority="low", server=self._server, tags=["white_check_mark"])
+
+          logger.info("Answered %s via ntfy", state.current_question_id)
+          return msg
+      ```
+
+
+      Key behaviors:
+
+      - Letter answers without a current question fall back to text handling
+
+      - Letter answers without suggested_answers fall back to text handling
+
+      - After answering, state.current_question_id is cleared (wait for 'next')
+
+      - Confirmation includes hint to say 'next'
+
+      - answered_count increments for session tracking
+    success_criteria:
+    - Letter answer maps to suggested_answers using current_question_id from state
+    - Falls back to text answer if no current question or no suggested_answers
+    - Invalid letter index uses letter as literal answer text
+    - _submit_answer answers via QuestionQueue, clears current_question_id
+    - answered_count increments on successful answer
+    - Confirmation notification sent with 'next' hint
+    - FileNotFoundError handled gracefully (question already answered)
+
+  - task_id: build_02_05
+    description: Implement _handle_list and _handle_more_info
+    status: pending
+    file_inputs:
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/src/agenticguidance/services/question.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/services/ntfy_question_agent.py
+    guidance: >
+      Implement informational handlers:
+
+
+      ```python
+      def _handle_list(self, state: NtfyQueueState) -> str | None:
+          """Reply with count and summary of pending questions."""
+          from agenticguidance.services.question import QuestionQueue
+          service = QuestionQueue(self._plan_path)
+          pending = service.list_pending_questions()
+
+          if not pending:
+              msg = "No questions pending."
+          else:
+              blocking = [q for q in pending if q.severity == "blocking"]
+              high = [q for q in pending if q.severity == "high"]
+              msg = f"{len(pending)} questions pending"
+              if blocking:
+                  msg += f" ({len(blocking)} blocking)"
+              if high:
+                  msg += f" ({len(high)} high priority)"
+              if state.current_question_id:
+                  msg += f"\nCurrent: {state.current_question_id}"
+              msg += f"\n{state.answered_count} answered this session."
+
+          send_ntfy(self._topic, title="Question Queue",
+                    message=msg, priority="low",
+                    server=self._server, tags=["clipboard"])
+          return msg
+
+      def _handle_more_info(self, state: NtfyQueueState) -> str | None:
+          """Send extended context for the current question."""
+          if not state.current_question_id:
+              return "No question is active. Say 'next' to get a question."
+
+          from agenticguidance.services.question import QuestionQueue
+          service = QuestionQueue(self._plan_path)
+          question = service.get_question(state.current_question_id)
+
+          if not question:
+              return "Current question not found."
+
+          # Send context and full text
+          msg = f"Question: {question.text}"
+          if question.context:
+              msg += f"\n\nContext: {question.context}"
+          msg += f"\n\nSeverity: {question.severity}"
+          msg += f"\nAsked by: {question.asked_by}"
+
+          send_ntfy(self._topic, title="Question Details",
+                    message=msg, priority="low",
+                    server=self._server, tags=["mag"])
+          return msg
+      ```
+    success_criteria:
+    - _handle_list shows count with severity breakdown
+    - _handle_list shows current question ID if set
+    - _handle_list shows session answered count
+    - _handle_more_info sends full text + context for current question
+    - _handle_more_info returns helpful message when no current question
+    - Both send responses via ntfy
+
+- phase_id: build_03
+  name: Notification Format and Send-Only-First Logic
+  status: pending
+  dependencies:
+  - build_02
+  tasks:
+  - task_id: build_03_01
+    description: Add _send_question_notification helper with position and hint formatting
+    status: pending
+    file_inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/utils/ntfy.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/services/ntfy_question_agent.py
+    guidance: >
+      Add _send_question_notification to NtfyQuestionAgent:
+
+
+      ```python
+      def _send_question_notification(self, question, position: int, total: int) -> bool:
+          """Send a formatted question notification with position and hints.
+
+          Args:
+              question: Question instance.
+              position: 1-based position in queue.
+              total: Total pending questions.
+
+          Returns:
+              True if notification sent successfully.
+          """
+          severity = getattr(question, "severity", "medium").lower()
+          title = f"Question {position} of {total} [{severity.upper()}]"
+
+          text = getattr(question, "text", "")
+          message = text[:200] + "..." if len(text) > 200 else text
+
+          # Append lettered options if suggested_answers present
+          suggested = getattr(question, "suggested_answers", None)
+          if suggested and isinstance(suggested, list) and len(suggested) > 0:
+              message += "\n"
+              for i, answer in enumerate(suggested[:10]):
+                  letter = chr(ord('A') + i)
+                  message += f"\n{letter}) {answer}"
+
+          # Append QID footer
+          q_id = getattr(question, "id", "")
+          if q_id:
+              message += f"\n\n[QID: {q_id}]"
+
+          # Append hint
+          if suggested:
+              message += "\n\nReply A/B/C or text. Say 'next' for next question."
+          else:
+              message += "\n\nReply with your answer. Say 'next' for next question."
+
+          if severity == "blocking":
+              priority = "urgent"
+              tags = ["warning"]
+          elif severity == "high":
+              priority = "high"
+              tags = ["question"]
+          else:
+              priority = "default"
+              tags = ["question"]
+
+          return send_ntfy(
+              topic=self._topic, title=title, message=message,
+              priority=priority, server=self._server, tags=tags,
+          )
+      ```
+
+
+      Key format changes from current notify_new_question:
+
+      - Title: "Question 1 of 5 [HIGH]" instead of "New Question [HIGH]"
+
+      - Footer hint: "Reply A/B/C or text. Say 'next' for next question."
+
+      - QID still included for backward compatibility
+    success_criteria:
+    - Title includes "Question N of M" position format
+    - Title includes severity in brackets
+    - Suggested answers formatted as A) B) C) options
+    - QID footer included for reply matching
+    - Hint text appended based on whether question has suggestions
+    - Severity maps to priority (blocking=urgent, high=high, default otherwise)
+
+  - task_id: build_03_02
+    description: Modify _send_ntfy_if_configured to send only first pending question
+    status: pending
+    file_inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
+    guidance: >
+      Refactor _send_ntfy_if_configured() (around line 1076) to use
+      NtfyQuestionAgent for sequential delivery instead of batch notification.
+
+
+      Current behavior: iterates ALL questions, sends notification for each new one.
+
+
+      New behavior: if there is no current question in state, send only the
+      first pending question (FIFO by created_at) via the agent.
+
+
+      ```python
+      def _send_ntfy_if_configured(plan_path: Path, questions: list) -> None:
+          """Send ntfy notification for the first unsent pending question only.
+
+          Uses NtfyQuestionAgent for sequential delivery. Only sends a new
+          question notification if no question is currently active (waiting
+          for user reply).
+          """
+          try:
+              config = _get_ntfy_config()
+              if not config:
+                  return
+
+              from agenticcli.services.ntfy_question_agent import (
+                  NtfyQuestionAgent,
+                  load_state,
+              )
+
+              state = load_state(plan_path)
+
+              # If there's already a current question, don't send another
+              if state.current_question_id:
+                  logger.debug("ntfy: current question active (%s), skipping",
+                               state.current_question_id)
+                  return
+
+              # Sort pending by created_at, send only the first
+              pending = [q for q in questions if getattr(q, "status", "") == "pending"]
+              if not pending:
+                  return
+
+              pending.sort(key=lambda q: getattr(q, "created_at", 0))
+
+              agent = NtfyQuestionAgent(plan_path, config["topic"], config["server"])
+              agent._handle_next(state)
+
+          except Exception as e:
+              logger.debug("ntfy notification error: %s", e)
+      ```
+
+
+      Also remove the global _ntfy_seen_question_ids set and its usage - the
+      NtfyQueueState.current_question_id replaces the dedup mechanism.
+    success_criteria:
+    - Only sends notification when no current_question_id is active in state
+    - Sends only the first pending question (FIFO by created_at)
+    - Removes _ntfy_seen_question_ids global set
+    - Uses NtfyQuestionAgent._handle_next for sending
+    - Backward compatible - first question still auto-sends on new question ask
+
+- phase_id: build_04
+  name: Integrate Agent into NtfyReplyPoller
+  status: pending
+  dependencies:
+  - build_03
+  tasks:
+  - task_id: build_04_01
+    description: Refactor NtfyReplyPoller to delegate reply handling to NtfyQuestionAgent
+    status: pending
+    file_inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/services/question_watcher.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/services/ntfy_question_agent.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/services/question_watcher.py
+    guidance: >
+      Refactor NtfyReplyPoller._check_for_replies() to delegate to
+      NtfyQuestionAgent instead of doing its own answer matching.
+
+
+      Current behavior (lines 211-264): polls ntfy, parses QID from message,
+      extracts answer text, maps letters, calls _answer_question directly.
+
+
+      New behavior: polls ntfy, filters out outgoing messages, passes reply
+      text to NtfyQuestionAgent.handle_reply() which handles everything.
+
+
+      ```python
+      def __init__(self, plan_path, topic, server="https://ntfy.sh", poll_interval=30):
+          self._plan_path = plan_path
+          self._topic = topic
+          self._server = server
+          self._poll_interval = poll_interval
+          self._last_poll_time = str(int(time.time()))
+          self._running = False
+          self._thread = None
+          self._processed_msg_ids: set[str] = set()
+          # Create agent for reply handling
+          from agenticcli.services.ntfy_question_agent import NtfyQuestionAgent
+          self._agent = NtfyQuestionAgent(plan_path, topic, server)
+
+      def _check_for_replies(self):
+          from agenticcli.utils.ntfy import poll_ntfy
+
+          messages = poll_ntfy(self._topic, since=self._last_poll_time,
+                              server=self._server)
+          if not messages:
+              return
+
+          self._last_poll_time = str(max(m.get("time", 0) for m in messages))
+
+          for msg in messages:
+              msg_id = msg.get("id", "")
+              if msg_id in self._processed_msg_ids:
+                  continue
+              self._processed_msg_ids.add(msg_id)
+
+              text = msg.get("message", "").strip()
+              if not text:
+                  continue
+
+              # Skip outgoing notifications (sent by us)
+              if text.startswith("Question ") or text.startswith("No more questions"):
+                  continue
+              if text.startswith("Answer Received") or text.startswith("Answer saved"):
+                  continue
+
+              # Delegate to agent
+              try:
+                  self._agent.handle_reply(text)
+              except Exception as e:
+                  logger.warning("Agent reply error: %s", e)
+      ```
+
+
+      Key changes:
+
+      - Remove _answer_question method (logic moved to NtfyQuestionAgent)
+
+      - Remove QID parsing from poller (agent uses state.current_question_id)
+
+      - Remove letter mapping from poller (agent handles this)
+
+      - Outgoing message filter updated for new notification formats
+
+      - Keep poll_loop, start/stop, processed_msg_ids dedup unchanged
+    success_criteria:
+    - NtfyReplyPoller creates NtfyQuestionAgent in __init__
+    - _check_for_replies delegates to agent.handle_reply for each message
+    - _answer_question method removed from NtfyReplyPoller
+    - QID parsing removed from poller (agent handles via state)
+    - Letter mapping removed from poller (agent handles via intent detection)
+    - Outgoing message filter updated for new notification title formats
+    - poll_loop, start, stop methods unchanged
+    - _processed_msg_ids dedup still works
+
+- phase_id: test_01
+  name: Unit Tests for NtfyQuestionAgent
+  status: pending
+  dependencies:
+  - build_04
+  tasks:
+  - task_id: test_01_01
+    description: Test intent detection for all patterns
+    status: pending
+    file_inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/services/ntfy_question_agent.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_ntfy_question_agent.py
+    guidance: >
+      Create test_ntfy_question_agent.py with tests for detect_intent:
+
+
+      ```python
+      import pytest
+      from agenticcli.services.ntfy_question_agent import Intent, detect_intent
+
+      class TestDetectIntent:
+          @pytest.mark.parametrize("text,expected", [
+              ("next", Intent.NEXT_QUESTION),
+              ("Next", Intent.NEXT_QUESTION),
+              ("NEXT QUESTION", Intent.NEXT_QUESTION),
+              ("next question", Intent.NEXT_QUESTION),
+              ("skip", Intent.NEXT_QUESTION),
+              ("Skip", Intent.NEXT_QUESTION),
+          ])
+          def test_next_question(self, text, expected):
+              assert detect_intent(text) == expected
+
+          @pytest.mark.parametrize("text,expected", [
+              ("list", Intent.LIST_QUESTIONS),
+              ("how many", Intent.LIST_QUESTIONS),
+              ("How Many?", Intent.LIST_QUESTIONS),
+          ])
+          def test_list_questions(self, text, expected):
+              assert detect_intent(text) == expected
+
+          @pytest.mark.parametrize("text,expected", [
+              ("?", Intent.MORE_INFO),
+              ("discuss", Intent.MORE_INFO),
+              ("more info", Intent.MORE_INFO),
+              ("details", Intent.MORE_INFO),
+              ("explain", Intent.MORE_INFO),
+          ])
+          def test_more_info(self, text, expected):
+              assert detect_intent(text) == expected
+
+          @pytest.mark.parametrize("text", ["A", "B", "j", "a"])
+          def test_answer_letter(self, text):
+              assert detect_intent(text) == Intent.ANSWER_LETTER
+
+          @pytest.mark.parametrize("text", [
+              "Redis", "I think option B", "AB", "A is best",
+              "Use PostgreSQL", "", "  ",
+          ])
+          def test_answer_text(self, text):
+              assert detect_intent(text) == Intent.ANSWER_TEXT
+      ```
+    success_criteria:
+    - All NEXT_QUESTION patterns tested (next, skip, case variations)
+    - All LIST_QUESTIONS patterns tested (list, how many)
+    - All MORE_INFO patterns tested (?, discuss, more info, details, explain)
+    - Single letter A-J tested for ANSWER_LETTER
+    - Multi-word and empty strings tested for ANSWER_TEXT fallback
+    - All tests pass
+
+  - task_id: test_01_02
+    description: Test NtfyQuestionAgent handle_reply routing and answer flow
+    status: pending
+    file_inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/services/ntfy_question_agent.py
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/src/agenticguidance/models/question.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_ntfy_question_agent.py
+    guidance: >
+      Add integration-style tests for NtfyQuestionAgent using tmp_path:
+
+
+      Test cases:
+
+      1. handle_reply("next") with pending questions - sends first question,
+         updates state with current_question_id
+
+      2. handle_reply("A") with current question having suggested_answers -
+         maps letter, answers question, clears current_question_id
+
+      3. handle_reply("Redis is better") with current question - saves free
+         text, clears state
+
+      4. handle_reply("next") with no pending questions - sends "no more" message
+
+      5. handle_reply("A") with no current question - returns hint message
+
+      6. handle_reply("list") - returns count of pending questions
+
+      7. handle_reply("?") with current question - returns question details
+
+      8. Sequential flow: next -> answer -> next -> answer -> next (no more)
+
+
+      Use tmp_path to create plan folder, create questions via QuestionQueue,
+      mock send_ntfy to capture notification content. Verify state file
+      updates after each operation.
+    success_criteria:
+    - Test next with pending questions sends notification and updates state
+    - Test letter answer maps to suggested answer and clears state
+    - Test free text answer saves and clears state
+    - Test next with empty queue returns summary
+    - Test answer without current question returns hint
+    - Test list returns pending count
+    - Test more info returns question details
+    - Sequential flow test verifies complete next-answer-next cycle
+    - All tests pass
+
+  - task_id: test_01_03
+    description: Test NtfyQueueState persistence
+    status: pending
+    file_inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/services/ntfy_question_agent.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_ntfy_question_agent.py
+    guidance: >
+      Add tests for state load/save:
+
+
+      1. load_state with no file returns default NtfyQueueState
+
+      2. save_state + load_state roundtrip preserves all fields
+
+      3. save_state creates parent directories if needed
+
+      4. save_state is atomic (file exists completely or not at all)
+
+      5. State file is valid YAML
+    success_criteria:
+    - Default state has None current_question_id, None sent_at, 0 answered_count
+    - Roundtrip preserves current_question_id, sent_at, answered_count
+    - Missing parent directory is created
+    - State file is parseable YAML after save
+
+  - task_id: test_01_04
+    description: Update existing test_ntfy.py for new notification format
+    status: pending
+    file_inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_ntfy.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_ntfy.py
+    guidance: >
+      Update existing tests in test_ntfy.py that may need changes:
+
+
+      1. Tests for _send_ntfy_if_configured that expect batch behavior
+         need updating to expect send-only-first behavior
+
+      2. Tests that check for "New Question" title format - the agent now
+         uses "Question N of M" format for notifications sent via the agent,
+         but notify_new_question() in ntfy.py still uses "New Question" for
+         direct calls (e.g., from code that doesn't use the agent)
+
+      3. Ensure NtfyReplyPoller tests still pass after _answer_question removal
+
+      4. Update any tests that reference _ntfy_seen_question_ids
+    success_criteria:
+    - Tests referencing _ntfy_seen_question_ids updated or removed
+    - Tests for _send_ntfy_if_configured expect sequential behavior
+    - NtfyReplyPoller tests updated for agent delegation
+    - All existing tests in test_ntfy.py pass
+
+  - task_id: test_01_05
+    description: Update UAT test for sequential delivery flow
+    status: pending
+    file_inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_uat_e2e_notification_flow.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_uat_e2e_notification_flow.py
+    guidance: >
+      Add UAT test for the sequential delivery flow:
+
+
+      ```python
+      def test_e2e_sequential_question_delivery(plan_with_config, monkeypatch):
+          """UAT: Sequential question delivery - one at a time.
+
+          User journey:
+          1. Three questions are created
+          2. Only first question is sent as notification
+          3. User answers first question via ntfy reply
+          4. User says 'next' to get second question
+          5. User answers second question
+          6. User says 'next' to get third question
+          7. User answers third question
+          8. User says 'next' - receives 'no more questions' summary
+          """
+      ```
+
+
+      This test should:
+
+      - Create 3 questions via QuestionQueue
+
+      - Mock send_ntfy to capture notifications
+
+      - Verify only 1 notification sent initially (not 3)
+
+      - Simulate reply flow through NtfyQuestionAgent
+
+      - Verify state file updates at each step
+
+      - Verify final summary shows 3 answered
+    success_criteria:
+    - UAT test creates 3 questions and verifies only 1 notification sent
+    - Test simulates next->answer->next->answer->next->answer->next flow
+    - State file verified at each step (current_question_id, answered_count)
+    - Final 'next' returns no-more-questions with count of 3
+    - Test passes end-to-end
+
+loop_structure:
+  type: test-fix-loop
+  trigger: Build phase enters 'in_progress' status
+  exit_criteria:
+    success: All unit and UAT tests pass
+    max_iterations: 5
+    escalation: escalate_to_human
+  participants:
+  - agent: build-python
+    role: executor
+  - agent: test-runner
+    role: validator
+  - agent: build-python
+    role: fixer
+
+success_criteria:
+- NtfyQuestionAgent class created with intent detection and reply routing
+- Only the first pending question is sent as notification (not all at once)
+- User can reply with letter (A-J), free text, 'next', 'list', or '?'
+- 'next' sends the next pending question; 'no more questions' when queue empty
+- NtfyQueueState persists current_question_id, sent_at, answered_count
+- State file uses atomic writes for concurrent safety
+- Notification format includes "Question N of M" and hint text
+- NtfyReplyPoller delegates to NtfyQuestionAgent for all reply handling
+- Backward compatible - first question auto-sends when asked
+- All unit tests pass (test_ntfy_question_agent.py)
+- All existing tests pass (test_ntfy.py)
+- UAT test passes (test_uat_e2e_notification_flow.py)
+
+user_acceptance_criteria:
+- name: Sequential Delivery
+  description: Create 3 questions via CLI. Only 1 notification arrives on phone, not 3.
+  validation: >
+    agentic question ask 'Q1?' --plan <plan> && agentic question ask 'Q2?' --plan <plan>
+    && agentic question ask 'Q3?' --plan <plan> — verify only 1 notification received
+- name: Answer and Next Flow
+  description: Reply to the question from phone, then say 'next' to get the next one.
+  validation: Reply with answer text, then send 'next' — verify next question arrives
+- name: Letter Answer Mapping
+  description: Receive multi-choice question, reply with 'B', verify answer is mapped text.
+  validation: Reply 'B' to multi-choice question, check answer file has mapped option text
+- name: Queue Summary
+  description: Send 'list' from phone, receive count of pending questions.
+  validation: Send 'list' via ntfy, verify response shows correct pending count
+- name: No More Questions
+  description: Answer all questions and say 'next' — receive summary of answered count.
+  validation: After answering all, send 'next', verify 'No more questions' with count
+
+notes: >
+  ## Key Design Decisions
+
+
+  1. **Agent is a Python class, not an LLM agent**: NtfyQuestionAgent uses
+     pattern matching for intent detection. No AI/LLM needed. The name reflects
+     its autonomous decision-making role, not its implementation.
+
+
+  2. **State file over in-memory state**: Using questions/ntfy_state.yml ensures
+     state survives process restarts and is debuggable. Atomic writes prevent
+     corruption from concurrent access.
+
+
+  3. **Wait for 'next' after answer**: Don't auto-send the next question after
+     answering. This gives the user control over pacing and prevents notification
+     fatigue. The confirmation message includes a 'say next' hint.
+
+
+  4. **Backward compatible first-question send**: When _send_ntfy_if_configured
+     is called and no current question is active, it auto-sends the first pending
+     question. This means the first question is still delivered automatically
+     when asked — the user only needs to say 'next' for subsequent questions.
+
+
+  5. **Outgoing message filter**: The poller skips messages that start with
+     known notification prefixes ("Question ", "Answer Received", etc.) to
+     avoid processing our own outgoing notifications as replies.
+
+
+  6. **Voice-ready interface**: handle_reply(text) accepts any text string.
+     When voice transcription is added later, transcribed text passes through
+     the same detect_intent → handle flow without changes.
+
+
+  ## Files Created/Modified
+
+
+  1. NEW: modules/AgenticCLI/src/agenticcli/services/ntfy_question_agent.py
+  2. MODIFY: modules/AgenticCLI/src/agenticcli/commands/question.py
+  3. MODIFY: modules/AgenticCLI/src/agenticcli/services/question_watcher.py
+  4. NEW: modules/AgenticCLI/tests/test_ntfy_question_agent.py
+  5. MODIFY: modules/AgenticCLI/tests/test_ntfy.py
+  6. MODIFY: modules/AgenticCLI/tests/test_uat_e2e_notification_flow.py

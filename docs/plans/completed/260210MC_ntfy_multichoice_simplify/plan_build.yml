@@ -1,0 +1,328 @@
+plan_name: ntfy Multi-Choice Support and Notification Simplification
+worktree: 260210MC_ntfy_multichoice_simplify
+branch: main
+status: planning
+target_project_path: /home/code/AgenticEngineering
+objective: 'Simplify the ntfy question notification system and add multi-choice answer
+  support.
+
+  Remove severity gating so all questions trigger push notifications regardless of
+  severity level.
+
+  Add lettered multi-choice formatting (A/B/C/D) in notification bodies when questions
+  have suggested_answers.
+
+  Parse letter replies from phone and map them to the corresponding suggested answer
+  text.
+
+  '
+context: 'Current system only notifies for blocking/high severity questions. Medium/low
+  severity questions
+
+  are skipped, which creates inconsistency for users. All questions should notify.
+
+
+  Questions with suggested_answers should format them as lettered options (A/B/C/D)
+  in the
+
+  notification body. When users reply with a letter, the system should parse it and
+  map
+
+  to the corresponding answer text before saving.
+
+
+  Maintains backward compatibility with free-text answers.
+
+  '
+phases:
+- phase_id: build_01
+  name: Remove Severity Gating from Notifications
+  status: pending
+  dependencies: []
+  tasks:
+  - task_id: build_01_01
+    description: Remove severity check in _send_ntfy_if_configured() that skips medium/low
+      questions
+    status: completed
+    file_inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
+    guidance: "Current implementation (lines 966-970):\n```python\n# Severity gate\
+      \ (Q3: only blocking/high trigger phone notifications)\nq_severity = getattr(q,\
+      \ \"severity\", \"medium\").lower()\nif q_severity not in (\"blocking\", \"\
+      high\"):\n    logger.debug(\"Skipping ntfy for %s (severity=%s)\", q_id, q_severity)\n\
+      \    continue\n```\n\nRemove the entire severity check block (lines 966-970).\
+      \ All questions should notify\nregardless of severity. Keep the severity display\
+      \ in notify_new_question() title\nfor user context, but don't use it to gate\
+      \ whether notifications are sent.\n\nAfter removal, the loop should directly\
+      \ call notify_new_question() for all new questions:\n```python\nfor q in questions:\n\
+      \    q_id = q.id if hasattr(q, \"id\") else q.get(\"id\", \"\")\n    if not\
+      \ q_id or q_id in _ntfy_seen_question_ids:\n        continue\n\n    _ntfy_seen_question_ids.add(q_id)\n\
+      \    success = notify_new_question(topic, q, server)\n    logger.debug(\"ntfy\
+      \ notification for %s: %s\", q_id, \"sent\" if success else \"failed\")\n```\n"
+    success_criteria:
+    - Severity check lines 966-970 removed from _send_ntfy_if_configured()
+    - All questions with new QIDs trigger notify_new_question() call regardless of
+      severity
+    - Medium and low severity questions now send push notifications
+    - Existing tests that verify severity gating are updated or removed
+  - task_id: build_01_02
+    description: Update notify_new_question() to format multi-choice options in notification
+      body
+    status: completed
+    file_inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/utils/ntfy.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/utils/ntfy.py
+    guidance: "Modify notify_new_question() to check if question has suggested_answers\
+      \ and format\nthem as lettered options in the message body.\n\nCurrent body\
+      \ format (lines 153-159):\n```python\ntext = getattr(question, \"text\", \"\"\
+      )\nmessage = text[:200] + \"...\" if len(text) > 200 else text\n\n# Append question\
+      \ ID footer for reply matching\nq_id = getattr(question, \"id\", \"\")\nif q_id:\n\
+      \    message = f\"{message}\\n\\n[QID: {q_id}]\"\n```\n\nUpdate to:\n```python\n\
+      text = getattr(question, \"text\", \"\")\nmessage = text[:200] + \"...\" if\
+      \ len(text) > 200 else text\n\n# Append lettered options if suggested_answers\
+      \ present\nsuggested = getattr(question, \"suggested_answers\", None)\nif suggested\
+      \ and isinstance(suggested, list) and len(suggested) > 0:\n    message += \"\
+      \\n\"\n    for i, answer in enumerate(suggested[:10]):  # Max 10 options (A-J)\n\
+      \        letter = chr(ord('A') + i)\n        message += f\"\\n{letter}) {answer}\"\
+      \n\n# Append question ID footer for reply matching\nq_id = getattr(question,\
+      \ \"id\", \"\")\nif q_id:\n    message = f\"{message}\\n\\n[QID: {q_id}]\"\n\
+      ```\n\nNotification body example:\n```\nWhich database for caching?\n\nA) Redis\n\
+      B) PostgreSQL\nC) SQLite\nD) None - use in-memory only\n\n[QID: Q-20260210-075329-a62a]\n\
+      ```\n"
+    success_criteria:
+    - Questions with suggested_answers show lettered options (A-J) in notification
+      body
+    - Questions without suggested_answers continue to work as before (no options)
+    - Options limited to first 10 (A-J) to prevent abuse
+    - QID footer remains intact at end of message
+    - 'Letter format matches: ''A) option text'', ''B) option text'', etc.'
+  - task_id: build_01_03
+    description: Add letter parsing in NtfyReplyPoller to map replies to answer text
+    status: completed
+    file_inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/services/question_watcher.py
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/src/agenticguidance/services/question.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/services/question_watcher.py
+    guidance: "Update NtfyReplyPoller._check_for_replies() to parse letter replies\
+      \ and map\nthem to the corresponding suggested_answer text.\n\nCurrent logic\
+      \ (lines 236-246):\n```python\n# Try to find a QID in the message (user may\
+      \ quote original)\nqid = parse_question_id_from_message(text)\nif not qid:\n\
+      \    continue\n\n# Extract answer text (everything before the QID tag)\nanswer_text\
+      \ = text.split(\"[QID:\")[0].strip()\nif not answer_text:\n    continue\n\n\
+      self._answer_question(qid, answer_text)\n```\n\nAdd letter parsing before calling\
+      \ _answer_question:\n```python\n# Try to find a QID in the message (user may\
+      \ quote original)\nqid = parse_question_id_from_message(text)\nif not qid:\n\
+      \    continue\n\n# Extract answer text (everything before the QID tag)\nanswer_text\
+      \ = text.split(\"[QID:\")[0].strip()\nif not answer_text:\n    continue\n\n\
+      # Check if reply is a single letter (A-J) for multi-choice\n# Load question\
+      \ to get suggested_answers\nfinal_answer = answer_text\nif len(answer_text)\
+      \ == 1 and answer_text.upper() in 'ABCDEFGHIJ':\n    try:\n        from agenticguidance.services.question\
+      \ import QuestionQueue\n        service = QuestionQueue(self._plan_path)\n \
+      \       question = service.get_question(qid)\n\n        if question and question.suggested_answers:\n\
+      \            letter_index = ord(answer_text.upper()) - ord('A')\n          \
+      \  if 0 <= letter_index < len(question.suggested_answers):\n               \
+      \ final_answer = question.suggested_answers[letter_index]\n                logger.info(f\"\
+      Mapped letter '{answer_text.upper()}' to answer: {final_answer}\")\n    except\
+      \ Exception as e:\n        logger.warning(f\"Failed to map letter reply for\
+      \ {qid}: {e}\")\n        # Fall back to using the letter itself as answer\n\n\
+      self._answer_question(qid, final_answer)\n```\n"
+    success_criteria:
+    - Single letter replies (A-J, case-insensitive) are mapped to corresponding suggested_answer
+    - Free-text replies (not single letters) are saved as-is
+    - Invalid letter indices fall back to using the letter as answer text
+    - Question loading errors fall back to using original reply text
+    - Log info message when letter mapping succeeds
+    - Multi-word replies like 'A is best' treated as free text, not mapped
+- phase_id: test_01
+  name: Update Tests for Simplified Notifications and Multi-Choice
+  status: pending
+  dependencies:
+  - build_01
+  tasks:
+  - task_id: test_01_01
+    description: Remove or update severity gating tests in test_ntfy.py
+    status: completed
+    file_inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_ntfy.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_ntfy.py
+    guidance: "Find and update/remove tests that verify severity gating behavior.\n\
+      Look for tests that assert medium/low severity questions are skipped.\n\nSearch\
+      \ patterns:\n- Tests checking that medium severity doesn't notify\n- Tests checking\
+      \ that low severity doesn't notify\n- Tests verifying logger.debug messages\
+      \ about skipping\n\nUpdate these tests to verify that ALL severities now trigger\
+      \ notifications.\n\nExample transformation:\nBefore:\n```python\ndef test_medium_severity_skipped():\n\
+      \    # Test that medium severity doesn't trigger ntfy\n    ...\n    assert not\
+      \ mock_notify.called\n```\n\nAfter:\n```python\ndef test_medium_severity_notifies():\n\
+      \    # Test that medium severity now triggers ntfy\n    ...\n    assert mock_notify.called\n\
+      ```\n"
+    success_criteria:
+    - No tests assert that medium/low severity questions are skipped
+    - Tests verify all severity levels trigger notify_new_question()
+    - All tests in test_ntfy.py pass with new behavior
+  - task_id: test_01_02
+    description: Add tests for multi-choice letter formatting in notification body
+    status: completed
+    file_inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_ntfy.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_ntfy.py
+    guidance: "Add new test cases to verify multi-choice formatting in notify_new_question().\n\
+      \nTest cases needed:\n1. Question with 2 suggested answers shows A) B) format\n\
+      2. Question with 4 suggested answers shows A) B) C) D) format\n3. Question without\
+      \ suggested_answers has no lettered options\n4. Question with empty suggested_answers\
+      \ list has no lettered options\n5. Question with >10 suggested answers only\
+      \ shows first 10 (A-J)\n6. QID footer remains at end after options\n7. Letter\
+      \ formatting uses uppercase A-J\n\nExample test structure:\n```python\ndef test_notify_question_with_multi_choice():\n\
+      \    \"\"\"Questions with suggested_answers show lettered options.\"\"\"\n \
+      \   question = FakeQuestion(\n        id=\"Q-20260210-123456-test\",\n     \
+      \   text=\"Choose database\",\n        severity=\"medium\",\n        suggested_answers=[\"\
+      Redis\", \"PostgreSQL\", \"SQLite\"]\n    )\n\n    with patch('agenticcli.utils.ntfy.send_ntfy')\
+      \ as mock_send:\n        notify_new_question(\"test-topic\", question)\n\n \
+      \   call_args = mock_send.call_args\n    message = call_args[1]['message']\n\
+      \n    assert \"A) Redis\" in message\n    assert \"B) PostgreSQL\" in message\n\
+      \    assert \"C) SQLite\" in message\n    assert \"[QID: Q-20260210-123456-test]\"\
+      \ in message\n    assert message.index(\"A) Redis\") < message.index(\"[QID:\"\
+      )\n```\n"
+    success_criteria:
+    - Test verifies 2-option multi-choice formatting (A/B)
+    - Test verifies 4-option multi-choice formatting (A/B/C/D)
+    - Test verifies questions without suggested_answers work as before
+    - Test verifies >10 options are limited to first 10 (A-J)
+    - Test verifies QID footer placement after options
+    - All new tests pass
+  - task_id: test_01_03
+    description: Add tests for letter-based reply parsing in NtfyReplyPoller
+    status: completed
+    file_inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_ntfy.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_ntfy.py
+    guidance: "Add test cases for letter parsing in NtfyReplyPoller.\n\nTest cases\
+      \ needed:\n1. Single letter 'A' maps to first suggested answer\n2. Single letter\
+      \ 'B' maps to second suggested answer\n3. Lowercase 'a' maps to first suggested\
+      \ answer (case insensitive)\n4. Free text \"Redis is better\" saved as-is (not\
+      \ mapped)\n5. Invalid letter 'Z' when only 3 options available falls back to\
+      \ 'Z'\n6. Multi-word reply \"A is my choice\" treated as free text\n7. Question\
+      \ without suggested_answers treats 'A' as literal text\n8. Question load failure\
+      \ falls back to original reply text\n\nExample test structure:\n```python\n\
+      def test_poller_maps_letter_reply_to_answer(tmp_path, monkeypatch):\n    \"\"\
+      \"Single letter replies are mapped to suggested_answers.\"\"\"\n    plan_path\
+      \ = tmp_path / \"plan\"\n    plan_path.mkdir()\n    (plan_path / \"questions\"\
+      \ / \"pending\").mkdir(parents=True)\n\n    # Create question with suggested\
+      \ answers\n    question = Question(\n        id=\"Q-20260210-123456-test\",\n\
+      \        text=\"Choose database\",\n        severity=\"medium\",\n        asked_by=\"\
+      agent\",\n        created_at=time.time(),\n        status=\"pending\",\n   \
+      \     suggested_answers=[\"Redis\", \"PostgreSQL\", \"SQLite\"]\n    )\n\n \
+      \   # Save question\n    from agenticguidance.models.question import question_to_yaml\n\
+      \    yaml_content = question_to_yaml(question)\n    q_path = plan_path / \"\
+      questions\" / \"pending\" / f\"{question.id}.yml\"\n    q_path.write_text(yaml_content)\n\
+      \n    # Mock poll response with letter reply\n    with patch('agenticcli.utils.ntfy.poll_ntfy')\
+      \ as mock_poll:\n        mock_poll.return_value = [{\n            \"id\": \"\
+      msg123\",\n            \"time\": int(time.time()),\n            \"message\"\
+      : \"A\\n\\n[QID: Q-20260210-123456-test]\"\n        }]\n\n        poller = NtfyReplyPoller(plan_path,\
+      \ \"test-topic\")\n        poller._check_for_replies()\n\n    # Verify answer\
+      \ was mapped\n    from agenticguidance.services.question import QuestionQueue\n\
+      \    service = QuestionQueue(plan_path)\n    answered = service.get_question(question.id)\n\
+      \    assert answered.answer == \"Redis\"  # Mapped from 'A'\n    assert answered.status\
+      \ == \"answered\"\n```\n"
+    success_criteria:
+    - Test verifies 'A' maps to first suggested answer
+    - Test verifies 'b' (lowercase) maps to second suggested answer
+    - Test verifies free-text replies are not mapped
+    - Test verifies invalid letters fall back to literal text
+    - Test verifies questions without suggested_answers use literal letter
+    - Test verifies multi-word replies are not parsed as letters
+    - All new tests pass
+  - task_id: test_01_04
+    description: Update UAT tests in test_uat_e2e_notification_flow.py
+    status: completed
+    file_inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_uat_e2e_notification_flow.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_uat_e2e_notification_flow.py
+    guidance: "Update UAT tests to reflect new behavior:\n1. Medium severity questions\
+      \ now auto-notify (remove assertions that they don't)\n2. Add UAT for multi-choice\
+      \ question notification and letter reply\n\nUpdate test_e2e_ask_notify_answer_flow:\n\
+      - Currently uses severity=\"high\" which still notifies\n- Add a variant with\
+      \ severity=\"medium\" to verify it now notifies\n\nAdd new UAT test_e2e_multichoice_letter_reply:\n\
+      ```python\ndef test_e2e_multichoice_letter_reply(plan_with_config, monkeypatch):\n\
+      \    \"\"\"UAT: Multi-choice question notification with letter reply mapping.\n\
+      \n    User journey:\n    1. Agent asks question with 3 suggested answers\n \
+      \   2. Phone notification shows A/B/C options\n    3. User replies with 'B'\
+      \ from phone\n    4. System maps 'B' to second suggested answer\n    5. Answer\
+      \ saved with mapped text, not letter\n    \"\"\"\n    # Similar structure to\
+      \ existing UAT but with suggested_answers\n    # and verify letter mapping in\
+      \ the reply poller\n```\n"
+    success_criteria:
+    - Existing UAT test passes with medium severity notifications enabled
+    - New UAT test verifies full multi-choice journey from notification to mapped
+      answer
+    - UAT verifies letter appears in notification body with A/B/C format
+    - UAT verifies reply poller maps letter to answer text correctly
+    - All UAT tests pass
+loop_structure:
+  type: test-fix-loop
+  trigger: Build phase enters 'in_progress' status
+  exit_criteria:
+    success: All unit tests pass and coverage maintained
+    max_iterations: 5
+    escalation: escalate_to_human
+  participants:
+  - agent: build-python
+    role: executor
+  - agent: test-runner
+    role: validator
+  - agent: build-python
+    role: fixer
+success_criteria:
+- Severity gating removed - all questions trigger push notifications regardless of
+  severity
+- Multi-choice questions format with lettered options (A/B/C/D) in notification body
+- Letter replies from phone are mapped to corresponding suggested_answer text
+- Free-text replies continue to work (backward compatibility)
+- All existing tests updated or removed to match new behavior
+- New tests added for multi-choice formatting and letter parsing
+- UAT tests verify complete user journey from notification to answer
+- All tests pass (modules/AgenticCLI/tests/test_ntfy.py)
+- All UAT tests pass (modules/AgenticCLI/tests/test_uat_e2e_notification_flow.py)
+user_acceptance_criteria:
+- name: All Questions Notify
+  description: User creates question with severity=medium via CLI, receives push notification
+    on phone
+  validation: agentic question ask 'Test question?' --severity medium --plan <test_plan>
+- name: Multi-Choice Display
+  description: User creates question with 3 suggested answers, sees A/B/C options
+    in phone notification
+  validation: agentic question ask 'Choose database?' --severity high --suggest 'Redis'
+    --suggest 'PostgreSQL' --suggest 'SQLite'
+- name: Letter Reply Mapping
+  description: User receives multi-choice notification, replies with 'B', system saves
+    'PostgreSQL' as answer
+  validation: Reply 'B' via ntfy app, verify answer text is mapped option not letter
+- name: Free Text Fallback
+  description: User replies with custom text 'I prefer MongoDB instead', system saves
+    full text as answer
+  validation: Reply with free text via ntfy app, verify full text is saved
+notes: "## Key Design Decisions\n\n1. **Severity Remains in Model**: Severity is kept\
+  \ as metadata (useful for UI display, filtering, etc.)\n   but no longer gates whether\
+  \ notifications are sent. All questions notify.\n\n2. **Letter Format A-J**: Supports\
+  \ up to 10 options max using letters A-J. This prevents abuse\n   (too many options)\
+  \ while being intuitive for phone replies.\n\n3. **Case Insensitive**: Accept both\
+  \ 'A' and 'a' as valid letter replies for better UX.\n\n4. **Graceful Fallback**:\
+  \ If letter mapping fails (question not found, no suggested_answers,\n   invalid\
+  \ index), fall back to using the reply text as-is. Never fail silently.\n\n5. **Backward\
+  \ Compatible**: Free-text answers still work. Only single-letter replies trigger\n\
+  \   mapping logic. Multi-word replies like \"A is best\" are treated as free text.\n\
+  \n## Testing Strategy\n\n- Unit tests: test_ntfy.py covers formatting, parsing,\
+  \ mapping logic\n- UAT tests: test_uat_e2e_notification_flow.py verifies complete\
+  \ user journeys\n- Test both happy path and edge cases (invalid letters, missing\
+  \ questions, etc.)\n\n## Files Modified\n\n1. modules/AgenticCLI/src/agenticcli/commands/question.py\
+  \ (remove severity gate)\n2. modules/AgenticCLI/src/agenticcli/utils/ntfy.py (add\
+  \ multi-choice formatting)\n3. modules/AgenticCLI/src/agenticcli/services/question_watcher.py\
+  \ (add letter parsing)\n4. modules/AgenticCLI/tests/test_ntfy.py (update/add tests)\n\
+  5. modules/AgenticCLI/tests/test_uat_e2e_notification_flow.py (update UAT tests)\n"

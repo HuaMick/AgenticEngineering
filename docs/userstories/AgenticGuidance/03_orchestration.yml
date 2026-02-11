@@ -1,237 +1,260 @@
-# User Stories: Orchestration Workflows
-# Covers orchestration-planning, orchestration-executor, orchestration-friction
-
 stories:
-  # ============================================================================
-  # ORCHESTRATION-PLANNING (Plan Creation)
-  # ============================================================================
-
-  - id: "US-GD-020"
-    title: "Human-in-the-Loop Plan Creation"
-    category: "orchestration"
-    priority: "critical"
-    as_a: "user requesting a feature or improvement"
-    i_want: "to work with an orchestration agent to create a detailed implementation plan"
-    so_that: "I can review and approve the plan before any code execution begins"
-    acceptance_criteria:
-      - "orchestration-planning agent coordinates the planning workflow"
-      - "Agent spawns deploy-worktree to set up plan folder structure"
-      - "Agent spawns appropriate planner (planner-build, planner-test, planner-guidance, etc.)"
-      - "Agent spawns planner-reviewer to validate each phase plan"
-      - "Agent spawns planner-orchestration to generate orchestration MMD file"
-      - "Human reviews and approves plan before execution"
-      - "Plan saved to docs/plans/live/{plan_id}/"
-      - "Orchestration MMD file generated with AGENT_ROUTING metadata"
-    related_agents:
-      - "orchestration-planning"
-      - "deploy-worktree"
-      - "planner-build"
-      - "planner-test"
-      - "planner-guidance"
-      - "planner-reviewer"
-      - "planner-orchestration"
-    related_commands:
-      - "agentic plan init <branch> --description <desc>"
-
-  - id: "US-GD-021"
-    title: "Multi-Phase Plan Creation"
-    category: "orchestration"
-    priority: "high"
-    as_a: "orchestration-planning agent"
-    i_want: "to coordinate creation of multiple phases (build, test, teach, cleanup)"
-    so_that: "the plan is comprehensive and includes all necessary phases"
-    acceptance_criteria:
-      - "Spawns planner-build for implementation phases"
-      - "Spawns planner-test for validation phases"
-      - "Spawns planner-guidance for teaching phases"
-      - "Spawns planner-cleaning for cleanup phases"
-      - "Each phase plan is reviewed by planner-reviewer"
-      - "Phases are integrated into single orchestration MMD"
-      - "Phase execution order is defined in MMD PHASES metadata"
-    related_agents:
-      - "orchestration-planning"
-      - "planner-build"
-      - "planner-test"
-      - "planner-guidance"
-      - "planner-cleaning"
-      - "planner-reviewer"
-
-  - id: "US-GD-022"
-    title: "Orchestration MMD Generation"
-    category: "orchestration"
-    priority: "critical"
-    as_a: "orchestration-planning agent"
-    i_want: "to generate an orchestration MMD file from approved phase plans"
-    so_that: "orchestration-executor can dynamically route work to appropriate agents"
-    acceptance_criteria:
-      - "planner-orchestration spawned after all phases approved"
-      - "MMD file includes required metadata: GOAL, PROFILE, PHASES, AGENT_ROUTING, STATUS"
-      - "MMD follows plan-mmd-schema.yml specification"
-      - "File saved as orchestration_{plan_id}.mmd in plan folder"
-      - "AGENT_ROUTING maps each phase to executor agent (build-python, test-runner, etc.)"
-      - "STATUS tracks phase completion (pending, in_progress, completed, blocked)"
-    related_agents:
-      - "orchestration-planning"
-      - "planner-orchestration"
-    related_files:
-      - "modules/AgenticGuidance/assets/specifications/plan-mmd-schema.yml"
-
-  # ============================================================================
-  # ORCHESTRATION-EXECUTOR (Dynamic Execution)
-  # ============================================================================
-
-  - id: "US-GD-023"
-    title: "MMD-Driven Dynamic Execution"
-    category: "orchestration"
-    priority: "critical"
-    as_a: "orchestration-executor agent"
-    i_want: "to execute a plan by reading orchestration MMD and routing to specialized agents"
-    so_that: "plans are executed without hardcoded agent paths"
-    acceptance_criteria:
-      - "Discover orchestration_*.mmd file in plan folder"
-      - "Parse MMD metadata to extract GOAL, PHASES, AGENT_ROUTING, STATUS"
-      - "Execute phases in order defined by PHASES metadata"
-      - "Route each phase to agent specified in AGENT_ROUTING"
-      - "Update STATUS metadata as phases complete"
-      - "Handle phase dependencies and blocking conditions"
-    related_agents:
-      - "orchestration-executor"
-    related_files:
-      - "modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml"
-      - "modules/AgenticGuidance/assets/specifications/orchestration-executor-specification.yml"
-
-  - id: "US-GD-024"
-    title: "Agent Routing from Metadata"
-    category: "orchestration"
-    priority: "critical"
-    as_a: "orchestration-executor agent"
-    i_want: "to route work to agents based on AGENT_ROUTING metadata"
-    so_that: "execution is flexible and can adapt to different plan types"
-    acceptance_criteria:
-      - "AGENT_ROUTING metadata maps phase names to agent roles"
-      - "Example: 'build-phase-1: build-python' routes to build-python agent"
-      - "Example: 'test-phase-1: test-runner' routes to test-runner agent"
-      - "Unsupported agent roles cause graceful failure with clear error"
-      - "Agent spawning uses CLI context injection for role-specific context"
-    related_agents:
-      - "orchestration-executor"
-    related_commands:
-      - "agentic context bootstrap --role <agent-role>"
-
-  - id: "US-GD-025"
-    title: "Phase Status Tracking"
-    category: "orchestration"
-    priority: "high"
-    as_a: "orchestration-executor agent"
-    i_want: "to track phase completion status in MMD metadata"
-    so_that: "execution can resume from last completed phase after interruption"
-    acceptance_criteria:
-      - "STATUS metadata tracks: pending, in_progress, completed, blocked"
-      - "Phase marked 'in_progress' before agent spawned"
-      - "Phase marked 'completed' after agent finishes successfully"
-      - "Phase marked 'blocked' if dependencies not met or agent fails"
-      - "STATUS persisted to MMD file after each phase transition"
-      - "Orchestrator can resume from last completed phase"
-    related_agents:
-      - "orchestration-executor"
-
-  - id: "US-GD-026"
-    title: "Plan Execution Entrypoint"
-    category: "orchestration"
-    priority: "critical"
-    as_a: "user executing an approved plan"
-    i_want: "to invoke orchestration-executor via entrypoint file"
-    so_that: "plan execution follows standardized workflow"
-    acceptance_criteria:
-      - "_orchestrate.yml entrypoint file exists in AgenticGuidance/entrypoints/"
-      - "Entrypoint content injected into agent context to establish role"
-      - "Entrypoint defines orchestration-executor as active agent"
-      - "Entrypoint references plan folder location for MMD discovery"
-      - "Orchestrator bootstraps context via CCI pattern"
-    related_agents:
-      - "orchestration-executor"
-    related_files:
-      - "modules/AgenticGuidance/entrypoints/_orchestrate.yml"
-    related_commands:
-      - "agentic context bootstrap --role orchestration-executor"
-
-  # ============================================================================
-  # ORCHESTRATION-FRICTION (Trace Analysis)
-  # ============================================================================
-
-  - id: "US-GD-027"
-    title: "LangSmith Trace Friction Analysis"
-    category: "orchestration"
-    priority: "high"
-    as_a: "guidance maintainer improving agent performance"
-    i_want: "to analyze LangSmith traces for friction patterns"
-    so_that: "I can identify and resolve agent inefficiencies"
-    acceptance_criteria:
-      - "orchestration-friction agent queries LangSmith for recent traces"
-      - "Detects friction patterns: FP-001 (backtracking), FP-002 (error clusters), FP-003 (path ambiguity), etc."
-      - "Classifies severity: CRITICAL, HIGH, MEDIUM, LOW"
-      - "Recommends resolutions: GUIDANCE_UPDATE, CLI_OFFLOAD, ASSET_UPDATE"
-      - "Generates diagnostic report with specific guidance improvements"
-      - "Invokes teacher-trace-diagnostics for detailed analysis"
-    related_agents:
-      - "orchestration-friction"
-      - "teacher-trace-diagnostics"
-    related_files:
-      - "modules/AgenticGuidance/agents/orchestration/orchestration-friction/process.mmd"
-      - "modules/AgenticGuidance/assets/definitions/friction-patterns.yml"
-
-  - id: "US-GD-028"
-    title: "Friction Pattern Detection"
-    category: "orchestration"
-    priority: "high"
-    as_a: "orchestration-friction agent"
-    i_want: "to detect known friction patterns in agent traces"
-    so_that: "I can systematically identify guidance gaps"
-    acceptance_criteria:
-      - "FP-001: Backtracking - agent repeats similar tool calls"
-      - "FP-002: Error clusters - multiple errors in short time window"
-      - "FP-003: Path ambiguity - agent tries multiple approaches"
-      - "FP-004: Tool call churn - excessive tool calls for simple task"
-      - "FP-005: Context thrashing - agent re-reads same files"
-      - "FP-006: Token anomaly - unusually high token usage"
-      - "Each pattern has detection criteria and resolution guidelines"
-    related_agents:
-      - "orchestration-friction"
-      - "teacher-trace-diagnostics"
-    related_files:
-      - "modules/AgenticGuidance/assets/definitions/friction-patterns.yml"
-
-  - id: "US-GD-029"
-    title: "Friction Resolution Workflow"
-    category: "orchestration"
-    priority: "medium"
-    as_a: "orchestration-friction agent"
-    i_want: "to recommend specific resolutions for detected friction"
-    so_that: "teacher agents can improve guidance efficiently"
-    acceptance_criteria:
-      - "GUIDANCE_UPDATE: Update agent process.yml or inputs.yml"
-      - "CLI_OFFLOAD: Suggest CLI command to replace agent tool calls"
-      - "ASSET_UPDATE: Update shared definitions or guidelines"
-      - "Recommendations include specific file paths and suggested changes"
-      - "Friction reports trigger teacher-update-guidance or teacher-update-assets workflows"
-    related_agents:
-      - "orchestration-friction"
-      - "teacher-update-guidance"
-      - "teacher-update-assets"
-
-  - id: "US-GD-030"
-    title: "Friction Analysis Entrypoint"
-    category: "orchestration"
-    priority: "medium"
-    as_a: "developer analyzing agent performance"
-    i_want: "to invoke friction analysis via entrypoint"
-    so_that: "I can systematically improve guidance based on real traces"
-    acceptance_criteria:
-      - "_analyze_friction.yml entrypoint exists"
-      - "Entrypoint defines orchestration-friction as active agent"
-      - "Entrypoint configures LangSmith query parameters"
-      - "Analysis results saved to plan folder or guidance docs"
-    related_agents:
-      - "orchestration-friction"
-    related_files:
-      - "modules/AgenticGuidance/entrypoints/_analyze_friction.yml"
+- id: US-GD-020
+  title: Human-in-the-Loop Plan Creation
+  category: orchestration
+  priority: critical
+  as_a: user requesting a feature or improvement
+  i_want: to work with an orchestration agent to create a detailed implementation
+    plan
+  so_that: I can review and approve the plan before any code execution begins
+  acceptance_criteria:
+  - orchestration-planning agent coordinates the planning workflow
+  - Agent spawns deploy-worktree to set up plan folder structure
+  - Agent spawns appropriate planner (planner-build, planner-test, planner-guidance,
+    etc.)
+  - Agent spawns planner-reviewer to validate each phase plan
+  - Agent spawns planner-orchestration to generate orchestration MMD file
+  - Human reviews and approves plan before execution
+  - Plan saved to docs/plans/live/{plan_id}/
+  - Orchestration MMD file generated with AGENT_ROUTING metadata
+  related_agents:
+  - orchestration-planning
+  - deploy-worktree
+  - planner-build
+  - planner-test
+  - planner-guidance
+  - planner-reviewer
+  - planner-orchestration
+  related_commands:
+  - agentic plan init <branch> --description <desc>
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-021
+  title: Multi-Phase Plan Creation
+  category: orchestration
+  priority: high
+  as_a: orchestration-planning agent
+  i_want: to coordinate creation of multiple phases (build, test, teach, cleanup)
+  so_that: the plan is comprehensive and includes all necessary phases
+  acceptance_criteria:
+  - Spawns planner-build for implementation phases
+  - Spawns planner-test for validation phases
+  - Spawns planner-guidance for teaching phases
+  - Spawns planner-cleaning for cleanup phases
+  - Each phase plan is reviewed by planner-reviewer
+  - Phases are integrated into single orchestration MMD
+  - Phase execution order is defined in MMD PHASES metadata
+  related_agents:
+  - orchestration-planning
+  - planner-build
+  - planner-test
+  - planner-guidance
+  - planner-cleaning
+  - planner-reviewer
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-022
+  title: Orchestration MMD Generation
+  category: orchestration
+  priority: critical
+  as_a: orchestration-planning agent
+  i_want: to generate an orchestration MMD file from approved phase plans
+  so_that: orchestration-executor can dynamically route work to appropriate agents
+  acceptance_criteria:
+  - planner-orchestration spawned after all phases approved
+  - 'MMD file includes required metadata: GOAL, PROFILE, PHASES, AGENT_ROUTING, STATUS'
+  - MMD follows plan-mmd-schema.yml specification
+  - File saved as orchestration_{plan_id}.mmd in plan folder
+  - AGENT_ROUTING maps each phase to executor agent (build-python, test-runner, etc.)
+  - STATUS tracks phase completion (pending, in_progress, completed, blocked)
+  related_agents:
+  - orchestration-planning
+  - planner-orchestration
+  related_files:
+  - modules/AgenticGuidance/assets/specifications/plan-mmd-schema.yml
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-023
+  title: MMD-Driven Dynamic Execution
+  category: orchestration
+  priority: critical
+  as_a: orchestration-executor agent
+  i_want: to execute a plan by reading orchestration MMD and routing to specialized
+    agents
+  so_that: plans are executed without hardcoded agent paths
+  acceptance_criteria:
+  - Discover orchestration_*.mmd file in plan folder
+  - Parse MMD metadata to extract GOAL, PHASES, AGENT_ROUTING, STATUS
+  - Execute phases in order defined by PHASES metadata
+  - Route each phase to agent specified in AGENT_ROUTING
+  - Update STATUS metadata as phases complete
+  - Handle phase dependencies and blocking conditions
+  related_agents:
+  - orchestration-executor
+  related_files:
+  - modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml
+  - modules/AgenticGuidance/assets/specifications/orchestration-executor-specification.yml
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-024
+  title: Agent Routing from Metadata
+  category: orchestration
+  priority: critical
+  as_a: orchestration-executor agent
+  i_want: to route work to agents based on AGENT_ROUTING metadata
+  so_that: execution is flexible and can adapt to different plan types
+  acceptance_criteria:
+  - AGENT_ROUTING metadata maps phase names to agent roles
+  - 'Example: ''build-phase-1: build-python'' routes to build-python agent'
+  - 'Example: ''test-phase-1: test-runner'' routes to test-runner agent'
+  - Unsupported agent roles cause graceful failure with clear error
+  - Agent spawning uses CLI context injection for role-specific context
+  related_agents:
+  - orchestration-executor
+  related_commands:
+  - agentic context bootstrap --role <agent-role>
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-025
+  title: Phase Status Tracking
+  category: orchestration
+  priority: high
+  as_a: orchestration-executor agent
+  i_want: to track phase completion status in MMD metadata
+  so_that: execution can resume from last completed phase after interruption
+  acceptance_criteria:
+  - 'STATUS metadata tracks: pending, in_progress, completed, blocked'
+  - Phase marked 'in_progress' before agent spawned
+  - Phase marked 'completed' after agent finishes successfully
+  - Phase marked 'blocked' if dependencies not met or agent fails
+  - STATUS persisted to MMD file after each phase transition
+  - Orchestrator can resume from last completed phase
+  related_agents:
+  - orchestration-executor
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-026
+  title: Plan Execution Entrypoint
+  category: orchestration
+  priority: critical
+  as_a: user executing an approved plan
+  i_want: to invoke orchestration-executor via entrypoint file
+  so_that: plan execution follows standardized workflow
+  acceptance_criteria:
+  - _orchestrate.yml entrypoint file exists in AgenticGuidance/entrypoints/
+  - Entrypoint content injected into agent context to establish role
+  - Entrypoint defines orchestration-executor as active agent
+  - Entrypoint references plan folder location for MMD discovery
+  - Orchestrator bootstraps context via CCI pattern
+  related_agents:
+  - orchestration-executor
+  related_files:
+  - modules/AgenticGuidance/entrypoints/_orchestrate.yml
+  related_commands:
+  - agentic context bootstrap --role orchestration-executor
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-027
+  title: LangSmith Trace Friction Analysis
+  category: orchestration
+  priority: high
+  as_a: guidance maintainer improving agent performance
+  i_want: to analyze LangSmith traces for friction patterns
+  so_that: I can identify and resolve agent inefficiencies
+  acceptance_criteria:
+  - orchestration-friction agent queries LangSmith for recent traces
+  - 'Detects friction patterns: FP-001 (backtracking), FP-002 (error clusters), FP-003
+    (path ambiguity), etc.'
+  - 'Classifies severity: CRITICAL, HIGH, MEDIUM, LOW'
+  - 'Recommends resolutions: GUIDANCE_UPDATE, CLI_OFFLOAD, ASSET_UPDATE'
+  - Generates diagnostic report with specific guidance improvements
+  - Invokes teacher-trace-diagnostics for detailed analysis
+  related_agents:
+  - orchestration-friction
+  - teacher-trace-diagnostics
+  related_files:
+  - modules/AgenticGuidance/agents/orchestration/orchestration-friction/process.mmd
+  - modules/AgenticGuidance/assets/definitions/friction-patterns.yml
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-028
+  title: Friction Pattern Detection
+  category: orchestration
+  priority: high
+  as_a: orchestration-friction agent
+  i_want: to detect known friction patterns in agent traces
+  so_that: I can systematically identify guidance gaps
+  acceptance_criteria:
+  - 'FP-001: Backtracking - agent repeats similar tool calls'
+  - 'FP-002: Error clusters - multiple errors in short time window'
+  - 'FP-003: Path ambiguity - agent tries multiple approaches'
+  - 'FP-004: Tool call churn - excessive tool calls for simple task'
+  - 'FP-005: Context thrashing - agent re-reads same files'
+  - 'FP-006: Token anomaly - unusually high token usage'
+  - Each pattern has detection criteria and resolution guidelines
+  related_agents:
+  - orchestration-friction
+  - teacher-trace-diagnostics
+  related_files:
+  - modules/AgenticGuidance/assets/definitions/friction-patterns.yml
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-029
+  title: Friction Resolution Workflow
+  category: orchestration
+  priority: medium
+  as_a: orchestration-friction agent
+  i_want: to recommend specific resolutions for detected friction
+  so_that: teacher agents can improve guidance efficiently
+  acceptance_criteria:
+  - 'GUIDANCE_UPDATE: Update agent process.yml or inputs.yml'
+  - 'CLI_OFFLOAD: Suggest CLI command to replace agent tool calls'
+  - 'ASSET_UPDATE: Update shared definitions or guidelines'
+  - Recommendations include specific file paths and suggested changes
+  - Friction reports trigger teacher-update-guidance or teacher-update-assets workflows
+  related_agents:
+  - orchestration-friction
+  - teacher-update-guidance
+  - teacher-update-assets
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-GD-030
+  title: Friction Analysis Entrypoint
+  category: orchestration
+  priority: medium
+  as_a: developer analyzing agent performance
+  i_want: to invoke friction analysis via entrypoint
+  so_that: I can systematically improve guidance based on real traces
+  acceptance_criteria:
+  - _analyze_friction.yml entrypoint exists
+  - Entrypoint defines orchestration-friction as active agent
+  - Entrypoint configures LangSmith query parameters
+  - Analysis results saved to plan folder or guidance docs
+  related_agents:
+  - orchestration-friction
+  related_files:
+  - modules/AgenticGuidance/entrypoints/_analyze_friction.yml
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null

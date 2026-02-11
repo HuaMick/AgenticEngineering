@@ -1,206 +1,218 @@
-# User Stories: Session Pairing and Authentication
-# Covers initial connection, pairing codes, and secure session establishment
-
 stories:
-  # ============================================================================
-  # PAIRING FLOW
-  # ============================================================================
-
-  - id: "US-FE-001"
-    title: "Generate Pairing Code"
-    category: "session_pairing"
-    priority: "critical"
-    as_a: "developer wanting to connect to a Claude Code session"
-    i_want: "to generate a 6-character pairing code from the CLI"
-    so_that: "I can securely pair my frontend device with the backend session"
-    acceptance_criteria:
-      - "CLI command generates a unique 6-character alphanumeric code"
-      - "Code is valid for a limited time (e.g., 5 minutes)"
-      - "Code is displayed clearly in the terminal"
-      - "Multiple pairing codes can exist simultaneously for different sessions"
-      - "Expired codes are automatically invalidated"
-    related_commands:
-      - "agentic session pair --generate"
-    related_components:
-      - "backend: PairingService"
-      - "backend: SessionManager"
-
-  - id: "US-FE-002"
-    title: "Enter Pairing Code in Frontend"
-    category: "session_pairing"
-    priority: "critical"
-    as_a: "user with the frontend app open"
-    i_want: "to enter the 6-character pairing code in the UI"
-    so_that: "my frontend can establish a secure connection to the backend"
-    acceptance_criteria:
-      - "UI displays a clean input field for the pairing code"
-      - "Input validates format (6 characters, alphanumeric)"
-      - "Invalid format shows immediate feedback"
-      - "Submit button is enabled only when format is valid"
-      - "Loading state shows while pairing is in progress"
-      - "Clear error messages for invalid/expired codes"
-    related_components:
-      - "frontend: PairingScreen"
-      - "frontend: PairingController"
-      - "frontend: PairingState"
-
-  - id: "US-FE-003"
-    title: "Establish E2E Encrypted Connection"
-    category: "session_pairing"
-    priority: "critical"
-    as_a: "system performing pairing"
-    i_want: "to establish E2E encryption before any session data flows"
-    so_that: "terminal content and commands are protected from the relay server"
-    acceptance_criteria:
-      - "Frontend generates X25519 keypair on pairing request"
-      - "Public keys are exchanged via the backend relay"
-      - "Shared secret is derived using X25519-XSalsa20-Poly1305"
-      - "All terminal data is encrypted client-to-client"
-      - "Backend relay cannot decrypt terminal content"
-      - "Encryption is established before terminal output begins"
-    related_components:
-      - "frontend: CryptoService"
-      - "backend: CryptoRelay"
-      - "backend: PairingService"
-
-  - id: "US-FE-004"
-    title: "Store Paired Sessions"
-    category: "session_pairing"
-    priority: "high"
-    as_a: "user who has successfully paired"
-    i_want: "my paired sessions to be saved locally"
-    so_that: "I can reconnect without re-pairing every time"
-    acceptance_criteria:
-      - "Successfully paired sessions are stored in local storage"
-      - "Session metadata includes session ID, name, and timestamp"
-      - "Encryption keys are stored securely"
-      - "Users can view list of paired sessions"
-      - "Users can remove/unpair specific sessions"
-      - "Session list is available on app restart"
-    related_components:
-      - "frontend: SessionStorage"
-      - "frontend: PairingController"
-
-  # ============================================================================
-  # PAIRING STATUS AND FEEDBACK
-  # ============================================================================
-
-  - id: "US-FE-005"
-    title: "Pairing Status Indicators"
-    category: "session_pairing"
-    priority: "high"
-    as_a: "user attempting to pair"
-    i_want: "clear visual feedback on pairing status"
-    so_that: "I know whether pairing succeeded or why it failed"
-    acceptance_criteria:
-      - "Loading spinner shown during pairing attempt"
-      - "Success state transitions to session view automatically"
-      - "Failure state shows specific error message"
-      - "Common errors have user-friendly explanations (expired, invalid, network)"
-      - "Retry option available on failure"
-      - "Session name displayed on successful pairing"
-    related_components:
-      - "frontend: PairingScreen"
-      - "frontend: PairingState"
-
-  - id: "US-FE-006"
-    title: "Multi-Session Pairing"
-    category: "session_pairing"
-    priority: "medium"
-    as_a: "developer managing multiple projects"
-    i_want: "to pair multiple Claude Code sessions simultaneously"
-    so_that: "I can switch between different project contexts"
-    acceptance_criteria:
-      - "Frontend supports multiple paired sessions"
-      - "Each session has independent encryption keys"
-      - "Session list shows all active pairings"
-      - "Can pair new session without disconnecting existing ones"
-      - "Each session displays unique identifier/name"
-      - "Switch between sessions without re-pairing"
-    related_components:
-      - "frontend: SessionManager"
-      - "frontend: SessionList"
-
-  # ============================================================================
-  # SECURITY AND VALIDATION
-  # ============================================================================
-
-  - id: "US-FE-007"
-    title: "Pairing Code Expiration"
-    category: "session_pairing"
-    priority: "high"
-    as_a: "system security mechanism"
-    i_want: "pairing codes to expire after a short time"
-    so_that: "old codes cannot be used for unauthorized access"
-    acceptance_criteria:
-      - "Codes expire after 5 minutes by default"
-      - "Expiration time is configurable via CLI flag"
-      - "Backend rejects expired codes with clear error"
-      - "Frontend shows 'code expired' message"
-      - "User can generate new code from CLI"
-      - "Countdown timer shown in CLI during code validity"
-    related_commands:
-      - "agentic session pair --generate --ttl 300"
-    related_components:
-      - "backend: PairingService"
-
-  - id: "US-FE-008"
-    title: "Single-Use Pairing Codes"
-    category: "session_pairing"
-    priority: "high"
-    as_a: "security-conscious user"
-    i_want: "pairing codes to be single-use"
-    so_that: "a code cannot be reused by an unauthorized party"
-    acceptance_criteria:
-      - "Each pairing code can only establish one connection"
-      - "Code is invalidated immediately after successful pairing"
-      - "Attempting to reuse a code returns 'already used' error"
-      - "Frontend handles this error gracefully"
-      - "User must generate new code for additional pairings"
-    related_components:
-      - "backend: PairingService"
-      - "frontend: PairingController"
-
-  # ============================================================================
-  # PAIRING REVOCATION
-  # ============================================================================
-
-  - id: "US-FE-009"
-    title: "Revoke Active Pairing"
-    category: "session_pairing"
-    priority: "high"
-    as_a: "developer who needs to disconnect a device"
-    i_want: "to revoke an active pairing from the CLI"
-    so_that: "the frontend can no longer access my session"
-    acceptance_criteria:
-      - "agentic session unpair <session-id> revokes the pairing"
-      - "Frontend is immediately disconnected"
-      - "Revoked session cannot reconnect with stored keys"
-      - "Frontend shows 'session revoked' notification"
-      - "CLI lists all active pairings before revocation"
-      - "Option to revoke all pairings at once"
-    related_commands:
-      - "agentic session unpair <session-id>"
-      - "agentic session unpair --all"
-      - "agentic session list-pairings"
-    related_components:
-      - "backend: PairingService"
-      - "frontend: SessionManager"
-
-  - id: "US-FE-010"
-    title: "Self-Unpair from Frontend"
-    category: "session_pairing"
-    priority: "medium"
-    as_a: "user in the frontend"
-    i_want: "to unpair my device from the UI"
-    so_that: "I can remove sessions I no longer need"
-    acceptance_criteria:
-      - "Session list shows 'unpair' option for each session"
-      - "Confirmation dialog prevents accidental unpair"
-      - "Unpair removes local session data and encryption keys"
-      - "Backend is notified of unpair request"
-      - "User returns to pairing screen after unpair"
-      - "Unpaired session no longer appears in session list"
-    related_components:
-      - "frontend: SessionList"
-      - "frontend: SessionManager"
+- id: US-FE-001
+  title: Generate Pairing Code
+  category: session_pairing
+  priority: critical
+  as_a: developer wanting to connect to a Claude Code session
+  i_want: to generate a 6-character pairing code from the CLI
+  so_that: I can securely pair my frontend device with the backend session
+  acceptance_criteria:
+  - CLI command generates a unique 6-character alphanumeric code
+  - Code is valid for a limited time (e.g., 5 minutes)
+  - Code is displayed clearly in the terminal
+  - Multiple pairing codes can exist simultaneously for different sessions
+  - Expired codes are automatically invalidated
+  related_commands:
+  - agentic session pair --generate
+  related_components:
+  - 'backend: PairingService'
+  - 'backend: SessionManager'
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-FE-002
+  title: Enter Pairing Code in Frontend
+  category: session_pairing
+  priority: critical
+  as_a: user with the frontend app open
+  i_want: to enter the 6-character pairing code in the UI
+  so_that: my frontend can establish a secure connection to the backend
+  acceptance_criteria:
+  - UI displays a clean input field for the pairing code
+  - Input validates format (6 characters, alphanumeric)
+  - Invalid format shows immediate feedback
+  - Submit button is enabled only when format is valid
+  - Loading state shows while pairing is in progress
+  - Clear error messages for invalid/expired codes
+  related_components:
+  - 'frontend: PairingScreen'
+  - 'frontend: PairingController'
+  - 'frontend: PairingState'
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-FE-003
+  title: Establish E2E Encrypted Connection
+  category: session_pairing
+  priority: critical
+  as_a: system performing pairing
+  i_want: to establish E2E encryption before any session data flows
+  so_that: terminal content and commands are protected from the relay server
+  acceptance_criteria:
+  - Frontend generates X25519 keypair on pairing request
+  - Public keys are exchanged via the backend relay
+  - Shared secret is derived using X25519-XSalsa20-Poly1305
+  - All terminal data is encrypted client-to-client
+  - Backend relay cannot decrypt terminal content
+  - Encryption is established before terminal output begins
+  related_components:
+  - 'frontend: CryptoService'
+  - 'backend: CryptoRelay'
+  - 'backend: PairingService'
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-FE-004
+  title: Store Paired Sessions
+  category: session_pairing
+  priority: high
+  as_a: user who has successfully paired
+  i_want: my paired sessions to be saved locally
+  so_that: I can reconnect without re-pairing every time
+  acceptance_criteria:
+  - Successfully paired sessions are stored in local storage
+  - Session metadata includes session ID, name, and timestamp
+  - Encryption keys are stored securely
+  - Users can view list of paired sessions
+  - Users can remove/unpair specific sessions
+  - Session list is available on app restart
+  related_components:
+  - 'frontend: SessionStorage'
+  - 'frontend: PairingController'
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-FE-005
+  title: Pairing Status Indicators
+  category: session_pairing
+  priority: high
+  as_a: user attempting to pair
+  i_want: clear visual feedback on pairing status
+  so_that: I know whether pairing succeeded or why it failed
+  acceptance_criteria:
+  - Loading spinner shown during pairing attempt
+  - Success state transitions to session view automatically
+  - Failure state shows specific error message
+  - Common errors have user-friendly explanations (expired, invalid, network)
+  - Retry option available on failure
+  - Session name displayed on successful pairing
+  related_components:
+  - 'frontend: PairingScreen'
+  - 'frontend: PairingState'
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-FE-006
+  title: Multi-Session Pairing
+  category: session_pairing
+  priority: medium
+  as_a: developer managing multiple projects
+  i_want: to pair multiple Claude Code sessions simultaneously
+  so_that: I can switch between different project contexts
+  acceptance_criteria:
+  - Frontend supports multiple paired sessions
+  - Each session has independent encryption keys
+  - Session list shows all active pairings
+  - Can pair new session without disconnecting existing ones
+  - Each session displays unique identifier/name
+  - Switch between sessions without re-pairing
+  related_components:
+  - 'frontend: SessionManager'
+  - 'frontend: SessionList'
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-FE-007
+  title: Pairing Code Expiration
+  category: session_pairing
+  priority: high
+  as_a: system security mechanism
+  i_want: pairing codes to expire after a short time
+  so_that: old codes cannot be used for unauthorized access
+  acceptance_criteria:
+  - Codes expire after 5 minutes by default
+  - Expiration time is configurable via CLI flag
+  - Backend rejects expired codes with clear error
+  - Frontend shows 'code expired' message
+  - User can generate new code from CLI
+  - Countdown timer shown in CLI during code validity
+  related_commands:
+  - agentic session pair --generate --ttl 300
+  related_components:
+  - 'backend: PairingService'
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-FE-008
+  title: Single-Use Pairing Codes
+  category: session_pairing
+  priority: high
+  as_a: security-conscious user
+  i_want: pairing codes to be single-use
+  so_that: a code cannot be reused by an unauthorized party
+  acceptance_criteria:
+  - Each pairing code can only establish one connection
+  - Code is invalidated immediately after successful pairing
+  - Attempting to reuse a code returns 'already used' error
+  - Frontend handles this error gracefully
+  - User must generate new code for additional pairings
+  related_components:
+  - 'backend: PairingService'
+  - 'frontend: PairingController'
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-FE-009
+  title: Revoke Active Pairing
+  category: session_pairing
+  priority: high
+  as_a: developer who needs to disconnect a device
+  i_want: to revoke an active pairing from the CLI
+  so_that: the frontend can no longer access my session
+  acceptance_criteria:
+  - agentic session unpair <session-id> revokes the pairing
+  - Frontend is immediately disconnected
+  - Revoked session cannot reconnect with stored keys
+  - Frontend shows 'session revoked' notification
+  - CLI lists all active pairings before revocation
+  - Option to revoke all pairings at once
+  related_commands:
+  - agentic session unpair <session-id>
+  - agentic session unpair --all
+  - agentic session list-pairings
+  related_components:
+  - 'backend: PairingService'
+  - 'frontend: SessionManager'
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-FE-010
+  title: Self-Unpair from Frontend
+  category: session_pairing
+  priority: medium
+  as_a: user in the frontend
+  i_want: to unpair my device from the UI
+  so_that: I can remove sessions I no longer need
+  acceptance_criteria:
+  - Session list shows 'unpair' option for each session
+  - Confirmation dialog prevents accidental unpair
+  - Unpair removes local session data and encryption keys
+  - Backend is notified of unpair request
+  - User returns to pairing screen after unpair
+  - Unpaired session no longer appears in session list
+  related_components:
+  - 'frontend: SessionList'
+  - 'frontend: SessionManager'
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null

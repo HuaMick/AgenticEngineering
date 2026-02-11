@@ -498,6 +498,59 @@ feedback_triggers:
       reference: "modules/AgenticGuidance/assets/definitions/agent-loops.yml#user-story-validation-loop"
       note: "UAT is PRIMARY SUCCESS CRITERIA - validates user needs are met"
 
+    ERROR_REQUIRES_PLANNING:
+      description: "Agent discovered error outside current plan scope that needs separate remediation"
+      detection:
+        output_patterns:
+          - "out_of_scope_error: true"
+          - "remediation_plan_needed: true"
+          - "spawned_planning_folder: <folder_name>"
+        agent_output:
+          - "Agent reports error context with error_outside_plan_scope flag"
+          - "Agent may have already created planning folder"
+
+      priority_levels:
+        critical:
+          severity: "CRITICAL"
+          response: "Pause current execution, ensure remediation plan created, await user decision"
+          blocking: true
+        high:
+          severity: "HIGH"
+          response: "Log remediation plan, continue current execution"
+          blocking: false
+        medium:
+          severity: "MEDIUM"
+          response: "Log remediation plan, continue current execution"
+          blocking: false
+        low:
+          severity: "LOW"
+          response: "Log for tracking, optionally create plan"
+          blocking: false
+
+      response_actions:
+        create_remediation_plan: |
+          1. If agent did not already create plan folder:
+             - Generate plan name using standard naming: YYMMDDXX_<description>
+             - Create folder: agentic plan init <branch> --description <desc>
+             - Write seed file with error context
+          2. Log remediation plan reference in current plan's execution report
+          3. If CRITICAL: Pause and ask user whether to continue or address first
+          4. If HIGH/MEDIUM/LOW: Continue execution, report at shutdown
+
+        executor_tracking: |
+          Maintain a remediation_plans_spawned list in the execution report:
+          - plan_name: string
+          - error_type: string
+          - priority: CRITICAL|HIGH|MEDIUM|LOW
+          - spawned_by: agent that detected the issue
+          - current_plan: plan that was executing when discovered
+
+      protocol_reference: "modules/AgenticGuidance/assets/definitions/error-driven-planning-protocol.yml"
+      note: |
+        Unlike TEST_FAILURE/BUILD_FAILURE which re-plan the CURRENT plan,
+        ERROR_REQUIRES_PLANNING spawns a SEPARATE planning folder.
+        The current plan continues execution unless priority is CRITICAL.
+
   max_iterations_handling:
     definition: |
       Each feedback loop has a maximum iteration count defined in agent-loops.yml.
@@ -936,7 +989,7 @@ execution_protocol:
 
       - step: "5. Evaluate triggers"
         actions:
-          - "Check for TEST_FAILURE, CICD_FAILURE, GUIDANCE_GAP, AUDIT_FAILURE, UAT_FAILURE"
+          - "Check for TEST_FAILURE, CICD_FAILURE, GUIDANCE_GAP, AUDIT_FAILURE, UAT_FAILURE, ERROR_REQUIRES_PLANNING"
           - "If trigger detected: Execute trigger response"
           - "If no trigger: Proceed to completion"
 
@@ -969,10 +1022,13 @@ execution_protocol:
 # based on task-level target_files declarations.
 
 task_parallelization:
+  implementation_status: "aspirational - not yet implemented in CLI or executor"
   definition: |
     The executor uses task-level `target_files` to determine which tasks within a
     phase can safely run in parallel. Plan-level `impacted_files` is DEPRECATED
     and should not be used for parallelization decisions.
+    NOTE: This algorithm is specified but not yet implemented. Current executor
+    runs tasks sequentially within each phase.
 
   scope: |
     Parallelization applies WITHIN a single plan. Cross-plan parallelism is not

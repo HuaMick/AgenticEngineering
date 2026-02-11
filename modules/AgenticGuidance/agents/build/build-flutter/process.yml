@@ -31,6 +31,13 @@ process:
         dart_analyze_passed: "boolean"
         pub_get_success: "boolean"
         issues_encountered: "array of strings"
+        out_of_scope_errors:
+          description: "Errors the builder could not fix within current task scope — handed off to planner"
+          schema:
+            - error_details: "string - full error output"
+              affected_files: "array of strings"
+              current_plan: "string - plan folder being executed"
+              discovery_context: "string - what builder was doing when error was found"
 
   steps:
     - |
@@ -96,6 +103,40 @@ process:
       Verify your code compiles and imports work correctly:
       - Run `flutter pub get` if dependencies changed
       - Run `dart analyze lib/` to check for static analysis issues
+    - |
+      Error-Driven Planning Check:
+      After verifying your build, check for errors you cannot fix
+      within your current task's target_files.
+
+      FOR EACH error encountered:
+        IF you can fix it within your current task's target_files:
+          → Fix inline (existing behavior)
+        IF you CANNOT fix it (affects files outside your task scope):
+          → Capture error context and hand off — do NOT attempt to classify or fix it
+          → Include in build_report output under out_of_scope_errors
+          → Continue with your build (do NOT block on these issues)
+
+      Capture context for each error you cannot fix:
+        error_details: Full error output (e.g., dart analyze output, build log)
+        affected_files: Files involved in the error
+        current_plan: The plan folder you are executing
+        discovery_context: What you were doing when you found the error
+
+      Flutter-specific examples of errors to hand off:
+      - Dart analysis errors from packages NOT in your plan's target_files
+        e.g., `error: The method 'oldMethod' isn't defined for the class 'LegacyService' (lib/src/services/legacy.dart:42)`
+      - Widget test failures for components you did NOT modify
+        e.g., `FAILED test/widgets/existing_widget_test.dart - Expected: exactly one matching node`
+      - pubspec.yaml dependency conflicts from other packages
+        e.g., `Because app depends on package_a >=2.0.0 and package_b requires package_a <2.0.0, version solving failed`
+      - Build errors in files outside your target_files
+        e.g., `error: The argument type 'String?' can't be assigned to the parameter type 'String' (lib/src/models/legacy_model.dart:18)`
+
+      FENCE: You MUST NOT classify errors as in-scope vs out-of-scope,
+      assign priority levels, decide remediation strategy, or suggest plan names.
+      Just capture context and hand off. Planners decide everything.
+
+      Reference: modules/AgenticGuidance/assets/definitions/error-driven-planning-protocol.yml
 
   guidelines:
     # Core guidelines: See modules/AgenticGuidance/assets/guidelines/ (less-is-more.yml, fix-the-source.yml, experiment-first.yml, worktree-and-branching.yml)

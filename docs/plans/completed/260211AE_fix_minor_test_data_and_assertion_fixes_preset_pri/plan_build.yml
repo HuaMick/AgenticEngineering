@@ -1,0 +1,75 @@
+plan_name: "Fix Minor Test Data and Assertion Issues"
+worktree: 260211AE_fix_minor_test_data_and_assertion_fixes_preset_pri
+branch: main
+status: approved
+target_project_path: /home/code/AgenticEngineering
+objective: >
+  Fix 2 trivial test failures: (1) preset template uses 'critical' priority
+  not in valid set, (2) float precision comparison in experiment test.
+
+context: >
+  test_preset_templates.py: self-review-preset.yml task sreview_001 has
+  priority 'critical' but valid_priorities set is {'high', 'low', 'medium'}.
+  Either add 'critical' to valid set or change the preset.
+
+  test_blind_treatment.py: assert 0.30000000000000004 == 0.3 fails due to
+  float precision. Use pytest.approx() or round().
+
+phases:
+- phase_id: build_01
+  name: Fix Trivial Test Issues
+  status: pending
+  dependencies: []
+  tasks:
+  - task_id: build_01_01
+    description: Fix preset priority validation - add 'critical' to valid set
+    status: pending
+    file_inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_preset_templates.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_preset_templates.py
+    guidance: >
+      In test_preset_templates.py, find the valid_priorities set around line 79.
+      Currently: valid_priorities = {'high', 'low', 'medium'}
+      Change to: valid_priorities = {'critical', 'high', 'low', 'medium'}
+
+      The 'critical' priority is a valid severity level used in the preset.
+    success_criteria:
+    - test_priority_values_valid passes
+
+  - task_id: build_01_02
+    description: Fix float precision comparison in blind treatment test
+    status: pending
+    file_inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/experiments/test_blind_treatment.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/experiments/test_blind_treatment.py
+    guidance: >
+      In test_blind_treatment.py around line 238:
+      OLD: assert sc_improvement == 0.3
+      NEW: assert sc_improvement == pytest.approx(0.3)
+
+      Also fix any similar float comparisons in the same test method.
+    success_criteria:
+    - test_treatment_calculation_formulas passes
+
+- phase_id: test_01
+  name: Verify Fixes
+  status: pending
+  dependencies:
+  - build_01
+  tasks:
+  - task_id: test_01_01
+    description: Run both fixed test files
+    status: pending
+    target_files: []
+    guidance: >
+      Run: cd /home/code/AgenticEngineering/modules/AgenticCLI &&
+      python3 -m pytest tests/test_preset_templates.py
+      tests/experiments/test_blind_treatment.py -v
+    success_criteria:
+    - All tests in both files pass
+
+success_criteria:
+- Both trivial test failures fixed
+- No regressions

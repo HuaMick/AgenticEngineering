@@ -1,0 +1,199 @@
+plan_name: 260210WD_auto_start_ntfy_watch_daemon_when_session_spawn_ru
+title: Auto-start ntfy watch-daemon when session spawn runs with --plan
+description: 'When ''agentic session spawn --plan <folder>'' is called and ntfy is
+  configured,
+
+  automatically ensure a question watch-daemon is running for that plan folder.
+
+  This prevents phone notifications being silently dropped during orchestration
+
+  because the user forgot to manually start the watch-daemon.
+
+  '
+success_criteria:
+- Watch-daemon auto-starts when cmd_spawn runs with plan_folder and ntfy.topic is
+  configured
+- No duplicate daemon started if one already exists for the same plan (idempotent)
+- No daemon started when ntfy is not configured (ntfy.topic missing or ntfy.enabled=false)
+- Clear log messages when auto-starting vs skipping (already running)
+- Daemon survives after cmd_spawn returns (background process with start_new_session=True)
+- Existing watch-daemon and watch-stop commands continue to work unaffected
+phases:
+- name: Implementation
+  tasks:
+  - id: WD_001
+    name: Extract _ensure_watch_daemon helper in question.py
+    status: completed
+    description: 'Create a new function `_ensure_watch_daemon(plan_path: Path) ->
+      bool` in
+
+      modules/AgenticCLI/src/agenticcli/commands/question.py that encapsulates
+
+      the idempotent daemon-start logic currently inside cmd_watch_daemon.
+
+
+      The function should:
+
+      1. Import ProcessStateRegistry from agenticcli.services.state
+
+      2. Check _get_ntfy_config() - return False if ntfy not configured
+
+      3. Build state_key = f"question_watcher_{plan_path.name}"
+
+      4. Check registry for existing running watcher - if found and PID alive, return
+      False (already running)
+
+      5. If found but PID dead, clean up stale state before proceeding
+
+      6. Start daemon via subprocess.Popen (same nohup + python3 -c pattern as cmd_watch_daemon)
+
+      7. Register process in state registry
+
+      8. Return True if daemon was started, False if skipped
+
+
+      Key design decisions:
+
+      - Reuse the SAME subprocess spawn pattern from cmd_watch_daemon (lines 756-781)
+
+      - Use os.kill(pid, 0) to verify existing PID is actually alive (handles stale
+      state)
+
+      - Log via logger.info/debug rather than console print (caller decides UI)
+
+      - Catch all exceptions and return False on failure (never crash the caller)
+
+      '
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/question.py
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/question.py
+    - modules/AgenticCLI/src/agenticcli/services/question_watcher.py
+  - id: WD_002
+    name: Call _ensure_watch_daemon from cmd_spawn when plan_folder is set
+    status: completed
+    description: "In modules/AgenticCLI/src/agenticcli/commands/session.py, add a\
+      \ call to\n_ensure_watch_daemon after the session is successfully spawned (both\
+      \ background\nand foreground paths), but only when plan_folder is not None.\n\
+      \nInsert point: After the session is saved as \"running\" (line ~670 for background,\n\
+      line ~706 for foreground), add:\n\n```python\n# Auto-start ntfy question watch-daemon\
+      \ for this plan\nif plan_folder:\n    try:\n        from agenticcli.commands.question\
+      \ import _ensure_watch_daemon\n        started = _ensure_watch_daemon(plan_folder)\n\
+      \        if started:\n            logger.info(\"Auto-started question watch-daemon\
+      \ for %s\", plan_folder.name)\n    except Exception as e:\n        logger.debug(\"\
+      Failed to auto-start watch-daemon: %s\", e)\n```\n\nPlace this AFTER the successful\
+      \ spawn + save, before the output/print section,\nso that daemon startup doesn't\
+      \ block or affect the spawn result reporting.\n\nFor background mode: insert\
+      \ after line 670 (_save_session call).\nFor foreground mode: insert after line\
+      \ 706 (_save_session call).\n\nThe call should be fire-and-forget: log success/failure\
+      \ but never raise to caller.\n"
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/question.py
+    depends_on:
+    - WD_001
+  - id: WD_003
+    name: Refactor cmd_watch_daemon to use _ensure_watch_daemon
+    status: completed
+    description: 'Refactor cmd_watch_daemon to delegate to _ensure_watch_daemon for
+      the
+
+      actual daemon start logic. This avoids code duplication and ensures both
+
+      paths use the same spawn mechanism.
+
+
+      cmd_watch_daemon should:
+
+      1. Resolve plan_path via _get_plan_path (unchanged)
+
+      2. Call _ensure_watch_daemon(plan_path)
+
+      3. If it returns True: print success message
+
+      4. If it returns False: check why (ntfy not configured vs already running) and
+      print appropriate message
+
+      5. Preserve the existing exit codes and error messages
+
+
+      The _ensure_watch_daemon function may need a richer return value or the
+
+      caller can re-check state to determine the reason. Keep it simple:
+
+      have _ensure_watch_daemon return a tuple (started: bool, reason: str)
+
+      where reason is one of: "started", "already_running", "ntfy_not_configured",
+      "error".
+
+      '
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/question.py
+    depends_on:
+    - WD_001
+- name: Testing
+  tasks:
+  - id: WD_004
+    name: Unit tests for _ensure_watch_daemon
+    status: completed
+    description: "Add tests to modules/AgenticCLI/tests/test_session_commands.py (or\
+      \ a new\ntest_watch_daemon_auto.py) that verify:\n\n1. test_ensure_watch_daemon_starts_when_ntfy_configured:\n\
+      \   - Mock _get_ntfy_config to return {\"topic\": \"test\", \"server\": \"https://ntfy.sh\"\
+      }\n   - Mock ProcessStateRegistry with no existing state\n   - Mock subprocess.Popen\n\
+      \   - Assert Popen called with nohup + python3 command\n   - Assert registry.register_process\
+      \ called\n   - Assert return is (True, \"started\")\n\n2. test_ensure_watch_daemon_skips_when_ntfy_not_configured:\n\
+      \   - Mock _get_ntfy_config to return None\n   - Assert subprocess.Popen NOT\
+      \ called\n   - Assert return is (False, \"ntfy_not_configured\")\n\n3. test_ensure_watch_daemon_skips_when_already_running:\n\
+      \   - Mock _get_ntfy_config to return valid config\n   - Mock ProcessStateRegistry\
+      \ with existing state {\"status\": \"running\", \"pid\": <alive pid>}\n   -\
+      \ Mock os.kill(pid, 0) to succeed (process exists)\n   - Assert subprocess.Popen\
+      \ NOT called\n   - Assert return is (False, \"already_running\")\n\n4. test_ensure_watch_daemon_cleans_stale_and_starts:\n\
+      \   - Mock ProcessStateRegistry with existing state {\"status\": \"running\"\
+      , \"pid\": <dead pid>}\n   - Mock os.kill(pid, 0) to raise ProcessLookupError\n\
+      \   - Mock subprocess.Popen\n   - Assert Popen IS called (stale state cleaned\
+      \ up)\n   - Assert return is (True, \"started\")\n\n5. test_ensure_watch_daemon_handles_errors_gracefully:\n\
+      \   - Mock subprocess.Popen to raise Exception\n   - Assert return is (False,\
+      \ \"error\") and no exception propagated\n"
+    target_files:
+    - modules/AgenticCLI/tests/test_session_commands.py
+    inputs:
+    - modules/AgenticCLI/tests/test_session_commands.py
+  - id: WD_005
+    name: Unit tests for cmd_spawn auto-daemon integration
+    status: completed
+    description: "Add tests to TestSpawnWithRoleAndPlan or a new TestSpawnAutoWatchDaemon\
+      \ class\nin test_session_commands.py:\n\n1. test_spawn_with_plan_starts_watch_daemon:\n\
+      \   - Mock subprocess.Popen for both claude spawn AND daemon spawn\n   - Mock\
+      \ _get_ntfy_config to return valid config\n   - Provide --plan arg pointing\
+      \ to valid plan folder\n   - Assert _ensure_watch_daemon was called with plan_folder\n\
+      \   - Assert daemon subprocess.Popen was called\n\n2. test_spawn_without_plan_skips_watch_daemon:\n\
+      \   - Spawn with --prompt only (no --plan)\n   - Assert _ensure_watch_daemon\
+      \ NOT called\n\n3. test_spawn_daemon_failure_does_not_block_spawn:\n   - Mock\
+      \ _ensure_watch_daemon to raise Exception\n   - Assert cmd_spawn still completes\
+      \ successfully\n   - Assert session is saved with running status\n"
+    target_files:
+    - modules/AgenticCLI/tests/test_session_commands.py
+    depends_on:
+    - WD_002
+    - WD_004
+- name: Verification
+  tasks:
+  - id: WD_006
+    name: Run full test suite and verify no regressions
+    status: completed
+    description: 'Run the following test suites to verify no regressions:
+
+      - python3 -m pytest modules/AgenticCLI/tests/test_session_commands.py -v
+
+      - python3 -m pytest modules/AgenticCLI/tests/test_ntfy.py -v
+
+      - python3 -m pytest modules/AgenticCLI/tests/ -k "question" -v
+
+
+      All tests must pass. Fix any failures introduced by the changes.
+
+      '
+    depends_on:
+    - WD_004
+    - WD_005

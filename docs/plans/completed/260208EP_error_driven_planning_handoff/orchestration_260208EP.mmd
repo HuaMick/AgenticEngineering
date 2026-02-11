@@ -1,0 +1,135 @@
+flowchart LR
+    %% ========================================
+    %% ORCHESTRATION: Error-Driven Planning Handoff
+    %% ========================================
+    %% GOAL: Implement error-driven planning protocol across all agent guidance
+    %% PROFILE: orchestrator
+    %%
+    %% PLAN_FOLDER: docs/plans/live/260208EP_error_driven_planning_handoff
+    %% PLAN_FILES: plan_build.yml, plan_teach.yml, plan_test.yml
+    %%
+    %% CONFLICT: T_B001 (build) and T_001 (teach) both create same file.
+    %%   T_001 supersedes — uses planner-decides model, no ER naming convention.
+    %%   T_B001 should be marked complete when T_001 completes.
+    %%
+    %% PHASES: ProtocolAsset, GuidanceUpdates, Validation
+    %% AGENT_ROUTING: ProtocolAsset=teacher-update-assets, GuidanceUpdates=teacher-update-guidance, Validation=test-guidance-simulator
+    %% FEEDBACK_TRIGGERS: GUIDANCE_FAILURE=retry(3), VALIDATION_FAILURE=retry(3)
+    %% STATUS: ProtocolAsset=pending, GuidanceUpdates=pending, Validation=pending
+
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION
+    %% ========================================
+    LoadInputs --> ReviewPlanFiles[Review plan_build.yml + plan_teach.yml + plan_test.yml]
+    ReviewPlanFiles --> CheckInputs{All Inputs Found?}
+    CheckInputs -- "No: Missing" --> AskUser((Ask User for Clarification))
+    CheckInputs -- "Yes: Verified" --> EnterProtocolPhase[Enter Protocol Asset Phase]
+
+    %% ========================================
+    %% PHASE 1: CREATE PROTOCOL ASSET
+    %% ========================================
+    %% Tasks: T_001 (teach) — supersedes T_B001 (build)
+    %% Agent: teacher-update-assets
+    %% Target: modules/AgenticGuidance/assets/definitions/error-driven-planning-protocol.yml
+
+    subgraph ProtocolPhase_SG ["Phase 1: Protocol Asset"]
+        EnterProtocolPhase --> SpawnProtocol[Spawn teacher-update-assets Agent]
+        SpawnProtocol --> ProtocolResult{Protocol Asset Created?}
+
+        ProtocolResult -- "No: Issues" --> CaptureProtocolFeedback[Capture Feedback]
+        CaptureProtocolFeedback --> CheckProtocolIterations{Max Iterations?}
+        CheckProtocolIterations -- "No: Continue" --> SpawnProtocol
+        CheckProtocolIterations -- "Yes: Limit" --> EscalateProtocol((Escalate: Protocol Creation Failed))
+
+        ProtocolResult -- "Yes: Complete" --> ProtocolComplete[Protocol Asset Complete]
+    end
+
+    ProtocolComplete --> MarkT001[Mark T_001 + T_B001 Complete]
+    MarkT001 --> EnterGuidancePhase[Enter Guidance Updates Phase]
+
+    %% ========================================
+    %% PHASE 2: GUIDANCE UPDATES (PARALLEL TRACKS)
+    %% ========================================
+    %% All tracks target different files — safe to parallelize
+    %% Agent: teacher-update-guidance
+
+    subgraph GuidancePhase_SG ["Phase 2: Guidance Updates (Parallel)"]
+
+        %% Track A: Feedback Triggers (T_002, T_003)
+        EnterGuidancePhase --> SpawnTrackA[Spawn: Feedback Triggers - T_002 + T_003]
+        SpawnTrackA --> TrackAResult{Triggers Added?}
+        TrackAResult -- "No" --> RetryTrackA[Retry Track A]
+        RetryTrackA --> SpawnTrackA
+        TrackAResult -- "Yes" --> TrackADone[Track A Complete]
+
+        %% Track B: Orchestration Executor (T_004, T_005)
+        EnterGuidancePhase --> SpawnTrackB[Spawn: Executor Guidance - T_004 + T_005]
+        SpawnTrackB --> TrackBResult{Executor Updated?}
+        TrackBResult -- "No" --> RetryTrackB[Retry Track B]
+        RetryTrackB --> SpawnTrackB
+        TrackBResult -- "Yes" --> TrackBDone[Track B Complete]
+
+        %% Track C: Build Agents (T_006, T_007)
+        EnterGuidancePhase --> SpawnTrackC[Spawn: Build Agents - T_006 + T_007]
+        SpawnTrackC --> TrackCResult{Build Agents Updated?}
+        TrackCResult -- "No" --> RetryTrackC[Retry Track C]
+        RetryTrackC --> SpawnTrackC
+        TrackCResult -- "Yes" --> TrackCDone[Track C Complete]
+
+        %% Track D: Test Agents (T_008, T_009, T_010)
+        EnterGuidancePhase --> SpawnTrackD[Spawn: Test Agents - T_008 + T_009 + T_010]
+        SpawnTrackD --> TrackDResult{Test Agents Updated?}
+        TrackDResult -- "No" --> RetryTrackD[Retry Track D]
+        RetryTrackD --> SpawnTrackD
+        TrackDResult -- "Yes" --> TrackDDone[Track D Complete]
+
+        %% Track E: Deploy + Loops (T_011, T_012)
+        EnterGuidancePhase --> SpawnTrackE[Spawn: Deploy + Loops - T_011 + T_012]
+        SpawnTrackE --> TrackEResult{Deploy/Loops Updated?}
+        TrackEResult -- "No" --> RetryTrackE[Retry Track E]
+        RetryTrackE --> SpawnTrackE
+        TrackEResult -- "Yes" --> TrackEDone[Track E Complete]
+    end
+
+    TrackADone --> GuidanceGate{All Tracks Complete?}
+    TrackBDone --> GuidanceGate
+    TrackCDone --> GuidanceGate
+    TrackDDone --> GuidanceGate
+    TrackEDone --> GuidanceGate
+    GuidanceGate -- "Yes" --> EnterValidationPhase[Enter Validation Phase]
+
+    %% ========================================
+    %% PHASE 3: VALIDATION
+    %% ========================================
+    %% Tasks: T_T001 through T_T010
+    %% Agent: test-guidance-simulator
+
+    subgraph ValidationPhase_SG ["Phase 3: Validation"]
+        EnterValidationPhase --> SpawnValidation[Spawn test-guidance-simulator Agent]
+        SpawnValidation --> ValidationResult{All Validations Passed?}
+
+        ValidationResult -- "No: Issues" --> CaptureValidationFeedback[Capture Validation Feedback]
+        CaptureValidationFeedback --> CheckValidationIterations{Max Iterations?}
+        CheckValidationIterations -- "No: Continue" --> SpawnTeacherFix[Spawn teacher-update-guidance Fix]
+        SpawnTeacherFix --> SpawnValidation
+        CheckValidationIterations -- "Yes: Limit" --> EscalateValidation((Escalate: Validation Failed))
+
+        ValidationResult -- "Yes: Passed" --> ValidationComplete[Validation Complete]
+    end
+
+    %% ========================================
+    %% OUTPUT PHASE
+    %% ========================================
+    subgraph Output_SG ["Output Subgraph"]
+        ValidationComplete --> ReportCompletion[Report Completion Status]
+        ReportCompletion --> ArchivePlan[Run: agentic plan move folder --plan 260208EP_error_driven_planning_handoff]
+    end
+
+    ArchivePlan --> End((End: Plan Completed))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef dashedstroke stroke-dasharray: 5 5;

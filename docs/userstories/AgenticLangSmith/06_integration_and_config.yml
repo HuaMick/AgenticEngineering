@@ -1,189 +1,214 @@
-# User Stories: Integration and Configuration
-# Setup, configuration, and integration with existing workflows
-
 stories:
-  - id: "US-LANGSMITH-050"
-    title: "Easy Installation and Setup"
-    category: "integration_and_config"
-    priority: "critical"
-    as_a: "developer setting up LangSmith integration"
-    i_want: "clear installation and configuration instructions"
-    so_that: "I can start capturing traces quickly"
-    acceptance_criteria:
-      - "pip install -e modules/AgenticLangSmith installs the module"
-      - "Installation includes langsmith package as dependency"
-      - "README.md provides step-by-step setup instructions"
-      - "Setup includes downloading hook, creating symlink, and configuring settings"
-      - "Prerequisites (jq, curl, uuidgen) are documented"
-      - "Setup verification steps are provided"
-    related_commands:
-      - "pip install -e modules/AgenticLangSmith"
-    related_files:
-      - "modules/AgenticLangSmith/README.md"
-      - "modules/AgenticLangSmith/pyproject.toml"
-
-  - id: "US-LANGSMITH-051"
-    title: "API Key Configuration"
-    category: "integration_and_config"
-    priority: "critical"
-    as_a: "developer using LangSmith API"
-    i_want: "flexible API key configuration options"
-    so_that: "I can configure the key in the most convenient way for my workflow"
-    acceptance_criteria:
-      - "API key can be provided via LANGSMITH_API_KEY environment variable"
-      - "API key can be provided via CC_LANGSMITH_API_KEY environment variable"
-      - "API key can be provided in ~/.config/agenticcli/config.yml"
-      - "API key can be passed directly to LangSmithService constructor"
-      - "LangSmithConfigError is raised if no API key is found"
-      - "Error message explains all configuration options"
-    related_commands:
-      - "export LANGSMITH_API_KEY=lsv2_pt_xxxxx"
-      - "N/A (config file or Python API)"
-    related_files:
-      - "modules/AgenticLangSmith/src/agenticlangsmith/service.py"
-      - "~/.config/agenticcli/config.yml"
-
-  - id: "US-LANGSMITH-052"
-    title: "Per-Worktree Project Configuration"
-    category: "integration_and_config"
-    priority: "high"
-    as_a: "developer working across multiple worktrees"
-    i_want: "each worktree to have its own LangSmith project configuration"
-    so_that: "traces are automatically segregated by context"
-    acceptance_criteria:
-      - ".claude/settings.local.json in worktree root sets CC_LANGSMITH_PROJECT"
-      - "CC_LANGSMITH_PROJECT defaults to 'claude-code' if not set"
-      - "Each worktree can have unique TRACE_TO_LANGSMITH setting"
-      - "Each worktree can have unique CC_LANGSMITH_API_KEY setting"
-      - "Settings are isolated per worktree"
-      - "README.md provides example configurations for multiple worktrees"
-    related_commands:
-      - "N/A (configured via .claude/settings.local.json)"
-    related_files:
-      - ".claude/settings.local.json (per worktree)"
-      - "modules/AgenticLangSmith/README.md"
-
-  - id: "US-LANGSMITH-053"
-    title: "Global Hook Configuration"
-    category: "integration_and_config"
-    priority: "high"
-    as_a: "developer managing hook configuration"
-    i_want: "a single global hook configuration that works across all worktrees"
-    so_that: "I don't need to configure hooks separately for each worktree"
-    acceptance_criteria:
-      - "~/.claude/settings.json contains Stop hook configuration"
-      - "Hook configuration points to ~/.claude/hooks/stop_hook.sh"
-      - "~/.claude/hooks/stop_hook.sh is a symlink to repo canonical source"
-      - "Hook updates are version-controlled in repo"
-      - "Hook configuration survives Claude Code updates"
-      - "README.md explains global vs local configuration"
-    related_commands:
-      - "ln -sf /path/to/repo/modules/AgenticLangSmith/hooks/stop_hook.sh ~/.claude/hooks/stop_hook.sh"
-    related_files:
-      - "~/.claude/settings.json"
-      - "modules/AgenticLangSmith/hooks/stop_hook.sh"
-
-  - id: "US-LANGSMITH-054"
-    title: "CLI Integration with AgenticCLI"
-    category: "integration_and_config"
-    priority: "high"
-    as_a: "developer using AgenticCLI"
-    i_want: "LangSmith commands to be available via agentic CLI"
-    so_that: "I can use LangSmith features without switching tools"
-    acceptance_criteria:
-      - "agentic langsmith (or agentic ls) command is available"
-      - "All subcommands are registered in CLI"
-      - "Commands follow AgenticCLI conventions (rich output, --json flag)"
-      - "Error messages are user-friendly and actionable"
-      - "Help text is clear and provides examples"
-      - "Commands work seamlessly with other AgenticCLI commands"
-    related_commands:
-      - "agentic ls runs --project my-project"
-      - "agentic langsmith --help"
-    related_files:
-      - "modules/AgenticCLI/src/agenticcli/commands/langsmith.py"
-      - "modules/AgenticCLI/src/agenticcli/cli.py"
-
-  - id: "US-LANGSMITH-055"
-    title: "Integration with AgenticGuidance Workflows"
-    category: "integration_and_config"
-    priority: "medium"
-    as_a: "agent developer using planner workflows"
-    i_want: "friction analysis to integrate with planner workflows"
-    so_that: "recommendations automatically reference the right planning entrypoints"
-    acceptance_criteria:
-      - "GUIDANCE_UPDATE recommendations reference planner-teach entrypoint"
-      - "CLI_OFFLOAD recommendations reference planner-build entrypoint"
-      - "ASSET_UPDATE recommendations reference planner-teach entrypoint"
-      - "Next steps include specific entrypoint file references"
-      - "Resolution recommendations align with existing planning workflows"
-    related_commands:
-      - "agentic ls friction --project my-project --recommend"
-    related_agents:
-      - "planner-build"
-      - "planner-teach"
-      - "orchestration-friction"
-    related_files:
-      - "modules/AgenticLangSmith/src/agenticlangsmith/resolution.py"
-      - "modules/AgenticGuidance/entrypoints/_plan_build.yml"
-      - "modules/AgenticGuidance/entrypoints/_plan_teach.yml"
-
-  - id: "US-LANGSMITH-056"
-    title: "Environment Variable Documentation"
-    category: "integration_and_config"
-    priority: "medium"
-    as_a: "developer configuring LangSmith integration"
-    i_want: "clear documentation of all environment variables"
-    so_that: "I understand what each variable does and which are required"
-    acceptance_criteria:
-      - "README.md has dedicated Environment Variables section"
-      - "Each variable is documented with name, requirement status, and description"
-      - "TRACE_TO_LANGSMITH is documented as required for activation"
-      - "CC_LANGSMITH_API_KEY is documented with fallback to LANGSMITH_API_KEY"
-      - "CC_LANGSMITH_PROJECT is documented with default value"
-      - "CC_LANGSMITH_DEBUG is documented for troubleshooting"
-    related_commands:
-      - "N/A (documentation)"
-    related_files:
-      - "modules/AgenticLangSmith/README.md"
-
-  - id: "US-LANGSMITH-057"
-    title: "Graceful Degradation and Error Handling"
-    category: "integration_and_config"
-    priority: "high"
-    as_a: "developer using LangSmith features"
-    i_want: "clear error messages when things go wrong"
-    so_that: "I can quickly diagnose and fix configuration issues"
-    acceptance_criteria:
-      - "Missing API key produces LangSmithConfigError with helpful message"
-      - "API call failures produce LangSmithAPIError with context"
-      - "Missing prerequisites (jq, curl) produce clear error messages"
-      - "Hook failures don't crash Claude Code sessions"
-      - "CLI commands catch and display errors with rich formatting"
-      - "Python API exceptions include actionable error messages"
-    related_commands:
-      - "agentic ls runs --project nonexistent"
-    related_files:
-      - "modules/AgenticLangSmith/src/agenticlangsmith/service.py"
-      - "modules/AgenticCLI/src/agenticcli/commands/langsmith.py"
-
-  - id: "US-LANGSMITH-058"
-    title: "Testing and Validation"
-    category: "integration_and_config"
-    priority: "medium"
-    as_a: "developer ensuring LangSmith integration works correctly"
-    i_want: "to verify trace capture and API integration"
-    so_that: "I can confirm everything is working before relying on it"
-    acceptance_criteria:
-      - "README.md includes verification checklist"
-      - "Verification includes checking prerequisites (jq, curl, uuidgen)"
-      - "Verification includes testing with CC_LANGSMITH_DEBUG=true"
-      - "Verification includes confirming traces appear in LangSmith dashboard"
-      - "Verification includes testing CLI commands"
-      - "Test suite covers service, filters, friction, and resolution modules"
-    related_commands:
-      - "pytest modules/AgenticLangSmith/tests/"
-      - "agentic ls projects"
-    related_files:
-      - "modules/AgenticLangSmith/tests/"
-      - "modules/AgenticLangSmith/README.md"
+- id: US-LANGSMITH-050
+  title: Easy Installation and Setup
+  category: integration_and_config
+  priority: critical
+  as_a: developer setting up LangSmith integration
+  i_want: clear installation and configuration instructions
+  so_that: I can start capturing traces quickly
+  acceptance_criteria:
+  - pip install -e modules/AgenticLangSmith installs the module
+  - Installation includes langsmith package as dependency
+  - README.md provides step-by-step setup instructions
+  - Setup includes downloading hook, creating symlink, and configuring settings
+  - Prerequisites (jq, curl, uuidgen) are documented
+  - Setup verification steps are provided
+  related_commands:
+  - pip install -e modules/AgenticLangSmith
+  related_files:
+  - modules/AgenticLangSmith/README.md
+  - modules/AgenticLangSmith/pyproject.toml
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-LANGSMITH-051
+  title: API Key Configuration
+  category: integration_and_config
+  priority: critical
+  as_a: developer using LangSmith API
+  i_want: flexible API key configuration options
+  so_that: I can configure the key in the most convenient way for my workflow
+  acceptance_criteria:
+  - API key can be provided via LANGSMITH_API_KEY environment variable
+  - API key can be provided via CC_LANGSMITH_API_KEY environment variable
+  - API key can be provided in ~/.config/agenticcli/config.yml
+  - API key can be passed directly to LangSmithService constructor
+  - LangSmithConfigError is raised if no API key is found
+  - Error message explains all configuration options
+  related_commands:
+  - export LANGSMITH_API_KEY=lsv2_pt_xxxxx
+  - N/A (config file or Python API)
+  related_files:
+  - modules/AgenticLangSmith/src/agenticlangsmith/service.py
+  - ~/.config/agenticcli/config.yml
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-LANGSMITH-052
+  title: Per-Worktree Project Configuration
+  category: integration_and_config
+  priority: high
+  as_a: developer working across multiple worktrees
+  i_want: each worktree to have its own LangSmith project configuration
+  so_that: traces are automatically segregated by context
+  acceptance_criteria:
+  - .claude/settings.local.json in worktree root sets CC_LANGSMITH_PROJECT
+  - CC_LANGSMITH_PROJECT defaults to 'claude-code' if not set
+  - Each worktree can have unique TRACE_TO_LANGSMITH setting
+  - Each worktree can have unique CC_LANGSMITH_API_KEY setting
+  - Settings are isolated per worktree
+  - README.md provides example configurations for multiple worktrees
+  related_commands:
+  - N/A (configured via .claude/settings.local.json)
+  related_files:
+  - .claude/settings.local.json (per worktree)
+  - modules/AgenticLangSmith/README.md
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-LANGSMITH-053
+  title: Global Hook Configuration
+  category: integration_and_config
+  priority: high
+  as_a: developer managing hook configuration
+  i_want: a single global hook configuration that works across all worktrees
+  so_that: I don't need to configure hooks separately for each worktree
+  acceptance_criteria:
+  - ~/.claude/settings.json contains Stop hook configuration
+  - Hook configuration points to ~/.claude/hooks/stop_hook.sh
+  - ~/.claude/hooks/stop_hook.sh is a symlink to repo canonical source
+  - Hook updates are version-controlled in repo
+  - Hook configuration survives Claude Code updates
+  - README.md explains global vs local configuration
+  related_commands:
+  - ln -sf /path/to/repo/modules/AgenticLangSmith/hooks/stop_hook.sh ~/.claude/hooks/stop_hook.sh
+  related_files:
+  - ~/.claude/settings.json
+  - modules/AgenticLangSmith/hooks/stop_hook.sh
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-LANGSMITH-054
+  title: CLI Integration with AgenticCLI
+  category: integration_and_config
+  priority: high
+  as_a: developer using AgenticCLI
+  i_want: LangSmith commands to be available via agentic CLI
+  so_that: I can use LangSmith features without switching tools
+  acceptance_criteria:
+  - agentic langsmith (or agentic ls) command is available
+  - All subcommands are registered in CLI
+  - Commands follow AgenticCLI conventions (rich output, --json flag)
+  - Error messages are user-friendly and actionable
+  - Help text is clear and provides examples
+  - Commands work seamlessly with other AgenticCLI commands
+  related_commands:
+  - agentic ls runs --project my-project
+  - agentic langsmith --help
+  related_files:
+  - modules/AgenticCLI/src/agenticcli/commands/langsmith.py
+  - modules/AgenticCLI/src/agenticcli/cli.py
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-LANGSMITH-055
+  title: Integration with AgenticGuidance Workflows
+  category: integration_and_config
+  priority: medium
+  as_a: agent developer using planner workflows
+  i_want: friction analysis to integrate with planner workflows
+  so_that: recommendations automatically reference the right planning entrypoints
+  acceptance_criteria:
+  - GUIDANCE_UPDATE recommendations reference planner-teach entrypoint
+  - CLI_OFFLOAD recommendations reference planner-build entrypoint
+  - ASSET_UPDATE recommendations reference planner-teach entrypoint
+  - Next steps include specific entrypoint file references
+  - Resolution recommendations align with existing planning workflows
+  related_commands:
+  - agentic ls friction --project my-project --recommend
+  related_agents:
+  - planner-build
+  - planner-teach
+  - orchestration-friction
+  related_files:
+  - modules/AgenticLangSmith/src/agenticlangsmith/resolution.py
+  - modules/AgenticGuidance/entrypoints/_plan_build.yml
+  - modules/AgenticGuidance/entrypoints/_plan_teach.yml
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-LANGSMITH-056
+  title: Environment Variable Documentation
+  category: integration_and_config
+  priority: medium
+  as_a: developer configuring LangSmith integration
+  i_want: clear documentation of all environment variables
+  so_that: I understand what each variable does and which are required
+  acceptance_criteria:
+  - README.md has dedicated Environment Variables section
+  - Each variable is documented with name, requirement status, and description
+  - TRACE_TO_LANGSMITH is documented as required for activation
+  - CC_LANGSMITH_API_KEY is documented with fallback to LANGSMITH_API_KEY
+  - CC_LANGSMITH_PROJECT is documented with default value
+  - CC_LANGSMITH_DEBUG is documented for troubleshooting
+  related_commands:
+  - N/A (documentation)
+  related_files:
+  - modules/AgenticLangSmith/README.md
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-LANGSMITH-057
+  title: Graceful Degradation and Error Handling
+  category: integration_and_config
+  priority: high
+  as_a: developer using LangSmith features
+  i_want: clear error messages when things go wrong
+  so_that: I can quickly diagnose and fix configuration issues
+  acceptance_criteria:
+  - Missing API key produces LangSmithConfigError with helpful message
+  - API call failures produce LangSmithAPIError with context
+  - Missing prerequisites (jq, curl) produce clear error messages
+  - Hook failures don't crash Claude Code sessions
+  - CLI commands catch and display errors with rich formatting
+  - Python API exceptions include actionable error messages
+  related_commands:
+  - agentic ls runs --project nonexistent
+  related_files:
+  - modules/AgenticLangSmith/src/agenticlangsmith/service.py
+  - modules/AgenticCLI/src/agenticcli/commands/langsmith.py
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-LANGSMITH-058
+  title: Testing and Validation
+  category: integration_and_config
+  priority: medium
+  as_a: developer ensuring LangSmith integration works correctly
+  i_want: to verify trace capture and API integration
+  so_that: I can confirm everything is working before relying on it
+  acceptance_criteria:
+  - README.md includes verification checklist
+  - Verification includes checking prerequisites (jq, curl, uuidgen)
+  - Verification includes testing with CC_LANGSMITH_DEBUG=true
+  - Verification includes confirming traces appear in LangSmith dashboard
+  - Verification includes testing CLI commands
+  - Test suite covers service, filters, friction, and resolution modules
+  related_commands:
+  - pytest modules/AgenticLangSmith/tests/
+  - agentic ls projects
+  related_files:
+  - modules/AgenticLangSmith/tests/
+  - modules/AgenticLangSmith/README.md
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null

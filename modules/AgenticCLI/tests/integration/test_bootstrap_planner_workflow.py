@@ -9,7 +9,7 @@ Tests the end-to-end workflow:
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
@@ -55,11 +55,45 @@ def temp_git_repo(tmp_path):
 
 @pytest.fixture
 def mock_git_context(temp_git_repo, monkeypatch):
-    """Mock git utility functions to use temp repo."""
+    """Mock git utility functions and subprocess to use temp repo.
+
+    Patches both the utility functions AND the subprocess calls used
+    by cmd_init so all operations target the temp repo.
+    """
     from agenticcli.utils import git
 
     monkeypatch.setattr(git, "get_project_root", lambda: temp_git_repo)
     monkeypatch.setattr(git, "find_main_worktree", lambda root: root)
+
+    # Patch find_main_worktree in the plan module too (it imports locally)
+    monkeypatch.setattr(
+        "agenticcli.commands.plan.find_main_worktree", lambda root: root
+    )
+
+    # Patch find_idle_worktrees to return empty (no idle worktrees in temp repo)
+    monkeypatch.setattr(
+        "agenticcli.commands.worktree.find_idle_worktrees", lambda root: []
+    )
+
+    # Wrap subprocess.run to redirect git rev-parse to the temp repo
+    real_subprocess_run = subprocess.run
+
+    def patched_subprocess_run(cmd, *args, **kwargs):
+        if isinstance(cmd, list) and cmd[:2] == ["git", "rev-parse"]:
+            # Override --show-toplevel to return temp repo
+            if "--show-toplevel" in cmd:
+                result = MagicMock()
+                result.stdout = str(temp_git_repo) + "\n"
+                result.stderr = ""
+                result.returncode = 0
+                return result
+        if isinstance(cmd, list) and cmd[:2] == ["git", "worktree"]:
+            # Redirect worktree commands to temp repo
+            kwargs["cwd"] = temp_git_repo
+        return real_subprocess_run(cmd, *args, **kwargs)
+
+    monkeypatch.setattr("agenticcli.commands.plan.subprocess.run", patched_subprocess_run)
+
     return temp_git_repo
 
 
@@ -87,17 +121,17 @@ class TestBootstrapPlannerWorkflow:
         assert len(plan_folders) == 1
         plan_folder = plan_folders[0]
 
-        # Verify plan_build.yml exists and is readable
-        plan_build_file = plan_folder / "live" / "plan_build.yml"
+        # Flattened structure: plan_build.yml directly in plan folder
+        plan_build_file = plan_folder / "plan_build.yml"
         assert plan_build_file.exists()
 
         with open(plan_build_file) as f:
             plan_data = yaml.safe_load(f)
 
         # Verify planner can access expected fields
-        assert "objective" in plan_data
+        assert "context" in plan_data
         assert "phases" in plan_data
-        assert plan_data["objective"].strip() == "Implement test feature for workflow"
+        assert plan_data["context"].strip() == "Implement test feature for workflow"
 
     def test_bootstrap_plan_has_worktree_path(self, mock_git_context):
         """Test that bootstrapped plan includes worktree_path for planner."""
@@ -117,7 +151,8 @@ class TestBootstrapPlannerWorkflow:
         plan_folders = list(plans_dir.glob("*_worktree_path"))
         plan_folder = plan_folders[0]
 
-        plan_build_file = plan_folder / "live" / "plan_build.yml"
+        # Flattened structure
+        plan_build_file = plan_folder / "plan_build.yml"
         with open(plan_build_file) as f:
             plan_data = yaml.safe_load(f)
 
@@ -143,7 +178,8 @@ class TestBootstrapPlannerWorkflow:
         plan_folders = list(plans_dir.glob("*_tasks_test"))
         plan_folder = plan_folders[0]
 
-        plan_build_file = plan_folder / "live" / "plan_build.yml"
+        # Flattened structure
+        plan_build_file = plan_folder / "plan_build.yml"
         with open(plan_build_file) as f:
             plan_data = yaml.safe_load(f)
 
@@ -194,13 +230,9 @@ class TestBootstrapPlannerWorkflow:
         plan_folders = list(plans_dir.glob("*_structure_valid"))
         plan_folder = plan_folders[0]
 
-        # Verify expected structure
+        # Verify expected flattened structure
         assert plan_folder.is_dir()
-        assert (plan_folder / "live").is_dir()
-        assert (plan_folder / "live" / "plan_build.yml").is_file()
-
-        # Planner expects this structure
-        # live/ contains the active plan files
+        assert (plan_folder / "plan_build.yml").is_file()
 
     def test_multiple_bootstrap_plans_coexist(self, mock_git_context):
         """Test that multiple bootstrapped plans can coexist for planner."""
@@ -256,12 +288,13 @@ class TestBootstrapPlannerWorkflow:
         plan_folders = list(plans_dir.glob("*_metadata_test"))
         plan_folder = plan_folders[0]
 
-        plan_build_file = plan_folder / "live" / "plan_build.yml"
+        # Flattened structure
+        plan_build_file = plan_folder / "plan_build.yml"
         with open(plan_build_file) as f:
             plan_data = yaml.safe_load(f)
 
         # Planner needs these metadata fields
-        required_fields = ["name", "branch", "status", "objective", "worktree_path"]
+        required_fields = ["name", "branch", "status", "context", "worktree_path"]
         for field in required_fields:
             assert field in plan_data, f"Missing required field: {field}"
 
@@ -269,7 +302,7 @@ class TestBootstrapPlannerWorkflow:
         assert plan_data["name"]
         assert plan_data["branch"] == "metadata-test"
         assert plan_data["status"] in ["active", "pending", "in_progress"]
-        assert plan_data["objective"]
+        assert plan_data["context"]
 
 
 class TestPlannerContextAccess:
@@ -316,9 +349,10 @@ class TestPlannerContextAccess:
         plan_folders = list(plans_dir.glob("*_objective_read"))
         plan_folder = plan_folders[0]
 
-        plan_build_file = plan_folder / "live" / "plan_build.yml"
+        # Flattened structure
+        plan_build_file = plan_folder / "plan_build.yml"
         with open(plan_build_file) as f:
             plan_data = yaml.safe_load(f)
 
-        # Planner reads objective to understand what to plan
-        assert plan_data["objective"].strip() == objective_text
+        # Planner reads context (objective) to understand what to plan
+        assert plan_data["context"].strip() == objective_text

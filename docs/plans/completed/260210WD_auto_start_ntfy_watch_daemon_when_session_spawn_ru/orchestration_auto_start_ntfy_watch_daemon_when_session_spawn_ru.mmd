@@ -1,0 +1,108 @@
+%% =============================================================================
+%% GOAL: Execute plan tasks
+%% =============================================================================
+%% PROFILE: Orchestration-260210WD_auto_start_ntfy_watch_daemon_when_session_spawn_ru
+%% INPUT_PATH: /home/code/AgenticEngineering/docs/plans/live/260210WD_auto_start_ntfy_watch_daemon_when_session_spawn_ru/plan_build.yml
+%%
+%% PHASES:
+%%   P1: Implementation
+%%   P2: Testing
+%%   P3: Verification
+%%
+%% AGENT_ROUTING: P1 -> builder, P2 -> test-builder, P3 -> builder
+%% STATUS: P1=pending, P2=pending, P3=pending
+%% FEEDBACK_TRIGGERS: TEST_FAILURE -> test-fix-loop, BUILD_FAILURE -> escalate
+%% =============================================================================
+
+flowchart LR
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    LoadInputs --> ReviewInputs[Review All Listed Inputs]
+    ReviewInputs --> CheckInputs{All Inputs Found?}
+
+    CheckInputs -- "No: Missing" --> SearchInputs[Search for Missing Inputs]
+    SearchInputs --> Found{Found?}
+    Found -- "Yes: Update paths" --> UpdateRefs[Update References]
+    UpdateRefs --> ReviewInputs
+    Found -- "No: Stop" --> AskUser((Ask User for Clarification))
+
+    CheckInputs -- "Yes: Verified" --> Phase1
+
+    %% ========================================
+    %% PHASE 1: IMPLEMENTATION
+    %% ========================================
+    %% AGENT_ROUTING: builder agent
+    %% Tasks: WD_001, WD_002, WD_003
+
+    subgraph P1_SG ["Implementation"]
+        Phase1[Enter Implementation] --> SpawnAgent1[Spawn builder Agent]
+        SpawnAgent1 --> Task_P1_1[WD_001: Extract _ensure_watch_daemon helper in question.py]
+        Task_P1_1 --> Task_P1_2[WD_002: Call _ensure_watch_daemon from cmd_spawn when plan_folder is set]
+        Task_P1_2 --> Task_P1_3[WD_003: Refactor cmd_watch_daemon to use _ensure_watch_daemon]
+        Task_P1_3 --> Phase1Complete[Implementation Complete]
+    end
+
+    Phase1Complete --> Phase2
+
+    %% ========================================
+    %% PHASE 2: TESTING
+    %% ========================================
+    %% AGENT_ROUTING: test-builder agent with test-fix loop
+    %% LOOP_DEFINITION: test-fix-loop
+    %% MAX_ITERATIONS: 5
+
+    subgraph Testing2_SG ["Testing (Test-Fix-Loop)"]
+        Phase2[Enter Testing] --> SpawnTestBuilder2[Spawn test-builder Agent]
+        SpawnTestBuilder2 --> RunTests2[Run Tests]
+        RunTests2 --> TestsPassed2{Tests Passed?}
+
+        %% Test-Fix Loop: retry path
+        TestsPassed2 -- "No: Fix in Iteration" --> SpawnBuilderFix2[Spawn builder Agent for Fixes]
+        SpawnBuilderFix2 --> ApplyFixes2[Apply Implementation Fixes]
+        ApplyFixes2 --> RunTests2
+
+        %% Success path
+        TestsPassed2 -- "Yes: All Pass" --> Phase2Complete[Testing Complete]
+    end
+
+    %% Escalation path for persistent test failures
+    TestsPassed2 -- "No: Escalate" --> CheckIterations2{Max Iterations Reached?}
+    CheckIterations2 -- "No" --> SpawnTestBuilder2
+    CheckIterations2 -- "Yes" --> EscalateTests2((Ask User: Test Failures Persist))
+
+    Phase2Complete --> Phase3
+
+    %% ========================================
+    %% PHASE 3: VERIFICATION
+    %% ========================================
+    %% AGENT_ROUTING: builder agent
+    %% Tasks: WD_006
+
+    subgraph P3_SG ["Verification"]
+        Phase3[Enter Verification] --> SpawnAgent3[Spawn builder Agent]
+        SpawnAgent3 --> Task_P3_1[WD_006: Run full test suite and verify no regressions]
+        Task_P3_1 --> Phase3Complete[Verification Complete]
+    end
+
+
+    %% ========================================
+    %% FINALIZATION
+    %% ========================================
+    Phase3Complete --> UpdatePlanStatus[Update Plan Status: completed]
+    %% agentic plan move folder --plan <path>
+    UpdatePlanStatus --> ArchivePlan[Archive to docs/plans/completed/]
+    ArchivePlan --> End((End: Plan Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef entrypoint fill:#90EE90,stroke:#228B22
+    classDef exitpoint fill:#FFB6C1,stroke:#DC143C
+    classDef userpoint fill:#87CEEB,stroke:#4682B4
+    classDef keyaction fill:#FFD700,stroke:#DAA520
+    class Start entrypoint
+    class End exitpoint
+    class AskUser,EscalateTests2 userpoint
