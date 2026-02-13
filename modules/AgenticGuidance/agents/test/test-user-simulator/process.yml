@@ -175,3 +175,49 @@ process:
       Differences between them are important findings.
     - |
       Execute ACTUAL commands per functional_testing_requirement - NO --help-only validation.
+    - |
+      PREFER REAL COMMAND EXECUTION over subprocess mocking for UAT.
+
+      CLI Command Testing Philosophy:
+      - UAT exists to validate ACTUAL user-facing behavior
+      - Mocking subprocess calls validates test code, not production code
+      - Real command execution catches integration issues mocks miss
+
+      When to Use Real Commands (PREFERRED for UAT):
+      - CLI commands: Run the installed binary (agentic, make, docker, etc.)
+      - Shell operations: Execute actual bash commands via subprocess
+      - File system operations: Create/read/write actual files
+      - External tool invocations: Run real tools with --dry-run or test flags
+
+      When Mocking is Acceptable:
+      - External service calls: APIs, databases, cloud services that require credentials
+      - Time-consuming operations: Long-running builds (>30s), large file downloads
+      - Destructive operations: Database drops, production deployments, file deletions
+      - Cost-incurring operations: Paid API calls, cloud resource provisioning
+
+      CLI Command UAT Pattern (ALWAYS use for CLI testing):
+      ```python
+      # Execute the actual CLI command
+      result = subprocess.run(
+          ['agentic', 'command', '--flag', 'value'],
+          capture_output=True,
+          text=True
+      )
+      # Validate actual output
+      assert result.returncode == 0, f"Command failed: {result.stderr}"
+      assert 'expected output' in result.stdout
+      ```
+
+      Mocking Anti-Pattern (DO NOT use for CLI UAT):
+      ```python
+      # WRONG: This passes even if the CLI is broken
+      mock_run = Mock(return_value=Mock(returncode=0, stdout='mocked output'))
+      monkeypatch.setattr('subprocess.run', mock_run)
+      result = subprocess.run(['agentic', 'command'])
+      assert result.returncode == 0  # False confidence
+      ```
+
+      Historical Context:
+      Three plans (260214PF, 260214TG, 260214US) passed UAT with mocked tests
+      but the actual CLI commands failed on execution. Real command execution
+      would have caught these issues during UAT.

@@ -123,6 +123,79 @@ guideline:
         - "Acceptance criteria from stories define UAT success"
 
     # ========================================
+    # FENCE: CLI SMOKE TEST REQUIREMENT
+    # ========================================
+    - rule: "CLI Smoke Test Requirement"
+      mandatory: true
+      fence: |
+        FENCE: CLI SMOKE TEST REQUIREMENT
+        UAT for CLI commands MUST execute the actual installed binary, not mocks.
+        Plans that modify CLI commands MUST include smoke tests that run the real
+        `agentic` command to verify it works as users will invoke it.
+      justification: |
+        Mocking subprocess calls provides false confidence. Three plans (260214PF,
+        260214TG, 260214US) passed UAT with mocked tests but the actual command
+        execution failed. Mocked tests validate test code, not production behavior.
+        Real CLI execution catches:
+        - Import errors and module registration issues
+        - Argument parsing bugs in actual argparse configuration
+        - Command routing failures in CLI dispatcher
+        - Runtime errors that only occur in installed binary context
+      detection_criteria:
+        description: |
+          This fence applies when ANY of the following are true:
+        conditions:
+          - "Plan modifies files in modules/AgenticCLI/src/agenticcli/commands/"
+          - "Plan's impacted_files include *.py files under agenticcli/commands/"
+          - "Plan objective mentions 'CLI command' or 'agentic <command>'"
+          - "Plan has affected_stories matching US-CLI-* pattern"
+      requirements:
+        - "UAT MUST execute installed CLI binary (not mocked subprocess)"
+        - "Smoke test MUST run at minimum: agentic <command> --help"
+        - "Smoke test SHOULD run: agentic <command> <minimal-valid-args>"
+        - "Use --no-tmux or --dry-run flags to avoid interactive/destructive operations"
+        - "Verify actual command output, not mocked return values"
+      examples:
+        bad:
+          - description: "Mocked subprocess call (WRONG)"
+            code: |
+              # WRONG: Passes UAT even if command is broken
+              def test_orchestrate_command(monkeypatch):
+                  mock_run = Mock(return_value=Mock(returncode=0))
+                  monkeypatch.setattr('subprocess.run', mock_run)
+                  result = subprocess.run(['agentic', 'orchestrate', '--mode', 'planning'])
+                  assert result.returncode == 0
+          - description: "--help only test (INSUFFICIENT)"
+            code: |
+              # INSUFFICIENT: --help works even if command logic is broken
+              def test_command_help():
+                  result = subprocess.run(['agentic', 'orchestrate', '--help'])
+                  assert result.returncode == 0
+        good:
+          - description: "Real CLI smoke test (RIGHT)"
+            code: |
+              # RIGHT: Runs actual installed binary
+              def test_orchestrate_planning_mode_smoke():
+                  result = subprocess.run(
+                      ['agentic', 'orchestrate', '--mode', 'planning', '--no-tmux'],
+                      capture_output=True,
+                      text=True
+                  )
+                  assert result.returncode == 0, f"Command failed: {result.stderr}"
+                  assert 'Planning mode initialized' in result.stdout
+          - description: "Real CLI error path test (RIGHT)"
+            code: |
+              # RIGHT: Verifies error handling with real command
+              def test_orchestrate_invalid_mode():
+                  result = subprocess.run(
+                      ['agentic', 'orchestrate', '--mode', 'invalid'],
+                      capture_output=True,
+                      text=True
+                  )
+                  assert result.returncode != 0
+                  assert 'invalid choice' in result.stderr.lower()
+
+    # ========================================
     # UAT IMPLEMENTATION FLEXIBILITY
     # ========================================
     - rule: "UAT Implementation Flexibility"

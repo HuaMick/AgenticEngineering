@@ -74,6 +74,9 @@ class TestOrchestratePlanningLoop:
             role=None,
             plan=None,
             model=None,
+            no_tmux=True,
+            dashboard_refresh=5,
+            question_refresh=10,
         )
 
         cmd_orchestrate(args)

@@ -1,0 +1,226 @@
+name: "Teach Phase - Enforce Real CLI Smoke Tests in UAT"
+status: "pending"
+type: "teach"
+
+phases:
+  - name: "Update UAT Guidance"
+    status: "pending"
+    description: |
+      Update planner-test, orchestration-executor, test-user-simulator, and
+      planning-standard.yml to enforce real CLI smoke tests in UAT phases.
+
+tasks:
+  - id: "teach-001"
+    name: "Add real CLI smoke test fence to planner-test/process.yml"
+    description: |
+      Add a new fence in planner-test/process.yml that mandates UAT tasks for
+      CLI commands MUST include a "real CLI smoke test" step.
+
+      FENCE TO ADD (after line 361, in uat_task_generation section):
+      ```yaml
+      real_cli_smoke_test_requirement:
+        fence: |
+          FENCE: UAT for CLI commands MUST run the actual installed CLI, not mocks.
+
+          When planning UAT for CLI changes, the test plan MUST include a smoke
+          test task that runs the actual `agentic <command>` from the installed
+          binary, not subprocess mocks or --help-only validation.
+
+          VALIDATION CHECKLIST for CLI UAT tasks:
+          1. Uses the installed CLI binary (which agentic -> /usr/local/bin/agentic)
+          2. Runs the FULL command with realistic args (not just --help)
+          3. Verifies exit code and actual output (not just "no error")
+          4. Tests the complete user workflow (e.g., agentic orchestrate --mode planning)
+
+          WRONG EXAMPLES:
+          - subprocess.run(["agentic", "--help"]) - only validates help text
+          - Mock CLI and check it was called - never touches real command
+          - Run in test suite without installing - doesn't test installed binary
+
+          RIGHT EXAMPLES:
+          - Run `agentic orchestrate --mode planning --no-tmux` and verify exit code 0
+          - Run `agentic plan list` and verify JSON output format
+          - Run `agentic context bootstrap --role builder -j` and parse output
+
+        rationale: |
+          Three plans (260214PF, 260214TG, 260214US) "passed UAT" with mocked tests
+          but the actual `agentic orchestrate --mode planning` command was broken.
+          UAT validated against mocked subprocess calls, never running the real CLI.
+          This fence prevents that failure mode by mandating real CLI execution in UAT.
+      ```
+
+      Target file: modules/AgenticGuidance/agents/planner/planner-test/process.yml
+      Insert location: After line 361 (end of uat_task_generation section)
+    status: "pending"
+    target_files:
+      - path: "modules/AgenticGuidance/agents/planner/planner-test/process.yml"
+        change_type: "modify"
+        change_category: "guidance"
+
+  - id: "teach-002"
+    name: "Add integration smoke test gate to orchestration-executor/process.yml"
+    description: |
+      Add a mandatory integration smoke test gate in orchestration-executor/process.yml
+      BEFORE the shutdown sequence. This gate ensures CLI commands are actually tested.
+
+      NEW STEP TO ADD (after step id "worktree_commit_merge", before "shutdown_aggregate_status"):
+      ```yaml
+      - id: "integration_smoke_test_gate"
+        name: "Integration Smoke Test Gate (CLI Commands)"
+        description: |
+          FENCE: Before marking plan complete, verify CLI commands actually work.
+
+          If the plan modifies CLI command implementations, the executor MUST
+          run a smoke test to verify the command executes successfully.
+
+          DETECTION:
+          1. Check plan metadata for impacted_files or impacted_artifacts
+          2. If any file in modules/AgenticCLI/src/agenticcli/commands/* was modified,
+             this gate is MANDATORY
+          3. If plan description mentions "CLI" or "command", this gate is RECOMMENDED
+
+          SMOKE TEST EXECUTION:
+          1. Identify the modified command (e.g., orchestrate.py -> agentic orchestrate)
+          2. Run the command with --no-tmux flag (for non-interactive testing)
+          3. Verify exit code is 0 (or expected error code if testing error handling)
+          4. Verify basic output sanity (e.g., JSON output parses, help text renders)
+
+          SKIP CONDITIONS:
+          - Plan is guidance-only (no code changes)
+          - No CLI commands were modified
+          - Plan metadata has smoke_test_strategy: "delegated_to_uat"
+
+          FAILURE HANDLING:
+          - If smoke test fails, transition to BLOCKED
+          - Report: "CLI command <name> failed smoke test"
+          - Error details: exit code, stdout/stderr excerpts
+          - Do NOT proceed to shutdown while CLI is broken
+
+          RATIONALE:
+          Three plans passed UAT with mocked tests but broke `agentic orchestrate`.
+          This gate prevents shipping broken CLI commands by testing the real binary.
+
+        fence: |
+          FENCE: DO NOT MARK PLAN COMPLETE WITHOUT SMOKE TESTING MODIFIED CLI COMMANDS
+          This gate runs BEFORE shutdown for any plan that modifies CLI command files.
+      ```
+
+      Target file: modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml
+      Insert location: After step "worktree_commit_merge" (line ~451), before "shutdown_aggregate_status"
+    status: "pending"
+    target_files:
+      - path: "modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml"
+        change_type: "modify"
+        change_category: "guidance"
+
+  - id: "teach-003"
+    name: "Update test-user-simulator to prefer real commands over mocks"
+    description: |
+      Update test-user-simulator/process.yml to add a guideline that strongly
+      prefers running real commands over mocked validation.
+
+      NEW GUIDELINE TO ADD (in guidelines section, after line 177):
+      ```yaml
+      - |
+        PREFER REAL COMMAND EXECUTION over subprocess mocking for UAT.
+        When simulating user behavior, run actual installed CLI commands:
+        - Use `agentic <command>` not subprocess.run mocks
+        - Verify real exit codes and output
+        - Test complete workflows, not isolated function calls
+
+        Mocking is ONLY acceptable for:
+        - External services (GitHub API, ntfy.sh)
+        - Time-consuming operations (full CI/CD runs)
+        - Destructive operations (database wipes)
+
+        CLI command testing MUST use real commands:
+        - agentic plan list
+        - agentic orchestrate --mode planning --no-tmux
+        - agentic context bootstrap --role <role> -j
+      ```
+
+      Target file: modules/AgenticGuidance/agents/test/test-user-simulator/process.yml
+      Insert location: After line 177 (end of guidelines section)
+    status: "pending"
+    target_files:
+      - path: "modules/AgenticGuidance/agents/test/test-user-simulator/process.yml"
+        change_type: "modify"
+        change_category: "guidance"
+
+  - id: "teach-004"
+    name: "Add CLI smoke test rule to planning-standard.yml"
+    description: |
+      Add a new rule to planning-standard.yml that mandates CLI smoke tests
+      for any plan that modifies CLI command implementations.
+
+      NEW RULE TO ADD (in rules section, after "UAT Implementation Flexibility"):
+      ```yaml
+      - rule: "CLI Smoke Test Requirement"
+        mandatory: true
+        fence: |
+          FENCE: CLI CHANGES REQUIRE REAL SMOKE TESTS IN UAT
+          Any plan that modifies CLI command implementations MUST include UAT
+          tasks that run the actual installed CLI binary end-to-end.
+
+        justification: |
+          Mocked tests can pass while the real CLI command is broken. Testing
+          the installed binary is the only way to ensure CLI commands actually
+          work for users.
+
+        detection:
+          - "Plan modifies files in modules/AgenticCLI/src/agenticcli/commands/*"
+          - "Plan description mentions CLI commands or agentic CLI"
+          - "impacted_artifacts includes CLI commands"
+
+        requirements:
+          - "UAT phase includes task that runs `agentic <command>` with realistic args"
+          - "Test uses installed binary (which agentic), not local Python files"
+          - "Verification checks exit code, output format, and basic functionality"
+          - "Test runs in CI-compatible mode (--no-tmux, --json flags where applicable)"
+
+        examples:
+          good:
+            - "Run `agentic orchestrate --mode planning --no-tmux` and verify exit code 0"
+            - "Run `agentic plan list -j` and parse JSON output"
+          bad:
+            - "Mock subprocess and verify agentic was called"
+            - "Run pytest tests that import CLI modules directly"
+            - "Run `agentic --help` and verify it doesn't error"
+      ```
+
+      Target file: modules/AgenticGuidance/assets/guidelines/planning-standard.yml
+      Insert location: After "UAT Implementation Flexibility" rule (line ~180)
+    status: "pending"
+    target_files:
+      - path: "modules/AgenticGuidance/assets/guidelines/planning-standard.yml"
+        change_type: "modify"
+        change_category: "guidance"
+
+success_criteria:
+  - "All four guidance files updated with real CLI smoke test requirements"
+  - "Fences clearly state: CLI UAT MUST run actual installed binary, not mocks"
+  - "Guidance explains WHY (prevents shipping broken commands like 260214 batch)"
+  - "Examples show RIGHT (real CLI execution) vs WRONG (mocked tests)"
+
+impacted_files:
+  - path: "modules/AgenticGuidance/agents/planner/planner-test/process.yml"
+    change_type: "modify"
+    change_category: "guidance"
+    reason: "Add real CLI smoke test fence for UAT planning"
+  - path: "modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml"
+    change_type: "modify"
+    change_category: "guidance"
+    reason: "Add integration smoke test gate before shutdown"
+  - path: "modules/AgenticGuidance/agents/test/test-user-simulator/process.yml"
+    change_type: "modify"
+    change_category: "guidance"
+    reason: "Prefer real command execution over mocking"
+  - path: "modules/AgenticGuidance/assets/guidelines/planning-standard.yml"
+    change_type: "modify"
+    change_category: "guidance"
+    reason: "Add CLI smoke test requirement rule"
+
+notes: |
+  This teach phase addresses the ROOT CAUSE: guidance did not enforce real CLI
+  testing in UAT. After these changes, future plans that modify CLI commands
+  will be required to test the actual installed binary, not mocked subprocess calls.

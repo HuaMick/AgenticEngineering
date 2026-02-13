@@ -1,0 +1,99 @@
+name: "Build Phase - Fix Orchestrate Command Too Long Bug"
+status: "pending"
+type: "build"
+
+phases:
+  - name: "Fix System Prompt Passing"
+    status: "pending"
+    description: |
+      Fix orchestrate.py to write system prompt to a temp file and use
+      --append-system-prompt-file instead of passing 447 lines as a CLI arg.
+
+tasks:
+  - id: "build-001"
+    name: "Refactor cmd_orchestrate to use temp file for system prompt"
+    description: |
+      Update cmd_orchestrate() in orchestrate.py to:
+
+      1. Write system_prompt to a temp file instead of passing as --append-system-prompt arg
+      2. Use tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False)
+      3. Pass temp file path to Claude using --append-system-prompt-file <path>
+      4. Clean up temp file after Claude session ends (or let OS handle cleanup)
+
+      CURRENT CODE (line 371-382):
+      ```python
+      # 3. Combine into system prompt appendix
+      system_prompt = (
+          f"{prompt_content}\n\n---\n\n"
+          f"## BOOTSTRAP CONTEXT (auto-injected)\n\n{bootstrap_text}"
+      )
+
+      # 4. Build claude command
+      cmd = ["claude", "--dangerously-skip-permissions"]
+      model = getattr(args, "model", None)
+      if model:
+          cmd.extend(["--model", model])
+      cmd.extend(["--append-system-prompt", system_prompt])
+      ```
+
+      NEW CODE:
+      ```python
+      import tempfile
+
+      # 3. Combine into system prompt appendix
+      system_prompt = (
+          f"{prompt_content}\n\n---\n\n"
+          f"## BOOTSTRAP CONTEXT (auto-injected)\n\n{bootstrap_text}"
+      )
+
+      # 4. Write system prompt to temp file
+      with tempfile.NamedTemporaryFile(
+          mode='w', suffix='.md', delete=False, prefix='claude_prompt_'
+      ) as f:
+          f.write(system_prompt)
+          prompt_file_path = f.name
+
+      # 5. Build claude command with prompt file
+      cmd = ["claude", "--dangerously-skip-permissions"]
+      model = getattr(args, "model", None)
+      if model:
+          cmd.extend(["--model", model])
+      cmd.extend(["--append-system-prompt-file", prompt_file_path])
+      ```
+
+      RATIONALE:
+      - The 447-line process.mmd exceeds tmux send-keys character limit
+      - Passing as file arg avoids command-line length limits
+      - Temp file is automatically cleaned up by OS on reboot if not deleted
+
+      Target file: modules/AgenticCLI/src/agenticcli/commands/orchestrate.py
+      Lines to modify: 371-382
+    status: "pending"
+    target_files:
+      - path: "modules/AgenticCLI/src/agenticcli/commands/orchestrate.py"
+        change_type: "modify"
+        change_category: "code"
+
+success_criteria:
+  - "orchestrate.py uses --append-system-prompt-file instead of --append-system-prompt"
+  - "System prompt written to temp file with tempfile.NamedTemporaryFile"
+  - "Temp file has .md suffix for syntax highlighting in editor"
+  - "Code handles file creation errors gracefully"
+  - "`agentic orchestrate --mode planning` runs without tmux character limit errors"
+
+impacted_files:
+  - path: "modules/AgenticCLI/src/agenticcli/commands/orchestrate.py"
+    change_type: "modify"
+    change_category: "code"
+    reason: "Fix command-too-long bug by using temp file for system prompt"
+
+impacted_artifacts:
+  - artifact_type: "cli_command"
+    artifact_identifier: "agentic orchestrate"
+    impact_type: "bug_fix"
+    description: "Fixed tmux character limit error when passing large system prompts"
+
+notes: |
+  This is a simple one-task build phase. The fix is straightforward: write to
+  temp file instead of passing as CLI arg. The real complexity is in the test
+  phase - we need to verify this actually works end-to-end.

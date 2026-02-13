@@ -17,6 +17,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -374,14 +375,22 @@ def cmd_orchestrate(args, ctx=None):
         f"## BOOTSTRAP CONTEXT (auto-injected)\n\n{bootstrap_text}"
     )
 
-    # 4. Build claude command
-    cmd = ["claude", "--dangerously-skip-permissions"]
+    # 4. Write system prompt to temp file (avoids tmux send-keys character limit)
+    # Note: File is not deleted because this process will be replaced by os.execvp.
+    # The file persists in /tmp/ and will be cleaned up by the system.
+    prompt_tmp = tempfile.NamedTemporaryFile(
+        mode='w', suffix='.md', delete=False, prefix='agentic_prompt_'
+    )
+    prompt_tmp.write(system_prompt)
+    prompt_tmp.close()
+
+    # 5. Build base claude command args (without system prompt - added per-path below)
+    base_cmd = ["claude", "--dangerously-skip-permissions"]
     model = getattr(args, "model", None)
     if model:
-        cmd.extend(["--model", model])
-    cmd.extend(["--append-system-prompt", system_prompt])
+        base_cmd.extend(["--model", model])
 
-    # 5. Check for tmux layout path (unless --no-tmux is set)
+    # 6. Check for tmux layout path (unless --no-tmux is set)
     no_tmux = getattr(args, "no_tmux", False)
     dashboard_refresh = getattr(args, "dashboard_refresh", 5)
     question_refresh = getattr(args, "question_refresh", 10)
@@ -396,9 +405,13 @@ def cmd_orchestrate(args, ctx=None):
             from agenticcli.utils.tmux import is_in_tmux
 
             if tmux_available():
+                # Tmux path: use $(cat file) to keep send-keys command short
+                tmux_cmd = base_cmd + [
+                    "--append-system-prompt", f"$(cat {prompt_tmp.name})"
+                ]
                 # Create the 3-pane layout
                 layout = create_orchestration_layout(
-                    claude_cmd=cmd,
+                    claude_cmd=tmux_cmd,
                     dashboard_refresh=dashboard_refresh,
                     question_refresh=question_refresh,
                 )
@@ -407,18 +420,22 @@ def cmd_orchestrate(args, ctx=None):
                 if layout.created_new_session:
                     attach_to_session(layout.session_name)
                 else:
-                    # Already in tmux, layout is created, now exec into Claude in main pane
-                    os.execvp("claude", cmd)
+                    # Already in tmux, layout is created, exec with full content
+                    direct_cmd = base_cmd + ["--append-system-prompt", system_prompt]
+                    os.execvp("claude", direct_cmd)
             else:
-                # tmux not available, fall back to plain execvp
+                # tmux not available, pass full content directly (no char limit)
                 print_warning("tmux not available, launching without dashboard layout")
-                os.execvp("claude", cmd)
+                direct_cmd = base_cmd + ["--append-system-prompt", system_prompt]
+                os.execvp("claude", direct_cmd)
 
         except RuntimeError as e:
             # Graceful fallback if tmux layout creation fails
             print_warning(f"Failed to create tmux layout: {e}")
             print_warning("Falling back to plain Claude session")
-            os.execvp("claude", cmd)
+            direct_cmd = base_cmd + ["--append-system-prompt", system_prompt]
+            os.execvp("claude", direct_cmd)
     else:
-        # --no-tmux flag set, use plain execvp
-        os.execvp("claude", cmd)
+        # --no-tmux flag set, pass full content directly (no char limit)
+        direct_cmd = base_cmd + ["--append-system-prompt", system_prompt]
+        os.execvp("claude", direct_cmd)

@@ -1,0 +1,144 @@
+name: "UAT Phase - Verify CLI Commands Work End-to-End"
+status: "pending"
+type: "uat"
+
+phases:
+  - name: "Real CLI Smoke Tests"
+    status: "pending"
+    description: |
+      Run the actual installed CLI commands end-to-end to verify they work.
+      This UAT phase DEMONSTRATES the guidance we just added - it runs real
+      CLI commands, not mocked tests.
+
+tasks:
+  - id: "uat-001"
+    name: "Smoke test: agentic orchestrate --mode planning"
+    description: |
+      Run the actual `agentic orchestrate --mode planning --no-tmux` command
+      and verify it starts successfully without errors.
+
+      ACCEPTANCE CRITERIA:
+      1. Command exits with code 0, 1, or 130 (clean exit or user interrupt)
+      2. No "command too long" or "argument list too long" errors in stderr
+      3. Claude session starts (can immediately exit with Ctrl+C or Enter)
+      4. Temp file is created for system prompt (verifies the fix)
+
+      EXECUTION STEPS:
+      1. Open a terminal
+      2. Run: `agentic orchestrate --mode planning --no-tmux`
+      3. Immediately press Enter or Ctrl+C to exit Claude session
+      4. Check exit code: `echo $?`
+      5. Verify no error messages about command length
+
+      EVIDENCE REQUIRED:
+      - Terminal output showing command started
+      - Exit code (0, 1, or 130)
+      - No error messages in output
+
+      VERIFICATION METHOD: manual
+      (Could be automated with test-user-simulator, but manual is simpler for smoke test)
+    status: "pending"
+    acceptance_criteria:
+      - "Command starts without 'command too long' error"
+      - "Exit code is 0, 1, or 130"
+      - "No tmux character limit errors"
+
+  - id: "uat-002"
+    name: "Smoke test: agentic orchestrate --mode executor"
+    description: |
+      Run the actual `agentic orchestrate --mode executor --no-tmux` command
+      and verify it starts successfully.
+
+      ACCEPTANCE CRITERIA:
+      1. Command exits cleanly (no "command too long" errors)
+      2. Claude session starts
+      3. Temp file approach works for executor mode too
+
+      EXECUTION STEPS:
+      1. Run: `agentic orchestrate --mode executor --no-tmux`
+      2. Exit immediately
+      3. Verify no errors
+
+      VERIFICATION METHOD: manual
+    status: "pending"
+    acceptance_criteria:
+      - "Command starts without errors"
+      - "No character limit issues"
+
+  - id: "uat-003"
+    name: "Verify integration tests pass"
+    description: |
+      Run the integration test suite and verify all tests pass.
+
+      ACCEPTANCE CRITERIA:
+      1. All integration tests in tests/integration/ pass
+      2. Tests run the actual installed CLI binary
+      3. Tests verify no command-too-long errors
+
+      EXECUTION STEPS:
+      1. cd modules/AgenticCLI
+      2. Run: `pytest tests/integration/ -v`
+      3. Verify all tests pass (3/3)
+
+      VERIFICATION METHOD: test-runner
+    status: "pending"
+    acceptance_criteria:
+      - "All integration tests pass"
+      - "Tests run real CLI commands (not mocks)"
+      - "No command length errors detected"
+
+  - id: "uat-004"
+    name: "Verify guidance updates are effective"
+    description: |
+      Manually review the updated guidance files and verify they clearly state
+      the requirement for real CLI smoke tests.
+
+      ACCEPTANCE CRITERIA:
+      1. planner-test/process.yml has real_cli_smoke_test_requirement fence
+      2. orchestration-executor/process.yml has integration_smoke_test_gate
+      3. test-user-simulator/process.yml prefers real commands over mocks
+      4. planning-standard.yml has CLI Smoke Test Requirement rule
+
+      EXECUTION STEPS:
+      1. Read each guidance file
+      2. Verify the fences/guidelines are clear and actionable
+      3. Confirm examples show RIGHT (real CLI) vs WRONG (mocks)
+
+      VERIFICATION METHOD: manual
+    status: "pending"
+    acceptance_criteria:
+      - "All four guidance files updated"
+      - "Fences clearly mandate real CLI testing"
+      - "Examples demonstrate correct approach"
+
+success_criteria:
+  - "All UAT tasks complete successfully"
+  - "`agentic orchestrate` commands work without command-too-long errors"
+  - "Integration tests pass with real CLI execution"
+  - "Guidance updates are in place and clear"
+  - "Future plans will catch similar bugs BEFORE shipping"
+
+loop:
+  type: "user-story-validation-loop"
+  maximum_iterations: 3
+  exit_conditions:
+    success:
+      condition: "PASS"
+      criteria: "All UAT tasks pass"
+    max_iterations:
+      action: "escalate"
+      reason: "UAT smoke tests still failing"
+
+impacted_files: []  # UAT doesn't modify files, it validates behavior
+
+notes: |
+  This UAT phase DEMONSTRATES the solution we built:
+  - We run REAL CLI commands (not mocks)
+  - We verify the actual installed binary works
+  - We test the complete user workflow
+
+  This is exactly what was MISSING from the previous plans (260214PF, 260214TG, 260214US).
+  They had UAT phases with mocked tests. This UAT has REAL execution.
+
+  If this approach had been used for those plans, the bugs would have been caught
+  BEFORE shipping, not after 3 plans "passed UAT" with broken commands.

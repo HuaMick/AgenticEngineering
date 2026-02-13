@@ -450,8 +450,95 @@ process:
         Stranded worktree changes are a critical execution gap.
 
     # =========================================================================
-    # PHASE 3: SHUTDOWN SEQUENCE
+    # PHASE 2.7: INTEGRATION SMOKE TEST GATE (CLI command verification)
     # =========================================================================
+    - id: "integration_smoke_test_gate"
+      name: "Integration Smoke Test Gate"
+      description: |
+        FENCE: Before marking plan complete, verify CLI commands actually work
+        by running the installed binary. This gate prevents plans from completing
+        with broken CLI commands that passed mocked UAT.
+
+        HISTORICAL CONTEXT:
+        Plans 260214PF, 260214TG, 260214US passed UAT with mocked subprocess
+        tests but the actual `agentic` command was broken. Mocked tests provide
+        false confidence - they validate test code, not production behavior.
+
+        DETECTION CRITERIA:
+        This gate applies if:
+        1. Plan modified files in modules/AgenticCLI/src/agenticcli/commands/
+        2. Plan's impacted_files include any *.py files under agenticcli/commands/
+        3. Plan objective or description mentions CLI command creation/modification
+        4. Plan has affected_stories matching US-CLI-* pattern
+
+        If NONE of these apply, skip this gate (not a CLI plan).
+
+        EXECUTION STEPS (when gate applies):
+        1. Identify CLI commands modified or created by this plan:
+           - Read impacted_files from plan metadata
+           - Extract command names from file paths (e.g., commands/orchestrate.py -> orchestrate)
+
+        2. For EACH identified command, run smoke test:
+           a. Execute: agentic <command> --help
+              - Verify returncode == 0
+              - Verify help text contains command description
+
+           b. Execute: agentic <command> <minimal-args> --no-tmux
+              - Use --no-tmux to avoid interactive mode
+              - Minimal args = simplest valid invocation
+              - Examples:
+                * agentic orchestrate --mode planning --no-tmux
+                * agentic plan list
+                * agentic session list
+              - Verify returncode == 0 OR expected error code (not crash)
+              - Verify stderr is empty OR contains expected validation messages
+
+        3. Document smoke test results:
+           - command_name: string
+           - help_test: pass/fail
+           - smoke_test: pass/fail
+           - error_details: string (if failed)
+
+        FAILURE HANDLING:
+        If ANY smoke test fails:
+        1. Transition plan to BLOCKED status
+        2. Report failure details:
+           "INTEGRATION SMOKE TEST FAILURE
+
+           Command: agentic <command>
+           Test: <help_test|smoke_test>
+           Error: <error_output>
+
+           The CLI command was modified but does not execute correctly.
+           This indicates a gap between UAT (which passed with mocks) and
+           actual runtime behavior.
+
+           REQUIRED ACTION:
+           - Verify the command is properly registered in CLI router
+           - Check for import errors or missing dependencies
+           - Test command locally: agentic <command> --help
+           - Fix the issue and resume execution"
+
+        3. Do NOT proceed to shutdown_aggregate_status
+        4. Await user intervention or remediation plan
+
+        PASS CRITERIA:
+        - All identified commands pass --help test
+        - All identified commands pass minimal smoke test
+        - No crashes, no import errors, no registration failures
+
+        SKIP CONDITIONS:
+        - Plan did not modify CLI commands (detection criteria not met)
+        - Plan metadata has integration_smoke_test: "skip" with rationale
+        - Plan is guidance-only or test-only with no CLI changes
+
+      fence: |
+        FENCE: CLI INTEGRATION SMOKE TEST GATE
+        This gate MUST run before shutdown_aggregate_status for CLI plans.
+        Skipping this gate allows broken CLI commands to reach completion.
+
+        UAT with mocked subprocesses is NOT sufficient to validate CLI commands.
+        The installed binary MUST be executed to verify real-world behavior.
     - id: "shutdown_aggregate_status"
       name: "Aggregate Final Status"
       description: |

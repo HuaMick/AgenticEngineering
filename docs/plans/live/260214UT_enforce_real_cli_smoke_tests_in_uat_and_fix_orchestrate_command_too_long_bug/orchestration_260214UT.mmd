@@ -1,0 +1,136 @@
+```mermaid
+---
+GOAL: Fix systemic UAT gap - enforce real CLI smoke tests and fix orchestrate command-too-long bug
+PROFILE: orchestrator
+PHASES: [Teach, Build, Test, UAT]
+AGENT_ROUTING: {
+  "Teach": "teacher-update-guidance",
+  "Build": "build-python",
+  "Test": "test-runner",
+  "UAT": "test-user-simulator"
+}
+FEEDBACK_TRIGGER: {
+  "TEST_FAILURE": "Test",
+  "UAT_FAILURE": "UAT"
+}
+STATUS: {
+  "Teach": "pending",
+  "Build": "pending",
+  "Test": "pending",
+  "UAT": "pending"
+}
+LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml
+MAX_ITERATIONS: 5
+---
+
+flowchart TD
+    Start([260214UT: Enforce Real CLI Smoke Tests])
+
+    subgraph Teach[Teach Phase - Update Guidance]
+        T1[Update planner-test: Add real CLI smoke test fence]
+        T2[Update orchestration-executor: Add integration smoke test gate]
+        T3[Update test-user-simulator: Prefer real commands]
+        T4[Update planning-standard: Add CLI smoke test rule]
+        T1 --> T2 --> T3 --> T4
+    end
+
+    subgraph Build[Build Phase - Fix Orchestrate Command]
+        B1[Refactor cmd_orchestrate to use temp file for system prompt]
+        B1_Detail[Write system_prompt to tempfile, use --append-system-prompt-file]
+    end
+
+    subgraph Test[Test Phase - Integration Tests]
+        Test_Loop{Test-Fix Loop}
+        I1[Create test_orchestrate_integration.py]
+        I2[Create integration/conftest.py]
+        I3[Update pytest.ini with integration marker]
+        I4[Run integration tests]
+        I1 --> I2 --> I3 --> I4
+        I4 --> Test_Loop
+        Test_Loop -->|PASS| Test_Complete[Tests Pass]
+        Test_Loop -->|FAIL| I4
+        Test_Loop -->|Max Iterations| Escalate_Test[Escalate to User]
+    end
+
+    subgraph UAT[UAT Phase - Real CLI Smoke Tests]
+        UAT_Loop{User Story Validation Loop}
+        U1[Smoke test: agentic orchestrate --mode planning]
+        U2[Smoke test: agentic orchestrate --mode executor]
+        U3[Verify integration tests pass]
+        U4[Verify guidance updates effective]
+        U1 --> U2 --> U3 --> U4
+        U4 --> UAT_Loop
+        UAT_Loop -->|PASS| UAT_Complete[UAT Pass]
+        UAT_Loop -->|FAIL| U1
+        UAT_Loop -->|Max Iterations| Escalate_UAT[Escalate to User]
+    end
+
+    Start --> Teach
+    Teach --> Build
+    Build --> Test
+    Test_Complete --> UAT
+    UAT_Complete --> Complete([Plan Complete])
+
+    Escalate_Test --> Blocked_Test[Blocked: Test Failures Persist]
+    Escalate_UAT --> Blocked_UAT[Blocked: UAT Failures Persist]
+
+    %% Styling
+    classDef teachStyle fill:#e1f5ff,stroke:#0066cc
+    classDef buildStyle fill:#fff4e6,stroke:#ff9800
+    classDef testStyle fill:#f3e5f5,stroke:#9c27b0
+    classDef uatStyle fill:#e8f5e9,stroke:#4caf50
+    classDef loopStyle fill:#fff9c4,stroke:#fbc02d
+    classDef blockedStyle fill:#ffebee,stroke:#f44336
+
+    class Teach,T1,T2,T3,T4 teachStyle
+    class Build,B1,B1_Detail buildStyle
+    class Test,I1,I2,I3,I4,Test_Complete testStyle
+    class UAT,U1,U2,U3,U4,UAT_Complete uatStyle
+    class Test_Loop,UAT_Loop loopStyle
+    class Blocked_Test,Blocked_UAT,Escalate_Test,Escalate_UAT blockedStyle
+```
+
+## Plan Summary
+
+**Objective:** Fix the systemic UAT gap where plans "pass UAT" with mocked tests but real CLI commands are broken.
+
+**Root Cause:**
+- Three plans (260214PF, 260214TG, 260214US) passed UAT using mocked subprocess tests
+- The actual `agentic orchestrate --mode planning` command was broken with two bugs:
+  1. tmux split changes never merged to main (no merge step in executor)
+  2. Command-too-long error (447-line process.mmd passed as CLI arg exceeds tmux limit)
+
+**Solution:**
+
+1. **Teach Phase:** Update guidance to mandate real CLI smoke tests in UAT
+   - planner-test: Add fence requiring real CLI execution in UAT tasks
+   - orchestration-executor: Add integration smoke test gate before shutdown
+   - test-user-simulator: Prefer real commands over mocks
+   - planning-standard: Add CLI smoke test requirement rule
+
+2. **Build Phase:** Fix the command-too-long bug
+   - Refactor orchestrate.py to use temp file for system prompt
+   - Use --append-system-prompt-file instead of --append-system-prompt
+
+3. **Test Phase:** Create integration tests with REAL CLI execution
+   - test_orchestrate_integration.py: Run actual `agentic orchestrate` commands
+   - NO MOCKING - test the installed binary
+   - Verify no command-too-long errors
+
+4. **UAT Phase:** Smoke test the actual CLI commands
+   - Run `agentic orchestrate --mode planning --no-tmux`
+   - Run `agentic orchestrate --mode executor --no-tmux`
+   - Verify integration tests pass
+   - Verify guidance updates are effective
+
+**Agent Routing:**
+- Teach → teacher-update-guidance
+- Build → build-python
+- Test → test-runner
+- UAT → test-user-simulator (or manual)
+
+**Success Criteria:**
+- Guidance enforces real CLI testing (prevents future bugs)
+- Orchestrate command works without character limit errors
+- Integration tests demonstrate correct approach (real CLI, no mocks)
+- Future plans will catch similar bugs BEFORE shipping
