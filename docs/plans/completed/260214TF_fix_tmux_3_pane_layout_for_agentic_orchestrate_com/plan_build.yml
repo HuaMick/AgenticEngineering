@@ -1,0 +1,598 @@
+_template_status: active
+plan:
+  name: Fix tmux 3-pane layout for agentic orchestrate
+  worktree: /home/code/AgenticEngineering-260212TC_add_test_cleaner_agent
+  branch: 260214TF_fix_tmux_orchestrate_layout
+  status: planning
+  created: '2026-02-14'
+  objective: 'Fix the tmux 3-pane layout failure in `agentic orchestrate` command.
+    Currently, when users
+
+    run `agentic orchestrate -m loop` (or any mode), they get a plain single-pane
+    Claude Code
+
+    session instead of the expected 3-pane tmux layout with session/question dashboards.
+
+
+    ROOT CAUSE 1 (PRIMARY - silent failure): `tmux new-session -d` creates a detached
+    session
+
+    without terminal dimensions. The subsequent `split-window -p 30` fails with "size
+    missing"
+
+    because tmux cannot calculate percentage-based splits without known dimensions.
+    This raises
+
+    RuntimeError which is caught at orchestrate.py:410, falling back silently to plain
+    execvp.
+
+    FIX: Add `-x 200 -y 50` to `tmux new-session -d` command.
+
+
+    ROOT CAUSE 2 (secondary): The Claude command is sent to the main pane via `tmux
+    send-keys`
+
+    but Enter is never pressed (line 161). Even if the layout were created, the user
+    would see
+
+    a typed-but-not-executed command.
+
+    FIX: Add "Enter" argument to the send-keys call.
+
+    '
+  scope:
+    includes:
+    - modules/AgenticCLI/src/agenticcli/utils/tmux_layout.py
+    - modules/AgenticCLI/src/agenticcli/commands/orchestrate.py
+    - modules/AgenticCLI/tests/test_tmux_layout.py
+    - modules/AgenticCLI/tests/test_orchestrate_command.py
+    excludes:
+    - modules/AgenticCLI/src/agenticcli/utils/tmux.py
+  impacted_files:
+  - path: modules/AgenticCLI/src/agenticcli/utils/tmux_layout.py
+    change_type: modify
+    change_category: implementation
+    reason: Fix _create_new_session_layout to execute Claude command
+  - path: modules/AgenticCLI/tests/test_tmux_layout.py
+    change_type: create
+    change_category: testing
+    reason: New comprehensive test suite for tmux_layout module
+  - path: modules/AgenticCLI/tests/test_orchestrate_command.py
+    change_type: modify
+    change_category: testing
+    reason: Add tests for tmux layout path in orchestrate command
+  impacted_artifacts:
+  - artifact_type: function
+    artifact_identifier: _create_new_session_layout
+    impact_type: modify
+    description: Add -x/-y dimensions to new-session and Enter key to send-keys for
+      main pane
+  - artifact_type: function
+    artifact_identifier: attach_to_session
+    impact_type: no_change
+    description: Function works correctly - no changes needed
+phases:
+- name: Phase 1 - Root Cause Investigation & Documentation
+  id: phase_01
+  status: completed
+  description: Investigate and document the exact failure point in the tmux layout
+    creation
+  tasks:
+  - id: phase_01_001
+    name: Trace execution path and identify failure point
+    status: completed
+    description: 'Investigation reveals TWO root causes:
+
+      BUG 1 (PRIMARY): tmux new-session -d creates detached session without terminal
+
+      dimensions. split-window -p 30 fails with "size missing" because percentage
+
+      splits require known dimensions. This raises RuntimeError caught at orchestrate.py:410
+
+      causing silent fallback to plain os.execvp. User never sees tmux layout at all.
+
+      BUG 2 (SECONDARY): Claude command sent to main pane at line 161 without Enter
+      key.
+
+      Even with layout working, command would be typed but not executed.
+
+      Verified: tmux_available()=True, is_in_tmux()=False, _create_new_session_layout()
+
+      path taken but fails at first split-window call.
+
+      '
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/utils/tmux_layout.py
+    - modules/AgenticCLI/src/agenticcli/commands/orchestrate.py
+- name: Phase 2 - Core Fix Implementation
+  id: phase_02
+  status: pending
+  description: 'Fix both root causes: detached session dimensions and missing Enter
+    key'
+  tasks:
+  - id: phase_02_001
+    name: Add terminal dimensions to detached tmux session creation
+    status: completed
+    description: "CRITICAL FIX: Modify _create_new_session_layout() to add -x and\
+      \ -y flags to\nthe `tmux new-session -d` command so that split-window can calculate\
+      \ percentages.\nChange from:\n  [\"tmux\", \"new-session\", \"-d\", \"-s\",\
+      \ session_name, \"-n\", \"orchestrator\", \"-P\", \"-F\", \"#{pane_id}\"]\n\
+      To:\n  [\"tmux\", \"new-session\", \"-d\", \"-s\", session_name, \"-n\", \"\
+      orchestrator\", \"-x\", \"200\", \"-y\", \"50\", \"-P\", \"-F\", \"#{pane_id}\"\
+      ]\nWithout this, tmux split-window fails with \"size missing\" on detached sessions,\n\
+      causing the entire layout creation to fail and fall back to plain session.\n"
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/utils/tmux_layout.py
+    acceptance_criteria:
+    - tmux new-session includes -x 200 -y 50
+    - split-window -p 30 succeeds on detached session
+    - No more 'size missing' error
+  - id: phase_02_002
+    name: Add Enter key to execute Claude command in _create_new_session_layout
+    status: completed
+    description: "Modify _create_new_session_layout() at line 161 to send Enter key\
+      \ after the command.\nChange from:\n  subprocess.run([\"tmux\", \"send-keys\"\
+      , \"-t\", main_pane_id, _shell_escape_cmd(claude_cmd)], check=True)\nTo:\n \
+      \ subprocess.run([\"tmux\", \"send-keys\", \"-t\", main_pane_id, _shell_escape_cmd(claude_cmd),\
+      \ \"Enter\"], check=True)\n"
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/utils/tmux_layout.py
+    acceptance_criteria:
+    - Claude command is executed immediately in main pane
+    - User sees running Claude session on attach, not typed command
+  - id: phase_02_003
+    name: Update comment to reflect new behavior
+    status: completed
+    description: 'Update the comment at lines 158-159 from "We''ll execute it when
+      we attach" to
+
+      reflect that the command is now executed immediately when the session is created.
+
+      '
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/utils/tmux_layout.py
+- name: Phase 3 - Comprehensive Testing (Unit Tests)
+  id: phase_03
+  status: pending
+  description: Create comprehensive unit tests for tmux_layout module functions
+  tasks:
+  - id: phase_03_001
+    name: Create test_tmux_layout.py with basic structure
+    status: completed
+    description: 'Create new test file with pytest structure and necessary imports.
+
+      Follow patterns from test_tmux_utils.py for mocking subprocess calls.
+
+      '
+    target_files:
+    - modules/AgenticCLI/tests/test_tmux_layout.py
+    acceptance_criteria:
+    - File created with proper imports
+    - Test fixtures defined for common mocks
+  - id: phase_03_002
+    name: Test tmux_available() function
+    status: completed
+    description: 'Test cases:
+
+      - Returns True when tmux binary exists in PATH
+
+      - Returns False when tmux binary not found
+
+      '
+    target_files:
+    - modules/AgenticCLI/tests/test_tmux_layout.py
+    acceptance_criteria:
+    - Both success and failure paths tested
+    - Uses shutil.which mock
+  - id: phase_03_003
+    name: Test _shell_escape_cmd() helper
+    status: completed
+    description: 'Test cases:
+
+      - Escapes single argument correctly
+
+      - Escapes multiple arguments with spaces
+
+      - Handles special characters (quotes, backslashes)
+
+      - Handles empty list
+
+      '
+    target_files:
+    - modules/AgenticCLI/tests/test_tmux_layout.py
+    acceptance_criteria:
+    - All edge cases covered
+    - No subprocess mocking needed (pure function)
+  - id: phase_03_004
+    name: Test _create_new_session_layout() success path
+    status: completed
+    description: 'Test the complete success path with mocked subprocess calls:
+
+      - Session created with correct name
+
+      - All three panes created with correct split percentages
+
+      - Pane titles set correctly
+
+      - Dashboard commands sent to status and questions panes
+
+      - Claude command sent AND EXECUTED (with Enter) in main pane
+
+      - Main pane selected for focus
+
+      - Returns OrchestrationLayout with correct fields
+
+      '
+    target_files:
+    - modules/AgenticCLI/tests/test_tmux_layout.py
+    acceptance_criteria:
+    - Verify all subprocess.run calls with correct arguments
+    - Verify Enter key sent after Claude command
+    - Verify OrchestrationLayout.created_new_session is True
+    - Assert correct pane IDs returned
+  - id: phase_03_005
+    name: Test _create_new_session_layout() failure paths
+    status: completed
+    description: 'Test failure scenarios:
+
+      - Session creation fails (subprocess.CalledProcessError)
+
+      - First split-window fails
+
+      - Second split-window fails
+
+      - send-keys fails
+
+      - tmux binary not found (FileNotFoundError)
+
+      - Verify RuntimeError raised in all cases
+
+      '
+    target_files:
+    - modules/AgenticCLI/tests/test_tmux_layout.py
+    acceptance_criteria:
+    - All failure points tested
+    - RuntimeError raised with descriptive message
+  - id: phase_03_006
+    name: Test _create_inplace_layout() success path
+    status: completed
+    description: 'Test the in-place layout creation when already in tmux:
+
+      - Verify is_in_tmux() checked first
+
+      - Current pane ID retrieved
+
+      - Splits created correctly
+
+      - Dashboards started
+
+      - Returns OrchestrationLayout with created_new_session=False
+
+      '
+    target_files:
+    - modules/AgenticCLI/tests/test_tmux_layout.py
+    acceptance_criteria:
+    - Mock is_in_tmux() to return True
+    - Verify pane ID retrieved via display-message
+    - Verify no Claude command execution in this path
+  - id: phase_03_007
+    name: Test _create_inplace_layout() failure paths
+    status: completed
+    description: 'Test failure scenarios for in-place layout:
+
+      - Not in tmux session (is_in_tmux returns False)
+
+      - Cannot determine session name
+
+      - Split operations fail
+
+      - Verify RuntimeError raised
+
+      '
+    target_files:
+    - modules/AgenticCLI/tests/test_tmux_layout.py
+    acceptance_criteria:
+    - RuntimeError raised when not in tmux
+    - All subprocess failures handled
+  - id: phase_03_008
+    name: Test create_orchestration_layout() routing
+    status: completed
+    description: 'Test the main entry point routing logic:
+
+      - Routes to _create_new_session_layout when not in tmux
+
+      - Routes to _create_inplace_layout when in tmux
+
+      - Raises RuntimeError when tmux not available
+
+      - Passes parameters correctly to underlying functions
+
+      '
+    target_files:
+    - modules/AgenticCLI/tests/test_tmux_layout.py
+    acceptance_criteria:
+    - Both routing paths tested
+    - Parameters passed through correctly
+    - tmux_available() check tested
+  - id: phase_03_009
+    name: Test attach_to_session() function
+    status: completed
+    description: 'Test session attachment:
+
+      - Calls os.execvp with correct arguments
+
+      - Raises RuntimeError when tmux not available
+
+      - NOTE: execvp replaces process, so test must mock it
+
+      '
+    target_files:
+    - modules/AgenticCLI/tests/test_tmux_layout.py
+    acceptance_criteria:
+    - os.execvp mocked and verified
+    - Correct tmux attach command constructed
+- name: Phase 4 - Integration Testing
+  id: phase_04
+  status: pending
+  description: Add integration tests to verify orchestrate command uses tmux layout
+  tasks:
+  - id: phase_04_001
+    name: Add test for tmux layout attempt in orchestrate command
+    status: completed
+    description: 'Add test to test_orchestrate_command.py that verifies:
+
+      - Without --no-tmux flag, orchestrate attempts to create layout
+
+      - create_orchestration_layout is called with correct parameters
+
+      - attach_to_session is called for new sessions
+
+      - os.execvp is called for in-place layouts
+
+      '
+    target_files:
+    - modules/AgenticCLI/tests/test_orchestrate_command.py
+    acceptance_criteria:
+    - Mock create_orchestration_layout and verify call
+    - Test both new session and in-place paths
+  - id: phase_04_002
+    name: Test fallback behavior when tmux layout fails
+    status: completed
+    description: 'Test that orchestrate gracefully falls back to plain Claude session:
+
+      - Mock create_orchestration_layout to raise RuntimeError
+
+      - Verify warning printed about fallback
+
+      - Verify os.execvp called with plain claude command
+
+      '
+    target_files:
+    - modules/AgenticCLI/tests/test_orchestrate_command.py
+    acceptance_criteria:
+    - Fallback path tested
+    - Warning message verified
+    - Plain execvp called as fallback
+  - id: phase_04_003
+    name: Test --no-tmux flag bypasses layout creation
+    status: completed
+    description: 'Verify that --no-tmux flag skips tmux layout entirely:
+
+      - create_orchestration_layout NOT called
+
+      - Plain os.execvp called immediately
+
+      '
+    target_files:
+    - modules/AgenticCLI/tests/test_orchestrate_command.py
+    acceptance_criteria:
+    - No tmux functions called when flag set
+    - Direct execvp to claude command
+  - id: phase_04_004
+    name: Test dashboard refresh parameters passed through
+    status: completed
+    description: 'Verify --dashboard-refresh and --question-refresh parameters:
+
+      - Parameters passed to create_orchestration_layout
+
+      - Dashboard commands include correct --refresh values
+
+      '
+    target_files:
+    - modules/AgenticCLI/tests/test_orchestrate_command.py
+    acceptance_criteria:
+    - Custom refresh intervals passed through
+    - Default values used when not specified
+- name: Phase 5 - Edge Case & Error Recovery Testing
+  id: phase_05
+  status: pending
+  description: Test edge cases and error recovery scenarios
+  tasks:
+  - id: phase_05_001
+    name: Test session name collision handling
+    status: completed
+    description: 'Test behavior when session name already exists:
+
+      - Currently uses PID in session name (agentic-orch-{pid})
+
+      - Should be unique, but test collision scenario
+
+      - Verify appropriate error or retry logic
+
+      '
+    target_files:
+    - modules/AgenticCLI/tests/test_tmux_layout.py
+    acceptance_criteria:
+    - Session name uniqueness verified
+    - Error handling tested if collision occurs
+  - id: phase_05_002
+    name: Test with missing/invalid dashboard commands
+    status: completed
+    description: 'Test behavior when dashboard commands don''t exist:
+
+      - Mock agentic session/question dashboard as missing
+
+      - Verify layout creation fails gracefully
+
+      - User gets clear error message
+
+      '
+    target_files:
+    - modules/AgenticCLI/tests/test_tmux_layout.py
+    acceptance_criteria:
+    - Missing command scenarios tested
+    - Clear error messages verified
+  - id: phase_05_003
+    name: Test tmux version compatibility
+    status: completed
+    description: 'Document and test tmux version requirements:
+
+      - Verify split-window -P -F flags work (tmux 1.6+)
+
+      - Verify select-pane -T flag works (tmux 2.3+)
+
+      - Add version check or document minimum version
+
+      '
+    target_files:
+    - modules/AgenticCLI/tests/test_tmux_layout.py
+    - modules/AgenticCLI/src/agenticcli/utils/tmux_layout.py
+    acceptance_criteria:
+    - Minimum tmux version documented
+    - 'Optional: version check added to tmux_available()'
+  - id: phase_05_004
+    name: Test with special characters in command arguments
+    status: completed
+    description: 'Test shell escaping with edge cases:
+
+      - Arguments with quotes, backslashes, newlines
+
+      - Unicode characters
+
+      - Empty strings
+
+      - Verify _shell_escape_cmd handles all cases
+
+      '
+    target_files:
+    - modules/AgenticCLI/tests/test_tmux_layout.py
+    acceptance_criteria:
+    - All shell escaping edge cases tested
+    - No command injection vulnerabilities
+- name: Phase 6 - Manual Verification & Documentation
+  id: phase_06
+  status: pending
+  description: Manual testing and documentation updates
+  tasks:
+  - id: phase_06_001
+    name: 'Manual test: Run agentic orchestrate -m loop'
+    status: completed
+    description: 'Manually verify the fix works end-to-end:
+
+      1. Run `agentic orchestrate -m loop` from shell (not in tmux)
+
+      2. Verify 3-pane layout appears immediately
+
+      3. Verify Claude Code is running in main pane
+
+      4. Verify session dashboard updating in top-right pane
+
+      5. Verify questions dashboard updating in bottom-right pane
+
+      6. Test interaction with Claude in main pane
+
+      '
+    acceptance_criteria:
+    - Layout appears correctly on launch
+    - All three panes functional
+    - Claude session interactive
+  - id: phase_06_002
+    name: 'Manual test: Run orchestrate from within tmux'
+    status: completed
+    description: 'Test the in-place layout path:
+
+      1. Start a tmux session manually
+
+      2. Run `agentic orchestrate -m loop` from within tmux
+
+      3. Verify current pane splits into 3-pane layout
+
+      4. Verify Claude runs in original pane
+
+      '
+    acceptance_criteria:
+    - In-place layout works correctly
+    - No new session created
+  - id: phase_06_003
+    name: 'Manual test: Verify fallback with --no-tmux'
+    status: completed
+    description: 'Test the fallback path:
+
+      1. Run `agentic orchestrate -m loop --no-tmux`
+
+      2. Verify plain Claude session (no tmux layout)
+
+      3. Verify no errors or warnings
+
+      '
+    acceptance_criteria:
+    - Plain session works as expected
+    - No tmux operations attempted
+  - id: phase_06_004
+    name: Update docstrings and comments
+    status: completed
+    description: 'Update documentation to reflect fix:
+
+      - Fix comment at line 158-159 in tmux_layout.py
+
+      - Update module docstring if needed
+
+      - Update orchestrate.py docstring about tmux behavior
+
+      '
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/utils/tmux_layout.py
+    - modules/AgenticCLI/src/agenticcli/commands/orchestrate.py
+    acceptance_criteria:
+    - Comments accurate and clear
+    - Docstrings updated
+validation:
+  test_coverage:
+    minimum_percentage: 90
+    critical_paths:
+    - _create_new_session_layout (all branches)
+    - _create_inplace_layout (all branches)
+    - create_orchestration_layout (routing logic)
+    - cmd_orchestrate tmux path
+  manual_testing_required: true
+  manual_tests:
+  - End-to-end orchestrate launch (not in tmux)
+  - End-to-end orchestrate launch (in tmux)
+  - Fallback with --no-tmux flag
+  - Error handling with tmux unavailable
+uat_fence:
+  required: true
+  criteria:
+  - All unit tests pass
+  - All integration tests pass
+  - Manual verification completed successfully
+  - Test coverage >= 90% for modified functions
+dependencies:
+  internal:
+  - tmux utility module (no changes needed)
+  - orchestrate command (minimal changes)
+  external:
+  - tmux binary (>= 2.3 for pane titles)
+  - agentic session dashboard command
+  - agentic question dashboard command
+notes:
+- Previous testing missed this issue - comprehensive testing is CRITICAL
+- 'TWO bugs: (1) missing -x/-y on new-session causing ''size missing'', (2) missing
+  Enter on send-keys'
+- The primary bug causes silent fallback - the except RuntimeError swallows the split
+  failure
+- Focus on subprocess mock verification - exact command arguments matter
+- Test BOTH happy path AND all failure modes
+- 'Test audit finding: zero unit tests existed for tmux_layout.py, UAT only checked
+  --help output'
+- 'WSL2 specific: detached tmux sessions have no terminal, -x/-y is required'

@@ -1,0 +1,127 @@
+_template_status: active
+plan:
+  name: Test plan for tmux layout fix
+  worktree: /home/code/AgenticEngineering-260212TC_add_test_cleaner_agent
+  branch: 260214TG
+  status: pending
+  objective: 'Ensure the tmux layout fix works correctly through:
+
+    1. Unit tests (mocked) - verify behavior without real tmux
+
+    2. Integration test (real) - verify behavior with actual tmux commands
+
+    3. Regression tests - ensure existing tests still pass
+
+    '
+  phases:
+  - name: Unit Test Validation
+    id: test_unit
+    status: pending
+    tasks:
+    - id: test_unit_001
+      name: Run existing unit tests with updated mocks
+      status: completed
+      description: 'Run: python3 -m pytest modules/AgenticCLI/tests/test_tmux_layout.py
+        -v
+
+
+        Expected: All existing tests pass (36 tests)
+
+        - mock_subprocess_success updated for -l flags
+
+        - All TestCreate* classes pass
+
+        '
+    - id: test_unit_002
+      name: Verify mock fixtures match new implementation
+      status: completed
+      description: 'Check that mock_subprocess_success fixture properly handles:
+
+        - "-l" flag instead of "-p"
+
+        - "60" value for horizontal split
+
+        - "20" value for vertical split
+
+        '
+  - name: Integration Test Validation
+    id: test_integration
+    status: pending
+    tasks:
+    - id: test_integration_001
+      name: Run new real tmux integration test
+      status: completed
+      description: 'Run: python3 -m pytest modules/AgenticCLI/tests/test_tmux_layout.py::TestRealTmuxIntegration
+        -v
+
+
+        Expected:
+
+        - Test creates real tmux session
+
+        - Verifies 3 panes exist
+
+        - Cleans up session
+
+        - NO "size missing" errors
+
+        '
+    - id: test_integration_002
+      name: Verify cleanup after integration test
+      status: completed
+      description: 'After running integration test:
+
+        Run: tmux list-sessions | grep test-layout
+
+
+        Expected: No test sessions left behind
+
+        '
+  - name: Regression Test Suite
+    id: test_regression
+    status: pending
+    tasks:
+    - id: test_regression_001
+      name: Run full AgenticCLI test suite
+      status: completed
+      description: 'Run: python3 -m pytest modules/AgenticCLI/tests/ -v
+
+
+        Expected: All tests pass, including:
+
+        - test_tmux_layout.py (37 tests now - added 1 integration test)
+
+        - Other CLI tests unchanged
+
+        '
+    - id: test_regression_002
+      name: Verify no import errors or syntax issues
+      status: completed
+      description: 'Run: python3 -c "from agenticcli.utils.tmux_layout import create_orchestration_layout"
+
+
+        Expected: No ImportError or SyntaxError
+
+        '
+  test_strategy:
+  - type: unit
+    scope: Mocked tests for tmux_layout.py functions
+    location: modules/AgenticCLI/tests/test_tmux_layout.py
+    coverage_target: 95%
+    test_count: 36
+  - type: integration
+    scope: Real tmux command execution and pane verification
+    location: modules/AgenticCLI/tests/test_tmux_layout.py::TestRealTmuxIntegration
+    coverage_target: End-to-end layout creation
+    test_count: 1
+  - type: regression
+    scope: Full AgenticCLI module test suite
+    location: modules/AgenticCLI/tests/
+    test_count: ~37
+  test_environment:
+    python_version: 3.x
+    tmux_version: '3.4'
+    platform: WSL2
+    required_tools:
+    - pytest
+    - tmux

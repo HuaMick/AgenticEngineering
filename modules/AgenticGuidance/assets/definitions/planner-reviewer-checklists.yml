@@ -10,8 +10,13 @@ checklists:
       - "Worktree path is absolute and correct (worktree field)"
       - "Plan folder follows YYMMDDXX_description naming (CLI-enforced)"
       - "Plan objective clearly states what will be improved"
+      - "Plan files (plan_*.yml) are at folder root, NOT in subdirectories"
+      - "No plan_live_ prefix in filenames (use plan_*.yml, not plan_live_*.yml)"
+      - "No nested live/, completed/, analysis/, or audit/ folders containing plan files"
     notes:
       - "Plan folder naming is enforced by 'agentic plan init' - trust CLI enforcement"
+      - "Flat structure is enforced by CLI - nested plan files cause auto-archival failures"
+      - "Optional subfolders (reference/, analysis/, audit/) are for artifacts only, NOT plan files"
 
   inputs:
     description: "Plan inputs are properly defined"
@@ -102,18 +107,23 @@ fences:
     exception: "Single-task plans (1 phase with 1 task) may be approved without MMD"
 
   file_placement:
-    description: "Live folder contains only active work artifacts (BLOCKING)"
-    allowed:
-      - "plan_live_*.yml files with status: pending, approved, or in_progress"
-      - "orchestration_*.mmd files for active plans"
-      - "backlog_*.yml files with status: backlog"
+    description: "Plan folder contains only properly placed files (BLOCKING)"
+    allowed_at_root:
+      - "plan_*.yml files (NOT plan_live_*.yml - outdated naming)"
+      - "orchestration_*.mmd files"
       - "README.md"
+    allowed_in_subfolders:
+      - "reference/: Reference materials"
+      - "analysis/: Analysis files, iteration logs (*.md, plan_iteration_*.yml)"
+      - "audit/: Audit reports (audit_*.yml)"
+      - "completed/: Completed plan snapshots (optional subfolder)"
     forbidden:
-      - "Completed plans (status: completed) -> completed/"
-      - "Analysis/documentation files (*.md except README.md) -> analysis/"
-      - "Audit reports (audit_*.yml) -> audit/"
-      - "Diagnostic/investigation documents -> analysis/"
-    rejection_note: "File placement issues ARE blocking issues"
+      - "plan_*.yml files in nested live/, completed/, analysis/, or audit/ subfolders"
+      - "plan_live_*.yml naming (outdated - use plan_*.yml)"
+      - "Nested live/ subfolder containing plan files"
+      - "Analysis/documentation files at root (*.md except README.md) -> analysis/"
+      - "Audit reports at root (audit_*.yml) -> audit/"
+    rejection_note: "File placement issues ARE blocking issues - flat structure is required for CLI compatibility"
 
   codebase_verification:
     description: "Verify live/ files reflect codebase reality (BLOCKING)"

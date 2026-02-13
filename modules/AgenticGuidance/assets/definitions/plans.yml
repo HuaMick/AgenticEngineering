@@ -224,6 +224,45 @@ file_taxonomy:
     - analysis/: Iteration logs and analysis artifacts (plan_iteration_*.yml, .md documents)
     - audit/: Audit reports and findings
 
+  # ==============================================
+  # FENCE: FLAT STRUCTURE ENFORCEMENT
+  # ==============================================
+  flat_structure_fence:
+    description: |
+      FENCE: Plan files (plan_*.yml, orchestration_*.mmd, README.md) MUST be at folder root.
+      NEVER create nested live/, completed/, analysis/, or audit/ subdirectories for plan files.
+
+    prohibited_patterns:
+      - "docs/plans/live/YYMMDDXX_description/live/plan_*.yml"
+      - "docs/plans/live/YYMMDDXX_description/completed/plan_*.yml"
+      - "plan_live_*.yml" (outdated naming - use plan_*.yml)
+      - "live/plan_build.yml" (nested - should be plan_build.yml at root)
+
+    correct_patterns:
+      - "docs/plans/live/YYMMDDXX_description/plan_build.yml"
+      - "docs/plans/live/YYMMDDXX_description/plan_test.yml"
+      - "docs/plans/live/YYMMDDXX_description/orchestration_*.mmd"
+
+    cli_enforcement: |
+      The CLI creates plan folders with flat structure via 'agentic plan init'.
+      CLI commands expect plan files at folder root, NOT in subdirectories.
+      Nested structure will cause CLI errors and auto-archival failures.
+
+    migration_note: |
+      Legacy plans may have nested live/ folders or plan_live_*.yml files.
+      These are DEPRECATED and should be migrated to flat structure:
+      1. Move plan_*.yml files from nested live/ to folder root
+      2. Remove plan_live_ prefix from filenames
+      3. Delete empty nested live/ directory
+      4. Update README to reflect flat structure
+
+    rationale: |
+      Flat structure ensures:
+      - CLI compatibility (commands locate files correctly)
+      - Auto-archival works (scans folder root for plan files)
+      - Consistency across all plans
+      - Reduced confusion about file locations
+
 scrap_file_taxonomy:
   description: "Transient artifacts from planning loops with different lifecycle than phase plans"
 

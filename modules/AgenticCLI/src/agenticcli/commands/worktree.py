@@ -123,7 +123,7 @@ def save_worktree_registry(repo_root: Path, entries: list[dict]) -> bool:
         header = (
             "# Worktree Registry\n"
             "# Maps branch names to abbreviations and descriptions for plan folder naming.\n"
-            "# Used by `agentic worktree create` and `generate_plan_folder_name()`.\n\n"
+            "# Used by `agentic worktree create` and `naming.generate_plan_folder_name()`.\n\n"
         )
         registry_path.write_text(header + yaml.dump(content, default_flow_style=False, sort_keys=False))
         return True
@@ -164,39 +164,6 @@ def get_repo_abbreviation(repo_name: str) -> str:
     return repo_name[:2].upper()
 
 
-def generate_plan_folder_name(branch: str, repo_root: Path, abbreviation: str | None = None) -> str:
-    """Generate planning folder name: YYMMDD<Abbr>_<branch>.
-
-    Looks up the abbreviation from the worktree registry first.
-    Falls back to capital-letter extraction from repo name if not found.
-
-    Args:
-        branch: Branch name
-        repo_root: Repository root path
-        abbreviation: Optional explicit abbreviation override
-
-    Returns:
-        Folder name like "260103AC_feature-auth"
-    """
-    date_prefix = datetime.now().strftime("%y%m%d")
-
-    if abbreviation:
-        abbr = abbreviation.upper()[:2]
-    else:
-        # Try registry lookup
-        registry = load_worktree_registry(repo_root)
-        abbr = lookup_abbreviation(registry, branch)
-
-        if not abbr:
-            # Fallback to capital-letter extraction
-            repo_name = repo_root.name
-            if "-" in repo_name:
-                repo_name = repo_name.split("-")[0]
-            abbr = get_repo_abbreviation(repo_name)
-
-    return f"{date_prefix}{abbr}_{branch}"
-
-
 def find_workspace_file(repo_root: Path) -> Path | None:
     """Find the .code-workspace file in the repository root.
 
@@ -223,46 +190,53 @@ def update_workspace_add(workspace_file: Path, worktree_path: Path, branch: str,
         True if updated successfully, False otherwise
     """
     try:
-        with open(workspace_file) as f:
-            workspace = json.load(f)
+        from agenticguidance.services.state import FileLock
 
-        # Calculate relative path from workspace file to worktree
-        workspace_dir = workspace_file.parent
-        try:
-            relative_path = str(worktree_path.relative_to(workspace_dir))
-        except ValueError:
-            # Not relative, use ../<path> format
-            relative_path = f"../{worktree_path.name}"
+        # Use FileLock to prevent concurrent modifications
+        with FileLock(workspace_file, timeout=5.0):
+            with open(workspace_file) as f:
+                workspace = json.load(f)
 
-        # Add or update folders array
-        folder_entry = {
-            "name": f"{repo_name} ({branch})",
-            "path": relative_path
-        }
-        if "folders" not in workspace:
-            workspace["folders"] = []
-        
-        # Check for existing entry with same path
-        existing_idx = next((i for i, f in enumerate(workspace["folders"]) if f.get("path") == relative_path), -1)
-        if existing_idx >= 0:
-            workspace["folders"][existing_idx] = folder_entry
-        else:
-            workspace["folders"].append(folder_entry)
+            # Calculate relative path from workspace file to worktree
+            workspace_dir = workspace_file.parent
+            try:
+                relative_path = str(worktree_path.relative_to(workspace_dir))
+            except ValueError:
+                # Not relative, use ../<path> format
+                relative_path = f"../{worktree_path.name}"
 
-        # Add to git.scanRepositories
-        if "settings" not in workspace:
-            workspace["settings"] = {}
-        if "git.scanRepositories" not in workspace["settings"]:
-            workspace["settings"]["git.scanRepositories"] = ["."]
-        
-        if relative_path not in workspace["settings"]["git.scanRepositories"]:
-            workspace["settings"]["git.scanRepositories"].append(relative_path)
+            # Add or update folders array
+            folder_entry = {
+                "name": f"{repo_name} ({branch})",
+                "path": relative_path
+            }
+            if "folders" not in workspace:
+                workspace["folders"] = []
 
-        # Write back
-        with open(workspace_file, "w") as f:
-            json.dump(workspace, f, indent="\t")
+            # Check for existing entry with same path
+            existing_idx = next((i for i, f in enumerate(workspace["folders"]) if f.get("path") == relative_path), -1)
+            if existing_idx >= 0:
+                workspace["folders"][existing_idx] = folder_entry
+            else:
+                workspace["folders"].append(folder_entry)
+
+            # Add to git.scanRepositories
+            if "settings" not in workspace:
+                workspace["settings"] = {}
+            if "git.scanRepositories" not in workspace["settings"]:
+                workspace["settings"]["git.scanRepositories"] = ["."]
+
+            if relative_path not in workspace["settings"]["git.scanRepositories"]:
+                workspace["settings"]["git.scanRepositories"].append(relative_path)
+
+            # Write back
+            with open(workspace_file, "w") as f:
+                json.dump(workspace, f, indent="\t")
 
         return True
+    except TimeoutError:
+        # Lock timeout - return False instead of crashing
+        return False
     except Exception:
         return False
 
@@ -278,35 +252,42 @@ def update_workspace_remove(workspace_file: Path, worktree_path: Path) -> bool:
         True if updated successfully, False otherwise
     """
     try:
-        with open(workspace_file) as f:
-            workspace = json.load(f)
+        from agenticguidance.services.state import FileLock
 
-        # Calculate relative path
-        workspace_dir = workspace_file.parent
-        try:
-            relative_path = str(worktree_path.relative_to(workspace_dir))
-        except ValueError:
-            relative_path = f"../{worktree_path.name}"
+        # Use FileLock to prevent concurrent modifications
+        with FileLock(workspace_file, timeout=5.0):
+            with open(workspace_file) as f:
+                workspace = json.load(f)
 
-        # Remove from folders array
-        if "folders" in workspace:
-            workspace["folders"] = [
-                f for f in workspace["folders"]
-                if f.get("path") != relative_path
-            ]
+            # Calculate relative path
+            workspace_dir = workspace_file.parent
+            try:
+                relative_path = str(worktree_path.relative_to(workspace_dir))
+            except ValueError:
+                relative_path = f"../{worktree_path.name}"
 
-        # Remove from git.scanRepositories
-        if "settings" in workspace and "git.scanRepositories" in workspace["settings"]:
-            workspace["settings"]["git.scanRepositories"] = [
-                r for r in workspace["settings"]["git.scanRepositories"]
-                if r != relative_path
-            ]
+            # Remove from folders array
+            if "folders" in workspace:
+                workspace["folders"] = [
+                    f for f in workspace["folders"]
+                    if f.get("path") != relative_path
+                ]
 
-        # Write back
-        with open(workspace_file, "w") as f:
-            json.dump(workspace, f, indent="\t")
+            # Remove from git.scanRepositories
+            if "settings" in workspace and "git.scanRepositories" in workspace["settings"]:
+                workspace["settings"]["git.scanRepositories"] = [
+                    r for r in workspace["settings"]["git.scanRepositories"]
+                    if r != relative_path
+                ]
+
+            # Write back
+            with open(workspace_file, "w") as f:
+                json.dump(workspace, f, indent="\t")
 
         return True
+    except TimeoutError:
+        # Lock timeout - return False instead of crashing
+        return False
     except Exception:
         return False
 
@@ -675,7 +656,7 @@ def cleanup_worktree_if_idle(
 
 
 def cmd_create(args):
-    """Create a new worktree with planning folder."""
+    """Create a new worktree (plan creation deprecated - use 'agentic plan init' instead)."""
     from agenticcli.console import (
         console,
         is_json_output,
@@ -685,10 +666,11 @@ def cmd_create(args):
         print_success,
         print_warning,
     )
+    from agenticcli.utils.naming import generate_plan_folder_name
 
     branch = args.branch
     base = args.base
-    skip_plan = args.no_plan
+    skip_plan = True  # DEPRECATED: Plan creation moved to 'agentic plan init'
     abbreviation = getattr(args, "abbreviation", None)
     description = getattr(args, "description", None)
 
@@ -783,6 +765,9 @@ def cmd_create(args):
         print_success(f"Worktree ready: {worktree_path}")
         if plan_folder_name:
             console.print(f"[dim]Planning folder:[/dim] docs/plans/live/{plan_folder_name}")
+        console.print()
+        console.print("[yellow]To create a plan for this worktree, use:[/yellow]")
+        console.print(f"  agentic plan init {branch} --description <description>")
 
 
 def _find_main_worktree_path(worktrees: list[dict]) -> str | None:
@@ -1369,8 +1354,29 @@ def cmd_sync(args):
                 if not is_json_output():
                     print_info(f"Added missing entry: {wt['path']} ({branch})")
 
+    # Clean up worktree registry (docs/worktrees.yml)
+    registry_cleaned = 0
+    registry = load_worktree_registry(repo_root)
+    if registry:
+        # Keep only entries for worktrees that still exist
+        cleaned_registry = []
+        for entry in registry:
+            entry_path = entry.get("path")
+            if entry_path and Path(entry_path).exists():
+                cleaned_registry.append(entry)
+            else:
+                registry_cleaned += 1
+                if not is_json_output():
+                    print_info(f"Removed stale registry entry: {entry.get('branch', 'unknown')} at {entry_path}")
+
+        # Save cleaned registry if changes were made
+        if registry_cleaned > 0:
+            save_worktree_registry(repo_root, cleaned_registry)
+
     # Report results
     if is_json_output():
-        print_json({"removed": removed, "added": added})
+        print_json({"removed": removed, "added": added, "registry_cleaned": registry_cleaned})
     else:
         print_success(f"Removed {removed} stale entries, added {added} missing entries")
+        if registry_cleaned > 0:
+            print_info(f"Cleaned {registry_cleaned} stale registry entries")

@@ -140,6 +140,55 @@ def rebuild():
     package.handle_rebuild(_ns(command="rebuild", json=_global["json"], debug=_global["debug"]), ctx=cli_ctx)
 
 
+@app.command()
+def orchestrate(
+    mode: Annotated[Optional[str], typer.Option("--mode", "-m", help="Orchestration mode: planning, executor, friction, or loop")] = None,
+    plan: Annotated[Optional[str], typer.Option("--plan", help="Scope to a specific plan folder")] = None,
+    prompt_file: Annotated[Optional[str], typer.Option("--prompt-file", "-f", help="Override process file path")] = None,
+    role: Annotated[Optional[str], typer.Option("--role", "-r", help="Role for bootstrap context (defaults to mode)")] = None,
+    model: Annotated[Optional[str], typer.Option("--model", help="Model to use")] = None,
+    planning_loop: Annotated[bool, typer.Option("--planning-loop", help="Run automated planning loop instead of interactive session")] = False,
+    background: Annotated[bool, typer.Option("--background", "-b", help="Run planning loop in background")] = False,
+    max_iterations: Annotated[int, typer.Option("--max-iterations", "-n", help="Max planning loop iterations")] = 10,
+    completion_promise: Annotated[Optional[str], typer.Option("--completion-promise", "-c", help="Completion text for planning loop")] = None,
+    project: Annotated[Optional[str], typer.Option("--project", "-p", help="Project filter for story discovery")] = None,
+    directory: Annotated[Optional[str], typer.Option("--directory", "-d", help="Working directory")] = None,
+    dangerously_skip_permissions: Annotated[bool, typer.Option("--dangerously-skip-permissions", help="Skip permission prompts")] = False,
+    no_tmux: Annotated[bool, typer.Option("--no-tmux", help="Disable tmux 3-pane layout")] = False,
+    dashboard_refresh: Annotated[int, typer.Option("--dashboard-refresh", help="Session dashboard refresh interval in seconds")] = 5,
+    question_refresh: Annotated[int, typer.Option("--question-refresh", help="Question dashboard refresh interval in seconds")] = 10,
+):
+    """Launch interactive Claude session with orchestration context or run automated planning loop.
+
+    Interactive mode (default):
+      Requires --mode to select the orchestration agent profile:
+        planning  - Plan creation and approval workflows
+        executor  - Execute approved plans via MMD routing
+        friction  - Analyze traces for friction patterns
+        loop      - Full lifecycle: discover, plan, execute, archive all live plans
+
+      By default, creates a tmux 3-pane layout with session and question dashboards.
+      Use --no-tmux to disable this and run a plain Claude session.
+
+    Automated mode (--planning-loop):
+      Runs the full plan lifecycle: discover plans needing orchestration,
+      spawn planners, run review cycles, generate/validate MMDs, then execute
+      phases by parsing AGENT_ROUTING and spawning the appropriate agents.
+    """
+    from agenticcli.commands.orchestrate import cmd_orchestrate
+    cmd_orchestrate(_ns(
+        command="orchestrate",
+        json=_global["json"], debug=_global["debug"],
+        mode=mode, plan=plan, prompt_file=prompt_file, role=role,
+        model=model, planning_loop=planning_loop, background=background,
+        max_iterations=max_iterations, completion_promise=completion_promise,
+        project=project, directory=directory,
+        dangerously_skip_permissions=dangerously_skip_permissions,
+        no_tmux=no_tmux, dashboard_refresh=dashboard_refresh,
+        question_refresh=question_refresh,
+    ))
+
+
 # ===========================================================================
 # PREFERENCES (aliases: prefs, pref)
 # ===========================================================================
@@ -795,6 +844,18 @@ def session_logs(
     ))
 
 
+@session_app.command("dashboard")
+def session_dashboard(
+    refresh: Annotated[int, typer.Option("--refresh", "-r", help="Refresh interval in seconds")] = 5,
+):
+    """Live dashboard showing active sessions with auto-refresh."""
+    _session_handle(_ns(
+        command="session", session_command="dashboard",
+        json=_global["json"], debug=_global["debug"],
+        refresh=refresh,
+    ))
+
+
 # ===========================================================================
 # LOOP
 # ===========================================================================
@@ -1169,6 +1230,18 @@ def question_watch_stop():
     _question_handle(_ns(
         command="question", question_command="watch-stop",
         json=_global["json"], debug=_global["debug"],
+    ))
+
+
+@question_app.command("dashboard")
+def question_dashboard(
+    refresh: Annotated[int, typer.Option("--refresh", "-r", help="Refresh interval in seconds")] = 10,
+):
+    """Live dashboard showing pending questions across all live plans."""
+    _question_handle(_ns(
+        command="question", question_command="dashboard",
+        json=_global["json"], debug=_global["debug"],
+        refresh=refresh,
     ))
 
 
@@ -1753,7 +1826,7 @@ GLOBAL_COMMANDS = {
     "setup", "config", "cfg", "preferences", "prefs", "pref",
     "update", "rebuild", "health", "state", "session", "loop",
     "env", "langsmith", "ls", "completion", "question", "ralph",
-    "planner",
+    "planner", "orchestrate",
 }
 
 PROJECT_COMMANDS = {

@@ -16,13 +16,13 @@ process:
   outputs:
     # FENCE: Output must match declared schema before marking complete
     - name: "plan_test.yml"
-      path_template: "docs/plans/live/{planning_folder}/live/plan_test.yml"
+      path_template: "docs/plans/live/{planning_folder}/plan_test.yml"
       description: "Test phases plan file with test-fix-loop and audit-test-fix-loop patterns"
       required_fields:
         - "name"
         - "status"
         - "phases"         # Test phases with test-fix-loop patterns
-      schema_reference: "modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/live/plan_example.yml"
+      schema_reference: "modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/plan_example.yml"
       note: "planning_folder is absolute path provided by orchestration (used in path_template)"
 
   steps:
@@ -61,11 +61,67 @@ process:
       If ANY required input is missing, report the specific error and STOP.
       If an input is found in a different location, update the path and flag the discrepancy.
     - |
+      FENCE: PLAN FOLDER MUST EXIST BEFORE PLANNING
+      The plan folder MUST already exist at the provided planning_folder path.
+
+      VALIDATION STEP:
+      Before proceeding, verify the plan folder exists:
+      1. Check if the provided planning_folder path exists on disk
+      2. If the folder does NOT exist, STOP immediately with this message:
+
+         "FENCE VIOLATION: Plan folder not found at {planning_folder}
+
+          The plan folder must be created via CLI before planning can begin.
+
+          REQUIRED ACTION:
+          Run: agentic plan init <branch> --description <description>
+
+          The CLI creates the worktree, workspace entry, and folder structure atomically.
+          Do NOT create the plan folder directly with the Write tool.
+
+          After running the CLI command, retry the planning operation."
+
+      3. If the folder exists, proceed with test planning
+    - |
+      FENCE: STORY CONTENT MUST EXIST
+      The test planner MUST validate that story content exists before creating UAT tasks.
+
+      VALIDATION STEP:
+      1. Read affected_stories from plan metadata (from build plan)
+      2. For each story ID, check if story file exists:
+         - Story location: docs/userstories/<project>/NN_<category>.yml
+         - CLI helper: agentic stories show <story_id>
+      3. If story files missing, STOP with this error:
+
+         "FENCE VIOLATION: Story content missing for UAT planning
+
+         The following stories are referenced but have no content:
+         - <story_id_1>
+         - <story_id_2>
+
+         REQUIRED ACTION:
+         Stories must be generated before test planning. The build plan should
+         include story_creation_tasks. Verify those tasks completed, or ask
+         orchestration to spawn story-generator agent.
+
+         After story files exist, retry test planning."
+
+      4. If stories exist, read their content to extract acceptance criteria
+
+      STORY CONTENT VALIDATION:
+      Each story MUST have:
+      - success_criteria field (list of measurable acceptance criteria)
+      - journey field (step-by-step user actions)
+      - testing field (local and docker test instructions)
+
+      If any story lacks these fields, STOP with:
+      "FENCE VIOLATION: Story <id> has incomplete content (missing <field>)"
+    - |
       PLAN FOLDER STRUCTURE:
       See modules/AgenticGuidance/assets/definitions/plans.yml for folder structure and lifecycle.
-      - Read all phase .yml files in `live/` to understand what was built (your test targets)
-      - Create/update `live/plan_test.yml` with your test phases
-      - Output ONLY to `live/plan_test.yml` (do not modify other phase plans)
+      - Read all phase .yml files in plan folder root to understand what was built (your test targets)
+      - Create/update `plan_test.yml` with your test phases
+      - Output ONLY to `plan_test.yml` (do not modify other phase plans)
     - |
       Create test plan phases following the patterns defined in inputs.yml.
       Reference user story integration guidelines from inputs.yml for:
@@ -86,11 +142,11 @@ process:
       - Component testing and user flow testing integration
 
       INPUT SOURCE (what you're testing):
-      - Read all phase .yml files in `live/` from the planning folder to understand what components were built
+      - Read all phase .yml files in the planning folder root to understand what components were built
       - Use this to determine what needs to be tested and which files to include in test inputs
 
       OUTPUT TARGET (where you write):
-      - Write your test phases to `live/plan_test.yml` in the same planning folder
+      - Write your test phases to `plan_test.yml` in the same planning folder
       - This file contains ONLY test phases, not build or cleanup phases
 
       DUMPING GROUND: Use additional subfolders (e.g., `analysis/`, `test-results/`) to store agent artifacts
@@ -261,3 +317,44 @@ process:
         Test plans are blocked_plan_types — the escape hatch CANNOT be used to skip
         UAT or stories for test plans. Only infrastructure, guidance, and internal_tooling
         plans may use the escape hatch with a valid no_stories_rationale.
+
+  uat_task_generation:
+    description: |
+      For each affected story, create a UAT task that validates the story's
+      acceptance criteria. Each UAT task must be traceable to a specific story.
+
+    task_template: |
+      - id: "uat_<story_id>"
+        name: "Validate <story_name>"
+        description: |
+          User Story: <story_id>
+
+          Journey:
+          <paste story journey steps>
+
+          Acceptance Criteria:
+          <paste story success_criteria>
+
+          Verification Steps:
+          1. <specific check from story testing section>
+          2. <what to look for>
+          3. <expected outcomes>
+
+          Evidence Required:
+          - Command output showing <X>
+          - Log excerpt confirming <Y>
+          - Screenshot/recording of <Z>
+        status: "pending"
+        story_id: "<story_id>"
+        acceptance_criteria:
+          - "<criteria 1 from story>"
+          - "<criteria 2 from story>"
+        verification_method: "test-user-simulator"  # or guidance-blind-test, manual, etc.
+        target_files: []  # UAT tasks don't modify files, they validate behavior
+
+    mapping_rules:
+      - "One UAT task per user story"
+      - "Task description must include full story journey"
+      - "Acceptance criteria copied verbatim from story"
+      - "Verification method selected based on story category"
+      - "Evidence requirements must be specific and measurable"

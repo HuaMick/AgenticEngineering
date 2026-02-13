@@ -1,0 +1,78 @@
+# Planning Inputs for 260214TG
+# Created: 2026-02-14
+
+planning_objective: |
+  Fix the tmux 3-pane layout bug that causes "size missing" errors when running
+  agentic orchestrate from bare terminals on WSL2. Previous fix (260214TF) was
+  insufficient because it only added -x/-y dimensions but still used percentage
+  splits (-p) which tmux 3.4 WSL2 rejects on detached sessions.
+
+root_cause: |
+  tmux 3.4 on WSL2 rejects percentage-based splits (-p) on detached sessions
+  even when explicit dimensions are provided via -x/-y flags. However, absolute
+  dimension splits (-l) work correctly.
+
+  Confirmed via manual testing:
+  - tmux new-session -d -s test -x 200 -y 50 → creates session OK
+  - tmux split-window -t test:orchestrator -h -p 30 → FAILS with "size missing"
+  - tmux split-window -t test:orchestrator -h -l 60 → WORKS
+
+solution: |
+  Replace percentage splits with absolute dimension splits:
+  - Change "-p", "30" to "-l", "60"  (30% of 200 columns = 60)
+  - Change "-p", "40" to "-l", "20"  (40% of 50 rows = 20)
+
+  This applies ONLY to _create_new_session_layout function.
+  The _create_inplace_layout function can keep -p flags since it operates
+  on attached sessions where percentage splits work fine.
+
+previous_attempts:
+  - plan: "260214TF"
+    status: "completed but insufficient"
+    what_it_did: "Added -x 200 -y 50 to tmux new-session command"
+    why_insufficient: |
+      While dimensions were set, the subsequent split-window commands still
+      used -p (percentage) flags which fail on WSL2 detached sessions.
+      Tests passed because they were all mocked - no real tmux execution.
+
+testing_requirements: |
+  Critical lesson from 260214TF: Mocked tests are not enough.
+  This plan MUST include:
+  1. At least ONE real integration test that runs actual tmux commands
+  2. Manual smoke test task to verify end-to-end functionality
+  3. UAT stories that validate user-facing behavior
+
+  The integration test should:
+  - NOT mock subprocess.run
+  - Create a real tmux session
+  - Execute real split-window commands
+  - Verify panes exist via tmux list-panes
+  - Clean up the session
+
+environment:
+  platform: "WSL2"
+  os: "Linux 5.15.167.4-microsoft-standard-WSL2"
+  tmux_version: "3.4"
+  python: "python3"
+  cli_path: "/usr/local/bin/agentic"
+
+files_to_modify:
+  - path: "modules/AgenticCLI/src/agenticcli/utils/tmux_layout.py"
+    lines: [115, 130]
+    change: "Replace -p with -l flags and update values"
+
+  - path: "modules/AgenticCLI/tests/test_tmux_layout.py"
+    lines: ["end of file"]
+    change: "Add TestRealTmuxIntegration class with one real test"
+
+success_criteria:
+  - "agentic orchestrate -m loop creates 3-pane layout without errors"
+  - "No 'size missing' or 'Failed to create tmux layout' warnings"
+  - "All 37 tests pass (36 existing + 1 new integration test)"
+  - "Manual smoke test confirms layout appears correctly"
+  - "UAT stories all pass"
+
+related_user_stories:
+  - "As a user running agentic orchestrate from a bare terminal, I see a 3-pane tmux layout"
+  - "As a user on WSL2, the tmux layout works without 'size missing' errors"
+  - "As a user already in tmux, the in-place layout works correctly"

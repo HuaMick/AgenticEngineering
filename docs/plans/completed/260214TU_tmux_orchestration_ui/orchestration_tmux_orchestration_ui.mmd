@@ -1,0 +1,143 @@
+%% =============================================================================
+%% GOAL: Expand agentic orchestrate from simple os.execvp into a tmux-based 3-pane UI:
+%% main pane (70%) runs the interactive Claude orchestrator, right-top pane (30% x 60%)
+%% shows a live-updating session dashboard, right-bottom pane shows pending questions.
+%% Dashboard panes are standalone commands that can also be run independently.
+%% =============================================================================
+%% PROFILE: Orchestration-Tmux orchestration UI with live session and question dashboards
+%% INPUT_PATH: /home/code/AgenticEngineering/docs/plans/live/260214TU_tmux_orchestration_ui/plan_build.yml
+%%
+%% PHASES:
+%%   P1: Tmux Layout Utility
+%%   P2: Session Dashboard Command
+%%   P3: Question Dashboard Command
+%%   P4: Refactor Orchestrate Command
+%%   P5: Verification
+%%
+%% AGENT_ROUTING: P1 -> build-python, P2 -> build-python, P3 -> build-python, P4 -> build-python, P5 -> test-runner
+%% STATUS: P1=pending, P2=pending, P3=pending, P4=pending, P5=pending
+%% FEEDBACK_TRIGGERS: TEST_FAILURE -> test-fix-loop, BUILD_FAILURE -> escalate
+%% =============================================================================
+
+flowchart LR
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    LoadInputs --> ReviewInputs[Review All Listed Inputs]
+    ReviewInputs --> CheckInputs{All Inputs Found?}
+
+    CheckInputs -- "No: Missing" --> SearchInputs[Search for Missing Inputs]
+    SearchInputs --> Found{Found?}
+    Found -- "Yes: Update paths" --> UpdateRefs[Update References]
+    UpdateRefs --> ReviewInputs
+    Found -- "No: Stop" --> AskUser((Ask User for Clarification))
+
+    CheckInputs -- "Yes: Verified" --> Phase1
+
+    %% ========================================
+    %% PHASE 1: TMUX LAYOUT UTILITY
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: TU_001
+
+    subgraph P1_SG ["Tmux Layout Utility"]
+        Phase1[Enter Tmux Layout Utility] --> SpawnAgent1[Spawn build-python Agent]
+        SpawnAgent1 --> Task_P1_1[TU_001: Create tmux_layout.py with OrchestrationLayout]
+        Task_P1_1 --> Phase1Complete[Tmux Layout Utility Complete]
+    end
+
+    Phase1Complete --> Phase2
+
+    %% ========================================
+    %% PHASE 2: SESSION DASHBOARD COMMAND
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: TU_002, TU_003
+
+    subgraph P2_SG ["Session Dashboard Command"]
+        Phase2[Enter Session Dashboard Command] --> SpawnAgent2[Spawn build-python Agent]
+        SpawnAgent2 --> Task_P2_1[TU_002: Add cmd_dashboard to session.py]
+        Task_P2_1 --> Task_P2_2[TU_003: Register session dashboard in cli.py]
+        Task_P2_2 --> Phase2Complete[Session Dashboard Command Complete]
+    end
+
+    Phase2Complete --> Phase3
+
+    %% ========================================
+    %% PHASE 3: QUESTION DASHBOARD COMMAND
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: TU_004, TU_005
+
+    subgraph P3_SG ["Question Dashboard Command"]
+        Phase3[Enter Question Dashboard Command] --> SpawnAgent3[Spawn build-python Agent]
+        SpawnAgent3 --> Task_P3_1[TU_004: Add cmd_dashboard to question.py]
+        Task_P3_1 --> Task_P3_2[TU_005: Register question dashboard in cli.py]
+        Task_P3_2 --> Phase3Complete[Question Dashboard Command Complete]
+    end
+
+    Phase3Complete --> Phase4
+
+    %% ========================================
+    %% PHASE 4: REFACTOR ORCHESTRATE COMMAND
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: TU_006, TU_007
+
+    subgraph P4_SG ["Refactor Orchestrate Command"]
+        Phase4[Enter Refactor Orchestrate Command] --> SpawnAgent4[Spawn build-python Agent]
+        SpawnAgent4 --> Task_P4_1[TU_006: Add tmux layout path to cmd_orchestrate]
+        Task_P4_1 --> Task_P4_2[TU_007: Add new orchestrate flags to cli.py]
+        Task_P4_2 --> Phase4Complete[Refactor Orchestrate Command Complete]
+    end
+
+    Phase4Complete --> Phase5
+
+    %% ========================================
+    %% PHASE 5: VERIFICATION
+    %% ========================================
+    %% AGENT_ROUTING: test-runner agent with test-fix loop
+    %% LOOP_DEFINITION: test-fix-loop
+    %% MAX_ITERATIONS: 3
+    %% Tasks: TU_008, TU_009
+
+    subgraph P5_SG ["Verification (Test-Fix-Loop)"]
+        Phase5[Enter Verification] --> SpawnTestRunner[Spawn test-runner Agent]
+        SpawnTestRunner --> Task_P5_1[TU_008: Run existing tests and verify no breakage]
+        Task_P5_1 --> Task_P5_2[TU_009: Manual integration test]
+        Task_P5_2 --> TestsPassed{Tests Passed?}
+
+        %% Test-Fix Loop: retry path
+        TestsPassed -- "No: Fix in Iteration" --> SpawnBuilderFix[Spawn builder Agent for Fixes]
+        SpawnBuilderFix --> ApplyFixes[Apply Implementation Fixes]
+        ApplyFixes --> Task_P5_1
+
+        %% Success path
+        TestsPassed -- "Yes: All Pass" --> Phase5Complete[Verification Complete]
+    end
+
+    %% Escalation path for persistent test failures
+    TestsPassed -- "No: Escalate" --> CheckIterations{Max Iterations Reached?}
+    CheckIterations -- "No" --> SpawnTestRunner
+    CheckIterations -- "Yes" --> EscalateTests((Ask User: Test Failures Persist))
+
+    %% ========================================
+    %% FINALIZATION
+    %% ========================================
+    Phase5Complete --> UpdatePlanStatus[Update Plan Status: completed]
+    %% agentic plan move folder --plan <path>
+    UpdatePlanStatus --> ArchivePlan[Archive to docs/plans/completed/]
+    ArchivePlan --> End((End: Plan Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef entrypoint fill:#90EE90,stroke:#228B22
+    classDef exitpoint fill:#FFB6C1,stroke:#DC143C
+    classDef userpoint fill:#87CEEB,stroke:#4682B4
+    classDef keyaction fill:#FFD700,stroke:#DAA520
+    class Start entrypoint
+    class End exitpoint
+    class AskUser,EscalateTests userpoint

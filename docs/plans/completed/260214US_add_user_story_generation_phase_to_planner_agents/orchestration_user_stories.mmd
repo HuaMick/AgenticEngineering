@@ -1,0 +1,252 @@
+flowchart LR
+    %% ========================================
+    %% ORCHESTRATION: User Story Generation for Planner Agents
+    %% ========================================
+    %% GOAL: Add user story generation to planner agents and enforce story validation
+    %% PROFILE: orchestrator
+    %%
+    %% PLAN_FOLDER: docs/plans/live/260214US_add_user_story_generation_phase_to_planner_agents
+    %% PLAN_FILES: plan_build.yml, plan_test.yml, plan_teach.yml
+    %%
+    %% PHASES: StoryCreation, UpdatePlannerBuild, UpdatePlannerTest, UpdateOrchPlanning, UpdateOrchExecutor, UnitTest, IntegrationTest, SmokeTest, UAT
+    %% AGENT_ROUTING: StoryCreation=build-guidance, UpdatePlannerBuild=build-guidance, UpdatePlannerTest=build-guidance, UpdateOrchPlanning=build-guidance, UpdateOrchExecutor=build-guidance, UnitTest=test-builder, IntegrationTest=test-builder, SmokeTest=test-user-simulator, UAT=test-user-simulator
+    %% FEEDBACK_TRIGGERS: BUILD_FAILURE=retry(3), TEST_FAILURE=retry(5), GUIDANCE_VALIDATION_FAILURE=retry(3), STORY_REGRESSION=retry(3)
+    %% STATUS: StoryCreation=pending, UpdatePlannerBuild=pending, UpdatePlannerTest=pending, UpdateOrchPlanning=pending, UpdateOrchExecutor=pending, UnitTest=pending, IntegrationTest=pending, SmokeTest=pending, UAT=pending
+    %% AFFECTED_STORIES: US-CLI-PLAN-001, US-CLI-PLAN-002
+
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    LoadInputs --> ReviewPlanFiles[Review plan_build.yml + plan_test.yml + plan_teach.yml]
+    ReviewPlanFiles --> CheckInputs{All Inputs Found?}
+    CheckInputs -- "No" --> AskUser((Ask User))
+    CheckInputs -- "Yes" --> CCIBootstrap[CCI Bootstrap]
+
+    %% ========================================
+    %% CCI BOOTSTRAP
+    %% ========================================
+    CCIBootstrap --> RunContextBootstrap[Run: agentic context bootstrap]
+    RunContextBootstrap --> EnterStoryCreation[Enter Story Creation Phase]
+
+    %% ========================================
+    %% PHASE 1: STORY CREATION (build-guidance)
+    %% ========================================
+    %% Tasks: US_001, US_002 - Create user story YAML files
+    %% Targets: docs/userstories/AgenticCLI/15_planning.yml
+    %% Agent: build-guidance (teacher-update-guidance for creating story files)
+
+    subgraph StoryCreation_SG ["Phase 1: Story Creation (Dogfooding)"]
+        EnterStoryCreation --> SpawnStoryCreator[Spawn build-guidance Agent]
+        SpawnStoryCreator --> StoryLoop{Stories Created?}
+        StoryLoop -- "No" --> CaptureStoryFB[Capture Feedback]
+        CaptureStoryFB --> CheckStoryIter{Max Iter?}
+        CheckStoryIter -- "No" --> SpawnStoryCreator
+        CheckStoryIter -- "Yes" --> EscalateStory((Escalate))
+        StoryLoop -- "Yes" --> StoryComplete[Story Creation Complete]
+    end
+
+    StoryComplete --> EnterPlannerBuild[Enter Update planner-build Phase]
+
+    %% ========================================
+    %% PHASE 2: UPDATE PLANNER-BUILD (build-guidance)
+    %% ========================================
+    %% Tasks: BUILD_001, BUILD_002 - Add story generation step to planner-build/process.yml
+    %% Targets: modules/AgenticGuidance/agents/planner/planner-build/process.yml
+    %% Agent: build-guidance (teacher-update-guidance for guidance file updates)
+
+    subgraph UpdatePlannerBuild_SG ["Phase 2: Update planner-build Process"]
+        EnterPlannerBuild --> SpawnBuildGuidance[Spawn build-guidance Agent]
+        SpawnBuildGuidance --> BuildLoop{planner-build Updated?}
+        BuildLoop -- "No" --> CaptureBuildFB[Capture Feedback]
+        CaptureBuildFB --> CheckBuildIter{Max Iter?}
+        CheckBuildIter -- "No" --> SpawnBuildGuidance
+        CheckBuildIter -- "Yes" --> EscalateBuild((Escalate))
+        BuildLoop -- "Yes" --> BuildComplete[planner-build Update Complete]
+    end
+
+    BuildComplete --> EnterPlannerTest[Enter Update planner-test Phase]
+
+    %% ========================================
+    %% PHASE 3: UPDATE PLANNER-TEST (build-guidance)
+    %% ========================================
+    %% Tasks: TEST_001, TEST_002 - Add story validation fence to planner-test/process.yml
+    %% Targets: modules/AgenticGuidance/agents/planner/planner-test/process.yml
+    %% Agent: build-guidance (teacher-update-guidance for guidance file updates)
+
+    subgraph UpdatePlannerTest_SG ["Phase 3: Update planner-test Process"]
+        EnterPlannerTest --> SpawnTestGuidance[Spawn build-guidance Agent]
+        SpawnTestGuidance --> TestLoop{planner-test Updated?}
+        TestLoop -- "No" --> CaptureTestFB[Capture Feedback]
+        CaptureTestFB --> CheckTestIter{Max Iter?}
+        CheckTestIter -- "No" --> SpawnTestGuidance
+        CheckTestIter -- "Yes" --> EscalateTest((Escalate))
+        TestLoop -- "Yes" --> TestComplete[planner-test Update Complete]
+    end
+
+    TestComplete --> EnterOrchPlanning[Enter Update orchestration-planning Phase]
+
+    %% ========================================
+    %% PHASE 4: UPDATE ORCHESTRATION-PLANNING (build-guidance)
+    %% ========================================
+    %% Tasks: ORCH_001, ORCH_002 - Add story content validation gate
+    %% Targets: modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd, planning-standard.yml
+    %% Agent: build-guidance (teacher-update-guidance for guidance file updates)
+
+    subgraph UpdateOrchPlanning_SG ["Phase 4: Update orchestration-planning"]
+        EnterOrchPlanning --> SpawnOrchGuidance[Spawn build-guidance Agent]
+        SpawnOrchGuidance --> OrchLoop{orchestration-planning Updated?}
+        OrchLoop -- "No" --> CaptureOrchFB[Capture Feedback]
+        CaptureOrchFB --> CheckOrchIter{Max Iter?}
+        CheckOrchIter -- "No" --> SpawnOrchGuidance
+        CheckOrchIter -- "Yes" --> EscalateOrch((Escalate))
+        OrchLoop -- "Yes" --> OrchComplete[orchestration-planning Update Complete]
+    end
+
+    OrchComplete --> EnterOrchExecutor[Enter Update orchestration-executor Phase]
+
+    %% ========================================
+    %% PHASE 5: UPDATE ORCHESTRATION-EXECUTOR (build-guidance)
+    %% ========================================
+    %% Tasks: EXEC_001 - Add UAT validation gate
+    %% Targets: modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml
+    %% Agent: build-guidance (teacher-update-guidance for guidance file updates)
+
+    subgraph UpdateOrchExecutor_SG ["Phase 5: Update orchestration-executor"]
+        EnterOrchExecutor --> SpawnExecGuidance[Spawn build-guidance Agent]
+        SpawnExecGuidance --> ExecLoop{orchestration-executor Updated?}
+        ExecLoop -- "No" --> CaptureExecFB[Capture Feedback]
+        CaptureExecFB --> CheckExecIter{Max Iter?}
+        CheckExecIter -- "No" --> SpawnExecGuidance
+        CheckExecIter -- "Yes" --> EscalateExec((Escalate))
+        ExecLoop -- "Yes" --> ExecComplete[orchestration-executor Update Complete]
+    end
+
+    ExecComplete --> GuidanceSelfReview[Guidance Self-Review Gate]
+
+    %% ========================================
+    %% GUIDANCE SELF-REVIEW GATE (MANDATORY)
+    %% ========================================
+    %% After guidance updates, require agent self-review before tests
+
+    GuidanceSelfReview --> SpawnGuidanceReviewer[Spawn build-guidance for Self-Review]
+    SpawnGuidanceReviewer --> ReviewResult{Guidance Changes Valid?}
+    ReviewResult -- "No: Missing Fields" --> FixGuidance[Fix Guidance Issues]
+    ReviewResult -- "No: Inconsistencies" --> FixGuidance
+    FixGuidance --> SpawnGuidanceReviewer
+    ReviewResult -- "Yes" --> GuidanceApproved[Guidance Updates Approved]
+
+    GuidanceApproved --> EnterUnitTest[Enter Unit Test Phase]
+
+    %% ========================================
+    %% PHASE 6: UNIT TESTS (test-builder)
+    %% ========================================
+    %% Tasks: UNIT_001, UNIT_002, UNIT_003 - Create unit tests for guidance changes
+    %% Targets: tests/guidance/test_planner_build_story_generation.py, test_planner_test_story_validation.py, test_orchestration_story_validation.py
+    %% Agent: test-builder (creates new tests from scratch)
+
+    subgraph UnitTest_SG ["Phase 6: Unit Tests"]
+        EnterUnitTest --> SpawnUnitTestBuilder[Spawn test-builder Agent]
+        SpawnUnitTestBuilder --> UnitBuildResult{Tests Created?}
+        UnitBuildResult -- "No" --> CaptureUnitBuildFB[Capture Feedback]
+        CaptureUnitBuildFB --> CheckUnitBuildIter{Max Iter?}
+        CheckUnitBuildIter -- "No" --> SpawnUnitTestBuilder
+        CheckUnitBuildIter -- "Yes" --> EscalateUnitBuild((Escalate))
+        UnitBuildResult -- "Yes" --> RunUnitTests[Run Unit Tests]
+
+        RunUnitTests --> UnitTestResult{All Pass?}
+        UnitTestResult -- "No" --> FixUnitCode[Spawn build-guidance to Fix Issues]
+        FixUnitCode --> RunUnitTests
+        UnitTestResult -- "Yes" --> AuditUnitTests[Audit Unit Tests]
+
+        AuditUnitTests --> SpawnUnitAuditor[Spawn test-audit Agent]
+        SpawnUnitAuditor --> UnitAuditResult{Audit Pass?}
+        UnitAuditResult -- "No: Reward Hacking" --> FixUnitTests[Spawn test-builder to Fix Tests]
+        UnitAuditResult -- "No: False Positives" --> FixUnitTests
+        FixUnitTests --> RunUnitTests
+        UnitAuditResult -- "Yes" --> UnitComplete[Unit Tests Complete]
+    end
+
+    UnitComplete --> EnterIntegrationTest[Enter Integration Test Phase]
+
+    %% ========================================
+    %% PHASE 7: INTEGRATION TESTS (test-builder)
+    %% ========================================
+    %% Tasks: INT_001, INT_002 - End-to-end validation of story generation workflow
+    %% Targets: tests/integration/test_planning_with_stories.py, test_uat_story_validation.py
+    %% Agent: test-builder (creates new integration tests)
+
+    subgraph IntegrationTest_SG ["Phase 7: Integration Tests"]
+        EnterIntegrationTest --> SpawnIntTestBuilder[Spawn test-builder Agent]
+        SpawnIntTestBuilder --> IntBuildResult{Tests Created?}
+        IntBuildResult -- "No" --> CaptureIntBuildFB[Capture Feedback]
+        CaptureIntBuildFB --> CheckIntBuildIter{Max Iter?}
+        CheckIntBuildIter -- "No" --> SpawnIntTestBuilder
+        CheckIntBuildIter -- "Yes" --> EscalateIntBuild((Escalate))
+        IntBuildResult -- "Yes" --> RunIntTests[Run Integration Tests]
+
+        RunIntTests --> IntTestResult{All Pass?}
+        IntTestResult -- "No" --> FixIntCode[Spawn build-guidance to Fix Issues]
+        FixIntCode --> RunIntTests
+        IntTestResult -- "Yes" --> AuditIntTests[Audit Integration Tests]
+
+        AuditIntTests --> SpawnIntAuditor[Spawn test-audit Agent]
+        SpawnIntAuditor --> IntAuditResult{Audit Pass?}
+        IntAuditResult -- "No: Reward Hacking" --> FixIntTests[Spawn test-builder to Fix Tests]
+        IntAuditResult -- "No: False Positives" --> FixIntTests
+        FixIntTests --> RunIntTests
+        IntAuditResult -- "Yes" --> IntComplete[Integration Tests Complete]
+    end
+
+    IntComplete --> EnterSmokeTest[Enter Smoke Test Phase]
+
+    %% ========================================
+    %% PHASE 8: SMOKE TESTS (test-user-simulator)
+    %% ========================================
+    %% Tasks: SMOKE_001, SMOKE_002 - Manual validation of story generation in real scenarios
+    %% Agent: test-user-simulator (simulates user running planner agents)
+
+    subgraph SmokeTest_SG ["Phase 8: Smoke Tests"]
+        EnterSmokeTest --> SpawnSmokeSimulator[Spawn test-user-simulator Agent]
+        SpawnSmokeSimulator --> SmokeResult{Manual Validation Pass?}
+        SmokeResult -- "No" --> CaptureSmokeFB[Capture Feedback]
+        CaptureSmokeFB --> CheckSmokeIter{Max Iter?}
+        CheckSmokeIter -- "No" --> SpawnSmokeSimulator
+        CheckSmokeIter -- "Yes" --> EscalateSmoke((Escalate))
+        SmokeResult -- "Yes" --> SmokeComplete[Smoke Tests Complete]
+    end
+
+    SmokeComplete --> EnterUAT[Enter UAT Phase]
+
+    %% ========================================
+    %% PHASE 9: UAT (PRIMARY SUCCESS CRITERIA)
+    %% ========================================
+    %% Tasks: UAT_001, UAT_002 - Validate against US-CLI-PLAN-001 and US-CLI-PLAN-002
+    %% Stories: US-CLI-PLAN-001 (Planner creates comprehensive plans with stories)
+    %%          US-CLI-PLAN-002 (Plans include UAT with story validation)
+    %% Agent: test-user-simulator (validates against user story acceptance criteria)
+
+    subgraph UAT_SG ["Phase 9: UAT (PRIMARY SUCCESS CRITERIA)"]
+        EnterUAT --> ValidateStories[Validate Story Content Exists]
+        ValidateStories --> StoryContentValid{Stories Complete?}
+        StoryContentValid -- "No: Missing Files" --> BlockUAT((BLOCK: Story content missing))
+        StoryContentValid -- "No: Incomplete" --> BlockUAT
+        StoryContentValid -- "Yes" --> SpawnUATSimulator[Spawn test-user-simulator Agent]
+
+        SpawnUATSimulator --> UATResult{All Stories Pass?}
+        UATResult -- "No: US-CLI-PLAN-001 Failed" --> FixUAT[Spawn build-guidance to Fix]
+        UATResult -- "No: US-CLI-PLAN-002 Failed" --> FixUAT
+        FixUAT --> SpawnUATSimulator
+        UATResult -- "Yes" --> RecordStoryStatus[Update Story Status: pass]
+        RecordStoryStatus --> UATComplete[UAT Complete]
+    end
+
+    %% ========================================
+    %% OUTPUT
+    %% ========================================
+    subgraph Output_SG ["Output"]
+        UATComplete --> ReportCompletion[Report Completion Status]
+        ReportCompletion --> ArchivePlan[Run: agentic plan move folder --plan 260214US_add_user_story_generation_phase_to_planner_agents]
+    end
+
+    ArchivePlan --> End((End: Plan Completed))
+
+    classDef dashedstroke stroke-dasharray: 5 5;

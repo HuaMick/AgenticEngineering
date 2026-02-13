@@ -1,0 +1,136 @@
+%% =============================================================================
+%% GOAL: Resolve the root causes of workspace file drift by addressing the fundamental problem:
+plan folders are created through multiple uncontrolled paths (agent Write tool, cmd_scaffold,
+cmd_create) that bypass the CLI's plan init pipeline. The workspace file is a symptom —
+the real issue is that Claude sessions and spawned agents jump directly to creating plan
+artifacts without going through `agentic plan init`, which is the only path that properly
+creates worktrees AND updates the workspace file.
+
+SUCCESS LOOKS LIKE: Every plan folder in docs/plans/live/ was created by `agentic plan init`,
+has a corresponding worktree (or explicitly opted out), and the workspace file stays in sync
+automatically without manual intervention.
+
+%% =============================================================================
+%% PROFILE: Orchestration-Workspace Drift — Root Cause Resolution
+%% INPUT_PATH: /home/code/AgenticEngineering/docs/plans/live/260214WS_workspace_auto_sync/plan_build.yml
+%%
+%% PHASES:
+%%   phase-1: Funnel plan creation through CLI
+%%   phase-2: Fix existing CLI bugs
+%%   phase-3: Auto-sync on plan lifecycle events
+%%   phase-4: Testing and validation
+%%
+%% AGENT_ROUTING: phase-1 -> build-python, phase-2 -> build-python, phase-3 -> build-python, phase-4 -> test-builder
+%% STATUS: phase-1=pending, phase-2=pending, phase-3=pending, phase-4=pending
+%% FEEDBACK_TRIGGERS: TEST_FAILURE -> test-fix-loop, BUILD_FAILURE -> escalate
+%% =============================================================================
+
+flowchart LR
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    LoadInputs --> ReviewInputs[Review All Listed Inputs]
+    ReviewInputs --> CheckInputs{All Inputs Found?}
+
+    CheckInputs -- "No: Missing" --> SearchInputs[Search for Missing Inputs]
+    SearchInputs --> Found{Found?}
+    Found -- "Yes: Update paths" --> UpdateRefs[Update References]
+    UpdateRefs --> ReviewInputs
+    Found -- "No: Stop" --> AskUser((Ask User for Clarification))
+
+    CheckInputs -- "Yes: Verified" --> Phase1
+
+    %% ========================================
+    %% PHASE 1: FUNNEL PLAN CREATION THROUGH CLI
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: task-1.1, task-1.2, task-1.3
+
+    subgraph phase_1_SG ["Funnel plan creation through CLI"]
+        Phase1[Enter Funnel plan creation through CLI] --> SpawnAgent1[Spawn build-python Agent]
+        SpawnAgent1 --> Task_phase_1_1[task-1.1: Add FENCE to planner-build preventing direct folder creation]
+        Task_phase_1_1 --> Task_phase_1_2[task-1.2: Add orchestration prompt template for Claude sessions]
+        Task_phase_1_2 --> Task_phase_1_3[task-1.3: Deprecate plan creation in cmd_create and cmd_scaffold]
+        Task_phase_1_3 --> Phase1Complete[Funnel plan creation through CLI Complete]
+    end
+
+    Phase1Complete --> Phase2
+
+    %% ========================================
+    %% PHASE 2: FIX EXISTING CLI BUGS
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: task-2.1, task-2.2
+
+    subgraph phase_2_SG ["Fix existing CLI bugs"]
+        Phase2[Enter Fix existing CLI bugs] --> SpawnAgent2[Spawn build-python Agent]
+        SpawnAgent2 --> Task_phase_2_1[task-2.1: Fix workspace update in cmd_init for reused worktrees]
+        Task_phase_2_1 --> Task_phase_2_2[task-2.2: Fix validator regex for hyphenated phase IDs]
+        Task_phase_2_2 --> Phase2Complete[Fix existing CLI bugs Complete]
+    end
+
+    Phase2Complete --> Phase3
+
+    %% ========================================
+    %% PHASE 3: AUTO-SYNC ON PLAN LIFECYCLE EVENTS
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: task-3.1, task-3.2, task-3.3
+
+    subgraph phase_3_SG ["Auto-sync on plan lifecycle events"]
+        Phase3[Enter Auto-sync on plan lifecycle events] --> SpawnAgent3[Spawn build-python Agent]
+        SpawnAgent3 --> Task_phase_3_1[task-3.1: Add workspace sync to plan completion flow]
+        Task_phase_3_1 --> Task_phase_3_2[task-3.2: Add registry cleanup to cmd_sync]
+        Task_phase_3_2 --> Task_phase_3_3[task-3.3: Add FileLock to workspace file operations]
+        Task_phase_3_3 --> Phase3Complete[Auto-sync on plan lifecycle events Complete]
+    end
+
+    Phase3Complete --> Phase4
+
+    %% ========================================
+    %% PHASE 4: TESTING AND VALIDATION
+    %% ========================================
+    %% AGENT_ROUTING: test-builder agent with test-fix loop
+    %% LOOP_DEFINITION: test-fix-loop
+    %% MAX_ITERATIONS: 5
+
+    subgraph Testing4_SG ["Testing and validation (Test-Fix-Loop)"]
+        Phase4[Enter Testing and validation] --> SpawnTestBuilder4[Spawn test-builder Agent]
+        SpawnTestBuilder4 --> RunTests4[Run Tests]
+        RunTests4 --> TestsPassed4{Tests Passed?}
+
+        %% Test-Fix Loop: retry path
+        TestsPassed4 -- "No: Fix in Iteration" --> SpawnBuilderFix4[Spawn builder Agent for Fixes]
+        SpawnBuilderFix4 --> ApplyFixes4[Apply Implementation Fixes]
+        ApplyFixes4 --> RunTests4
+
+        %% Success path
+        TestsPassed4 -- "Yes: All Pass" --> Phase4Complete[Testing and validation Complete]
+    end
+
+    %% Escalation path for persistent test failures
+    TestsPassed4 -- "No: Escalate" --> CheckIterations4{Max Iterations Reached?}
+    CheckIterations4 -- "No" --> SpawnTestBuilder4
+    CheckIterations4 -- "Yes" --> EscalateTests4((Ask User: Test Failures Persist))
+
+
+    %% ========================================
+    %% FINALIZATION
+    %% ========================================
+    Phase4Complete --> UpdatePlanStatus[Update Plan Status: completed]
+    %% agentic plan move folder --plan <path>
+    UpdatePlanStatus --> ArchivePlan[Archive to docs/plans/completed/]
+    ArchivePlan --> End((End: Plan Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef entrypoint fill:#90EE90,stroke:#228B22
+    classDef exitpoint fill:#FFB6C1,stroke:#DC143C
+    classDef userpoint fill:#87CEEB,stroke:#4682B4
+    classDef keyaction fill:#FFD700,stroke:#DAA520
+    class Start entrypoint
+    class End exitpoint
+    class AskUser,EscalateTests4 userpoint

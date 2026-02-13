@@ -418,6 +418,101 @@ def _check_session_health(session: dict) -> dict:
     }
 
 
+def cmd_dashboard(args, ctx=None):
+    """Display a live auto-refreshing dashboard of active sessions.
+
+    Shows a Rich.Live table that updates every N seconds with:
+    - Session ID (8-char), Status, Health, Age, Role/Description
+
+    Args:
+        args: Parsed command arguments with refresh interval.
+        ctx: Optional CLIContext.
+    """
+    from agenticcli.console import console
+    from rich.live import Live
+    from rich.table import Table
+
+    refresh_seconds = getattr(args, "refresh", 5)
+
+    def build_table() -> Table:
+        """Build the sessions dashboard table."""
+        table = Table(show_header=True, header_style="bold cyan", title="Active Sessions")
+        table.add_column("ID", style="yellow", width=10)
+        table.add_column("Status", width=12)
+        table.add_column("Health", width=8)
+        table.add_column("Age", style="dim", width=10)
+        table.add_column("Description", style="dim", no_wrap=False)
+
+        sessions = _list_all_sessions()
+
+        # Update status for all running sessions
+        for session in sessions:
+            _update_session_status(session)
+
+        # Filter to running/starting only
+        active_sessions = [s for s in sessions if s.get("status") in ("running", "starting")]
+
+        # Compute health for active sessions
+        health_data = {}
+        for session in active_sessions:
+            health_data[session["session_id"]] = _check_session_health(session)
+
+        status_colors = {
+            "running": "green",
+            "starting": "yellow",
+        }
+
+        if not active_sessions:
+            table.add_row("[dim]No active sessions[/dim]", "", "", "", "")
+            return table
+
+        for session in sorted(active_sessions, key=lambda s: s.get("started_at", ""), reverse=True):
+            session_id = session.get("session_id", "")[:8]
+            status = session.get("status", "unknown")
+            status_color = status_colors.get(status, "white")
+            age = _format_relative_time(session.get("started_at", ""))
+            prompt = session.get("prompt", "")
+
+            # Clean up prompt for display
+            prompt = prompt.replace("\n", " ").replace("\r", "")
+            if len(prompt) > 50:
+                prompt = prompt[:50] + "..."
+
+            # Health column
+            health = health_data.get(session.get("session_id", ""))
+            if health:
+                if health["stale"]:
+                    health_display = f"[yellow]STALE[/yellow]"
+                    status_display = f"[yellow]stale {health['stale_minutes']}m[/yellow]"
+                elif health["healthy"]:
+                    health_display = "[green]OK[/green]"
+                    status_display = f"[{status_color}]{status}[/{status_color}]"
+                else:
+                    health_display = "[red]FAIL[/red]"
+                    status_display = f"[{status_color}]{status}[/{status_color}]"
+            else:
+                health_display = "[dim]-[/dim]"
+                status_display = f"[{status_color}]{status}[/{status_color}]"
+
+            table.add_row(
+                session_id,
+                status_display,
+                health_display,
+                age,
+                prompt,
+            )
+
+        return table
+
+    try:
+        with Live(build_table(), console=console, refresh_per_second=1/refresh_seconds) as live:
+            while True:
+                time.sleep(refresh_seconds)
+                live.update(build_table())
+    except KeyboardInterrupt:
+        console.print("\n[dim]Dashboard stopped[/dim]")
+
+
 def handle(args, ctx=None):
     """Route session subcommands.
 
@@ -437,8 +532,10 @@ def handle(args, ctx=None):
         cmd_health(args, ctx)
     elif args.session_command == "logs":
         cmd_logs(args, ctx)
+    elif args.session_command == "dashboard":
+        cmd_dashboard(args, ctx)
     else:
-        print("Usage: agentic session <spawn|list|stop|status|health|logs>", file=sys.stderr)
+        print("Usage: agentic session <spawn|list|stop|status|health|logs|dashboard>", file=sys.stderr)
         sys.exit(1)
 
 

@@ -24,6 +24,29 @@ process:
       2. target_project_path - Absolute path to project root (e.g., "/home/code/MyProject")
 
     - |
+      FENCE: PLAN FOLDER MUST EXIST BEFORE AUDITING
+      The plan folder MUST already exist at the provided plan_folder_path.
+
+      VALIDATION STEP:
+      Before proceeding, verify the plan folder exists:
+      1. Check if the provided plan_folder_path exists on disk
+      2. If the folder does NOT exist, STOP immediately with this message:
+
+         "FENCE VIOLATION: Plan folder not found at {plan_folder_path}
+
+          The plan folder must be created via CLI before auditing can begin.
+
+          REQUIRED ACTION:
+          Run: agentic plan init <branch> --description <description>
+
+          The CLI creates the worktree, workspace entry, and folder structure atomically.
+          Do NOT create the plan folder directly with the Write tool.
+
+          After running the CLI command, retry the audit operation."
+
+      3. If the folder exists, proceed with audit
+
+    - |
       INVENTORY THE PLAN FOLDER:
       List all files in root and subfolders (live/, completed/, audit/, analysis/).
       Record: file path, type (from naming pattern), last modified date.
@@ -32,7 +55,7 @@ process:
       AUDIT FILE PLACEMENT (for each file ask: "Does this file belong here?"):
 
       For files in live/:
-      - Is this a phase plan (plan_live_*.yml)? Check if ANY items are still pending/in-progress.
+      - Is this a phase plan (plan_*.yml)? Check if ANY items are still pending/in-progress.
         If ALL items are completed, FLAG: "Should be removed from live/ (exists in completed/)"
       - Is this an audit report (audit_*.yml)? FLAG: "Should be in audit/ subfolder"
       - Is this a review decision (review_*.yml)? FLAG: "Should be in analysis/ subfolder"
@@ -55,7 +78,7 @@ process:
     - |
       AUDIT FOR COMPLETED FILES STILL IN LIVE:
 
-      For each phase plan in live/ (plan_live_*.yml):
+      For each phase plan in live/ (plan_*.yml):
       1. Read the file and examine all tasks/items
       2. Check the status field of each item
       3. If ALL items have status: completed:

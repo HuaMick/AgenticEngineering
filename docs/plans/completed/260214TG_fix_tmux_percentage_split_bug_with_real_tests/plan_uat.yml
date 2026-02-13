@@ -1,0 +1,121 @@
+_template_status: active
+plan:
+  name: UAT for tmux layout fix
+  status: pending
+  created: '2026-02-14'
+  objective: 'Validate that the tmux layout fix resolves the "size missing" error
+    and creates
+
+    a proper 3-pane layout for users running agentic orchestrate from bare terminals
+
+    on WSL2 systems.
+
+    '
+  user_stories:
+  - id: uat_001
+    story: As a user running agentic orchestrate from a bare terminal, I see a 3-pane
+      tmux layout
+    acceptance_criteria:
+    - When I run 'agentic orchestrate -m loop' from a non-tmux terminal
+    - Then a new tmux session is created
+    - 'And I see three panes: orchestrator (left), sessions (top-right), questions
+      (bottom-right)'
+    - And the dashboards are running and showing data
+    - And the orchestrator is interactive and ready for input
+    test_steps:
+    - Open a bare terminal (not in tmux)
+    - 'Run: agentic orchestrate -m loop'
+    - Verify tmux session appears with 3 panes
+    - Verify no error messages in any pane
+    - Press Ctrl+C to exit cleanly
+    status: pending
+  - id: uat_002
+    story: As a user on WSL2, the tmux layout works without 'size missing' errors
+    acceptance_criteria:
+    - When I run 'agentic orchestrate -m loop' on WSL2 with tmux 3.4
+    - Then no 'size missing' or split-window errors appear
+    - And the layout is created successfully
+    - And I do NOT fall back to plain Claude session
+    test_steps:
+    - 'Verify running on WSL2: uname -r | grep WSL'
+    - 'Verify tmux version: tmux -V (should be 3.4)'
+    - 'Run: agentic orchestrate -m loop'
+    - 'Check for warning messages: should see NO ''Failed to create tmux layout''
+      warnings'
+    - 'Verify 3 panes exist: tmux list-panes'
+    status: pending
+  - id: uat_003
+    story: As a user already in tmux, the in-place layout works correctly
+    acceptance_criteria:
+    - When I run 'agentic orchestrate -m loop' from within an existing tmux session
+    - Then the current pane is split into 3 panes
+    - And the splits work without errors
+    - And the dashboards start correctly
+    test_steps:
+    - 'Start tmux: tmux new -s test'
+    - 'Run: agentic orchestrate -m loop'
+    - Verify current window now has 3 panes
+    - Verify no error messages
+    - 'Exit: Ctrl+C'
+    status: pending
+  phases:
+  - name: Pre-UAT Verification
+    id: uat_phase_01
+    status: pending
+    tasks:
+    - id: uat_phase_01_001
+      name: Verify tmux version and environment
+      status: completed
+      description: 'Before starting UAT, verify:
+
+        - tmux --version shows 3.4
+
+        - uname -r shows WSL2 kernel
+
+        - Terminal size is reasonable (at least 120x30)
+
+        '
+  - name: UAT Execution
+    id: uat_phase_02
+    status: pending
+    tasks:
+    - id: uat_phase_02_001
+      name: Execute UAT_001 - Bare terminal test
+      status: completed
+      description: Run user story UAT_001 test steps and document results
+    - id: uat_phase_02_002
+      name: Execute UAT_002 - WSL2 error verification
+      status: completed
+      description: Run user story UAT_002 test steps and document results
+    - id: uat_phase_02_003
+      name: Execute UAT_003 - In-place tmux test
+      status: completed
+      description: Run user story UAT_003 test steps and document results
+  - name: UAT Sign-off
+    id: uat_phase_03
+    status: pending
+    tasks:
+    - id: uat_phase_03_001
+      name: Document UAT results
+      status: completed
+      description: 'Create UAT results summary:
+
+        - All user stories passed/failed
+
+        - Any defects found
+
+        - Screenshots or logs if issues occur
+
+        - Final sign-off decision
+
+        '
+  environment:
+    platform: WSL2
+    os: Linux 5.15.167.4-microsoft-standard-WSL2
+    tmux_version: '3.4'
+    terminal: Windows Terminal / WSL2
+  test_data:
+    session_names:
+    - agentic-orch-XXXXX
+    expected_panes: 3
+    expected_layout: main=140cols, status=60x30, questions=60x20

@@ -1,0 +1,484 @@
+name: add-user-story-generation-to-planners
+worktree_path: /home/code/AgenticEngineering-260212TC_add_test_cleaner_agent
+branch: 260214US_add_user_story_generation_to_planners
+status: active
+priority: critical
+context: "THE PROBLEM:\nThe planner-build and planner-test agents generate implementation\
+  \ plans with tasks\nand phases, but they do NOT generate user stories. This means:\n\
+  1. Test phases have no UAT acceptance criteria grounded in real user journeys\n\
+  2. Manual test tasks are just command checklists (\"run X --help\") not user story\
+  \ validations\n3. The test-runner agent (which only runs existing tests) is routed\
+  \ for verification\n   instead of test-builder (which creates new tests)\n4. Plans\
+  \ get marked complete after checking --help output without verifying actual functionality\n\
+  \nEVIDENCE (from 260214TU_tmux_orchestration_ui):\n- Phase 5 \"Verification\" had\
+  \ only 2 tasks: run existing tests + manual checklist\n- TU_009 \"Manual integration\
+  \ test\" was 5 bullet points checking --help flags\n- Zero unit tests created for\
+  \ the new tmux_layout.py module\n- The agent marked TU_009 complete after confirming\
+  \ --help showed new flags\n- A critical tmux bug (detached sessions missing -x/-y\
+  \ dimensions) shipped because\n  no test actually created a tmux session\n\nTHE\
+  \ ROOT CAUSE:\n- orchestration-planning.mmd has story discovery via `agentic stories\
+  \ find`\n- But planner agents don't have a \"generate user stories\" step\n- Story\
+  \ discovery finds story IDs; story generation creates story content\n- Without story\
+  \ content, UAT has no acceptance criteria to validate against\n"
+inputs:
+- location: modules/AgenticGuidance/agents/planner/planner-build/process.yml
+  description: Build planner that needs story generation step
+- location: modules/AgenticGuidance/agents/planner/planner-test/process.yml
+  description: Test planner that needs story generation phase
+- location: modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd
+  description: Orchestration planner that coordinates story discovery
+- location: modules/AgenticGuidance/assets/guidelines/planning-standard.yml
+  description: Story-First Planning fence and UAT requirements
+- location: modules/AgenticGuidance/assets/definitions/user-stories.yml
+  description: User story schema and metadata
+- location: docs/userstories/
+  description: Existing user story structure to reference
+affected_stories:
+- US-CLI-PLAN-001
+- US-CLI-PLAN-002
+story_updates_needed: true
+story_creation_tasks:
+- id: US_001
+  description: Create US-CLI-PLAN-001 and US-CLI-PLAN-002 user stories
+impacted_artifacts:
+- artifact_type: agent
+  artifact_identifier: planner-build
+  impact_type: behavior_change
+  description: Add mandatory user story generation step before task planning
+  breaking_change: false
+- artifact_type: agent
+  artifact_identifier: planner-test
+  impact_type: behavior_change
+  description: Add mandatory story generation phase before test creation
+  breaking_change: false
+- artifact_type: agent
+  artifact_identifier: orchestration-planning
+  impact_type: behavior_change
+  description: Add story content validation gate after story discovery
+  breaking_change: false
+- artifact_type: schema
+  artifact_identifier: planning-standard.yml
+  impact_type: interface_change
+  description: Clarify story discovery vs story generation requirements
+  breaking_change: false
+open_questions:
+- id: plan-q-001
+  question: Should story generation be a separate phase or integrated into build planning?
+  severity: high
+  status: pending
+  context: 'Two approaches:
+
+    A) Planner-build generates stories inline during task creation
+
+    B) Separate story-generator agent spawned before planner-build
+
+
+    Approach A: Simpler, keeps context hot, but adds complexity to planner-build
+
+    Approach B: Cleaner separation, reusable, but adds orchestration overhead
+
+
+    Leaning toward A for now (inline generation) since planner-build already
+
+    has the objective context and can generate stories before creating tasks.
+
+    '
+  created_at: '2026-02-14T00:00:00'
+  asked_by: orchestration-planning
+- id: plan-q-002
+  question: How many user stories should a typical plan generate?
+  severity: medium
+  status: pending
+  context: 'Need guidance on story quantity:
+
+    - Minimum: 1 happy path story per major feature
+
+    - Reasonable: 3-8 stories covering happy path + error cases + edge cases
+
+    - Maximum: Avoid story explosion (>10 stories suggests feature needs decomposition)
+
+
+    Suggest: 3-8 stories as the default range, with rationale if outside that range.
+
+    '
+  created_at: '2026-02-14T00:00:00'
+  asked_by: orchestration-planning
+phases:
+- name: Story Creation Phase
+  execution: sequential
+  description: Create user stories for this very plan (eat our own dogfood)
+  tasks:
+  - id: US_001
+    name: 'Create US-CLI-PLAN-001: User can create implementation plans with user
+      stories'
+    description: "Create docs/userstories/AgenticCLI/15_planning.yml with first story:\n\
+      \nStory format:\n- id: US-CLI-PLAN-001\n  name: Planner creates comprehensive\
+      \ implementation plans\n  category: planning\n  persona: Developer using agentic\
+      \ CLI to create plans\n  priority: critical\n  starting_state:\n    - User has\
+      \ planning objective and target project path\n    - No plan folder exists yet\n\
+      \  journey:\n    - User invokes: agentic entrypoint _plan_build.yml\n    - orchestration-planning\
+      \ discovers affected user stories via `agentic stories find`\n    - planner-build\
+      \ generates NEW user stories from objective (if stories missing)\n    - planner-build\
+      \ creates plan_live_build.yml with:\n      * affected_stories field populated\n\
+      \      * Story generation tasks if new stories needed\n      * Task inputs reference\
+      \ story files for context\n    - planner-test creates test plan with:\n    \
+      \  * UAT phase targeting the generated stories\n      * Acceptance criteria\
+      \ from story success_criteria\n    - orchestration-executor validates stories\
+      \ exist before UAT execution\n  success_criteria:\n    - Plan YAML has affected_stories\
+      \ field with story IDs\n    - If no stories found, plan has story_creation_tasks\n\
+      \    - Test phase has UAT tasks that reference story IDs\n    - UAT tasks have\
+      \ acceptance criteria from stories\n  testing:\n    local: \"Create a test plan\
+      \ and verify it includes user stories\"\n    docker: \"Run planner-build in\
+      \ container and check output has stories\"\n"
+    status: completed
+    target_files:
+    - docs/userstories/AgenticCLI/15_planning.yml
+    inputs:
+    - docs/userstories/AgenticCLI/02_plan_management.yml
+    - docs/userstories/AgenticCLI/11_stories.yml
+    - modules/AgenticGuidance/assets/definitions/user-stories.yml
+  - id: US_002
+    name: 'Create US-CLI-PLAN-002: Plans include UAT with story validation'
+    description: "Add second story to docs/userstories/AgenticCLI/15_planning.yml:\n\
+      \n- id: US-CLI-PLAN-002\n  name: Plans include UAT phase with acceptance criteria\n\
+      \  category: planning\n  persona: Developer validating implementation quality\n\
+      \  priority: high\n  starting_state:\n    - Plan has build phase complete\n\
+      \    - User stories defined with acceptance criteria\n  journey:\n    - planner-test\
+      \ reads affected_stories from plan metadata\n    - planner-test creates UAT\
+      \ phase with one task per story\n    - Each UAT task includes:\n      * Story\
+      \ ID reference\n      * Acceptance criteria copied from story\n      * Verification\
+      \ steps (what to check, what to look for)\n      * Evidence collection requirements\n\
+      \    - orchestration-executor spawns test-user-simulator per story\n    - test-user-simulator\
+      \ validates against story acceptance criteria\n    - Results recorded via `agentic\
+      \ stories update <id> --status pass/fail`\n  success_criteria:\n    - Test plan\
+      \ has UAT phase\n    - UAT tasks map 1:1 to story IDs\n    - Each UAT task has\
+      \ explicit acceptance criteria\n    - Evidence collection specified for each\
+      \ story validation\n  testing:\n    local: \"Create test plan and verify UAT\
+      \ phase has story criteria\"\n    docker: \"Run planner-test and check UAT output\
+      \ structure\"\n"
+    status: completed
+    target_files:
+    - docs/userstories/AgenticCLI/15_planning.yml
+    inputs:
+    - docs/userstories/AgenticCLI/02_plan_management.yml
+    - modules/AgenticGuidance/assets/guidelines/planning-standard.yml
+- name: Update planner-build
+  execution: sequential
+  description: Add user story generation step to build planner process
+  tasks:
+  - id: BUILD_001
+    name: Add User Story Generation step to planner-build/process.yml
+    description: "Insert new step in planner-build/process.yml after \"USER STORY\
+      \ INTEGRATION\" section (line 185):\n\nNEW STEP (insert after line 209 \"UAT\
+      \ planning: planner-test...\"):\n```yaml\n- |\n  USER STORY GENERATION (MANDATORY\
+      \ - when stories missing):\n  If `agentic stories find` returns no stories for\
+      \ the objective, planner-build\n  MUST generate user stories before creating\
+      \ implementation tasks.\n\n  STORY GENERATION PROCESS:\n  1. Parse objective\
+      \ to identify user-facing features/changes\n  2. For each feature, generate\
+      \ 3-8 user stories in format:\n     - id: US-<PROJECT>-<NNN>\n     - name: Brief\
+      \ story description\n     - category: Grouping (cli_basics, api, features, etc.)\n\
+      \     - persona: Who is the user\n     - priority: critical | high | medium\
+      \ | low\n     - starting_state: Initial environment conditions\n     - journey:\
+      \ Step-by-step actions with expected outcomes\n     - success_criteria: What\
+      \ must pass for story to be validated\n     - testing: Local and Docker testing\
+      \ instructions\n\n  3. Stories must cover:\n     - Happy path (primary user\
+      \ journey)\n     - Error paths (validation failures, edge cases)\n     - Integration\
+      \ scenarios (if feature interacts with other components)\n\n  4. Each story\
+      \ must have specific, measurable acceptance criteria\n     (not vague \"it works\"\
+      \ but \"command outputs X when given Y\")\n\n  5. Create story file at docs/userstories/<project>/NN_<category>.yml\n\
+      \n  6. Record affected_stories in plan metadata with generated story IDs\n\n\
+      \  7. Add story_creation_tasks to plan for teach phase to create files\n\n \
+      \ STORY QUANTITY GUIDANCE:\n  - Minimum: 1 story (happy path only) - acceptable\
+      \ for trivial changes\n  - Recommended: 3-8 stories - covers happy/error/edge\
+      \ cases\n  - Maximum: 10+ stories suggests feature needs decomposition\n\n \
+      \ ESCAPE HATCH (from planning-standard.yml):\n  Build plans are blocked_plan_types\
+      \ - CANNOT skip story generation.\n  If truly no user-facing impact, plan type\
+      \ should be \"guidance\" or \"infrastructure\".\n```\n\nUpdate line 185 section\
+      \ title from \"USER STORY INTEGRATION (MANDATORY - FENCE: Story-First Planning):\"\
+      \nto clarify it covers discovery AND generation:\n\"USER STORY INTEGRATION (MANDATORY\
+      \ - FENCE: Story-First Planning):\"\nbecomes\n\"USER STORY INTEGRATION (MANDATORY\
+      \ - Discovery + Generation):\"\n"
+    status: completed
+    target_files:
+    - modules/AgenticGuidance/agents/planner/planner-build/process.yml
+    inputs:
+    - modules/AgenticGuidance/agents/planner/planner-build/process.yml
+    - modules/AgenticGuidance/assets/definitions/user-stories.yml
+    - modules/AgenticGuidance/assets/guidelines/planning-standard.yml
+    - docs/userstories/AgenticCLI/02_plan_management.yml
+  - id: BUILD_002
+    name: Update success criteria section to require story generation
+    description: 'Update lines 179-183 in planner-build/process.yml to explicitly
+      mention
+
+      story generation as part of success criteria:
+
+
+      OLD:
+
+      ```
+
+      Success criteria MUST include user-focused validation:
+
+      - User acceptance tests - what does the user expect to be able to do?
+
+      - User simulation tests - how will the builder agent validate the user experience?
+
+      - Entrypoint execution - which CLI commands, API endpoints, or UI flows to test?
+
+      - Expected outcomes - what should the user see/experience when it works?
+
+      ```
+
+
+      NEW:
+
+      ```
+
+      Success criteria MUST include user-focused validation:
+
+      - User stories generated - what user journeys will be validated in UAT?
+
+      - User acceptance tests - what does the user expect to be able to do?
+
+      - User simulation tests - how will the builder agent validate the user experience?
+
+      - Entrypoint execution - which CLI commands, API endpoints, or UI flows to test?
+
+      - Expected outcomes - what should the user see/experience when it works?
+
+      ```
+
+      '
+    status: completed
+    target_files:
+    - modules/AgenticGuidance/agents/planner/planner-build/process.yml
+    inputs:
+    - modules/AgenticGuidance/agents/planner/planner-build/process.yml
+- name: Update planner-test
+  execution: sequential
+  description: Add story content validation and UAT generation requirements
+  tasks:
+  - id: TEST_001
+    name: Add Story Content Validation fence to planner-test/process.yml
+    description: "Insert new fence step in planner-test/process.yml after plan folder\
+      \ validation\n(after line 84), before \"PLAN FOLDER STRUCTURE\" section (line\
+      \ 86):\n\n```yaml\n- |\n  FENCE: STORY CONTENT MUST EXIST\n  The test planner\
+      \ MUST validate that story content exists before creating UAT tasks.\n\n  VALIDATION\
+      \ STEP:\n  1. Read affected_stories from plan metadata (from build plan)\n \
+      \ 2. For each story ID, check if story file exists:\n     - Story location:\
+      \ docs/userstories/<project>/NN_<category>.yml\n     - CLI helper: agentic stories\
+      \ show <story_id>\n  3. If story files missing, STOP with this error:\n\n  \
+      \   \"FENCE VIOLATION: Story content missing for UAT planning\n\n     The following\
+      \ stories are referenced but have no content:\n     - <story_id_1>\n     - <story_id_2>\n\
+      \n     REQUIRED ACTION:\n     Stories must be generated before test planning.\
+      \ The build plan should\n     include story_creation_tasks. Verify those tasks\
+      \ completed, or ask\n     orchestration to spawn story-generator agent.\n\n\
+      \     After story files exist, retry test planning.\"\n\n  4. If stories exist,\
+      \ read their content to extract acceptance criteria\n\n  STORY CONTENT VALIDATION:\n\
+      \  Each story MUST have:\n  - success_criteria field (list of measurable acceptance\
+      \ criteria)\n  - journey field (step-by-step user actions)\n  - testing field\
+      \ (local and docker test instructions)\n\n  If any story lacks these fields,\
+      \ STOP with:\n  \"FENCE VIOLATION: Story <id> has incomplete content (missing\
+      \ <field>)\"\n```\n"
+    status: completed
+    target_files:
+    - modules/AgenticGuidance/agents/planner/planner-test/process.yml
+    inputs:
+    - modules/AgenticGuidance/agents/planner/planner-test/process.yml
+    - modules/AgenticGuidance/assets/definitions/user-stories.yml
+    - modules/AgenticGuidance/assets/guidelines/planning-standard.yml
+  - id: TEST_002
+    name: Add UAT Task Generation guidance to planner-test
+    description: "Update the UAT phase planning section in planner-test/process.yml\n\
+      (lines 275-286 \"uat_phase_planning\" section) to include explicit guidance\n\
+      on generating UAT tasks from story content:\n\nAdd new subsection after line\
+      \ 286:\n```yaml\nuat_task_generation:\n  description: |\n    For each affected\
+      \ story, create a UAT task that validates the story's\n    acceptance criteria.\
+      \ Each UAT task must be traceable to a specific story.\n\n  task_template: |\n\
+      \    - id: \"uat_<story_id>\"\n      name: \"Validate <story_name>\"\n     \
+      \ description: |\n        User Story: <story_id>\n\n        Journey:\n     \
+      \   <paste story journey steps>\n\n        Acceptance Criteria:\n        <paste\
+      \ story success_criteria>\n\n        Verification Steps:\n        1. <specific\
+      \ check from story testing section>\n        2. <what to look for>\n       \
+      \ 3. <expected outcomes>\n\n        Evidence Required:\n        - Command output\
+      \ showing <X>\n        - Log excerpt confirming <Y>\n        - Screenshot/recording\
+      \ of <Z>\n      status: \"pending\"\n      story_id: \"<story_id>\"\n      acceptance_criteria:\n\
+      \        - \"<criteria 1 from story>\"\n        - \"<criteria 2 from story>\"\
+      \n      verification_method: \"test-user-simulator\"  # or guidance-blind-test,\
+      \ manual, etc.\n      target_files: []  # UAT tasks don't modify files, they\
+      \ validate behavior\n\n  mapping_rules:\n    - \"One UAT task per user story\"\
+      \n    - \"Task description must include full story journey\"\n    - \"Acceptance\
+      \ criteria copied verbatim from story\"\n    - \"Verification method selected\
+      \ based on story category\"\n    - \"Evidence requirements must be specific\
+      \ and measurable\"\n```\n"
+    status: completed
+    target_files:
+    - modules/AgenticGuidance/agents/planner/planner-test/process.yml
+    inputs:
+    - modules/AgenticGuidance/agents/planner/planner-test/process.yml
+    - modules/AgenticGuidance/assets/guidelines/planning-standard.yml
+- name: Update orchestration-planning
+  execution: sequential
+  description: Add story content validation gate after story discovery
+  tasks:
+  - id: ORCH_001
+    name: Add Story Content Validation gate to orchestration-planning MMD
+    description: 'Update orchestration-planning/process.mmd to add validation after
+      story discovery.
+
+
+      Current flow (lines 122-148):
+
+      StoryDiscovery --> RunStoryFind --> StoriesFound? --> RecordStories --> StoryContextReady
+
+
+      Insert NEW validation node between RecordStories and StoryContextReady:
+
+
+      ```mermaid
+
+      RecordStories --> ValidateStoryContent[Validate Story Content Exists]
+
+      ValidateStoryContent --> StoryFilesExist{Story Files Found?}
+
+
+      %% Happy path: story files exist with complete content
+
+      StoryFilesExist -- "Yes: Complete Content" --> StoryContextReady
+
+
+      %% Missing story files: need generation
+
+      StoryFilesExist -- "No: Missing Files" --> CheckStoryCreationTasks{Has story_creation_tasks?}
+
+      CheckStoryCreationTasks -- "Yes: Will Generate" --> NoteStoryGeneration[Note:
+      Story generation in teach phase]
+
+      NoteStoryGeneration --> StoryContextReady
+
+      CheckStoryCreationTasks -- "No: Missing Tasks" --> BlockMissingStories((BLOCK:
+      Story generation required but not planned))
+
+
+      %% Incomplete story content: need fixes
+
+      StoryFilesExist -- "Incomplete: Missing Fields" --> BlockIncompleteStories((BLOCK:
+      Story content incomplete - missing success_criteria or journey))
+
+      ```
+
+
+      Also add comment at top of StoryDiscovery_SG (after line 124):
+
+      ```
+
+      %% STORY DISCOVERY vs STORY GENERATION:
+
+      %% - Discovery: Find story IDs via `agentic stories find` (what stories exist)
+
+      %% - Generation: Create story content files (what stories should exist if none
+      found)
+
+      %% - Validation: Verify story files have complete content (success_criteria,
+      journey, testing)
+
+      %% Both discovery AND content validation must pass before phase determination.
+
+      ```
+
+      '
+    status: completed
+    target_files:
+    - modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd
+    inputs:
+    - modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd
+    - modules/AgenticGuidance/assets/guidelines/planning-standard.yml
+  - id: ORCH_002
+    name: Update planning-standard.yml to clarify discovery vs generation
+    description: "Update planning-standard.yml to explicitly distinguish story discovery\
+      \ from generation.\n\nUpdate line 19 \"rule: Story-First Planning\" section:\n\
+      \nAdd new subsection after line 38:\n```yaml\nstory_lifecycle:\n  discovery:\n\
+      \    description: \"Find existing story IDs that map to the objective\"\n  \
+      \  command: \"agentic stories find [--project <name>]\"\n    output: \"List\
+      \ of story IDs (US-PROJECT-NNN)\"\n    when: \"ALWAYS - first step in planning\
+      \ workflow\"\n\n  generation:\n    description: \"Create new story content files\
+      \ when discovery finds no stories\"\n    responsibility: \"planner-build (for\
+      \ build plans), planner-guidance (for teach plans)\"\n    output: \"Story YAML\
+      \ files with journey, success_criteria, testing fields\"\n    when: \"When discovery\
+      \ returns empty AND plan type is build/test\"\n    escape_hatch: \"Infrastructure,\
+      \ guidance, internal_tooling may skip with rationale\"\n\n  validation:\n  \
+      \  description: \"Verify story files exist and have complete content\"\n   \
+      \ responsibility: \"orchestration-planning (before phase determination), planner-test\
+      \ (before UAT creation)\"\n    required_fields: [\"journey\", \"success_criteria\"\
+      , \"testing\"]\n    when: \"After discovery (orchestration) and before UAT planning\
+      \ (test)\"\n```\n"
+    status: completed
+    target_files:
+    - modules/AgenticGuidance/assets/guidelines/planning-standard.yml
+    inputs:
+    - modules/AgenticGuidance/assets/guidelines/planning-standard.yml
+    - modules/AgenticGuidance/assets/definitions/user-stories.yml
+- name: Update orchestration-executor
+  execution: sequential
+  description: Add pre-UAT validation gate for story content
+  tasks:
+  - id: EXEC_001
+    name: Add UAT validation gate to orchestration-executor/process.yml
+    description: "Add fence to orchestration-executor that validates story content\
+      \ exists\nbefore executing UAT phases.\n\nFind the UAT execution section in\
+      \ orchestration-executor/process.yml and add:\n\n```yaml\n- |\n  FENCE: UAT\
+      \ VALIDATION GATE\n  Before executing any UAT phase, the executor MUST validate\
+      \ that user stories\n  have complete content. This prevents UAT tasks from running\
+      \ against empty\n  or incomplete story definitions.\n\n  VALIDATION CHECKLIST:\n\
+      \  1. Read affected_stories from plan metadata\n  2. For each story ID:\n  \
+      \   a. Verify story file exists: docs/userstories/<project>/NN_category.yml\n\
+      \     b. Verify story has success_criteria field (list, non-empty)\n     c.\
+      \ Verify story has journey field (list, non-empty)\n     d. Verify story has\
+      \ testing field (dict with local/docker keys)\n\n  3. If ANY story fails validation,\
+      \ STOP UAT execution and report:\n     \"UAT VALIDATION GATE FAILURE\n\n   \
+      \  Cannot execute UAT phase - story content incomplete or missing.\n\n     Failed\
+      \ stories:\n     - <story_id>: <reason>\n\n     REQUIRED ACTION:\n     Fix story\
+      \ content before UAT execution. Stories must have complete\n     success_criteria,\
+      \ journey, and testing fields.\"\n\n  4. If all stories validate, proceed with\
+      \ UAT phase execution\n\n  NOTE: This gate exists to catch the case where planning\
+      \ approved incomplete\n  stories. It's a safety net, not a substitute for proper\
+      \ story generation\n  during planning.\n```\n"
+    status: completed
+    target_files:
+    - modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml
+    inputs:
+    - modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml
+    - modules/AgenticGuidance/assets/definitions/user-stories.yml
+    - modules/AgenticGuidance/assets/guidelines/planning-standard.yml
+loop_structures:
+- id: loop_guidance_validation
+  type: test-fix-loop
+  applies_to_phase: Validation Phase
+  trigger: After guidance updates complete
+  description: 'Validate that updated planner agents actually generate user stories
+    by running
+
+    them on a test objective and checking output.
+
+    '
+  exit_criteria:
+    success: Test plan includes user stories AND UAT phase references them
+    max_iterations: 5
+    escalation: Escalate - guidance changes not producing expected behavior
+  participants:
+  - agent: test-builder
+    role: Create test cases that validate planner output
+  - agent: planner-build
+    role: Subject under test - should generate stories
+  - agent: planner-test
+    role: Subject under test - should validate story content
+success_criteria:
+- planner-build process.yml includes User Story Generation step
+- planner-test process.yml includes Story Content Validation fence
+- orchestration-planning validates story content after discovery
+- orchestration-executor has UAT validation gate
+- planning-standard.yml clarifies discovery vs generation vs validation
+- Test planners output includes user stories with acceptance criteria
+- UAT phases map 1:1 to user stories with explicit validation steps
+- 'Meta-test: Create a new plan and verify it generates user stories'

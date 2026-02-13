@@ -1,0 +1,160 @@
+process:
+  goal: |
+    Run the full orchestration lifecycle: discover all live plans, plan those
+    missing MMDs, execute those with MMDs, archive completed plans, and loop
+    until all plans are done or blocked.
+
+  profile: "orchestrator"
+
+  inputs:
+    - location: "modules/AgenticGuidance/agents/orchestration/orchestration-loop/inputs.yml"
+      description: "Loop configuration and thresholds"
+
+  outputs:
+    - name: "loop_report"
+      description: "Summary of all plans processed with final status"
+
+  steps:
+    # =========================================================================
+    # CCI BOOTSTRAP
+    # =========================================================================
+    - id: "cci_bootstrap"
+      name: "CCI Bootstrap"
+      description: |
+        Execute bootstrap commands to get structured context:
+        ```bash
+        agentic --version && agentic plan list
+        agentic --json plan list
+        agentic --json plan task current
+        ```
+        If ANY command fails, follow DOGFOOD RULE immediately:
+        Reference: modules/AgenticGuidance/assets/guidelines/cli-error-recovery.yml
+
+    # =========================================================================
+    # DISCOVERY
+    # =========================================================================
+    - id: "discovery"
+      name: "Discover Plan Status"
+      description: |
+        For each live plan, classify its state:
+
+        1. Run: `agentic --json plan list`
+        2. For each plan folder, check:
+           - `ls docs/plans/live/<folder>/orchestration_*.mmd`
+           - `agentic --json plan status <folder>`
+
+        Classify each plan:
+        - 100% complete -> ARCHIVE (run: `agentic plan move folder --plan <folder> --force`)
+        - Has orchestration MMD -> EXECUTE
+        - No orchestration MMD -> PLAN
+
+        QUESTION GATE (MANDATORY): Before processing any plan:
+        `agentic question list --plan <folder>`
+        If pending blocking questions exist, mark plan as BLOCKED and skip.
+
+    # =========================================================================
+    # PLANNING PASS
+    # =========================================================================
+    - id: "planning_pass"
+      name: "Plan All Unplanned"
+      description: |
+        For each plan classified as PLAN (no orchestration MMD):
+
+        Launch orchestration-planning via CLI:
+        ```bash
+        agentic orchestrate --mode planning --plan <folder>
+        ```
+
+        Or spawn as a session:
+        ```bash
+        agentic session spawn --role orchestration-planning --plan <folder> -b --dangerously-skip-permissions
+        ```
+
+        After planning completes, re-classify the plan (it should now have an MMD).
+
+    # =========================================================================
+    # EXECUTION PASS
+    # =========================================================================
+    - id: "execution_pass"
+      name: "Execute All Planned"
+      description: |
+        For each plan classified as EXECUTE (has orchestration MMD):
+
+        Launch orchestration-executor via CLI:
+        ```bash
+        agentic orchestrate --mode executor --plan <folder>
+        ```
+
+        Or spawn as a session:
+        ```bash
+        agentic session spawn --role orchestration-executor --plan <folder> -b --dangerously-skip-permissions
+        ```
+
+        PARALLELISM RULES:
+        - Guidance-only plans: safe to run in parallel
+        - Build plans: run sequentially (shared files)
+
+        After execution completes, check plan status.
+
+    # =========================================================================
+    # ARCHIVE PASS
+    # =========================================================================
+    - id: "archive_pass"
+      name: "Archive Completed Plans"
+      description: |
+        For each plan at 100% completion:
+        ```bash
+        agentic plan move folder --plan <folder> --force
+        ```
+        This moves the plan from live/ to completed/.
+
+    # =========================================================================
+    # LOOP CHECK
+    # =========================================================================
+    - id: "loop_check"
+      name: "Check Loop Completion"
+      description: |
+        After one full cycle (discover -> plan -> execute -> archive):
+
+        1. Re-run discovery: `agentic --json plan list`
+        2. If no live plans remain -> EXIT with completion promise
+        3. If all remaining plans are BLOCKED -> EXIT with blocked report
+        4. If iteration count >= max_loop_iterations -> EXIT with max iterations report
+        5. Otherwise -> return to discovery step for another cycle
+
+    # =========================================================================
+    # SHUTDOWN
+    # =========================================================================
+    - id: "shutdown"
+      name: "Loop Shutdown"
+      description: |
+        Generate final loop report:
+        - Plans completed (archived)
+        - Plans still in progress
+        - Plans blocked (with reasons)
+        - Remediation plans spawned during execution
+        - Total iterations used
+
+        Output completion promise or blocked status.
+
+  # ===========================================================================
+  # CLI ERROR RECOVERY (DOGFOOD RULE)
+  # ===========================================================================
+  cli_error_recovery:
+    reference: "modules/AgenticGuidance/assets/guidelines/cli-error-recovery.yml"
+    description: |
+      CRITICAL: If ANY agentic command fails during the loop, follow the
+      DOGFOOD RULE immediately. Do NOT continue the loop while CLI is broken.
+      Diagnose -> create remediation plan -> fix -> verify -> resume loop.
+
+  guidelines:
+    - "CLI-First Context: Always use agentic CLI commands for context. Do not explore the codebase before running bootstrap commands."
+    - "DOGFOOD RULE: If ANY agentic command exits non-zero, follow modules/AgenticGuidance/assets/guidelines/cli-error-recovery.yml"
+    - "FENCE: Do NOT continue the loop while CLI is broken."
+    - "NEVER use Edit tool to change task status in plan YAML files"
+    - "ALWAYS use agentic plan task start/complete for status updates"
+    - "ALWAYS use agentic plan move folder for archiving"
+    - "The --json flag is a root-level global flag: agentic --json plan list (not agentic plan list -j)"
+    - "--role and --task are mutually exclusive on session spawn"
+    - "Guidance plans can run in parallel. Build plans must run sequentially."
+    - "Complete ALL tasks (including LOW priority) before shutdown"

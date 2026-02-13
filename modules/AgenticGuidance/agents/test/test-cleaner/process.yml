@@ -1,0 +1,184 @@
+process:
+  goal: |
+    Safely identify and remove outdated test files, stale fixtures, orphaned conftest entries,
+    and test artifacts that no longer align with the implementation. Every removal must be
+    evidence-based with zero-dependency verification before deletion.
+
+  loop_definitions:
+    reference: "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+    # NOTE: Do not duplicate loop definitions here - see agent-loops.yml for full definitions
+
+  # ==============================================
+  # LOOP CONTEXT
+  # ==============================================
+  loop_context:
+    participates_in:
+      - "cleaner-dependency-loop"
+    role: "cleaner"
+    description: |
+      test-cleaner identifies test artifacts for removal. Before executing any removal,
+      it uses dependency checking (grep, import analysis) to verify zero usages.
+      Items with dependencies are deferred and reported to the orchestrator.
+    iteration_strategy: |
+      Each iteration processes one category of cleanup targets (orphaned files, stale fixtures,
+      conftest entries, dead artifacts). Within each category, items are checked individually
+      via dependency analysis before removal.
+    max_iterations: 3
+    escalation_on_max: "Report remaining items as deferred with dependency details"
+    exit_conditions:
+      - "All identified artifacts verified and processed (removed or deferred)"
+      - "No more cleanup targets found in assigned scope"
+      - "Orchestrator signals loop termination"
+    state_management: |
+      test-cleaner maintains a removal log during execution. Each iteration appends
+      to the log. The final report aggregates all removals and deferrals.
+
+  inputs:
+    - location: "modules/AgenticGuidance/agents/test/test-cleaner/inputs.yml"
+      description: "Core test-cleaner agent inputs, guidelines, and definitions"
+
+  outputs:
+    - name: "cleanup_report"
+      description: "Report of all removals performed and items deferred"
+      location: "Returned to orchestrator (not written to file)"
+      schema:
+        scope: "string - Directory/files analyzed"
+        removals: "list - Items removed with path, type, and justification"
+        deferred: "list - Items with dependencies requiring human review"
+        warnings: "list - Ambiguous items needing investigation"
+        syntax_check: "boolean - Whether remaining tests still parse after cleanup"
+
+  steps:
+    - |
+      CCI BOOTSTRAP (CLI Context Injection) - Run FIRST before any file exploration:
+      Execute these commands to get structured context efficiently:
+
+      ```bash
+      # Get seed context (objective, process summary, inputs)
+      agentic context bootstrap --role test-cleaner -j
+
+      # Get current task if working from a plan
+      agentic plan task current -j
+      ```
+
+      CLI output provides your objective, process summary, input file paths.
+      ONLY use Glob/Grep/Read if CLI output indicates specific files to examine.
+
+    - |
+      VALIDATE INPUTS: Review all inputs per inputs.yml. Verify:
+      - Target test directory exists and is accessible
+      - preserved-files.yml is loaded (CRITICAL for safety)
+      - acceptable-skips.yml is loaded (for skip pattern analysis)
+      If an input cannot be found, STOP and report the issue.
+
+    - |
+      INVENTORY: Build an inventory of test artifacts in the target scope:
+
+      1. List all test files (test_*.py, *_test.py)
+      2. List all conftest.py files and their fixture definitions
+      3. List all fixture data files (JSON, YAML, CSV in test directories)
+      4. List all __init__.py files in test directories
+      5. Note any generated artifacts (coverage files, report files)
+
+      Use Glob and Grep for efficient discovery. Do NOT load file contents yet -
+      just build the inventory of paths.
+
+    - |
+      IDENTIFY ORPHANED TEST FILES: For each test file in inventory:
+
+      1. Extract import statements (grep for 'from ... import' and 'import ...')
+      2. Check if imported source modules still exist (Glob for the module path)
+      3. If ALL source module imports are broken → flag as orphaned
+      4. If SOME imports are broken → flag as warning (partial orphan)
+      5. Skip files in preserved-files.yml
+
+      Evidence required: List of broken imports for each flagged file.
+
+    - |
+      IDENTIFY STALE FIXTURES: For each conftest.py in inventory:
+
+      1. Extract fixture function names (grep for '@pytest.fixture' and the function name)
+      2. For each fixture, search for usage across all test files in its scope
+      3. Check parametrize decorators for indirect fixture references
+      4. If fixture has zero consumers → flag as stale
+      5. Check for fixture data files: search for file references in test code
+
+      Evidence required: Search results showing zero usages for each flagged fixture.
+
+    - |
+      IDENTIFY DEAD ARTIFACTS: Check for:
+
+      1. Empty __init__.py in test dirs with no test files
+      2. Generated files that shouldn't be in VCS (.coverage, htmlcov/, *.pyc)
+      3. Fixture data files not referenced by any test
+      4. Permanently skipped tests (>90 days, no tracking issue) per acceptable-skips.yml
+
+      Evidence required: Timestamp or git log for age, grep results for zero references.
+
+    - |
+      DEPENDENCY VERIFICATION (cleaner-dependency-loop): For each flagged item:
+
+      1. Run comprehensive grep for the artifact name/path across the ENTIRE repository
+         (not just the test directory - source code may reference test fixtures)
+      2. Check CI/CD configs (cloudbuild.yaml, Dockerfile.test, docker-compose.test.yml)
+      3. Check documentation references
+      4. If ANY dependency found → move to deferred list with dependency details
+      5. If zero dependencies confirmed → approve for removal
+
+      FENCE: NEVER remove an artifact that has ANY unresolved dependency.
+
+    - |
+      EXECUTE REMOVALS: For each approved removal:
+
+      1. Check preserved-files.yml one final time (belt-and-suspenders)
+      2. Remove the file or conftest entry
+      3. Log the removal with justification
+      4. After all removals, verify remaining test files parse:
+         ```bash
+         python3 -m py_compile <file>
+         ```
+         for each remaining .py file in the modified directories.
+
+    - |
+      REPORT FINDINGS: Output per inputs.yml#output_format.
+      Include: scope, removals performed, deferred items, warnings, syntax check result.
+
+    - |
+      Error-Driven Planning Handoff:
+      Reference: modules/AgenticGuidance/assets/definitions/error-driven-planning-protocol.yml
+
+      When ANY issues encountered outside cleanup scope:
+      1. Capture error context:
+         - error_details: Description of issue found
+         - affected_files: Files involved
+         - current_plan: Plan folder being executed
+         - discovery_context: "test-cleaner cleaning [target path]"
+      2. Spawn orchestration-planning session with the context package
+      3. Continue cleanup work (non-blocking)
+
+      FENCE: test-cleaner MUST NOT:
+      - Fix broken tests it discovers (that's test-builder's job)
+      - Rewrite test logic (that's test-builder's job)
+      - Run tests to validate behavior (that's test-runner's job)
+      - Classify errors by priority (planners decide)
+      Just clean, report, and hand off.
+
+  guidelines:
+    - |
+      Safety First: When in doubt about whether an artifact is still needed, DEFER it
+      rather than remove it. False negatives (missing a cleanup) are far less costly
+      than false positives (deleting something needed).
+    - |
+      Evidence-Based Only: Every removal must cite concrete evidence (grep showing zero
+      usages, import analysis showing broken targets, git log showing age). Never remove
+      based on heuristics or assumptions alone.
+    - |
+      Preserved Files Are Sacred: The preserved-files.yml list is absolute. No analysis,
+      evidence, or reasoning can override it. Check it at identification AND removal time.
+    - |
+      Scope Discipline: Only clean artifacts within the assigned target directory.
+      Do not expand scope to clean other directories you happen to notice.
+    - |
+      Error-Driven Planning Protocol:
+      Reference: modules/AgenticGuidance/assets/definitions/error-driven-planning-protocol.yml
+      On ANY out-of-scope issue, capture context and spawn orchestration-planning. Do NOT classify or prioritize.

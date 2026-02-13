@@ -1,0 +1,316 @@
+name: test-user-story-generation
+status: active
+priority: critical
+context: 'This test plan validates the guidance changes that add user story generation
+
+  to planner agents. We''re testing that:
+
+  1. planner-build generates stories when none exist
+
+  2. planner-test validates story content before creating UAT
+
+  3. orchestration-planning enforces story content validation gates
+
+  4. UAT phases actually use story acceptance criteria
+
+
+  META-TESTING: This plan must eat its own dogfood - it should generate user
+
+  stories for itself and validate against them.
+
+  '
+inputs:
+- location: modules/AgenticGuidance/agents/planner/planner-build/process.yml
+  description: Updated build planner with story generation
+- location: modules/AgenticGuidance/agents/planner/planner-test/process.yml
+  description: Updated test planner with story validation
+- location: docs/userstories/AgenticCLI/15_planning.yml
+  description: User stories created for this plan (dogfooding)
+phases:
+- name: Unit Test Phase
+  execution: sequential
+  description: Create unit tests for story generation logic
+  tasks:
+  - id: UNIT_001
+    name: Create test for planner-build story generation step
+    description: "Create test file: tests/guidance/test_planner_build_story_generation.py\n\
+      \nTest cases:\n1. test_planner_build_has_story_generation_step()\n   - Parse\
+      \ planner-build/process.yml\n   - Assert \"USER STORY GENERATION\" step exists\
+      \ after line 185\n   - Assert step includes \"3-8 user stories\" guidance\n\
+      \   - Assert step includes escape hatch rules\n\n2. test_story_generation_fence_blocks_without_stories()\n\
+      \   - Mock `agentic stories find` to return empty\n   - Run planner-build with\
+      \ test objective\n   - Assert output includes story_creation_tasks\n   - Assert\
+      \ affected_stories field populated with new story IDs\n\n3. test_story_format_includes_required_fields()\n\
+      \   - Run planner-build with test objective\n   - Parse generated story content\n\
+      \   - Assert story has: id, name, journey, success_criteria, testing\n   - Assert\
+      \ success_criteria is non-empty list with measurable criteria\n"
+    status: completed
+    target_files:
+    - tests/guidance/test_planner_build_story_generation.py
+    inputs:
+    - modules/AgenticGuidance/agents/planner/planner-build/process.yml
+    - modules/AgenticGuidance/assets/definitions/user-stories.yml
+  - id: UNIT_002
+    name: Create test for planner-test story validation fence
+    description: "Create test file: tests/guidance/test_planner_test_story_validation.py\n\
+      \nTest cases:\n1. test_planner_test_has_story_validation_fence()\n   - Parse\
+      \ planner-test/process.yml\n   - Assert \"FENCE: STORY CONTENT MUST EXIST\"\
+      \ exists\n   - Assert fence checks success_criteria, journey, testing fields\n\
+      \n2. test_story_validation_blocks_missing_files()\n   - Mock affected_stories\
+      \ with IDs that don't have files\n   - Run planner-test\n   - Assert output\
+      \ contains \"FENCE VIOLATION: Story content missing\"\n   - Assert planning\
+      \ stops (doesn't create UAT tasks)\n\n3. test_story_validation_blocks_incomplete_content()\n\
+      \   - Create story file missing success_criteria\n   - Run planner-test\n  \
+      \ - Assert output contains \"Story <id> has incomplete content\"\n\n4. test_uat_tasks_generated_from_story_content()\n\
+      \   - Create complete story file\n   - Run planner-test\n   - Assert UAT phase\
+      \ has task with story_id reference\n   - Assert UAT task includes story acceptance_criteria\n\
+      \   - Assert UAT task has verification_method field\n"
+    status: completed
+    target_files:
+    - tests/guidance/test_planner_test_story_validation.py
+    inputs:
+    - modules/AgenticGuidance/agents/planner/planner-test/process.yml
+    - modules/AgenticGuidance/assets/guidelines/planning-standard.yml
+  - id: UNIT_003
+    name: Create test for orchestration story content validation
+    description: "Create test file: tests/guidance/test_orchestration_story_validation.py\n\
+      \nTest cases:\n1. test_orchestration_has_content_validation_gate()\n   - Parse\
+      \ orchestration-planning/process.mmd\n   - Assert ValidateStoryContent node\
+      \ exists after RecordStories\n   - Assert gate checks for missing files and\
+      \ incomplete fields\n\n2. test_orchestration_blocks_incomplete_stories()\n \
+      \  - Mock story files with incomplete content\n   - Run orchestration-planning\n\
+      \   - Assert flow reaches BlockIncompleteStories node\n   - Assert error message\
+      \ includes specific missing fields\n\n3. test_orchestration_allows_story_creation_tasks()\n\
+      \   - Mock no story files but plan has story_creation_tasks\n   - Run orchestration-planning\n\
+      \   - Assert flow reaches StoryContextReady (allows planning)\n   - Assert NoteStoryGeneration\
+      \ recorded in plan\n"
+    status: completed
+    target_files:
+    - tests/guidance/test_orchestration_story_validation.py
+    inputs:
+    - modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd
+    - modules/AgenticGuidance/assets/guidelines/planning-standard.yml
+- name: Integration Test Phase
+  execution: sequential
+  description: End-to-end validation of story generation workflow
+  tasks:
+  - id: INT_001
+    name: Test full planning workflow with story generation
+    description: 'Create test file: tests/integration/test_planning_with_stories.py
+
+
+      Test scenario:
+
+      1. Create test objective: "Add new CLI command for X"
+
+      2. Mock empty story discovery (no existing stories)
+
+      3. Invoke orchestration-planning via entrypoint
+
+      4. Assert orchestration spawns planner-build
+
+      5. Assert planner-build generates 3-8 stories
+
+      6. Assert stories saved to docs/userstories/
+
+      7. Assert orchestration spawns planner-test
+
+      8. Assert planner-test validates story content
+
+      9. Assert planner-test creates UAT phase with story references
+
+      10. Assert final plan has affected_stories field populated
+
+
+      Expected outcome:
+
+      - Plan folder contains plan_live_build.yml with affected_stories
+
+      - Plan folder contains plan_live_test.yml with UAT phase
+
+      - Story files exist at docs/userstories/<project>/
+
+      - UAT tasks reference story IDs and acceptance criteria
+
+      '
+    status: completed
+    target_files:
+    - tests/integration/test_planning_with_stories.py
+    inputs:
+    - modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd
+    - modules/AgenticGuidance/agents/planner/planner-build/process.yml
+    - modules/AgenticGuidance/agents/planner/planner-test/process.yml
+  - id: INT_002
+    name: Test UAT execution with story validation gate
+    description: 'Create test file: tests/integration/test_uat_story_validation.py
+
+
+      Test scenario:
+
+      1. Create plan with UAT phase referencing stories
+
+      2. Case A: Stories missing - assert executor blocks with validation error
+
+      3. Case B: Stories incomplete - assert executor blocks with field error
+
+      4. Case C: Stories complete - assert executor proceeds with UAT
+
+      5. Assert executor validation happens before spawning test-user-simulator
+
+
+      Expected outcome:
+
+      - Executor validates story content before UAT execution
+
+      - Clear error messages when validation fails
+
+      - UAT only executes when stories are complete
+
+      '
+    status: completed
+    target_files:
+    - tests/integration/test_uat_story_validation.py
+    inputs:
+    - modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml
+    - modules/AgenticGuidance/assets/definitions/user-stories.yml
+- name: Smoke Test Phase
+  execution: sequential
+  description: Manual validation that story generation works in real scenarios
+  tasks:
+  - id: SMOKE_001
+    name: Create test plan with real objective and verify story generation
+    description: "Manual test procedure:\n1. Create new test plan with objective that\
+      \ has no existing stories:\n   agentic entrypoint _plan_build.yml --input \"\
+      Add health check endpoint to API\"\n\n2. Observe planner-build behavior:\n \
+      \  - Should run `agentic stories find` and find no stories\n   - Should generate\
+      \ 3-8 user stories for health check feature\n   - Should create story file at\
+      \ docs/userstories/AgenticBackend/\n\n3. Verify story content:\n   - Stories\
+      \ have id, name, journey, success_criteria, testing\n   - Acceptance criteria\
+      \ are specific (\"returns 200 OK\" not \"works\")\n   - Journey has step-by-step\
+      \ user actions\n\n4. Verify plan output:\n   - plan_live_build.yml has affected_stories\
+      \ with story IDs\n   - plan_live_build.yml has story_creation_tasks for teach\
+      \ phase\n\n5. Continue to test phase:\n   - Observe planner-test validate story\
+      \ content\n   - Verify test plan has UAT phase with story references\n   - Check\
+      \ UAT tasks have acceptance criteria from stories\n\nExpected outcome:\n- Stories\
+      \ generated automatically when missing\n- Story content is complete and measurable\n\
+      - UAT phase references the generated stories\n"
+    status: completed
+  - id: SMOKE_002
+    name: Test fence triggers when story content incomplete
+    description: "Manual test procedure:\n1. Create incomplete story file:\n   - Remove\
+      \ success_criteria field from story\n   - Keep id, name, journey fields\n\n\
+      2. Run planner-test with plan referencing that story\n\n3. Observe fence trigger:\n\
+      \   - Should STOP with \"FENCE VIOLATION: Story content incomplete\"\n   - Should\
+      \ list missing field: success_criteria\n   - Should NOT create UAT tasks\n\n\
+      4. Fix story file (add success_criteria)\n\n5. Retry planner-test\n\n6. Observe\
+      \ success:\n   - Fence passes\n   - UAT tasks created with story criteria\n\n\
+      Expected outcome:\n- Fence catches incomplete stories before UAT creation\n\
+      - Clear error message indicates which field missing\n- Planning can continue\
+      \ after fixing story content\n"
+    status: completed
+- name: UAT Phase
+  execution: sequential
+  description: User acceptance testing using stories created for this plan
+  tasks:
+  - id: UAT_001
+    name: 'Validate US-CLI-PLAN-001: Planner creates comprehensive plans with stories'
+    description: "User Story: US-CLI-PLAN-001\n\nJourney:\n- User invokes: agentic\
+      \ entrypoint _plan_build.yml\n- orchestration-planning discovers affected user\
+      \ stories via `agentic stories find`\n- planner-build generates NEW user stories\
+      \ from objective (if stories missing)\n- planner-build creates plan_live_build.yml\
+      \ with:\n  * affected_stories field populated\n  * Story generation tasks if\
+      \ new stories needed\n  * Task inputs reference story files for context\n- planner-test\
+      \ creates test plan with:\n  * UAT phase targeting the generated stories\n \
+      \ * Acceptance criteria from story success_criteria\n- orchestration-executor\
+      \ validates stories exist before UAT execution\n\nAcceptance Criteria:\n- Plan\
+      \ YAML has affected_stories field with story IDs\n- If no stories found, plan\
+      \ has story_creation_tasks\n- Test phase has UAT tasks that reference story\
+      \ IDs\n- UAT tasks have acceptance criteria from stories\n\nVerification Steps:\n\
+      1. Create test plan via _plan_build.yml entrypoint\n2. Check plan_live_build.yml\
+      \ for affected_stories field\n3. Check if stories existed or were generated\n\
+      4. Verify story files at docs/userstories/ have complete content\n5. Check plan_live_test.yml\
+      \ for UAT phase\n6. Verify UAT tasks map to story IDs\n\nEvidence Required:\n\
+      - plan_live_build.yml excerpt showing affected_stories\n- Story file content\
+      \ showing journey and success_criteria\n- plan_live_test.yml excerpt showing\
+      \ UAT tasks with story references\n"
+    status: completed
+    story_id: US-CLI-PLAN-001
+    acceptance_criteria:
+    - Plan YAML has affected_stories field with story IDs
+    - If no stories found, plan has story_creation_tasks
+    - Test phase has UAT tasks that reference story IDs
+    - UAT tasks have acceptance criteria from stories
+    verification_method: test-user-simulator
+  - id: UAT_002
+    name: 'Validate US-CLI-PLAN-002: Plans include UAT with story validation'
+    description: "User Story: US-CLI-PLAN-002\n\nJourney:\n- planner-test reads affected_stories\
+      \ from plan metadata\n- planner-test creates UAT phase with one task per story\n\
+      - Each UAT task includes:\n  * Story ID reference\n  * Acceptance criteria copied\
+      \ from story\n  * Verification steps (what to check, what to look for)\n  *\
+      \ Evidence collection requirements\n- orchestration-executor spawns test-user-simulator\
+      \ per story\n- test-user-simulator validates against story acceptance criteria\n\
+      - Results recorded via `agentic stories update <id> --status pass/fail`\n\n\
+      Acceptance Criteria:\n- Test plan has UAT phase\n- UAT tasks map 1:1 to story\
+      \ IDs\n- Each UAT task has explicit acceptance criteria\n- Evidence collection\
+      \ specified for each story validation\n\nVerification Steps:\n1. Run planner-test\
+      \ on plan with affected_stories\n2. Check plan_live_test.yml for UAT phase\n\
+      3. Count UAT tasks and compare to story count (should match 1:1)\n4. Inspect\
+      \ each UAT task for:\n   - story_id field\n   - acceptance_criteria list\n \
+      \  - verification_method field\n   - Evidence requirements in description\n\
+      5. Run orchestration-executor on UAT phase\n6. Verify test-user-simulator spawned\
+      \ per story\n7. Check story files for updated test_status after UAT\n\nEvidence\
+      \ Required:\n- plan_live_test.yml UAT phase excerpt\n- UAT task showing story_id\
+      \ and acceptance_criteria\n- orchestration-executor log showing test-user-simulator\
+      \ spawns\n- Story file with test_status: pass/fail updated\n"
+    status: completed
+    story_id: US-CLI-PLAN-002
+    acceptance_criteria:
+    - Test plan has UAT phase
+    - UAT tasks map 1:1 to story IDs
+    - Each UAT task has explicit acceptance criteria
+    - Evidence collection specified for each story validation
+    verification_method: test-user-simulator
+loop_structures:
+- id: loop_test_execution
+  type: test-fix-loop
+  applies_to_phase: Unit Test Phase, Integration Test Phase
+  trigger: After test creation
+  description: 'Run tests, fix failures, iterate until all tests pass or max iterations.
+
+    '
+  exit_criteria:
+    success: All unit and integration tests pass
+    max_iterations: 5
+    escalation: Escalate - persistent test failures indicate guidance issues
+  participants:
+  - agent: test-builder
+    role: Create and run tests
+  - agent: builder
+    role: Fix failures in guidance files
+- id: loop_test_audit
+  type: audit-test-fix-loop
+  applies_to_phase: Unit Test Phase, Integration Test Phase
+  trigger: After all tests pass in test-fix-loop
+  description: 'MANDATORY validation to catch reward hacking in tests. Auditor checks
+    that
+
+    tests actually validate the behavior, not just pass trivially.
+
+    '
+  exit_criteria:
+    success: Audit finds no reward hacking or false positives
+    max_iterations: 3
+    escalation: BLOCK - test quality issues must be resolved
+  participants:
+  - agent: test-audit
+    role: Audit test quality and detect shortcuts
+  - agent: test-builder
+    role: Fix audit-identified test issues
+  mandatory: true
+success_criteria:
+- All unit tests pass
+- All integration tests pass
+- Smoke tests validate story generation in real scenarios
+- UAT validates against US-CLI-PLAN-001 and US-CLI-PLAN-002
+- Test audit finds no reward hacking in tests
+- Evidence collected for each UAT task

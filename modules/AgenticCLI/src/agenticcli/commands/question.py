@@ -14,6 +14,128 @@ logger = logging.getLogger(__name__)
 _reply_poller: "NtfyReplyPoller | None" = None
 
 
+def cmd_dashboard(args, ctx=None):
+    """Display a live auto-refreshing dashboard of pending questions.
+
+    Scans docs/plans/live/*/questions/pending/*.yml for pending questions
+    and displays them in a Rich.Live table that updates every N seconds.
+
+    Args:
+        args: Parsed command arguments with refresh interval.
+        ctx: Optional CLIContext.
+    """
+    import subprocess
+    import time
+    from agenticcli.console import console
+    from rich.live import Live
+    from rich.table import Table
+
+    refresh_seconds = getattr(args, "refresh", 10)
+
+    def get_repo_root() -> Path:
+        """Get the git repository root."""
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "--show-toplevel"],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            return Path(result.stdout.strip())
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            return Path.cwd()
+
+    def build_table() -> Table:
+        """Build the questions dashboard table."""
+        table = Table(show_header=True, header_style="bold cyan", title="Pending Questions")
+        table.add_column("Plan", style="yellow", width=20)
+        table.add_column("ID", width=10)
+        table.add_column("Severity", width=10)
+        table.add_column("Question", style="dim", no_wrap=False)
+
+        repo_root = get_repo_root()
+        live_plans_dir = repo_root / "docs" / "plans" / "live"
+
+        if not live_plans_dir.exists():
+            table.add_row("[dim]No live plans directory[/dim]", "", "", "")
+            return table
+
+        questions = []
+
+        # Scan all live plans for pending questions
+        for plan_dir in live_plans_dir.iterdir():
+            if not plan_dir.is_dir():
+                continue
+
+            pending_dir = plan_dir / "questions" / "pending"
+            if not pending_dir.exists():
+                continue
+
+            for question_file in pending_dir.glob("*.yml"):
+                try:
+                    import yaml
+                    with open(question_file) as f:
+                        question_data = yaml.safe_load(f)
+
+                    if not question_data:
+                        continue
+
+                    questions.append({
+                        "plan": plan_dir.name,
+                        "id": question_data.get("id", "N/A"),
+                        "severity": question_data.get("severity", "low"),
+                        "question": question_data.get("question", ""),
+                    })
+                except Exception:
+                    continue
+
+        if not questions:
+            table.add_row("[dim]No pending questions[/dim]", "", "", "")
+            return table
+
+        # Color-code severity
+        severity_colors = {
+            "critical": "red",
+            "high": "yellow",
+            "medium": "cyan",
+            "low": "dim",
+        }
+
+        # Sort by severity (critical > high > medium > low)
+        severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+        questions.sort(key=lambda q: severity_order.get(q["severity"], 4))
+
+        for q in questions:
+            plan_name = q["plan"]
+            if len(plan_name) > 18:
+                plan_name = plan_name[:18] + ".."
+
+            question_text = q["question"].replace("\n", " ")
+            if len(question_text) > 60:
+                question_text = question_text[:60] + "..."
+
+            severity = q["severity"]
+            severity_color = severity_colors.get(severity, "white")
+            severity_display = f"[{severity_color}]{severity.upper()}[/{severity_color}]"
+
+            table.add_row(
+                plan_name,
+                q["id"],
+                severity_display,
+                question_text,
+            )
+
+        return table
+
+    try:
+        with Live(build_table(), console=console, refresh_per_second=1/refresh_seconds) as live:
+            while True:
+                time.sleep(refresh_seconds)
+                live.update(build_table())
+    except KeyboardInterrupt:
+        console.print("\n[dim]Dashboard stopped[/dim]")
+
+
 def handle(args, ctx=None):
     """Route question subcommands.
 
@@ -37,8 +159,10 @@ def handle(args, ctx=None):
         cmd_watch_daemon(args, ctx)
     elif args.question_command == "watch-stop":
         cmd_watch_stop(args, ctx)
+    elif args.question_command == "dashboard":
+        cmd_dashboard(args, ctx)
     else:
-        print("Usage: agentic question <list|show|answer|ask|defer|watch|watch-daemon|watch-stop>", file=sys.stderr)
+        print("Usage: agentic question <list|show|answer|ask|defer|watch|watch-daemon|watch-stop|dashboard>", file=sys.stderr)
         sys.exit(1)
 
 

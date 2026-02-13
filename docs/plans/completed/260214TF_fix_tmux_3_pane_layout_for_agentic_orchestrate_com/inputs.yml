@@ -1,0 +1,66 @@
+# Plan Inputs - Fix tmux 3-pane layout for agentic orchestrate
+# Created: 2026-02-14
+
+planning_objective: |
+  Fix the tmux 3-pane GUI layout failure in `agentic orchestrate` command.
+
+  PROBLEM: When users run `agentic orchestrate -m loop` (or any mode), they get dumped
+  into a plain single-pane Claude Code session instead of the expected 3-pane tmux layout
+  with session and questions dashboards.
+
+  ROOT CAUSE IDENTIFIED: The Claude command is sent to the main pane via tmux send-keys
+  but never executed (missing Enter key). When attach_to_session() is called, it just
+  attaches to the session without executing the pending command.
+
+target_project_path: "/home/code/AgenticEngineering"
+
+intent: "build"  # This is a bug fix with comprehensive testing
+
+context:
+  problem_description: |
+    Code at modules/AgenticCLI/src/agenticcli/commands/orchestrate.py lines 382-414 has the
+    tmux path. Key observations from investigation:
+    - tmux_available() returns True
+    - is_in_tmux() returns False (TMUX env var not set)
+    - So the "new session" path is taken: _create_new_session_layout() then attach_to_session()
+    - But something fails silently - the except RuntimeError at line 410 catches errors and
+      falls back to plain os.execvp
+
+    The layout module at modules/AgenticCLI/src/agenticcli/utils/tmux_layout.py has the bug:
+    - Line 161: subprocess.run sends the Claude command to the main pane
+    - But it does NOT send "Enter" to execute it
+    - Line 158-159 comment says "We'll execute it when we attach" but attach doesn't send Enter
+    - Result: User sees the command typed but not executed
+
+  fix_strategy: |
+    1. Add "Enter" argument to the send-keys call at line 161 of tmux_layout.py
+    2. Update the misleading comment at lines 158-159
+    3. Create COMPREHENSIVE tests (this was missed before)
+
+  testing_requirements: |
+    CRITICAL: The previous session missed this bug due to insufficient testing.
+
+    Required test coverage:
+    - Unit tests for each tmux_layout function with mocked subprocess
+    - Integration tests verifying actual tmux commands generated
+    - Tests for both paths: new session creation AND in-place layout
+    - Tests for fallback behavior (verify warnings printed)
+    - Tests that orchestrate command attempts the tmux path
+    - Edge case tests: session creation fails, pane split fails, etc.
+    - Manual verification tests documented and executed
+
+user_stories: []  # No specific user story linked
+
+related_plans: []
+
+constraints:
+  - "Must maintain backward compatibility with --no-tmux flag"
+  - "Must gracefully fall back to plain Claude if tmux unavailable"
+  - "Must work both from shell and from within existing tmux session"
+  - "Python: use python3 (not python)"
+  - "Test coverage must be >= 90% for modified functions"
+
+assumptions:
+  - "tmux version >= 2.3 (for pane title support)"
+  - "agentic session dashboard and question dashboard commands exist"
+  - "Claude command binary is in PATH"

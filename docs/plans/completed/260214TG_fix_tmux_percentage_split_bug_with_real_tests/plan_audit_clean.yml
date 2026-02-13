@@ -1,0 +1,89 @@
+_template_status: active
+plan:
+  name: Audit and cleanup for tmux layout fix
+  status: pending
+  objective: 'Ensure the tmux layout fix is complete with:
+
+    1. No leftover test sessions or processes
+
+    2. Docstrings updated to reflect absolute dimensions
+
+    3. No commented-out percentage code left behind
+
+    '
+  phases:
+  - name: Code Audit
+    id: audit_01
+    status: pending
+    tasks:
+    - id: audit_01_001
+      name: Verify no percentage splits remain in code
+      status: completed
+      description: 'Grep for remaining percentage patterns:
+
+        grep -n ''"-p"'' modules/AgenticCLI/src/agenticcli/utils/tmux_layout.py
+
+
+        Expected: Only in-place layout function should have -p flags (lines 232, 247)
+
+        New session layout should have NO -p flags
+
+        '
+    - id: audit_01_002
+      name: Check for leftover tmux test sessions
+      status: completed
+      description: 'Run: tmux list-sessions | grep -E ''(test-layout|agentic-orch-[0-9]+)''
+
+
+        Expected: No test sessions left running
+
+        '
+    - id: audit_01_003
+      name: Verify docstring accuracy
+      status: completed
+      description: 'Check _create_new_session_layout docstring reflects:
+
+        - Absolute dimensions (140x50, 60x30, 60x20)
+
+        - NOT percentage descriptions
+
+        '
+  - name: Documentation Audit
+    id: audit_02
+    status: pending
+    tasks:
+    - id: audit_02_001
+      name: Update module docstring if needed
+      status: completed
+      description: 'Review top-level docstring (lines 1-14) in tmux_layout.py
+
+        Update if it mentions percentages that no longer apply
+
+        '
+    - id: audit_02_002
+      name: Verify comment accuracy in split-window calls
+      status: completed
+      description: 'Check inline comments at split-window calls:
+
+        - Line 109: Should mention absolute 60 columns
+
+        - Line 124: Should mention absolute 20 rows
+
+        '
+  cleanup_targets:
+  - No files to delete
+  - No deprecated code to remove
+  - Verify test session cleanup only
+  documentation:
+  - modules/AgenticCLI/src/agenticcli/utils/tmux_layout.py - docstrings
+  - modules/AgenticCLI/src/agenticcli/utils/tmux_layout.py - inline comments
+  quality_checks:
+  - check: No -p flags in _create_new_session_layout
+    command: grep -c '"-p"' modules/AgenticCLI/src/agenticcli/utils/tmux_layout.py
+    expected: '2'
+  - check: All tests pass
+    command: python3 -m pytest modules/AgenticCLI/tests/test_tmux_layout.py -v
+    expected: 37 passed
+  - check: No syntax errors
+    command: python3 -m py_compile modules/AgenticCLI/src/agenticcli/utils/tmux_layout.py
+    expected: No output (success)

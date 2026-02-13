@@ -336,6 +336,15 @@ def _try_worktree_cleanup_after_archive(plan_path: Path):
         from agenticcli.console import print_info
         print_info(f"Auto-cleaned worktree: {cleanup_result.get('path')}")
 
+        # Sync workspace file after cleanup to remove stale entries
+        from agenticcli.commands.worktree import cmd_sync
+        from types import SimpleNamespace
+        try:
+            cmd_sync(SimpleNamespace())
+        except Exception:
+            # Don't fail cleanup if sync fails
+            pass
+
 
 def handle(args, ctx=None):
     """Route plan subcommands.
@@ -1149,9 +1158,10 @@ def cmd_init(args, ctx=None):
                 print_error(f"Failed to create worktree: {e}")
                 sys.exit(1)
 
-    # Update VS Code workspace file
+    # Update VS Code workspace file (for both new and reused worktrees)
+    # Note: update_workspace_add() is idempotent and checks for existing entries
     workspace_file = find_workspace_file(repo_root)
-    if workspace_file and not worktree_exists:
+    if workspace_file:
         workspace_updated = update_workspace_add(
             workspace_file, worktree_path, branch, repo_name
         )
@@ -1240,7 +1250,7 @@ phases:
 
 
 def cmd_scaffold(args):
-    """Create planning folder structure."""
+    """Create planning folder structure (DEPRECATED - use 'agentic plan init' instead)."""
     from agenticcli.commands.worktree import create_planning_folder
     from agenticcli.console import is_json_output, print_json
 
@@ -1249,16 +1259,23 @@ def cmd_scaffold(args):
 
     plan_path = worktree / "docs" / "plans" / "live" / name
 
+    # Print deprecation warning
+    if not is_json_output():
+        print("\n[WARNING] 'agentic plan scaffold' is DEPRECATED", file=sys.stderr)
+        print("Use 'agentic plan init <branch> --description <description>' instead", file=sys.stderr)
+        print("The scaffold command creates only the folder without worktree or workspace updates.\n", file=sys.stderr)
+
     if plan_path.exists():
         print(f"Error: Plan folder already exists: {plan_path}", file=sys.stderr)
         sys.exit(1)
 
     create_planning_folder(plan_path)
     if is_json_output():
-        print_json({"name": name, "path": str(plan_path), "folder": str(plan_path)})
+        print_json({"name": name, "path": str(plan_path), "folder": str(plan_path), "deprecated": True})
     else:
         print(f"Created planning folder: {plan_path}")
         print(f"  (flattened structure: plan files directly in folder)")
+        print("\n[RECOMMENDED] Next time, use: agentic plan init <branch> --description <description>")
 
 
 def cmd_status(args):
@@ -3963,7 +3980,7 @@ def cmd_orchestration_validate(args, ctx=None):
         routings = routing_line.split(",")
         for routing in routings:
             routing = routing.strip()
-            match = re.match(r"(\w+)\s*(?:->|=)\s*(\S+)", routing)
+            match = re.match(r"([\w-]+)\s*(?:->|=)\s*(\S+)", routing)
             if match:
                 route_phase_id, agent_type = match.groups()
                 agent_type = agent_type.strip().lower()
@@ -3998,7 +4015,7 @@ def cmd_orchestration_validate(args, ctx=None):
         mmd_phase_ids = set()
         for line in mmd_phases_text.split("\n"):
             # Pattern: %%   P1: Phase name
-            phase_match = re.match(r"%%\s+(\w+):", line)
+            phase_match = re.match(r"%%\s+([\w-]+):", line)
             if phase_match:
                 mmd_phase_ids.add(phase_match.group(1))
 

@@ -1,0 +1,92 @@
+graph TB
+    Start([Orchestration Start])
+    End([Orchestration Complete])
+
+    %% Phase 1: Fix Guidance Files
+    Phase1[Phase 1: Fix Guidance Files]
+    Build01Loop{Build Loop<br/>build-guidance}
+
+    Build01_01[Task: Fix orchestration-planning MMD<br/>build_01_01]
+    Build01_02[Task: Fix planner-test path<br/>build_01_02]
+    Build01_03[Task: Fix planner-build path<br/>build_01_03]
+    Build01_04[Task: Fix planner-guidance paths<br/>build_01_04]
+    Build01_05[Task: Fix planner-cleaning refs<br/>build_01_05]
+    Build01_06[Task: Fix planner-audit refs<br/>build_01_06]
+    Build01_07[Task: Fix planner-guidance-testing<br/>build_01_07]
+
+    %% Phase 2: Fix Affected Plan Folder
+    Phase2[Phase 2: Fix Affected Plan Folder]
+    Build02Loop{Build Loop<br/>build-file-ops}
+
+    Build02_01[Task: Move plan files to root<br/>build_02_01]
+    Build02_02[Task: Update README<br/>build_02_02]
+
+    %% Phase 3: Add Prevention Fence
+    Phase3[Phase 3: Add Prevention Fence]
+    Build03Loop{Build Loop<br/>build-guidance}
+
+    Build03_01[Task: Add fence to plans.yml<br/>build_03_01]
+    Build03_02[Task: Update reviewer checklists<br/>build_03_02]
+
+    %% Verification Gate
+    VerifyGate{Verification<br/>test-runner}
+    VerifyTests[Run validation tests]
+
+    %% Flow
+    Start --> Phase1
+    Phase1 --> Build01Loop
+
+    Build01Loop --> Build01_01
+    Build01_01 --> Build01_02
+    Build01_02 --> Build01_03
+    Build01_03 --> Build01_04
+    Build01_04 --> Build01_05
+    Build01_05 --> Build01_06
+    Build01_06 --> Build01_07
+    Build01_07 --> Phase2
+
+    Phase2 --> Build02Loop
+    Build02Loop --> Build02_01
+    Build02_01 --> Build02_02
+    Build02_02 --> Phase3
+
+    Phase3 --> Build03Loop
+    Build03Loop --> Build03_01
+    Build03_01 --> Build03_02
+    Build03_02 --> VerifyGate
+
+    VerifyGate --> VerifyTests
+    VerifyTests --> End
+
+    %% Styling
+    classDef phaseNode fill:#e1f5ff,stroke:#0288d1,stroke-width:2px
+    classDef loopNode fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef taskNode fill:#f3e5f5,stroke:#7b1fa2,stroke-width:1px
+    classDef gateNode fill:#fff9c4,stroke:#f9a825,stroke-width:2px
+
+    class Phase1,Phase2,Phase3 phaseNode
+    class Build01Loop,Build02Loop,Build03Loop loopNode
+    class Build01_01,Build01_02,Build01_03,Build01_04,Build01_05,Build01_06,Build01_07,Build02_01,Build02_02,Build03_01,Build03_02 taskNode
+    class VerifyGate gateNode
+
+    %% Agent Routing Annotations
+    %% Phase 1 Tasks: build-guidance loop
+    %% - build_01_01: Edit process.mmd (YAML)
+    %% - build_01_02-07: Edit process.yml files (YAML)
+    %% Agent: build-guidance (handles YAML edits in guidance files)
+
+    %% Phase 2 Tasks: build-file-ops loop
+    %% - build_02_01: File move operations (mv, rm)
+    %% - build_02_02: Edit README.md
+    %% Agent: build-file-ops (handles file operations and markdown edits)
+
+    %% Phase 3 Tasks: build-guidance loop
+    %% - build_03_01: Edit plans.yml (YAML, add fence)
+    %% - build_03_02: Edit planner-reviewer-checklists.yml
+    %% Agent: build-guidance (handles YAML edits in guidance files)
+
+    %% Verification: test-runner
+    %% - Run: agentic plan validate
+    %% - Grep validation: no "plan_live_" in active guidance
+    %% - Grep validation: no "live/plan_" in active guidance
+    %% Agent: test-runner (validation and verification tasks)

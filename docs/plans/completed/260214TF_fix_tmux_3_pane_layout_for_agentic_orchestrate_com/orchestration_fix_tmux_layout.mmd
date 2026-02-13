@@ -1,0 +1,108 @@
+%%{
+  init: {
+    'theme': 'base',
+    'themeVariables': {
+      'fontSize': '16px'
+    }
+  }
+}%%
+
+%% GOAL: Fix tmux 3-pane layout for agentic orchestrate command
+%% Two critical bugs: (1) missing -x/-y dimensions on new-session causing "size missing" error,
+%% (2) missing Enter key on send-keys causing Claude command to be typed but not executed.
+
+%% PROFILE: build
+%% Plan folder: /home/code/AgenticEngineering/docs/plans/live/260214TF_fix_tmux_3_pane_layout_for_agentic_orchestrate_com
+%% Target: modules/AgenticCLI/src/agenticcli/utils/tmux_layout.py + tests
+
+%% PHASES: input_validation, phase_02_core_fix, phase_03_unit_tests, phase_04_integration_tests, phase_05_edge_cases, phase_06_manual_verification, finalization
+
+%% AGENT_ROUTING:
+%% phase_02: build-python (tasks: phase_02_001, phase_02_002, phase_02_003)
+%% phase_03: test-builder (tasks: phase_03_001 through phase_03_009)
+%% phase_04: test-builder (tasks: phase_04_001 through phase_04_004)
+%% phase_05: test-builder (tasks: phase_05_001 through phase_05_004)
+%% phase_06: test-runner (tasks: phase_06_001 through phase_06_004)
+
+%% STATUS:
+%% phase_01: completed (investigation already done)
+%% phase_02: pending
+%% phase_03: pending
+%% phase_04: pending
+%% phase_05: pending
+%% phase_06: pending
+
+%% FEEDBACK_TRIGGERS:
+%% TEST_FAILURE -> retry -> phase_03_unit_tests (up to 2 iterations)
+%% TEST_FAILURE -> retry -> phase_04_integration_tests (up to 2 iterations)
+%% TEST_FAILURE -> retry -> phase_05_edge_cases (up to 2 iterations)
+%% UAT_FAILURE -> retry -> phase_06_manual_verification (up to 1 iteration)
+
+flowchart TD
+    Start([Orchestration Start]) --> InputValidation[Input Validation]
+
+    InputValidation --> CheckInputs{Plan folder<br/>and target valid?}
+    CheckInputs -->|No| InputError[/Error: Invalid Inputs/]
+    CheckInputs -->|Yes| Phase02
+
+    InputError --> End([Orchestration Failed])
+
+    %% Phase 2: Core Fix Implementation
+    Phase02[Phase 2: Core Fix Implementation<br/>Agent: build-python<br/>Tasks: phase_02_001, phase_02_002, phase_02_003] --> Phase02Check{Fix successful?}
+    Phase02Check -->|No| BuildFailure[/Build Failure/]
+    Phase02Check -->|Yes| Phase03
+
+    BuildFailure --> End
+
+    %% Phase 3: Unit Tests
+    Phase03[Phase 3: Unit Tests<br/>Agent: test-builder<br/>Tasks: phase_03_001 through phase_03_009] --> Phase03Check{All unit tests pass?}
+    Phase03Check -->|No, retry < 2| Phase03
+    Phase03Check -->|No, retry >= 2| TestFailure03[/Unit Test Failure/]
+    Phase03Check -->|Yes| Phase04
+
+    TestFailure03 --> End
+
+    %% Phase 4: Integration Tests
+    Phase04[Phase 4: Integration Tests<br/>Agent: test-builder<br/>Tasks: phase_04_001 through phase_04_004] --> Phase04Check{Integration tests pass?}
+    Phase04Check -->|No, retry < 2| Phase04
+    Phase04Check -->|No, retry >= 2| TestFailure04[/Integration Test Failure/]
+    Phase04Check -->|Yes| Phase05
+
+    TestFailure04 --> End
+
+    %% Phase 5: Edge Cases
+    Phase05[Phase 5: Edge Case Tests<br/>Agent: test-builder<br/>Tasks: phase_05_001 through phase_05_004] --> Phase05Check{Edge case tests pass?}
+    Phase05Check -->|No, retry < 2| Phase05
+    Phase05Check -->|No, retry >= 2| TestFailure05[/Edge Case Test Failure/]
+    Phase05Check -->|Yes| Phase06
+
+    TestFailure05 --> End
+
+    %% Phase 6: Manual Verification
+    Phase06[Phase 6: Manual Verification<br/>Agent: test-runner<br/>Tasks: phase_06_001 through phase_06_004] --> Phase06Check{UAT passed?}
+    Phase06Check -->|No, retry < 1| Phase06
+    Phase06Check -->|No, retry >= 1| UATFailure[/UAT Failure/]
+    Phase06Check -->|Yes| ValidationGate
+
+    UATFailure --> End
+
+    %% Validation Gate
+    subgraph Validation
+        ValidationGate{All phases<br/>completed?}
+    end
+
+    ValidationGate -->|No| ValidationError[/Validation Error/]
+    ValidationGate -->|Yes| Finalization
+
+    ValidationError --> End
+
+    %% Finalization
+    Finalization[Finalization:<br/>Update Status<br/>Archive Plan] --> Success([Orchestration Complete])
+
+    style Phase02 fill:#e1f5ff
+    style Phase03 fill:#fff4e1
+    style Phase04 fill:#fff4e1
+    style Phase05 fill:#fff4e1
+    style Phase06 fill:#ffe1f5
+    style Validation fill:#e1ffe1
+    style Finalization fill:#f0f0f0
