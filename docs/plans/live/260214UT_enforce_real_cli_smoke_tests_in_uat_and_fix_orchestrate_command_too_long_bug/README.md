@@ -1,109 +1,109 @@
-# Plan 260214UT: Enforce Real CLI Smoke Tests in UAT
+# Plan 260214UT: Enforce Real Tmux Integration Testing
 
 ## Problem Statement
 
-Our orchestration loop just executed 3 plans (260214PF, 260214TG, 260214US) and all "passed UAT", but the actual user command `agentic orchestrate --mode planning` is STILL broken with two bugs:
+The tmux orchestration GUI keeps breaking with obvious bugs that are never caught
+before they reach the user. Root cause: **every test either mocks tmux or uses 
+`--no-tmux` to bypass it entirely**.
 
-1. **tmux split bug**: Changes were applied in a worktree but never merged to main (executor had no merge step)
-2. **command too long**: The entire 447-line process.mmd is passed as `--append-system-prompt` CLI arg, which exceeds tmux's `send-keys` character limit
+Recent bugs that shipped despite "passing UAT":
+1. **`-p` percentage flag bug**: Detached tmux sessions don't support `-p` for splits
+2. **`$(cat file)` expansion bug**: `shlex.quote` wrapped the substitution in single
+   quotes, blocking shell expansion — Claude never received the system prompt
+3. **Missing Enter key**: `send-keys` sent the command but never pressed Enter
+4. **Orphaned sessions**: Each run created a new `agentic-orch-*` session without
+   cleaning up the old ones — resulted in 7+ zombie sessions
 
-These bugs were NOT caught by UAT because:
-- UAT validates against user story acceptance criteria using **mocked tests**
-- No UAT step actually **runs the real installed CLI command** end-to-end
-- Each plan tested its component in isolation (tmux splits, orchestrate command, tmux layout) but nobody tested the full pipeline
-- The test-user-simulator agent can "pass" stories without ever touching the real system
+**All of these would have been caught by a test that creates a real tmux session
+and checks that 3 panes exist.**
+
+The command-too-long bug (orchestrate.py passing 447-line prompt as CLI arg) is
+already fixed — orchestrate.py now uses `tempfile` + `$(cat file)` approach.
 
 ## Root Cause
 
-**Systemic gap in UAT validation:** Guidance does not enforce real CLI smoke tests. Plans can "pass UAT" by validating against mocked subprocess calls or --help output, never running the actual installed binary.
+**No real tmux integration tests exist.** Test coverage breakdown:
+- `test_tmux_layout.py`: 36 tests, ALL mocked (`mock_subprocess_success`)
+- `test_orchestrate_command.py`: mocked subprocess
+- Integration tests: used `--no-tmux` flag, bypassing the broken path
 
 ## Solution
 
-This plan fixes the root cause AND the immediate bugs:
+### 1. Build Phase - Make Tmux Testable
 
-### 1. Teach Phase - Update Guidance (ROOT CAUSE FIX)
+- **Add `--dry-run` flag** to `agentic orchestrate` that creates the tmux layout,
+  verifies pane structure, prints layout JSON, then cleans up. This enables
+  automated testing of the tmux GUI path without needing Claude to run.
+- **Fix `_create_inplace_layout`** which still uses `-p` percentage flags instead
+  of the `-l` absolute values that were already applied to `_create_new_session_layout`.
 
-Update four guidance files to mandate real CLI smoke tests:
+### 2. Teach Phase - Update Guidance
 
-- **planner-test/process.yml**: Add fence requiring UAT tasks for CLI commands to run actual installed binary
-- **orchestration-executor/process.yml**: Add integration smoke test gate before shutdown
-- **test-user-simulator/process.yml**: Prefer real command execution over mocking
-- **planning-standard.yml**: Add CLI smoke test requirement rule
+Update guidance files to mandate real CLI smoke tests in UAT phases.
+(Unchanged from original plan — the guidance updates are still needed.)
 
-### 2. Build Phase - Fix Orchestrate Command (IMMEDIATE BUG FIX)
+### 3. Test Phase - Real Tmux Integration Tests
 
-Fix the command-too-long bug in orchestrate.py:
-- Write system prompt to temp file using `tempfile.NamedTemporaryFile`
-- Use `--append-system-prompt-file <path>` instead of `--append-system-prompt <content>`
-- Avoids tmux character limit errors
+Create integration tests that use the ACTUAL tmux binary:
+- Create real tmux sessions and verify 3 panes exist
+- Verify pane dimensions follow 70/30 and 60/40 splits
+- Verify `send-keys` actually delivers commands to panes
+- Verify `$(cat file)` shell expansion works inside tmux
+- Verify session cleanup kills orphaned sessions
+- Use `--dry-run` for smoke tests of the full command
 
-### 3. Test Phase - Integration Tests (VALIDATION)
+**13 real tmux integration tests across 2 files**, zero mocking.
 
-Create integration tests that demonstrate the RIGHT way to test CLI commands:
-- Run actual `agentic orchestrate` commands (not mocked subprocess)
-- Use `--no-tmux` flag for CI compatibility
-- Verify exit codes and error messages
-- NO MOCKING
+### 4. UAT Phase - Real Tmux GUI Validation
 
-### 4. UAT Phase - Real CLI Smoke Tests (PROOF)
-
-Smoke test the actual CLI commands:
-- Run `agentic orchestrate --mode planning --no-tmux`
-- Run `agentic orchestrate --mode executor --no-tmux`
-- Verify integration tests pass
-- Verify guidance updates are effective
+Validate the actual tmux GUI end-to-end:
+- Verify 3-pane layout via `--dry-run`
+- Verify pane titles (orchestrator, sessions, questions)
+- Verify `$(cat file)` expansion in tmux send-keys
+- **Launch full `agentic orchestrate` and verify Claude + dashboards start**
+- Verify all integration tests pass
+- Verify zombie session cleanup
 
 ## Success Criteria
 
-1. Guidance enforces real CLI testing in UAT (prevents future bugs)
-2. Orchestrate command works without character limit errors
-3. Integration tests demonstrate correct approach (real CLI, no mocks)
-4. Future plans will catch similar bugs BEFORE shipping
-
-## Impact
-
-**Prevents future failures:** After this plan, any future plan that modifies CLI commands will be required to test the actual installed binary, not mocked versions. This ensures we never ship broken CLI commands again.
-
-**Demonstrates best practices:** The test phase shows the RIGHT way to test CLI commands - integration tests with real execution, not unit tests with mocks.
-
-**Fixes immediate bugs:** The build phase fixes the command-too-long error so `agentic orchestrate` works correctly.
+1. `agentic orchestrate --mode planning --dry-run` creates 3-pane layout and exits cleanly
+2. Real tmux integration tests verify pane count, dimensions, titles, and send-keys
+3. `$(cat file)` expansion is verified working inside tmux
+4. Full live launch works (Claude starts, dashboards run, no errors)
+5. No orphaned tmux sessions after any test or dry-run
+6. Guidance updated to prevent future mock-only UAT
 
 ## Files Changed
 
-### Guidance (Teach Phase)
+### Build Phase
+- `modules/AgenticCLI/src/agenticcli/commands/orchestrate.py` — add --dry-run
+- `modules/AgenticCLI/src/agenticcli/utils/tmux_layout.py` — add skip_commands, fix -p flags
+- `modules/AgenticCLI/src/agenticcli/commands/cli.py` — register --dry-run arg
+
+### Teach Phase
 - `modules/AgenticGuidance/agents/planner/planner-test/process.yml`
 - `modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml`
 - `modules/AgenticGuidance/agents/test/test-user-simulator/process.yml`
 - `modules/AgenticGuidance/assets/guidelines/planning-standard.yml`
 
-### Code (Build Phase)
-- `modules/AgenticCLI/src/agenticcli/commands/orchestrate.py`
-
-### Tests (Test Phase)
-- `modules/AgenticCLI/tests/integration/test_orchestrate_integration.py` (new)
-- `modules/AgenticCLI/tests/integration/conftest.py` (new)
-- `modules/AgenticCLI/pytest.ini` (update)
+### Test Phase
+- `modules/AgenticCLI/tests/integration/test_tmux_layout_real.py` (new)
+- `modules/AgenticCLI/tests/integration/test_orchestrate_smoke.py` (new)
+- `modules/AgenticCLI/tests/integration/conftest.py` (modify)
 
 ## Execution Order
 
-1. **Teach Phase** - Update guidance files (no dependencies)
-2. **Build Phase** - Fix orchestrate.py (depends on: none)
-3. **Test Phase** - Create integration tests (depends on: Build)
-4. **UAT Phase** - Smoke test CLI commands (depends on: Test)
+1. **Build Phase** — Add --dry-run flag, fix inplace layout (no dependencies)
+2. **Teach Phase** — Update guidance files (parallel with Build)
+3. **Test Phase** — Create and run real tmux integration tests (depends on: Build)
+4. **UAT Phase** — Validate full tmux GUI (depends on: Test)
 
-## Related Plans
+## Key Difference from Previous Plans
 
-This plan remediates bugs from:
-- **260214PF**: Tmux pane split fix (changes in worktree, never merged)
-- **260214TG**: Tmux orchestrate command (command-too-long error)
-- **260214US**: User story generation (passed UAT with mocks)
+Previous tmux plans shipped broken code because:
+- Tests mocked subprocess → never called real tmux
+- UAT used --no-tmux → bypassed the broken code path
+- No test ever created a real tmux session and counted the panes
 
-All three plans "passed UAT" but shipped broken code because UAT used mocked tests instead of real CLI execution.
-
-## Next Steps
-
-After this plan completes:
-1. Run `agentic orchestrate --mode executor` to execute the plan
-2. Verify all phases complete successfully
-3. Test the fixed `agentic orchestrate --mode planning` command
-4. Future plans will automatically enforce real CLI testing in UAT
+This plan ensures every test touches real tmux. The `--dry-run` flag makes
+even the full command pipeline testable without human interaction.

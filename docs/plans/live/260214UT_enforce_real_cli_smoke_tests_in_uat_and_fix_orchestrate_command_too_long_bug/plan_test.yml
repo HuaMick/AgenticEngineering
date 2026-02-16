@@ -1,225 +1,235 @@
-name: "Test Phase - Integration Tests for Orchestrate Command"
+name: "Test Phase - Real Tmux Integration Tests"
 status: "pending"
 type: "test"
 
 phases:
-  - name: "Integration Testing"
+  - name: "Real Tmux Layout Tests"
     status: "pending"
     description: |
-      Create integration tests that run the actual `agentic orchestrate` command
-      end-to-end. NO MOCKING. Test the real installed CLI binary.
+      Create integration tests that launch ACTUAL tmux sessions and verify the
+      3-pane orchestration layout. These tests use the real tmux binary, create
+      real sessions, verify real pane counts, and clean up after themselves.
+
+      NO MOCKING. NO --no-tmux. The whole point is to test the tmux path
+      that keeps breaking.
 
 tasks:
   - id: "test-001"
-    name: "Create integration test for agentic orchestrate --mode planning"
+    name: "Create real tmux layout integration tests"
     description: |
-      Create a new integration test file that tests the orchestrate command
-      with real CLI execution.
+      Create a new integration test file that tests tmux layout creation with
+      real tmux. NOT mocked subprocess, NOT --no-tmux bypass.
 
-      TEST FILE: modules/AgenticCLI/tests/integration/test_orchestrate_integration.py
-      (create integration/ directory if it doesn't exist)
+      TEST FILE: modules/AgenticCLI/tests/integration/test_tmux_layout_real.py
 
-      TEST CONTENT:
-      ```python
-      """Integration tests for agentic orchestrate command.
+      Requirements for each test:
+      - Must call the REAL tmux binary (subprocess.run with actual tmux commands)
+      - Must create actual tmux sessions
+      - Must verify pane count by running: tmux list-panes -t <session> | wc -l
+      - Must verify pane titles
+      - Must clean up the session in a finally block (tmux kill-session)
+      - Must skip gracefully if tmux is not available (pytest.mark.skipif)
 
-      These tests run the ACTUAL installed CLI binary, not mocked subprocess calls.
-      This is the only way to catch bugs like the command-too-long error.
-      """
-      import subprocess
-      import sys
-      from pathlib import Path
+      Tests to implement:
 
-      import pytest
+      1. test_new_session_creates_three_panes
+         - Call _create_new_session_layout with skip_commands=True
+         - Verify: tmux list-panes -t <session> returns exactly 3 panes
+         - Verify: main pane exists with title "orchestrator"
+         - Verify: status pane exists with title "sessions"
+         - Verify: questions pane exists with title "questions"
+         - Cleanup: tmux kill-session -t <session>
 
+      2. test_pane_dimensions_are_reasonable
+         - Call _create_new_session_layout with skip_commands=True
+         - Query pane dimensions: tmux list-panes -t <session> -F "#{pane_width} #{pane_height}"
+         - Verify: main pane width > status pane width (70/30 split)
+         - Verify: status pane height > questions pane height (60/40 split)
+         - Cleanup: tmux kill-session
 
-      def test_orchestrate_planning_mode_no_tmux():
-          """Test that `agentic orchestrate --mode planning --no-tmux` runs without error.
+      3. test_session_name_contains_pid
+         - Verify session name starts with "agentic-orch-" and contains a number
+         - Verify: tmux has-session -t <session> returns 0
 
-          RATIONALE:
-          Previous plans "passed UAT" with mocked tests but the real command was
-          broken. This test runs the ACTUAL installed binary to catch real errors.
-          """
-          # Run the actual installed CLI command
-          result = subprocess.run(
-              ["agentic", "orchestrate", "--mode", "planning", "--no-tmux"],
-              capture_output=True,
-              text=True,
-              timeout=10,
-              input="\n",  # Immediately exit Claude session
-          )
+      4. test_cleanup_kills_orphaned_sessions
+         - Create 3 dummy tmux sessions named agentic-orch-test-1, agentic-orch-test-2, etc
+         - Call cleanup_orchestration_sessions()
+         - Verify: all 3 sessions are killed (tmux has-session returns non-zero)
+         - Verify: non-agentic sessions are NOT killed
 
-          # We expect the command to start successfully (exit 0 or clean error)
-          # The key is that it doesn't fail with "command too long" or similar
-          assert result.returncode in [0, 1, 130], (
-              f"Orchestrate command failed unexpectedly: {result.stderr}"
-          )
+      5. test_dry_run_creates_and_destroys_layout
+         - Run: agentic orchestrate --mode planning --dry-run
+         - Verify: exit code is 0
+         - Verify: stdout contains valid JSON with session_name, pane IDs
+         - Verify: after command completes, tmux session no longer exists
 
-          # Verify no tmux character limit errors
-          assert "argument list too long" not in result.stderr.lower()
-          assert "command too long" not in result.stderr.lower()
+      6. test_send_keys_command_reaches_pane
+         - Create layout with skip_commands=True
+         - Manually send a test command: tmux send-keys -t <main_pane> "echo TMUX_TEST_MARKER" Enter
+         - Wait briefly, then capture pane content: tmux capture-pane -t <main_pane> -p
+         - Verify: "TMUX_TEST_MARKER" appears in captured output
+         - This proves send-keys actually works (the $(cat ...) expansion path)
 
+      7. test_prompt_file_is_readable_from_pane
+         - Write a known string to a temp file
+         - Build the same command string orchestrate.py builds:
+           claude --dangerously-skip-permissions --append-system-prompt "$(cat /tmp/testfile.md)"
+         - Instead of running it, send: echo "$(cat /tmp/testfile.md)" to a pane
+         - Capture pane output and verify the known string appears
+         - This validates that the $(cat ...) expansion works inside tmux send-keys
 
-      def test_orchestrate_executor_mode_no_tmux():
-          """Test that `agentic orchestrate --mode executor --no-tmux` runs without error."""
-          result = subprocess.run(
-              ["agentic", "orchestrate", "--mode", "executor", "--no-tmux"],
-              capture_output=True,
-              text=True,
-              timeout=10,
-              input="\n",  # Immediately exit
-          )
+      Each test MUST have a try/finally to clean up tmux sessions even on failure.
 
-          assert result.returncode in [0, 1, 130], (
-              f"Orchestrate executor mode failed: {result.stderr}"
-          )
-
-          # Verify no character limit errors
-          assert "argument list too long" not in result.stderr.lower()
-          assert "command too long" not in result.stderr.lower()
-
-
-      def test_orchestrate_uses_temp_file_for_prompt():
-          """Verify that orchestrate uses a temp file for system prompt, not CLI arg.
-
-          RATIONALE:
-          The bug was that process.mmd (447 lines) was passed as --append-system-prompt
-          which exceeded tmux character limits. The fix uses --append-system-prompt-file.
-
-          This test verifies the fix by checking that temp files are created.
-          """
-          # This is harder to test without actually inspecting the command execution
-          # For now, we trust that if the command runs successfully, the fix works
-          result = subprocess.run(
-              ["agentic", "orchestrate", "--mode", "planning", "--no-tmux"],
-              capture_output=True,
-              text=True,
-              timeout=10,
-              input="\n",
-          )
-
-          # If this runs without "command too long" error, the temp file approach works
-          assert "argument list too long" not in result.stderr.lower()
-          assert "command too long" not in result.stderr.lower()
-      ```
-
-      Target file: modules/AgenticCLI/tests/integration/test_orchestrate_integration.py
+      Target file: modules/AgenticCLI/tests/integration/test_tmux_layout_real.py
       Change type: create
     status: "pending"
     target_files:
-      - path: "modules/AgenticCLI/tests/integration/test_orchestrate_integration.py"
+      - path: "modules/AgenticCLI/tests/integration/test_tmux_layout_real.py"
         change_type: "create"
         change_category: "test"
 
   - id: "test-002"
-    name: "Create conftest.py with integration test markers"
+    name: "Create real CLI orchestrate smoke tests"
     description: |
-      Create pytest conftest.py to mark integration tests and allow selective running.
+      Create integration tests that run the ACTUAL `agentic orchestrate` command
+      end-to-end. These complement the tmux-specific tests by testing the full
+      command path.
 
-      TEST FILE: modules/AgenticCLI/tests/integration/conftest.py
+      TEST FILE: modules/AgenticCLI/tests/integration/test_orchestrate_smoke.py
 
-      CONTENT:
-      ```python
-      """Pytest configuration for integration tests."""
-      import pytest
+      Tests to implement:
 
+      1. test_orchestrate_dry_run_planning
+         - Run: agentic orchestrate --mode planning --dry-run
+         - Verify: exit code 0
+         - Verify: JSON output contains session_name, pane count = 3
+         - Verify: no tmux session left behind
 
-      def pytest_configure(config):
-          """Register custom markers."""
-          config.addinivalue_line(
-              "markers", "integration: mark test as integration test (runs real CLI)"
-          )
+      2. test_orchestrate_dry_run_executor
+         - Run: agentic orchestrate --mode executor --dry-run
+         - Verify: exit code 0
+         - Verify: JSON output shows correct layout
 
+      3. test_orchestrate_dry_run_loop
+         - Run: agentic orchestrate --mode loop --dry-run
+         - Verify: exit code 0
 
-      @pytest.fixture(scope="session", autouse=True)
-      def verify_cli_installed():
-          """Verify agentic CLI is installed before running integration tests."""
-          import shutil
-          if not shutil.which("agentic"):
-              pytest.skip("agentic CLI not installed - skipping integration tests")
-      ```
+      4. test_orchestrate_invalid_mode
+         - Run: agentic orchestrate --mode nonexistent --dry-run
+         - Verify: exit code non-zero
+         - Verify: error message mentions valid modes
 
-      Target file: modules/AgenticCLI/tests/integration/conftest.py
+      5. test_orchestrate_temp_file_created
+         - Run: agentic orchestrate --mode planning --dry-run
+         - Parse JSON output for prompt temp file path
+         - Verify: temp file exists (or existed) with .md suffix
+         - Verify: temp file prefix starts with agentic_prompt_
+
+      6. test_no_orphaned_sessions_after_dry_run
+         - Run --dry-run 3 times in sequence
+         - After all 3, verify: tmux list-sessions shows NO agentic-orch-* sessions
+         - This proves cleanup works correctly
+
+      Target file: modules/AgenticCLI/tests/integration/test_orchestrate_smoke.py
       Change type: create
     status: "pending"
     target_files:
-      - path: "modules/AgenticCLI/tests/integration/conftest.py"
+      - path: "modules/AgenticCLI/tests/integration/test_orchestrate_smoke.py"
         change_type: "create"
         change_category: "test"
 
   - id: "test-003"
-    name: "Update pytest.ini to include integration test markers"
+    name: "Add conftest with tmux skip marker and session cleanup fixture"
     description: |
-      Update pytest.ini to register the integration marker and document how to run.
+      Create or update the integration test conftest.py with:
 
-      If pytest.ini exists at modules/AgenticCLI/pytest.ini, add:
-      ```ini
-      [pytest]
-      markers =
-          integration: Integration tests that run actual installed CLI commands
-      ```
+      1. A reusable fixture that ensures tmux is available, skips if not
+      2. A session-scoped fixture that cleans up any agentic-orch-* sessions
+         after ALL tests complete (safety net)
+      3. A per-test fixture that records existing sessions before each test
+         and kills any new agentic-orch-* sessions created during the test
 
-      If pytest.ini doesn't exist, create it with this content.
+      This prevents test pollution between runs.
 
-      Also add a comment explaining how to run:
-      ```ini
-      # Run integration tests:
-      #   pytest tests/integration/
-      #
-      # Run only unit tests (skip integration):
-      #   pytest tests/ -m "not integration"
-      ```
-
-      Target file: modules/AgenticCLI/pytest.ini
+      Target file: modules/AgenticCLI/tests/integration/conftest.py
       Change type: create or modify
     status: "pending"
     target_files:
-      - path: "modules/AgenticCLI/pytest.ini"
+      - path: "modules/AgenticCLI/tests/integration/conftest.py"
         change_type: "modify"
         change_category: "test"
 
 success_criteria:
-  - "Integration tests run the ACTUAL installed `agentic` binary, not mocks"
-  - "Tests verify no 'command too long' or 'argument list too long' errors"
-  - "Tests run in CI-compatible mode (--no-tmux flag)"
-  - "Test file clearly documents RATIONALE (why real CLI execution matters)"
-  - "All integration tests pass after build phase completes"
+  - "All integration tests use REAL tmux (not mocked subprocess)"
+  - "Tests verify actual pane count is 3 (not assumed)"
+  - "Tests verify pane dimensions follow 70/30 and 60/40 splits"
+  - "Tests verify send-keys actually delivers commands to panes"
+  - "Tests verify $(cat file) expansion works inside tmux send-keys"
+  - "Tests clean up tmux sessions in finally blocks"
+  - "Tests skip gracefully when tmux is not available"
+  - "--dry-run tests verify no orphaned sessions remain"
+  - "All tests pass on this machine"
 
 test_execution_plan:
-  - name: "Run integration tests"
-    command: "pytest modules/AgenticCLI/tests/integration/ -v"
-    expected_result: "All tests pass (3/3)"
+  - name: "Run real tmux integration tests"
+    command: "python3 -m pytest modules/AgenticCLI/tests/integration/test_tmux_layout_real.py -v"
+    expected_result: "All tests pass (7/7)"
     loop:
       type: "test-fix-loop"
       maximum_iterations: 5
       exit_conditions:
         success:
           condition: "PASS"
-          criteria: "All integration tests pass"
+          criteria: "All tmux layout integration tests pass"
         max_iterations:
           action: "escalate"
-          reason: "Integration tests still failing after fixes"
+          reason: "Tmux layout tests still failing after fixes"
+
+  - name: "Run orchestrate smoke tests"
+    command: "python3 -m pytest modules/AgenticCLI/tests/integration/test_orchestrate_smoke.py -v"
+    expected_result: "All tests pass (6/6)"
+    loop:
+      type: "test-fix-loop"
+      maximum_iterations: 5
+      exit_conditions:
+        success:
+          condition: "PASS"
+          criteria: "All orchestrate smoke tests pass"
+        max_iterations:
+          action: "escalate"
+          reason: "Orchestrate smoke tests still failing after fixes"
 
 impacted_files:
-  - path: "modules/AgenticCLI/tests/integration/test_orchestrate_integration.py"
+  - path: "modules/AgenticCLI/tests/integration/test_tmux_layout_real.py"
     change_type: "create"
     change_category: "test"
-    reason: "Integration tests for orchestrate command (real CLI execution)"
+    reason: "Real tmux integration tests - actual sessions, actual panes, no mocks"
+  - path: "modules/AgenticCLI/tests/integration/test_orchestrate_smoke.py"
+    change_type: "create"
+    change_category: "test"
+    reason: "End-to-end orchestrate command smoke tests with --dry-run"
   - path: "modules/AgenticCLI/tests/integration/conftest.py"
-    change_type: "create"
-    change_category: "test"
-    reason: "Pytest fixtures for integration tests"
-  - path: "modules/AgenticCLI/pytest.ini"
     change_type: "modify"
     change_category: "test"
-    reason: "Register integration test marker"
+    reason: "Tmux availability fixture and session cleanup safety net"
 
 notes: |
-  This test phase is CRITICAL. It demonstrates the right way to test CLI commands:
-  - Run the actual installed binary (`agentic orchestrate`)
-  - Use --no-tmux for CI compatibility
-  - Verify exit codes and error messages
-  - NO MOCKING of subprocess calls
+  THIS IS THE CRITICAL TEST PHASE. The original test plan only tested with
+  --no-tmux, which explicitly bypasses the code path that keeps breaking.
 
-  If these tests had existed for the previous plans, the command-too-long bug
-  would have been caught BEFORE shipping.
+  These tests exercise the REAL tmux path:
+  - Real tmux sessions are created
+  - Real pane counts are verified
+  - Real send-keys commands are tested
+  - Real $(cat file) shell expansion is verified
+  - Real cleanup is verified
+
+  The --dry-run flag (from the build phase) makes this possible without
+  needing a human to interact with Claude.
+
+  If these tests had existed before, EVERY tmux bug we've hit would have
+  been caught automatically:
+  - The -p percentage bug (pane dimensions wrong)
+  - The single-quote $(cat) bug (shell expansion blocked)
+  - The missing Enter key bug (command never executed)
+  - Orphaned session accumulation

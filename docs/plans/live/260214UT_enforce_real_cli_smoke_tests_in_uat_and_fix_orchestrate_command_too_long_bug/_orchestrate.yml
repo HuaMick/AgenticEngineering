@@ -2,56 +2,68 @@ plan:
   id: "260214UT"
   name: "enforce_real_cli_smoke_tests_in_uat_and_fix_orchestrate_command_too_long_bug"
   objective: |
-    Fix the systemic UAT gap where plans pass UAT with mocked tests but real CLI
-    commands are broken. Three plans (260214PF, 260214TG, 260214US) passed UAT
-    but the actual `agentic orchestrate --mode planning` command is broken with
-    two bugs:
+    Add real tmux integration testing to prevent shipping broken GUI layouts.
 
-    1. tmux split bug - changes in worktree never merged to main (no merge step)
-    2. command too long - 447-line process.mmd passed as CLI arg exceeds tmux limit
+    The tmux orchestration GUI keeps breaking because every test either mocks
+    tmux or uses --no-tmux to bypass it. Recent shipped bugs include:
+    - -p percentage flag failing on detached sessions
+    - $(cat file) wrapped in single quotes blocking shell expansion
+    - Missing Enter key after send-keys
+    - Orphaned agentic-orch-* sessions accumulating
 
-    Root cause: UAT validates against mocked tests, not real CLI execution.
-
-    Solution:
-    1. Update guidance to enforce real CLI smoke tests in UAT
-    2. Fix orchestrate.py to use temp file for system prompt (not CLI arg)
-    3. Add integration tests that run actual installed CLI commands
+    The command-too-long bug is ALREADY FIXED. This plan now focuses on:
+    1. Making the tmux path testable (--dry-run flag)
+    2. Fixing remaining latent bugs (inplace layout -p flags)
+    3. Creating real tmux integration tests (13 tests, zero mocking)
+    4. Updating guidance to prevent future mock-only UAT
 
   target_project_path: "/home/code/AgenticEngineering"
   plan_folder: "/home/code/AgenticEngineering/docs/plans/live/260214UT_enforce_real_cli_smoke_tests_in_uat_and_fix_orchestrate_command_too_long_bug"
 
   status: "planning_complete"
   created_at: "2026-02-14T00:00:00Z"
-  planning_completed_at: "2026-02-14T00:00:00Z"
+  planning_completed_at: "2026-02-14T18:30:00+11:00"
 
   affected_stories: []
   no_stories_rationale: |
-    This is a guidance and internal tooling fix. The issue is in our internal
-    orchestration validation processes and CLI implementation. No user-facing
-    features are changing - this improves our internal test quality to prevent
-    shipping broken commands in the future.
+    This is an internal testing infrastructure fix. No user-facing features
+    are changing — this adds automated tests and a --dry-run flag to prevent
+    shipping broken tmux layouts in the future.
 
   phases:
-    - name: "Teach"
-      status: "pending"
-      plan_file: "plan_teach.yml"
-      agent_type: "teacher-update-guidance"
     - name: "Build"
       status: "pending"
       plan_file: "plan_build.yml"
       agent_type: "build-python"
+    - name: "Teach"
+      status: "pending"
+      plan_file: "plan_teach.yml"
+      agent_type: "teacher-update-guidance"
     - name: "Test"
       status: "pending"
       plan_file: "plan_test.yml"
       agent_type: "test-runner"
+      depends_on: ["Build", "Teach"]
     - name: "UAT"
       status: "pending"
       plan_file: "plan_uat.yml"
       agent_type: "test-user-simulator"
+      depends_on: ["Test"]
 
   orchestration_mmd: "orchestration_260214UT.mmd"
 
   impacted_files:
+    # Build phase
+    - path: "modules/AgenticCLI/src/agenticcli/commands/orchestrate.py"
+      change_type: "modify"
+      change_category: "code"
+    - path: "modules/AgenticCLI/src/agenticcli/utils/tmux_layout.py"
+      change_type: "modify"
+      change_category: "code"
+    - path: "modules/AgenticCLI/src/agenticcli/commands/cli.py"
+      change_type: "modify"
+      change_category: "code"
+    # Teach phase
     - path: "modules/AgenticGuidance/agents/planner/planner-test/process.yml"
       change_type: "modify"
       change_category: "guidance"
@@ -64,23 +76,21 @@ plan:
     - path: "modules/AgenticGuidance/assets/guidelines/planning-standard.yml"
       change_type: "modify"
       change_category: "guidance"
-    - path: "modules/AgenticCLI/src/agenticcli/commands/orchestrate.py"
-      change_type: "modify"
-      change_category: "code"
-    - path: "modules/AgenticCLI/tests/integration/test_orchestrate_integration.py"
+    # Test phase
+    - path: "modules/AgenticCLI/tests/integration/test_tmux_layout_real.py"
+      change_type: "create"
+      change_category: "test"
+    - path: "modules/AgenticCLI/tests/integration/test_orchestrate_smoke.py"
       change_type: "create"
       change_category: "test"
     - path: "modules/AgenticCLI/tests/integration/conftest.py"
-      change_type: "create"
-      change_category: "test"
-    - path: "modules/AgenticCLI/pytest.ini"
       change_type: "modify"
       change_category: "test"
 
   impacted_artifacts:
     - artifact_type: "cli_command"
-      artifact_identifier: "agentic orchestrate"
-      impact_type: "bug_fix"
-      description: "Fixed tmux character limit error when passing large system prompts"
+      artifact_identifier: "agentic orchestrate --dry-run"
+      impact_type: "new_feature"
+      description: "New --dry-run flag for testable tmux layout verification"
 
   planning_intent: "build"

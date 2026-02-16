@@ -1,122 +1,163 @@
-name: "UAT Phase - Verify CLI Commands Work End-to-End"
+name: "UAT Phase - Real Tmux GUI Validation"
 status: "pending"
 type: "uat"
 
 phases:
-  - name: "Real CLI Smoke Tests"
+  - name: "Live Tmux Verification"
     status: "pending"
     description: |
-      Run the actual installed CLI commands end-to-end to verify they work.
-      This UAT phase DEMONSTRATES the guidance we just added - it runs real
-      CLI commands, not mocked tests.
+      Validate the tmux orchestration GUI by running REAL commands with REAL tmux.
+      Every test runs the actual installed CLI binary and verifies the tmux
+      session structure. NO --no-tmux bypass. NO mocking.
 
 tasks:
   - id: "uat-001"
-    name: "Smoke test: agentic orchestrate --mode planning"
+    name: "Verify 3-pane layout via --dry-run"
     description: |
-      Run the actual `agentic orchestrate --mode planning --no-tmux` command
-      and verify it starts successfully without errors.
+      Run the actual installed CLI with --dry-run and verify the layout.
 
-      ACCEPTANCE CRITERIA:
-      1. Command exits with code 0, 1, or 130 (clean exit or user interrupt)
-      2. No "command too long" or "argument list too long" errors in stderr
-      3. Claude session starts (can immediately exit with Ctrl+C or Enter)
-      4. Temp file is created for system prompt (verifies the fix)
-
-      EXECUTION STEPS:
-      1. Open a terminal
-      2. Run: `agentic orchestrate --mode planning --no-tmux`
-      3. Immediately press Enter or Ctrl+C to exit Claude session
-      4. Check exit code: `echo $?`
-      5. Verify no error messages about command length
+      EXECUTION:
+      1. Run: agentic orchestrate --mode planning --dry-run
+      2. Parse JSON output
+      3. Verify: session_name starts with "agentic-orch-"
+      4. Verify: 3 pane IDs are present and distinct
+      5. Verify: exit code 0
+      6. Verify: no tmux session left behind (tmux list-sessions | grep agentic-orch)
 
       EVIDENCE REQUIRED:
-      - Terminal output showing command started
-      - Exit code (0, 1, or 130)
-      - No error messages in output
-
-      VERIFICATION METHOD: manual
-      (Could be automated with test-user-simulator, but manual is simpler for smoke test)
+      - JSON output showing 3 pane IDs
+      - tmux list-sessions showing no orphaned sessions after exit
     status: "pending"
     acceptance_criteria:
-      - "Command starts without 'command too long' error"
-      - "Exit code is 0, 1, or 130"
-      - "No tmux character limit errors"
+      - "3 distinct pane IDs returned"
+      - "Session cleaned up after dry-run"
+      - "Exit code 0"
 
   - id: "uat-002"
-    name: "Smoke test: agentic orchestrate --mode executor"
+    name: "Verify pane titles are correctly set"
     description: |
-      Run the actual `agentic orchestrate --mode executor --no-tmux` command
-      and verify it starts successfully.
+      Create a tmux orchestration layout and verify all three pane titles.
 
-      ACCEPTANCE CRITERIA:
-      1. Command exits cleanly (no "command too long" errors)
-      2. Claude session starts
-      3. Temp file approach works for executor mode too
+      EXECUTION:
+      1. Run: agentic orchestrate --mode planning --dry-run
+         (but capture the session name BEFORE it's killed)
+         OR: Use the integration test test_new_session_creates_three_panes
+      2. Query: tmux list-panes -t <session> -F "#{pane_title}"
+      3. Verify output contains exactly: orchestrator, sessions, questions
 
-      EXECUTION STEPS:
-      1. Run: `agentic orchestrate --mode executor --no-tmux`
-      2. Exit immediately
-      3. Verify no errors
-
-      VERIFICATION METHOD: manual
+      EVIDENCE REQUIRED:
+      - tmux list-panes output showing all 3 titles
     status: "pending"
     acceptance_criteria:
-      - "Command starts without errors"
-      - "No character limit issues"
+      - "Pane titles: orchestrator, sessions, questions"
+      - "All 3 titles present"
 
   - id: "uat-003"
-    name: "Verify integration tests pass"
+    name: "Verify $(cat file) expansion works in tmux send-keys"
     description: |
-      Run the integration test suite and verify all tests pass.
+      The root cause of the most recent bug was that $(cat file) was wrapped
+      in single quotes by shlex.quote, preventing shell expansion. Verify
+      this is actually fixed.
 
-      ACCEPTANCE CRITERIA:
-      1. All integration tests in tests/integration/ pass
-      2. Tests run the actual installed CLI binary
-      3. Tests verify no command-too-long errors
+      EXECUTION:
+      1. Create a test file: echo "SMOKE_TEST_MARKER_12345" > /tmp/smoke_test_prompt.md
+      2. Create a tmux session manually:
+         tmux new-session -d -s smoke-test -x 200 -y 50
+      3. Send the expansion command:
+         tmux send-keys -t smoke-test 'echo "$(cat /tmp/smoke_test_prompt.md)"' Enter
+      4. Wait 1 second
+      5. Capture output:
+         tmux capture-pane -t smoke-test -p
+      6. Verify: output contains "SMOKE_TEST_MARKER_12345"
+      7. Cleanup: tmux kill-session -t smoke-test
 
-      EXECUTION STEPS:
-      1. cd modules/AgenticCLI
-      2. Run: `pytest tests/integration/ -v`
-      3. Verify all tests pass (3/3)
-
-      VERIFICATION METHOD: test-runner
+      EVIDENCE REQUIRED:
+      - Captured pane output showing the marker string expanded correctly
     status: "pending"
     acceptance_criteria:
-      - "All integration tests pass"
-      - "Tests run real CLI commands (not mocks)"
-      - "No command length errors detected"
+      - "$(cat file) expands correctly inside tmux send-keys"
+      - "Marker string appears in pane output"
 
   - id: "uat-004"
-    name: "Verify guidance updates are effective"
+    name: "Verify live orchestrate session launches correctly"
     description: |
-      Manually review the updated guidance files and verify they clearly state
-      the requirement for real CLI smoke tests.
+      Run the FULL `agentic orchestrate` command (NOT --dry-run, NOT --no-tmux)
+      and verify the session comes up correctly.
 
-      ACCEPTANCE CRITERIA:
-      1. planner-test/process.yml has real_cli_smoke_test_requirement fence
-      2. orchestration-executor/process.yml has integration_smoke_test_gate
-      3. test-user-simulator/process.yml prefers real commands over mocks
-      4. planning-standard.yml has CLI Smoke Test Requirement rule
+      EXECUTION:
+      1. Run: agentic orchestrate --mode planning
+         (this will create a tmux session and attach)
+      2. After attaching, verify 3 panes are visible
+      3. Verify the main pane shows Claude starting up
+      4. Verify the status pane shows "session dashboard" output
+      5. Verify the questions pane shows "question dashboard" output
+      6. Exit: Ctrl+C or type /exit in Claude
+      7. Verify: session is killed on exit (or at least detachable)
 
-      EXECUTION STEPS:
-      1. Read each guidance file
-      2. Verify the fences/guidelines are clear and actionable
-      3. Confirm examples show RIGHT (real CLI) vs WRONG (mocks)
+      This is the ONLY test that fully validates the end-user experience.
+      All previous UAT plans skipped this step.
 
-      VERIFICATION METHOD: manual
+      VERIFICATION METHOD: manual (requires human to attach to tmux)
     status: "pending"
     acceptance_criteria:
-      - "All four guidance files updated"
-      - "Fences clearly mandate real CLI testing"
-      - "Examples demonstrate correct approach"
+      - "3 panes visible in tmux"
+      - "Claude starts in main pane"
+      - "Session dashboard running in status pane"
+      - "Question dashboard running in questions pane"
+      - "No error messages about command too long or shell expansion"
+
+  - id: "uat-005"
+    name: "Verify all integration tests pass"
+    description: |
+      Run the full integration test suite to confirm all real tmux tests pass.
+
+      EXECUTION:
+      1. Run: python3 -m pytest modules/AgenticCLI/tests/integration/test_tmux_layout_real.py -v
+      2. Verify: all tests pass
+      3. Run: python3 -m pytest modules/AgenticCLI/tests/integration/test_orchestrate_smoke.py -v
+      4. Verify: all tests pass
+      5. Run: python3 -m pytest modules/AgenticCLI/tests/ -v --ignore=modules/AgenticCLI/tests/integration -x
+      6. Verify: existing unit tests still pass (no regressions)
+
+      EVIDENCE REQUIRED:
+      - pytest output showing all integration tests passing
+      - pytest output showing no regressions in unit tests
+    status: "pending"
+    acceptance_criteria:
+      - "All tmux layout integration tests pass"
+      - "All orchestrate smoke tests pass"
+      - "No regressions in existing unit tests"
+
+  - id: "uat-006"
+    name: "Verify cleanup handles zombie sessions"
+    description: |
+      Verify that the session cleanup works for real orphaned sessions.
+
+      EXECUTION:
+      1. Create 3 fake sessions:
+         tmux new-session -d -s agentic-orch-zombie-1
+         tmux new-session -d -s agentic-orch-zombie-2
+         tmux new-session -d -s agentic-orch-zombie-3
+      2. Verify they exist: tmux list-sessions | grep agentic-orch
+      3. Run: agentic orchestrate --mode planning --dry-run
+      4. Verify: all 3 zombie sessions were killed
+      5. Verify: the --dry-run session was also cleaned up
+
+      EVIDENCE REQUIRED:
+      - tmux list-sessions before (showing zombies)
+      - tmux list-sessions after (showing no agentic-orch sessions)
+    status: "pending"
+    acceptance_criteria:
+      - "All zombie agentic-orch-* sessions cleaned up"
+      - "No agentic-orch sessions remain after --dry-run"
 
 success_criteria:
-  - "All UAT tasks complete successfully"
-  - "`agentic orchestrate` commands work without command-too-long errors"
-  - "Integration tests pass with real CLI execution"
-  - "Guidance updates are in place and clear"
-  - "Future plans will catch similar bugs BEFORE shipping"
+  - "3-pane layout verified with REAL tmux (not mocked)"
+  - "$(cat file) expansion confirmed working in tmux send-keys"
+  - "Full orchestrate launch verified (Claude + dashboards all start)"
+  - "Session cleanup verified (no orphaned sessions)"
+  - "All integration tests pass"
+  - "No regressions in existing tests"
 
 loop:
   type: "user-story-validation-loop"
@@ -124,21 +165,26 @@ loop:
   exit_conditions:
     success:
       condition: "PASS"
-      criteria: "All UAT tasks pass"
+      criteria: "All UAT tasks pass with real tmux verification"
     max_iterations:
       action: "escalate"
-      reason: "UAT smoke tests still failing"
+      reason: "Tmux GUI issues persist after 3 iterations"
 
 impacted_files: []  # UAT doesn't modify files, it validates behavior
 
 notes: |
-  This UAT phase DEMONSTRATES the solution we built:
-  - We run REAL CLI commands (not mocks)
-  - We verify the actual installed binary works
-  - We test the complete user workflow
+  CRITICAL DIFFERENCE from the previous UAT plan:
 
-  This is exactly what was MISSING from the previous plans (260214PF, 260214TG, 260214US).
-  They had UAT phases with mocked tests. This UAT has REAL execution.
+  The old UAT used --no-tmux for every test, which BYPASSES the entire code
+  path that keeps breaking. That's like testing a car's brakes by verifying
+  the parking brake works.
 
-  If this approach had been used for those plans, the bugs would have been caught
-  BEFORE shipping, not after 3 plans "passed UAT" with broken commands.
+  This new UAT tests the REAL tmux path:
+  - Real tmux sessions with real pane verification
+  - Real $(cat file) expansion (the actual bug)
+  - Real full launch (Claude + dashboards)
+  - Real cleanup (zombie sessions)
+
+  uat-004 is the most important task — it's the ONLY test that verifies
+  the full end-user experience. Every other test is an automated proxy.
+  If uat-004 fails, the other tests need to be made more comprehensive.

@@ -11,6 +11,10 @@ The layout creation requires tmux 2.3+ for pane titles and handles both:
 - In-place layout: splits current pane when already in tmux
 
 All dashboard and orchestrator commands are executed immediately upon layout creation.
+
+The claude_cmd_str parameter is a pre-formatted shell command string (not a list).
+This allows callers to use shell features like $(cat file) for large arguments
+without shlex.quote wrapping them in single quotes (which prevents expansion).
 """
 
 import os
@@ -62,9 +66,39 @@ def _shell_escape_cmd(cmd: list[str]) -> str:
     return " ".join(shlex.quote(arg) for arg in cmd)
 
 
+def cleanup_orchestration_sessions() -> list[str]:
+    """Kill all orphaned agentic-orch-* tmux sessions.
+
+    Returns:
+        List of session names that were killed.
+    """
+    if not tmux_available():
+        return []
+
+    try:
+        result = subprocess.run(
+            ["tmux", "list-sessions", "-F", "#{session_name}"],
+            capture_output=True, text=True,
+        )
+        if result.returncode != 0:
+            return []
+
+        killed = []
+        for session in result.stdout.strip().splitlines():
+            if session.startswith("agentic-orch-"):
+                subprocess.run(
+                    ["tmux", "kill-session", "-t", session],
+                    capture_output=True,
+                )
+                killed.append(session)
+        return killed
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return []
+
+
 def _create_new_session_layout(
     session_name: str,
-    claude_cmd: list[str],
+    claude_cmd_str: str,
     dashboard_refresh: int,
     question_refresh: int,
 ) -> OrchestrationLayout:
@@ -77,7 +111,8 @@ def _create_new_session_layout(
 
     Args:
         session_name: Name for the new tmux session.
-        claude_cmd: Command to run in the main pane (e.g., ["claude", "--dangerously-skip-permissions"]).
+        claude_cmd_str: Pre-formatted shell command string for the main pane.
+            Must be ready for tmux send-keys (caller handles quoting).
         dashboard_refresh: Refresh interval in seconds for session dashboard.
         question_refresh: Refresh interval in seconds for questions dashboard.
 
@@ -166,9 +201,11 @@ def _create_new_session_layout(
             check=True,
         )
 
-        # Send the Claude command to the main pane and execute it immediately
+        # Send the Claude command to the main pane and execute it immediately.
+        # claude_cmd_str is pre-formatted by the caller with proper quoting
+        # (e.g. double-quotes around $(cat file) for shell expansion).
         subprocess.run(
-            ["tmux", "send-keys", "-t", main_pane_id, _shell_escape_cmd(claude_cmd), "Enter"],
+            ["tmux", "send-keys", "-t", main_pane_id, claude_cmd_str, "Enter"],
             check=True,
         )
 
@@ -191,16 +228,16 @@ def _create_new_session_layout(
 
 
 def _create_inplace_layout(
-    claude_cmd: list[str],
     dashboard_refresh: int,
     question_refresh: int,
 ) -> OrchestrationLayout:
     """Create orchestration layout within the current tmux session.
 
-    Splits the current pane to create the 3-pane layout.
+    Splits the current pane to create the 3-pane layout with dashboards.
+    The caller is responsible for launching Claude in the main pane
+    (typically via os.execvp after this function returns).
 
     Args:
-        claude_cmd: Command to run in the main pane (e.g., ["claude", "--dangerously-skip-permissions"]).
         dashboard_refresh: Refresh interval in seconds for session dashboard.
         question_refresh: Refresh interval in seconds for questions dashboard.
 
@@ -301,17 +338,23 @@ def _create_inplace_layout(
 
 
 def create_orchestration_layout(
-    claude_cmd: list[str],
+    claude_cmd_str: str,
     dashboard_refresh: int = 5,
     question_refresh: int = 10,
 ) -> OrchestrationLayout:
     """Create a 3-pane orchestration layout in tmux.
 
-    If not already in a tmux session, creates a new detached session.
-    If already in tmux, creates the layout in the current session.
+    If not already in a tmux session, creates a new detached session and
+    sends the Claude command to the main pane. If already in tmux, creates
+    the layout in the current session (caller must launch Claude separately
+    via os.execvp).
+
+    Cleans up any orphaned agentic-orch-* sessions before creating a new one.
 
     Args:
-        claude_cmd: Command to run in the main pane (e.g., ["claude", "--dangerously-skip-permissions"]).
+        claude_cmd_str: Pre-formatted shell command string for the main pane.
+            The caller is responsible for proper quoting (e.g. using double
+            quotes around $(cat file) to allow shell expansion).
         dashboard_refresh: Refresh interval in seconds for session dashboard (default: 5).
         question_refresh: Refresh interval in seconds for questions dashboard (default: 10).
 
@@ -325,10 +368,12 @@ def create_orchestration_layout(
         raise RuntimeError("tmux is not available on this system")
 
     if is_in_tmux():
-        return _create_inplace_layout(claude_cmd, dashboard_refresh, question_refresh)
+        return _create_inplace_layout(dashboard_refresh, question_refresh)
     else:
+        # Clean up orphaned sessions before creating a new one
+        cleanup_orchestration_sessions()
         session_name = f"agentic-orch-{os.getpid()}"
-        return _create_new_session_layout(session_name, claude_cmd, dashboard_refresh, question_refresh)
+        return _create_new_session_layout(session_name, claude_cmd_str, dashboard_refresh, question_refresh)
 
 
 def attach_to_session(session_name: str) -> None:

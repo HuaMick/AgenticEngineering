@@ -397,7 +397,8 @@ class TestOrchestrateWithTmuxLayout:
         # Verify create_orchestration_layout was called with correct arguments
         mock_create_layout.assert_called_once()
         call_kwargs = mock_create_layout.call_args[1]
-        assert "claude_cmd" in call_kwargs
+        assert "claude_cmd_str" in call_kwargs
+        assert "claude" in call_kwargs["claude_cmd_str"]
         assert call_kwargs["dashboard_refresh"] == 5
         assert call_kwargs["question_refresh"] == 10
 

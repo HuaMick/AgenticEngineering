@@ -1,99 +1,120 @@
-name: "Build Phase - Fix Orchestrate Command Too Long Bug"
+name: "Build Phase - Add Tmux Layout Verification and Dry-Run Support"
 status: "pending"
 type: "build"
 
 phases:
-  - name: "Fix System Prompt Passing"
+  - name: "Add dry-run mode and fix in-place layout"
     status: "pending"
     description: |
-      Fix orchestrate.py to write system prompt to a temp file and use
-      --append-system-prompt-file instead of passing 447 lines as a CLI arg.
+      The command-too-long bug is ALREADY FIXED (orchestrate.py already writes to
+      temp file and uses $(cat ...)). This build phase addresses the remaining gaps:
+
+      1. Add --dry-run flag to `agentic orchestrate` that creates the tmux layout,
+         verifies pane count/structure, prints the layout info, then exits. This
+         enables automated testing of the tmux GUI path without needing a human.
+
+      2. Fix _create_inplace_layout which still uses -p percentage flags for splits.
+         The new-session path was fixed to use -l absolute values, but the inplace
+         path was not. This is a latent bug that will bite when running orchestrate
+         from inside an existing tmux session.
 
 tasks:
   - id: "build-001"
-    name: "Refactor cmd_orchestrate to use temp file for system prompt"
+    name: "Add --dry-run flag to cmd_orchestrate"
     description: |
-      Update cmd_orchestrate() in orchestrate.py to:
+      Add a --dry-run flag to the orchestrate command that:
+      1. Creates the tmux layout (session + 3 panes) exactly as normal
+      2. Does NOT send the Claude command to the main pane
+      3. Does NOT start dashboard processes
+      4. Prints the OrchestrationLayout dataclass as JSON to stdout
+      5. Verifies the pane count is exactly 3
+      6. Kills the test session and exits cleanly
 
-      1. Write system_prompt to a temp file instead of passing as --append-system-prompt arg
-      2. Use tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False)
-      3. Pass temp file path to Claude using --append-system-prompt-file <path>
-      4. Clean up temp file after Claude session ends (or let OS handle cleanup)
+      This enables the test phase to verify the REAL tmux layout without needing
+      to interact with Claude or dashboard processes.
 
-      CURRENT CODE (line 371-382):
-      ```python
-      # 3. Combine into system prompt appendix
-      system_prompt = (
-          f"{prompt_content}\n\n---\n\n"
-          f"## BOOTSTRAP CONTEXT (auto-injected)\n\n{bootstrap_text}"
-      )
+      Implementation approach:
+      - Add --dry-run to the argparse definition in cli.py
+      - In cmd_orchestrate, after layout creation, if dry_run:
+        - Verify panes: tmux list-panes -t <session> -F "#{pane_id} #{pane_title}"
+        - Print layout info as JSON
+        - Kill session: tmux kill-session -t <session>
+        - sys.exit(0)
 
-      # 4. Build claude command
-      cmd = ["claude", "--dangerously-skip-permissions"]
-      model = getattr(args, "model", None)
-      if model:
-          cmd.extend(["--model", model])
-      cmd.extend(["--append-system-prompt", system_prompt])
-      ```
+      - In tmux_layout.py, add a `skip_commands` parameter to
+        _create_new_session_layout that skips sending send-keys for the Claude
+        command and dashboard commands. This keeps the layout creation pure.
 
-      NEW CODE:
-      ```python
-      import tempfile
-
-      # 3. Combine into system prompt appendix
-      system_prompt = (
-          f"{prompt_content}\n\n---\n\n"
-          f"## BOOTSTRAP CONTEXT (auto-injected)\n\n{bootstrap_text}"
-      )
-
-      # 4. Write system prompt to temp file
-      with tempfile.NamedTemporaryFile(
-          mode='w', suffix='.md', delete=False, prefix='claude_prompt_'
-      ) as f:
-          f.write(system_prompt)
-          prompt_file_path = f.name
-
-      # 5. Build claude command with prompt file
-      cmd = ["claude", "--dangerously-skip-permissions"]
-      model = getattr(args, "model", None)
-      if model:
-          cmd.extend(["--model", model])
-      cmd.extend(["--append-system-prompt-file", prompt_file_path])
-      ```
-
-      RATIONALE:
-      - The 447-line process.mmd exceeds tmux send-keys character limit
-      - Passing as file arg avoids command-line length limits
-      - Temp file is automatically cleaned up by OS on reboot if not deleted
-
-      Target file: modules/AgenticCLI/src/agenticcli/commands/orchestrate.py
-      Lines to modify: 371-382
+      Target files:
+        - modules/AgenticCLI/src/agenticcli/commands/orchestrate.py
+        - modules/AgenticCLI/src/agenticcli/utils/tmux_layout.py
+        - modules/AgenticCLI/src/agenticcli/commands/cli.py (add --dry-run arg)
     status: "pending"
     target_files:
       - path: "modules/AgenticCLI/src/agenticcli/commands/orchestrate.py"
         change_type: "modify"
         change_category: "code"
+      - path: "modules/AgenticCLI/src/agenticcli/utils/tmux_layout.py"
+        change_type: "modify"
+        change_category: "code"
+      - path: "modules/AgenticCLI/src/agenticcli/commands/cli.py"
+        change_type: "modify"
+        change_category: "code"
+
+  - id: "build-002"
+    name: "Fix _create_inplace_layout to use absolute values instead of -p"
+    description: |
+      _create_inplace_layout (line 230-337 in tmux_layout.py) still uses:
+        - `-p 30` for the vertical split (line 271)
+        - `-p 40` for the horizontal split (line 285)
+
+      The _create_new_session_layout was already fixed to use `-l 60` and `-l 20`
+      (absolute column/row counts) because `-p` percentage fails on detached
+      sessions in tmux 3.4/WSL2.
+
+      While inplace layout runs inside an existing session (so -p might work),
+      we should use the same approach for consistency and robustness:
+        - Replace `-p 30` with `-l 60` (60 columns for 30% of ~200 width)
+        - Replace `-p 40` with `-l 20` (20 rows for 40% of ~50 height)
+
+      Alternatively, since inplace may have variable terminal size, we should
+      query the current pane dimensions first:
+        tmux display-message -p "#{pane_width} #{pane_height}"
+      Then compute absolute column/row values from that.
+
+      Target file: modules/AgenticCLI/src/agenticcli/utils/tmux_layout.py
+      Lines to modify: 268-292
+    status: "pending"
+    target_files:
+      - path: "modules/AgenticCLI/src/agenticcli/utils/tmux_layout.py"
+        change_type: "modify"
+        change_category: "code"
 
 success_criteria:
-  - "orchestrate.py uses --append-system-prompt-file instead of --append-system-prompt"
-  - "System prompt written to temp file with tempfile.NamedTemporaryFile"
-  - "Temp file has .md suffix for syntax highlighting in editor"
-  - "Code handles file creation errors gracefully"
-  - "`agentic orchestrate --mode planning` runs without tmux character limit errors"
+  - "`agentic orchestrate --mode planning --dry-run` creates a real tmux session with 3 panes, prints layout JSON, then cleans up"
+  - "--dry-run does NOT launch Claude or dashboard processes"
+  - "--dry-run exits with code 0 when layout is correct, non-zero if pane count is wrong"
+  - "_create_inplace_layout uses absolute -l values (or dynamically computed) instead of -p percentages"
+  - "All existing unit tests still pass after changes"
 
 impacted_files:
   - path: "modules/AgenticCLI/src/agenticcli/commands/orchestrate.py"
     change_type: "modify"
     change_category: "code"
-    reason: "Fix command-too-long bug by using temp file for system prompt"
-
-impacted_artifacts:
-  - artifact_type: "cli_command"
-    artifact_identifier: "agentic orchestrate"
-    impact_type: "bug_fix"
-    description: "Fixed tmux character limit error when passing large system prompts"
+    reason: "Add --dry-run flag for testable tmux layout verification"
+  - path: "modules/AgenticCLI/src/agenticcli/utils/tmux_layout.py"
+    change_type: "modify"
+    change_category: "code"
+    reason: "Add skip_commands param and fix inplace layout -p flags"
+  - path: "modules/AgenticCLI/src/agenticcli/commands/cli.py"
+    change_type: "modify"
+    change_category: "code"
+    reason: "Register --dry-run argument for orchestrate subparser"
 
 notes: |
-  This is a simple one-task build phase. The fix is straightforward: write to
-  temp file instead of passing as CLI arg. The real complexity is in the test
-  phase - we need to verify this actually works end-to-end.
+  The original build plan was for the command-too-long fix, which is ALREADY DONE.
+  orchestrate.py already uses tempfile + $(cat ...) approach (lines 379-386).
+
+  This new build phase addresses the REAL gap: there is no way to test the tmux
+  layout path without a human sitting in front of the terminal. The --dry-run flag
+  makes the tmux layout creation fully testable in an automated pipeline.

@@ -15,6 +15,7 @@ Also supports --planning-loop mode for automated plan lifecycle execution.
 
 import json
 import os
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -405,13 +406,21 @@ def cmd_orchestrate(args, ctx=None):
             from agenticcli.utils.tmux import is_in_tmux
 
             if tmux_available():
-                # Tmux path: use $(cat file) to keep send-keys command short
-                tmux_cmd = base_cmd + [
-                    "--append-system-prompt", f"$(cat {prompt_tmp.name})"
-                ]
-                # Create the 3-pane layout
+                # Build shell command string for tmux send-keys.
+                # Use double quotes around $(cat file) so bash expands the
+                # substitution (single quotes from shlex.quote would block it).
+                tmux_parts = ["claude", "--dangerously-skip-permissions"]
+                if model:
+                    tmux_parts.extend(["--model", shlex.quote(model)])
+                tmux_parts.extend([
+                    "--append-system-prompt",
+                    f'"$(cat {shlex.quote(prompt_tmp.name)})"',
+                ])
+                tmux_cmd_str = " ".join(tmux_parts)
+
+                # Create the 3-pane layout (cleans up orphaned sessions first)
                 layout = create_orchestration_layout(
-                    claude_cmd=tmux_cmd,
+                    claude_cmd_str=tmux_cmd_str,
                     dashboard_refresh=dashboard_refresh,
                     question_refresh=question_refresh,
                 )
