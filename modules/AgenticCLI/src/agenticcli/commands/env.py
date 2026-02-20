@@ -20,7 +20,7 @@ def handle(args, ctx=None):
     elif args.env_command == "run":
         cmd_run(args, ctx)
     else:
-        print("Usage: agentic env <show|export|run>", file=sys.stderr)
+        print("Usage: agentic configure env <show|export|run>", file=sys.stderr)
         sys.exit(1)
 
 

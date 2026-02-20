@@ -55,7 +55,7 @@ def handle(args, ctx=None):
     elif args.config_command == "clear":
         cmd_clear(args, ctx)
     else:
-        print("Usage: agentic config <show|init|get|set|list|delete|show-path|set-path|clear>", file=sys.stderr)
+        print("Usage: agentic configure config <show|init|get|set|list|delete|show-path|set-path|clear>", file=sys.stderr)
         sys.exit(1)
 
 
@@ -263,7 +263,7 @@ def cmd_prefs_get(args, ctx=None):
     prefs_file = config_dir / "preferences.yml"
 
     if not prefs_file.exists():
-        print_error("No preferences found. Run 'agentic config init' to create them.")
+        print_error("No preferences found. Run 'agentic configure config init' to create them.")
         sys.exit(1)
 
     prefs = yaml.safe_load(prefs_file.read_text())
@@ -333,9 +333,9 @@ def cmd_prefs_list(args, ctx=None):
 
     if not prefs_file.exists():
         if is_json_output():
-            print_json({"error": "No preferences found", "hint": "Run 'agentic config init'"})
+            print_json({"error": "No preferences found", "hint": "Run 'agentic configure config init'"})
         else:
-            print_info("No preferences found. Run 'agentic config init' to create them.")
+            print_info("No preferences found. Run 'agentic configure config init' to create them.")
         return
 
     prefs = yaml.safe_load(prefs_file.read_text())
@@ -358,7 +358,7 @@ def cmd_prefs_delete(args, ctx=None):
     prefs_file = config_dir / "preferences.yml"
 
     if not prefs_file.exists():
-        print_error("No preferences found. Run 'agentic config init' to create them.")
+        print_error("No preferences found. Run 'agentic configure config init' to create them.")
         sys.exit(1)
 
     prefs = yaml.safe_load(prefs_file.read_text())

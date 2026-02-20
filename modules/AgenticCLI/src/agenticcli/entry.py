@@ -2,34 +2,16 @@
 """Entry point for AgenticCLI.
 
 Handles --help, --version, and agent names before importing heavier modules.
-Supports both argparse (legacy) and Typer (new) backends.
-
-Set AGENTIC_USE_TYPER=1 to enable the Typer-based CLI.
 """
 
-import os
 import sys
-
-
-def _use_typer() -> bool:
-    """Check if Typer backend should be used.
-
-    Returns:
-        True if AGENTIC_USE_TYPER environment variable is set to "1".
-    """
-    return os.environ.get("AGENTIC_USE_TYPER", "0") == "1"
 
 
 def main():
     """Entry point for CLI.
 
     Handles --version, --help, and agent names early for fast response.
-    All other commands are delegated to the appropriate backend:
-    - Typer (new): when AGENTIC_USE_TYPER=1
-    - Argparse (legacy): default
-
-    The Typer backend automatically handles global flags (--json, --debug)
-    in any position, solving the flag ordering issue.
+    All other commands are delegated to the Typer-based CLI in cli.py.
     """
     # Handle --version flag early (before any heavy imports)
     # Note: Only handle --version (long form), not -v short form
@@ -58,32 +40,12 @@ def main():
                     show_agent_help(agent_name, json_output=json_output, bootstrap=bootstrap)
                     sys.exit(0)
 
-    # Handle -h alias for --help (works for both backends)
+    # Handle -h alias for --help
     if len(sys.argv) >= 2 and sys.argv[1] == "-h":
         sys.argv[1] = "--help"
 
-    # Route to appropriate backend
-    if _use_typer():
-        # Handle no-args: Typer shows help via no_args_is_help but exits with code 0
-        if len(sys.argv) == 1:
-            from agenticcli.cli import run_cli
-            run_cli()
-            sys.exit(0)
-
-        # Typer backend - handles global flags automatically
-        from agenticcli.cli_typer import main_typer
-        main_typer()
-    else:
-        # Legacy argparse backend
-        # Handle --help flag at top level early
-        if len(sys.argv) == 1 or (len(sys.argv) == 2 and sys.argv[1] in ("--help", "-h")):
-            from agenticcli.cli import run_cli
-            run_cli()
-            sys.exit(0)
-
-        # All other commands go through normal CLI processing
-        from agenticcli.cli import run_cli
-        run_cli()
+    from agenticcli.cli import run_cli
+    run_cli()
 
 
 if __name__ == "__main__":

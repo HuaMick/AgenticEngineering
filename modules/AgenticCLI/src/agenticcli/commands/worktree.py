@@ -516,16 +516,17 @@ def find_idle_worktrees(repo_root: Path) -> list[dict]:
         List of worktree dicts (with 'path' and 'branch') that have
         no active sessions. Excludes main/master worktrees.
     """
-    from agenticcli.commands.session import _is_process_running, _list_all_sessions
+    from agenticcli.commands.session import _store
+    from agenticcli.utils.state_store import is_process_running
 
     worktrees = get_actual_worktrees(repo_root)
 
     # Get active session working directories
     active_dirs = set()
-    for session in _list_all_sessions():
+    for session in _store.list_all():
         if session.get("status") in ("running", "starting"):
             pid = session.get("pid")
-            if pid and _is_process_running(pid):
+            if pid and is_process_running(pid):
                 wd = session.get("working_dir", "")
                 if wd:
                     active_dirs.add(str(Path(wd).resolve()))
@@ -625,13 +626,14 @@ def cleanup_worktree_if_idle(
         return {"cleaned": False, "reason": "worktree still has live plans"}
 
     # Check for active sessions
-    from agenticcli.commands.session import _is_process_running, _list_all_sessions
+    from agenticcli.commands.session import _store
+    from agenticcli.utils.state_store import is_process_running
 
     resolved_wt = str(Path(wt_path).resolve())
-    for session in _list_all_sessions():
+    for session in _store.list_all():
         if session.get("status") in ("running", "starting"):
             pid = session.get("pid")
-            if pid and _is_process_running(pid):
+            if pid and is_process_running(pid):
                 wd = session.get("working_dir", "")
                 if wd and str(Path(wd).resolve()) == resolved_wt:
                     return {"cleaned": False, "reason": "worktree has active session"}

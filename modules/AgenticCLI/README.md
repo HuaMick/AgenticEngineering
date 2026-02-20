@@ -937,11 +937,6 @@ agentic manifest list [<path>]
 agentic manifest validate <path>
 agentic mf show ./agents/my-agent
 
-# CI/CD configuration
-agentic cicd audit
-agentic cicd list
-agentic cicd show [<path>]
-
 # State management
 agentic state list [--active]
 agentic state show <pid>
@@ -1002,7 +997,7 @@ agentic template generate build \
 | Category | Scope | Commands |
 |----------|-------|----------|
 | **Global** | Any directory | setup, health, config, prefs, update, rebuild, state, env, session, loop |
-| **Project** | Requires .git or .agenticcli.yml | worktree, plan, context, entrypoint, langsmith, inputs, template, stories, manifest, cicd |
+| **Project** | Requires .git or .agenticcli.yml | worktree, plan, context, entrypoint, langsmith, inputs, template, stories, manifest |
 
 Project commands require being in a git repository or having a `.agenticcli.yml` file in the directory tree.
 

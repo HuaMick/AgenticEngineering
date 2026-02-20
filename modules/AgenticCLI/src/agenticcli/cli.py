@@ -44,15 +44,26 @@ def _get_ctx(json_output: bool = False, debug: bool = False):
     return ctx
 
 
-def _require_project(ctx, command: str):
-    """Check project requirement for project-scoped commands."""
-    ctx.require_project(command)
-
-
 def _stability_banner(command: str):
     """Display stability banner for non-stable commands."""
     from agenticcli.console import print_stability_banner
     print_stability_banner(command)
+
+
+def _dispatch(module_name: str, args, *, require_project: bool = False, banner: str | None = None):
+    """Unified dispatcher for command modules.
+
+    Replaces the 19+ identical _*_handle() functions with a single helper.
+    Each call: resolves CLI context, optionally checks project scope,
+    shows stability banner, then delegates to module.handle(args, ctx).
+    """
+    import importlib
+    cli_ctx = _get_ctx(_global["json"], _global["debug"])
+    if require_project:
+        cli_ctx.require_project(banner or module_name)
+    _stability_banner(banner or module_name)
+    mod = importlib.import_module(f"agenticcli.commands.{module_name}")
+    mod.handle(args, ctx=cli_ctx)
 
 
 # ---------------------------------------------------------------------------
@@ -99,11 +110,15 @@ def main_callback(
 
 
 # ===========================================================================
-# SIMPLE COMMANDS (no subcommands)
+# SETUP GROUP (setup init, setup health, setup update, setup rebuild)
 # ===========================================================================
 
-@app.command()
-def setup(
+setup_group = typer.Typer(help="Setup, health checks, and package management", no_args_is_help=True)
+app.add_typer(setup_group, name="setup")
+
+
+@setup_group.command("init")
+def setup_init(
     force: Annotated[bool, typer.Option("--force", "-f", help="Overwrite existing configuration")] = False,
 ):
     """Interactive setup wizard for initial configuration."""
@@ -113,8 +128,8 @@ def setup(
     _mod.handle(_ns(command="setup", json=_global["json"], debug=_global["debug"], force=force), ctx=cli_ctx)
 
 
-@app.command()
-def health():
+@setup_group.command("health")
+def setup_health():
     """Check CLI health, dependencies, and configuration status."""
     cli_ctx = _get_ctx(_global["json"], _global["debug"])
     _stability_banner("health")
@@ -122,8 +137,8 @@ def health():
     _mod.handle(_ns(command="health", json=_global["json"], debug=_global["debug"]), ctx=cli_ctx)
 
 
-@app.command()
-def update():
+@setup_group.command("update")
+def setup_update():
     """Reinstall AgenticCLI from source using uv sync."""
     cli_ctx = _get_ctx(_global["json"], _global["debug"])
     _stability_banner("update")
@@ -131,8 +146,8 @@ def update():
     package.handle_update(_ns(command="update", json=_global["json"], debug=_global["debug"]), ctx=cli_ctx)
 
 
-@app.command()
-def rebuild():
+@setup_group.command("rebuild")
+def setup_rebuild():
     """Full rebuild: clean artifacts, rebuild package, reinstall."""
     cli_ctx = _get_ctx(_global["json"], _global["debug"])
     _stability_banner("rebuild")
@@ -140,70 +155,27 @@ def rebuild():
     package.handle_rebuild(_ns(command="rebuild", json=_global["json"], debug=_global["debug"]), ctx=cli_ctx)
 
 
-@app.command()
-def orchestrate(
-    mode: Annotated[Optional[str], typer.Option("--mode", "-m", help="Orchestration mode: planning, executor, friction, or loop")] = None,
-    plan: Annotated[Optional[str], typer.Option("--plan", help="Scope to a specific plan folder")] = None,
-    prompt_file: Annotated[Optional[str], typer.Option("--prompt-file", "-f", help="Override process file path")] = None,
-    role: Annotated[Optional[str], typer.Option("--role", "-r", help="Role for bootstrap context (defaults to mode)")] = None,
-    model: Annotated[Optional[str], typer.Option("--model", help="Model to use")] = None,
-    planning_loop: Annotated[bool, typer.Option("--planning-loop", help="Run automated planning loop instead of interactive session")] = False,
-    background: Annotated[bool, typer.Option("--background", "-b", help="Run planning loop in background")] = False,
-    max_iterations: Annotated[int, typer.Option("--max-iterations", "-n", help="Max planning loop iterations")] = 10,
-    completion_promise: Annotated[Optional[str], typer.Option("--completion-promise", "-c", help="Completion text for planning loop")] = None,
-    project: Annotated[Optional[str], typer.Option("--project", "-p", help="Project filter for story discovery")] = None,
-    directory: Annotated[Optional[str], typer.Option("--directory", "-d", help="Working directory")] = None,
-    dangerously_skip_permissions: Annotated[bool, typer.Option("--dangerously-skip-permissions", help="Skip permission prompts")] = False,
-    no_tmux: Annotated[bool, typer.Option("--no-tmux", help="Disable tmux 3-pane layout")] = False,
-    dashboard_refresh: Annotated[int, typer.Option("--dashboard-refresh", help="Session dashboard refresh interval in seconds")] = 5,
-    question_refresh: Annotated[int, typer.Option("--question-refresh", help="Question dashboard refresh interval in seconds")] = 10,
-):
-    """Launch interactive Claude session with orchestration context or run automated planning loop.
+# ===========================================================================
+# CONFIGURE GROUP (configure config, configure preferences, configure env, configure state)
+# ===========================================================================
 
-    Interactive mode (default):
-      Requires --mode to select the orchestration agent profile:
-        planning  - Plan creation and approval workflows
-        executor  - Execute approved plans via MMD routing
-        friction  - Analyze traces for friction patterns
-        loop      - Full lifecycle: discover, plan, execute, archive all live plans
-
-      By default, creates a tmux 3-pane layout with session and question dashboards.
-      Use --no-tmux to disable this and run a plain Claude session.
-
-    Automated mode (--planning-loop):
-      Runs the full plan lifecycle: discover plans needing orchestration,
-      spawn planners, run review cycles, generate/validate MMDs, then execute
-      phases by parsing AGENT_ROUTING and spawning the appropriate agents.
-    """
-    from agenticcli.commands.orchestrate import cmd_orchestrate
-    cmd_orchestrate(_ns(
-        command="orchestrate",
-        json=_global["json"], debug=_global["debug"],
-        mode=mode, plan=plan, prompt_file=prompt_file, role=role,
-        model=model, planning_loop=planning_loop, background=background,
-        max_iterations=max_iterations, completion_promise=completion_promise,
-        project=project, directory=directory,
-        dangerously_skip_permissions=dangerously_skip_permissions,
-        no_tmux=no_tmux, dashboard_refresh=dashboard_refresh,
-        question_refresh=question_refresh,
-    ))
-
+configure_group = typer.Typer(help="Configuration, preferences, environment, and state management", no_args_is_help=True)
+app.add_typer(configure_group, name="configure")
+app.add_typer(configure_group, name="cfg", hidden=True)
 
 # ===========================================================================
-# PREFERENCES (aliases: prefs, pref)
+# PREFERENCES (nested under configure)
 # ===========================================================================
 
 preferences_app = typer.Typer(help="Manage user preferences", no_args_is_help=True)
-app.add_typer(preferences_app, name="preferences")
-app.add_typer(preferences_app, name="prefs", hidden=True)
-app.add_typer(preferences_app, name="pref", hidden=True)
+configure_group.add_typer(preferences_app, name="preferences")
+configure_group.add_typer(preferences_app, name="prefs", hidden=True)
+configure_group.add_typer(preferences_app, name="pref", hidden=True)
+
 
 
 def _prefs_handle(args):
-    cli_ctx = _get_ctx(_global["json"], _global["debug"])
-    _stability_banner("preferences")
-    from agenticcli.commands import preferences
-    preferences.handle(args, ctx=cli_ctx)
+    _dispatch("preferences", args)
 
 
 @preferences_app.command("get")
@@ -246,15 +218,12 @@ def prefs_clear(
 # ===========================================================================
 
 config_app = typer.Typer(help="Configuration management", no_args_is_help=True)
-app.add_typer(config_app, name="config")
-app.add_typer(config_app, name="cfg", hidden=True)
+configure_group.add_typer(config_app, name="config")
+
 
 
 def _config_handle(args):
-    cli_ctx = _get_ctx(_global["json"], _global["debug"])
-    _stability_banner("config")
-    from agenticcli.commands import config
-    config.handle(args, ctx=cli_ctx)
+    _dispatch("config", args)
 
 
 @config_app.command("show")
@@ -321,14 +290,12 @@ def config_clear(
 # ===========================================================================
 
 state_app = typer.Typer(help="Manage process state registry", no_args_is_help=True)
-app.add_typer(state_app, name="state")
+configure_group.add_typer(state_app, name="state")
+
 
 
 def _state_handle(args):
-    cli_ctx = _get_ctx(_global["json"], _global["debug"])
-    _stability_banner("state")
-    from agenticcli.commands import state
-    state.handle(args, ctx=cli_ctx)
+    _dispatch("state", args)
 
 
 @state_app.command("list")
@@ -365,14 +332,12 @@ def state_cleanup():
 # ===========================================================================
 
 env_app = typer.Typer(help="Manage environment variable injection", no_args_is_help=True)
-app.add_typer(env_app, name="env")
+configure_group.add_typer(env_app, name="env")
+
 
 
 def _env_handle(args):
-    cli_ctx = _get_ctx(_global["json"], _global["debug"])
-    _stability_banner("env")
-    from agenticcli.commands import env
-    env.handle(args, ctx=cli_ctx)
+    _dispatch("env", args)
 
 
 @env_app.command("show")
@@ -398,74 +363,6 @@ def env_run(
 
 
 # ===========================================================================
-# INPUTS
-# ===========================================================================
-
-inputs_app = typer.Typer(help="Validate and resolve inputs.yml references", no_args_is_help=True)
-app.add_typer(inputs_app, name="inputs")
-
-
-def _inputs_handle(args):
-    cli_ctx = _get_ctx(_global["json"], _global["debug"])
-    _require_project(cli_ctx, "inputs")
-    _stability_banner("inputs")
-    from agenticcli.commands import inputs
-    inputs.handle(args, ctx=cli_ctx)
-
-
-@inputs_app.command("validate")
-def inputs_validate(file: str = typer.Argument(..., help="Path to inputs.yml file")):
-    """Validate all input references."""
-    _inputs_handle(_ns(command="inputs", inputs_command="validate", json=_global["json"], debug=_global["debug"], file=file))
-
-
-@inputs_app.command("resolve")
-def inputs_resolve(file: str = typer.Argument(..., help="Path to inputs.yml file")):
-    """Show resolved paths for all inputs."""
-    _inputs_handle(_ns(command="inputs", inputs_command="resolve", json=_global["json"], debug=_global["debug"], file=file))
-
-
-# ===========================================================================
-# TEMPLATE (alias: tpl)
-# ===========================================================================
-
-template_app = typer.Typer(help="Generate plan files from templates", no_args_is_help=True)
-app.add_typer(template_app, name="template")
-app.add_typer(template_app, name="tpl", hidden=True)
-
-
-def _template_handle(args):
-    cli_ctx = _get_ctx(_global["json"], _global["debug"])
-    _require_project(cli_ctx, "template")
-    _stability_banner("template")
-    from agenticcli.commands import template
-    template.handle(args, ctx=cli_ctx)
-
-
-@template_app.command("generate")
-def template_generate(
-    type: str = typer.Argument(..., help="Template type: build, test, cleanup, guidance"),
-    output: Annotated[Optional[str], typer.Option("--output", "-o", help="Output file path")] = None,
-    objective: Annotated[Optional[str], typer.Option("--objective", help="Main objective")] = None,
-    phases: Annotated[Optional[str], typer.Option("--phases", help="Comma-separated ID:Name pairs")] = None,
-    success_criteria: Annotated[Optional[str], typer.Option("--success-criteria", help="Comma-separated criteria")] = None,
-):
-    """Generate a plan file from template."""
-    _template_handle(_ns(
-        command="template", template_command="generate",
-        json=_global["json"], debug=_global["debug"],
-        type=type, output=output, objective=objective,
-        phases=phases, success_criteria=success_criteria,
-    ))
-
-
-@template_app.command("list")
-def template_list():
-    """List available template types."""
-    _template_handle(_ns(command="template", template_command="list", json=_global["json"], debug=_global["debug"]))
-
-
-# ===========================================================================
 # STORIES (alias: st)
 # ===========================================================================
 
@@ -475,11 +372,7 @@ app.add_typer(stories_app, name="st", hidden=True)
 
 
 def _stories_handle(args):
-    cli_ctx = _get_ctx(_global["json"], _global["debug"])
-    _require_project(cli_ctx, "stories")
-    _stability_banner("stories")
-    from agenticcli.commands import stories
-    stories.handle(args, ctx=cli_ctx)
+    _dispatch("stories", args, require_project=True)
 
 
 @stories_app.command("find")
@@ -588,11 +481,7 @@ app.add_typer(manifest_app, name="mf", hidden=True)
 
 
 def _manifest_handle(args):
-    cli_ctx = _get_ctx(_global["json"], _global["debug"])
-    _require_project(cli_ctx, "manifest")
-    _stability_banner("manifest")
-    from agenticcli.commands import manifest
-    manifest.handle(args, ctx=cli_ctx)
+    _dispatch("manifest", args, require_project=True)
 
 
 @manifest_app.command("show")
@@ -614,54 +503,19 @@ def manifest_validate(path: str = typer.Argument(..., help="Path to manifest fil
 
 
 # ===========================================================================
-# CICD
+# DEVOPS GROUP (devops worktree)
 # ===========================================================================
 
-cicd_app = typer.Typer(help="CI/CD configuration management", no_args_is_help=True)
-app.add_typer(cicd_app, name="cicd")
-
-
-def _cicd_handle(args):
-    cli_ctx = _get_ctx(_global["json"], _global["debug"])
-    _require_project(cli_ctx, "cicd")
-    _stability_banner("cicd")
-    from agenticcli.commands import cicd
-    cicd.handle(args, ctx=cli_ctx)
-
-
-@cicd_app.command("audit")
-def cicd_audit():
-    """Audit CI/CD configuration."""
-    _cicd_handle(_ns(command="cicd", cicd_command="audit", json=_global["json"], debug=_global["debug"]))
-
-
-@cicd_app.command("list")
-def cicd_list():
-    """List all CI/CD configurations."""
-    _cicd_handle(_ns(command="cicd", cicd_command="list", json=_global["json"], debug=_global["debug"]))
-
-
-@cicd_app.command("show")
-def cicd_show(path: Optional[str] = typer.Argument(None, help="Path to CI/CD config file")):
-    """Show CI/CD configuration details."""
-    _cicd_handle(_ns(command="cicd", cicd_command="show", json=_global["json"], debug=_global["debug"], path=path))
-
-
-# ===========================================================================
-# WORKTREE (alias: wt)
-# ===========================================================================
+devops_group = typer.Typer(help="DevOps tools: git worktrees", no_args_is_help=True)
+app.add_typer(devops_group, name="devops")
 
 worktree_app = typer.Typer(help="Manage git worktrees with planning folder integration", no_args_is_help=True)
-app.add_typer(worktree_app, name="worktree")
-app.add_typer(worktree_app, name="wt", hidden=True)
+devops_group.add_typer(worktree_app, name="worktree")
+devops_group.add_typer(worktree_app, name="wt", hidden=True)
 
 
 def _worktree_handle(args):
-    cli_ctx = _get_ctx(_global["json"], _global["debug"])
-    _require_project(cli_ctx, "worktree")
-    _stability_banner("worktree")
-    from agenticcli.commands import worktree
-    worktree.handle(args, ctx=cli_ctx)
+    _dispatch("worktree", args, require_project=True)
 
 
 @worktree_app.command("create")
@@ -722,26 +576,19 @@ def worktree_sync():
 
 
 # ===========================================================================
-# RALPH (plan orchestration loop)
-# ===========================================================================
-
-from agenticcli.commands.ralph import app as ralph_app
-app.add_typer(ralph_app, name="ralph")
-
-
-# ===========================================================================
 # SESSION
 # ===========================================================================
 
-session_app = typer.Typer(help="Manage Claude Code sessions", no_args_is_help=True)
+session_app = typer.Typer(help="Manage Claude Code sessions, orchestration, loops, and agents", no_args_is_help=True)
 app.add_typer(session_app, name="session")
+
+# --- Ralph (nested under session) ---
+from agenticcli.commands.ralph import app as ralph_app
+session_app.add_typer(ralph_app, name="ralph")
 
 
 def _session_handle(args):
-    cli_ctx = _get_ctx(_global["json"], _global["debug"])
-    _stability_banner("session")
-    from agenticcli.commands import session
-    session.handle(args, ctx=cli_ctx)
+    _dispatch("session", args)
 
 
 @session_app.command("spawn")
@@ -856,19 +703,78 @@ def session_dashboard(
     ))
 
 
+@session_app.command("orchestrate")
+def session_orchestrate(
+    mode: Annotated[Optional[str], typer.Option("--mode", "-m", help="Orchestration mode: planning, executor, friction, or loop")] = None,
+    plan: Annotated[Optional[str], typer.Option("--plan", help="Scope to a specific plan folder")] = None,
+    prompt_file: Annotated[Optional[str], typer.Option("--prompt-file", "-f", help="Override process file path")] = None,
+    role: Annotated[Optional[str], typer.Option("--role", "-r", help="Role for bootstrap context (defaults to mode)")] = None,
+    model: Annotated[Optional[str], typer.Option("--model", help="Model to use")] = None,
+    planning_loop: Annotated[bool, typer.Option("--planning-loop", help="Run automated planning loop instead of interactive session")] = False,
+    background: Annotated[bool, typer.Option("--background", "-b", help="Run planning loop in background")] = False,
+    max_iterations: Annotated[int, typer.Option("--max-iterations", "-n", help="Max planning loop iterations")] = 10,
+    completion_promise: Annotated[Optional[str], typer.Option("--completion-promise", "-c", help="Completion text for planning loop")] = None,
+    project: Annotated[Optional[str], typer.Option("--project", "-p", help="Project filter for story discovery")] = None,
+    directory: Annotated[Optional[str], typer.Option("--directory", "-d", help="Working directory")] = None,
+    dangerously_skip_permissions: Annotated[bool, typer.Option("--dangerously-skip-permissions", help="Skip permission prompts")] = False,
+    no_tmux: Annotated[bool, typer.Option("--no-tmux", help="Disable tmux 3-pane layout")] = False,
+    dashboard_refresh: Annotated[int, typer.Option("--dashboard-refresh", help="Session dashboard refresh interval in seconds")] = 5,
+    question_refresh: Annotated[int, typer.Option("--question-refresh", help="Question dashboard refresh interval in seconds")] = 10,
+):
+    """Launch interactive Claude session with orchestration context or run automated planning loop."""
+    _stability_banner("orchestrate")
+    from agenticcli.commands.orchestrate import cmd_orchestrate
+    cmd_orchestrate(_ns(
+        command="orchestrate",
+        json=_global["json"], debug=_global["debug"],
+        mode=mode, plan=plan, prompt_file=prompt_file, role=role,
+        model=model, planning_loop=planning_loop, background=background,
+        max_iterations=max_iterations, completion_promise=completion_promise,
+        project=project, directory=directory,
+        dangerously_skip_permissions=dangerously_skip_permissions,
+        no_tmux=no_tmux, dashboard_refresh=dashboard_refresh,
+        question_refresh=question_refresh,
+    ))
+
+
+
+# ===========================================================================
+# TERMINAL
+# ===========================================================================
+
+terminal_app = typer.Typer(help="Web terminal UI for AgenticFrontend", no_args_is_help=True)
+session_app.add_typer(terminal_app, name="terminal")
+
+
+
+def _terminal_handle(args):
+    _dispatch("terminal", args)
+
+
+@terminal_app.command("serve")
+def terminal_serve(
+    port: Annotated[int, typer.Option("--port", "-p", help="Port to listen on")] = 8765,
+    open_browser: Annotated[bool, typer.Option("--open", help="Auto-open browser on start")] = False,
+):
+    """Start the AgenticFrontend web terminal server."""
+    _terminal_handle(_ns(
+        command="terminal", terminal_command="serve",
+        json=_global["json"], debug=_global["debug"],
+        port=port, open_browser=open_browser,
+    ))
+
+
 # ===========================================================================
 # LOOP
 # ===========================================================================
 
 loop_app = typer.Typer(help="Manage Ralph Loops (iterative agent execution)", no_args_is_help=True)
-app.add_typer(loop_app, name="loop")
+session_app.add_typer(loop_app, name="loop")
+
 
 
 def _loop_handle(args):
-    cli_ctx = _get_ctx(_global["json"], _global["debug"])
-    _stability_banner("loop")
-    from agenticcli.commands import loop
-    loop.handle(args, ctx=cli_ctx)
+    _dispatch("loop", args)
 
 
 @loop_app.command("start")
@@ -937,14 +843,12 @@ def loop_history(
 # ===========================================================================
 
 planner_app = typer.Typer(help="Automated orchestration planning loop", no_args_is_help=True)
-app.add_typer(planner_app, name="planner")
+session_app.add_typer(planner_app, name="planner")
+
 
 
 def _planner_handle(args):
-    cli_ctx = _get_ctx(_global["json"], _global["debug"])
-    _stability_banner("planner")
-    from agenticcli.commands import planner
-    planner.handle(args, ctx=cli_ctx)
+    _dispatch("planner", args)
 
 
 @planner_app.command("start")
@@ -1010,10 +914,7 @@ app.add_typer(langsmith_app, name="ls", hidden=True)
 
 
 def _langsmith_handle(args):
-    cli_ctx = _get_ctx(_global["json"], _global["debug"])
-    _stability_banner("langsmith")
-    from agenticcli.commands import langsmith
-    langsmith.handle(args, ctx=cli_ctx)
+    _dispatch("langsmith", args)
 
 
 @langsmith_app.command("runs")
@@ -1118,10 +1019,7 @@ app.add_typer(question_app, name="question")
 
 
 def _question_handle(args):
-    cli_ctx = _get_ctx(_global["json"], _global["debug"])
-    _stability_banner("question")
-    from agenticcli.commands import question
-    question.handle(args, ctx=cli_ctx)
+    _dispatch("question", args)
 
 
 @question_app.command("list")
@@ -1255,11 +1153,7 @@ app.add_typer(entrypoint_app, name="ep", hidden=True)
 
 
 def _entrypoint_handle(args):
-    cli_ctx = _get_ctx(_global["json"], _global["debug"])
-    _require_project(cli_ctx, "entrypoint")
-    _stability_banner("entrypoint")
-    from agenticcli.commands import entrypoint
-    entrypoint.handle(args, ctx=cli_ctx)
+    _dispatch("entrypoint", args, require_project=True)
 
 
 @entrypoint_app.command("list")
@@ -1303,11 +1197,7 @@ app.add_typer(context_app, name="ctx", hidden=True)
 
 
 def _context_handle(args):
-    cli_ctx = _get_ctx(_global["json"], _global["debug"])
-    _require_project(cli_ctx, "context")
-    _stability_banner("context")
-    from agenticcli.commands import context
-    context.handle(args, ctx=cli_ctx)
+    _dispatch("context", args, require_project=True)
 
 
 @context_app.command("bootstrap")
@@ -1382,11 +1272,7 @@ app.add_typer(plan_app, name="plan")
 
 
 def _plan_handle(args):
-    cli_ctx = _get_ctx(_global["json"], _global["debug"])
-    _require_project(cli_ctx, "plan")
-    _stability_banner("plan")
-    from agenticcli.commands import plan
-    plan.handle(args, ctx=cli_ctx)
+    _dispatch("plan", args, require_project=True)
 
 
 # --- plan new ---
@@ -1823,15 +1709,13 @@ def plan_stories_test(
 # ===========================================================================
 
 GLOBAL_COMMANDS = {
-    "setup", "config", "cfg", "preferences", "prefs", "pref",
-    "update", "rebuild", "health", "state", "session", "loop",
-    "env", "langsmith", "ls", "completion", "question", "ralph",
-    "planner", "orchestrate",
+    "setup", "configure", "cfg", "session",
+    "langsmith", "ls", "question",
 }
 
 PROJECT_COMMANDS = {
-    "worktree", "wt", "plan", "inputs", "template", "tpl",
-    "stories", "st", "manifest", "mf", "cicd",
+    "devops", "plan",
+    "stories", "st", "manifest", "mf",
     "context", "ctx", "entrypoint", "ep",
 }
 

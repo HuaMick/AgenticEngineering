@@ -3,7 +3,6 @@
 Commands for starting, stopping, and monitoring Ralph Loops via CLI.
 """
 
-import json
 import os
 import signal
 import subprocess
@@ -13,76 +12,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from agenticcli.utils.state_store import StateStore, is_process_running
 
-def _get_loops_dir() -> Path:
-    """Get the loops directory path.
-
-    Returns:
-        Path to ~/.agentic/loops/
-    """
-    loops_dir = Path.home() / ".agentic" / "loops"
-    loops_dir.mkdir(parents=True, exist_ok=True)
-    return loops_dir
-
-
-def _load_loop(loop_id: str) -> dict | None:
-    """Load a loop from disk.
-
-    Args:
-        loop_id: The loop UUID.
-
-    Returns:
-        Loop data dict or None if not found.
-    """
-    loop_file = _get_loops_dir() / f"{loop_id}.json"
-    if not loop_file.exists():
-        return None
-    with open(loop_file) as f:
-        return json.load(f)
-
-
-def _save_loop(loop_data: dict) -> None:
-    """Save a loop to disk.
-
-    Args:
-        loop_data: Loop data dict with loop_id key.
-    """
-    loop_file = _get_loops_dir() / f"{loop_data['loop_id']}.json"
-    with open(loop_file, "w") as f:
-        json.dump(loop_data, f, indent=2)
-
-
-def _list_all_loops() -> list[dict]:
-    """List all loops from disk.
-
-    Returns:
-        List of loop data dicts.
-    """
-    loops = []
-    loops_dir = _get_loops_dir()
-    for loop_file in loops_dir.glob("*.json"):
-        try:
-            with open(loop_file) as f:
-                loops.append(json.load(f))
-        except (json.JSONDecodeError, OSError):
-            continue
-    return loops
-
-
-def _is_process_running(pid: int) -> bool:
-    """Check if a process is still running.
-
-    Args:
-        pid: Process ID to check.
-
-    Returns:
-        True if process is running, False otherwise.
-    """
-    try:
-        os.kill(pid, 0)
-        return True
-    except (OSError, ProcessLookupError):
-        return False
+_store = StateStore("loops", id_key="loop_id")
 
 
 def _update_loop_status(loop_data: dict) -> dict:
@@ -96,10 +28,10 @@ def _update_loop_status(loop_data: dict) -> dict:
     """
     if loop_data.get("status") == "running":
         pid = loop_data.get("pid")
-        if pid and not _is_process_running(pid):
+        if pid and not is_process_running(pid):
             loop_data["status"] = "completed"
             loop_data["ended_at"] = datetime.now().isoformat()
-            _save_loop(loop_data)
+            _store.save(loop_data)
     return loop_data
 
 
@@ -170,7 +102,7 @@ def handle(args, ctx=None):
     elif args.loop_command == "history":
         cmd_history(args, ctx)
     else:
-        print("Usage: agentic loop <start|stop|status|history>", file=sys.stderr)
+        print("Usage: agentic session loop <start|stop|status|history>", file=sys.stderr)
         sys.exit(1)
 
 
@@ -245,7 +177,7 @@ def cmd_start(args, ctx=None):
                 "ended_at": None,
                 "status": "running",
             })
-            _save_loop(loop_data)
+            _store.save(loop_data)
 
             if is_json_output():
                 print_json({
@@ -272,7 +204,7 @@ def cmd_start(args, ctx=None):
                 "ended_at": None,
                 "status": "running",
             })
-            _save_loop(loop_data)
+            _store.save(loop_data)
 
             result = subprocess.run(
                 cmd,
@@ -293,7 +225,7 @@ def cmd_start(args, ctx=None):
             if output_file and result.stdout:
                 Path(output_file).write_text(result.stdout)
 
-            _save_loop(loop_data)
+            _store.save(loop_data)
 
             if is_json_output():
                 print_json({
@@ -318,14 +250,14 @@ def cmd_start(args, ctx=None):
         loop_data["status"] = "failed"
         loop_data["ended_at"] = datetime.now().isoformat()
         loop_data["error"] = "Claude CLI not found. Make sure 'claude' is installed and in PATH."
-        _save_loop(loop_data)
+        _store.save(loop_data)
         print_error("Claude CLI not found. Make sure 'claude' is installed and in PATH.")
         sys.exit(1)
     except Exception as e:
         loop_data["status"] = "failed"
         loop_data["ended_at"] = datetime.now().isoformat()
         loop_data["error"] = str(e)
-        _save_loop(loop_data)
+        _store.save(loop_data)
         print_error(f"Failed to start loop: {e}")
         sys.exit(1)
 
@@ -345,7 +277,7 @@ def cmd_stop(args, ctx=None):
         sys.exit(1)
 
     # Find loop by ID (support partial matching)
-    loops = _list_all_loops()
+    loops = _store.list_all()
     matching = [lp for lp in loops if lp.get("loop_id", "").startswith(loop_id)]
 
     if not matching:
@@ -391,7 +323,7 @@ def cmd_stop(args, ctx=None):
                 iteration["status"] = "stopped"
                 iteration["ended_at"] = datetime.now().isoformat()
 
-        _save_loop(loop)
+        _store.save(loop)
 
         if is_json_output():
             print_json({
@@ -407,7 +339,7 @@ def cmd_stop(args, ctx=None):
         # Process not found, mark as completed if it was running
         loop["status"] = "completed"
         loop["ended_at"] = datetime.now().isoformat()
-        _save_loop(loop)
+        _store.save(loop)
         if is_json_output():
             print_json({
                 "loop_id": loop["loop_id"],
@@ -438,7 +370,7 @@ def cmd_status(args, ctx=None):
         sys.exit(1)
 
     # Find loop by ID (support partial matching)
-    loops = _list_all_loops()
+    loops = _store.list_all()
     matching = [lp for lp in loops if lp.get("loop_id", "").startswith(loop_id)]
 
     if not matching:
@@ -532,7 +464,7 @@ def cmd_history(args, ctx=None):
     """
     from agenticcli.console import console, is_json_output, print_header, print_json
 
-    loops = _list_all_loops()
+    loops = _store.list_all()
 
     # Update status for running loops
     for loop in loops:

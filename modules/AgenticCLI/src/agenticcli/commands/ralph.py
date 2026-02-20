@@ -132,7 +132,7 @@ def start(
         console.print("[red]Error:[/red] Ralph loop already running")
         console.print(f"[dim]Loop ID: {existing.loop_id}[/dim]")
         console.print(f"[dim]Iteration: {existing.current_iteration}[/dim]")
-        console.print("\nUse 'agentic ralph stop' to stop it first.")
+        console.print("\nUse 'agentic session ralph stop' to stop it first.")
         raise typer.Exit(1)
 
     # Check tmux is available
@@ -177,7 +177,7 @@ def start(
         claude_cmd = f'claude --dangerously-skip-permissions -p "$(cat {prompt_path})"'
     else:
         # Inline minimal prompt
-        claude_cmd = 'claude --dangerously-skip-permissions -p "Run: agentic ralph next -j and execute the returned action"'
+        claude_cmd = 'claude --dangerously-skip-permissions -p "Run: agentic session ralph next -j and execute the returned action"'
 
     # Spawn tmux session
     result = subprocess.run(
@@ -217,8 +217,8 @@ def start(
     if background:
         console.print("\n[dim]Running in background. Use these commands:[/dim]")
         console.print(f"  [cyan]Attach:[/cyan] tmux attach -t {session_name}")
-        console.print(f"  [cyan]Status:[/cyan] agentic ralph status")
-        console.print(f"  [cyan]Stop:[/cyan] agentic ralph stop")
+        console.print(f"  [cyan]Status:[/cyan] agentic session ralph status")
+        console.print(f"  [cyan]Stop:[/cyan] agentic session ralph stop")
     else:
         console.print("\n[dim]Attaching to session (Ctrl+B, D to detach)...[/dim]")
         subprocess.run(["tmux", "attach", "-t", session_name])
@@ -455,7 +455,7 @@ def history(
             print(json.dumps({"iterations": [], "total": 0}))
         else:
             console.print("[dim]No iteration history available[/dim]")
-            console.print("[dim]Start a Ralph loop with: agentic ralph start[/dim]")
+            console.print("[dim]Start a Ralph loop with: agentic session ralph start[/dim]")
         raise typer.Exit(0)
 
     # Get iterations (most recent first, limited)

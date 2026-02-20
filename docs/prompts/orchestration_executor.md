@@ -5,8 +5,8 @@ Launch an execution session that reads Plan-MMD files and dynamically routes to 
 ## Quick Start
 
 ```bash
-agentic orchestrate --mode executor
-agentic orchestrate --mode executor --plan <folder>
+agentic session orchestrate --mode executor
+agentic session orchestrate --mode executor --plan <folder>
 ```
 
 ## What It Does
@@ -30,5 +30,5 @@ modules/AgenticGuidance/agents/orchestration/orchestration-executor/
 
 ## See Also
 
-- `agentic orchestrate --mode planning` - Create and approve plans
-- `agentic orchestrate --mode friction` - Analyze traces for friction patterns
+- `agentic session orchestrate --mode planning` - Create and approve plans
+- `agentic session orchestrate --mode friction` - Analyze traces for friction patterns

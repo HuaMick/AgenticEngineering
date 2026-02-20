@@ -15,18 +15,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from agenticcli.utils.state_store import StateStore, is_process_running
+
 logger = logging.getLogger(__name__)
 
-
-def _get_sessions_dir() -> Path:
-    """Get the sessions directory path.
-
-    Returns:
-        Path to ~/.agentic/sessions/
-    """
-    sessions_dir = Path.home() / ".agentic" / "sessions"
-    sessions_dir.mkdir(parents=True, exist_ok=True)
-    return sessions_dir
+_store = StateStore("sessions", id_key="session_id")
 
 
 def _get_logs_dir() -> Path:
@@ -40,64 +33,94 @@ def _get_logs_dir() -> Path:
     return logs_dir
 
 
-def _load_session(session_id: str) -> dict | None:
-    """Load a session from disk.
-
-    Args:
-        session_id: The session UUID.
+def _get_context_dir() -> Path:
+    """Get the context directory for pre-compiled session context files.
 
     Returns:
-        Session data dict or None if not found.
+        Path to ~/.agentic/sessions/context/
     """
-    session_file = _get_sessions_dir() / f"{session_id}.json"
-    if not session_file.exists():
-        return None
-    with open(session_file) as f:
-        return json.load(f)
+    context_dir = Path.home() / ".agentic" / "sessions" / "context"
+    context_dir.mkdir(parents=True, exist_ok=True)
+    return context_dir
 
 
-def _save_session(session_data: dict) -> None:
-    """Save a session to disk.
+def _compile_spawn_context(
+    prompt: str,
+    role: str | None,
+    plan_folder: Path | None,
+) -> str:
+    """Compile full context for a spawned session into a markdown document.
+
+    Combines the spawn prompt with pre-fetched bootstrap context (role process,
+    inputs manifest, current task) so the agent doesn't need to manually run
+    ``agentic -j context bootstrap``.
 
     Args:
-        session_data: Session data dict with session_id key.
-    """
-    session_file = _get_sessions_dir() / f"{session_data['session_id']}.json"
-    with open(session_file, "w") as f:
-        json.dump(session_data, f, indent=2)
-
-
-def _list_all_sessions() -> list[dict]:
-    """List all sessions from disk.
+        prompt: The base prompt (from _build_role_prompt or _build_task_prompt).
+        role: Agent role identifier, if known.
+        plan_folder: Optional plan folder path.
 
     Returns:
-        List of session data dicts.
+        Compiled context as a markdown string.
     """
-    sessions = []
-    sessions_dir = _get_sessions_dir()
-    for session_file in sessions_dir.glob("*.json"):
-        try:
-            with open(session_file) as f:
-                sessions.append(json.load(f))
-        except (json.JSONDecodeError, OSError):
-            continue
-    return sessions
+    sections = [prompt]
 
+    if not role:
+        return "\n".join(sections)
 
-def _is_process_running(pid: int) -> bool:
-    """Check if a process is still running.
-
-    Args:
-        pid: Process ID to check.
-
-    Returns:
-        True if process is running, False otherwise.
-    """
     try:
-        os.kill(pid, 0)
-        return True
-    except (OSError, ProcessLookupError):
-        return False
+        from agenticguidance.services import (
+            get_role_process,
+            get_role_inputs_manifest,
+        )
+
+        # Get role process/guidelines
+        role_process = get_role_process(role)
+        if role_process:
+            sections.append("\n---\n## Role Process\n")
+            if isinstance(role_process, dict):
+                import yaml
+                sections.append(yaml.dump(role_process, default_flow_style=False))
+            else:
+                sections.append(str(role_process))
+
+        # Get essential inputs manifest
+        inputs_manifest = get_role_inputs_manifest(role)
+        if inputs_manifest and inputs_manifest.get("inputs"):
+            sections.append("\n---\n## Essential Inputs\n")
+            for inp in inputs_manifest["inputs"][:10]:
+                name = inp.get("name", "unknown")
+                location = inp.get("location", "")
+                desc = inp.get("description", "")
+                sections.append(f"- **{name}**: {desc}")
+                if location:
+                    sections.append(f"  Location: `{location}`")
+
+        # Get current task from plan if available
+        if plan_folder:
+            try:
+                from agenticguidance.services import MainFirstPlanResolver
+                resolver = MainFirstPlanResolver()
+                current_task = resolver.extract_current_task(plan_folder)
+                if current_task:
+                    sections.append("\n---\n## Current Task\n")
+                    sections.append(f"- **ID**: {current_task.get('id', 'N/A')}")
+                    sections.append(f"- **Name**: {current_task.get('name', 'N/A')}")
+                    sections.append(f"- **Status**: {current_task.get('status', 'N/A')}")
+                    if current_task.get("description"):
+                        sections.append(f"- **Description**: {current_task['description']}")
+            except Exception:
+                pass  # Plan task lookup is best-effort
+
+    except Exception as e:
+        # If bootstrap fails, the agent can still bootstrap manually
+        logger.debug("Failed to compile bootstrap context: %s", e)
+        sections.append(
+            f"\nNote: Auto-bootstrap failed ({e}). "
+            f"Run manually: agentic -j context bootstrap --role {role}"
+        )
+
+    return "\n".join(sections)
 
 
 def _capture_langsmith_trace(session_data: dict) -> bool:
@@ -188,7 +211,7 @@ def _capture_langsmith_trace(session_data: dict) -> bool:
         )
         session_data["trace_captured"] = True
         session_data["claude_session_id"] = claude_session_id
-        _save_session(session_data)
+        _store.save(session_data)
         return True
     except (subprocess.TimeoutExpired, OSError):
         return False
@@ -205,10 +228,10 @@ def _update_session_status(session_data: dict) -> dict:
     """
     if session_data.get("status") == "running":
         pid = session_data.get("pid")
-        if pid and not _is_process_running(pid):
+        if pid and not is_process_running(pid):
             session_data["status"] = "completed"
             session_data["ended_at"] = datetime.now().isoformat()
-            _save_session(session_data)
+            _store.save(session_data)
             # Capture trace for background sessions
             if session_data.get("background"):
                 _capture_langsmith_trace(session_data)
@@ -290,10 +313,10 @@ def _spawn_diagnostic_planner(stuck_session: dict) -> str | None:
         "stderr_log": str(logs_dir / f"{new_session_id}.stderr.log"),
         "metadata": {"diagnostic_for": session_id},
     }
-    _save_session(diag_session)
+    _store.save(diag_session)
 
     # Mark original session
-    sessions_dir = _get_sessions_dir()
+    sessions_dir = _store.get_dir()
     session_path = sessions_dir / f"{session_id}.json"
     if session_path.exists():
         data = json.loads(session_path.read_text())
@@ -345,7 +368,7 @@ def _check_session_health(session: dict) -> dict:
     status = session.get("status", "")
 
     # Signal 1: PID alive check
-    pid_alive = _is_process_running(pid) if pid else False
+    pid_alive = is_process_running(pid) if pid else False
     signals.append({
         "name": "pid_alive",
         "ok": pid_alive,
@@ -443,7 +466,7 @@ def cmd_dashboard(args, ctx=None):
         table.add_column("Age", style="dim", width=10)
         table.add_column("Description", style="dim", no_wrap=False)
 
-        sessions = _list_all_sessions()
+        sessions = _store.list_all()
 
         # Update status for all running sessions
         for session in sessions:
@@ -570,7 +593,7 @@ _DOGFOOD_STRATEGY = """
 Dogfood Strategy — Self-Healing Gaps:
 If you encounter a gap in the system (missing service, broken workflow, missing CLI command),
 do NOT work around it silently. Instead:
-1. Check if a plan already exists: agentic plan list -j
+1. Check if a plan already exists: agentic -j plan list
 2. If a relevant plan exists, add a task to it or start working on the gap task.
 3. If no plan exists, create one: agentic plan init <descriptive-name>
 4. Then spawn a subagent to implement the fix:
@@ -594,14 +617,14 @@ def _build_role_prompt(role: str, plan_folder: Path | None) -> str:
     """
     parts = [
         f"You are being spawned as a {role} agent.",
-        f"Initialize your context by running: agentic context bootstrap --role {role} -j",
+        f"Initialize your context by running: agentic -j context bootstrap --role {role}",
     ]
 
     if plan_folder:
         plan_name = plan_folder.name
         parts.append(f"Your active plan is: {plan_name}")
         parts.append(f"Plan path: {plan_folder}")
-        parts.append(f"List tasks with: agentic plan task list --plan {plan_name} -j")
+        parts.append(f"List tasks with: agentic -j plan task list --plan {plan_name}")
         parts.append("Start by loading your bootstrap context, then work through the plan tasks.")
 
     parts.append("")
@@ -713,20 +736,33 @@ def cmd_spawn(args, ctx=None):
     # Generate session ID
     session_id = str(uuid.uuid4())
 
+    # Compile full context (prompt + bootstrap data) into a temp file
+    # This avoids OS argument length limits and removes the need for
+    # agents to manually run `agentic -j context bootstrap`
+    compiled_context = _compile_spawn_context(prompt, role, plan_folder)
+    context_dir = _get_context_dir()
+    context_file = context_dir / f"{session_id}.md"
+    context_file.write_text(compiled_context)
+
+    short_prompt = (
+        f"Your full instructions and context have been pre-compiled into a file. "
+        f"IMPORTANT: Read the file at {context_file} FIRST before doing anything else. "
+        f"It contains your role, task details, and bootstrap context."
+    )
+
     # Build claude command
-    cmd = ["claude", "--print"]
-    if getattr(args, "dangerously_skip_permissions", False):
-        cmd.append("--dangerously-skip-permissions")
+    # Always skip permissions for spawned sessions — they run autonomously
+    cmd = ["claude", "--print", "--dangerously-skip-permissions"]
     if max_turns:
         cmd.extend(["--max-turns", str(max_turns)])
     # Use JSON output for background sessions to capture Claude Code session_id
     # This enables post-completion LangSmith trace capture
     if background:
         cmd.extend(["--output-format", "json"])
-    cmd.append(prompt)
+    cmd.append(short_prompt)
 
-    # Estimate token usage from prompt
-    prompt_tokens = estimate_tokens(prompt)
+    # Estimate token usage from the compiled context (what the agent will process)
+    prompt_tokens = estimate_tokens(compiled_context)
     usage_percent = context_usage_percent(prompt_tokens)
     usage_color = get_usage_color(usage_percent)
 
@@ -735,6 +771,7 @@ def cmd_spawn(args, ctx=None):
         "session_id": session_id,
         "pid": None,
         "prompt": prompt,
+        "compiled_context": str(context_file),
         "max_turns": max_turns,
         "status": "starting",
         "started_at": datetime.now().isoformat(),
@@ -747,6 +784,68 @@ def cmd_spawn(args, ctx=None):
     }
 
     try:
+        # --- Web Terminal Server Integration ---
+        # If AGENTIC_TERMINAL_URL is set, create terminal via the web server
+        # so the agent runs in a browser-visible PTY
+        terminal_url = os.environ.get("AGENTIC_TERMINAL_URL")
+        if terminal_url:
+            import urllib.request
+            import urllib.error
+
+            api_url = f"{terminal_url.rstrip('/')}/api/terminals"
+            payload = json.dumps({
+                "name": session_id[:12],
+                "cmd": " ".join(cmd),
+                "cwd": working_dir,
+                "role": getattr(args, "role", None),
+            }).encode()
+
+            try:
+                req = urllib.request.Request(
+                    api_url,
+                    data=payload,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    result = json.loads(resp.read().decode())
+
+                session_data["status"] = "running"
+                session_data["terminal_url"] = terminal_url
+                session_data["terminal_name"] = session_id[:12]
+                _store.save(session_data)
+
+                if is_json_output():
+                    print_json({
+                        "session_id": session_id,
+                        "status": "running",
+                        "terminal_url": terminal_url,
+                        "terminal_name": session_id[:12],
+                        "web_terminal": True,
+                        "estimated_tokens": prompt_tokens,
+                        "context_usage_percent": usage_percent,
+                    })
+                else:
+                    print_success(
+                        f"Session {session_id[:8]} created in web terminal at {terminal_url}"
+                    )
+                    console.print(
+                        f"[dim]Context usage: [{usage_color}]{usage_percent:.1f}%"
+                        f"[/{usage_color}] (~{prompt_tokens:,} tokens)[/dim]"
+                    )
+                return
+
+            except (urllib.error.URLError, OSError) as e:
+                # Server unreachable — fall through to local spawn
+                logger.warning(
+                    "Web terminal server at %s unreachable (%s), falling back to local spawn",
+                    terminal_url, e,
+                )
+                if not is_json_output():
+                    print_warning(
+                        f"Web terminal server unreachable ({e}), falling back to local spawn"
+                    )
+
         if background:
             # Background mode: use Popen and return immediately
             # Open log files for stdout and stderr
@@ -773,7 +872,7 @@ def cmd_spawn(args, ctx=None):
             session_data["last_activity"] = session_data["started_at"]
             session_data["stdout_log"] = str(logs_dir / f"{session_id}.stdout.log")
             session_data["stderr_log"] = str(logs_dir / f"{session_id}.stderr.log")
-            _save_session(session_data)
+            _store.save(session_data)
 
             # Auto-start ntfy question watch-daemon for this plan
             if plan_folder:
@@ -787,11 +886,11 @@ def cmd_spawn(args, ctx=None):
 
             # Check for immediate spawn failure
             time.sleep(1)
-            if not _is_process_running(process.pid):
+            if not is_process_running(process.pid):
                 session_data["status"] = "failed"
                 session_data["ended_at"] = datetime.now().isoformat()
                 session_data["error"] = "Process died immediately after spawn"
-                _save_session(session_data)
+                _store.save(session_data)
                 if is_json_output():
                     print_json({
                         "session_id": session_id,
@@ -819,7 +918,7 @@ def cmd_spawn(args, ctx=None):
             # Foreground mode: use Popen for streaming output
             session_data["pid"] = os.getpid()  # Current process for tracking
             session_data["status"] = "running"
-            _save_session(session_data)
+            _store.save(session_data)
 
             # Auto-start ntfy question watch-daemon for this plan
             if plan_folder:
@@ -854,7 +953,7 @@ def cmd_spawn(args, ctx=None):
             session_data["status"] = "completed" if returncode == 0 else "failed"
             session_data["ended_at"] = datetime.now().isoformat()
             session_data["exit_code"] = returncode
-            _save_session(session_data)
+            _store.save(session_data)
 
             if is_json_output():
                 print_json({
@@ -880,14 +979,14 @@ def cmd_spawn(args, ctx=None):
         session_data["status"] = "failed"
         session_data["ended_at"] = datetime.now().isoformat()
         session_data["error"] = "Claude CLI not found. Make sure 'claude' is installed and in PATH."
-        _save_session(session_data)
+        _store.save(session_data)
         print_error("Claude CLI not found. Make sure 'claude' is installed and in PATH.")
         sys.exit(1)
     except Exception as e:
         session_data["status"] = "failed"
         session_data["ended_at"] = datetime.now().isoformat()
         session_data["error"] = str(e)
-        _save_session(session_data)
+        _store.save(session_data)
         print_error(f"Failed to spawn session: {e}")
         sys.exit(1)
 
@@ -933,7 +1032,7 @@ def cmd_list(args, ctx=None):
     """
     from agenticcli.console import console, is_json_output, print_header, print_json
 
-    all_sessions = _list_all_sessions()
+    all_sessions = _store.list_all()
 
     # Update status for running sessions
     for session in all_sessions:
@@ -1080,7 +1179,7 @@ def cmd_stop(args, ctx=None):
         sys.exit(1)
 
     # Find session by ID (support partial matching)
-    sessions = _list_all_sessions()
+    sessions = _store.list_all()
     matching = [s for s in sessions if s.get("session_id", "").startswith(session_id)]
 
     if not matching:
@@ -1126,7 +1225,7 @@ def cmd_stop(args, ctx=None):
 
         session["status"] = "stopped"
         session["ended_at"] = datetime.now().isoformat()
-        _save_session(session)
+        _store.save(session)
 
         # Capture trace before reporting success
         if session.get("background"):
@@ -1146,7 +1245,7 @@ def cmd_stop(args, ctx=None):
         # Process not found, mark as completed if it was running
         session["status"] = "completed"
         session["ended_at"] = datetime.now().isoformat()
-        _save_session(session)
+        _store.save(session)
         # Capture trace for background sessions
         if session.get("background"):
             _capture_langsmith_trace(session)
@@ -1180,7 +1279,7 @@ def cmd_status(args, ctx=None):
         sys.exit(1)
 
     # Find session by ID (support partial matching)
-    sessions = _list_all_sessions()
+    sessions = _store.list_all()
     matching = [s for s in sessions if s.get("session_id", "").startswith(session_id)]
 
     if not matching:
@@ -1285,7 +1384,7 @@ def cmd_health(args, ctx=None):
     session_id_prefix = getattr(args, "session_id", "")
     json_output = is_json_output() or getattr(args, "json_output", False)
 
-    sessions_dir = _get_sessions_dir()
+    sessions_dir = _store.get_dir()
     matches = [f for f in sessions_dir.glob("*.json")
                if f.stem.startswith(session_id_prefix)]
 
@@ -1365,7 +1464,7 @@ def cmd_logs(args, ctx=None):
     num_lines = getattr(args, "lines", 50)
     follow = getattr(args, "follow", False)
 
-    sessions_dir = _get_sessions_dir()
+    sessions_dir = _store.get_dir()
     matches = [f for f in sessions_dir.glob("*.json")
                if f.stem.startswith(session_id_prefix)]
 

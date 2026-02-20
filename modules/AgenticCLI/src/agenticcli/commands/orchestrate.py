@@ -13,7 +13,6 @@ Use --no-tmux flag to bypass tmux layout and launch plain Claude session.
 Also supports --planning-loop mode for automated plan lifecycle execution.
 """
 
-import json
 import os
 import shlex
 import subprocess
@@ -23,6 +22,8 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+
+from agenticcli.utils.state_store import StateStore
 
 # Map --mode values to agent profile directories and default roles
 _MODE_CONFIG = {
@@ -150,28 +151,7 @@ def _build_bootstrap_context(role: str, plan_name: str | None) -> str:
     return "\n".join(sections)
 
 
-def _get_orchestration_loops_dir() -> Path:
-    """Get the orchestration loops state directory.
-
-    Returns:
-        Path to ~/.agentic/orchestration_loops/
-    """
-    loops_dir = Path.home() / ".agentic" / "orchestration_loops"
-    loops_dir.mkdir(parents=True, exist_ok=True)
-    return loops_dir
-
-
-def _save_state(state: dict, state_dir: Optional[Path] = None) -> None:
-    """Write orchestration loop state to JSON file.
-
-    Args:
-        state: State dict with 'id' key.
-        state_dir: Override state directory (for testing).
-    """
-    d = state_dir or _get_orchestration_loops_dir()
-    state_file = d / f"{state['id']}.json"
-    with open(state_file, "w") as f:
-        json.dump(state, f, indent=2)
+_store = StateStore("orchestration_loops", id_key="id")
 
 
 def _run_planning_loop(args, ctx=None):
@@ -224,7 +204,7 @@ def _run_planning_loop(args, ctx=None):
             cmd.append("--dangerously-skip-permissions")
         cmd.extend(["--directory", working_dir])
 
-        logs_dir = _get_orchestration_loops_dir() / loop_id
+        logs_dir = _store.get_dir() / loop_id
         logs_dir.mkdir(parents=True, exist_ok=True)
 
         stdout_log = open(logs_dir / "stdout.log", "w")
@@ -245,7 +225,7 @@ def _run_planning_loop(args, ctx=None):
 
         state["pid"] = process.pid
         state["status"] = "running"
-        _save_state(state)
+        _store.save(state)
 
         if is_json_output():
             print_json({
@@ -263,7 +243,7 @@ def _run_planning_loop(args, ctx=None):
     # Foreground execution
     state["pid"] = os.getpid()
     state["status"] = "running"
-    _save_state(state)
+    _store.save(state)
 
     from agenticcli.workflows.orchestration import OrchestrationRunner, OrchestrationWorkflow
 
@@ -284,7 +264,7 @@ def _run_planning_loop(args, ctx=None):
         state["plans_failed"] = runner.state["plans_failed"]
         state["errors"] = runner.state["errors"]
         state["current_iteration"] = runner.state["iteration"]
-        _save_state(state)
+        _store.save(state)
 
         if is_json_output():
             print_json({
@@ -307,7 +287,7 @@ def _run_planning_loop(args, ctx=None):
         state["status"] = "failed"
         state["completed_at"] = datetime.now().isoformat()
         state["errors"].append(str(e))
-        _save_state(state)
+        _store.save(state)
         print_error(f"Orchestration loop failed: {e}")
         sys.exit(1)
 

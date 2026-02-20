@@ -6,7 +6,6 @@ orchestration MMDs, spawns specialized planners, runs review cycles,
 and generates validated MMD files.
 """
 
-import json
 import logging
 import os
 import signal
@@ -15,84 +14,12 @@ import sys
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+
+from agenticcli.utils.state_store import StateStore, is_process_running
 
 logger = logging.getLogger(__name__)
 
-
-def _get_planner_loops_dir() -> Path:
-    """Get the planner loops state directory.
-
-    Returns:
-        Path to ~/.agentic/planner_loops/
-    """
-    loops_dir = Path.home() / ".agentic" / "planner_loops"
-    loops_dir.mkdir(parents=True, exist_ok=True)
-    return loops_dir
-
-
-def _save_state(state: dict, state_dir: Optional[Path] = None) -> None:
-    """Write planner loop state to JSON file.
-
-    Args:
-        state: State dict with 'id' key.
-        state_dir: Override state directory (for testing).
-    """
-    d = state_dir or _get_planner_loops_dir()
-    state_file = d / f"{state['id']}.json"
-    with open(state_file, "w") as f:
-        json.dump(state, f, indent=2)
-
-
-def _load_state(loop_id: str, state_dir: Optional[Path] = None) -> dict | None:
-    """Load planner loop state from JSON file.
-
-    Args:
-        loop_id: Loop identifier.
-        state_dir: Override state directory (for testing).
-
-    Returns:
-        State dict or None if not found.
-    """
-    d = state_dir or _get_planner_loops_dir()
-    state_file = d / f"{loop_id}.json"
-    if not state_file.exists():
-        return None
-    with open(state_file) as f:
-        return json.load(f)
-
-
-def _list_states(state_dir: Optional[Path] = None, active_only: bool = False) -> list[dict]:
-    """List all planner loop states.
-
-    Args:
-        state_dir: Override state directory (for testing).
-        active_only: If True, only return running loops.
-
-    Returns:
-        List of state dicts.
-    """
-    d = state_dir or _get_planner_loops_dir()
-    states = []
-    for state_file in d.glob("*.json"):
-        try:
-            with open(state_file) as f:
-                state = json.load(f)
-                if active_only and state.get("status") != "running":
-                    continue
-                states.append(state)
-        except (json.JSONDecodeError, OSError):
-            continue
-    return states
-
-
-def _is_process_running(pid: int) -> bool:
-    """Check if a process is still running."""
-    try:
-        os.kill(pid, 0)
-        return True
-    except (OSError, ProcessLookupError):
-        return False
+_store = StateStore("planner_loops", id_key="id")
 
 
 def handle(args, ctx=None):
@@ -110,7 +37,7 @@ def handle(args, ctx=None):
     elif cmd == "status":
         cmd_status(args, ctx)
     else:
-        print("Usage: agentic planner <start|stop|status>", file=sys.stderr)
+        print("Usage: agentic session planner <start|stop|status>", file=sys.stderr)
         sys.exit(1)
 
 
@@ -159,7 +86,7 @@ def cmd_start(args, ctx=None):
             cmd.append("--dangerously-skip-permissions")
         cmd.extend(["--directory", working_dir])
 
-        logs_dir = _get_planner_loops_dir() / loop_id
+        logs_dir = _store.get_dir() / loop_id
         logs_dir.mkdir(parents=True, exist_ok=True)
 
         stdout_log = open(logs_dir / "stdout.log", "w")
@@ -180,7 +107,7 @@ def cmd_start(args, ctx=None):
 
         state["pid"] = process.pid
         state["status"] = "running"
-        _save_state(state)
+        _store.save(state)
 
         if is_json_output():
             print_json({
@@ -198,7 +125,7 @@ def cmd_start(args, ctx=None):
     # Foreground execution
     state["pid"] = os.getpid()
     state["status"] = "running"
-    _save_state(state)
+    _store.save(state)
 
     from agenticcli.workflows.planner_loop import PlannerLoopRunner, PlannerLoopWorkflow
 
@@ -216,7 +143,7 @@ def cmd_start(args, ctx=None):
         state["plans_processed"] = runner.state["plans_processed"]
         state["errors"] = runner.state["errors"]
         state["current_iteration"] = runner.state["iteration"]
-        _save_state(state)
+        _store.save(state)
 
         if is_json_output():
             print_json({
@@ -238,7 +165,7 @@ def cmd_start(args, ctx=None):
         state["status"] = "failed"
         state["completed_at"] = datetime.now().isoformat()
         state["errors"].append({"plan": None, "error": str(e)})
-        _save_state(state)
+        _store.save(state)
         print_error(f"Planner loop failed: {e}")
         sys.exit(1)
 
@@ -258,7 +185,7 @@ def cmd_stop(args, ctx=None):
         sys.exit(1)
 
     # Find by ID (support partial matching)
-    states = _list_states()
+    states = _store.list_all()
     matching = [s for s in states if s.get("id", "").startswith(planner_id)]
 
     if not matching:
@@ -289,7 +216,7 @@ def cmd_stop(args, ctx=None):
 
         state["status"] = "stopped"
         state["completed_at"] = datetime.now().isoformat()
-        _save_state(state)
+        _store.save(state)
 
         if is_json_output():
             print_json({"id": state["id"], "pid": pid, "status": "stopped", "success": True})
@@ -299,7 +226,7 @@ def cmd_stop(args, ctx=None):
     except ProcessLookupError:
         state["status"] = "completed"
         state["completed_at"] = datetime.now().isoformat()
-        _save_state(state)
+        _store.save(state)
         if is_json_output():
             print_json({"id": state["id"], "status": "completed", "message": "Process already exited", "success": True})
         else:
@@ -322,15 +249,15 @@ def cmd_status(args, ctx=None):
 
     if not planner_id:
         # List all planner loops
-        states = _list_states()
+        states = _store.list_all()
         # Update status for running loops
         for s in states:
             if s.get("status") == "running":
                 pid = s.get("pid")
-                if pid and not _is_process_running(pid):
+                if pid and not is_process_running(pid):
                     s["status"] = "completed"
                     s["completed_at"] = datetime.now().isoformat()
-                    _save_state(s)
+                    _store.save(s)
 
         if is_json_output():
             print_json({"loops": states, "count": len(states)})
@@ -370,7 +297,7 @@ def cmd_status(args, ctx=None):
         return
 
     # Specific loop status
-    states = _list_states()
+    states = _store.list_all()
     matching = [s for s in states if s.get("id", "").startswith(planner_id)]
 
     if not matching:
@@ -386,10 +313,10 @@ def cmd_status(args, ctx=None):
     # Update status if running
     if state.get("status") == "running":
         pid = state.get("pid")
-        if pid and not _is_process_running(pid):
+        if pid and not is_process_running(pid):
             state["status"] = "completed"
             state["completed_at"] = datetime.now().isoformat()
-            _save_state(state)
+            _store.save(state)
 
     if is_json_output():
         print_json(state)

@@ -5,10 +5,10 @@ Launch an interactive Claude session with orchestration agent context.
 ## Modes
 
 ```bash
-agentic orchestrate --mode planning     # Create and approve plans
-agentic orchestrate --mode executor     # Execute approved plans via MMD routing
-agentic orchestrate --mode friction     # Analyze traces for friction patterns
-agentic orchestrate --mode loop         # Full lifecycle: discover, plan, execute, archive
+agentic session orchestrate --mode planning     # Create and approve plans
+agentic session orchestrate --mode executor     # Execute approved plans via MMD routing
+agentic session orchestrate --mode friction     # Analyze traces for friction patterns
+agentic session orchestrate --mode loop         # Full lifecycle: discover, plan, execute, archive
 ```
 
 ## Options

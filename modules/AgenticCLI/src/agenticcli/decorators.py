@@ -20,7 +20,6 @@ class StabilityLevel(str, Enum):
 # Commands not listed are assumed to be STABLE
 # All commands are now STABLE as of iteration-28
 COMMAND_STABILITY: dict[str, StabilityLevel] = {
-    # "cicd": StabilityLevel.STABLE,  # Matured in iteration-28
     # "manifest": StabilityLevel.STABLE,  # Matured in iteration-28
     # Task subcommands - new in Phase 5
     "plan.task.prefill": StabilityLevel.EXPERIMENTAL,
@@ -50,7 +49,7 @@ def get_command_stability(command: str) -> StabilityLevel:
     """Get the stability level for a command.
 
     Args:
-        command: Command name (e.g., "cicd", "plan")
+        command: Command name (e.g., "plan", "session")
 
     Returns:
         StabilityLevel for the command, defaults to STABLE if not specified.
