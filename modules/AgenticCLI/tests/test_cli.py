@@ -35,12 +35,26 @@ class TestSubcommandHelp:
         assert code == 0
 
     def test_plan_help(self, cli_runner):
-        """Test plan --help output."""
+        """Test plan --help output shows user-facing commands only."""
         stdout, stderr, code = cli_runner(["plan", "--help"])
         assert "plan" in stdout.lower()
-        assert "scaffold" in stdout
+        # User-facing commands should be visible
+        assert "new" in stdout
         assert "status" in stdout
-        assert "validate" in stdout
+        assert "list" in stdout
+        assert "cancel" in stdout
+        # Agent-facing commands should be hidden from command list.
+        # Use line-based checks to avoid matching inside description text.
+        lines = stdout.splitlines()
+        # Find command-list lines (lines that start with a command name after the pipe char)
+        cmd_lines = [line.strip().strip("|").strip() for line in lines
+                     if line.strip().startswith("|") or line.strip().startswith("│")]
+        cmd_names = [line.split()[0] for line in cmd_lines if line and line.split()[0].isalpha()]
+        assert "scaffold" not in cmd_names
+        assert "validate" not in cmd_names
+        assert "task" not in cmd_names
+        assert "phase" not in cmd_names
+        assert "archive" not in cmd_names
         assert code == 0
 
     def test_config_help(self, cli_runner):
@@ -121,15 +135,27 @@ class TestFlagShortcuts:
         assert "status" in data
 
     def test_help_shows_aliases(self, cli_runner):
-        """Test main help shows primary command names."""
+        """Test main help shows user-facing command names, not hidden ones."""
         result = cli_runner(["--help"])
         assert result.returncode == 0
-        # Check top-level groups and commands
+        # Check user-facing top-level groups are visible
         assert "setup" in result.stdout
         assert "configure" in result.stdout
         assert "session" in result.stdout
         assert "devops" in result.stdout
-        assert "stories" in result.stdout
-        assert "manifest" in result.stdout
+        assert "question" in result.stdout
+        assert "plan" in result.stdout
+        assert "langsmith" in result.stdout
+        # Hidden groups should NOT appear as command names in main help.
+        # Use line-based checks to avoid matching inside description text.
+        lines = result.stdout.splitlines()
+        cmd_lines = [line.strip().strip("|").strip() for line in lines
+                     if line.strip().startswith("|") or line.strip().startswith("\u2502")]
+        cmd_names = [line.split()[0] for line in cmd_lines if line and line.split()[0].isalpha()]
+        assert "stories" not in cmd_names
+        assert "manifest" not in cmd_names
+        assert "context" not in cmd_names
+        assert "entrypoint" not in cmd_names
+        assert "agent" not in cmd_names
         # Check -j flag is documented
         assert "-j" in result.stdout or "--json" in result.stdout

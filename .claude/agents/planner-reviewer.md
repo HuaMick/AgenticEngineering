@@ -54,8 +54,8 @@ Review and approve/reject implementation plans. Act as a quality gate ensuring p
 
 1. Run CCI bootstrap first:
    ```bash
-   agentic context bootstrap --role planner-reviewer -j
-   agentic plan task current -j
+   agentic agent context bootstrap --role planner-reviewer -j
+   agentic agent plan task current -j
    ```
 
 2. Validate required inputs:

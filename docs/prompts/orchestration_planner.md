@@ -24,7 +24,7 @@ CRITICAL: When creating a new plan, follow this mandatory sequence to ensure pro
 
 1. **Create plan folder via CLI first**
    ```bash
-   agentic plan init <branch> --description <description>
+   agentic agent plan init <branch> --description <description>
    ```
    This command atomically:
    - Creates the worktree (or reuses an idle one)
@@ -59,19 +59,19 @@ Write("docs/plans/live/260214XX_new_feature/plan.yml", content)
 
 The workspace file (`agenticengineering.code-workspace`) and worktree registry (`docs/worktrees.yml`) must stay synchronized with plan folders. There are multiple code paths that can create plan folders:
 
-- `agentic plan init` (CORRECT - creates worktree + folder + workspace update)
+- `agentic agent plan init` (CORRECT - creates worktree + folder + workspace update)
 - `agentic worktree create` (only creates worktree, no plan folder)
-- `agentic plan scaffold` (DEPRECATED - folder only, no worktree)
+- `agentic agent plan scaffold` (DEPRECATED - folder only, no worktree)
 - Agent Write tool (WRONG - bypasses all CLI infrastructure)
 
-Only `agentic plan init` handles the full lifecycle correctly. All other paths create drift.
+Only `agentic agent plan init` handles the full lifecycle correctly. All other paths create drift.
 
 ### Main-Only Plans (No Worktree)
 
 If you explicitly want a plan without a worktree (e.g., documentation-only changes):
 
 ```bash
-agentic plan init main --description <description> --no-worktree
+agentic agent plan init main --description <description> --no-worktree
 ```
 
 This creates the plan folder and updates the workspace file without creating a worktree.
@@ -84,7 +84,7 @@ The planner agents (planner-build, planner-test, planner-cleaning, planner-audit
 FENCE VIOLATION: Plan folder not found at docs/plans/live/{plan_folder_name}/
 
 REQUIRED ACTION:
-Run: agentic plan init <branch> --description <description>
+Run: agentic agent plan init <branch> --description <description>
 ```
 
 This ensures that all plans are created through the CLI pipeline.

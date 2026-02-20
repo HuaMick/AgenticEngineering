@@ -51,7 +51,7 @@ You are the orchestration-planning agent, responsible for coordinating the creat
 ### Worktree and Plan Folder Setup
 Use CLI for combined worktree + plan folder creation:
 ```bash
-agentic plan init <branch> --description <desc>
+agentic agent plan init <branch> --description <desc>
 ```
 
 This command (run in MAIN worktree):
@@ -126,18 +126,18 @@ Summary: MMD nodes must be high-level (phases, loops, agent spawns) — NO task-
 
 ```bash
 # Initialize plan folder (PREFERRED - run in MAIN worktree)
-agentic plan init <branch> --description <desc>
+agentic agent plan init <branch> --description <desc>
 
 # Validate plan folder structure
-agentic plan validate
+agentic agent plan validate
 
 # Check worktree status
 agentic worktree status
 
 # Task management
-agentic plan task current --plan <folder>
-agentic plan task start <task_id> --plan <folder>
-agentic plan task complete <task_id> --plan <folder>
+agentic agent plan task current --plan <folder>
+agentic agent plan task start <task_id> --plan <folder>
+agentic agent plan task complete <task_id> --plan <folder>
 ```
 
 MANDATE: NEVER use Edit tool to change task status in plan YAML files.

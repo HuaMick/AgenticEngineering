@@ -315,9 +315,9 @@ agentic --json plan list   # Verify CLI is responsive
 agentic --version          # Check basic health
 ```
 
-**Step 2: Create a remediation plan** — Use `agentic plan init` with a descriptive name
+**Step 2: Create a remediation plan** — Use `agentic agent plan init` with a descriptive name
 ```bash
-agentic plan init <branch> --description 'fix: <describe the CLI issue>'
+agentic agent plan init <branch> --description 'fix: <describe the CLI issue>'
 ```
 
 **Step 3: Plan the fix** — Spawn a planner-build session to design the remediation

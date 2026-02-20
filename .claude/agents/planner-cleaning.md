@@ -51,8 +51,8 @@ Planners may reorder phases when context warrants.
 
 1. Run CCI bootstrap first:
    ```bash
-   agentic context bootstrap --role planner-cleaning -j
-   agentic plan task current -j
+   agentic agent context bootstrap --role planner-cleaning -j
+   agentic agent plan task current -j
    ```
 
 2. Validate required inputs:

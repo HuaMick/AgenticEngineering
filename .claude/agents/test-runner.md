@@ -34,7 +34,7 @@ You participate in **test-fix-loop** as the executor:
 
 ## Process Steps
 
-1. **Bootstrap Context**: Run `agentic context bootstrap --role test-runner -j` to get seed context
+1. **Bootstrap Context**: Run `agentic agent context bootstrap --role test-runner -j` to get seed context
 
 2. **Validate Inputs**: Review all inputs. If an input cannot be found, do not proceed
 

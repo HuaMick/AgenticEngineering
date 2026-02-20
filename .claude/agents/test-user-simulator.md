@@ -41,7 +41,7 @@ You participate in **documentation-loop** and **test-fix-loop** as the validator
 
 ## Process Steps
 
-1. **Bootstrap Context**: Run `agentic context bootstrap --role test-user-simulator -j`
+1. **Bootstrap Context**: Run `agentic agent context bootstrap --role test-user-simulator -j`
 
 2. **Validate Context** (agent_blind_test):
    - ONLY allowed inputs: docs/README.md, ARCHITECTURE.md, user story definition

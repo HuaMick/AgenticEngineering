@@ -31,7 +31,7 @@ Set up development infrastructure by creating git worktrees, initializing plan f
 
 ## Process
 
-1. **Bootstrap**: Run `agentic context bootstrap --role deploy-worktree -j` to get structured context
+1. **Bootstrap**: Run `agentic agent context bootstrap --role deploy-worktree -j` to get structured context
 
 2. **Input Validation**: Review all inputs; if an input cannot be found, do not proceed. Flag path discrepancies in output.
 
@@ -39,7 +39,7 @@ Set up development infrastructure by creating git worktrees, initializing plan f
 
 4. **Create Worktree and Plan Folder**: Use CLI command:
    ```bash
-   agentic plan init <branch> --description <desc> --base <base-branch>
+   agentic agent plan init <branch> --description <desc> --base <base-branch>
    ```
 
    **MAIN-FIRST PLANNING**: The CLI creates TWO things in different locations:

@@ -367,7 +367,7 @@ def env_run(
 # ===========================================================================
 
 stories_app = typer.Typer(help="Find and manage user stories", no_args_is_help=True)
-app.add_typer(stories_app, name="stories")
+app.add_typer(stories_app, name="stories", hidden=True)
 app.add_typer(stories_app, name="st", hidden=True)
 
 
@@ -476,7 +476,7 @@ def stories_affected(
 # ===========================================================================
 
 manifest_app = typer.Typer(help="Manage agent manifests", no_args_is_help=True)
-app.add_typer(manifest_app, name="manifest")
+app.add_typer(manifest_app, name="manifest", hidden=True)
 app.add_typer(manifest_app, name="mf", hidden=True)
 
 
@@ -1069,7 +1069,7 @@ def question_answer(
     _question_handle(ns)
 
 
-@question_app.command("ask")
+@question_app.command("ask", hidden=True)
 def question_ask(
     text: str = typer.Argument(..., help="Question text"),
     severity: Annotated[str, typer.Option("--severity", help="Severity level")] = "medium",
@@ -1085,7 +1085,7 @@ def question_ask(
     ))
 
 
-@question_app.command("defer")
+@question_app.command("defer", hidden=True)
 def question_defer(
     question_id: str = typer.Argument(..., help="Question ID to defer"),
     plan: Annotated[Optional[str], typer.Option("--plan", help="Plan folder path")] = None,
@@ -1098,7 +1098,7 @@ def question_defer(
     ))
 
 
-@question_app.command("watch")
+@question_app.command("watch", hidden=True)
 def question_watch(
     plan: Annotated[Optional[str], typer.Option("--plan", help="Plan folder path")] = None,
 ):
@@ -1110,7 +1110,7 @@ def question_watch(
     ))
 
 
-@question_app.command("watch-daemon")
+@question_app.command("watch-daemon", hidden=True)
 def question_watch_daemon(
     plan: Annotated[Optional[str], typer.Option("--plan", help="Plan folder path")] = None,
 ):
@@ -1122,7 +1122,7 @@ def question_watch_daemon(
     ))
 
 
-@question_app.command("watch-stop")
+@question_app.command("watch-stop", hidden=True)
 def question_watch_stop():
     """Stop running question watcher daemon."""
     _question_handle(_ns(
@@ -1148,7 +1148,7 @@ def question_dashboard(
 # ===========================================================================
 
 entrypoint_app = typer.Typer(help="Discover and execute workflow entrypoints", no_args_is_help=True)
-app.add_typer(entrypoint_app, name="entrypoint")
+app.add_typer(entrypoint_app, name="entrypoint", hidden=True)
 app.add_typer(entrypoint_app, name="ep", hidden=True)
 
 
@@ -1192,7 +1192,7 @@ def entrypoint_execute(
 # ===========================================================================
 
 context_app = typer.Typer(help="CCI context retrieval for agents", no_args_is_help=True)
-app.add_typer(context_app, name="context")
+app.add_typer(context_app, name="context", hidden=True)
 app.add_typer(context_app, name="ctx", hidden=True)
 
 
@@ -1302,7 +1302,7 @@ def plan_new(
 
 
 # --- plan init ---
-@plan_app.command("init")
+@plan_app.command("init", hidden=True)
 def plan_init(
     branch: str = typer.Argument(..., help="Branch name for worktree"),
     description: Annotated[Optional[str], typer.Option("--description", "-d", help="Plan description")] = None,
@@ -1318,7 +1318,7 @@ def plan_init(
 
 
 # --- plan bootstrap ---
-@plan_app.command("bootstrap")
+@plan_app.command("bootstrap", hidden=True)
 def plan_bootstrap(
     branch: str = typer.Argument(..., help="Branch name for the plan"),
     objective: Annotated[str, typer.Option("--objective", "-o", help="Plan objective")] = ...,
@@ -1333,7 +1333,7 @@ def plan_bootstrap(
 
 
 # --- plan scaffold ---
-@plan_app.command("scaffold")
+@plan_app.command("scaffold", hidden=True)
 def plan_scaffold(
     name: str = typer.Argument(..., help="Folder name"),
     worktree: Annotated[Optional[str], typer.Option("--worktree", "-w", help="Worktree path")] = None,
@@ -1358,7 +1358,7 @@ def plan_status(
 
 
 # --- plan validate ---
-@plan_app.command("validate")
+@plan_app.command("validate", hidden=True)
 def plan_validate(
     path: Optional[str] = typer.Argument(None, help="Path to plan folder"),
     plan: Annotated[Optional[str], typer.Option("--plan", "-p", help="Plan folder path (takes priority over positional)")] = None,
@@ -1386,7 +1386,7 @@ def plan_list():
 
 
 # --- plan archive ---
-@plan_app.command("archive")
+@plan_app.command("archive", hidden=True)
 def plan_archive(
     path: Optional[str] = typer.Argument(None, help="Path to plan folder to archive"),
     plan: Annotated[Optional[str], typer.Option("--plan", "-p", help="Plan folder path (takes priority over positional)")] = None,
@@ -1401,7 +1401,7 @@ def plan_archive(
 
 
 # --- plan unarchive ---
-@plan_app.command("unarchive")
+@plan_app.command("unarchive", hidden=True)
 def plan_unarchive(
     plan: Annotated[str, typer.Option("--plan", "-p", help="Plan folder name")] = ...,
     force: Annotated[bool, typer.Option("--force", "-f", help="Skip confirmation")] = False,
@@ -1416,7 +1416,7 @@ def plan_unarchive(
 
 # --- plan task (nested sub-app) ---
 plan_task_app = typer.Typer(help="Manage tasks in plan files", no_args_is_help=True)
-plan_app.add_typer(plan_task_app, name="task")
+plan_app.add_typer(plan_task_app, name="task", hidden=True)
 
 
 @plan_task_app.command("start")
@@ -1548,7 +1548,7 @@ def plan_task_current(
 
 # --- plan move (nested sub-app) ---
 plan_move_app = typer.Typer(help="Move completed tasks or archive folder", no_args_is_help=True)
-plan_app.add_typer(plan_move_app, name="move")
+plan_app.add_typer(plan_move_app, name="move", hidden=True)
 
 
 @plan_move_app.command("task")
@@ -1596,7 +1596,7 @@ def plan_move_folder(
 
 # --- plan orchestration (nested sub-app) ---
 plan_orch_app = typer.Typer(help="Manage plan orchestration MMD files", no_args_is_help=True)
-plan_app.add_typer(plan_orch_app, name="orchestration")
+plan_app.add_typer(plan_orch_app, name="orchestration", hidden=True)
 
 
 @plan_orch_app.command("generate")
@@ -1628,7 +1628,7 @@ def plan_orchestration_validate(
 
 # --- plan phase (nested sub-app) ---
 plan_phase_app = typer.Typer(help="Manage plan phases", no_args_is_help=True)
-plan_app.add_typer(plan_phase_app, name="phase")
+plan_app.add_typer(plan_phase_app, name="phase", hidden=True)
 
 
 @plan_phase_app.command("add")
@@ -1675,7 +1675,7 @@ def plan_phase_update(
 
 # --- plan stories (nested sub-app) ---
 plan_stories_app = typer.Typer(help="Manage user stories in plan files", no_args_is_help=True)
-plan_app.add_typer(plan_stories_app, name="stories")
+plan_app.add_typer(plan_stories_app, name="stories", hidden=True)
 
 
 @plan_stories_app.command("list")
@@ -1704,6 +1704,695 @@ def plan_stories_test(
     ))
 
 
+# --- plan cancel (user-facing) ---
+@plan_app.command("cancel")
+def plan_cancel(
+    path: Optional[str] = typer.Argument(None, help="Plan name or path"),
+    plan: Annotated[Optional[str], typer.Option("--plan", "-p", help="Plan folder")] = None,
+    force: Annotated[bool, typer.Option("--force", "-f", help="Skip confirmation")] = False,
+):
+    """Cancel an active plan."""
+    resolved = plan or path
+    _plan_handle(_ns(
+        command="plan", plan_command="cancel",
+        json=_global["json"], debug=_global["debug"],
+        path=resolved, force=force,
+    ))
+
+
+# ===========================================================================
+# AGENT GROUP (hidden top-level, agent-facing plumbing)
+# ===========================================================================
+
+agent_app = typer.Typer(help="Agent plumbing commands", no_args_is_help=True)
+app.add_typer(agent_app, name="agent", hidden=True)
+
+# --- agent plan ---
+agent_plan_app = typer.Typer(help="Plan management plumbing for agents", no_args_is_help=True)
+agent_app.add_typer(agent_plan_app, name="plan")
+
+# --- agent plan task ---
+agent_plan_task_app = typer.Typer(help="Manage tasks in plan files", no_args_is_help=True)
+agent_plan_app.add_typer(agent_plan_task_app, name="task")
+
+
+@agent_plan_task_app.command("start")
+def agent_plan_task_start(
+    task_id: str = typer.Argument(..., help="Task ID"),
+    plan: Annotated[Optional[str], typer.Option("--plan", "-p", help="Plan path")] = None,
+    no_archive: Annotated[bool, typer.Option("--no-archive", help="Suppress auto-archival")] = False,
+):
+    """Mark task as in_progress."""
+    _plan_handle(_ns(
+        command="plan", plan_command="task", task_action="start",
+        json=_global["json"], debug=_global["debug"],
+        task_id=task_id, plan=plan, no_archive=no_archive,
+    ))
+
+
+@agent_plan_task_app.command("complete")
+def agent_plan_task_complete(
+    task_id: str = typer.Argument(..., help="Task ID"),
+    plan: Annotated[Optional[str], typer.Option("--plan", "-p", help="Plan path")] = None,
+    no_archive: Annotated[bool, typer.Option("--no-archive", help="Suppress auto-archival")] = False,
+):
+    """Mark task as completed."""
+    _plan_handle(_ns(
+        command="plan", plan_command="task", task_action="complete",
+        json=_global["json"], debug=_global["debug"],
+        task_id=task_id, plan=plan, no_archive=no_archive,
+    ))
+
+
+@agent_plan_task_app.command("prefill")
+def agent_plan_task_prefill(
+    preset: Annotated[str, typer.Option("--preset", "-t", help="Preset name")] = ...,
+    plan: Annotated[Optional[str], typer.Option("--plan", "-p", help="Plan path")] = None,
+    dry_run: Annotated[bool, typer.Option("--dry-run", "-n", help="Show without changes")] = False,
+):
+    """Load preset task list from template."""
+    _plan_handle(_ns(
+        command="plan", plan_command="task", task_action="prefill",
+        json=_global["json"], debug=_global["debug"],
+        preset=preset, plan=plan, dry_run=dry_run,
+    ))
+
+
+@agent_plan_task_app.command("list")
+def agent_plan_task_list(
+    plan: Annotated[Optional[str], typer.Option("--plan", "-p", help="Plan path")] = None,
+    status: Annotated[str, typer.Option("--status", "-s", help="Filter by status", callback=_validate_status)] = "all",
+    verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Show full details")] = False,
+):
+    """Show all tasks in current plan folder."""
+    _plan_handle(_ns(
+        command="plan", plan_command="task", task_action="list",
+        json=_global["json"], debug=_global["debug"],
+        plan=plan, status=status, verbose=verbose,
+    ))
+
+
+@agent_plan_task_app.command("status")
+def agent_plan_task_status(
+    task_id: str = typer.Argument(..., help="Task ID"),
+    plan: Annotated[Optional[str], typer.Option("--plan", "-p", help="Plan path")] = None,
+):
+    """Show detailed status for a specific task."""
+    _plan_handle(_ns(
+        command="plan", plan_command="task", task_action="status",
+        json=_global["json"], debug=_global["debug"],
+        task_id=task_id, plan=plan,
+    ))
+
+
+@agent_plan_task_app.command("add")
+def agent_plan_task_add(
+    description: str = typer.Argument(..., help="Task description"),
+    plan: Annotated[Optional[str], typer.Option("--plan", "-p", help="Plan path")] = None,
+    phase: Annotated[Optional[str], typer.Option("--phase", "-ph", help="Phase ID")] = None,
+    id: Annotated[Optional[str], typer.Option("--id", help="Custom task ID")] = None,
+    priority: Annotated[str, typer.Option("--priority", help="Task priority", callback=_validate_priority)] = "medium",
+):
+    """Add new task to plan."""
+    _plan_handle(_ns(
+        command="plan", plan_command="task", task_action="add",
+        json=_global["json"], debug=_global["debug"],
+        description=description, plan=plan, phase=phase, id=id, priority=priority,
+    ))
+
+
+@agent_plan_task_app.command("update")
+def agent_plan_task_update(
+    task_id: str = typer.Argument(..., help="Task ID"),
+    status: Annotated[str, typer.Option("--status", "-s", help="New status")] = ...,
+    plan: Annotated[Optional[str], typer.Option("--plan", "-p", help="Plan path")] = None,
+    note: Annotated[Optional[str], typer.Option("--note", "-n", help="Completion note")] = None,
+    no_archive: Annotated[bool, typer.Option("--no-archive", help="Suppress auto-archival")] = False,
+):
+    """Update task status in plan file."""
+    _plan_handle(_ns(
+        command="plan", plan_command="task", task_action="update",
+        json=_global["json"], debug=_global["debug"],
+        task_id=task_id, status=status, plan=plan, note=note, no_archive=no_archive,
+    ))
+
+
+@agent_plan_task_app.command("current")
+def agent_plan_task_current(
+    plan: Annotated[Optional[str], typer.Option("--plan", "-p", help="Plan path")] = None,
+):
+    """Get the current task to work on."""
+    _plan_handle(_ns(
+        command="plan", plan_command="task", task_action="current",
+        json=_global["json"], debug=_global["debug"],
+        plan=plan,
+    ))
+
+
+# --- agent plan phase ---
+agent_plan_phase_app = typer.Typer(help="Manage plan phases", no_args_is_help=True)
+agent_plan_app.add_typer(agent_plan_phase_app, name="phase")
+
+
+@agent_plan_phase_app.command("add")
+def agent_plan_phase_add(
+    id: Annotated[str, typer.Option("--id", help="Phase ID")] = ...,
+    name: Annotated[str, typer.Option("--name", help="Phase name")] = ...,
+    description: Annotated[Optional[str], typer.Option("--description", help="Phase description")] = None,
+    plan: Annotated[Optional[str], typer.Option("--plan", "-p", help="Plan folder path")] = None,
+):
+    """Add a new phase to plan_build.yml."""
+    _plan_handle(_ns(
+        command="plan", plan_command="phase", phase_action="add",
+        json=_global["json"], debug=_global["debug"],
+        id=id, name=name, description=description, plan=plan,
+    ))
+
+
+@agent_plan_phase_app.command("list")
+def agent_plan_phase_list(
+    plan: Annotated[Optional[str], typer.Option("--plan", "-p", help="Plan folder path")] = None,
+):
+    """List all phases in the plan."""
+    _plan_handle(_ns(
+        command="plan", plan_command="phase", phase_action="list",
+        json=_global["json"], debug=_global["debug"],
+        plan=plan,
+    ))
+
+
+@agent_plan_phase_app.command("update")
+def agent_plan_phase_update(
+    phase_id: str = typer.Argument(..., help="Phase ID to update"),
+    status: Annotated[Optional[str], typer.Option("--status", "-s", help="New status")] = None,
+    name: Annotated[Optional[str], typer.Option("--name", "-n", help="New name")] = None,
+    plan: Annotated[Optional[str], typer.Option("--plan", "-p", help="Plan folder path")] = None,
+):
+    """Update a phase in plan_build.yml."""
+    _plan_handle(_ns(
+        command="plan", plan_command="phase", phase_action="update",
+        json=_global["json"], debug=_global["debug"],
+        phase_id=phase_id, status=status, name=name, plan=plan,
+    ))
+
+
+# --- agent plan move ---
+agent_plan_move_app = typer.Typer(help="Move completed tasks or archive folder", no_args_is_help=True)
+agent_plan_app.add_typer(agent_plan_move_app, name="move")
+
+
+@agent_plan_move_app.command("task")
+def agent_plan_move_task(
+    task_id: str = typer.Argument(..., help="Task ID to move"),
+    plan: Annotated[Optional[str], typer.Option("--plan", "-p", help="Plan path")] = None,
+    dry_run: Annotated[bool, typer.Option("--dry-run", "-n", help="Show without changes")] = False,
+    force: Annotated[bool, typer.Option("--force", "-f", help="Move even with uncommitted changes")] = False,
+):
+    """Move a single completed task."""
+    _plan_handle(_ns(
+        command="plan", plan_command="move", move_type="task",
+        json=_global["json"], debug=_global["debug"],
+        task_id=task_id, plan=plan, dry_run=dry_run, force=force,
+    ))
+
+
+@agent_plan_move_app.command("tasks")
+def agent_plan_move_tasks(
+    plan: Annotated[Optional[str], typer.Option("--plan", "-p", help="Plan path")] = None,
+    dry_run: Annotated[bool, typer.Option("--dry-run", "-n", help="Show without changes")] = False,
+    force: Annotated[bool, typer.Option("--force", "-f", help="Move even with uncommitted changes")] = False,
+):
+    """Move all completed tasks."""
+    _plan_handle(_ns(
+        command="plan", plan_command="move", move_type="tasks",
+        json=_global["json"], debug=_global["debug"],
+        plan=plan, dry_run=dry_run, force=force,
+    ))
+
+
+@agent_plan_move_app.command("folder")
+def agent_plan_move_folder(
+    plan: Annotated[Optional[str], typer.Option("--plan", "-p", help="Plan path")] = None,
+    dry_run: Annotated[bool, typer.Option("--dry-run", "-n", help="Show without changes")] = False,
+    force: Annotated[bool, typer.Option("--force", "-f", help="Archive even with uncommitted changes")] = False,
+):
+    """Archive the plan folder."""
+    _plan_handle(_ns(
+        command="plan", plan_command="move", move_type="folder",
+        json=_global["json"], debug=_global["debug"],
+        plan=plan, dry_run=dry_run, force=force,
+    ))
+
+
+# --- agent plan orchestration ---
+agent_plan_orch_app = typer.Typer(help="Manage plan orchestration MMD files", no_args_is_help=True)
+agent_plan_app.add_typer(agent_plan_orch_app, name="orchestration")
+
+
+@agent_plan_orch_app.command("generate")
+def agent_plan_orchestration_generate(
+    plan: Annotated[Optional[str], typer.Option("--plan", "-p", help="Plan folder path")] = None,
+    output: Annotated[Optional[str], typer.Option("--output", "-o", help="Output filename")] = None,
+    force: Annotated[bool, typer.Option("--force", "-f", help="Overwrite existing")] = False,
+):
+    """Generate orchestration MMD from plan YAML."""
+    _plan_handle(_ns(
+        command="plan", plan_command="orchestration", orchestration_action="generate",
+        json=_global["json"], debug=_global["debug"],
+        plan=plan, output=output, force=force,
+    ))
+
+
+@agent_plan_orch_app.command("validate")
+def agent_plan_orchestration_validate(
+    plan: Annotated[Optional[str], typer.Option("--plan", "-p", help="Plan folder path")] = None,
+    strict: Annotated[bool, typer.Option("--strict", help="Treat warnings as errors")] = False,
+):
+    """Validate orchestration MMD against plan YAML."""
+    _plan_handle(_ns(
+        command="plan", plan_command="orchestration", orchestration_action="validate",
+        json=_global["json"], debug=_global["debug"],
+        plan=plan, strict=strict,
+    ))
+
+
+# --- agent plan stories ---
+agent_plan_stories_app = typer.Typer(help="Manage user stories in plan files", no_args_is_help=True)
+agent_plan_app.add_typer(agent_plan_stories_app, name="stories")
+
+
+@agent_plan_stories_app.command("list")
+def agent_plan_stories_list(
+    plan: Annotated[Optional[str], typer.Option("--plan", "-p", help="Plan folder path")] = None,
+):
+    """List user stories from plan YAML."""
+    _plan_handle(_ns(
+        command="plan", plan_command="stories", stories_action="list",
+        json=_global["json"], debug=_global["debug"],
+        plan=plan,
+    ))
+
+
+@agent_plan_stories_app.command("test")
+def agent_plan_stories_test(
+    plan: Annotated[Optional[str], typer.Option("--plan", "-p", help="Plan folder path")] = None,
+    output: Annotated[Optional[str], typer.Option("--output", "-o", help="Output file path")] = None,
+    format: Annotated[str, typer.Option("--format", "-f", help="Output format")] = "yaml",
+):
+    """Generate blind test scenarios from user stories."""
+    _plan_handle(_ns(
+        command="plan", plan_command="stories", stories_action="test",
+        json=_global["json"], debug=_global["debug"],
+        plan=plan, output=output, format=format,
+    ))
+
+
+# --- agent plan direct commands (archive, unarchive, validate, scaffold, init, bootstrap) ---
+
+@agent_plan_app.command("archive")
+def agent_plan_archive(
+    path: Optional[str] = typer.Argument(None, help="Path to plan folder to archive"),
+    plan: Annotated[Optional[str], typer.Option("--plan", "-p", help="Plan folder path")] = None,
+):
+    """Copy plan to completed folder."""
+    resolved = plan or path
+    if not resolved:
+        from agenticcli.console import print_error
+        print_error("Path required.")
+        raise typer.Exit(1)
+    _plan_handle(_ns(command="plan", plan_command="archive", json=_global["json"], debug=_global["debug"], path=resolved))
+
+
+@agent_plan_app.command("unarchive")
+def agent_plan_unarchive(
+    plan: Annotated[str, typer.Option("--plan", "-p", help="Plan folder name")] = ...,
+    force: Annotated[bool, typer.Option("--force", "-f", help="Skip confirmation")] = False,
+):
+    """Move plan from completed back to live."""
+    _plan_handle(_ns(
+        command="plan", plan_command="unarchive",
+        json=_global["json"], debug=_global["debug"],
+        plan=plan, force=force,
+    ))
+
+
+@agent_plan_app.command("validate")
+def agent_plan_validate(
+    path: Optional[str] = typer.Argument(None, help="Path to plan folder"),
+    plan: Annotated[Optional[str], typer.Option("--plan", "-p", help="Plan folder path")] = None,
+    strict: Annotated[bool, typer.Option("--strict", help="Fail on stub templates")] = False,
+    check_fences: Annotated[bool, typer.Option("--check-fences", help="Validate UAT fence compliance")] = False,
+):
+    """Validate plan folder structure and YAML."""
+    resolved = plan or path
+    if not resolved:
+        from agenticcli.console import print_error
+        print_error("Path is required.")
+        raise typer.Exit(1)
+    _plan_handle(_ns(
+        command="plan", plan_command="validate",
+        json=_global["json"], debug=_global["debug"],
+        path=resolved, strict=strict, check_fences=check_fences,
+    ))
+
+
+@agent_plan_app.command("scaffold")
+def agent_plan_scaffold(
+    name: str = typer.Argument(..., help="Folder name"),
+    worktree: Annotated[Optional[str], typer.Option("--worktree", "-w", help="Worktree path")] = None,
+):
+    """Create planning folder structure."""
+    _plan_handle(_ns(
+        command="plan", plan_command="scaffold",
+        json=_global["json"], debug=_global["debug"],
+        name=name, worktree=worktree,
+    ))
+
+
+@agent_plan_app.command("init")
+def agent_plan_init(
+    branch: str = typer.Argument(..., help="Branch name for worktree"),
+    description: Annotated[Optional[str], typer.Option("--description", "-d", help="Plan description")] = None,
+    base: Annotated[str, typer.Option("--base", "-b", help="Base branch")] = "main",
+    objective: Annotated[Optional[str], typer.Option("--objective", "-o", help="Plan objective")] = None,
+):
+    """Initialize worktree and plan folder with proper naming."""
+    _plan_handle(_ns(
+        command="plan", plan_command="init",
+        json=_global["json"], debug=_global["debug"],
+        branch=branch, description=description, base=base, objective=objective,
+    ))
+
+
+@agent_plan_app.command("bootstrap")
+def agent_plan_bootstrap(
+    branch: str = typer.Argument(..., help="Branch name for the plan"),
+    objective: Annotated[str, typer.Option("--objective", "-o", help="Plan objective")] = ...,
+    description: Annotated[Optional[str], typer.Option("--description", "-d", help="Plan description")] = None,
+):
+    """Bootstrap a new plan with an objective."""
+    _plan_handle(_ns(
+        command="plan", plan_command="bootstrap",
+        json=_global["json"], debug=_global["debug"],
+        branch=branch, objective=objective, description=description,
+    ))
+
+
+# --- agent context ---
+agent_context_app = typer.Typer(help="CCI context retrieval for agents", no_args_is_help=True)
+agent_app.add_typer(agent_context_app, name="context")
+
+
+@agent_context_app.command("bootstrap")
+def agent_context_bootstrap(
+    role: Annotated[Optional[str], typer.Option("--role", "-r", help="Role ID")] = None,
+):
+    """Get Seed Context: Active Task + Role Guidance + Essential Inputs."""
+    _context_handle(_ns(
+        command="context", context_command="bootstrap",
+        json=_global["json"], debug=_global["debug"],
+        role=role,
+    ))
+
+
+@agent_context_app.command("role")
+def agent_context_role(
+    role_id: str = typer.Argument(..., help="Role ID"),
+    format: Annotated[str, typer.Option("--format", "-f", help="Output format")] = "yaml",
+):
+    """Returns process.yml and manifest.yml content for a role."""
+    _context_handle(_ns(
+        command="context", context_command="role",
+        json=_global["json"], debug=_global["debug"],
+        role_id=role_id, format=format,
+    ))
+
+
+@agent_context_app.command("task")
+def agent_context_task(
+    all: Annotated[bool, typer.Option("--all", "-a", help="Show all tasks")] = False,
+):
+    """Get active task from Main-First plan."""
+    _context_handle(_ns(
+        command="context", context_command="task",
+        json=_global["json"], debug=_global["debug"],
+        **{"all": all},
+    ))
+
+
+@agent_context_app.command("inputs")
+def agent_context_inputs(
+    role: Annotated[Optional[str], typer.Option("--role", "-r", help="Role ID")] = None,
+    resolve: Annotated[bool, typer.Option("--resolve", help="Expand layer references")] = False,
+):
+    """Returns input files for a role with path resolution."""
+    _context_handle(_ns(
+        command="context", context_command="inputs",
+        json=_global["json"], debug=_global["debug"],
+        role=role, resolve=resolve,
+    ))
+
+
+@agent_context_app.command("generate-agent")
+def agent_context_generate_agent(
+    role_id: str = typer.Argument(..., help="Role ID"),
+    output: Annotated[Optional[str], typer.Option("--output", "-o", help="Output file path")] = None,
+):
+    """Generate thin-client agent file from bootstrap template."""
+    _context_handle(_ns(
+        command="context", context_command="generate-agent",
+        json=_global["json"], debug=_global["debug"],
+        role_id=role_id, output=output,
+    ))
+
+
+# --- agent entrypoint ---
+agent_entrypoint_app = typer.Typer(help="Discover and execute workflow entrypoints", no_args_is_help=True)
+agent_app.add_typer(agent_entrypoint_app, name="entrypoint")
+
+
+@agent_entrypoint_app.command("list")
+def agent_entrypoint_list():
+    """List all available entrypoints."""
+    _entrypoint_handle(_ns(command="entrypoint", entrypoint_command="list", json=_global["json"], debug=_global["debug"]))
+
+
+@agent_entrypoint_app.command("show")
+def agent_entrypoint_show(name: str = typer.Argument(..., help="Entrypoint name")):
+    """Show contents of an entrypoint file."""
+    _entrypoint_handle(_ns(
+        command="entrypoint", entrypoint_command="show",
+        json=_global["json"], debug=_global["debug"],
+        name=name,
+    ))
+
+
+@agent_entrypoint_app.command("execute")
+def agent_entrypoint_execute(
+    name: str = typer.Argument(..., help="Entrypoint name"),
+    vars: Annotated[Optional[List[str]], typer.Option("--vars", "-v", help="KEY=VALUE substitution")] = None,
+    context: Annotated[Optional[str], typer.Option("--context", help="Additional context text")] = None,
+    compile: Annotated[bool, typer.Option("--compile", "-c", help="Compile complete context")] = False,
+):
+    """Execute entrypoint with variable substitution."""
+    _entrypoint_handle(_ns(
+        command="entrypoint", entrypoint_command="execute",
+        json=_global["json"], debug=_global["debug"],
+        name=name, vars=vars, context=context, compile=compile,
+    ))
+
+
+# --- agent manifest ---
+agent_manifest_app = typer.Typer(help="Manage agent manifests", no_args_is_help=True)
+agent_app.add_typer(agent_manifest_app, name="manifest")
+
+
+@agent_manifest_app.command("show")
+def agent_manifest_show(path: str = typer.Argument(..., help="Path to agent directory or manifest file")):
+    """Display formatted agent manifest."""
+    _manifest_handle(_ns(command="manifest", manifest_command="show", json=_global["json"], debug=_global["debug"], path=path))
+
+
+@agent_manifest_app.command("list")
+def agent_manifest_list(path: Optional[str] = typer.Argument(None, help="Base path to search")):
+    """List all manifests in the project."""
+    _manifest_handle(_ns(command="manifest", manifest_command="list", json=_global["json"], debug=_global["debug"], path=path))
+
+
+@agent_manifest_app.command("validate")
+def agent_manifest_validate(path: str = typer.Argument(..., help="Path to manifest file")):
+    """Validate a manifest file."""
+    _manifest_handle(_ns(command="manifest", manifest_command="validate", json=_global["json"], debug=_global["debug"], path=path))
+
+
+# --- agent stories ---
+agent_stories_app = typer.Typer(help="Find and manage user stories", no_args_is_help=True)
+agent_app.add_typer(agent_stories_app, name="stories")
+
+
+@agent_stories_app.command("find")
+def agent_stories_find(
+    project: Annotated[Optional[str], typer.Option("--project", "-p", help="Filter by project")] = None,
+    changes: Annotated[Optional[List[str]], typer.Option("--changes", "-c", help="Filter by changed files")] = None,
+):
+    """Find user stories matching project or changed files."""
+    _stories_handle(_ns(
+        command="stories", stories_command="find",
+        json=_global["json"], debug=_global["debug"],
+        project=project, changes=changes,
+    ))
+
+
+@agent_stories_app.command("init")
+def agent_stories_init(
+    id: str = typer.Argument(..., help="Story ID"),
+    title: Annotated[Optional[str], typer.Option("--title", "-t", help="Story title")] = None,
+    plan: Annotated[Optional[str], typer.Option("--plan", help="Plan folder name")] = None,
+):
+    """Initialize a new user story template."""
+    _stories_handle(_ns(
+        command="stories", stories_command="init",
+        json=_global["json"], debug=_global["debug"],
+        id=id, title=title, plan=plan,
+    ))
+
+
+@agent_stories_app.command("cat")
+def agent_stories_cat(id: str = typer.Argument(..., help="Story ID or filename")):
+    """Display a user story's content."""
+    _stories_handle(_ns(command="stories", stories_command="cat", json=_global["json"], debug=_global["debug"], id=id))
+
+
+@agent_stories_app.command("status")
+def agent_stories_status(id: str = typer.Argument(..., help="Story ID")):
+    """View test status for a story."""
+    _stories_handle(_ns(command="stories", stories_command="status", json=_global["json"], debug=_global["debug"], id=id))
+
+
+@agent_stories_app.command("update")
+def agent_stories_update(
+    id: str = typer.Argument(..., help="Story ID"),
+    status: Annotated[str, typer.Option("--status", "-s", help="Test result: pass, fail, skip, regression")] = ...,
+    notes: Annotated[Optional[str], typer.Option("--notes", "-n", help="Test notes")] = None,
+    plan: Annotated[Optional[str], typer.Option("--plan", help="Plan folder")] = None,
+):
+    """Update test status for a story."""
+    _stories_handle(_ns(
+        command="stories", stories_command="update",
+        json=_global["json"], debug=_global["debug"],
+        id=id, status=status, notes=notes, plan=plan,
+    ))
+
+
+@agent_stories_app.command("report")
+def agent_stories_report(
+    project: Annotated[Optional[str], typer.Option("--project", "-p", help="Filter by project")] = None,
+):
+    """Show pass/fail/untested summary."""
+    _stories_handle(_ns(command="stories", stories_command="report", json=_global["json"], debug=_global["debug"], project=project))
+
+
+@agent_stories_app.command("untested")
+def agent_stories_untested(
+    project: Annotated[Optional[str], typer.Option("--project", "-p", help="Filter by project")] = None,
+):
+    """List stories needing validation."""
+    _stories_handle(_ns(command="stories", stories_command="untested", json=_global["json"], debug=_global["debug"], project=project))
+
+
+@agent_stories_app.command("batch-update")
+def agent_stories_batch_update(
+    plan: Annotated[str, typer.Option("--plan", help="Plan folder name")] = ...,
+    status: Annotated[str, typer.Option("--status", "-s", help="Test result: pass, fail, skip, regression")] = ...,
+    notes: Annotated[Optional[str], typer.Option("--notes", "-n", help="Test notes")] = None,
+):
+    """Update all affected stories in a plan at once."""
+    _stories_handle(_ns(
+        command="stories", stories_command="batch-update",
+        json=_global["json"], debug=_global["debug"],
+        plan=plan, status=status, notes=notes,
+    ))
+
+
+@agent_stories_app.command("affected")
+def agent_stories_affected(
+    plan: Annotated[str, typer.Option("--plan", help="Plan folder name")] = ...,
+):
+    """List affected stories for a plan with their test status."""
+    _stories_handle(_ns(
+        command="stories", stories_command="affected",
+        json=_global["json"], debug=_global["debug"],
+        plan=plan,
+    ))
+
+
+# --- agent question ---
+agent_question_app = typer.Typer(help="Question queue plumbing for agents", no_args_is_help=True)
+agent_app.add_typer(agent_question_app, name="question")
+
+
+@agent_question_app.command("ask")
+def agent_question_ask(
+    text: str = typer.Argument(..., help="Question text"),
+    severity: Annotated[str, typer.Option("--severity", help="Severity level")] = "medium",
+    context: Annotated[Optional[str], typer.Option("--context", help="Additional context")] = None,
+    suggest: Annotated[Optional[List[str]], typer.Option("--suggest", help="Suggested answer (repeatable)")] = None,
+    plan: Annotated[Optional[str], typer.Option("--plan", help="Plan folder path")] = None,
+):
+    """Create a new question."""
+    _question_handle(_ns(
+        command="question", question_command="ask",
+        json=_global["json"], debug=_global["debug"],
+        text=text, severity=severity, context=context, suggest=suggest, plan=plan,
+    ))
+
+
+@agent_question_app.command("defer")
+def agent_question_defer(
+    question_id: str = typer.Argument(..., help="Question ID to defer"),
+    plan: Annotated[Optional[str], typer.Option("--plan", help="Plan folder path")] = None,
+):
+    """Defer a pending question."""
+    _question_handle(_ns(
+        command="question", question_command="defer",
+        json=_global["json"], debug=_global["debug"],
+        question_id=question_id, plan=plan,
+    ))
+
+
+@agent_question_app.command("watch")
+def agent_question_watch(
+    plan: Annotated[Optional[str], typer.Option("--plan", help="Plan folder path")] = None,
+):
+    """Watch question folders and display updates."""
+    _question_handle(_ns(
+        command="question", question_command="watch",
+        json=_global["json"], debug=_global["debug"],
+        plan=plan,
+    ))
+
+
+@agent_question_app.command("watch-daemon")
+def agent_question_watch_daemon(
+    plan: Annotated[Optional[str], typer.Option("--plan", help="Plan folder path")] = None,
+):
+    """Start question watcher in background as daemon."""
+    _question_handle(_ns(
+        command="question", question_command="watch-daemon",
+        json=_global["json"], debug=_global["debug"],
+        plan=plan,
+    ))
+
+
+@agent_question_app.command("watch-stop")
+def agent_question_watch_stop():
+    """Stop running question watcher daemon."""
+    _question_handle(_ns(
+        command="question", question_command="watch-stop",
+        json=_global["json"], debug=_global["debug"],
+    ))
+
+
 # ===========================================================================
 # COMMAND CATEGORIES (used by context/require_project checks above)
 # ===========================================================================
@@ -1714,7 +2403,7 @@ GLOBAL_COMMANDS = {
 }
 
 PROJECT_COMMANDS = {
-    "devops", "plan",
+    "devops", "plan", "agent",
     "stories", "st", "manifest", "mf",
     "context", "ctx", "entrypoint", "ep",
 }

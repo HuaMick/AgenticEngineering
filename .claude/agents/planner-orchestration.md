@@ -19,7 +19,7 @@ This agent follows the planner-* naming convention because it creates a planning
 
 1. Run CCI bootstrap first:
    ```bash
-   agentic context bootstrap --role planner-orchestration -j
+   agentic agent context bootstrap --role planner-orchestration -j
    ```
 
 2. Validate required inputs:
@@ -51,7 +51,7 @@ This agent follows the planner-* naming convention because it creates a planning
 
 8. **Build Flowchart Structure**: Construct the Mermaid flowchart with:
    - Start node and input validation phase
-   - CCI Bootstrap block (agentic context bootstrap commands)
+   - CCI Bootstrap block (agentic agent context bootstrap commands)
    - Phase execution nodes, loop subgraphs, feedback paths
    - Validation gates between phases
    - Success/escalation endpoints

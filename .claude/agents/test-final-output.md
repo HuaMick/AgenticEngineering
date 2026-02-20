@@ -31,7 +31,7 @@ You participate in **audit-test-fix-loop** as the final-validator:
 
 ## Process Steps
 
-1. **Bootstrap Context**: Run `agentic context bootstrap --role test-final-output -j` to get seed context
+1. **Bootstrap Context**: Run `agentic agent context bootstrap --role test-final-output -j` to get seed context
 
 2. **Review Inputs**: Orchestration agent provides live plan path and execution data (changes, test results, failures, design decisions)
 

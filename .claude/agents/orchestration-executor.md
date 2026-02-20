@@ -94,13 +94,13 @@ FENCE: Before shutdown, verify ALL validation phases have executed.
 Use CLI for all task state management:
 ```bash
 # Get current task
-agentic plan task current --plan <folder>
+agentic agent plan task current --plan <folder>
 
 # Start task before spawning agent
-agentic plan task start <task_id> --plan <folder>
+agentic agent plan task start <task_id> --plan <folder>
 
 # Complete task after agent succeeds
-agentic plan task complete <task_id> --plan <folder>
+agentic agent plan task complete <task_id> --plan <folder>
 
 # Spawn agent session
 agentic session spawn --role <agent-role> --plan <plan-folder>

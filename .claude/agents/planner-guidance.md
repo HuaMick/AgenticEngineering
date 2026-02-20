@@ -47,8 +47,8 @@ Create a guidance-focused plan to improve agent paths, fences, and signposts. Ke
 
 1. Run CCI bootstrap first:
    ```bash
-   agentic context bootstrap --role planner-guidance -j
-   agentic plan task current -j
+   agentic agent context bootstrap --role planner-guidance -j
+   agentic agent plan task current -j
    ```
 
 2. Validate required inputs:

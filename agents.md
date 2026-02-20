@@ -51,10 +51,10 @@ AgenticLangSmith ─► (langsmith)
 Your default mode is the **Planning Loop**. You do not execute implementation tasks directly; instead, you structure objectives into executable plans and delegate to specialized sub-agents.
 
 **Default Behavior**:
-- When given an objective, start with `agentic plan init`.
+- When given an objective, start with `agentic agent plan init`.
 - Break objectives into **Phases** (P1, P2...) and **Tasks** (T1, T2...).
 - Every plan must reside in its own **Git Worktree**.
-- Every task MUST be tracked via `agentic plan task start` and `agentic plan task complete`.
+- Every task MUST be tracked via `agentic agent plan task start` and `agentic agent plan task complete`.
 
 ---
 
@@ -73,15 +73,16 @@ Interact with the project system through the `agentic` CLI. Avoid manual file ma
 
 | Command Group | Purpose | Key Subcommands |
 |---------------|---------|-----------------|
-| `agentic plan` | Plan lifecycle | `init`, `list`, `status`, `phase add`, `task start/complete`, `validate`, `archive` |
-| `agentic stories` | User story discovery | `find`, `list`, `status` |
+| `agentic plan` | Plan lifecycle (user-facing) | `new`, `list`, `status` |
+| `agentic agent plan` | Plan lifecycle (agent-facing) | `init`, `phase add`, `task start/complete`, `validate`, `archive` |
+| `agentic agent stories` | User story discovery | `find`, `list`, `status` |
 | `agentic session` | Agent session management | `spawn`, `status`, `logs`, `kill` |
 | `agentic loop` | Ralph Loop execution | `start`, `status`, `stop` |
 | `agentic question` | Human-in-the-loop Q&A | `ask`, `answer`, `list`, `watch` |
-| `agentic context` | Context bootstrapping | `bootstrap --role <role>` |
+| `agentic agent context` | Context bootstrapping | `bootstrap --role <role>` |
 | `agentic session orchestrate` | Plan execution | (modes: planning, executor, loop) |
 | `agentic devops worktree` | Git worktree ops | `create`, `list`, `remove` |
-| `agentic entrypoint` | Workflow entry points | `list`, `show`, `execute` |
+| `agentic agent entrypoint` | Workflow entry points | `list`, `show`, `execute` |
 | `agentic planner` | Planner commands | (planning loop) |
 | `agentic ralph` | Ralph loop mgmt | `status`, `next`, `history` |
 | `agentic langsmith` | Trace analysis | (LangSmith integration) |
@@ -96,7 +97,7 @@ Interact with the project system through the `agentic` CLI. Avoid manual file ma
 | `agentic session planner` | Planner loop | `start`, `stop`, `status` |
 | `agentic session ralph` | Ralph iteration | `start`, `stop`, `next`, `status` |
 | `agentic session terminal` | Web terminal | `serve` |
-| `agentic manifest` | Agent manifest ops | `list`, `show` |
+| `agentic agent manifest` | Agent manifest ops | `list`, `show` |
 | `agentic package` | Package management | (packaging) |
 
 ### 3.3 CLI Command Pattern
@@ -233,13 +234,13 @@ Entrypoint Layer (CLI commands or AgenticGuidance/entrypoints/)
 
 Every new objective follows this sequence:
 
-1. **Bootstrap**: `agentic --json context bootstrap --role orchestration-planning`
-2. **Story Discovery**: `agentic --json stories find` (affected stories MUST be recorded)
-3. **Plan Init**: `agentic plan init <branch_name> --description "..." --objective "..."`
-4. **Phase Determination**: Structure work using `agentic plan phase add`
+1. **Bootstrap**: `agentic --json agent context bootstrap --role orchestration-planning`
+2. **Story Discovery**: `agentic --json agent stories find` (affected stories MUST be recorded)
+3. **Plan Init**: `agentic agent plan init <branch_name> --description "..." --objective "..."`
+4. **Phase Determination**: Structure work using `agentic agent plan phase add`
 5. **Task Population**: Define tasks with success criteria and agent assignments
-6. **Orchestration MMD**: Generate flow using `agentic plan orchestration generate`
-7. **Validation**: `agentic plan validate <plan_path> --strict`
+6. **Orchestration MMD**: Generate flow using `agentic agent plan orchestration generate`
+7. **Validation**: `agentic agent plan validate <plan_path> --strict`
 
 ---
 
@@ -454,7 +455,7 @@ modules/AgenticGuidance/tests/
 If ANY `agentic` command fails with a non-zero exit code:
 1. **STOP** all planned work immediately.
 2. Capture the exact error output.
-3. Use `agentic plan init` to create a **Remediation Plan** for the CLI fix.
+3. Use `agentic agent plan init` to create a **Remediation Plan** for the CLI fix.
 4. Execute the fix, verify with `pytest`, then resume the original objective.
 5. **NEVER** work around CLI errors manually.
 
@@ -479,16 +480,16 @@ If ANY `agentic` command fails with a non-zero exit code:
 - Manual YAML manipulation of plan state
 
 **REQUIRED**:
-- `agentic plan task start/complete` for status updates
-- `agentic plan archive` for archival
+- `agentic agent plan task start/complete` for status updates
+- `agentic agent plan archive` for archival
 - CLI handles auto-archival when all tasks complete
 
 ### 13.5 Human-in-the-Loop (HITL)
 
 If you encounter ambiguity, a blocking dependency, or need a decision:
-1. Create a question: `agentic question ask "..." --severity blocking`
+1. Create a question: `agentic agent question ask "..." --severity blocking`
 2. Do NOT proceed with the blocked task until answered.
-3. Use `agentic question watch` to monitor for replies in the background.
+3. Use `agentic agent question watch` to monitor for replies in the background.
 
 ### 13.6 Worktree Isolation
 
@@ -525,16 +526,16 @@ agentic session logs <id>
 ### 15.1 Plan Lifecycle
 
 ```
-CREATE   → agentic plan init feature-auth --description auth_module
+CREATE   → agentic agent plan init feature-auth --description auth_module
            Creates: docs/plans/live/YYMMDDXX_auth_module/
 
 DESIGN   → PlannerLoopWorkflow populates plan_build.yml with phases/tasks
 
-VALIDATE → agentic plan validate <path> --strict
+VALIDATE → agentic agent plan validate <path> --strict
 
 EXECUTE  → RalphLoopService discovers plans → spawns agents per phase
 
-TRACK    → agentic plan task start/complete <task_id> --plan <folder>
+TRACK    → agentic agent plan task start/complete <task_id> --plan <folder>
 
 ARCHIVE  → Auto-archives when all tasks complete
            Moves: live/ → completed/
@@ -543,7 +544,7 @@ ARCHIVE  → Auto-archives when all tasks complete
 ### 15.2 Question Workflow
 
 ```
-AGENT ASKS    → agentic question ask "Should I use bcrypt or argon2?" --severity high
+AGENT ASKS    → agentic agent question ask "Should I use bcrypt or argon2?" --severity high
 HUMAN ANSWERS → agentic question answer <id> "Use argon2"
 AGENT READS   → agentic question get <id> -j
 ```
@@ -562,7 +563,7 @@ STOP     → agentic session ralph stop
 
 ```bash
 # Every agent session starts with:
-agentic --json context bootstrap --role <agent-role>
+agentic --json agent context bootstrap --role <agent-role>
 ```
 
 ---

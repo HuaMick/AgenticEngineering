@@ -65,8 +65,8 @@ US-INSTALL-* user stories MANDATORY when changes touch:
 
 1. Run CCI bootstrap first:
    ```bash
-   agentic context bootstrap --role planner-test -j
-   agentic plan task current -j
+   agentic agent context bootstrap --role planner-test -j
+   agentic agent plan task current -j
    ```
 
 2. Validate required inputs:

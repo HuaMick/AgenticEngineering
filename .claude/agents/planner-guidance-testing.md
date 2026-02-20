@@ -56,8 +56,8 @@ CRITICAL: Test tasks must follow minimal context principles.
 
 1. Run CCI bootstrap first:
    ```bash
-   agentic context bootstrap --role planner-guidance-testing -j
-   agentic plan task current -j
+   agentic agent context bootstrap --role planner-guidance-testing -j
+   agentic agent plan task current -j
    ```
 
 2. Validate required inputs:

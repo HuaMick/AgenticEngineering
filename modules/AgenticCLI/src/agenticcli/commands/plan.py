@@ -419,8 +419,10 @@ def handle(args, ctx=None):
         else:
             print("Usage: agentic plan stories <list|test>", file=sys.stderr)
             sys.exit(1)
+    elif args.plan_command == "cancel":
+        cmd_cancel(args, ctx)
     else:
-        print("Usage: agentic plan <new|init|scaffold|status|validate|task|archive|unarchive|list|move|phase|orchestration|stories>", file=sys.stderr)
+        print("Usage: agentic plan <new|init|scaffold|status|validate|task|archive|unarchive|list|move|phase|orchestration|stories|cancel>", file=sys.stderr)
         sys.exit(1)
 
 
@@ -2602,6 +2604,83 @@ def cmd_unarchive(args, ctx=None):
         })
     else:
         print_success(f"Unarchived plan to: {dest_path}")
+
+
+def cmd_cancel(args, ctx=None):
+    """Cancel an active plan.
+
+    Sets the plan status to 'cancelled' in plan_build.yml and optionally
+    archives it to the completed folder.
+
+    Args:
+        args: Parsed arguments with path and optional force flag.
+        ctx: Optional CLIContext.
+    """
+    from agenticcli.console import (
+        is_json_output,
+        print_error,
+        print_json,
+        print_success,
+        print_warning,
+    )
+    from types import SimpleNamespace
+
+    path = getattr(args, "path", None)
+    force = getattr(args, "force", False)
+
+    if not path:
+        print_error("Path is required. Usage: agentic plan cancel <path> or --plan <path>")
+        sys.exit(1)
+
+    plan_folder = find_plan_folder(path)
+
+    # Load plan_build.yml
+    build_file = plan_folder / "plan_build.yml"
+    if not build_file.exists():
+        print_error(f"No plan_build.yml found in {plan_folder}")
+        sys.exit(1)
+
+    try:
+        data = yaml.safe_load(build_file.read_text()) or {}
+    except yaml.YAMLError as e:
+        print_error(f"Failed to parse plan_build.yml: {e}")
+        sys.exit(1)
+
+    current_status = data.get("status", "unknown")
+    if current_status == "cancelled":
+        print_warning(f"Plan is already cancelled: {plan_folder.name}")
+        return
+
+    # Confirm unless --force
+    if not force:
+        print(f"Plan: {plan_folder.name}")
+        print(f"Current status: {current_status}")
+        response = input("Cancel this plan? [y/N] ")
+        if response.lower() != "y":
+            print("Aborted.")
+            return
+
+    # Set status to cancelled
+    data["status"] = "cancelled"
+    data["cancelled_date"] = datetime.now().strftime("%Y-%m-%d")
+    with open(build_file, "w") as f:
+        yaml.dump(data, f, default_flow_style=False)
+
+    if is_json_output():
+        print_json({
+            "result": "success",
+            "plan": plan_folder.name,
+            "status": "cancelled",
+        })
+    else:
+        print_success(f"Plan cancelled: {plan_folder.name}")
+
+    # Optionally archive
+    if not force:
+        response = input("Archive cancelled plan? [y/N] ")
+        if response.lower() == "y":
+            archive_args = SimpleNamespace(path=str(plan_folder))
+            cmd_archive(archive_args)
 
 
 def cmd_list(args):

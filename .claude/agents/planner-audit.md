@@ -54,8 +54,8 @@ Audit plan folder compliance: identify misplaced, stale, or misleading files. Ou
 
 1. Run CCI bootstrap first:
    ```bash
-   agentic context bootstrap --role planner-audit -j
-   agentic plan task current -j
+   agentic agent context bootstrap --role planner-audit -j
+   agentic agent plan task current -j
    ```
 
 2. Validate required inputs:

@@ -32,7 +32,7 @@ You participate in **guidance-test-loop**:
 
 ## Process Steps
 
-1. **Bootstrap Context**: Run `agentic context bootstrap --role test-guidance-simulator -j`
+1. **Bootstrap Context**: Run `agentic agent context bootstrap --role test-guidance-simulator -j`
 
 2. **Validate Context** (guidance_blind_test):
    - ONLY allowed inputs: target agent's process.yml, inputs.yml
