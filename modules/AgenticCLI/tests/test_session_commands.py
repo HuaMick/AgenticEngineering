@@ -33,10 +33,14 @@ def logs_dir(sessions_dir):
 
 @pytest.fixture
 def mock_sessions_dir(sessions_dir, monkeypatch):
-    """Patch _get_sessions_dir to use temp directory."""
+    """Patch StateStore and _get_context_dir to use temp directories."""
     from agenticcli.commands import session
 
-    monkeypatch.setattr(session, "_get_sessions_dir", lambda: sessions_dir)
+    # Patch the StateStore's get_dir to use temp directory
+    monkeypatch.setattr(session._store, "get_dir", lambda override=None: sessions_dir)
+    context_dir = sessions_dir / "context"
+    context_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(session, "_get_context_dir", lambda: context_dir)
     return sessions_dir
 
 
@@ -47,6 +51,23 @@ def mock_logs_dir(logs_dir, monkeypatch):
 
     monkeypatch.setattr(session, "_get_logs_dir", lambda: logs_dir)
     return logs_dir
+
+
+@pytest.fixture
+def context_dir(sessions_dir):
+    """Create a temporary context directory inside sessions dir."""
+    cd = sessions_dir / "context"
+    cd.mkdir(parents=True)
+    return cd
+
+
+@pytest.fixture
+def mock_context_dir(context_dir, monkeypatch):
+    """Patch _get_context_dir to use temp directory."""
+    from agenticcli.commands import session
+
+    monkeypatch.setattr(session, "_get_context_dir", lambda: context_dir)
+    return context_dir
 
 
 @pytest.fixture
@@ -70,14 +91,14 @@ class TestSessionHelperFunctions:
     """Tests for session module helper functions."""
 
     def test_get_sessions_dir_creates_directory(self, tmp_path, monkeypatch):
-        """Test that _get_sessions_dir creates the directory if it doesn't exist."""
+        """Test that StateStore.get_dir creates the directory if it doesn't exist."""
         from agenticcli.commands import session
 
         new_home = tmp_path / "home"
         new_home.mkdir()
         monkeypatch.setattr(Path, "home", lambda: new_home)
 
-        result = session._get_sessions_dir()
+        result = session._store.get_dir()
 
         assert result.exists()
         assert result == new_home / ".agentic" / "sessions"
@@ -86,8 +107,8 @@ class TestSessionHelperFunctions:
         """Test saving and loading a session."""
         from agenticcli.commands import session
 
-        session._save_session(sample_session_data)
-        loaded = session._load_session(sample_session_data["session_id"])
+        session._store.save(sample_session_data)
+        loaded = session._store.load(sample_session_data["session_id"])
 
         assert loaded is not None
         assert loaded["session_id"] == sample_session_data["session_id"]
@@ -97,7 +118,7 @@ class TestSessionHelperFunctions:
         """Test loading a session that doesn't exist."""
         from agenticcli.commands import session
 
-        result = session._load_session("nonexistent-id")
+        result = session._store.load("nonexistent-id")
 
         assert result is None
 
@@ -106,14 +127,14 @@ class TestSessionHelperFunctions:
         from agenticcli.commands import session
 
         # Create multiple sessions
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
 
         second_session = sample_session_data.copy()
         second_session["session_id"] = "87654321-4321-4321-4321-cba987654321"
         second_session["prompt"] = "Another task"
-        session._save_session(second_session)
+        session._store.save(second_session)
 
-        result = session._list_all_sessions()
+        result = session._store.list_all()
 
         assert len(result) == 2
         session_ids = [s["session_id"] for s in result]
@@ -128,7 +149,7 @@ class TestSessionHelperFunctions:
         invalid_file = mock_sessions_dir / "invalid.json"
         invalid_file.write_text("not valid json {{{")
 
-        result = session._list_all_sessions()
+        result = session._store.list_all()
 
         assert result == []
 
@@ -137,14 +158,14 @@ class TestSessionHelperFunctions:
         from agenticcli.commands import session
 
         # Current process should be running
-        assert session._is_process_running(os.getpid()) is True
+        assert session.is_process_running(os.getpid()) is True
 
     def test_is_process_running_for_nonexistent_process(self):
         """Test is_process_running for a nonexistent process."""
         from agenticcli.commands import session
 
         # Very high PID unlikely to exist
-        assert session._is_process_running(99999999) is False
+        assert session.is_process_running(99999999) is False
 
     def test_update_session_status_marks_completed(self, mock_sessions_dir, sample_session_data):
         """Test that update_session_status marks dead processes as completed."""
@@ -153,7 +174,7 @@ class TestSessionHelperFunctions:
         # Use a nonexistent PID
         sample_session_data["pid"] = 99999999
         sample_session_data["status"] = "running"
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
 
         result = session._update_session_status(sample_session_data)
 
@@ -177,7 +198,7 @@ class TestSessionSpawnCommand:
         captured = capsys.readouterr()
         assert "Prompt is required" in captured.err
 
-    @patch("agenticcli.commands.session._is_process_running")
+    @patch("agenticcli.commands.session.is_process_running")
     @patch("agenticcli.commands.session.subprocess.Popen")
     def test_spawn_background_success(self, mock_popen, mock_is_running, mock_sessions_dir, capsys):
         """Test successful background spawn."""
@@ -205,12 +226,14 @@ class TestSessionSpawnCommand:
         assert "--print" in cmd
         assert "--max-turns" in cmd
         assert "5" in cmd
-        assert "Test task" in cmd
+        # Prompt is now a short reference to a context file
+        assert "pre-compiled" in cmd[-1]
 
-        # Verify session was saved
-        sessions = session._list_all_sessions()
+        # Verify session was saved with original prompt
+        sessions = session._store.list_all()
         assert len(sessions) == 1
         assert sessions[0]["status"] == "running"
+        assert sessions[0]["prompt"] == "Test task"
         assert sessions[0]["pid"] == 12345
         assert sessions[0].get("last_activity") is not None
 
@@ -240,7 +263,7 @@ class TestSessionSpawnCommand:
         assert "claude" in cmd
 
         # Verify session was saved with completed status
-        sessions = session._list_all_sessions()
+        sessions = session._store.list_all()
         assert len(sessions) == 1
         assert sessions[0]["status"] == "completed"
 
@@ -263,7 +286,7 @@ class TestSessionSpawnCommand:
 
         session.cmd_spawn(args)
 
-        sessions = session._list_all_sessions()
+        sessions = session._store.list_all()
         assert len(sessions) == 1
         assert sessions[0]["status"] == "failed"
         assert sessions[0]["exit_code"] == 1
@@ -289,7 +312,7 @@ class TestSessionSpawnCommand:
         captured = capsys.readouterr()
         assert "Claude CLI not found" in captured.err
 
-    @patch("agenticcli.commands.session._is_process_running")
+    @patch("agenticcli.commands.session.is_process_running")
     @patch("agenticcli.commands.session.subprocess.Popen")
     @patch("agenticcli.console.is_json_output")
     def test_spawn_json_output(self, mock_json_output, mock_popen, mock_is_running, mock_sessions_dir, capsys):
@@ -348,18 +371,18 @@ class TestSessionListCommand:
         from agenticcli.commands import session
 
         # Save running session
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
 
         # Save completed session
         completed = sample_session_data.copy()
         completed["session_id"] = "completed-session-id-1234-123456789abc"
         completed["status"] = "completed"
-        session._save_session(completed)
+        session._store.save(completed)
 
         args = SimpleNamespace(show_all=False)
 
         # Mock is_process_running to return True for the running session
-        with patch.object(session, "_is_process_running", return_value=True):
+        with patch.object(session, "is_process_running", return_value=True):
             session.cmd_list(args)
 
         captured = capsys.readouterr()
@@ -372,17 +395,17 @@ class TestSessionListCommand:
         from agenticcli.commands import session
 
         # Save running session
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
 
         # Save completed session
         completed = sample_session_data.copy()
         completed["session_id"] = "completed-session-id-1234-123456789abc"
         completed["status"] = "completed"
-        session._save_session(completed)
+        session._store.save(completed)
 
         args = SimpleNamespace(show_all=True)
 
-        with patch.object(session, "_is_process_running", return_value=True):
+        with patch.object(session, "is_process_running", return_value=True):
             session.cmd_list(args)
 
         captured = capsys.readouterr()
@@ -396,7 +419,7 @@ class TestSessionListCommand:
         # Only save completed sessions
         completed = sample_session_data.copy()
         completed["status"] = "completed"
-        session._save_session(completed)
+        session._store.save(completed)
 
         args = SimpleNamespace(show_all=False)
 
@@ -412,10 +435,10 @@ class TestSessionListCommand:
         from agenticcli.commands import session
 
         mock_json_output.return_value = True
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
 
         # Mock is_process_running to return True
-        with patch.object(session, "_is_process_running", return_value=True):
+        with patch.object(session, "is_process_running", return_value=True):
             args = SimpleNamespace(show_all=False)
             session.cmd_list(args)
 
@@ -434,15 +457,15 @@ class TestSessionListCommand:
         mock_json_output.return_value = True
 
         # Save running session
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
 
         # Save completed session
         completed = sample_session_data.copy()
         completed["session_id"] = "completed-session-id-1234-123456789abc"
         completed["status"] = "completed"
-        session._save_session(completed)
+        session._store.save(completed)
 
-        with patch.object(session, "_is_process_running", return_value=True):
+        with patch.object(session, "is_process_running", return_value=True):
             args = SimpleNamespace(show_all=True)
             session.cmd_list(args)
 
@@ -487,7 +510,7 @@ class TestSessionStopCommand:
         from agenticcli.commands import session
 
         sample_session_data["status"] = "completed"
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
 
         args = SimpleNamespace(
             session_id=sample_session_data["session_id"][:8],
@@ -505,7 +528,7 @@ class TestSessionStopCommand:
         """Test stopping a running session."""
         from agenticcli.commands import session
 
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
 
         args = SimpleNamespace(
             session_id=sample_session_data["session_id"][:8],
@@ -520,7 +543,7 @@ class TestSessionStopCommand:
         mock_kill.assert_called_once_with(sample_session_data["pid"], signal.SIGTERM)
 
         # Verify session status was updated
-        sessions = session._list_all_sessions()
+        sessions = session._store.list_all()
         assert sessions[0]["status"] == "stopped"
 
     @patch("os.kill")
@@ -528,7 +551,7 @@ class TestSessionStopCommand:
         """Test stopping a session with force flag."""
         from agenticcli.commands import session
 
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
 
         args = SimpleNamespace(
             session_id=sample_session_data["session_id"][:8],
@@ -548,7 +571,7 @@ class TestSessionStopCommand:
         from agenticcli.commands import session
 
         mock_kill.side_effect = ProcessLookupError()
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
 
         args = SimpleNamespace(
             session_id=sample_session_data["session_id"][:8],
@@ -595,10 +618,10 @@ class TestSessionStatusCommand:
         """Test that status displays session information."""
         from agenticcli.commands import session
 
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
 
         # Mock is_process_running to return True
-        with patch.object(session, "_is_process_running", return_value=True):
+        with patch.object(session, "is_process_running", return_value=True):
             args = SimpleNamespace(session_id=sample_session_data["session_id"][:8])
             session.cmd_status(args)
 
@@ -613,10 +636,10 @@ class TestSessionStatusCommand:
         from agenticcli.commands import session
 
         mock_json_output.return_value = True
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
 
         # Mock is_process_running to return True
-        with patch.object(session, "_is_process_running", return_value=True):
+        with patch.object(session, "is_process_running", return_value=True):
             args = SimpleNamespace(session_id=sample_session_data["session_id"][:8])
             session.cmd_status(args)
 
@@ -629,10 +652,10 @@ class TestSessionStatusCommand:
         """Test that status supports partial ID matching."""
         from agenticcli.commands import session
 
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
 
         # Use only first 4 characters of session ID
-        with patch.object(session, "_is_process_running", return_value=True):
+        with patch.object(session, "is_process_running", return_value=True):
             args = SimpleNamespace(session_id=sample_session_data["session_id"][:4])
             session.cmd_status(args)
 
@@ -744,7 +767,7 @@ class TestBuildRolePrompt:
 
         prompt = session._build_role_prompt("build-python", None)
         assert "build-python" in prompt
-        assert "agentic context bootstrap" in prompt
+        assert "context bootstrap" in prompt
 
     def test_role_prompt_with_plan(self, tmp_path):
         """Test building a role prompt with plan context."""
@@ -756,7 +779,7 @@ class TestBuildRolePrompt:
         prompt = session._build_role_prompt("build-python", plan_folder)
         assert "build-python" in prompt
         assert "260207TA_cli_task_spawn" in prompt
-        assert "agentic plan task list" in prompt
+        assert "plan task list" in prompt
 
 
 class TestBuildTaskPrompt:
@@ -818,7 +841,7 @@ phases:
 class TestSpawnWithRoleAndPlan:
     """Tests for spawn with --role and --plan flags."""
 
-    @patch("agenticcli.commands.session._is_process_running")
+    @patch("agenticcli.commands.session.is_process_running")
     @patch("agenticcli.commands.session.subprocess.Popen")
     def test_spawn_with_role(self, mock_popen, mock_is_running, mock_sessions_dir, tmp_path, monkeypatch, capsys):
         """Test spawn with --role constructs prompt and spawns agent."""
@@ -848,14 +871,23 @@ class TestSpawnWithRoleAndPlan:
 
         session.cmd_spawn(args)
 
-        # Verify Popen was called with a prompt containing the role
-        mock_popen.assert_called_once()
-        cmd = mock_popen.call_args[0][0]
-        # The last element should be the prompt
-        prompt_text = cmd[-1]
-        assert "build-python" in prompt_text
+        # Verify Popen was called with the claude command
+        # (may also be called for git rev-parse during context compilation)
+        assert mock_popen.call_count >= 1
+        # Last call should be the claude spawn
+        cmd = mock_popen.call_args_list[-1][0][0]
+        assert cmd[0] == "claude"
+        assert "pre-compiled" in cmd[-1]
 
-    @patch("agenticcli.commands.session._is_process_running")
+        # Verify the context file contains the role
+        sessions = session._store.list_all()
+        assert len(sessions) == 1
+        context_file = Path(sessions[0]["compiled_context"])
+        assert context_file.exists()
+        context_content = context_file.read_text()
+        assert "build-python" in context_content
+
+    @patch("agenticcli.commands.session.is_process_running")
     @patch("agenticcli.commands.session.subprocess.Popen")
     def test_spawn_with_task(self, mock_popen, mock_is_running, mock_sessions_dir, tmp_path, monkeypatch, capsys):
         """Test spawn with --task loads task context and spawns agent."""
@@ -901,9 +933,15 @@ phases:
 
         mock_popen.assert_called_once()
         cmd = mock_popen.call_args[0][0]
-        prompt_text = cmd[-1]
-        assert "CLI_001" in prompt_text
-        assert "Add feature" in prompt_text
+        assert "pre-compiled" in cmd[-1]
+
+        # Verify the context file contains task details
+        sessions = session._store.list_all()
+        assert len(sessions) == 1
+        context_file = Path(sessions[0]["compiled_context"])
+        context_content = context_file.read_text()
+        assert "CLI_001" in context_content
+        assert "Add feature" in context_content
 
     def test_spawn_task_requires_plan(self, mock_sessions_dir, capsys):
         """Test that --task without --plan fails."""
@@ -1013,7 +1051,7 @@ phases:
         captured = capsys.readouterr()
         assert "Prompt is required" in captured.err
 
-    @patch("agenticcli.commands.session._is_process_running")
+    @patch("agenticcli.commands.session.is_process_running")
     @patch("agenticcli.commands.session.subprocess.Popen")
     def test_spawn_prompt_still_works_standalone(self, mock_popen, mock_is_running, mock_sessions_dir, capsys):
         """Test that --prompt still works without --role or --task."""
@@ -1039,7 +1077,14 @@ phases:
 
         mock_popen.assert_called_once()
         cmd = mock_popen.call_args[0][0]
-        assert "Hello world" in cmd
+        # Command now contains a short file reference, not the raw prompt
+        assert "pre-compiled" in cmd[-1]
+
+        # Verify the context file contains the original prompt
+        sessions = session._store.list_all()
+        assert len(sessions) == 1
+        context_file = Path(sessions[0]["compiled_context"])
+        assert "Hello world" in context_file.read_text()
 
 
 class TestCheckSessionHealth:
@@ -1049,7 +1094,7 @@ class TestCheckSessionHealth:
         """Test health check for a healthy running session."""
         from agenticcli.commands import session
 
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
 
         # Create non-empty log files with recent mtime
         stdout_log = mock_logs_dir / f"{sample_session_data['session_id']}.stdout.log"
@@ -1057,7 +1102,7 @@ class TestCheckSessionHealth:
         stdout_log.write_text("Some output here")
         stderr_log.write_text("")
 
-        monkeypatch.setattr(session, "_is_process_running", lambda pid: True)
+        monkeypatch.setattr(session, "is_process_running", lambda pid: True)
 
         health = session._check_session_health(sample_session_data)
 
@@ -1081,7 +1126,7 @@ class TestCheckSessionHealth:
         import time as time_mod
         from agenticcli.commands import session
 
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
 
         # Create log files with old mtime (20 minutes ago)
         stdout_log = mock_logs_dir / f"{sample_session_data['session_id']}.stdout.log"
@@ -1089,7 +1134,7 @@ class TestCheckSessionHealth:
         old_time = time_mod.time() - (20 * 60)  # 20 minutes ago
         os.utime(stdout_log, (old_time, old_time))
 
-        monkeypatch.setattr(session, "_is_process_running", lambda pid: True)
+        monkeypatch.setattr(session, "is_process_running", lambda pid: True)
 
         health = session._check_session_health(sample_session_data)
 
@@ -1100,9 +1145,9 @@ class TestCheckSessionHealth:
         """Test health check for a session with dead PID."""
         from agenticcli.commands import session
 
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
 
-        monkeypatch.setattr(session, "_is_process_running", lambda pid: False)
+        monkeypatch.setattr(session, "is_process_running", lambda pid: False)
 
         health = session._check_session_health(sample_session_data)
 
@@ -1114,7 +1159,7 @@ class TestCheckSessionHealth:
         """Test health check for session with empty log files."""
         from agenticcli.commands import session
 
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
 
         # Create empty log files
         stdout_log = mock_logs_dir / f"{sample_session_data['session_id']}.stdout.log"
@@ -1122,7 +1167,7 @@ class TestCheckSessionHealth:
         stdout_log.write_text("")
         stderr_log.write_text("")
 
-        monkeypatch.setattr(session, "_is_process_running", lambda pid: True)
+        monkeypatch.setattr(session, "is_process_running", lambda pid: True)
 
         health = session._check_session_health(sample_session_data)
 
@@ -1133,8 +1178,8 @@ class TestCheckSessionHealth:
         """Test health check with no log files."""
         from agenticcli.commands import session
 
-        session._save_session(sample_session_data)
-        monkeypatch.setattr(session, "_is_process_running", lambda pid: True)
+        session._store.save(sample_session_data)
+        monkeypatch.setattr(session, "is_process_running", lambda pid: True)
 
         health = session._check_session_health(sample_session_data)
 
@@ -1146,8 +1191,8 @@ class TestCheckSessionHealth:
         from agenticcli.commands import session
 
         sample_session_data["status"] = "completed"
-        session._save_session(sample_session_data)
-        monkeypatch.setattr(session, "_is_process_running", lambda pid: False)
+        session._store.save(sample_session_data)
+        monkeypatch.setattr(session, "is_process_running", lambda pid: False)
 
         health = session._check_session_health(sample_session_data)
 
@@ -1161,11 +1206,11 @@ class TestSessionHealthCommand:
         """Test health command displays HEALTHY verdict."""
         from agenticcli.commands import session
 
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
         stdout_log = mock_logs_dir / f"{sample_session_data['session_id']}.stdout.log"
         stdout_log.write_text("Some output")
 
-        monkeypatch.setattr(session, "_is_process_running", lambda pid: True)
+        monkeypatch.setattr(session, "is_process_running", lambda pid: True)
 
         args = SimpleNamespace(session_id=sample_session_data["session_id"][:8])
         session.cmd_health(args)
@@ -1178,13 +1223,13 @@ class TestSessionHealthCommand:
         import time as time_mod
         from agenticcli.commands import session
 
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
         stdout_log = mock_logs_dir / f"{sample_session_data['session_id']}.stdout.log"
         stdout_log.write_text("Old output")
         old_time = time_mod.time() - (20 * 60)
         os.utime(stdout_log, (old_time, old_time))
 
-        monkeypatch.setattr(session, "_is_process_running", lambda pid: True)
+        monkeypatch.setattr(session, "is_process_running", lambda pid: True)
         monkeypatch.setattr(session, "_spawn_diagnostic_planner", lambda s: None)
 
         args = SimpleNamespace(session_id=sample_session_data["session_id"][:8])
@@ -1197,8 +1242,8 @@ class TestSessionHealthCommand:
         """Test health command displays UNHEALTHY verdict."""
         from agenticcli.commands import session
 
-        session._save_session(sample_session_data)
-        monkeypatch.setattr(session, "_is_process_running", lambda pid: False)
+        session._store.save(sample_session_data)
+        monkeypatch.setattr(session, "is_process_running", lambda pid: False)
         monkeypatch.setattr(session, "_spawn_diagnostic_planner", lambda s: None)
 
         args = SimpleNamespace(session_id=sample_session_data["session_id"][:8])
@@ -1213,11 +1258,11 @@ class TestSessionHealthCommand:
         from agenticcli.commands import session
 
         mock_json.return_value = True
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
         stdout_log = mock_logs_dir / f"{sample_session_data['session_id']}.stdout.log"
         stdout_log.write_text("output")
 
-        monkeypatch.setattr(session, "_is_process_running", lambda pid: True)
+        monkeypatch.setattr(session, "is_process_running", lambda pid: True)
 
         args = SimpleNamespace(session_id=sample_session_data["session_id"][:8], json_output=True)
         session.cmd_health(args)
@@ -1233,11 +1278,11 @@ class TestSessionHealthCommand:
         """Test health command with partial ID matching."""
         from agenticcli.commands import session
 
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
         stdout_log = mock_logs_dir / f"{sample_session_data['session_id']}.stdout.log"
         stdout_log.write_text("output")
 
-        monkeypatch.setattr(session, "_is_process_running", lambda pid: True)
+        monkeypatch.setattr(session, "is_process_running", lambda pid: True)
 
         args = SimpleNamespace(session_id=sample_session_data["session_id"][:4])
         session.cmd_health(args)
@@ -1263,7 +1308,7 @@ class TestSessionLogsCommand:
         """Test logs command shows stdout content."""
         from agenticcli.commands import session
 
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
         stdout_log = mock_logs_dir / f"{sample_session_data['session_id']}.stdout.log"
         stdout_log.write_text("line1\nline2\nline3\n")
 
@@ -1282,7 +1327,7 @@ class TestSessionLogsCommand:
         """Test logs command with --stderr shows stderr content."""
         from agenticcli.commands import session
 
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
         stderr_log = mock_logs_dir / f"{sample_session_data['session_id']}.stderr.log"
         stderr_log.write_text("error output\nmore errors\n")
 
@@ -1300,7 +1345,7 @@ class TestSessionLogsCommand:
         """Test logs command respects line limit."""
         from agenticcli.commands import session
 
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
         stdout_log = mock_logs_dir / f"{sample_session_data['session_id']}.stdout.log"
         lines_content = "\n".join(f"line{i}" for i in range(100))
         stdout_log.write_text(lines_content)
@@ -1323,7 +1368,7 @@ class TestSessionLogsCommand:
         """Test logs command with empty log file."""
         from agenticcli.commands import session
 
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
         stdout_log = mock_logs_dir / f"{sample_session_data['session_id']}.stdout.log"
         stdout_log.write_text("")
 
@@ -1340,7 +1385,7 @@ class TestSessionLogsCommand:
         """Test logs command with missing log file."""
         from agenticcli.commands import session
 
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
         # Don't create any log files
 
         args = SimpleNamespace(
@@ -1374,7 +1419,7 @@ class TestStaleWarningInList:
         import time as time_mod
         from agenticcli.commands import session
 
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
 
         # Create log with old mtime
         stdout_log = mock_logs_dir / f"{sample_session_data['session_id']}.stdout.log"
@@ -1382,7 +1427,7 @@ class TestStaleWarningInList:
         old_time = time_mod.time() - (30 * 60)  # 30 minutes ago
         os.utime(stdout_log, (old_time, old_time))
 
-        monkeypatch.setattr(session, "_is_process_running", lambda pid: True)
+        monkeypatch.setattr(session, "is_process_running", lambda pid: True)
 
         args = SimpleNamespace(show_all=False)
         session.cmd_list(args)
@@ -1395,13 +1440,13 @@ class TestStaleWarningInList:
         """Test that session list shows no stale warning for healthy sessions."""
         from agenticcli.commands import session
 
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
 
         # Create log with recent mtime (just created = fresh)
         stdout_log = mock_logs_dir / f"{sample_session_data['session_id']}.stdout.log"
         stdout_log.write_text("fresh output")
 
-        monkeypatch.setattr(session, "_is_process_running", lambda pid: True)
+        monkeypatch.setattr(session, "is_process_running", lambda pid: True)
 
         args = SimpleNamespace(show_all=False)
         session.cmd_list(args)
@@ -1415,12 +1460,12 @@ class TestStaleWarningInList:
         from agenticcli.commands import session
 
         mock_json.return_value = True
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
 
         stdout_log = mock_logs_dir / f"{sample_session_data['session_id']}.stdout.log"
         stdout_log.write_text("output")
 
-        monkeypatch.setattr(session, "_is_process_running", lambda pid: True)
+        monkeypatch.setattr(session, "is_process_running", lambda pid: True)
 
         args = SimpleNamespace(show_all=False)
         session.cmd_list(args)
@@ -1436,7 +1481,7 @@ class TestStaleWarningInList:
         from agenticcli.commands import session
 
         sample_session_data["status"] = "completed"
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
 
         args = SimpleNamespace(show_all=True)
         session.cmd_list(args)
@@ -1466,12 +1511,12 @@ class TestWorktreeAliasCliHelp:
         from agenticcli.cli import app
 
         runner = CliRunner()
-        result = runner.invoke(app, ["loop", "start", "--help"])
+        result = runner.invoke(app, ["session", "loop", "start", "--help"])
         assert "--worktree" in result.output
         assert "-w" in result.output
         assert "--directory" in result.output
 
-    @patch("agenticcli.commands.session._is_process_running")
+    @patch("agenticcli.commands.session.is_process_running")
     @patch("agenticcli.commands.session.subprocess.Popen")
     def test_spawn_worktree_passes_directory(self, mock_popen, mock_is_running, mock_sessions_dir, mock_logs_dir, tmp_path):
         """Test that --worktree passes through to directory parameter in session spawn."""
@@ -1619,13 +1664,13 @@ class TestDiagnosticAutoSpawn:
         import time as time_mod
         from agenticcli.commands import session
 
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
         stdout_log = mock_logs_dir / f"{sample_session_data['session_id']}.stdout.log"
         stdout_log.write_text("Old output")
         old_time = time_mod.time() - (20 * 60)
         os.utime(stdout_log, (old_time, old_time))
 
-        monkeypatch.setattr(session, "_is_process_running", lambda pid: True)
+        monkeypatch.setattr(session, "is_process_running", lambda pid: True)
 
         spawned_ids = []
 
@@ -1653,9 +1698,9 @@ class TestDiagnosticAutoSpawn:
         # Mark session as already having a diagnostic spawned
         sample_session_data["diagnostic_spawned"] = True
         sample_session_data["diagnostic_session_id"] = "existing-diag-id-1234"
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
 
-        monkeypatch.setattr(session, "_is_process_running", lambda pid: False)
+        monkeypatch.setattr(session, "is_process_running", lambda pid: False)
 
         spawn_called = []
         monkeypatch.setattr(session, "_spawn_diagnostic_planner", lambda s: spawn_called.append(1))
@@ -1674,11 +1719,11 @@ class TestDiagnosticAutoSpawn:
         """Test that diagnostic is NOT spawned for healthy sessions."""
         from agenticcli.commands import session
 
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
         stdout_log = mock_logs_dir / f"{sample_session_data['session_id']}.stdout.log"
         stdout_log.write_text("Some output")
 
-        monkeypatch.setattr(session, "_is_process_running", lambda pid: True)
+        monkeypatch.setattr(session, "is_process_running", lambda pid: True)
 
         spawn_called = []
         monkeypatch.setattr(session, "_spawn_diagnostic_planner", lambda s: spawn_called.append(1))
@@ -1698,9 +1743,9 @@ class TestDiagnosticAutoSpawn:
         from agenticcli.commands import session
 
         mock_json.return_value = True
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
 
-        monkeypatch.setattr(session, "_is_process_running", lambda pid: False)
+        monkeypatch.setattr(session, "is_process_running", lambda pid: False)
         monkeypatch.setattr(session, "_spawn_diagnostic_planner", lambda s: "new-diag-9999")
 
         args = SimpleNamespace(session_id=sample_session_data["session_id"][:8], json_output=True)
@@ -1714,7 +1759,7 @@ class TestDiagnosticAutoSpawn:
 class TestLogFileDescriptorManagement:
     """Tests for log file descriptor management in background spawn (TSM_003)."""
 
-    @patch("agenticcli.commands.session._is_process_running")
+    @patch("agenticcli.commands.session.is_process_running")
     @patch("agenticcli.commands.session.subprocess.Popen")
     def test_file_handles_closed_after_popen(
         self, mock_popen, mock_is_running, mock_sessions_dir, mock_logs_dir, monkeypatch
@@ -1767,7 +1812,7 @@ class TestLogFileDescriptorManagement:
             assert tracker["closed"], f"File handle not closed: {tracker['path']}"
 
     @patch("agenticcli.commands.session.time.sleep")
-    @patch("agenticcli.commands.session._is_process_running")
+    @patch("agenticcli.commands.session.is_process_running")
     @patch("agenticcli.commands.session.subprocess.Popen")
     def test_immediate_spawn_failure_detected(
         self, mock_popen, mock_is_running, mock_sleep, mock_sessions_dir, mock_logs_dir, capsys
@@ -1795,7 +1840,7 @@ class TestLogFileDescriptorManagement:
         session.cmd_spawn(args)
 
         # Verify session was marked as failed
-        sessions = session._list_all_sessions()
+        sessions = session._store.list_all()
         assert len(sessions) == 1
         assert sessions[0]["status"] == "failed"
         assert "died immediately" in sessions[0].get("error", "")
@@ -1803,7 +1848,7 @@ class TestLogFileDescriptorManagement:
         captured = capsys.readouterr()
         assert "failed" in captured.err.lower()
 
-    @patch("agenticcli.commands.session._is_process_running")
+    @patch("agenticcli.commands.session.is_process_running")
     @patch("agenticcli.commands.session.subprocess.Popen")
     def test_last_activity_set_on_spawn(
         self, mock_popen, mock_is_running, mock_sessions_dir, mock_logs_dir
@@ -1829,7 +1874,7 @@ class TestLogFileDescriptorManagement:
 
         session.cmd_spawn(args)
 
-        sessions = session._list_all_sessions()
+        sessions = session._store.list_all()
         assert len(sessions) == 1
         s = sessions[0]
         assert s.get("last_activity") is not None
@@ -1883,7 +1928,7 @@ class TestLogFileDescriptorManagement:
 class TestWorktreeAlias:
     """Tests for --worktree/-w alias on session spawn and loop start (GA_006)."""
 
-    @patch("agenticcli.commands.session._is_process_running")
+    @patch("agenticcli.commands.session.is_process_running")
     @patch("agenticcli.commands.session.subprocess.Popen")
     def test_worktree_passed_as_directory(self, mock_popen, mock_is_running, mock_sessions_dir, mock_logs_dir, capsys):
         """Test that --worktree value is passed through as directory to cmd_spawn."""
@@ -1912,7 +1957,7 @@ class TestWorktreeAlias:
         assert call_kwargs["cwd"] == "/tmp/my-worktree"
 
         # Verify session record has the worktree as working_dir
-        sessions = session._list_all_sessions()
+        sessions = session._store.list_all()
         assert len(sessions) == 1
         assert sessions[0]["working_dir"] == "/tmp/my-worktree"
 
@@ -1954,7 +1999,7 @@ class TestWorktreeAlias:
         from agenticcli.cli import app
 
         runner = CliRunner()
-        result = runner.invoke(app, ["loop", "start", "--help"])
+        result = runner.invoke(app, ["session", "loop", "start", "--help"])
 
         assert "--worktree" in result.output
         assert "-w" in result.output
@@ -1971,12 +2016,12 @@ class TestTmuxHealthIntegration:
 
         sample_session_data["background"] = True
         sample_session_data["status"] = "running"
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
 
         stdout_log = mock_logs_dir / f"{sample_session_data['session_id']}.stdout.log"
         stdout_log.write_text("output")
 
-        monkeypatch.setattr(session, "_is_process_running", lambda pid: True)
+        monkeypatch.setattr(session, "is_process_running", lambda pid: True)
         monkeypatch.setattr(session, "_check_tmux_session", lambda sid: True)
 
         health = session._check_session_health(sample_session_data)
@@ -1995,12 +2040,12 @@ class TestTmuxHealthIntegration:
 
         sample_session_data["background"] = True
         sample_session_data["status"] = "running"
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
 
         stdout_log = mock_logs_dir / f"{sample_session_data['session_id']}.stdout.log"
         stdout_log.write_text("output")
 
-        monkeypatch.setattr(session, "_is_process_running", lambda pid: True)
+        monkeypatch.setattr(session, "is_process_running", lambda pid: True)
         monkeypatch.setattr(session, "_check_tmux_session", lambda sid: False)
 
         health = session._check_session_health(sample_session_data)
@@ -2017,12 +2062,12 @@ class TestTmuxHealthIntegration:
 
         sample_session_data["background"] = False
         sample_session_data["status"] = "running"
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
 
         stdout_log = mock_logs_dir / f"{sample_session_data['session_id']}.stdout.log"
         stdout_log.write_text("output")
 
-        monkeypatch.setattr(session, "_is_process_running", lambda pid: True)
+        monkeypatch.setattr(session, "is_process_running", lambda pid: True)
 
         health = session._check_session_health(sample_session_data)
 
@@ -2037,12 +2082,12 @@ class TestTmuxHealthIntegration:
 
         sample_session_data["background"] = True
         sample_session_data["status"] = "running"
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
 
         stdout_log = mock_logs_dir / f"{sample_session_data['session_id']}.stdout.log"
         stdout_log.write_text("output")
 
-        monkeypatch.setattr(session, "_is_process_running", lambda pid: True)
+        monkeypatch.setattr(session, "is_process_running", lambda pid: True)
         monkeypatch.setattr(session, "_check_tmux_session", lambda sid: None)
 
         health = session._check_session_health(sample_session_data)
@@ -2059,9 +2104,9 @@ class TestTmuxHealthIntegration:
 
         sample_session_data["background"] = True
         sample_session_data["status"] = "completed"
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
 
-        monkeypatch.setattr(session, "_is_process_running", lambda pid: False)
+        monkeypatch.setattr(session, "is_process_running", lambda pid: False)
 
         health = session._check_session_health(sample_session_data)
 
@@ -2178,9 +2223,9 @@ class TestCaptureLangSmithTrace:
         sample_session_data["status"] = "running"
         sample_session_data["background"] = True
         sample_session_data["pid"] = 99999
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
 
-        monkeypatch.setattr(session, "_is_process_running", lambda pid: False)
+        monkeypatch.setattr(session, "is_process_running", lambda pid: False)
 
         capture_calls = []
         monkeypatch.setattr(
@@ -2202,9 +2247,9 @@ class TestCaptureLangSmithTrace:
         sample_session_data["status"] = "running"
         sample_session_data["background"] = False
         sample_session_data["pid"] = 99999
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
 
-        monkeypatch.setattr(session, "_is_process_running", lambda pid: False)
+        monkeypatch.setattr(session, "is_process_running", lambda pid: False)
 
         capture_calls = []
         monkeypatch.setattr(
@@ -2232,7 +2277,7 @@ class TestCaptureLangSmithTrace:
             return mock_proc
 
         monkeypatch.setattr(subprocess, "Popen", mock_popen)
-        monkeypatch.setattr(session, "_is_process_running", lambda pid: True)
+        monkeypatch.setattr(session, "is_process_running", lambda pid: True)
 
         args = SimpleNamespace(
             prompt="test prompt",
@@ -2397,7 +2442,7 @@ class TestEnsureWatchDaemon:
 class TestSpawnAutoWatchDaemon:
     """WD_005: Integration tests for cmd_spawn auto-daemon behavior."""
 
-    @patch("agenticcli.commands.session._is_process_running")
+    @patch("agenticcli.commands.session.is_process_running")
     @patch("agenticcli.commands.session.subprocess.Popen")
     def test_spawn_with_plan_starts_watch_daemon(
         self, mock_popen, mock_is_running, mock_sessions_dir, mock_logs_dir, tmp_path, monkeypatch
@@ -2441,7 +2486,7 @@ class TestSpawnAutoWatchDaemon:
         assert len(daemon_calls) == 1
         assert daemon_calls[0] == plan_dir
 
-    @patch("agenticcli.commands.session._is_process_running")
+    @patch("agenticcli.commands.session.is_process_running")
     @patch("agenticcli.commands.session.subprocess.Popen")
     def test_spawn_without_plan_skips_watch_daemon(
         self, mock_popen, mock_is_running, mock_sessions_dir, mock_logs_dir, monkeypatch
@@ -2477,7 +2522,7 @@ class TestSpawnAutoWatchDaemon:
 
         assert len(daemon_calls) == 0
 
-    @patch("agenticcli.commands.session._is_process_running")
+    @patch("agenticcli.commands.session.is_process_running")
     @patch("agenticcli.commands.session.subprocess.Popen")
     def test_spawn_daemon_failure_does_not_block_spawn(
         self, mock_popen, mock_is_running, mock_sessions_dir, mock_logs_dir, tmp_path, monkeypatch
@@ -2517,7 +2562,7 @@ class TestSpawnAutoWatchDaemon:
         session.cmd_spawn(args)
 
         # Session should be saved as running
-        sessions = session._list_all_sessions()
+        sessions = session._store.list_all()
         assert len(sessions) == 1
         assert sessions[0]["status"] == "running"
         assert sessions[0]["pid"] == 44444

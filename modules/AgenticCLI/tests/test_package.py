@@ -12,7 +12,7 @@ class TestUpdateCommand:
 
     def test_update_help(self, cli_runner):
         """Test update --help output."""
-        stdout, stderr, code = cli_runner(["update", "--help"])
+        stdout, stderr, code = cli_runner(["setup", "update", "--help"])
         assert "update" in stdout.lower() or "reinstall" in stdout.lower()
         assert code == 0
 
@@ -69,7 +69,7 @@ class TestRebuildCommand:
 
     def test_rebuild_help(self, cli_runner):
         """Test rebuild --help output."""
-        stdout, stderr, code = cli_runner(["rebuild", "--help"])
+        stdout, stderr, code = cli_runner(["setup", "rebuild", "--help"])
         assert "rebuild" in stdout.lower() or "reinstall" in stdout.lower()
         assert code == 0
 

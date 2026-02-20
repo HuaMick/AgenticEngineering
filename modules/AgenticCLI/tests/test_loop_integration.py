@@ -27,7 +27,7 @@ def mock_loops_dir(loops_dir, monkeypatch):
     """Patch _get_loops_dir to use temp directory."""
     from agenticcli.commands import loop
 
-    monkeypatch.setattr(loop, "_get_loops_dir", lambda: loops_dir)
+    monkeypatch.setattr(loop._store, "get_dir", lambda override=None: loops_dir)
     return loops_dir
 
 
@@ -61,14 +61,14 @@ class TestLoopHelperFunctions:
     """Tests for loop module helper functions."""
 
     def test_get_loops_dir_creates_directory(self, tmp_path, monkeypatch):
-        """Test that _get_loops_dir creates the directory if it doesn't exist."""
+        """Test that StateStore.get_dir creates the directory if it doesn't exist."""
         from agenticcli.commands import loop
 
         new_home = tmp_path / "home"
         new_home.mkdir()
         monkeypatch.setattr(Path, "home", lambda: new_home)
 
-        result = loop._get_loops_dir()
+        result = loop._store.get_dir()
 
         assert result.exists()
         assert result == new_home / ".agentic" / "loops"
@@ -77,8 +77,8 @@ class TestLoopHelperFunctions:
         """Test saving and loading a loop."""
         from agenticcli.commands import loop
 
-        loop._save_loop(sample_loop_data)
-        loaded = loop._load_loop(sample_loop_data["loop_id"])
+        loop._store.save(sample_loop_data)
+        loaded = loop._store.load(sample_loop_data["loop_id"])
 
         assert loaded is not None
         assert loaded["loop_id"] == sample_loop_data["loop_id"]
@@ -89,7 +89,7 @@ class TestLoopHelperFunctions:
         """Test loading a loop that doesn't exist."""
         from agenticcli.commands import loop
 
-        result = loop._load_loop("nonexistent-id")
+        result = loop._store.load("nonexistent-id")
 
         assert result is None
 
@@ -98,14 +98,14 @@ class TestLoopHelperFunctions:
         from agenticcli.commands import loop
 
         # Create multiple loops
-        loop._save_loop(sample_loop_data)
+        loop._store.save(sample_loop_data)
 
         second_loop = sample_loop_data.copy()
         second_loop["loop_id"] = "87654321-4321-4321-4321-cba987654321"
         second_loop["prompt"] = "Another task"
-        loop._save_loop(second_loop)
+        loop._store.save(second_loop)
 
-        result = loop._list_all_loops()
+        result = loop._store.list_all()
 
         assert len(result) == 2
         loop_ids = [lp["loop_id"] for lp in result]
@@ -120,7 +120,7 @@ class TestLoopHelperFunctions:
         invalid_file = mock_loops_dir / "invalid.json"
         invalid_file.write_text("not valid json {{{")
 
-        result = loop._list_all_loops()
+        result = loop._store.list_all()
 
         assert result == []
 
@@ -131,7 +131,7 @@ class TestLoopHelperFunctions:
         # Use a nonexistent PID
         sample_loop_data["pid"] = 99999999
         sample_loop_data["status"] = "running"
-        loop._save_loop(sample_loop_data)
+        loop._store.save(sample_loop_data)
 
         result = loop._update_loop_status(sample_loop_data)
 
@@ -277,7 +277,7 @@ class TestLoopStartCommand:
         assert "--max-turns" in cmd
 
         # Verify loop was saved
-        loops = loop._list_all_loops()
+        loops = loop._store.list_all()
         assert len(loops) == 1
         assert loops[0]["status"] == "running"
         assert loops[0]["pid"] == 12345
@@ -309,7 +309,7 @@ class TestLoopStartCommand:
         loop.cmd_start(args)
 
         # Verify loop was saved with completed status
-        loops = loop._list_all_loops()
+        loops = loop._store.list_all()
         assert len(loops) == 1
         assert loops[0]["status"] == "completed"
         assert loops[0]["iterations"][0]["status"] == "completed"
@@ -338,7 +338,7 @@ class TestLoopStartCommand:
 
         loop.cmd_start(args)
 
-        loops = loop._list_all_loops()
+        loops = loop._store.list_all()
         assert len(loops) == 1
         assert loops[0]["status"] == "failed"
         assert loops[0]["exit_code"] == 1
@@ -462,7 +462,7 @@ class TestLoopStopCommand:
         from agenticcli.commands import loop
 
         sample_loop_data["status"] = "completed"
-        loop._save_loop(sample_loop_data)
+        loop._store.save(sample_loop_data)
 
         args = SimpleNamespace(
             loop_id=sample_loop_data["loop_id"][:8],
@@ -480,7 +480,7 @@ class TestLoopStopCommand:
         """Test stopping a running loop."""
         from agenticcli.commands import loop
 
-        loop._save_loop(sample_loop_data)
+        loop._store.save(sample_loop_data)
 
         args = SimpleNamespace(
             loop_id=sample_loop_data["loop_id"][:8],
@@ -495,7 +495,7 @@ class TestLoopStopCommand:
         mock_kill.assert_called_once_with(sample_loop_data["pid"], signal.SIGTERM)
 
         # Verify loop status was updated
-        loops = loop._list_all_loops()
+        loops = loop._store.list_all()
         assert loops[0]["status"] == "stopped"
 
         # Verify running iteration was marked as stopped
@@ -507,7 +507,7 @@ class TestLoopStopCommand:
         """Test stopping a loop with force flag."""
         from agenticcli.commands import loop
 
-        loop._save_loop(sample_loop_data)
+        loop._store.save(sample_loop_data)
 
         args = SimpleNamespace(
             loop_id=sample_loop_data["loop_id"][:8],
@@ -555,10 +555,10 @@ class TestLoopStatusCommand:
         """Test that status displays loop information."""
         from agenticcli.commands import loop
 
-        loop._save_loop(sample_loop_data)
+        loop._store.save(sample_loop_data)
 
         # Mock is_process_running to return True
-        with patch.object(loop, "_is_process_running", return_value=True):
+        with patch.object(loop, "is_process_running", return_value=True):
             args = SimpleNamespace(loop_id=sample_loop_data["loop_id"][:8])
             loop.cmd_status(args)
 
@@ -573,9 +573,9 @@ class TestLoopStatusCommand:
         """Test that status shows iteration history."""
         from agenticcli.commands import loop
 
-        loop._save_loop(sample_loop_data)
+        loop._store.save(sample_loop_data)
 
-        with patch.object(loop, "_is_process_running", return_value=True):
+        with patch.object(loop, "is_process_running", return_value=True):
             args = SimpleNamespace(loop_id=sample_loop_data["loop_id"][:8])
             loop.cmd_status(args)
 
@@ -588,9 +588,9 @@ class TestLoopStatusCommand:
         from agenticcli.commands import loop
 
         mock_json_output.return_value = True
-        loop._save_loop(sample_loop_data)
+        loop._store.save(sample_loop_data)
 
-        with patch.object(loop, "_is_process_running", return_value=True):
+        with patch.object(loop, "is_process_running", return_value=True):
             args = SimpleNamespace(loop_id=sample_loop_data["loop_id"][:8])
             loop.cmd_status(args)
 
@@ -619,10 +619,10 @@ class TestLoopHistoryCommand:
         """Test history with existing loops."""
         from agenticcli.commands import loop
 
-        loop._save_loop(sample_loop_data)
+        loop._store.save(sample_loop_data)
         args = SimpleNamespace(active=False, status=None, limit=20)
 
-        with patch.object(loop, "_is_process_running", return_value=True):
+        with patch.object(loop, "is_process_running", return_value=True):
             loop.cmd_history(args)
 
         captured = capsys.readouterr()
@@ -634,17 +634,17 @@ class TestLoopHistoryCommand:
         from agenticcli.commands import loop
 
         # Save running loop
-        loop._save_loop(sample_loop_data)
+        loop._store.save(sample_loop_data)
 
         # Save completed loop
         completed = sample_loop_data.copy()
         completed["loop_id"] = "completed-loop-id-1234"
         completed["status"] = "completed"
-        loop._save_loop(completed)
+        loop._store.save(completed)
 
         args = SimpleNamespace(active=True, status=None, limit=20)
 
-        with patch.object(loop, "_is_process_running", return_value=True):
+        with patch.object(loop, "is_process_running", return_value=True):
             loop.cmd_history(args)
 
         captured = capsys.readouterr()
@@ -655,17 +655,17 @@ class TestLoopHistoryCommand:
         from agenticcli.commands import loop
 
         # Save running loop
-        loop._save_loop(sample_loop_data)
+        loop._store.save(sample_loop_data)
 
         # Save completed loop
         completed = sample_loop_data.copy()
         completed["loop_id"] = "completed-loop-id-1234"
         completed["status"] = "completed"
-        loop._save_loop(completed)
+        loop._store.save(completed)
 
         args = SimpleNamespace(active=False, status="completed", limit=20)
 
-        with patch.object(loop, "_is_process_running", return_value=True):
+        with patch.object(loop, "is_process_running", return_value=True):
             loop.cmd_history(args)
 
         captured = capsys.readouterr()
@@ -679,11 +679,11 @@ class TestLoopHistoryCommand:
         for i in range(5):
             data = sample_loop_data.copy()
             data["loop_id"] = f"loop-id-{i}-1234-1234-1234"
-            loop._save_loop(data)
+            loop._store.save(data)
 
         args = SimpleNamespace(active=False, status=None, limit=2)
 
-        with patch.object(loop, "_is_process_running", return_value=True):
+        with patch.object(loop, "is_process_running", return_value=True):
             loop.cmd_history(args)
 
         # The table should show limited results
@@ -696,9 +696,9 @@ class TestLoopHistoryCommand:
         from agenticcli.commands import loop
 
         mock_json_output.return_value = True
-        loop._save_loop(sample_loop_data)
+        loop._store.save(sample_loop_data)
 
-        with patch.object(loop, "_is_process_running", return_value=True):
+        with patch.object(loop, "is_process_running", return_value=True):
             args = SimpleNamespace(active=False, status=None, limit=20)
             loop.cmd_history(args)
 
@@ -799,7 +799,7 @@ class TestIterationTracking:
 
             loop.cmd_start(args)
 
-        loops = loop._list_all_loops()
+        loops = loop._store.list_all()
         assert len(loops) == 1
         assert len(loops[0]["iterations"]) == 1
         assert loops[0]["iterations"][0]["number"] == 1
@@ -825,7 +825,7 @@ class TestIterationTracking:
 
             loop.cmd_start(args)
 
-        loops = loop._list_all_loops()
+        loops = loop._store.list_all()
         assert loops[0]["iterations"][0]["status"] == "completed"
         assert loops[0]["iterations"][0]["ended_at"] is not None
 
@@ -849,7 +849,7 @@ class TestIterationTracking:
 
             loop.cmd_start(args)
 
-        loops = loop._list_all_loops()
+        loops = loop._store.list_all()
         assert loops[0]["iterations"][0]["status"] == "failed"
 
     @patch("os.kill")
@@ -857,7 +857,7 @@ class TestIterationTracking:
         """Test that running iteration is marked stopped when loop is stopped."""
         from agenticcli.commands import loop
 
-        loop._save_loop(sample_loop_data)
+        loop._store.save(sample_loop_data)
 
         args = SimpleNamespace(
             loop_id=sample_loop_data["loop_id"][:8],
@@ -866,7 +866,7 @@ class TestIterationTracking:
 
         loop.cmd_stop(args)
 
-        loops = loop._list_all_loops()
+        loops = loop._store.list_all()
         stopped_iters = [i for i in loops[0]["iterations"] if i["status"] == "stopped"]
         assert len(stopped_iters) == 1
         assert stopped_iters[0]["ended_at"] is not None

@@ -36,26 +36,26 @@ class TestWorktreeHelpers:
 
     def test_generate_plan_folder_name(self, temp_dir):
         """Test plan folder name generation."""
-        from agenticcli.commands.worktree import generate_plan_folder_name
+        from agenticcli.utils.naming import generate_plan_folder_name
 
         # Create a mock repo root
         repo_root = temp_dir / "AgenticEngineering-test"
         repo_root.mkdir()
 
-        name = generate_plan_folder_name("feature-auth", repo_root)
-        # Should be YYMMDDAE_feature-auth format
-        assert name.endswith("_feature-auth")
-        assert "AE" in name
+        name = generate_plan_folder_name(repo_root, "feature-auth")
+        # Should be YYMMDDTE_feature_auth format
+        assert name.endswith("_feature_auth")
+        assert "TE" in name
         assert len(name.split("_")[0]) == 8  # YYMMDDAE
 
     def test_generate_plan_folder_name_simple_repo(self, temp_dir):
         """Test plan folder name for simple repo name."""
-        from agenticcli.commands.worktree import generate_plan_folder_name
+        from agenticcli.utils.naming import generate_plan_folder_name
 
         repo_root = temp_dir / "SimpleProject"
         repo_root.mkdir()
 
-        name = generate_plan_folder_name("main", repo_root)
+        name = generate_plan_folder_name(repo_root, "main")
         assert name.endswith("_main")
         assert "SP" in name or "SI" in name
 
@@ -138,7 +138,7 @@ class TestWorktreeList:
 
     def test_list_help(self, cli_runner):
         """Test worktree list --help output."""
-        stdout, stderr, code = cli_runner(["worktree", "list", "--help"])
+        stdout, stderr, code = cli_runner(["devops", "worktree", "list", "--help"])
         assert "list" in stdout.lower()
         assert code == 0
 
@@ -147,7 +147,7 @@ class TestWorktreeList:
         original_cwd = os.getcwd()
         os.chdir(temp_dir)
         try:
-            stdout, stderr, code = cli_runner(["worktree", "list"])
+            stdout, stderr, code = cli_runner(["devops", "worktree", "list"])
             # Should handle gracefully - either error or empty list
             assert code in [0, 1]
         finally:
@@ -159,7 +159,7 @@ class TestWorktreeCreate:
 
     def test_create_help(self, cli_runner):
         """Test worktree create --help output."""
-        stdout, stderr, code = cli_runner(["worktree", "create", "--help"])
+        stdout, stderr, code = cli_runner(["devops", "worktree", "create", "--help"])
         assert "create" in stdout.lower()
         assert "branch" in stdout
         assert "--base" in stdout
@@ -168,7 +168,7 @@ class TestWorktreeCreate:
 
     def test_create_missing_branch(self, cli_runner):
         """Test create without branch argument."""
-        stdout, stderr, code = cli_runner(["worktree", "create"])
+        stdout, stderr, code = cli_runner(["devops", "worktree", "create"])
         # Should show usage error
         assert code == 2  # argparse error
 
@@ -178,7 +178,7 @@ class TestWorktreeRemove:
 
     def test_remove_help(self, cli_runner):
         """Test worktree remove --help output."""
-        stdout, stderr, code = cli_runner(["worktree", "remove", "--help"])
+        stdout, stderr, code = cli_runner(["devops", "worktree", "remove", "--help"])
         assert "remove" in stdout.lower()
         assert "branch" in stdout
         assert "--force" in stdout
@@ -186,7 +186,7 @@ class TestWorktreeRemove:
 
     def test_remove_missing_branch(self, cli_runner):
         """Test remove without branch argument."""
-        stdout, stderr, code = cli_runner(["worktree", "remove"])
+        stdout, stderr, code = cli_runner(["devops", "worktree", "remove"])
         # Should show usage error
         assert code == 2  # argparse error
 
@@ -196,20 +196,20 @@ class TestWorktreeStatus:
 
     def test_status_help(self, cli_runner):
         """Test worktree status --help output."""
-        stdout, stderr, code = cli_runner(["worktree", "status", "--help"])
+        stdout, stderr, code = cli_runner(["devops", "worktree", "status", "--help"])
         assert "status" in stdout.lower()
         assert code == 0
 
     def test_status_in_git_repo(self, cli_runner):
         """Test status in current git repo."""
-        stdout, stderr, code = cli_runner(["worktree", "status"])
+        stdout, stderr, code = cli_runner(["devops", "worktree", "status"])
         # Should show status info
         assert "Worktree Status" in stdout or "branch" in stdout.lower()
         assert code == 0
 
     def test_status_json_output(self, cli_runner):
         """Test status with --json flag."""
-        stdout, stderr, code = cli_runner(["--json", "worktree", "status"])
+        stdout, stderr, code = cli_runner(["--json", "devops", "worktree", "status"])
         assert code == 0
         # Should be valid JSON with expected fields
         import json
@@ -233,7 +233,7 @@ class TestWorktreeStatus:
             stderr_capture = io.StringIO()
             exit_code = 0
 
-            with patch.object(sys, "argv", ["agentic", "worktree", "status"]):
+            with patch.object(sys, "argv", ["agentic", "devops", "worktree", "status"]):
                 with redirect_stdout(stdout_capture):
                     with redirect_stderr(stderr_capture):
                         try:
@@ -593,7 +593,7 @@ class TestWorktreeValidateCLI:
 
     def test_validate_help(self, cli_runner):
         """Test worktree validate --help shows usage."""
-        stdout, stderr, code = cli_runner(["worktree", "validate", "--help"])
+        stdout, stderr, code = cli_runner(["devops", "worktree", "validate", "--help"])
         assert code == 0
         assert "validate" in stdout.lower() or "validate" in stderr.lower()
 
@@ -606,7 +606,7 @@ class TestWorktreeValidateCLI:
         if plans_dir.exists():
             shutil.rmtree(plans_dir)
 
-        stdout, stderr, code = cli_runner(["worktree", "validate"])
+        stdout, stderr, code = cli_runner(["devops", "worktree", "validate"])
         # No plans, no feature worktrees, no registry -> clean
         assert code == 0
 
@@ -620,7 +620,7 @@ class TestWorktreeValidateCLI:
         if plans_dir.exists():
             shutil.rmtree(plans_dir)
 
-        stdout, stderr, code = cli_runner(["--json", "worktree", "validate"])
+        stdout, stderr, code = cli_runner(["--json", "devops", "worktree", "validate"])
         assert code == 0
         data = json_mod.loads(stdout)
         assert "orphaned_plans" in data
@@ -658,7 +658,7 @@ class TestWorktreeSync:
             settings={"git.scanRepositories": [".", "../NonExistent-branch"]},
         )
 
-        stdout, stderr, code = cli_runner(["worktree", "sync"])
+        stdout, stderr, code = cli_runner(["devops", "worktree", "sync"])
         assert code == 0
         assert "stale" in stdout.lower() or "removed" in stdout.lower()
 
@@ -682,7 +682,7 @@ class TestWorktreeSync:
         # Create a workspace file with NO folder entries
         self._write_workspace(temp_repo, [])
 
-        stdout, stderr, code = cli_runner(["worktree", "sync"])
+        stdout, stderr, code = cli_runner(["devops", "worktree", "sync"])
         assert code == 0
         assert "added" in stdout.lower() or "missing" in stdout.lower()
 
@@ -696,7 +696,7 @@ class TestWorktreeSync:
         for f in temp_repo.glob("*.code-workspace"):
             f.unlink()
 
-        stdout, stderr, code = cli_runner(["worktree", "sync"])
+        stdout, stderr, code = cli_runner(["devops", "worktree", "sync"])
         assert code == 1
         combined = (stdout + stderr).lower()
         assert "no .code-workspace" in combined or "workspace" in combined
@@ -707,14 +707,14 @@ class TestWorktreeSync:
         self._write_workspace(temp_repo, [{"name": "Main", "path": "."}])
 
         # First sync — may add/remove to reach steady state
-        stdout1, stderr1, code1 = cli_runner(["worktree", "sync"])
+        stdout1, stderr1, code1 = cli_runner(["devops", "worktree", "sync"])
         assert code1 == 0
 
         # Capture workspace state after first sync
         ws_after_first = self._read_workspace(temp_repo / "test.code-workspace")
 
         # Second sync — should be a no-op
-        stdout2, stderr2, code2 = cli_runner(["worktree", "sync"])
+        stdout2, stderr2, code2 = cli_runner(["devops", "worktree", "sync"])
         assert code2 == 0
 
         ws_after_second = self._read_workspace(temp_repo / "test.code-workspace")

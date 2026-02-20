@@ -8,7 +8,7 @@ class TestConfigShow:
 
     def test_show_no_config(self, cli_runner, temp_config_dir):
         """Test show displays defaults when no config file exists."""
-        stdout, stderr, code = cli_runner(["config", "show"])
+        stdout, stderr, code = cli_runner(["configure", "config", "show"])
         # Now shows merged config with defaults
         assert "Configuration (merged)" in stdout
         assert "default" in stdout  # Source attribution
@@ -21,7 +21,7 @@ class TestConfigShow:
         with open(config_file, "w") as f:
             yaml.dump(config, f)
 
-        stdout, stderr, code = cli_runner(["config", "show"])
+        stdout, stderr, code = cli_runner(["configure", "config", "show"])
         assert "Configuration (merged)" in stdout
         assert "version" in stdout
         assert "global" in stdout  # Source attribution for global config
@@ -33,20 +33,20 @@ class TestConfigGet:
 
     def test_get_existing_key(self, cli_runner, sample_prefs):
         """Test getting an existing preference."""
-        stdout, stderr, code = cli_runner(["config", "get", "worktree.default_base"])
+        stdout, stderr, code = cli_runner(["configure", "config", "get", "worktree.default_base"])
         assert "main" in stdout
         assert "worktree.default_base" in stdout
         assert code == 0
 
     def test_get_nested_key(self, cli_runner, sample_prefs):
         """Test getting a nested preference."""
-        stdout, stderr, code = cli_runner(["config", "get", "test.nested.value"])
+        stdout, stderr, code = cli_runner(["configure", "config", "get", "test.nested.value"])
         assert "test_value" in stdout
         assert code == 0
 
     def test_get_missing_key(self, cli_runner, sample_prefs):
         """Test getting a non-existent key."""
-        stdout, stderr, code = cli_runner(["config", "get", "nonexistent.key"])
+        stdout, stderr, code = cli_runner(["configure", "config", "get", "nonexistent.key"])
         assert "Key not found" in stderr
         assert code == 1
 
@@ -56,7 +56,7 @@ class TestConfigSet:
 
     def test_set_simple_value(self, cli_runner, temp_config_dir):
         """Test setting a simple value."""
-        stdout, stderr, code = cli_runner(["config", "set", "test.key", "value"])
+        stdout, stderr, code = cli_runner(["configure", "config", "set", "test.key", "value"])
         assert "Set test.key = value" in stdout
         assert code == 0
 
@@ -67,7 +67,7 @@ class TestConfigSet:
 
     def test_set_boolean_value(self, cli_runner, temp_config_dir):
         """Test setting a boolean value."""
-        stdout, stderr, code = cli_runner(["config", "set", "test.enabled", "true"])
+        stdout, stderr, code = cli_runner(["configure", "config", "set", "test.enabled", "true"])
         assert code == 0
 
         prefs_file = temp_config_dir / "preferences.yml"
@@ -76,7 +76,7 @@ class TestConfigSet:
 
     def test_set_numeric_value(self, cli_runner, temp_config_dir):
         """Test setting a numeric value."""
-        stdout, stderr, code = cli_runner(["config", "set", "test.count", "42"])
+        stdout, stderr, code = cli_runner(["configure", "config", "set", "test.count", "42"])
         assert code == 0
 
         prefs_file = temp_config_dir / "preferences.yml"
@@ -89,7 +89,7 @@ class TestConfigDelete:
 
     def test_delete_existing_key(self, cli_runner, sample_prefs):
         """Test deleting an existing key."""
-        stdout, stderr, code = cli_runner(["config", "delete", "test.nested.value"])
+        stdout, stderr, code = cli_runner(["configure", "config", "delete", "test.nested.value"])
         assert "Deleted test.nested.value" in stdout
         assert code == 0
 
@@ -99,13 +99,13 @@ class TestConfigDelete:
 
     def test_delete_missing_key(self, cli_runner, sample_prefs):
         """Test deleting a non-existent key."""
-        stdout, stderr, code = cli_runner(["config", "delete", "nonexistent.key"])
+        stdout, stderr, code = cli_runner(["configure", "config", "delete", "nonexistent.key"])
         assert "Key not found" in stderr
         assert code == 1
 
     def test_delete_top_level_key(self, cli_runner, sample_prefs):
         """Test deleting a top-level key."""
-        stdout, stderr, code = cli_runner(["config", "delete", "test"])
+        stdout, stderr, code = cli_runner(["configure", "config", "delete", "test"])
         assert "Deleted test" in stdout
         assert code == 0
 
@@ -118,7 +118,7 @@ class TestConfigList:
 
     def test_list_preferences(self, cli_runner, sample_prefs):
         """Test listing all preferences."""
-        stdout, stderr, code = cli_runner(["config", "list"])
+        stdout, stderr, code = cli_runner(["configure", "config", "list"])
         assert "Preferences:" in stdout
         # Rich tree output shows "worktree" without colon
         assert "worktree" in stdout
@@ -128,7 +128,7 @@ class TestConfigList:
 
     def test_list_no_preferences(self, cli_runner, temp_config_dir):
         """Test listing when no preferences exist."""
-        stdout, stderr, code = cli_runner(["config", "list"])
+        stdout, stderr, code = cli_runner(["configure", "config", "list"])
         assert "No preferences found" in stdout
         assert code == 0
 
@@ -138,7 +138,7 @@ class TestConfigShowPath:
 
     def test_show_path_displays_paths(self, cli_runner, temp_config_dir):
         """Test show-path lists config file paths."""
-        stdout, stderr, code = cli_runner(["config", "show-path"])
+        stdout, stderr, code = cli_runner(["configure", "config", "show-path"])
         assert "Config file paths" in stdout
         assert "global" in stdout
         assert code == 0
@@ -149,13 +149,13 @@ class TestConfigShowPath:
         config_file = temp_config_dir / "config.yml"
         config_file.write_text("version: 1\n")
 
-        stdout, stderr, code = cli_runner(["config", "show-path"])
+        stdout, stderr, code = cli_runner(["configure", "config", "show-path"])
         assert "exists" in stdout
         assert code == 0
 
     def test_show_path_json(self, cli_runner, temp_config_dir):
         """Test show-path JSON output."""
-        result = cli_runner("--json", "config", "show-path")
+        result = cli_runner("--json", "configure", "config", "show-path")
         assert result.returncode == 0
 
         import json
@@ -170,7 +170,7 @@ class TestConfigClear:
 
     def test_clear_requires_force(self, cli_runner, temp_config_dir):
         """Test clear fails without --force."""
-        result = cli_runner("config", "clear")
+        result = cli_runner("configure", "config", "clear")
         assert result.returncode == 1
         assert "force" in result.stderr.lower()
 
@@ -181,13 +181,13 @@ class TestConfigClear:
         config_file.write_text("version: 1\n")
         assert config_file.exists()
 
-        result = cli_runner("config", "clear", "--force")
+        result = cli_runner("configure", "config", "clear", "--force")
         assert result.returncode == 0
         assert not config_file.exists()
 
     def test_clear_no_files(self, cli_runner, temp_config_dir):
         """Test clear when no config files exist."""
-        result = cli_runner("config", "clear", "--force")
+        result = cli_runner("configure", "config", "clear", "--force")
         assert result.returncode == 0
         assert "No configuration files" in result.stdout
 
@@ -201,13 +201,13 @@ class TestConfigSetPath:
         custom_config = temp_repo / "custom-config.yml"
         custom_config.write_text("version: 1\ndefaults:\n  base_branch: custom\n")
 
-        result = cli_runner("config", "set-path", str(custom_config))
+        result = cli_runner("configure", "config", "set-path", str(custom_config))
         assert result.returncode == 0
         assert "Custom config path set" in result.stdout
 
     def test_set_path_nonexistent_file(self, cli_runner, temp_config_dir):
         """Test set-path with non-existent file."""
-        result = cli_runner("config", "set-path", "/nonexistent/path.yml")
+        result = cli_runner("configure", "config", "set-path", "/nonexistent/path.yml")
         assert result.returncode == 1
         assert "does not exist" in result.stderr
 
@@ -217,7 +217,7 @@ class TestConfigSetPath:
         invalid_file = temp_repo / "invalid.yml"
         invalid_file.write_text("invalid: [unclosed bracket")
 
-        result = cli_runner("config", "set-path", str(invalid_file))
+        result = cli_runner("configure", "config", "set-path", str(invalid_file))
         assert result.returncode == 1
         assert "Invalid YAML" in result.stderr
 
@@ -341,7 +341,7 @@ class TestConfigShowMerged:
         """Test config show in JSON mode shows merged and sources."""
         import json
 
-        result = cli_runner("--json", "config", "show")
+        result = cli_runner("--json", "configure", "config", "show")
         assert result.returncode == 0
 
         data = json.loads(result.stdout)
@@ -354,7 +354,7 @@ class TestConfigShowMerged:
         project_config = temp_repo / ".agenticcli.yml"
         project_config.write_text("defaults:\n  repo_abbreviation: PROJ\n")
 
-        result = cli_runner("config", "show")
+        result = cli_runner("configure", "config", "show")
         assert result.returncode == 0
         assert "project" in result.stdout
         assert "PROJ" in result.stdout

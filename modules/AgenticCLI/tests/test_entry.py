@@ -33,7 +33,7 @@ class TestEntryPoint:
         """Test main() delegates to run_cli for commands."""
         from agenticcli.entry import main
 
-        with patch.object(sys, "argv", ["agentic", "config", "show"]):
+        with patch.object(sys, "argv", ["agentic", "configure", "config", "show"]):
             try:
                 main()
             except SystemExit:

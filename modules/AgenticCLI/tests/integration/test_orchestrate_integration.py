@@ -1,4 +1,4 @@
-"""Integration tests for agentic orchestrate command.
+"""Integration tests for agentic session orchestrate command.
 
 These tests run the ACTUAL installed CLI binary, not mocked subprocess calls.
 This is the only way to catch bugs like the command-too-long error that
@@ -14,13 +14,13 @@ class TestOrchestrateNoTmux:
     """Test orchestrate command without tmux (CI-compatible)."""
 
     def test_planning_mode_starts_without_error(self):
-        """agentic orchestrate --mode planning --no-tmux starts without command-too-long error."""
+        """agentic session orchestrate --mode planning --no-tmux starts without command-too-long error."""
         result = subprocess.run(
-            ["agentic", "orchestrate", "--mode", "planning", "--no-tmux"],
+            ["agentic", "session", "orchestrate", "--mode", "planning", "--no-tmux"],
             capture_output=True,
             text=True,
             timeout=15,
-            input="\n",
+            input="/exit\n",
         )
         assert "argument list too long" not in result.stderr.lower(), (
             f"Command too long error: {result.stderr[:500]}"
@@ -30,33 +30,33 @@ class TestOrchestrateNoTmux:
         )
 
     def test_executor_mode_starts_without_error(self):
-        """agentic orchestrate --mode executor --no-tmux starts without command-too-long error."""
+        """agentic session orchestrate --mode executor --no-tmux starts without command-too-long error."""
         result = subprocess.run(
-            ["agentic", "orchestrate", "--mode", "executor", "--no-tmux"],
+            ["agentic", "session", "orchestrate", "--mode", "executor", "--no-tmux"],
             capture_output=True,
             text=True,
             timeout=15,
-            input="\n",
+            input="/exit\n",
         )
         assert "argument list too long" not in result.stderr.lower()
         assert "command too long" not in result.stderr.lower()
 
     def test_loop_mode_starts_without_error(self):
-        """agentic orchestrate --mode loop --no-tmux starts without command-too-long error."""
+        """agentic session orchestrate --mode loop --no-tmux starts without command-too-long error."""
         result = subprocess.run(
-            ["agentic", "orchestrate", "--mode", "loop", "--no-tmux"],
+            ["agentic", "session", "orchestrate", "--mode", "loop", "--no-tmux"],
             capture_output=True,
             text=True,
             timeout=15,
-            input="\n",
+            input="/exit\n",
         )
         assert "argument list too long" not in result.stderr.lower()
         assert "command too long" not in result.stderr.lower()
 
     def test_invalid_mode_gives_clear_error(self):
-        """agentic orchestrate --mode bogus gives a clear error, not a crash."""
+        """agentic session orchestrate --mode bogus gives a clear error, not a crash."""
         result = subprocess.run(
-            ["agentic", "orchestrate", "--mode", "bogus", "--no-tmux"],
+            ["agentic", "session", "orchestrate", "--mode", "bogus", "--no-tmux"],
             capture_output=True,
             text=True,
             timeout=10,
@@ -78,11 +78,11 @@ class TestOrchestratePromptFile:
             os.unlink(f)
 
         result = subprocess.run(
-            ["agentic", "orchestrate", "--mode", "planning", "--no-tmux"],
+            ["agentic", "session", "orchestrate", "--mode", "planning", "--no-tmux"],
             capture_output=True,
             text=True,
             timeout=15,
-            input="\n",
+            input="/exit\n",
         )
 
         # A temp file should have been created

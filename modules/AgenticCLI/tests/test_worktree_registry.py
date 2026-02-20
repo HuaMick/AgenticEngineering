@@ -108,7 +108,7 @@ class TestGeneratePlanFolderNameWithRegistry:
 
     def test_uses_registry_abbreviation(self, tmp_path):
         """Uses abbreviation from registry when branch is found."""
-        from agenticcli.commands.worktree import generate_plan_folder_name
+        from agenticcli.utils.naming import generate_plan_folder_name
 
         # Set up registry
         registry_file = tmp_path / "docs" / "worktrees.yml"
@@ -119,36 +119,22 @@ class TestGeneratePlanFolderNameWithRegistry:
             ]
         }))
 
-        name = generate_plan_folder_name("my-feature", tmp_path)
+        name = generate_plan_folder_name(tmp_path, "my-feature", branch="my-feature")
         # Should use MF from registry, not fallback
         assert "MF_" in name
-        assert name.endswith("_my-feature")
+        assert name.endswith("_my_feature")
 
     def test_falls_back_to_capital_extraction(self, tmp_path):
         """Falls back to capital-letter extraction for unknown branch."""
-        from agenticcli.commands.worktree import generate_plan_folder_name
+        from agenticcli.utils.naming import generate_plan_folder_name
 
         # No registry file - should fall back
-        name = generate_plan_folder_name("unknown-branch", tmp_path)
+        name = generate_plan_folder_name(tmp_path, "unknown-branch")
         # tmp_path name is random, so just check the pattern
-        assert name.endswith("_unknown-branch")
+        assert name.endswith("_unknown_branch")
         assert len(name.split("_")[0]) == 8  # YYMMDDXX
 
-    def test_explicit_abbreviation_overrides_registry(self, tmp_path):
-        """Explicit abbreviation parameter overrides registry."""
-        from agenticcli.commands.worktree import generate_plan_folder_name
 
-        # Set up registry with different abbreviation
-        registry_file = tmp_path / "docs" / "worktrees.yml"
-        registry_file.parent.mkdir(parents=True)
-        registry_file.write_text(yaml.dump({
-            "worktrees": [
-                {"branch": "my-feature", "abbreviation": "MF", "description": "My Feature"},
-            ]
-        }))
-
-        name = generate_plan_folder_name("my-feature", tmp_path, abbreviation="XX")
-        assert "XX_" in name
 
 
 # ---------------------------------------------------------------------------

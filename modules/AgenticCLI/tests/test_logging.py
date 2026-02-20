@@ -173,19 +173,19 @@ class TestLoggingIntegration:
     def test_health_command_logs(self, cli_runner, tmp_path):
         """Test running a command creates log entries."""
         # Run health command which initializes logging
-        result = cli_runner("health")
+        result = cli_runner("setup", "health")
         assert result.returncode == 0
 
     def test_debug_flag_shows_console_output(self, cli_runner, capsys):
         """Test --debug flag shows debug output."""
         # This is tricky to test because cli_runner captures output
         # Just verify the flag is accepted
-        result = cli_runner("--debug", "health")
+        result = cli_runner("--debug", "setup", "health")
         assert result.returncode == 0
 
     def test_health_shows_logs_dir_check(self, cli_runner):
         """Test health command shows logs_dir check."""
-        result = cli_runner("-j", "health")
+        result = cli_runner("-j", "setup", "health")
         assert result.returncode == 0
 
         import json

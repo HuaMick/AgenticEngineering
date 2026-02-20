@@ -132,8 +132,8 @@ class TestOrchestratePlanningLoop:
 
         # Mock _get_orchestration_loops_dir to use tmp_path
         monkeypatch.setattr(
-            "agenticcli.commands.orchestrate._get_orchestration_loops_dir",
-            lambda: state_dir
+            "agenticcli.commands.orchestrate._store.get_dir",
+            lambda override=None: state_dir
         )
 
         with patch("agenticcli.workflows.orchestration.OrchestrationRunner") as MockRunner, \
@@ -189,8 +189,8 @@ class TestOrchestratePlanningLoop:
         state_dir = tmp_path / ".agentic" / "orchestration_loops"
         state_dir.mkdir(parents=True)
         monkeypatch.setattr(
-            "agenticcli.commands.orchestrate._get_orchestration_loops_dir",
-            lambda: state_dir
+            "agenticcli.commands.orchestrate._store.get_dir",
+            lambda override=None: state_dir
         )
 
         with patch("agenticcli.workflows.orchestration.OrchestrationRunner") as MockRunner, \
@@ -235,8 +235,8 @@ class TestOrchestratePlanningLoop:
         state_dir = tmp_path / ".agentic" / "orchestration_loops"
         state_dir.mkdir(parents=True)
         monkeypatch.setattr(
-            "agenticcli.commands.orchestrate._get_orchestration_loops_dir",
-            lambda: state_dir
+            "agenticcli.commands.orchestrate._store.get_dir",
+            lambda override=None: state_dir
         )
 
         with patch("agenticcli.workflows.orchestration.OrchestrationRunner") as MockRunner, \

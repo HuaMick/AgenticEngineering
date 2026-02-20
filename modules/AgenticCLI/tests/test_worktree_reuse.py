@@ -16,8 +16,8 @@ class TestFindIdleWorktrees:
     """Tests for find_idle_worktrees function."""
 
     @patch("agenticcli.commands.worktree.get_actual_worktrees")
-    @patch("agenticcli.commands.session._list_all_sessions")
-    @patch("agenticcli.commands.session._is_process_running")
+    @patch("agenticcli.commands.session._store.list_all")
+    @patch("agenticcli.utils.state_store.is_process_running")
     def test_returns_idle_non_main_worktrees(
         self, mock_running, mock_sessions, mock_worktrees
     ):
@@ -40,8 +40,8 @@ class TestFindIdleWorktrees:
         assert branches == {"feat-a", "feat-b"}
 
     @patch("agenticcli.commands.worktree.get_actual_worktrees")
-    @patch("agenticcli.commands.session._list_all_sessions")
-    @patch("agenticcli.commands.session._is_process_running")
+    @patch("agenticcli.commands.session._store.list_all")
+    @patch("agenticcli.utils.state_store.is_process_running")
     def test_excludes_worktrees_with_active_sessions(
         self, mock_running, mock_sessions, mock_worktrees
     ):
@@ -70,8 +70,8 @@ class TestFindIdleWorktrees:
         assert result[0]["branch"] == "feat-b"
 
     @patch("agenticcli.commands.worktree.get_actual_worktrees")
-    @patch("agenticcli.commands.session._list_all_sessions")
-    @patch("agenticcli.commands.session._is_process_running")
+    @patch("agenticcli.commands.session._store.list_all")
+    @patch("agenticcli.utils.state_store.is_process_running")
     def test_all_busy_returns_empty(
         self, mock_running, mock_sessions, mock_worktrees
     ):
@@ -96,7 +96,7 @@ class TestFindIdleWorktrees:
         assert len(result) == 0
 
     @patch("agenticcli.commands.worktree.get_actual_worktrees")
-    @patch("agenticcli.commands.session._list_all_sessions")
+    @patch("agenticcli.commands.session._store.list_all")
     def test_dead_session_not_considered_active(
         self, mock_sessions, mock_worktrees
     ):
@@ -117,14 +117,14 @@ class TestFindIdleWorktrees:
         ]
 
         # PID is dead
-        with patch("agenticcli.commands.session._is_process_running", return_value=False):
+        with patch("agenticcli.utils.state_store.is_process_running", return_value=False):
             result = find_idle_worktrees(Path("/home/code/Repo"))
 
         assert len(result) == 1
         assert result[0]["branch"] == "feat-a"
 
     @patch("agenticcli.commands.worktree.get_actual_worktrees")
-    @patch("agenticcli.commands.session._list_all_sessions")
+    @patch("agenticcli.commands.session._store.list_all")
     def test_excludes_main_and_master(self, mock_sessions, mock_worktrees):
         """Main and master worktrees are always excluded."""
         from agenticcli.commands.worktree import find_idle_worktrees
@@ -259,8 +259,8 @@ class TestCleanupWorktreeIfIdle:
     @patch("agenticcli.commands.worktree.update_workspace_remove")
     @patch("agenticcli.commands.worktree.find_workspace_file")
     @patch("subprocess.run")
-    @patch("agenticcli.commands.session._is_process_running")
-    @patch("agenticcli.commands.session._list_all_sessions")
+    @patch("agenticcli.utils.state_store.is_process_running")
+    @patch("agenticcli.commands.session._store.list_all")
     @patch("agenticcli.commands.worktree.worktree_has_live_plans")
     @patch("agenticcli.commands.worktree.load_worktree_registry")
     @patch("agenticcli.commands.worktree.get_actual_worktrees")
@@ -296,8 +296,8 @@ class TestCleanupWorktreeIfIdle:
         assert result["cleaned"] is True
         assert result["path"] == "/home/code/Repo-feat"
 
-    @patch("agenticcli.commands.session._is_process_running")
-    @patch("agenticcli.commands.session._list_all_sessions")
+    @patch("agenticcli.utils.state_store.is_process_running")
+    @patch("agenticcli.commands.session._store.list_all")
     @patch("agenticcli.commands.worktree.worktree_has_live_plans")
     @patch("agenticcli.commands.worktree.load_worktree_registry")
     @patch("agenticcli.commands.worktree.get_actual_worktrees")

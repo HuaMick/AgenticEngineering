@@ -29,22 +29,25 @@ def loops_dir(tmp_path):
 
 @pytest.fixture
 def mock_sessions_dir(sessions_dir, monkeypatch):
-    """Patch _get_sessions_dir to use temp directory."""
+    """Patch StateStore, _get_context_dir, and _get_logs_dir to use temp directories."""
     from agenticcli.commands import session
 
-    monkeypatch.setattr(session, "_get_sessions_dir", lambda: sessions_dir)
+    monkeypatch.setattr(session._store, "get_dir", lambda override=None: sessions_dir)
     logs_dir = sessions_dir / "logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
     monkeypatch.setattr(session, "_get_logs_dir", lambda: logs_dir)
+    context_dir = sessions_dir / "context"
+    context_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(session, "_get_context_dir", lambda: context_dir)
     return sessions_dir
 
 
 @pytest.fixture
 def mock_loops_dir(loops_dir, monkeypatch):
-    """Patch _get_loops_dir to use temp directory."""
+    """Patch StateStore to use temp directory."""
     from agenticcli.commands import loop
 
-    monkeypatch.setattr(loop, "_get_loops_dir", lambda: loops_dir)
+    monkeypatch.setattr(loop._store, "get_dir", lambda override=None: loops_dir)
     return loops_dir
 
 
@@ -98,8 +101,12 @@ class TestSessionSpawnPermissionFlag:
         assert "--dangerously-skip-permissions" in cmd
 
     @patch("agenticcli.commands.session.subprocess.Popen")
-    def test_session_spawn_without_flag(self, mock_popen, mock_sessions_dir):
-        """Test that session spawn does not pass flag when not set."""
+    def test_session_spawn_always_includes_skip_permissions(self, mock_popen, mock_sessions_dir):
+        """Test that session spawn always includes --dangerously-skip-permissions.
+
+        Spawned sessions run autonomously, so the flag is always added regardless
+        of the args setting.
+        """
         from agenticcli.commands import session
 
         mock_process = MagicMock()
@@ -117,13 +124,13 @@ class TestSessionSpawnPermissionFlag:
 
         session.cmd_spawn(args)
 
-        # Verify Popen was called without the flag
+        # Spawned sessions always include the flag for autonomous operation
         mock_popen.assert_called_once()
         call_args = mock_popen.call_args
         cmd = call_args[0][0]
 
         assert "claude" in cmd
-        assert "--dangerously-skip-permissions" not in cmd
+        assert "--dangerously-skip-permissions" in cmd
 
     @patch("agenticcli.commands.session.subprocess.Popen")
     def test_session_spawn_background_with_flag(
@@ -306,9 +313,10 @@ class TestPermissionFlagIntegration:
         call_args = mock_popen.call_args
         cmd = call_args[0][0]
 
-        # Flag should come after 'claude' and '--print' but before prompt
+        # Flag should come after 'claude' and '--print' but before the prompt
+        # (prompt is now a compiled context reference, always last in cmd)
         claude_idx = cmd.index("claude")
         flag_idx = cmd.index("--dangerously-skip-permissions")
-        prompt_idx = cmd.index("Test task")
+        prompt_idx = len(cmd) - 1  # prompt is always the last argument
 
         assert claude_idx < flag_idx < prompt_idx

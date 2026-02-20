@@ -49,10 +49,6 @@ class TestStabilityLevels:
 class TestGetCommandStability:
     """Tests for get_command_stability function."""
 
-    def test_get_cicd_command_stable(self):
-        """Verify cicd command is now STABLE (matured in iteration-28)."""
-        assert get_command_stability("cicd") == StabilityLevel.STABLE
-
     def test_get_manifest_command_stable(self):
         """Verify manifest command is now STABLE (matured in iteration-28)."""
         assert get_command_stability("manifest") == StabilityLevel.STABLE
@@ -72,7 +68,7 @@ class TestGetStabilityBannerText:
 
     def test_banner_text_alpha(self):
         """Verify ALPHA banner text format."""
-        text = get_stability_banner_text(StabilityLevel.ALPHA, "cicd")
+        text = get_stability_banner_text(StabilityLevel.ALPHA, "test-command")
         assert text is not None
         assert "[ALPHA]" in text
         assert "experimental" in text.lower()
@@ -123,7 +119,7 @@ class TestStabilityBannerIntegration:
     def test_print_stability_banner_suppressed_in_json_mode(self, cli_runner):
         """Verify banner is suppressed in JSON output mode."""
         # Run an ALPHA command with --json
-        result = cli_runner("--json", "health")
+        result = cli_runner("--json", "setup", "health")
         # Health is STABLE, but let's verify JSON mode works
         assert result.returncode == 0
         # Output should be JSON, not contain banner markers
@@ -134,6 +130,5 @@ class TestStabilityBannerIntegration:
         result = cli_runner("--help")
         assert result.returncode == 0
         # All commands are now STABLE, no indicators should appear
-        # cicd and manifest were matured in iteration-28
         assert "[ALPHA]" not in result.stdout
         assert "[BETA]" not in result.stdout

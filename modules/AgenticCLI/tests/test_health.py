@@ -8,13 +8,13 @@ class TestHealthCommand:
 
     def test_health_command(self, cli_runner):
         """Test health command runs."""
-        result = cli_runner("health")
+        result = cli_runner("setup", "health")
         assert result.returncode == 0
         assert "Health Check" in result.stdout or "cli_version" in result.stdout
 
     def test_health_json_output(self, cli_runner):
         """Test health command JSON output."""
-        result = cli_runner("--json", "health")
+        result = cli_runner("--json", "setup", "health")
         assert result.returncode == 0
         data = json.loads(result.stdout)
         assert "status" in data
@@ -23,13 +23,13 @@ class TestHealthCommand:
 
     def test_health_help(self, cli_runner):
         """Test health --help."""
-        result = cli_runner("health", "--help")
+        result = cli_runner("setup", "health", "--help")
         assert result.returncode == 0
         assert "health" in result.stdout.lower()
 
     def test_health_checks_config_dir(self, cli_runner):
         """Test health checks config directory."""
-        result = cli_runner("--json", "health")
+        result = cli_runner("--json", "setup", "health")
         assert result.returncode == 0
         data = json.loads(result.stdout)
         config_check = next((c for c in data["checks"] if c["name"] == "config_dir"), None)
@@ -38,7 +38,7 @@ class TestHealthCommand:
 
     def test_health_checks_git(self, cli_runner):
         """Test health checks git availability."""
-        result = cli_runner("--json", "health")
+        result = cli_runner("--json", "setup", "health")
         assert result.returncode == 0
         data = json.loads(result.stdout)
         git_check = next((c for c in data["checks"] if c["name"] == "git"), None)
@@ -48,7 +48,7 @@ class TestHealthCommand:
 
     def test_health_checks_uv(self, cli_runner):
         """Test health checks uv availability."""
-        result = cli_runner("--json", "health")
+        result = cli_runner("--json", "setup", "health")
         assert result.returncode == 0
         data = json.loads(result.stdout)
         uv_check = next((c for c in data["checks"] if c["name"] == "uv"), None)

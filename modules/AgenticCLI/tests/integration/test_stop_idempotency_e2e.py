@@ -36,7 +36,7 @@ class TestSessionStopIdempotencyE2E:
         from agenticcli.commands import session
 
         # Mock the sessions directory
-        monkeypatch.setattr(session, "_get_sessions_dir", lambda: sessions_dir)
+        monkeypatch.setattr(session._store, "get_dir", lambda override=None: sessions_dir)
 
         # Create a completed session
         session_data = {
@@ -51,7 +51,7 @@ class TestSessionStopIdempotencyE2E:
             "working_dir": "/tmp",
             "command": "claude --print Test",
         }
-        session._save_session(session_data)
+        session._store.save(session_data)
 
         # First stop call
         from types import SimpleNamespace
@@ -71,7 +71,7 @@ class TestSessionStopIdempotencyE2E:
         """Test that calling session stop three times returns success."""
         from agenticcli.commands import session
 
-        monkeypatch.setattr(session, "_get_sessions_dir", lambda: sessions_dir)
+        monkeypatch.setattr(session._store, "get_dir", lambda override=None: sessions_dir)
 
         session_data = {
             "session_id": "test-session-87654321",
@@ -85,7 +85,7 @@ class TestSessionStopIdempotencyE2E:
             "working_dir": "/tmp",
             "command": "claude --print Test",
         }
-        session._save_session(session_data)
+        session._store.save(session_data)
 
         from types import SimpleNamespace
 
@@ -100,7 +100,7 @@ class TestSessionStopIdempotencyE2E:
         """Test that stopping a failed session multiple times is idempotent."""
         from agenticcli.commands import session
 
-        monkeypatch.setattr(session, "_get_sessions_dir", lambda: sessions_dir)
+        monkeypatch.setattr(session._store, "get_dir", lambda override=None: sessions_dir)
 
         session_data = {
             "session_id": "failed-session-11111111",
@@ -115,7 +115,7 @@ class TestSessionStopIdempotencyE2E:
             "command": "claude --print Test",
             "exit_code": 1,
         }
-        session._save_session(session_data)
+        session._store.save(session_data)
 
         from types import SimpleNamespace
 
@@ -139,7 +139,7 @@ class TestLoopStopIdempotencyE2E:
         """Test that calling loop stop twice on same loop returns success."""
         from agenticcli.commands import loop
 
-        monkeypatch.setattr(loop, "_get_loops_dir", lambda: loops_dir)
+        monkeypatch.setattr(loop._store, "get_dir", lambda override=None: loops_dir)
 
         loop_data = {
             "loop_id": "test-loop-12345678",
@@ -156,7 +156,7 @@ class TestLoopStopIdempotencyE2E:
             "command": "claude --print --max-turns 10 --prompt Test loop",
             "iterations": [],
         }
-        loop._save_loop(loop_data)
+        loop._store.save(loop_data)
 
         from types import SimpleNamespace
 
@@ -175,7 +175,7 @@ class TestLoopStopIdempotencyE2E:
         from agenticcli.commands import loop
         from unittest.mock import patch
 
-        monkeypatch.setattr(loop, "_get_loops_dir", lambda: loops_dir)
+        monkeypatch.setattr(loop._store, "get_dir", lambda override=None: loops_dir)
 
         loop_data = {
             "loop_id": "json-loop-87654321",
@@ -192,7 +192,7 @@ class TestLoopStopIdempotencyE2E:
             "command": "claude --print Test loop",
             "iterations": [],
         }
-        loop._save_loop(loop_data)
+        loop._store.save(loop_data)
 
         from types import SimpleNamespace
 
@@ -220,7 +220,7 @@ class TestCrossCommandIdempotency:
         """Test stopping a session that completed naturally is idempotent."""
         from agenticcli.commands import session
 
-        monkeypatch.setattr(session, "_get_sessions_dir", lambda: sessions_dir)
+        monkeypatch.setattr(session._store, "get_dir", lambda override=None: sessions_dir)
 
         # Simulate a session that ran to completion
         session_data = {
@@ -236,7 +236,7 @@ class TestCrossCommandIdempotency:
             "command": "claude --print Test",
             "exit_code": 0,
         }
-        session._save_session(session_data)
+        session._store.save(session_data)
 
         from types import SimpleNamespace
 
@@ -256,7 +256,7 @@ class TestCrossCommandIdempotency:
         """Test that force stop on completed session is also idempotent."""
         from agenticcli.commands import session
 
-        monkeypatch.setattr(session, "_get_sessions_dir", lambda: sessions_dir)
+        monkeypatch.setattr(session._store, "get_dir", lambda override=None: sessions_dir)
 
         session_data = {
             "session_id": "force-stop-12345678",
@@ -270,7 +270,7 @@ class TestCrossCommandIdempotency:
             "working_dir": "/tmp",
             "command": "claude --print Test",
         }
-        session._save_session(session_data)
+        session._store.save(session_data)
 
         from types import SimpleNamespace
 

@@ -8,9 +8,11 @@ class TestCLIHelp:
         """Test main --help output."""
         stdout, stderr, code = cli_runner(["--help"])
         assert "AgenticCLI" in stdout
-        assert "worktree" in stdout
+        assert "devops" in stdout
         assert "plan" in stdout
-        assert "config" in stdout
+        assert "configure" in stdout
+        assert "setup" in stdout
+        assert "session" in stdout
         assert code == 0
 
     def test_no_args_shows_help(self, cli_runner):
@@ -24,8 +26,8 @@ class TestSubcommandHelp:
     """Tests for subcommand help output."""
 
     def test_worktree_help(self, cli_runner):
-        """Test worktree --help output."""
-        stdout, stderr, code = cli_runner(["worktree", "--help"])
+        """Test devops worktree --help output."""
+        stdout, stderr, code = cli_runner(["devops", "worktree", "--help"])
         assert "worktree" in stdout.lower()
         assert "create" in stdout
         assert "list" in stdout
@@ -42,8 +44,8 @@ class TestSubcommandHelp:
         assert code == 0
 
     def test_config_help(self, cli_runner):
-        """Test config --help output."""
-        stdout, stderr, code = cli_runner(["config", "--help"])
+        """Test configure config --help output."""
+        stdout, stderr, code = cli_runner(["configure", "config", "--help"])
         assert "config" in stdout.lower()
         assert "show" in stdout
         assert "get" in stdout
@@ -51,13 +53,6 @@ class TestSubcommandHelp:
         assert "delete" in stdout
         assert code == 0
 
-    def test_template_help(self, cli_runner):
-        """Test template --help output."""
-        stdout, stderr, code = cli_runner(["template", "--help"])
-        assert "template" in stdout.lower()
-        assert "generate" in stdout
-        assert "list" in stdout
-        assert code == 0
 
 
 class TestCLIVersion:
@@ -74,33 +69,24 @@ class TestCommandAliases:
     """Tests for command aliases."""
 
     def test_worktree_alias_wt(self, cli_runner):
-        """Test 'wt' alias works for worktree."""
-        result_full = cli_runner(["worktree", "--help"])
-        result_alias = cli_runner(["wt", "--help"])
+        """Test 'wt' alias works for worktree under devops."""
+        result_full = cli_runner(["devops", "worktree", "--help"])
+        result_alias = cli_runner(["devops", "wt", "--help"])
         assert result_full.returncode == 0
         assert result_alias.returncode == 0
         # Both should show worktree help
         assert "create" in result_alias.stdout
         assert "list" in result_alias.stdout
 
-    def test_config_alias_cfg(self, cli_runner):
-        """Test 'cfg' alias works for config."""
-        result_full = cli_runner(["config", "--help"])
+    def test_configure_alias_cfg(self, cli_runner):
+        """Test 'cfg' alias works for configure."""
+        result_full = cli_runner(["configure", "--help"])
         result_alias = cli_runner(["cfg", "--help"])
         assert result_full.returncode == 0
         assert result_alias.returncode == 0
-        # Both should show config help
-        assert "show" in result_alias.stdout
-        assert "get" in result_alias.stdout
-
-    def test_template_alias_tpl(self, cli_runner):
-        """Test 'tpl' alias works for template."""
-        result_full = cli_runner(["template", "--help"])
-        result_alias = cli_runner(["tpl", "--help"])
-        assert result_full.returncode == 0
-        assert result_alias.returncode == 0
-        # Both should show template help
-        assert "generate" in result_alias.stdout
+        # Both should show configure subcommands
+        assert "config" in result_alias.stdout
+        assert "preferences" in result_alias.stdout
 
     def test_stories_alias_st(self, cli_runner):
         """Test 'st' alias works for stories."""
@@ -126,7 +112,7 @@ class TestFlagShortcuts:
 
     def test_json_flag_shortcut_j(self, cli_runner):
         """Test '-j' shortcut works for --json."""
-        result = cli_runner(["-j", "health"])
+        result = cli_runner(["-j", "setup", "health"])
         assert result.returncode == 0
         # Should be valid JSON output
         import json
@@ -138,10 +124,11 @@ class TestFlagShortcuts:
         """Test main help shows primary command names."""
         result = cli_runner(["--help"])
         assert result.returncode == 0
-        # Typer uses hidden commands for aliases, so check primary names instead
-        assert "worktree" in result.stdout
-        assert "config" in result.stdout
-        assert "template" in result.stdout
+        # Check top-level groups and commands
+        assert "setup" in result.stdout
+        assert "configure" in result.stdout
+        assert "session" in result.stdout
+        assert "devops" in result.stdout
         assert "stories" in result.stdout
         assert "manifest" in result.stdout
         # Check -j flag is documented

@@ -250,13 +250,13 @@ class TestEnvCommands:
 
     def test_env_show_empty(self, cli_runner, temp_config_dir):
         """Test env show with no configured variables."""
-        stdout, stderr, code = cli_runner(["env", "show"])
+        stdout, stderr, code = cli_runner(["configure", "env", "show"])
         assert code == 0
         assert "Environment Configuration" in stdout
 
     def test_env_show_json(self, cli_runner, temp_config_dir):
         """Test env show with JSON output."""
-        result = cli_runner("--json", "env", "show")
+        result = cli_runner("--json", "configure", "env", "show")
         assert result.returncode == 0
 
         data = json.loads(result.stdout)
@@ -264,13 +264,13 @@ class TestEnvCommands:
 
     def test_env_export_shell(self, cli_runner, temp_config_dir):
         """Test env export in shell format."""
-        stdout, stderr, code = cli_runner(["env", "export"])
+        stdout, stderr, code = cli_runner(["configure", "env", "export"])
         assert code == 0
         # May be empty or have AGENTIC_* vars
 
     def test_env_export_json(self, cli_runner, temp_config_dir):
         """Test env export in JSON format."""
-        result = cli_runner("env", "export", "--format", "json")
+        result = cli_runner("configure", "env", "export", "--format", "json")
         assert result.returncode == 0
 
         data = json.loads(result.stdout)
@@ -278,19 +278,19 @@ class TestEnvCommands:
 
     def test_env_run_success(self, cli_runner, temp_config_dir):
         """Test env run with successful command."""
-        result = cli_runner("env", "run", "echo", "hello")
+        result = cli_runner("configure", "env", "run", "echo", "hello")
         assert result.returncode == 0
         assert "hello" in result.stdout
 
     def test_env_run_failure(self, cli_runner, temp_config_dir):
         """Test env run with failing command."""
         # Use a command that doesn't need dash arguments
-        result = cli_runner("env", "run", "false")
+        result = cli_runner("configure", "env", "run", "false")
         assert result.returncode != 0
 
     def test_env_run_json(self, cli_runner, temp_config_dir):
         """Test env run with JSON output."""
-        result = cli_runner("--json", "env", "run", "echo", "test")
+        result = cli_runner("--json", "configure", "env", "run", "echo", "test")
         assert result.returncode == 0
 
         data = json.loads(result.stdout)

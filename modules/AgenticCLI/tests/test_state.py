@@ -199,13 +199,13 @@ class TestStateCommands:
 
     def test_state_list_empty(self, cli_runner, temp_config_dir):
         """Test state list with empty registry."""
-        stdout, stderr, code = cli_runner(["state", "list"])
+        stdout, stderr, code = cli_runner(["configure", "state", "list"])
         assert code == 0
         assert "No registered processes" in stdout
 
     def test_state_list_json(self, cli_runner, temp_config_dir):
         """Test state list with JSON output."""
-        result = cli_runner("--json", "state", "list")
+        result = cli_runner("--json", "configure", "state", "list")
         assert result.returncode == 0
 
         data = json.loads(result.stdout)
@@ -215,30 +215,30 @@ class TestStateCommands:
 
     def test_state_show_not_found(self, cli_runner, temp_config_dir):
         """Test state show with non-existent PID."""
-        stdout, stderr, code = cli_runner(["state", "show", "99999"])
+        stdout, stderr, code = cli_runner(["configure", "state", "show", "99999"])
         assert code == 1
         assert "not found" in stderr.lower()
 
     def test_state_clear_empty(self, cli_runner, temp_config_dir):
         """Test state clear with empty registry."""
-        stdout, stderr, code = cli_runner(["state", "clear"])
+        stdout, stderr, code = cli_runner(["configure", "state", "clear"])
         assert code == 0
         assert "0" in stdout
 
     def test_state_clear_all_requires_force(self, cli_runner, temp_config_dir):
         """Test that state clear --all requires --force."""
-        result = cli_runner("state", "clear", "--all")
+        result = cli_runner("configure", "state", "clear", "--all")
         assert result.returncode == 1
         assert "force" in result.stderr.lower()
 
     def test_state_clear_all_with_force(self, cli_runner, temp_config_dir):
         """Test state clear --all --force."""
-        result = cli_runner("state", "clear", "--all", "--force")
+        result = cli_runner("configure", "state", "clear", "--all", "--force")
         assert result.returncode == 0
 
     def test_state_cleanup_empty(self, cli_runner, temp_config_dir):
         """Test state cleanup with empty registry."""
-        stdout, stderr, code = cli_runner(["state", "cleanup"])
+        stdout, stderr, code = cli_runner(["configure", "state", "cleanup"])
         assert code == 0
         assert "No stale processes" in stdout
 

@@ -269,12 +269,17 @@ class TestSpawnWarningOnPendingQuestions:
         # Mock _get_sessions_dir to use tmp_path
         sessions_dir = tmp_path / ".agentic" / "sessions"
         sessions_dir.mkdir(parents=True)
-        monkeypatch.setattr(session_mod, "_get_sessions_dir", lambda: sessions_dir)
+        monkeypatch.setattr(session_mod._store, "get_dir", lambda override=None: sessions_dir)
 
         # Mock _get_logs_dir
         logs_dir = sessions_dir / "logs"
         logs_dir.mkdir(parents=True)
         monkeypatch.setattr(session_mod, "_get_logs_dir", lambda: logs_dir)
+
+        # Mock _get_context_dir
+        context_dir = sessions_dir / "context"
+        context_dir.mkdir(parents=True)
+        monkeypatch.setattr(session_mod, "_get_context_dir", lambda: context_dir)
 
         # Mock token utilities to avoid import issues
         monkeypatch.setattr("agenticcli.utils.tokens.estimate_tokens", lambda t: 100)

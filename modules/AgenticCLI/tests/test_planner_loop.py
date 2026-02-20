@@ -470,7 +470,7 @@ class TestPlannerCommandStart:
             def __init__(self, **kw):
                 pass
 
-        monkeypatch.setattr("agenticcli.commands.planner._get_planner_loops_dir", lambda: tmp_path)
+        monkeypatch.setattr("agenticcli.commands.planner._store.get_dir", lambda override=None: tmp_path)
         monkeypatch.setattr("agenticcli.workflows.planner_loop.PlannerLoopRunner", MockRunner)
         monkeypatch.setattr("agenticcli.workflows.planner_loop.PlannerLoopWorkflow", MockWorkflow)
 
@@ -492,7 +492,7 @@ class TestPlannerCommandStart:
         """Background start forks a subprocess."""
         from agenticcli.commands import planner
 
-        monkeypatch.setattr("agenticcli.commands.planner._get_planner_loops_dir", lambda: tmp_path)
+        monkeypatch.setattr("agenticcli.commands.planner._store.get_dir", lambda override=None: tmp_path)
 
         popen_calls = []
 
@@ -530,7 +530,7 @@ class TestPlannerCommandStop:
         """Stopping a running loop sends SIGTERM."""
         from agenticcli.commands import planner
 
-        monkeypatch.setattr("agenticcli.commands.planner._get_planner_loops_dir", lambda: tmp_path)
+        monkeypatch.setattr("agenticcli.commands.planner._store.get_dir", lambda override=None: tmp_path)
 
         # Create a running state file
         state = {
@@ -563,7 +563,7 @@ class TestPlannerCommandStop:
         """Stopping an already completed loop returns success."""
         from agenticcli.commands import planner
 
-        monkeypatch.setattr("agenticcli.commands.planner._get_planner_loops_dir", lambda: tmp_path)
+        monkeypatch.setattr("agenticcli.commands.planner._store.get_dir", lambda override=None: tmp_path)
 
         state = {
             "id": "pl-done456",
@@ -590,7 +590,7 @@ class TestPlannerCommandStatus:
         """Status with no ID lists all loops."""
         from agenticcli.commands import planner
 
-        monkeypatch.setattr("agenticcli.commands.planner._get_planner_loops_dir", lambda: tmp_path)
+        monkeypatch.setattr("agenticcli.commands.planner._store.get_dir", lambda override=None: tmp_path)
 
         state = {
             "id": "pl-list789",
@@ -616,7 +616,7 @@ class TestPlannerCommandStatus:
         """Status with ID shows specific loop details."""
         from agenticcli.commands import planner
 
-        monkeypatch.setattr("agenticcli.commands.planner._get_planner_loops_dir", lambda: tmp_path)
+        monkeypatch.setattr("agenticcli.commands.planner._store.get_dir", lambda override=None: tmp_path)
 
         state = {
             "id": "pl-specific",
@@ -635,7 +635,7 @@ class TestPlannerCommandStatus:
         (tmp_path / "pl-specific.json").write_text(json.dumps(state))
 
         # Mock process check (not running)
-        monkeypatch.setattr("agenticcli.commands.planner._is_process_running", lambda pid: False)
+        monkeypatch.setattr("agenticcli.commands.planner.is_process_running", lambda pid: False)
 
         args = SimpleNamespace(
             command="planner", planner_command="status",
@@ -656,12 +656,12 @@ class TestStatePersistence:
 
     def test_save_and_load(self, tmp_path):
         """State can be saved and loaded."""
-        from agenticcli.commands.planner import _load_state, _save_state
+        from agenticcli.commands.planner import _store
 
         state = {"id": "pl-test", "status": "running", "pid": 123}
-        _save_state(state, state_dir=tmp_path)
+        _store.save(state, state_dir=tmp_path)
 
-        loaded = _load_state("pl-test", state_dir=tmp_path)
+        loaded = _store.load("pl-test", state_dir=tmp_path)
         assert loaded is not None
         assert loaded["id"] == "pl-test"
         assert loaded["status"] == "running"
@@ -669,27 +669,27 @@ class TestStatePersistence:
 
     def test_load_nonexistent(self, tmp_path):
         """Loading nonexistent state returns None."""
-        from agenticcli.commands.planner import _load_state
+        from agenticcli.commands.planner import _store
 
-        assert _load_state("pl-nope", state_dir=tmp_path) is None
+        assert _store.load("pl-nope", state_dir=tmp_path) is None
 
     def test_list_states(self, tmp_path):
         """List returns all states."""
-        from agenticcli.commands.planner import _list_states, _save_state
+        from agenticcli.commands.planner import _store
 
-        _save_state({"id": "pl-a", "status": "running"}, state_dir=tmp_path)
-        _save_state({"id": "pl-b", "status": "completed"}, state_dir=tmp_path)
+        _store.save({"id": "pl-a", "status": "running"}, state_dir=tmp_path)
+        _store.save({"id": "pl-b", "status": "completed"}, state_dir=tmp_path)
 
-        all_states = _list_states(state_dir=tmp_path)
+        all_states = _store.list_all(state_dir=tmp_path)
         assert len(all_states) == 2
 
     def test_list_active_only(self, tmp_path):
-        """List with active_only filters completed loops."""
-        from agenticcli.commands.planner import _list_states, _save_state
+        """List with filter_fn filters completed loops."""
+        from agenticcli.commands.planner import _store
 
-        _save_state({"id": "pl-run", "status": "running"}, state_dir=tmp_path)
-        _save_state({"id": "pl-done", "status": "completed"}, state_dir=tmp_path)
+        _store.save({"id": "pl-run", "status": "running"}, state_dir=tmp_path)
+        _store.save({"id": "pl-done", "status": "completed"}, state_dir=tmp_path)
 
-        active = _list_states(state_dir=tmp_path, active_only=True)
+        active = _store.list_all(state_dir=tmp_path, filter_fn=lambda s: s.get("status") != "completed")
         assert len(active) == 1
         assert active[0]["id"] == "pl-run"

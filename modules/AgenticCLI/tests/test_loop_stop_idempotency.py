@@ -25,7 +25,7 @@ def mock_loops_dir(loops_dir, monkeypatch):
     """Patch _get_loops_dir to use temp directory."""
     from agenticcli.commands import loop
 
-    monkeypatch.setattr(loop, "_get_loops_dir", lambda: loops_dir)
+    monkeypatch.setattr(loop._store, "get_dir", lambda override=None: loops_dir)
     return loops_dir
 
 
@@ -69,7 +69,7 @@ class TestLoopStopIdempotency:
 
         sample_loop_data["status"] = "completed"
         sample_loop_data["ended_at"] = "2024-01-15T10:10:00"
-        loop._save_loop(sample_loop_data)
+        loop._store.save(sample_loop_data)
 
         args = SimpleNamespace(
             loop_id=sample_loop_data["loop_id"][:8],
@@ -90,7 +90,7 @@ class TestLoopStopIdempotency:
 
         sample_loop_data["status"] = "stopped"
         sample_loop_data["ended_at"] = "2024-01-15T10:10:00"
-        loop._save_loop(sample_loop_data)
+        loop._store.save(sample_loop_data)
 
         args = SimpleNamespace(
             loop_id=sample_loop_data["loop_id"][:8],
@@ -111,7 +111,7 @@ class TestLoopStopIdempotency:
 
         sample_loop_data["status"] = "failed"
         sample_loop_data["ended_at"] = "2024-01-15T10:10:00"
-        loop._save_loop(sample_loop_data)
+        loop._store.save(sample_loop_data)
 
         args = SimpleNamespace(
             loop_id=sample_loop_data["loop_id"][:8],
@@ -132,7 +132,7 @@ class TestLoopStopIdempotency:
         from agenticcli.commands import loop
 
         mock_kill.side_effect = ProcessLookupError()
-        loop._save_loop(sample_loop_data)
+        loop._store.save(sample_loop_data)
 
         args = SimpleNamespace(
             loop_id=sample_loop_data["loop_id"][:8],
@@ -146,7 +146,7 @@ class TestLoopStopIdempotency:
         assert "already exited" in captured.out
 
         # Verify loop was marked as completed
-        loops = loop._list_all_loops()
+        loops = loop._store.list_all()
         assert loops[0]["status"] == "completed"
 
     @patch("os.kill")
@@ -159,7 +159,7 @@ class TestLoopStopIdempotency:
 
         mock_json_output.return_value = True
         sample_loop_data["status"] = "completed"
-        loop._save_loop(sample_loop_data)
+        loop._store.save(sample_loop_data)
 
         args = SimpleNamespace(
             loop_id=sample_loop_data["loop_id"][:8],
@@ -183,7 +183,7 @@ class TestLoopStopIdempotency:
 
         mock_json_output.return_value = True
         mock_kill.side_effect = ProcessLookupError()
-        loop._save_loop(sample_loop_data)
+        loop._store.save(sample_loop_data)
 
         args = SimpleNamespace(
             loop_id=sample_loop_data["loop_id"][:8],

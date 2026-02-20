@@ -25,7 +25,7 @@ def mock_sessions_dir(sessions_dir, monkeypatch):
     """Patch _get_sessions_dir to use temp directory."""
     from agenticcli.commands import session
 
-    monkeypatch.setattr(session, "_get_sessions_dir", lambda: sessions_dir)
+    monkeypatch.setattr(session._store, "get_dir", lambda override=None: sessions_dir)
     return sessions_dir
 
 
@@ -57,7 +57,7 @@ class TestSessionStopIdempotency:
 
         sample_session_data["status"] = "completed"
         sample_session_data["ended_at"] = "2024-01-15T10:05:00"
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
 
         args = SimpleNamespace(
             session_id=sample_session_data["session_id"][:8],
@@ -78,7 +78,7 @@ class TestSessionStopIdempotency:
 
         sample_session_data["status"] = "stopped"
         sample_session_data["ended_at"] = "2024-01-15T10:05:00"
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
 
         args = SimpleNamespace(
             session_id=sample_session_data["session_id"][:8],
@@ -99,7 +99,7 @@ class TestSessionStopIdempotency:
 
         sample_session_data["status"] = "failed"
         sample_session_data["ended_at"] = "2024-01-15T10:05:00"
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
 
         args = SimpleNamespace(
             session_id=sample_session_data["session_id"][:8],
@@ -120,7 +120,7 @@ class TestSessionStopIdempotency:
         from agenticcli.commands import session
 
         mock_kill.side_effect = ProcessLookupError()
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
 
         args = SimpleNamespace(
             session_id=sample_session_data["session_id"][:8],
@@ -134,7 +134,7 @@ class TestSessionStopIdempotency:
         assert "already exited" in captured.out
 
         # Verify session was marked as completed
-        sessions = session._list_all_sessions()
+        sessions = session._store.list_all()
         assert sessions[0]["status"] == "completed"
 
     @patch("os.kill")
@@ -147,7 +147,7 @@ class TestSessionStopIdempotency:
 
         mock_json_output.return_value = True
         sample_session_data["status"] = "completed"
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
 
         args = SimpleNamespace(
             session_id=sample_session_data["session_id"][:8],
@@ -171,7 +171,7 @@ class TestSessionStopIdempotency:
 
         mock_json_output.return_value = True
         mock_kill.side_effect = ProcessLookupError()
-        session._save_session(sample_session_data)
+        session._store.save(sample_session_data)
 
         args = SimpleNamespace(
             session_id=sample_session_data["session_id"][:8],
