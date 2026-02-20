@@ -1,0 +1,136 @@
+name: "Build Phase - Web Terminal UI"
+status: "completed"
+type: "build"
+affected_stories: []
+
+phases:
+  - name: "Phase 1 - AgenticFrontend server + frontend"
+    status: "completed"
+    description: |
+      Build the core web terminal app: Tornado+terminado server and xterm.js frontend.
+      This is the foundation everything else depends on.
+
+  - name: "Phase 2 - CLI integration and session spawn wiring"
+    status: "completed"
+    description: |
+      Add `agentic terminal serve` command and wire session spawn to auto-create
+      web terminals when AGENTIC_TERMINAL_URL is set.
+
+  - name: "Phase 3 - Cleanup"
+    status: "completed"
+    description: |
+      Delete AgenticBackend. Update agents.md and workspace config.
+
+tasks:
+  # Phase 1: Core
+  - id: "WT_001"
+    name: "Create AgenticFrontend pyproject.toml"
+    description: |
+      Create the Python package scaffold for AgenticFrontend.
+      Dependencies: tornado>=6.4, terminado>=0.18
+      Entry point: agentic-terminal = agenticfrontend.server:main
+      Build system: hatchling (matching other modules)
+    status: "completed"
+    agent: "build-python"
+    target_files:
+      - path: "modules/AgenticFrontend/pyproject.toml"
+        change_type: "create"
+      - path: "modules/AgenticFrontend/src/agenticfrontend/__init__.py"
+        change_type: "create"
+
+  - id: "WT_002"
+    name: "Build Tornado terminal server"
+    description: |
+      Core server in agenticfrontend/server.py:
+      - NamedTermManager for PTY session lifecycle
+      - REST API:
+        - POST /api/terminals (name, cmd, cwd, orchestrator_id)
+        - GET /api/terminals
+        - DELETE /api/terminals/<name>
+      - WebSocket /ws/terminals/<name> via terminado for PTY data
+      - WebSocket /ws/events for lifecycle events (terminal_created, terminal_closed)
+      - Serves static files from static/ directory
+      - On startup, creates an "orchestrator" terminal with AGENTIC_TERMINAL_URL env var set
+      - Default port 8765
+    status: "completed"
+    agent: "build-python"
+    target_files:
+      - path: "modules/AgenticFrontend/src/agenticfrontend/server.py"
+        change_type: "create"
+
+  - id: "WT_003"
+    name: "Build xterm.js split-pane frontend"
+    description: |
+      Single HTML page with CDN-loaded xterm.js (no build step):
+      - Left pane (60%): orchestrator terminal, connected on page load
+      - Right pane (40%): sub-agent terminal stack, added via WebSocket events
+      - Subscribes to /ws/events for terminal_created/terminal_closed
+      - Each terminal connects its own /ws/terminals/<name> WebSocket
+      - Dark theme, modern styling (dark bg, subtle borders, monospace fonts)
+      - xterm-addon-fit for responsive resize
+      - Each sub-agent terminal has name/role label + close button
+      - Header bar with terminal count
+      - Multi-orchestrator support: each orchestrator gets a tab, sub-agents grouped underneath
+    status: "completed"
+    agent: "build-python"
+    target_files:
+      - path: "modules/AgenticFrontend/src/agenticfrontend/static/index.html"
+        change_type: "create"
+
+  # Phase 2: Integration
+  - id: "WT_004"
+    name: "Add agentic terminal serve CLI command"
+    description: |
+      New command group in AgenticCLI:
+      - `agentic terminal serve` starts the AgenticFrontend server
+      - Flags: --port (default 8765), --open (auto-open browser)
+      - Imports and calls agenticfrontend.server.main()
+      - Add agenticfrontend as a dependency to AgenticCLI
+    status: "completed"
+    agent: "build-python"
+    target_files:
+      - path: "modules/AgenticCLI/src/agenticcli/commands/terminal.py"
+        change_type: "create"
+      - path: "modules/AgenticCLI/src/agenticcli/cli.py"
+        change_type: "modify"
+      - path: "modules/AgenticCLI/pyproject.toml"
+        change_type: "modify"
+
+  - id: "WT_005"
+    name: "Wire session spawn to web terminal server"
+    description: |
+      Modify cmd_spawn in session.py:
+      - Check for AGENTIC_TERMINAL_URL env var
+      - When set, instead of subprocess.Popen, POST to $AGENTIC_TERMINAL_URL/api/terminals
+        with cmd, name (session_id), cwd
+      - The agent runs in a PTY visible in the browser
+      - Still save session data to disk for tracking
+      - Falls back to current behavior if env var unset or server unreachable
+    status: "completed"
+    agent: "build-python"
+    target_files:
+      - path: "modules/AgenticCLI/src/agenticcli/commands/session.py"
+        change_type: "modify"
+
+  # Phase 3: Cleanup
+  - id: "WT_006"
+    name: "Delete AgenticBackend and update references"
+    description: |
+      - Delete modules/AgenticBackend/ directory
+      - Update agents.md to remove AgenticBackend references
+      - Update agenticengineering.code-workspace if it references AgenticBackend
+    status: "completed"
+    agent: "build-python"
+    target_files:
+      - path: "modules/AgenticBackend"
+        change_type: "delete"
+      - path: "agents.md"
+        change_type: "modify"
+
+success_criteria:
+  - "`agentic terminal serve` starts server on localhost:8765"
+  - "Browser shows split-pane layout with working orchestrator terminal on the left"
+  - "Running `agentic session spawn` from orchestrator creates visible sub-agent terminal on the right"
+  - "WebSocket events push terminal lifecycle (no polling)"
+  - "Multiple sub-agent terminals can stack on the right"
+  - "AgenticBackend directory is deleted"

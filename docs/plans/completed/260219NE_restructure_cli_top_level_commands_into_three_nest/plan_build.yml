@@ -1,0 +1,199 @@
+name: Restructure CLI top-level commands into setup/configure/session groups
+worktree_path: /home/code/AgenticEngineering
+branch: main
+status: active
+priority: high
+context: "The agentic CLI had 25 top-level commands which was unwieldy. Restructuring\
+  \ into\nthree new parent groups (setup, configure, session) reduced top-level from\
+  \ 25 to 14.\n11 project-scoped commands remain at top level.\n\nCOMPLETED (session\
+  \ 2026-02-20):\n- Created setup/configure/session groups in cli.py\n- Moved commands\
+  \ under correct groups\n- Added hidden backward-compat aliases for all old paths\n\
+  - Extracted _dispatch() helper (replaced 19 identical _*_handle functions)\n- Extracted\
+  \ StateStore utility (deduplicated JSON state across 4 command files)\n- Deleted\
+  \ dead code: cli_typer.py, typer_app.py\n- Simplified entry.py (removed AGENTIC_USE_TYPER\
+  \ branching)\n- Fixed -j flag position in session.py agent prompts\n\nREMAINING\
+  \ WORK:\n- Remove ALL hidden backward-compat aliases (not needed, clean break)\n\
+  - Remove old paths from GLOBAL_COMMANDS set\n- Update tests to use new command paths\
+  \ only\n- Update any agent prompts / documentation referencing old paths\n\nTarget\
+  \ file: modules/AgenticCLI/src/agenticcli/cli.py\n\nCurrent mapping:\n  setup init\
+  \              \u2190 was: setup (wizard)\n  setup health            \u2190 was:\
+  \ health\n  setup update            \u2190 was: update\n  setup rebuild        \
+  \   \u2190 was: rebuild\n\n  configure config ...    \u2190 was: config ...\n  configure\
+  \ preferences   \u2190 was: preferences ...\n  configure env ...       \u2190 was:\
+  \ env ...\n  configure state ...     \u2190 was: state ...\n\n  session orchestrate\
+  \     \u2190 was: orchestrate\n  session loop ...        \u2190 was: loop ...\n\
+  \  session planner ...     \u2190 was: planner ...\n  session ralph ...       \u2190\
+  \ was: ralph ...\n  session terminal ...    \u2190 was: terminal ...\n\n  Unchanged\
+  \ at top level:\n  plan, stories, context, entrypoint, manifest, cicd, langsmith,\
+  \ question\n\n  New additions:\n  devops worktree         \u2190 was: worktree\n\
+  \  (inputs and template are being removed/hidden)\n"
+success_criteria:
+- agentic --help shows exactly 11 top-level entries (setup, configure, session, devops,
+  plan, stories, context, entrypoint, manifest, cicd, question, and aliases)
+- No hidden backward-compat aliases remain (clean break)
+- GLOBAL_COMMANDS is updated accordingly
+- All tests updated to new paths and passing
+- Agent prompts and docs reference new paths only
+- Session spawn successfully uses temp file context injection instead of requiring
+  agents to run bootstrap
+phases:
+- id: P1
+  name: Create command groups
+  status: completed
+  tasks:
+  - id: P1_T1
+    name: Create setup_app group (init, health, update, rebuild)
+    status: completed
+  - id: P1_T2
+    name: Create configure_app group (config, preferences, env, state)
+    status: completed
+  - id: P1_T3
+    name: Expand session_app (orchestrate, loop, planner, ralph, terminal)
+    status: completed
+- id: P2
+  name: Unify fragmented logic
+  status: completed
+  tasks:
+  - id: P2_T1
+    name: Extract _dispatch() helper to replace 19 _*_handle functions
+    status: completed
+  - id: P2_T2
+    name: Extract StateStore utility from session/loop/planner/orchestrate
+    status: completed
+  - id: P2_T3
+    name: Delete dead CLI files (cli_typer.py, typer_app.py)
+    status: completed
+  - id: P2_T4
+    name: Simplify entry.py (remove AGENTIC_USE_TYPER)
+    status: completed
+- id: P3
+  name: Remove backward-compat aliases (clean break)
+  status: pending
+  description: 'Backward compatibility is not needed. Remove all hidden aliases
+
+    so the CLI has a single canonical path for every command.
+
+    '
+  tasks:
+  - id: P3_T1
+    name: Remove hidden backward-compat aliases from cli.py
+    status: completed
+    description: 'Remove these hidden top-level aliases from cli.py:
+
+      - _compat_health, _compat_update, _compat_rebuild (setup group)
+
+      - app.add_typer(preferences_app, ..., hidden=True) at top level
+
+      - app.add_typer(config_app, ..., hidden=True) at top level
+
+      - app.add_typer(state_app, ..., hidden=True) at top level
+
+      - app.add_typer(env_app, ..., hidden=True) at top level
+
+      - _compat_orchestrate and its full parameter duplication
+
+      - app.add_typer(ralph_app, ..., hidden=True) at top level
+
+      - app.add_typer(terminal_app, ..., hidden=True) at top level
+
+      - app.add_typer(loop_app, ..., hidden=True) at top level
+
+      - app.add_typer(planner_app, ..., hidden=True) at top level
+
+      '
+  - id: P3_T2
+    name: Clean up GLOBAL_COMMANDS set
+    status: completed
+    description: 'Remove old alias names from GLOBAL_COMMANDS. Should contain only
+
+      actual visible top-level command names:
+
+      setup, configure, session, langsmith, ls, question
+
+      (ls is a visible alias for langsmith, question is top-level)
+
+      '
+- id: P4
+  name: Update tests and references
+  status: pending
+  tasks:
+  - id: P4_T1
+    name: Update tests to use new command paths
+    status: completed
+    description: "Search all test files for old command invocations:\n- `agentic health`\
+      \ \u2192 `agentic setup health`\n- `agentic config` \u2192 `agentic configure\
+      \ config`\n- `agentic loop` \u2192 `agentic session loop`\n- `agentic orchestrate`\
+      \ \u2192 `agentic session orchestrate`\n- etc.\nRun full test suite to verify.\n"
+  - id: P4_T2
+    name: Update agent prompts and documentation
+    status: completed
+    description: 'Search for old CLI paths in:
+
+      - session.py _DOGFOOD_STRATEGY and _build_role_prompt
+
+      - orchestrate.py _build_bootstrap_context
+
+      - Any .md files or CLAUDE.md references
+
+      - agents.md
+
+      Update all references to use new nested paths.
+
+      '
+  - id: P4_T3
+    name: Smoke test all paths (no backward-compat)
+    status: completed
+    description: "Verify each new path works:\n- agentic setup --help / init / health\
+      \ / update / rebuild\n- agentic configure --help / config show / preferences\
+      \ list / env show / state list\n- agentic session --help / orchestrate --help\
+      \ / loop --help / ralph --help\nVerify old paths NO LONGER work (clean break\
+      \ confirmed):\n- agentic health \u2192 should fail or show help\n- agentic config\
+      \ show \u2192 should fail\n- agentic loop --help \u2192 should fail\n"
+- id: P5
+  name: Implement remaining restructuring and context injection
+  status: pending
+  description: 'Nest worktree commands under a new devops group.
+
+    Remove obsolete inputs and template commands.
+
+    Implement temp file context injection so agents don''t need to manually bootstrap.
+
+    '
+  tasks:
+  - id: P5_T1
+    name: Create devops command group for worktree
+    status: completed
+    description: 'Create a new `devops` command group in `cli.py`.
+
+      Move `worktree` commands under the `devops` group.
+
+      Update GLOBAL_COMMANDS and all backward-compat cleanup.
+
+      '
+  - id: P5_T2
+    name: Remove obsolete inputs and template commands
+    status: completed
+    description: 'Remove `inputs` and `template` top-level commands as they have been
+      superseded
+
+      by `context` and `plan init`.
+
+      Update CLI registration and references to remove them cleanly.
+
+      '
+  - id: P5_T3
+    name: Implement temp file context injection in session spawn
+    status: completed
+    description: 'Update `agentic session spawn` to compile context into a temporary
+      file
+
+      (e.g., in `~/.agentic/sessions/context/`) utilizing logic similar to
+
+      `agentic entrypoint execute --compile`.
+
+      Spawn the agent with a short prompt referring to this temp file, avoiding OS
+      limits
+
+      and the need for agents to manually bootstrap.
+
+      '

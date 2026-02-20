@@ -1,0 +1,109 @@
+name: "Remove cicd command and update devops group"
+status: "active"
+priority: "low"
+context: |
+  The `agentic cicd` command provides CI/CD config inspection (audit, list, show)
+  but there are no active CI/CD configs in the project. The only configs are in
+  modules/legacy/MyAgents/ and one inert GitHub Actions workflow in AgenticCLI
+  that's not at the repo root.
+
+  The `devops` group help text says "DevOps tools: worktrees, CI/CD integration"
+  which references cicd, but cicd isn't nested under it and isn't needed.
+
+  Decision: remove cicd entirely. It's dead weight with no active CI/CD to inspect.
+  Update devops group help text to remove the CI/CD reference.
+
+success_criteria:
+  - "`agentic cicd` command no longer exists"
+  - "cicd.py command file deleted"
+  - "test_cicd.py test file deleted"
+  - "devops group help text no longer references CI/CD"
+  - "All references to cicd command removed from CLI registration, tests, docs"
+  - "All remaining tests pass"
+
+phases:
+  - id: "P1"
+    name: "Remove cicd command"
+    status: "pending"
+    tasks:
+      - id: "P1_T1"
+        name: "Remove cicd registration from cli.py"
+        status: "pending"
+        description: |
+          In modules/AgenticCLI/src/agenticcli/cli.py:
+          - Remove the cicd subparser registration (the add_parser for "cicd" and its sub-subparsers)
+          - Remove "cicd" from PROJECT_COMMANDS set
+          - Remove the import/routing of cicd.handle in the command dispatch
+          - Update devops group help text from "DevOps tools: worktrees, CI/CD integration"
+            to "DevOps tools: git worktrees"
+        target_files:
+          - modules/AgenticCLI/src/agenticcli/cli.py
+
+      - id: "P1_T2"
+        name: "Delete cicd command file"
+        status: "pending"
+        description: |
+          Delete modules/AgenticCLI/src/agenticcli/commands/cicd.py
+        target_files:
+          - modules/AgenticCLI/src/agenticcli/commands/cicd.py
+
+      - id: "P1_T3"
+        name: "Delete cicd test file"
+        status: "pending"
+        description: |
+          Delete modules/AgenticCLI/tests/test_cicd.py
+        target_files:
+          - modules/AgenticCLI/tests/test_cicd.py
+
+      - id: "P1_T4"
+        name: "Delete inert GitHub Actions workflow"
+        status: "pending"
+        description: |
+          Delete modules/AgenticCLI/.github/workflows/test.yml
+          It's not at the repo root so GitHub never runs it.
+        target_files:
+          - modules/AgenticCLI/.github/workflows/test.yml
+
+  - id: "P2"
+    name: "Clean up references"
+    status: "pending"
+    tasks:
+      - id: "P2_T1"
+        name: "Remove cicd from test_decorators.py stability references"
+        status: "pending"
+        description: |
+          In modules/AgenticCLI/tests/test_decorators.py, remove any
+          test that checks get_command_stability("cicd").
+        target_files:
+          - modules/AgenticCLI/tests/test_decorators.py
+
+      - id: "P2_T2"
+        name: "Remove cicd from any other test files"
+        status: "pending"
+        description: |
+          Search all test files for references to "cicd" and remove them.
+          Check test_cli.py, test_entry.py, integration tests, etc.
+        target_files:
+          - modules/AgenticCLI/tests/
+
+      - id: "P2_T3"
+        name: "Remove cicd references from docs and agent prompts"
+        status: "pending"
+        description: |
+          Search for "cicd" in all .md files, agent prompts, and CLAUDE.md.
+          Remove or update references. Check agents.md, docs/prompts/, etc.
+        target_files:
+          - docs/
+          - agents.md
+
+  - id: "P3"
+    name: "Verify"
+    status: "pending"
+    tasks:
+      - id: "P3_T1"
+        name: "Run tests to confirm nothing is broken"
+        status: "pending"
+        description: |
+          Run pytest on AgenticCLI to confirm all remaining tests pass.
+          Command: python3 -m pytest modules/AgenticCLI/tests/ -v
+        target_files: []
