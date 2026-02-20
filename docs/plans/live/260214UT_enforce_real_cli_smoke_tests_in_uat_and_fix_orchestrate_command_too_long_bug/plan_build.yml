@@ -34,12 +34,19 @@ tasks:
       to interact with Claude or dashboard processes.
 
       Implementation approach:
-      - Add --dry-run to the argparse definition in cli.py
-      - In cmd_orchestrate, after layout creation, if dry_run:
-        - Verify panes: tmux list-panes -t <session> -F "#{pane_id} #{pane_title}"
-        - Print layout info as JSON
+      NOTE: The CLI was restructured. cli.py is now a Typer-based file at
+      modules/AgenticCLI/src/agenticcli/cli.py (not commands/cli.py).
+      The orchestrate subcommand is session_orchestrate() at line 707 in cli.py.
+
+      - Add dry_run parameter to session_orchestrate() in cli.py:
+          dry_run: Annotated[bool, typer.Option("--dry-run", help="Create layout, verify, print JSON, exit")] = False,
+        Then pass dry_run=dry_run to cmd_orchestrate() _ns() call at line 727.
+
+      - In cmd_orchestrate (orchestrate.py), after layout creation, if dry_run:
+        - Query panes: tmux list-panes -t <session> -F "#{pane_id} #{pane_title}"
+        - Print layout info as JSON (session_name, pane IDs, pane count)
         - Kill session: tmux kill-session -t <session>
-        - sys.exit(0)
+        - sys.exit(0) if pane count == 3, else sys.exit(1)
 
       - In tmux_layout.py, add a `skip_commands` parameter to
         _create_new_session_layout that skips sending send-keys for the Claude
@@ -48,7 +55,7 @@ tasks:
       Target files:
         - modules/AgenticCLI/src/agenticcli/commands/orchestrate.py
         - modules/AgenticCLI/src/agenticcli/utils/tmux_layout.py
-        - modules/AgenticCLI/src/agenticcli/commands/cli.py (add --dry-run arg)
+        - modules/AgenticCLI/src/agenticcli/cli.py (add --dry-run arg, line 707)
     status: "pending"
     target_files:
       - path: "modules/AgenticCLI/src/agenticcli/commands/orchestrate.py"
@@ -57,16 +64,17 @@ tasks:
       - path: "modules/AgenticCLI/src/agenticcli/utils/tmux_layout.py"
         change_type: "modify"
         change_category: "code"
-      - path: "modules/AgenticCLI/src/agenticcli/commands/cli.py"
+      - path: "modules/AgenticCLI/src/agenticcli/cli.py"
         change_type: "modify"
         change_category: "code"
+        note: "Typer-based CLI - session_orchestrate() at line 707, NOT commands/cli.py"
 
   - id: "build-002"
     name: "Fix _create_inplace_layout to use absolute values instead of -p"
     description: |
-      _create_inplace_layout (line 230-337 in tmux_layout.py) still uses:
-        - `-p 30` for the vertical split (line 271)
-        - `-p 40` for the horizontal split (line 285)
+      _create_inplace_layout (lines 230-337 in tmux_layout.py) still uses:
+        - `-p 30` for the vertical split (line 271, confirmed current)
+        - `-p 40` for the horizontal split (line 285, confirmed current)
 
       The _create_new_session_layout was already fixed to use `-l 60` and `-l 20`
       (absolute column/row counts) because `-p` percentage fails on detached
@@ -106,10 +114,10 @@ impacted_files:
     change_type: "modify"
     change_category: "code"
     reason: "Add skip_commands param and fix inplace layout -p flags"
-  - path: "modules/AgenticCLI/src/agenticcli/commands/cli.py"
+  - path: "modules/AgenticCLI/src/agenticcli/cli.py"
     change_type: "modify"
     change_category: "code"
-    reason: "Register --dry-run argument for orchestrate subparser"
+    reason: "Add --dry-run Typer option to session_orchestrate() at line 707 (Typer-based CLI, not commands/cli.py)"
 
 notes: |
   The original build plan was for the command-too-long fix, which is ALREADY DONE.

@@ -1,0 +1,147 @@
+stories:
+- id: US-GD-200
+  title: TinyDB Plan Repository - CRUD Operations
+  category: services
+  priority: critical
+  as_a: CLI or agent managing plans
+  i_want: to use a TinyDB-backed PlanRepository for plan CRUD operations
+  so_that: plan data access is faster, indexed, and queryable without scanning YAML files
+  acceptance_criteria:
+  - PlanRepository provides create, read, update, delete operations via TinyDB
+  - All plan data (name, worktree_path, branch, status, objective, phases, tasks) stored in TinyDB
+  - Query by plan_id, status, branch, or folder name returns correct results
+  - Insert/update operations are atomic using TinyDB transactions
+  - PlanRepository replaces direct YAML file reads in PlanService
+  related_services:
+  - PlanRepository
+  - PlanService
+  related_files:
+  - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
+  - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+  last_tested: null
+  test_status: untested
+
+- id: US-GD-201
+  title: TinyDB Task Storage and Queries
+  category: services
+  priority: critical
+  as_a: CLI listing or updating tasks
+  i_want: tasks stored in TinyDB with indexed lookups
+  so_that: task queries (by status, phase, plan_id) are O(1) instead of O(n) YAML parsing
+  acceptance_criteria:
+  - Tasks stored as TinyDB documents with plan_id, phase_id, task_id, status fields
+  - Query tasks by plan_id and status (e.g., all pending tasks for a plan)
+  - Update task status atomically in TinyDB
+  - Task CRUD operations return typed TaskData dataclasses
+  - Current task resolution (first in_progress, then first pending) works via TinyDB query
+  related_services:
+  - PlanRepository
+  - TaskService
+  related_files:
+  - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
+  - modules/AgenticGuidance/src/agenticguidance/services/task.py
+  last_tested: null
+  test_status: untested
+
+- id: US-GD-202
+  title: YAML Import/Export for Human Readability
+  category: services
+  priority: high
+  as_a: developer reading plan files
+  i_want: to export TinyDB plan data back to YAML files
+  so_that: plans remain human-readable and git-trackable
+  acceptance_criteria:
+  - Export plan from TinyDB to plan_build.yml format preserving current YAML structure
+  - Import existing YAML plan files into TinyDB (migration path)
+  - Sync command writes TinyDB state to YAML for git commits
+  - YAML export matches existing format (phases, tasks, metadata)
+  - Round-trip (YAML -> TinyDB -> YAML) preserves all fields
+  related_services:
+  - PlanRepository
+  related_files:
+  - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
+  last_tested: null
+  test_status: untested
+
+- id: US-GD-203
+  title: CLI Plan Commands Use PlanRepository
+  category: services
+  priority: critical
+  as_a: CLI user running plan commands
+  i_want: all plan CLI commands to use PlanRepository instead of direct YAML I/O
+  so_that: data access is consistent and goes through a single service layer
+  acceptance_criteria:
+  - plan list reads from TinyDB (not directory scanning)
+  - plan status reads from TinyDB
+  - plan task list/current/start/complete use TinyDB
+  - plan task add/update use TinyDB
+  - plan validate uses TinyDB data
+  - All 37+ direct yaml.safe_load/dump calls in plan.py replaced with PlanRepository calls
+  - No behavioral regression from user's perspective
+  related_services:
+  - PlanRepository
+  related_files:
+  - modules/AgenticCLI/src/agenticcli/commands/plan.py
+  last_tested: null
+  test_status: untested
+
+- id: US-GD-204
+  title: Data Migration from YAML to TinyDB
+  category: services
+  priority: high
+  as_a: system administrator upgrading to TinyDB
+  i_want: an automated migration that imports existing YAML plans into TinyDB
+  so_that: no plan data is lost during the migration
+  acceptance_criteria:
+  - Migration command scans docs/plans/{live,completed,deferred}/ for YAML plans
+  - Each plan_*.yml file is parsed and inserted into TinyDB
+  - Migration handles both modern and legacy YAML structures
+  - Migration is idempotent (running twice does not duplicate data)
+  - Migration reports success/failure for each plan processed
+  - Migration preserves all plan metadata, phases, tasks, and questions
+  related_services:
+  - PlanRepository
+  related_files:
+  - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
+  last_tested: null
+  test_status: untested
+
+- id: US-GD-205
+  title: TinyDB Database Location and Lifecycle
+  category: services
+  priority: high
+  as_a: developer configuring the system
+  i_want: TinyDB database stored at a predictable location with proper lifecycle management
+  so_that: the database is discoverable, backed up, and doesn't conflict with git
+  acceptance_criteria:
+  - TinyDB database stored at ~/.agentic/plans.db (user-level, not repo-level)
+  - Database created automatically on first use
+  - Database location configurable via environment variable or config
+  - Database file excluded from git tracking
+  - Graceful handling when database is missing (auto-rebuild from YAML files)
+  related_services:
+  - PlanRepository
+  related_files:
+  - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
+  last_tested: null
+  test_status: untested
+
+- id: US-GD-206
+  title: Backward Compatibility During Migration
+  category: services
+  priority: high
+  as_a: agent or CLI user during transition period
+  i_want: the system to work even if TinyDB is not populated
+  so_that: existing workflows don't break during incremental migration
+  acceptance_criteria:
+  - PlanRepository falls back to YAML file reading when TinyDB record not found
+  - Write operations update both TinyDB and YAML files (dual-write)
+  - YAML files remain the git-committed source of truth
+  - TinyDB acts as a fast read cache that can be rebuilt from YAML
+  - Clear error messages when fallback occurs
+  related_services:
+  - PlanRepository
+  related_files:
+  - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
+  last_tested: null
+  test_status: untested

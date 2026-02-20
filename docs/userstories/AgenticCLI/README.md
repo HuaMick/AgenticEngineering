@@ -94,7 +94,7 @@ Require .git or .agenticcli.yml:
 - context, entrypoint
 - langsmith, question
 - template, stories
-- inputs, manifest, cicd
+- inputs, manifest
 
 ## Usage Notes
 

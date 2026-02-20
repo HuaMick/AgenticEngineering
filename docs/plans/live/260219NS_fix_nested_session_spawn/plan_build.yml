@@ -11,48 +11,50 @@ context: |
     Nested sessions share runtime resources and will crash all active sessions.
     To bypass this check, unset the CLAUDECODE environment variable.
 
-  The fix is to strip CLAUDECODE (and potentially related internal Claude Code
-  env vars such as CLAUDE_SESSION_ID, ANTHROPIC_CLAUDE_CODE, etc.) from the
-  environment dict passed to each subprocess spawn site.
+  The fix is to strip CLAUDECODE (and CLAUDE_CODE_ENTRYPOINT) from the
+  environment dict passed to each subprocess spawn site that ultimately
+  invokes `claude`.
 
   The preferred approach is a centralised helper function in
-  agenticcli/utils/subprocess.py that builds a clean env dict, then update
-  every call site that spawns `claude` to use it. Non-claude subprocess calls
-  (git, tmux, tail, python3 helper scripts, etc.) do NOT need the stripped env
-  because they are unaffected by CLAUDECODE.
+  agenticcli/utils/subprocess_utils.py that builds a clean env dict, then
+  update every call site that spawns `claude` to use it. Non-claude subprocess
+  calls (git, tmux, tail, python3 helper scripts, etc.) do NOT need the
+  stripped env because they are unaffected by CLAUDECODE.
 
-  Call sites that spawn `claude` (identified by code audit):
+  Call sites that spawn `claude` (verified against current codebase after
+  commit 5e26050 CLI restructuring):
 
-  1. session.py :: cmd_spawn()
-     - subprocess.Popen (background mode) line ~820
-     - subprocess.Popen (foreground Popen mode) line ~904
-  2. session.py :: _spawn_diagnostic_planner()
-     - subprocess.Popen line ~262
-  3. loop.py :: cmd_start()
-     - subprocess.Popen (background mode) line ~232
-     - subprocess.run (foreground mode) line ~277
-  4. plan.py :: cmd_new() (spawns planner via claude --print)
-     - subprocess.run (status mode) line ~715
-     - subprocess.run (json mode) line ~726
-  5. plan.py :: cmd_run() (spawns agentic session spawn via subprocess)
-     - subprocess.Popen line ~886
-     NOTE: This spawns "agentic session spawn", not claude directly.
-           The agentic binary itself is Python; the CLAUDECODE env var
-           is only harmful when reaching the claude binary. However,
-           since agentic session spawn will in turn spawn claude, the
-           env var must be stripped at the outermost agentic spawn or
-           within cmd_spawn itself — covered by fix #1.
-  6. orchestrate.py :: cmd_orchestrate()
-     - os.execvp("claude", ...) lines ~434, ~439, ~446, ~450
-     NOTE: os.execvp replaces the current process; env stripping must use
-           os.environ mutation before the execvp call, then restore, or
-           pass a cleaned env via execve instead of execvp.
-  7. ralph.py :: cmd_start() (tmux new-session with claude shell command string)
-     - subprocess.run(["tmux", "new-session", "-d", "-s", session_name, claude_cmd]) line ~183
-     NOTE: tmux inherits the calling process environment for the new session.
-           The shell command string inside tmux will therefore see CLAUDECODE.
-           Fix requires prepending `env -u CLAUDECODE` to the claude_cmd shell
-           string, OR passing a modified env to the tmux subprocess.run call.
+  1. session.py :: _spawn_diagnostic_planner()
+     - subprocess.Popen at line 285
+  2. session.py :: cmd_spawn() background mode
+     - subprocess.Popen at line 857
+  3. session.py :: cmd_spawn() foreground Popen mode
+     - subprocess.Popen at line 941
+  4. loop.py :: cmd_start() background mode
+     - subprocess.Popen at line 164
+  5. loop.py :: cmd_start() foreground mode
+     - subprocess.run at line 209
+  6. plan.py :: cmd_new() status mode (spawns planner via claude --print)
+     - subprocess.run at line 717
+  7. plan.py :: cmd_new() json mode (spawns planner via claude --print)
+     - subprocess.run at line 728
+  8. plan.py :: cmd_run() (spawns "agentic session spawn" which in turn
+     invokes claude - env is inherited transitively)
+     - subprocess.Popen at line 888
+  9. orchestrate.py :: cmd_orchestrate() - four os.execvp("claude", ...) calls
+     - Line 414: already-in-tmux branch
+     - Line 419: tmux not available branch
+     - Line 426: RuntimeError fallback branch
+     - Line 430: --no-tmux branch
+     NOTE: os.execvp replaces the current process; fix uses os.execvpe()
+     which accepts an explicit env dict. The subprocess.Popen at line 214
+     in _run_planning_loop() spawns sys.executable (Python), NOT claude,
+     so it does NOT need env stripping.
+  10. ralph.py :: start() (tmux new-session with claude shell command string)
+      - subprocess.run at line 183
+      NOTE: tmux inherits the calling process env for the new session. The
+      shell command string inside tmux will see CLAUDECODE. Fix: pass a
+      modified env to the tmux subprocess.run call.
 
   Env vars to strip (conservative initial set):
     - CLAUDECODE
@@ -63,11 +65,12 @@ context: |
 success_criteria:
   - A utility function `get_clean_env()` exists in
     /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/utils/subprocess_utils.py
-    that returns os.environ copy with CLAUDECODE and CLAUDE_CODE_ENTRYPOINT removed.
-  - All subprocess.Popen and subprocess.run calls that spawn `claude` in
-    session.py, loop.py, and plan.py pass `env=get_clean_env()`.
-  - os.execvp calls in orchestrate.py are replaced with os.execve using the
-    cleaned env dict (or env vars are unset before execvp and restored if needed).
+    that returns an os.environ copy with CLAUDECODE and CLAUDE_CODE_ENTRYPOINT removed.
+  - All subprocess.Popen and subprocess.run calls that spawn `claude` (or
+    `agentic session spawn` which transitively invokes claude) in session.py,
+    loop.py, and plan.py pass `env=get_clean_env()`.
+  - os.execvp calls in orchestrate.py are replaced with os.execvpe using the
+    cleaned env dict.
   - The tmux new-session call in ralph.py passes the cleaned env dict to
     subprocess.run so the tmux session does not inherit CLAUDECODE.
   - Running `agentic session spawn --prompt "hello" -b` from inside a Claude
@@ -130,7 +133,8 @@ phases:
 
           Also update:
             /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/utils/__init__.py
-          to export get_clean_env for convenient import.
+          to export get_clean_env for convenient import (add to __all__ if it exists,
+          or add a direct import line).
 
         inputs:
           - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/utils/__init__.py
@@ -154,12 +158,15 @@ phases:
           Edit:
             /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/session.py
 
+          Add a module-level import near the top of the file (after existing imports):
+            from agenticcli.utils.subprocess_utils import get_clean_env
+
           There are THREE subprocess calls that spawn `claude` in this file.
           Each needs `env=get_clean_env()` added.
 
-          LOCATION 1 - _spawn_diagnostic_planner() around line 262:
+          LOCATION 1 - _spawn_diagnostic_planner() at line 285:
+          The current Popen call is:
           ```python
-          # BEFORE:
           process = subprocess.Popen(
               cmd,
               cwd=stuck_session.get("working_dir", "."),
@@ -168,9 +175,9 @@ phases:
               stderr=stderr_log,
               start_new_session=True,
           )
-
-          # AFTER:
-          from agenticcli.utils.subprocess_utils import get_clean_env
+          ```
+          Add env=get_clean_env() so it becomes:
+          ```python
           process = subprocess.Popen(
               cmd,
               cwd=stuck_session.get("working_dir", "."),
@@ -182,9 +189,9 @@ phases:
           )
           ```
 
-          LOCATION 2 - cmd_spawn() background mode around line 820:
+          LOCATION 2 - cmd_spawn() background mode at line 857:
+          The current Popen call is:
           ```python
-          # BEFORE:
           process = subprocess.Popen(
               cmd,
               cwd=working_dir,
@@ -193,8 +200,9 @@ phases:
               stderr=stderr_log,
               start_new_session=True,
           )
-
-          # AFTER:
+          ```
+          Add env=get_clean_env() so it becomes:
+          ```python
           process = subprocess.Popen(
               cmd,
               cwd=working_dir,
@@ -206,9 +214,9 @@ phases:
           )
           ```
 
-          LOCATION 3 - cmd_spawn() foreground Popen mode around line 904:
+          LOCATION 3 - cmd_spawn() foreground Popen mode at line 941:
+          The current Popen call (inside `with get_status(status_message):`) is:
           ```python
-          # BEFORE:
           process = subprocess.Popen(
               cmd,
               cwd=working_dir,
@@ -216,8 +224,9 @@ phases:
               stderr=subprocess.PIPE,
               text=True,
           )
-
-          # AFTER:
+          ```
+          Add env=get_clean_env() so it becomes:
+          ```python
           process = subprocess.Popen(
               cmd,
               cwd=working_dir,
@@ -228,9 +237,8 @@ phases:
           )
           ```
 
-          Add the import near the top of cmd_spawn() or as a module-level import.
-          Prefer a single module-level import:
-            from agenticcli.utils.subprocess_utils import get_clean_env
+          Do NOT modify any other subprocess calls in session.py (git, tmux,
+          tail, bash hook calls - these are unaffected by CLAUDECODE).
 
         inputs:
           - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/session.py
@@ -238,7 +246,8 @@ phases:
         target_files:
           - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/session.py
         success_criteria:
-          - All three Popen calls that use the `claude` cmd list pass env=get_clean_env().
+          - All three Popen calls that use the `cmd` list (which starts with
+            "claude") pass env=get_clean_env().
           - The import of get_clean_env is present at module level in session.py.
           - No other subprocess calls (git, tmux, tail, bash) are modified.
 
@@ -249,53 +258,57 @@ phases:
           Edit:
             /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/loop.py
 
-          There are TWO subprocess calls that spawn `claude` in cmd_start().
-
-          LOCATION 1 - background Popen around line 232:
-          ```python
-          # BEFORE:
-          process = subprocess.Popen(
-              cmd,
-              cwd=working_dir,
-              stdout=stdout_target,
-              stderr=subprocess.PIPE,
-              start_new_session=True,
-          )
-
-          # AFTER:
-          from agenticcli.utils.subprocess_utils import get_clean_env
-          process = subprocess.Popen(
-              cmd,
-              cwd=working_dir,
-              stdout=stdout_target,
-              stderr=subprocess.PIPE,
-              start_new_session=True,
-              env=get_clean_env(),
-          )
-          ```
-
-          LOCATION 2 - foreground subprocess.run around line 277:
-          ```python
-          # BEFORE:
-          result = subprocess.run(
-              cmd,
-              cwd=working_dir,
-              capture_output=True,
-              text=True,
-          )
-
-          # AFTER:
-          result = subprocess.run(
-              cmd,
-              cwd=working_dir,
-              capture_output=True,
-              text=True,
-              env=get_clean_env(),
-          )
-          ```
-
-          Add module-level import:
+          Add a module-level import near the top of the file (after existing imports):
             from agenticcli.utils.subprocess_utils import get_clean_env
+
+          There are TWO subprocess calls that spawn `claude` in cmd_start():
+
+          LOCATION 1 - background Popen at line 164:
+          The current Popen call is inside `if background:`:
+          ```python
+          process = subprocess.Popen(
+              cmd,
+              cwd=working_dir,
+              stdout=stdout_target,
+              stderr=subprocess.PIPE,
+              start_new_session=True,
+          )
+          ```
+          Add env=get_clean_env() so it becomes:
+          ```python
+          process = subprocess.Popen(
+              cmd,
+              cwd=working_dir,
+              stdout=stdout_target,
+              stderr=subprocess.PIPE,
+              start_new_session=True,
+              env=get_clean_env(),
+          )
+          ```
+
+          LOCATION 2 - foreground subprocess.run at line 209:
+          The current subprocess.run call is inside the `else:` branch:
+          ```python
+          result = subprocess.run(
+              cmd,
+              cwd=working_dir,
+              capture_output=True,
+              text=True,
+          )
+          ```
+          Add env=get_clean_env() so it becomes:
+          ```python
+          result = subprocess.run(
+              cmd,
+              cwd=working_dir,
+              capture_output=True,
+              text=True,
+              env=get_clean_env(),
+          )
+          ```
+
+          Do NOT modify any other subprocess calls in loop.py (git or unrelated
+          subprocess calls are not affected by CLAUDECODE).
 
         inputs:
           - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/loop.py
@@ -318,65 +331,82 @@ phases:
           Edit:
             /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/plan.py
 
-          The cmd_new() function spawns a claude planner via two subprocess.run
-          calls (one for json mode, one for status mode). Both are around lines
-          715 and 726. They use a local variable `claude_cmd` that starts with
-          `["claude", "--print", ...]`.
-
-          LOCATION 1 - status mode subprocess.run around line 715:
-          ```python
-          # BEFORE:
-          result = subprocess.run(
-              claude_cmd,
-              cwd=plan_folder,
-              capture_output=True,
-              text=True,
-          )
-
-          # AFTER:
-          result = subprocess.run(
-              claude_cmd,
-              cwd=plan_folder,
-              capture_output=True,
-              text=True,
-              env=get_clean_env(),
-          )
-          ```
-
-          LOCATION 2 - json mode subprocess.run around line 726:
-          ```python
-          # Same pattern - add env=get_clean_env() to the second subprocess.run
-          # call in the else branch.
-          ```
-
-          Note: the subprocess.Popen in cmd_run() around line 886 spawns
-          `agentic session spawn`, not `claude` directly. However, since
-          `agentic session spawn` will itself invoke claude, and the env is
-          inherited transitively, CLAUDECODE must be stripped here too. Add
-          env=get_clean_env() to that Popen call as well.
-
-          LOCATION 3 - cmd_run() subprocess.Popen around line 886:
-          ```python
-          # BEFORE:
-          proc = subprocess.Popen(
-              spawn_cmd,
-              stdout=subprocess.PIPE,
-              stderr=subprocess.PIPE,
-              text=True,
-          )
-
-          # AFTER:
-          proc = subprocess.Popen(
-              spawn_cmd,
-              stdout=subprocess.PIPE,
-              stderr=subprocess.PIPE,
-              text=True,
-              env=get_clean_env(),
-          )
-          ```
-
-          Add module-level import at the top of plan.py (after existing imports):
+          Add a module-level import near the top of the file (after the existing
+          stdlib/yaml imports):
             from agenticcli.utils.subprocess_utils import get_clean_env
+
+          There are THREE subprocess calls that need env stripping:
+
+          LOCATION 1 - cmd_new() status mode at line 717:
+          This is the subprocess.run inside `if not is_json_output():` / `with get_status(...)`:
+          ```python
+          result = subprocess.run(
+              claude_cmd,
+              cwd=plan_folder,
+              capture_output=True,
+              text=True,
+          )
+          ```
+          Add env=get_clean_env():
+          ```python
+          result = subprocess.run(
+              claude_cmd,
+              cwd=plan_folder,
+              capture_output=True,
+              text=True,
+              env=get_clean_env(),
+          )
+          ```
+
+          LOCATION 2 - cmd_new() json mode at line 728:
+          This is the subprocess.run inside the `else:` branch (when is_json_output()):
+          ```python
+          result = subprocess.run(
+              claude_cmd,
+              cwd=plan_folder,
+              capture_output=True,
+              text=True,
+          )
+          ```
+          Add env=get_clean_env():
+          ```python
+          result = subprocess.run(
+              claude_cmd,
+              cwd=plan_folder,
+              capture_output=True,
+              text=True,
+              env=get_clean_env(),
+          )
+          ```
+
+          LOCATION 3 - cmd_run() subprocess.Popen at line 888:
+          This spawns "agentic session spawn" which transitively invokes claude.
+          CLAUDECODE must be stripped at this outermost spawn site so it does
+          not propagate to the claude invocation inside.
+          Current:
+          ```python
+          proc = subprocess.Popen(
+              spawn_cmd,
+              stdout=subprocess.PIPE,
+              stderr=subprocess.PIPE,
+              text=True,
+          )
+          ```
+          Add env=get_clean_env():
+          ```python
+          proc = subprocess.Popen(
+              spawn_cmd,
+              stdout=subprocess.PIPE,
+              stderr=subprocess.PIPE,
+              text=True,
+              env=get_clean_env(),
+          )
+          ```
+
+          NOTE: The subprocess.Popen at line 214 in _run_planning_loop() in
+          orchestrate.py spawns sys.executable (the Python interpreter), NOT
+          claude. Do not add env stripping to plan.py calls that spawn Python
+          processes.
 
         inputs:
           - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/plan.py
@@ -384,7 +414,7 @@ phases:
         target_files:
           - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/plan.py
         success_criteria:
-          - Both subprocess.run calls in cmd_new() that build claude_cmd pass
+          - Both subprocess.run calls in cmd_new() that use claude_cmd pass
             env=get_clean_env().
           - The subprocess.Popen in cmd_run() passes env=get_clean_env().
           - Import is present at module level in plan.py.
@@ -396,28 +426,27 @@ phases:
           Edit:
             /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/orchestrate.py
 
+          Add a module-level import near the top of the file (after existing imports):
+            from agenticcli.utils.subprocess_utils import get_clean_env
+
           The cmd_orchestrate() function uses os.execvp() to replace the current
           process with claude. os.execvp() inherits os.environ as-is. The fix is
-          to switch these calls to os.execve() which accepts an explicit env dict,
-          OR to unset the offending env vars from os.environ before calling execvp.
+          to switch to os.execvpe() which accepts an explicit env dict.
 
-          The cleaner approach for code readability is to use os.execve() with
-          a cleaned env dict. The signature is:
-            os.execve(path, args, env)
-          where path must be the full path to the executable, or use
-          os.execvpe() which also searches PATH:
+          os.execvpe signature:
             os.execvpe(file, args, env)
+          where `file` is searched in PATH (same as execvp), but env is explicit.
 
           There are FOUR os.execvp("claude", direct_cmd) calls in orchestrate.py,
           all within cmd_orchestrate():
-            - Around line 434: inside tmux already-in-session branch
-            - Around line 439: tmux not available branch
-            - Around line 446: RuntimeError fallback branch
-            - Around line 450: --no-tmux branch
 
-          Replace all four with:
+          - Line 414: inside tmux already-in-session branch
+          - Line 419: tmux not available branch
+          - Line 426: RuntimeError fallback branch
+          - Line 430: --no-tmux branch
+
+          Replace ALL FOUR with os.execvpe:
           ```python
-          from agenticcli.utils.subprocess_utils import get_clean_env
           # BEFORE:
           os.execvp("claude", direct_cmd)
 
@@ -425,10 +454,14 @@ phases:
           os.execvpe("claude", direct_cmd, get_clean_env())
           ```
 
-          Add module-level import in orchestrate.py:
-            from agenticcli.utils.subprocess_utils import get_clean_env
+          Do this for all four occurrences. Each is a standalone statement at
+          the end of its branch.
 
-          Note: os.execvpe is stdlib (Python 3.x), no additional dependencies needed.
+          NOTE: Do NOT modify the subprocess.Popen at line 214 in
+          _run_planning_loop() - that spawns sys.executable (the Python
+          interpreter for a planning loop daemon), not claude.
+
+          os.execvpe is stdlib (Python 3.x), no additional dependencies needed.
 
         inputs:
           - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/orchestrate.py
@@ -438,8 +471,9 @@ phases:
         success_criteria:
           - All four os.execvp("claude", ...) calls are replaced with
             os.execvpe("claude", ..., get_clean_env()).
+          - No os.execvp("claude", ...) remains in orchestrate.py.
           - Import is present at module level in orchestrate.py.
-          - The file still passes import without error.
+          - The file still passes `python3 -c "import agenticcli.commands.orchestrate"` without error.
 
   - id: "P4"
     name: "Fix claude spawn in ralph.py tmux call"
@@ -452,29 +486,28 @@ phases:
           Edit:
             /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/ralph.py
 
-          ralph.py spawns claude inside a tmux session via:
-            subprocess.run(["tmux", "new-session", "-d", "-s", session_name, claude_cmd], ...)
+          Add an import at the top of the file with other stdlib/third-party
+          imports (ralph.py uses typer, not argparse):
+            from agenticcli.utils.subprocess_utils import get_clean_env
 
-          tmux inherits its environment from the calling process and then passes
-          it to the shell command it runs. If CLAUDECODE is set in the calling
-          process, it will be inherited by the tmux session's shell, and from
-          there by the claude subprocess.
-
-          The fix is to pass env=get_clean_env() to the subprocess.run call for
-          tmux new-session so that tmux itself starts without CLAUDECODE in its
-          environment and therefore does not propagate it to the claude process.
-
-          LOCATION - around line 183:
+          ralph.py spawns claude inside a tmux session at line 183-187 via:
           ```python
-          # BEFORE:
           result = subprocess.run(
               ["tmux", "new-session", "-d", "-s", session_name, claude_cmd],
               capture_output=True,
               text=True
           )
+          ```
 
-          # AFTER:
-          from agenticcli.utils.subprocess_utils import get_clean_env
+          tmux inherits its environment from the calling process and then passes
+          it to the shell command it runs. If CLAUDECODE is set in the calling
+          process, it will be present in the tmux session's environment, and
+          from there inherited by the claude subprocess inside.
+
+          The fix is to pass env=get_clean_env() to this subprocess.run call so
+          that tmux itself starts without CLAUDECODE:
+
+          ```python
           result = subprocess.run(
               ["tmux", "new-session", "-d", "-s", session_name, claude_cmd],
               capture_output=True,
@@ -483,9 +516,11 @@ phases:
           )
           ```
 
-          Note: ralph.py uses typer (not argparse like the other commands).
-          The import pattern may differ — add the import at the top of the
-          file with other stdlib/third-party imports.
+          The trailing comma after `text=True` should be present for consistency
+          with the rest of the codebase. The verify_result subprocess.run at
+          line 197 calls `tmux has-session` which does NOT spawn claude and does
+          NOT need env stripping. The `subprocess.run(["tmux", "attach", ...])` at
+          line 224 also does not need stripping.
 
         inputs:
           - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/ralph.py
@@ -493,8 +528,9 @@ phases:
         target_files:
           - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/ralph.py
         success_criteria:
-          - The tmux new-session subprocess.run call passes env=get_clean_env().
+          - The tmux new-session subprocess.run call at line 183 passes env=get_clean_env().
           - Import is present at module level in ralph.py.
+          - The other tmux calls (has-session, attach, kill-session, send-keys) are unchanged.
 
   - id: "P5"
     name: "Write unit tests for get_clean_env and call-site coverage"
@@ -506,6 +542,10 @@ phases:
         description: |
           Create a test file at:
             /home/code/AgenticEngineering/modules/AgenticCLI/tests/utils/test_subprocess_utils.py
+
+          First check that the tests/utils/ directory exists. If it does not,
+          create an empty __init__.py in it. Check the existing test structure at:
+            /home/code/AgenticEngineering/modules/AgenticCLI/tests/
 
           Tests to cover:
 
@@ -566,8 +606,8 @@ phases:
               assert "CLAUDE_CODE_ENTRYPOINT" not in env
           ```
 
-          Verify tests directory exists. Check existing test patterns at:
-            /home/code/AgenticEngineering/modules/AgenticCLI/tests/
+          Run tests after creation to verify they pass:
+            python3 -m pytest /home/code/AgenticEngineering/modules/AgenticCLI/tests/utils/test_subprocess_utils.py -v
 
         inputs:
           - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/utils/subprocess_utils.py
@@ -576,5 +616,5 @@ phases:
           - /home/code/AgenticEngineering/modules/AgenticCLI/tests/utils/test_subprocess_utils.py
         success_criteria:
           - Test file exists and all six tests pass when running:
-              python3 -m pytest modules/AgenticCLI/tests/utils/test_subprocess_utils.py -v
+              python3 -m pytest /home/code/AgenticEngineering/modules/AgenticCLI/tests/utils/test_subprocess_utils.py -v
           - No import errors.

@@ -1,0 +1,307 @@
+audit:
+  plan_folder: docs/plans/live/260220NE_restructure_cli_into_user_facing_and_agent_facing/
+  audited_at: "2026-02-20"
+  auditor: planner-audit-agent
+  recommendation: KEEP_LIVE
+
+# ============================================================================
+# RECOMMENDATION SUMMARY
+# ============================================================================
+recommendation:
+  action: KEEP_LIVE
+  rationale: >
+    The plan has 1 of 23 tasks completed (P01_T01). The remaining 22 tasks
+    across phases P02-P07 are all still 'pending'. While the implementation
+    work WAS executed in practice (the CLI restructure is live in cli.py),
+    the plan file itself was NEVER updated to reflect that completion. This
+    is a plan-tracking drift issue: the codebase is ahead of the plan.
+    The plan should remain live so an agent can formally reconcile the
+    task statuses or close out the remaining gaps.
+
+# ============================================================================
+# TASK STATUS ANALYSIS
+# ============================================================================
+task_status_summary:
+  total_tasks: 23
+  completed: 1
+  pending: 22
+  in_progress: 0
+  completion_percentage: 4.3
+
+  by_phase:
+    - phase_id: P01
+      name: Analysis and Command Mapping
+      tasks_total: 1
+      tasks_completed: 1
+      status: DONE
+
+    - phase_id: P02
+      name: Create Agent Group Infrastructure
+      tasks_total: 2
+      tasks_completed: 0
+      status: PENDING_IN_PLAN
+      reality_check: >
+        IMPLEMENTED in cli.py. The agent group, all sub-groups (plan, context,
+        entrypoint, manifest, stories, question), and nested sub-groups are
+        live. 'agentic agent --help' works. test_cli_restructure.py (473 lines)
+        exists. Plan tasks not marked complete.
+
+    - phase_id: P03
+      name: Migrate Plan Plumbing to Agent Plan
+      tasks_total: 6
+      tasks_completed: 0
+      status: PENDING_IN_PLAN
+      reality_check: >
+        IMPLEMENTED. 'agentic agent plan task', 'agentic agent plan phase',
+        'agentic agent plan archive/validate/scaffold/init/bootstrap',
+        'agentic agent plan move', 'agentic agent plan orchestration',
+        'agentic agent plan stories' all exist and work. 'agentic plan cancel'
+        also exists. Plan tasks not marked complete.
+
+    - phase_id: P04
+      name: Migrate Other Agent-Facing Commands
+      tasks_total: 5
+      tasks_completed: 0
+      status: PENDING_IN_PLAN
+      reality_check: >
+        IMPLEMENTED. 'agentic agent context', 'agentic agent entrypoint',
+        'agentic agent manifest', 'agentic agent stories' all work. Question
+        split is correct: user-facing shows list/show/answer/dashboard;
+        agent-facing (agentic agent question) shows ask/defer/watch/watch-daemon/watch-stop.
+        Plan tasks not marked complete.
+
+    - phase_id: P05
+      name: Update Tests
+      tasks_total: 3
+      tasks_completed: 0
+      status: PARTIALLY_COMPLETE
+      reality_check: >
+        test_cli_restructure.py exists (473 lines). test_cli.py exists.
+        Neither test_backward_compat.py (called for in P07_T01) was created
+        nor confirmed passing. P05_T03 (full suite pass with 0 failures) not
+        verified in plan. Plan tasks not marked complete.
+
+    - phase_id: P06
+      name: Update Agent Prompts and Guidance
+      tasks_total: 3
+      tasks_completed: 0
+      status: PARTIALLY_COMPLETE
+      reality_check: >
+        21 of 25 .claude/agents/*.md files now use 'agentic agent ...' paths.
+        4 remaining files (orchestration-friction.md, teacher-trace-diagnostics.md,
+        teacher-update-assets.md, teacher-update-guidance.md) have NO agentic
+        CLI references at all and require no update. .agent/instructions.md
+        and agents.md are fully updated. docs/prompts/orchestration_planner.md
+        is updated. docs/prompts/friction_analysis.md is updated. In practice
+        P06 appears complete. Plan tasks not marked complete.
+
+    - phase_id: P07
+      name: Backward Compatibility Verification
+      tasks_total: 3
+      tasks_completed: 0
+      status: UNVERIFIED
+      reality_check: >
+        test_backward_compat.py does NOT exist (called for in P07_T01).
+        Backward compat was verified manually during audit: agentic context
+        bootstrap, agentic plan task start, agentic plan archive all still work.
+        But the formal test artifact is missing. P07_T02 (help output clean)
+        is satisfied: main help shows 7 groups with no agent-internal leakage.
+        P07_T03 (full suite pass) not recorded as completed.
+
+# ============================================================================
+# CODEBASE IMPLEMENTATION REALITY
+# ============================================================================
+implementation_reality:
+  overall: COMPLETE
+  summary: >
+    The CLI restructure has been fully executed in the codebase. All structural
+    goals described in the plan are live. The plan file is severely out of date
+    with the code state.
+
+  verified_implemented:
+    - "'agentic agent --help' shows: plan, context, entrypoint, manifest, stories, question"
+    - "'agentic agent' is hidden from 'agentic --help'"
+    - "'agentic agent plan task' has: start, complete, prefill, list, status, add, update, current"
+    - "'agentic agent plan' has: archive, unarchive, validate, scaffold, init, bootstrap, task, phase, move, orchestration, stories"
+    - "'agentic agent context' has: bootstrap, role, task, inputs, generate-agent"
+    - "'agentic agent entrypoint' has: list, show, execute"
+    - "'agentic agent manifest' has: show, list, validate"
+    - "'agentic agent stories' has: find, init, cat, status, update, report, untested, batch-update, affected"
+    - "'agentic agent question' has: ask, defer, watch, watch-daemon, watch-stop"
+    - "'agentic question --help' shows ONLY: list, show, answer, dashboard (plumbing hidden)"
+    - "'agentic plan --help' shows ONLY: new, list, status, cancel"
+    - "Backward compat aliases all work: agentic context bootstrap, agentic plan task start, agentic plan archive"
+    - "21/25 .claude/agents/*.md files updated; remaining 4 have no CLI references"
+    - ".agent/instructions.md fully updated to 'agentic agent ...' paths"
+    - "agents.md fully updated with two-tier command table"
+    - "docs/prompts/orchestration_planner.md updated"
+
+  gaps_identified:
+    - description: "test_backward_compat.py was not created (P07_T01)"
+      severity: LOW
+      reason: >
+        Backward compat is working, but the formal parametrized test file
+        specified in P07_T01 was never written. This is a test coverage gap,
+        not a functional gap.
+    - description: "plan_test.yml and plan_teach.yml are scaffold stubs (_template_status: stub)"
+      severity: LOW
+      reason: >
+        These files were generated by 'agentic plan init' but never populated.
+        They are not misleading about plan status but are clutter.
+    - description: "plan_completed.yml has empty completed_items list"
+      severity: LOW
+      reason: >
+        No completed items were formally moved to this file. The plan uses a
+        different tracking pattern (status fields on individual tasks).
+    - description: "22 tasks marked 'pending' in plan_build.yml despite being implemented"
+      severity: HIGH
+      reason: >
+        This is the primary compliance issue. Any agent reading plan_build.yml
+        would conclude the work has not been done and would re-execute already
+        completed work. This is actively misleading.
+
+# ============================================================================
+# FILE PLACEMENT AUDIT
+# ============================================================================
+file_placement_audit:
+  findings:
+    - file: plan_test.yml
+      current_location: live/
+      correct_location: live/ (acceptable, stub file)
+      issue: "_template_status: stub - never populated, dead weight"
+      severity: LOW
+      action: CLEANUP_CANDIDATE
+
+    - file: plan_teach.yml
+      current_location: live/
+      correct_location: live/ (acceptable, stub file)
+      issue: "_template_status: stub - never populated, dead weight"
+      severity: LOW
+      action: CLEANUP_CANDIDATE
+
+    - file: plan_audit_clean.yml
+      current_location: live/
+      correct_location: live/ (acceptable for active audit tracking)
+      issue: "_template_status: stub - never populated"
+      severity: LOW
+      action: CLEANUP_CANDIDATE
+
+    - file: plan_completed.yml
+      current_location: live/
+      correct_location: live/ (acceptable companion file)
+      issue: "completed_items is empty - no items were formally tracked"
+      severity: LOW
+      action: INFORMATIONAL
+
+    - file: migration_map.md
+      current_location: live/
+      correct_location: live/ (analysis artifact supporting active plan)
+      issue: None
+      severity: NONE
+      action: NO_ACTION
+
+    - file: orchestration_restructure_cli_into_user_facing_and_agent_facing.mmd
+      current_location: live/
+      correct_location: live/ (orchestration artifact)
+      issue: None
+      severity: NONE
+      action: NO_ACTION
+
+    - file: plan_build.yml
+      current_location: live/
+      correct_location: live/ (active plan file with pending tasks in file)
+      issue: >
+        22 tasks marked 'pending' despite implementation being complete.
+        This is the critical misleading content issue.
+      severity: HIGH
+      action: REQUIRES_RECONCILIATION
+
+# ============================================================================
+# STALE ARTIFACT DETECTION
+# ============================================================================
+stale_artifacts:
+  - file: plan_test.yml
+    reason: "Scaffold stub never populated; testing work was done via test_cli_restructure.py"
+    risk: LOW
+
+  - file: plan_teach.yml
+    reason: "Scaffold stub never populated; no teaching plan was written"
+    risk: LOW
+
+  - file: plan_audit_clean.yml
+    reason: "Scaffold stub never populated"
+    risk: LOW
+
+# ============================================================================
+# MISLEADING CONTENT
+# ============================================================================
+misleading_content:
+  - file: plan_build.yml
+    severity: HIGH
+    description: >
+      22 of 23 tasks are marked 'pending' but the work is complete in the codebase.
+      An agent reading this plan would conclude:
+        - The agent group has NOT been created (it has)
+        - Plan commands have NOT been migrated (they have)
+        - Agent prompts have NOT been updated (they have)
+        - Tests have NOT been updated (they have, partially)
+      This creates a HIGH risk of re-execution of already-completed work.
+
+  - file: plan_test.yml
+    severity: LOW
+    description: >
+      Stub file with 'TODO' placeholders. An agent might try to populate and
+      execute this as if testing work is outstanding.
+
+  - file: plan_teach.yml
+    severity: LOW
+    description: >
+      Stub file with 'TODO' placeholders. An agent might try to populate and
+      execute this as if documentation work is outstanding.
+
+# ============================================================================
+# RECOMMENDED ACTIONS (for Cleaner Agent)
+# ============================================================================
+recommended_actions:
+  - id: RA_01
+    priority: HIGH
+    action: RECONCILE_PLAN_STATUSES
+    description: >
+      Update plan_build.yml to mark all completed tasks as 'completed'.
+      Based on codebase evidence: P02, P03, P04, P06 are fully implemented.
+      P05 is partially complete (tests exist, full suite pass unconfirmed).
+      P07 is partially complete (no test_backward_compat.py, but compat works).
+      Once statuses are reconciled, the plan can be evaluated for archival.
+    files_to_update:
+      - docs/plans/live/260220NE_restructure_cli_into_user_facing_and_agent_facing/plan_build.yml
+
+  - id: RA_02
+    priority: LOW
+    action: DELETE_STUB_FILES
+    description: >
+      Remove the three never-populated scaffold stubs: plan_test.yml,
+      plan_teach.yml, plan_audit_clean.yml. These add noise and could
+      mislead agents into thinking work is pending.
+    files_to_delete:
+      - docs/plans/live/260220NE_restructure_cli_into_user_facing_and_agent_facing/plan_test.yml
+      - docs/plans/live/260220NE_restructure_cli_into_user_facing_and_agent_facing/plan_teach.yml
+      - docs/plans/live/260220NE_restructure_cli_into_user_facing_and_agent_facing/plan_audit_clean.yml
+
+  - id: RA_03
+    priority: LOW
+    action: CREATE_MISSING_TEST_ARTIFACT
+    description: >
+      Write test_backward_compat.py as specified in P07_T01. This is the
+      only concrete deliverable from the plan that is genuinely missing.
+      Everything else is implemented; only this test file was skipped.
+    target_file: modules/AgenticCLI/tests/test_backward_compat.py
+
+  - id: RA_04
+    priority: LOW
+    action: ARCHIVE_AFTER_RECONCILIATION
+    description: >
+      After RA_01 (status reconciliation) confirms all tasks complete,
+      move the plan folder to completed/:
+        FROM: docs/plans/live/260220NE_restructure_cli_into_user_facing_and_agent_facing/
+        TO:   docs/plans/completed/260220NE_restructure_cli_into_user_facing_and_agent_facing/
+    precondition: RA_01 and RA_03 must be done first

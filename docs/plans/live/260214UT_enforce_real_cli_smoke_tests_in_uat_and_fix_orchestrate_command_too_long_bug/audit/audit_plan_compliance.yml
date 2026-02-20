@@ -1,0 +1,335 @@
+audit:
+  plan_id: "260214UT"
+  plan_folder: "/home/code/AgenticEngineering/docs/plans/live/260214UT_enforce_real_cli_smoke_tests_in_uat_and_fix_orchestrate_command_too_long_bug"
+  audited_at: "2026-02-20"
+  auditor: "planner-audit-agent"
+  reconciled_at: "2026-02-21"
+  reconciled_by: "planner-build-agent"
+
+  recommendation: "KEEP LIVE"
+  recommendation_reason: |
+    The Teach phase is now verified complete (all 4 guidance changes confirmed in
+    codebase). The Build phase (--dry-run flag, inplace layout fix), Test phase
+    (integration test files), and UAT phase all remain unimplemented. The plan
+    must stay in live/ until build-001, build-002, test-001, test-002, test-003,
+    and all UAT tasks are executed and marked completed.
+
+  # -----------------------------------------------------------------------
+  # TASK STATUS SUMMARY (reconciled 2026-02-21)
+  # -----------------------------------------------------------------------
+  task_status_summary:
+    total_tasks: 15
+    completed: 4   # all teach tasks verified done in codebase
+    pending: 11
+    in_progress: 0
+
+    phases:
+      - phase: "Build"
+        file: "plan_build.yml"
+        phase_status: "pending"
+        tasks:
+          - id: "build-001"
+            name: "Add --dry-run flag to cmd_orchestrate"
+            status: "pending"
+            note: "cli.py restructured to Typer - target is session_orchestrate() at line 707 in modules/AgenticCLI/src/agenticcli/cli.py (NOT commands/cli.py)"
+          - id: "build-002"
+            name: "Fix _create_inplace_layout to use absolute values instead of -p"
+            status: "pending"
+            note: "Lines 271 and 285 in tmux_layout.py confirmed still using -p flags"
+
+      - phase: "Teach"
+        file: "plan_teach.yml"
+        phase_status: "completed"
+        tasks:
+          - id: "teach-001"
+            name: "Add real CLI smoke test fence to planner-test/process.yml"
+            status: "completed"
+            verified_at_line: 365
+          - id: "teach-002"
+            name: "Add integration smoke test gate to orchestration-executor/process.yml"
+            status: "completed"
+            verified_at_line: 455
+          - id: "teach-003"
+            name: "Update test-user-simulator to prefer real commands over mocks"
+            status: "completed"
+            verified_at_line: 179
+          - id: "teach-004"
+            name: "Add CLI smoke test rule to planning-standard.yml"
+            status: "completed"
+            verified_at_line: 128
+
+      - phase: "Test"
+        file: "plan_test.yml"
+        phase_status: "pending"
+        tasks:
+          - id: "test-001"
+            name: "Create real tmux layout integration tests"
+            status: "pending"
+          - id: "test-002"
+            name: "Create real CLI orchestrate smoke tests"
+            status: "pending"
+          - id: "test-003"
+            name: "Add conftest with tmux skip marker and session cleanup fixture"
+            status: "pending"
+
+      - phase: "UAT"
+        file: "plan_uat.yml"
+        phase_status: "pending"
+        tasks:
+          - id: "uat-001"
+            name: "Verify 3-pane layout via --dry-run"
+            status: "pending"
+          - id: "uat-002"
+            name: "Verify pane titles are correctly set"
+            status: "pending"
+          - id: "uat-003"
+            name: "Verify $(cat file) expansion works in tmux send-keys"
+            status: "pending"
+          - id: "uat-004"
+            name: "Verify live orchestrate session launches correctly"
+            status: "pending"
+          - id: "uat-005"
+            name: "Verify all integration tests pass"
+            status: "pending"
+          - id: "uat-006"
+            name: "Verify cleanup handles zombie sessions"
+            status: "pending"
+
+  # -----------------------------------------------------------------------
+  # CODEBASE VERIFICATION FINDINGS
+  # -----------------------------------------------------------------------
+  codebase_verification:
+
+    - task_id: "build-001"
+      finding: "NOT IMPLEMENTED"
+      severity: "HIGH"
+      detail: |
+        No --dry-run flag exists on the `agentic orchestrate` command.
+
+        Checked: /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
+        The session_orchestrate() Typer function (lines 706-737) defines these options:
+          --mode, --plan, --prompt-file, --role, --model, --planning-loop,
+          --background, --max-iterations, --completion-promise, --project,
+          --directory, --dangerously-skip-permissions, --no-tmux,
+          --dashboard-refresh, --question-refresh
+        There is NO --dry-run option.
+
+        Checked: /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/orchestrate.py
+        cmd_orchestrate() does NOT reference dry_run anywhere.
+
+        The --dry-run occurrences found in cli.py (lines 1455, 1559, 1573, 1587,
+        1772, 1909, 1923, 1937) belong to plan/task management commands, not
+        to the orchestrate command.
+
+    - task_id: "build-002"
+      finding: "NOT IMPLEMENTED"
+      severity: "HIGH"
+      detail: |
+        _create_inplace_layout still uses -p percentage flags, not -l absolute values.
+
+        Checked: /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/utils/tmux_layout.py
+        Lines 267-292 confirm the latent bug is still present:
+          Line 271: "-p", "30"  (vertical split, should use -l absolute columns)
+          Line 285: "-p", "40"  (horizontal split, should use -l absolute rows)
+
+        The fix described in build-002 (query pane dimensions and use -l values)
+        has not been applied.
+
+    - task_id: "teach-001"
+      finding: "PARTIALLY IMPLEMENTED (status not updated in plan)"
+      severity: "MEDIUM"
+      detail: |
+        A real_cli_smoke_test_requirement block EXISTS in the guidance file.
+
+        Checked: /home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/planner-test/process.yml
+        Line 365: real_cli_smoke_test_requirement:
+        Line 367: FENCE: UAT for CLI commands MUST run the actual installed CLI, not mocks.
+
+        However, the task status in plan_teach.yml is still "pending". Either the
+        task was done outside this plan's tracking, or a previous session applied
+        a partial version of this change. The task status should reflect reality.
+
+    - task_id: "teach-002"
+      finding: "PARTIALLY IMPLEMENTED (status not updated in plan)"
+      severity: "MEDIUM"
+      detail: |
+        An integration_smoke_test_gate step EXISTS in the guidance file.
+
+        Checked: /home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml
+        Line 455: - id: "integration_smoke_test_gate"
+
+        Task status in plan_teach.yml is still "pending".
+
+    - task_id: "teach-003"
+      finding: "PARTIALLY IMPLEMENTED (status not updated in plan)"
+      severity: "MEDIUM"
+      detail: |
+        The PREFER REAL COMMAND EXECUTION guideline EXISTS in the file.
+
+        Checked: /home/code/AgenticEngineering/modules/AgenticGuidance/agents/test/test-user-simulator/process.yml
+        Line 179: PREFER REAL COMMAND EXECUTION over subprocess mocking for UAT.
+
+        Task status in plan_teach.yml is still "pending".
+
+    - task_id: "teach-004"
+      finding: "PARTIALLY IMPLEMENTED (status not updated in plan)"
+      severity: "MEDIUM"
+      detail: |
+        The CLI Smoke Test Requirement rule EXISTS in planning-standard.yml.
+
+        Checked: /home/code/AgenticEngineering/modules/AgenticGuidance/assets/guidelines/planning-standard.yml
+        Line 128: - rule: "CLI Smoke Test Requirement"
+
+        Task status in plan_teach.yml is still "pending".
+
+    - task_id: "test-001"
+      finding: "NOT IMPLEMENTED"
+      severity: "HIGH"
+      detail: |
+        The file modules/AgenticCLI/tests/integration/test_tmux_layout_real.py
+        does NOT exist.
+
+        Checked: ls /home/code/AgenticEngineering/modules/AgenticCLI/tests/integration/
+        Files present: test_auto_archive_trigger.py, test_bootstrap_planner_workflow.py,
+        test_context_bootstrap_planner.py, test_orchestrate_integration.py,
+        test_orchestration_sync.py, test_plan_creation_flow.py,
+        test_plan_path_arguments.py, test_question_commands.py,
+        test_question_tmux.py, test_stop_idempotency_e2e.py,
+        test_task_commands.py, test_user_stories.py, test_workflow_sequences.py
+
+        test_tmux_layout_real.py is NOT in this list.
+
+    - task_id: "test-002"
+      finding: "NOT IMPLEMENTED"
+      severity: "HIGH"
+      detail: |
+        The file modules/AgenticCLI/tests/integration/test_orchestrate_smoke.py
+        does NOT exist. The existing test_orchestrate_integration.py does not
+        contain --dry-run tests (no dry_run references found in that file).
+
+    - task_id: "test-003"
+      finding: "NOT IMPLEMENTED"
+      severity: "MEDIUM"
+      detail: |
+        The integration conftest.py at
+        /home/code/AgenticEngineering/modules/AgenticCLI/tests/integration/conftest.py
+        was NOT updated with tmux-related fixtures.
+
+        Current conftest.py (21 lines total) only contains:
+          - pytest_configure: adds integration marker
+          - verify_cli_installed: session fixture to skip if agentic not installed
+
+        No tmux availability fixture, no agentic-orch-* cleanup fixture, and no
+        per-test session tracking fixture were added.
+
+    - task_ids: ["uat-001", "uat-002", "uat-003", "uat-004", "uat-005", "uat-006"]
+      finding: "NOT EXECUTED"
+      severity: "HIGH"
+      detail: |
+        All 6 UAT tasks depend on Build phase (build-001: --dry-run flag) which
+        was not implemented. UAT cannot be executed until the build phase is done.
+        All UAT task statuses remain "pending".
+
+  # -----------------------------------------------------------------------
+  # FILE PLACEMENT COMPLIANCE
+  # -----------------------------------------------------------------------
+  file_placement_compliance:
+    live_folder_contents:
+      - file: "README.md"
+        correct_location: true
+        note: "Documentation for the plan — acceptable in live/"
+      - file: "_orchestrate.yml"
+        correct_location: true
+        note: "Orchestration metadata file — acceptable in live/"
+      - file: "orchestration_260214UT.mmd"
+        correct_location: true
+        note: "Mermaid diagram for orchestration — acceptable in live/"
+      - file: "plan_build.yml"
+        correct_location: true
+        note: "Active phase plan with pending items"
+      - file: "plan_teach.yml"
+        correct_location: true
+        note: "Active phase plan with pending items"
+      - file: "plan_test.yml"
+        correct_location: true
+        note: "Active phase plan with pending items"
+      - file: "plan_uat.yml"
+        correct_location: true
+        note: "Active phase plan with pending items"
+      - folder: "analysis/"
+        correct_location: true
+        note: "Empty — no misplaced artifacts"
+      - folder: "audit/"
+        correct_location: true
+        note: "Contains audit report — correct location"
+
+    violations: []
+
+  # -----------------------------------------------------------------------
+  # STALE ARTIFACT DETECTION (reconciled 2026-02-21)
+  # -----------------------------------------------------------------------
+  stale_artifacts:
+    - artifact: "plan_teach.yml task statuses"
+      severity: "RESOLVED"
+      resolved_at: "2026-02-21"
+      detail: |
+        Previously all four teach tasks showed status: "pending" but the changes
+        were already in the codebase. RESOLVED: All four teach tasks now marked
+        "completed" in plan_teach.yml with completion_note and verified_at_line.
+        The Teach phase status in _orchestrate.yml is now "completed".
+
+    - artifact: "plan_build.yml references commands/cli.py (wrong path)"
+      severity: "RESOLVED"
+      resolved_at: "2026-02-21"
+      detail: |
+        The CLI was restructured from argparse (commands/cli.py) to Typer (cli.py).
+        build-001 referenced the old path modules/AgenticCLI/src/agenticcli/commands/cli.py
+        which no longer exists. RESOLVED: plan_build.yml updated to reference
+        modules/AgenticCLI/src/agenticcli/cli.py and notes that session_orchestrate()
+        is at line 707 in the Typer-based CLI.
+
+  # -----------------------------------------------------------------------
+  # MISLEADING CONTENT (reconciled 2026-02-21)
+  # -----------------------------------------------------------------------
+  misleading_content:
+    - item: "All phase statuses showed pending despite partial guidance work"
+      severity: "RESOLVED"
+      resolved_at: "2026-02-21"
+      detail: |
+        RESOLVED: _orchestrate.yml Teach phase is now "completed". plan_teach.yml
+        phase and all task statuses are now "completed". No remaining misleading
+        content about teach phase work needing to be done.
+
+  # -----------------------------------------------------------------------
+  # FINAL ASSESSMENT (reconciled 2026-02-21)
+  # -----------------------------------------------------------------------
+  final_assessment:
+    all_tasks_complete: false
+    archive_eligible: false
+    keep_live: true
+    teach_phase_complete: true  # reconciled 2026-02-21
+
+    outstanding_work:
+      critical:
+        - "build-001: Add --dry-run Typer option to session_orchestrate() at line 707 in modules/AgenticCLI/src/agenticcli/cli.py; add dry_run handler in orchestrate.py; add skip_commands param to tmux_layout.py"
+        - "build-002: Fix _create_inplace_layout in tmux_layout.py lines 271 and 285 (change -p to -l absolute values; query pane dimensions first)"
+        - "test-001: Create /home/code/AgenticEngineering/modules/AgenticCLI/tests/integration/test_tmux_layout_real.py"
+        - "test-002: Create /home/code/AgenticEngineering/modules/AgenticCLI/tests/integration/test_orchestrate_smoke.py"
+        - "test-003: Update /home/code/AgenticEngineering/modules/AgenticCLI/tests/integration/conftest.py with tmux fixtures"
+        - "uat-001 through uat-006: All UAT verification tasks pending (depend on build-001)"
+
+      already_done_do_not_re_apply:
+        - "teach-001: real_cli_smoke_test_requirement at line 365 of planner-test/process.yml"
+        - "teach-002: integration_smoke_test_gate at line 455 of orchestration-executor/process.yml"
+        - "teach-003: PREFER REAL COMMAND EXECUTION at line 179 of test-user-simulator/process.yml"
+        - "teach-004: CLI Smoke Test Requirement rule at line 128 of planning-standard.yml"
+
+    archive_condition: |
+      Archive to /home/code/AgenticEngineering/docs/plans/completed/ ONLY when:
+      1. All 15 task statuses are updated to "completed" in their respective plan files
+      2. --dry-run flag is implemented and working on agentic orchestrate
+      3. _create_inplace_layout uses -l absolute values (not -p percentages)
+      4. test_tmux_layout_real.py exists and all 7 tests pass
+      5. test_orchestrate_smoke.py exists and all 6 tests pass
+      6. conftest.py updated with tmux fixtures
+      7. All UAT tasks verified with real tmux
