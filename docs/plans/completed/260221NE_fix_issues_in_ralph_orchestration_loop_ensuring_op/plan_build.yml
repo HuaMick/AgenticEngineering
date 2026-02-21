@@ -1,0 +1,449 @@
+name: Fix issues in Ralph orchestration loop - question gate, routing, robustness
+status: active
+priority: high
+worktree_path: .
+affected_stories:
+- US-CLI-120
+- US-CLI-122
+- US-CLI-123
+- US-CLI-060
+- US-CLI-061
+- US-GD-023
+- US-GD-025
+- US-ORCH-012
+- US-ORCH-014
+open_questions:
+- id: OQ-1
+  text: Should the ralph loop auto-start a question dashboard/watcher when it starts?
+    Currently question monitoring requires a separate agentic question watch-daemon
+    invocation.
+  severity: medium
+  context: The question watch-daemon (US-CLI-066) exists but is separate from ralph
+    start. Auto-starting it would improve UX but couples the systems.
+- id: OQ-2
+  text: When all remaining plans are blocked by questions, should the loop emit the
+    completion promise or a distinct 'blocked_by_questions' status?
+  severity: high
+  context: Current check_all_complete() returns True if all plans are completed or
+    blocked. If blocked-by-questions plans are treated as 'blocked', the loop would
+    emit the completion promise even though work remains.
+- id: OQ-3
+  text: Should the loop iteration limit be paused/not-counted when the loop is waiting
+    for human answers?
+  severity: medium
+  context: If the loop has max_iterations=10 and spends 8 iterations discovering the
+    same blocked-by-questions plans, it may exhaust iterations before questions are
+    answered.
+success_criteria:
+- RalphLoopService.discover_plans() checks for pending blocking questions and marks
+  plans as blocked when they have unresolved blocking questions
+- ralph next --json output includes blocking_questions count when a plan is blocked
+  by questions
+- ralph status output includes a question summary section
+- Plans with 0 tasks and no orchestration MMD are classified as needs_planning not
+  completed
+- The -j flag in _get_plan_status_from_cli() uses correct --json root-level convention
+- check_all_complete() distinguishes between completed, blocked-by-deps, and blocked-by-questions
+- All new functionality covered by unit tests
+- Existing tests pass (no regressions)
+impacted_artifacts:
+  services:
+  - path: modules/AgenticGuidance/src/agenticguidance/services/ralph.py
+    changes: Add question gate checking, fix empty plan handling, fix CLI flag, enhance
+      check_all_complete()
+  cli_commands:
+  - path: modules/AgenticCLI/src/agenticcli/commands/ralph.py
+    changes: Enhance status output with question summary, enhance next output with
+      question info
+  agent_guidance:
+  - path: modules/AgenticGuidance/agents/orchestration/orchestration-loop/process.yml
+    changes: No changes needed - process already mandates question gate; this plan
+      implements it
+  tests:
+  - path: modules/AgenticGuidance/tests/test_services_ralph.py
+    changes: Add tests for question gate, empty plan handling, CLI flag fix
+  - path: modules/AgenticGuidance/tests/test_integration_ralph_loop.py
+    changes: Add integration tests for question-blocked flow
+phases:
+- id: P1
+  name: Question Gate Integration
+  status: pending
+  tasks:
+  - id: P1_T1
+    name: Add _has_blocking_questions() method to RalphLoopService
+    status: completed
+    guidance: 'Add a new method to RalphLoopService that checks whether a plan has
+
+      pending blocking questions using the QuestionQueue service.
+
+
+      The method should:
+
+      1. Import QuestionQueue from agenticguidance.services.question
+
+      2. Instantiate QuestionQueue with the plan''s path
+
+      3. Call list_pending() to get pending questions
+
+      4. Filter for questions with severity="blocking"
+
+      5. Return (has_blocking: bool, count: int) tuple
+
+
+      If the questions directory doesn''t exist or there are no pending
+
+      questions, return (False, 0).
+
+
+      Handle import/instantiation errors gracefully - if QuestionQueue
+
+      is unavailable, log a warning and return (False, 0) so the loop
+
+      doesn''t break if the question service has issues.
+
+      '
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/ralph.py
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/question.py
+    - modules/AgenticGuidance/src/agenticguidance/services/ralph.py
+    success_criteria:
+    - _has_blocking_questions(plan_path) returns (True, N) when N blocking questions
+      exist
+    - _has_blocking_questions(plan_path) returns (False, 0) when no blocking questions
+      exist
+    - Handles missing questions directory gracefully
+  - id: P1_T2
+    name: Integrate question gate into discover_plans()
+    status: completed
+    guidance: "Modify discover_plans() to call _has_blocking_questions() for each\n\
+      plan and set action_required=\"blocked\" when blocking questions exist.\n\n\
+      In the plan discovery loop (after line ~567 where dependencies are\nchecked),\
+      \ add:\n1. Call _has_blocking_questions(plan_dir)\n2. If blocking questions\
+      \ found, set action_required = \"blocked\"\n3. Store the blocking question count\n\
+      \ in PlanInfo\n\nThis requires adding a new field to the PlanInfo dataclass:\n\
+      \  blocking_questions: int = 0\n\nUpdate PlanInfo.to_dict() to include the new\n\
+      \ field.\n\nThe blocked reason should distinguish between dependency-blocked\
+      \ and\nquestion-blocked. Currently PlanAction.reason is a string, so use:\n\
+      - \"Waiting for: dep1, dep2\" for dependency blocks\n- \"Blocked by N pending\n\
+      \ question(s)\" for question blocks\n- If both, list both reasons\n"
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/ralph.py
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/ralph.py
+    success_criteria:
+    - Plans with blocking questions have action_required='blocked'
+    - PlanInfo.blocking_questions field populated correctly
+    - PlanAction.reason distinguishes question-blocked from dependency-blocked
+  - id: P1_T3
+    name: Update get_priority_queue() to include question-blocked plans
+    status: completed
+    guidance: 'Modify get_priority_queue() so that blocked plans in the queue
+
+      include the blocking_questions count from PlanInfo.
+
+
+      In the Priority 3 (blocked actions) section, when building the
+
+      PlanAction for blocked plans:
+
+      1. Check if the plan has blocking_questions > 0
+
+      2. If yes, include that in the reason string
+
+      3. Ensure the PlanAction has enough info for the CLI to display
+
+
+      No structural change needed to PlanAction - the reason string
+
+      is sufficient. But ensure the blocked reason is clear:
+
+      - Deps only: "Waiting for: dep1, dep2"
+
+      - Questions only: "Blocked by 3 pending blocking question(s)"
+
+      - Both: "Waiting for: dep1; also blocked by 2 question(s)"
+
+      '
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/ralph.py
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/ralph.py
+    success_criteria:
+    - Blocked actions include question count in reason string
+    - Human can distinguish dep-blocked from question-blocked in output
+- id: P2
+  name: Open Question Routing and Visibility
+  status: pending
+  tasks:
+  - id: P2_T1
+    name: Add question summary to ralph status output
+    status: completed
+    guidance: "Modify the status() function in ralph.py CLI to include a question\n\
+      summary section.\n\nFor the human-readable output, add after the \"Plan Status\"\
+      \nsection:\n```\nPending Questions\n\u2500\u2500\u2500\u2500\u2500\u2500\u2500\
+      \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nBlocking: 3\n\
+      High: 1\nMedium: 2\nTotal pending: 6\n```\n\nFor JSON output, add a \"questions\"\
+      \nkey:\n```json\n{\n  \"questions\": {\n    \"blocking\": 3,\n    \"high\":\n\
+      \ 1,\n    \"medium\": 2,\n    \"low\": 0,\n    \"total_pending\": 6\n  }\n}\n\
+      ```\n\nTo collect this data:\n1. Import QuestionQueue from agenticguidance.services.question\n\
+      2. For each discovered plan, instantiate QuestionQueue(plan_path)\n3. Call list_pending()\n\
+      and categorize by severity\n4. Aggregate across all plans\n\nHandle errors\n\
+      gracefully - if question service unavailable, show\n\"Questions: unavailable\"\
+      \nor omit the section.\n"
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/ralph.py
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/ralph.py
+    - modules/AgenticGuidance/src/agenticguidance/services/question.py
+    success_criteria:
+    - agentic ralph status shows pending question counts by severity
+    - agentic ralph status --json includes questions object
+    - Graceful degradation if question service unavailable
+  - id: P2_T2
+    name: Add blocking_questions to ralph next output when plan is blocked
+    status: completed
+    guidance: "Modify the next_action() function in ralph.py CLI so that when a\n\
+      plan is blocked by questions, the output includes guidance for the\nhuman operator.\n\
+      \nFor JSON output, when action is \"blocked\" and reason mentions questions:\n\
+      ```json\n{\n  \"action\": \"blocked\",\n  \"plan\": \"260221NE_...\",\n  \"\
+      reason\": \"Blocked by 2 pending blocking question(s)\",\n  \"hint\": \"Run:\n\
+      \ agentic question list --plan 260221NE_... to see questions\"\n}\n```\n\nFor\n\
+      human-readable output, add a hint line:\n```\nAction: blocked\nPlan: 260221NE_...\n\
+      Reason: Blocked by 2 pending blocking question(s)\nHint: Run: agentic question\n\
+      \ list --plan 260221NE_... to review and answer\n```\n\nThe hint should only\n\
+      appear when the block is caused by questions\n(check if \"question\" appears\n\
+      in the reason string).\n"
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/ralph.py
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/ralph.py
+    success_criteria:
+    - ralph next shows hint to review questions when blocked by questions
+    - Hint includes the exact agentic command to run
+    - Hint does NOT appear for dependency-blocked plans
+- id: P3
+  name: Loop Robustness Fixes
+  status: pending
+  tasks:
+  - id: P3_T1
+    name: Fix _get_plan_status_from_cli() JSON flag
+    status: completed
+    guidance: "Fix the CLI invocation in _get_plan_status_from_cli() method of\nRalphLoopService.\n\
+      \nCurrent (WRONG - `-j` is not a valid flag for plan status):\n```python\nresult\n\
+      = subprocess.run(\n    [\"agentic\", \"plan\", \"status\", \"--plan\", plan_name,\n\
+      \ \"-j\"],\n    ...\n)\n```\n\nCorrect (--json is a root-level flag per CLI\n\
+      convention):\n```python\nresult = subprocess.run(\n    [\"agentic\", \"--json\"\
+      \n, \"plan\", \"status\", \"--plan\", plan_name],\n    ...\n)\n```\n\nThe `--json`\n\
+      flag must come BEFORE the subcommand group, not after.\nThis is documented\n\
+      in orchestration-loop process.yml guidelines.\n"
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/ralph.py
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/ralph.py
+    success_criteria:
+    - CLI invocation uses ['agentic', '--json', 'plan', 'status', '--plan', plan_name]
+    - No other subprocess calls are affected
+  - id: P3_T2
+    name: Fix empty plan (0 tasks) classification
+    status: completed
+    guidance: "Fix _determine_action_required() so that plans with 0 tasks are NOT\n\
+      automatically classified as \"completed\".\n\nCurrent behavior (line ~493-494):\n\
+      ```python\nif total_tasks == 0:\n    return \"completed\"\n```\n\nThis is wrong\n\
+      because a plan with 0 tasks may be:\n- A newly created plan that only has\n\
+      README.md\n- A plan whose plan_build.yml is being written by a planner agent\n\
+      - A plan with a plan_build.yml that has phases but no tasks yet\n\nFix: Change\n\
+      the logic to check for orchestration status:\n- If total_tasks == 0 AND has_orchestration:\n\
+      return \"completed\"\n  (plan had an MMD and all tasks were removed = done)\n\
+      - If total_tasks == 0 AND NOT has_orchestration: return \"needs_planning\"\n\
+      \  (plan hasn't been fully planned yet)\n\nThis requires passing has_orchestration\n\
+      to the method (it already\nreceives it as a parameter, so just adjust the\n\
+      logic).\n"
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/ralph.py
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/ralph.py
+    success_criteria:
+    - Plans with 0 tasks and no orchestration MMD get action 'needs_planning'
+    - Plans with 0 tasks and an orchestration MMD get action 'completed'
+    - Plans with pending tasks still work correctly (no regression)
+  - id: P3_T3
+    name: Enhance check_all_complete() to distinguish completion states
+    status: completed
+    guidance: "Enhance check_all_complete() to return a richer result that\ndistinguishes\n\
+      between different end states.\n\nCurrent: returns bool\nNew: return a dict\n\
+      or named tuple with:\n```python\n{\n    \"all_complete\": True/False,\n  \n\
+      \    \"blocked_by_deps\": 0,       # count of dep-blocked plans\n    \"blocked_by_questions\"\
+      \n: 0,   # count of question-blocked plans\n    \"in_progress\": 0,        \
+      \  \n  # count of execute/needs_planning plans\n    \"completed\": 0,      \
+      \    \n    # count of completed plans\n    \"can_emit_promise\": True/False\
+      \  # True\n}\n```\n\ncan_emit_promise should be True ONLY\nwhen:\n- in_progress\
+      \ == 0\n- blocked_by_questions == 0\n(dependency-blocked\nis OK since those\
+      \ deps might be in other\nrepos or completed plans already\narchived)\n\nFor\
+      \ backward compatibility, keep the existing check_all_complete()\nmethod returning\
+      \ bool,\nand add a new method:\nget_completion_status() -> dict\n\nUpdate the\
+      \ CLI's\nstatus() and next_action() to use\nget_completion_status()\nfor richer\
+      \ output.\n"
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/ralph.py
+    - modules/AgenticCLI/src/agenticcli/commands/ralph.py
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/ralph.py
+    - modules/AgenticCLI/src/agenticcli/commands/ralph.py
+    success_criteria:
+    - get_completion_status() returns dict with all fields
+    - check_all_complete() still returns bool (backward compat)
+    - can_emit_promise is False when plans are blocked by questions
+    - CLI status uses richer completion info
+- id: P4
+  name: Testing
+  status: pending
+  tasks:
+  - id: P4_T1
+    name: Unit tests for question gate and robustness fixes
+    status: completed
+    guidance: "Add tests to the existing test file:\n  modules/AgenticGuidance/tests/test_services_ralph.py\n\
+      \nTests to add:\n\n1. test_has_blocking_questions_returns_true_when_blocking_exist:\n\
+      \   - Create a plan dir with questions/pending/ containing a question\n    \
+      \ YAML with severity: blocking\n   - Call _has_blocking_questions() and assert\
+      \ (True, 1)\n\n2. test_has_blocking_questions_returns_false_when_no_blocking:\n\
+      \   - Create a plan dir with questions/pending/ containing a question\n    \
+      \ with severity: medium\n   - Assert (False, 0)\n\n3. test_has_blocking_questions_missing_dir:\n\
+      \   - Plan dir with no questions/ directory\n   - Assert (False, 0)\n\n4. test_discover_plans_blocks_on_questions:\n\
+      \   - Create a plan with pending blocking questions\n   - Call discover_plans()\
+      \ and assert action_required == \"blocked\"\n   - Assert blocking_questions\
+      \ > 0 in PlanInfo\n\n5. test_determine_action_empty_plan_no_mmd:\n   - total_tasks=0,\
+      \ has_orchestration=False\n   - Assert returns \"needs_planning\"\n\n6. test_determine_action_empty_plan_with_mmd:\n\
+      \   - total_tasks=0, has_orchestration=True\n   - Assert returns \"completed\"\
+      \n\n7. test_get_completion_status_blocked_by_questions:\n   - Create plans where\
+      \ some are blocked by questions\n   - Call get_completion_status()\n   - Assert\
+      \ blocked_by_questions > 0, can_emit_promise == False\n\n8. test_get_completion_status_all_complete:\n\
+      \   - Create plans that are all completed\n   - Assert can_emit_promise == True\n\
+      \nUse the existing test patterns (tmp_path, creating plan directories\nwith\
+      \ plan_build.yml files). For question tests, create question YAML\nfiles in\
+      \ the expected directory structure.\n"
+    target_files:
+    - modules/AgenticGuidance/tests/test_services_ralph.py
+    inputs:
+    - modules/AgenticGuidance/tests/test_services_ralph.py
+    - modules/AgenticGuidance/src/agenticguidance/services/ralph.py
+    - modules/AgenticGuidance/src/agenticguidance/services/question.py
+    success_criteria:
+    - All 8 new tests pass
+    - Existing tests still pass (no regressions)
+    - Tests use tmp_path for isolation
+  - id: P4_T2
+    name: Integration tests for question-blocked flow
+    status: completed
+    guidance: "Add integration tests to:\n  modules/AgenticGuidance/tests/test_integration_ralph_loop.py\n\
+      \nTests to add:\n\n1. test_ralph_loop_skips_question_blocked_plan:\n   - Create\
+      \ two plans: one ready to execute, one with blocking questions\n   - Call get_next_action()\n\
+      \   - Assert the returned action is for the executable plan (not the\n     question-blocked\
+      \ one)\n\n2. test_ralph_status_includes_question_summary:\n   - Create plans\
+      \ with pending questions at various severities\n   - Call discover_plans() and\
+      \ verify question counts are accurate\n\n3. test_priority_queue_question_blocked_reason:\n\
+      \   - Create a plan blocked by questions\n   - Get priority queue\n   - Assert\
+      \ the blocked action's reason mentions questions\n\nUse the existing integration\n\
+      \ test patterns (creating full plan\ndirectory structures with plan_build.yml,\n\
+      orchestration MMD files,\nand now question YAML files).\n"
+    target_files:
+    - modules/AgenticGuidance/tests/test_integration_ralph_loop.py
+    inputs:
+    - modules/AgenticGuidance/tests/test_integration_ralph_loop.py
+    - modules/AgenticGuidance/src/agenticguidance/services/ralph.py
+    success_criteria:
+    - All 3 new integration tests pass
+    - Existing integration tests still pass
+  - id: P4_T3
+    name: Fix regression in test_corrupted_plan_yaml_recovery
+    status: completed
+    guidance: "Update test_corrupted_plan_yaml_recovery in \nmodules/AgenticGuidance/tests/test_integration_ralph_loop.py.\n\
+      \nThe test currently expects check_all_complete() to be True for a \ncorrupted\
+      \ plan with zero tasks. However, our changes correctly \nclassify plans with\
+      \ zero tasks and no orchestration MMD as \n'needs_planning', which means check_all_complete()\
+      \ will return False.\n\nUpdate the test assertion to expect False.\n"
+    target_files:
+    - modules/AgenticGuidance/tests/test_integration_ralph_loop.py
+    success_criteria:
+    - test_corrupted_plan_yaml_recovery passes with updated assertion
+- id: P5
+  name: User Acceptance Testing
+  status: pending
+  uat_strategy: test-user-simulator
+  user_stories:
+  - 'US-CLI-120: Start Ralph Loop for Plan Orchestration'
+  - 'US-CLI-122: View Ralph Loop Status'
+  - 'US-CLI-123: Get Next Ralph Action Recommendation'
+  - 'US-CLI-060: Ask a Question During Workflow'
+  - 'US-CLI-061: List Pending Questions'
+  tasks:
+  - id: P5_T1
+    name: 'UAT: Validate ralph loop question gate and status reporting'
+    status: completed
+    guidance: 'Run test-user-simulator against the following user journeys:
+
+
+      Journey 1 - Question Gate Blocking (US-CLI-120, US-CLI-060):
+
+      1. Create a plan in docs/plans/live/ with a plan_build.yml
+
+      2. Create a blocking question via: agentic question ask "What approach?" --severity
+      blocking --plan <folder>
+
+      3. Run: agentic ralph next --json
+
+      4. Verify the plan is reported as "blocked" with reason mentioning questions
+
+      5. Answer the question: agentic question answer <id> --text "Use approach A"
+
+      6. Run: agentic ralph next --json again
+
+      7. Verify the plan is no longer blocked by questions
+
+
+      Journey 2 - Status Question Summary (US-CLI-122, US-CLI-061):
+
+      1. Create multiple plans with various pending questions
+
+      2. Run: agentic ralph status
+
+      3. Verify output includes "Pending Questions" section with severity counts
+
+      4. Run: agentic ralph status --json
+
+      5. Verify JSON includes "questions" object with counts
+
+
+      Journey 3 - Empty Plan Handling (US-CLI-123):
+
+      1. Create a plan folder with only README.md and empty plan_build.yml
+
+      2. Run: agentic ralph next --json
+
+      3. Verify it reports as "needs_planning" not "completed"
+
+
+      CLI Smoke Tests (MANDATORY per planning-standard.yml):
+
+      - agentic ralph status --help (must exit 0)
+
+      - agentic ralph next --help (must exit 0)
+
+      - agentic ralph status (must not crash even with no state)
+
+      - agentic ralph next --json (must return valid JSON)
+
+      '
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/ralph.py
+    - modules/AgenticGuidance/src/agenticguidance/services/ralph.py
+    inputs:
+    - docs/userstories/AgenticCLI/12_ralph.yml
+    - docs/userstories/AgenticCLI/06_question_queue.yml
+    success_criteria:
+    - Question gate correctly blocks plans with pending blocking questions
+    - Ralph status shows question summary
+    - Ralph next provides actionable hints for question-blocked plans
+    - Empty plans classified as needs_planning
+    - All CLI smoke tests pass (exit 0, valid output)
+    - JSON output is valid and parseable

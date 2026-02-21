@@ -1,0 +1,238 @@
+# Implementation Plan: hide_plan_new_user_entrypoint
+# Plan ID: 260221NE
+# Created: 2026-02-21
+
+name: "hide_plan_new_user_entrypoint"
+worktree_path: "/home/code/AgenticEngineering"
+branch: "main"
+status: "completed"
+priority: "high"
+
+objective: |
+  Hide `agentic plan new` from user-facing help and make `agentic session orchestrate --mode planning`
+  the canonical user-facing entrypoint for creating plans. The `plan new` command must remain
+  functional (as a hidden backward-compatible command and as `agentic agent plan new`) so
+  agent-facing callers and any existing scripts are not broken.
+
+affected_stories:
+  - US-ORCH-001
+  - US-ORCH-002
+
+phases:
+
+  - id: "P01"
+    name: "Hide plan new from user-facing help"
+    description: |
+      Add `hidden=True` to the `@plan_app.command("new")` decorator in cli.py so that
+      `agentic plan new` no longer appears in `agentic plan --help` output, while the
+      command itself continues to execute when called directly (backward compatibility).
+    tasks:
+
+      - id: "P01_T01"
+        name: "Add hidden=True to plan_app.command('new') decorator"
+        status: "completed"
+        priority: "high"
+        agent: "build-python"
+        inputs:
+          - "/home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py"
+        target_files:
+          - "/home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py"
+        guidance: |
+          Locate line 1279 in cli.py where the plan_app.command("new") decorator is defined:
+
+            @plan_app.command("new")
+            def plan_new(
+
+          Change it to:
+
+            @plan_app.command("new", hidden=True)
+            def plan_new(
+
+          This mirrors the pattern already used for plan_app.command("init", hidden=True),
+          plan_app.command("bootstrap", hidden=True), etc. on lines 1305, 1321, 1336, etc.
+          No other changes to the plan_new function body are needed.
+        success_criteria:
+          - "`@plan_app.command(\"new\", hidden=True)` exists at the plan_new definition"
+          - "The plan_new function signature and body are unchanged"
+          - "`agentic plan --help` does NOT show 'new' in its command list"
+          - "`agentic plan new \"some objective\" --branch some-branch` still executes without error (hidden but functional)"
+
+  - id: "P02"
+    name: "Register plan new under agent_plan_app"
+    description: |
+      Add `agentic agent plan new` so agents can invoke plan creation via the canonical
+      agent-facing path. Follow the exact same pattern used for agent_plan_app.command("archive"),
+      agent_plan_app.command("validate"), agent_plan_app.command("init"), etc.
+      The new function must proxy to the same cmd_new handler.
+    tasks:
+
+      - id: "P02_T01"
+        name: "Add agent_plan_new command to agent_plan_app"
+        status: "completed"
+        priority: "high"
+        agent: "build-python"
+        inputs:
+          - "/home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py"
+        target_files:
+          - "/home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py"
+        guidance: |
+          Find the block beginning at line 2087 in cli.py:
+
+            @agent_plan_app.command("bootstrap")
+            def agent_plan_bootstrap(
+              ...
+            )
+
+          Immediately after the closing of agent_plan_bootstrap (before the `# --- agent context ---`
+          comment at line 2101), add a new command registration:
+
+            @agent_plan_app.command("new")
+            def agent_plan_new(
+                objective: Annotated[Optional[str], typer.Argument(help="Planning objective description")] = None,
+                branch: Annotated[Optional[str], typer.Option("--branch", "-b", help="Git branch name (auto-generated from objective if omitted)")] = None,
+                description: Annotated[Optional[str], typer.Option("--description", "-d", help="Plan folder description suffix")] = None,
+                base: Annotated[str, typer.Option("--base", help="Base branch for worktree")] = "main",
+                execute: Annotated[bool, typer.Option("--execute", "-x", help="Auto-execute after planning completes")] = False,
+                max_turns: Annotated[int, typer.Option("--max-turns", help="Max turns for planner agent")] = 25,
+                dangerously_skip_permissions: Annotated[bool, typer.Option(
+                    "--dangerously-skip-permissions", help="Skip permission prompts for spawned sessions")] = False,
+            ):
+                """Create plan and spawn planner agent (agent-facing)."""
+                if not objective:
+                    from agenticcli.console import print_error
+                    print_error("Objective is required. Usage: agentic agent plan new \"your objective\"")
+                    raise typer.Exit(1)
+                _plan_handle(_ns(
+                    command="plan", plan_command="new",
+                    json=_global["json"], debug=_global["debug"],
+                    objective=objective, branch=branch, description=description,
+                    base=base, execute=execute, max_turns=max_turns,
+                    dangerously_skip_permissions=dangerously_skip_permissions,
+                ))
+
+          This is the same parameter set and body as plan_new (user-facing), just registered
+          under agent_plan_app instead. The parameter types must use Optional[str] for the
+          Annotated imports already present at the top of cli.py.
+        success_criteria:
+          - "`agent_plan_app.command(\"new\")` function exists in cli.py"
+          - "`agentic agent plan --help` shows 'new' in its command list"
+          - "`agentic agent plan new --help` returns exit code 0"
+          - "`agentic agent plan new \"some objective\" --branch test-branch` proxies to cmd_new correctly"
+
+  - id: "P03"
+    name: "Update tests to reflect new visibility contract"
+    description: |
+      The test_cli_restructure.py currently asserts `plan new` IS visible in `agentic plan --help`
+      (test_plan_help_shows_new at line 247). That assertion must be inverted: `new` should NOT
+      appear in user-facing plan help. A new test should assert it IS visible under
+      `agentic agent plan --help`. The test_plan_new.py and test_plan_new_uat.py unit/UAT tests
+      must not be broken - they test cmd_new logic directly and via `plan new` invocation which
+      continues to work even when hidden.
+    tasks:
+
+      - id: "P03_T01"
+        name: "Update test_cli_restructure.py visibility assertions for plan new"
+        status: "completed"
+        priority: "high"
+        agent: "build-python"
+        inputs:
+          - "/home/code/AgenticEngineering/modules/AgenticCLI/tests/test_cli_restructure.py"
+        target_files:
+          - "/home/code/AgenticEngineering/modules/AgenticCLI/tests/test_cli_restructure.py"
+        guidance: |
+          Two changes are needed in test_cli_restructure.py:
+
+          CHANGE 1 - In TestHiddenVerification class, add a new test after
+          test_plan_help_does_not_show_archive (around line 217):
+
+            def test_plan_help_does_not_show_new(self, cli_runner):
+                """agentic plan --help does NOT show 'new' as a subcommand (hidden since plan new is agent-facing)."""
+                result = cli_runner(["plan", "--help"])
+                assert result.returncode == 0
+                cmd_names = _extract_cmd_names(result.stdout)
+                assert "new" not in cmd_names
+
+          CHANGE 2 - In TestUserFacingCommandsVisible class, remove or update
+          test_plan_help_shows_new (lines 247-252). Replace it with a comment explaining
+          the change, or delete it entirely. The simplest approach is to delete the method:
+
+            def test_plan_help_shows_new(self, cli_runner):
+                """agentic plan --help contains 'new'."""
+                result = cli_runner(["plan", "--help"])
+                assert result.returncode == 0
+                cmd_names = _extract_cmd_names(result.stdout)
+                assert "new" in cmd_names
+
+          CHANGE 3 - In TestAgentGroupInfrastructure class, add a test asserting
+          `agentic agent plan --help` shows 'new' (append after the existing agent plan tests
+          around line 68):
+
+            def test_agent_plan_help_shows_new(self, cli_runner):
+                """agentic agent plan --help shows 'new' (agent-facing entrypoint for plan creation)."""
+                result = cli_runner(["agent", "plan", "--help"])
+                assert result.returncode == 0
+                output = result.stdout
+                assert "new" in output
+
+          CHANGE 4 - In TestAgentPathEquivalence class, add a test (append after the existing
+          agent path tests):
+
+            def test_agent_plan_new_help(self, cli_runner):
+                """agentic agent plan new --help returns 0."""
+                result = cli_runner(["agent", "plan", "new", "--help"])
+                assert result.returncode == 0
+        success_criteria:
+          - "test_plan_help_does_not_show_new exists in TestHiddenVerification"
+          - "test_plan_help_shows_new no longer exists in TestUserFacingCommandsVisible"
+          - "test_agent_plan_help_shows_new exists in TestAgentGroupInfrastructure"
+          - "test_agent_plan_new_help exists in TestAgentPathEquivalence"
+
+      - id: "P03_T02"
+        name: "Verify test_plan_new.py and test_plan_new_uat.py need no changes"
+        status: "completed"
+        priority: "medium"
+        agent: "build-python"
+        inputs:
+          - "/home/code/AgenticEngineering/modules/AgenticCLI/tests/test_plan_new.py"
+          - "/home/code/AgenticEngineering/modules/AgenticCLI/tests/test_plan_new_uat.py"
+        target_files: []
+        guidance: |
+          Read test_plan_new.py and test_plan_new_uat.py carefully. These tests invoke
+          cmd_new directly via the Python API (not via help visibility), or call
+          `agentic plan new <objective>` as a CLI invocation. Because `plan new` remains
+          callable even when hidden, these tests should continue to pass without modification.
+
+          Check for any test that asserts `plan new` appears in help output. If any such
+          assertion exists, it must be removed or updated to match the new hidden behavior.
+          If no such assertions exist, no changes are needed and this task is a read-only
+          verification.
+
+          Document the finding in this task completion note.
+        success_criteria:
+          - "test_plan_new.py has no assertions that 'new' appears in plan --help output"
+          - "test_plan_new_uat.py has no assertions that 'new' appears in plan --help output"
+          - "All existing tests in both files continue to pass (functional behavior unchanged)"
+
+loops:
+  - type: "test-fix-loop"
+    max_iterations: 5
+    trigger: "after P03"
+    scope:
+      - "/home/code/AgenticEngineering/modules/AgenticCLI/tests/test_cli_restructure.py"
+      - "/home/code/AgenticEngineering/modules/AgenticCLI/tests/test_plan_new.py"
+      - "/home/code/AgenticEngineering/modules/AgenticCLI/tests/test_plan_new_uat.py"
+    command: |
+      cd /home/code/AgenticEngineering && python3 -m pytest modules/AgenticCLI/tests/test_cli_restructure.py modules/AgenticCLI/tests/test_plan_new.py modules/AgenticCLI/tests/test_plan_new_uat.py -v 2>&1
+    exit_criteria: "All tests pass (exit code 0)"
+
+success_criteria:
+  user_acceptance:
+    - "Running `agentic plan --help` does NOT list 'new' in the commands section"
+    - "Running `agentic agent plan --help` DOES list 'new' in the commands section"
+    - "Running `agentic plan new \"some objective\" --branch test-x` still executes and produces a plan folder (backward compat)"
+    - "Running `agentic agent plan new \"some objective\" --branch test-x` executes and produces a plan folder"
+    - "Running `agentic session orchestrate --mode planning` is the documented user path for plan creation"
+  test_gates:
+    - "pytest test_cli_restructure.py passes with 0 failures"
+    - "pytest test_plan_new.py passes with 0 failures"
+    - "pytest test_plan_new_uat.py passes with 0 failures"

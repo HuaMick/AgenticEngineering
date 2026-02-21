@@ -1,0 +1,68 @@
+title: "Consolidate orchestrate command - remove redundant planner entry points"
+type: cleaning
+status: draft
+created: 2026-02-21
+
+objective: |
+  Simplify the CLI by making `agentic session orchestrate planning` the single
+  entry point for automated planning/orchestration. Remove the --mode flag,
+  the separate `agentic session planner` subcommand, and any other redundant
+  planner-spawning options. The command should discover and process all plans
+  that need orchestration without requiring mode selection.
+
+scope:
+  remove:
+    - commands/planner.py (entire file - `agentic session planner start/stop/status`)
+    - The `--mode` flag from `agentic session orchestrate`
+    - Interactive orchestrate modes (planning/executor/friction/loop via --mode)
+    - `--planning-loop` flag (planning loop becomes the default behavior)
+  keep:
+    - `agentic session orchestrate planning` as the sole entry point
+    - The 2-phase workflow (plan discovery → execution) from OrchestrationRunner
+    - Background mode (-b), max-iterations, completion-promise, project filter
+    - `agentic session loop` (Ralph loops - separate concern)
+    - `agentic session spawn` (used internally by workflows)
+  modify:
+    - cli.py: Remove planner subcommand registration, simplify orchestrate subcommand
+    - commands/orchestrate.py: Remove mode handling, make planning-loop the default
+    - Update any tests referencing removed commands
+
+phases:
+  - id: phase_1
+    title: "Remove planner subcommand and --mode flag"
+    tasks:
+      - id: t1
+        title: "Delete commands/planner.py"
+        status: pending
+      - id: t2
+        title: "Remove planner subcommand registration from cli.py"
+        status: pending
+      - id: t3
+        title: "Remove --mode flag and interactive mode handling from orchestrate.py"
+        status: pending
+      - id: t4
+        title: "Make `agentic session orchestrate planning` run the 2-phase loop by default"
+        status: pending
+      - id: t5
+        title: "Remove --planning-loop flag (no longer needed, it's the default)"
+        status: pending
+
+  - id: phase_2
+    title: "Clean up references and tests"
+    tasks:
+      - id: t6
+        title: "Update/remove tests for deleted planner commands"
+        status: pending
+      - id: t7
+        title: "Update any cross-references in workflows or other commands"
+        status: pending
+      - id: t8
+        title: "Verify CLI still works with smoke test"
+        status: pending
+
+success_criteria:
+  - "`agentic session orchestrate planning` is the only way to start automated planning"
+  - "No --mode flag exists on orchestrate command"
+  - "No `agentic session planner` subcommand exists"
+  - "All tests pass"
+  - "The 2-phase workflow (plan + execute) still works correctly"

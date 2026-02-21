@@ -1,0 +1,138 @@
+%% =============================================================================
+%% GOAL: Execute plan tasks
+%% =============================================================================
+%% PROFILE: Orchestration-Fix nested session spawn - strip CLAUDECODE env var
+%% INPUT_PATH: /home/code/AgenticEngineering/docs/plans/live/260219NS_fix_nested_session_spawn/plan_build.yml
+%%
+%% PHASES:
+%%   P1: Create centralised subprocess utility
+%%   P2: Fix claude spawn sites in session.py and loop.py
+%%   P3: Fix claude spawn sites in plan.py and orchestrate.py
+%%   P4: Fix claude spawn in ralph.py tmux call
+%%   P5: Write unit tests for get_clean_env and call-site coverage
+%%
+%% AGENT_ROUTING: P1 -> build-python, P2 -> build-python, P3 -> build-python, P4 -> build-python, P5 -> test-builder
+%% STATUS: P1=pending, P2=pending, P3=pending, P4=pending, P5=pending
+%% FEEDBACK_TRIGGERS: TEST_FAILURE -> test-fix-loop, BUILD_FAILURE -> escalate
+%% =============================================================================
+
+flowchart LR
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    LoadInputs --> ReviewInputs[Review All Listed Inputs]
+    ReviewInputs --> CheckInputs{All Inputs Found?}
+
+    CheckInputs -- "No: Missing" --> SearchInputs[Search for Missing Inputs]
+    SearchInputs --> Found{Found?}
+    Found -- "Yes: Update paths" --> UpdateRefs[Update References]
+    UpdateRefs --> ReviewInputs
+    Found -- "No: Stop" --> AskUser((Ask User for Clarification))
+
+    CheckInputs -- "Yes: Verified" --> Phase1
+
+    %% ========================================
+    %% PHASE 1: CREATE CENTRALISED SUBPROCESS UTILITY
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: P1_T1
+
+    subgraph P1_SG ["Create centralised subprocess utility"]
+        Phase1[Enter Create centralised subprocess utility] --> SpawnAgent1[Spawn build-python Agent]
+        SpawnAgent1 --> Task_P1_1[P1_T1: Create agenticcli/utils/subprocess_utils.py with get_clean_env()]
+        Task_P1_1 --> Phase1Complete[Create centralised subprocess utility Complete]
+    end
+
+    Phase1Complete --> Phase2
+
+    %% ========================================
+    %% PHASE 2: FIX CLAUDE SPAWN SITES IN SESSION.PY AND LOOP.PY
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: P2_T1, P2_T2
+
+    subgraph P2_SG ["Fix claude spawn sites in session.py and loop.py"]
+        Phase2[Enter Fix claude spawn sites in session.py and loop.py] --> SpawnAgent2[Spawn build-python Agent]
+        SpawnAgent2 --> Task_P2_1[P2_T1: Strip CLAUDECODE env in session.py subprocess calls]
+        Task_P2_1 --> Task_P2_2[P2_T2: Strip CLAUDECODE env in loop.py subprocess calls]
+        Task_P2_2 --> Phase2Complete[Fix claude spawn sites in session.py and loop.py Complete]
+    end
+
+    Phase2Complete --> Phase3
+
+    %% ========================================
+    %% PHASE 3: FIX CLAUDE SPAWN SITES IN PLAN.PY AND ORCHESTRATE.PY
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: P3_T1, P3_T2
+
+    subgraph P3_SG ["Fix claude spawn sites in plan.py and orchestrate.py"]
+        Phase3[Enter Fix claude spawn sites in plan.py and orchestrate.py] --> SpawnAgent3[Spawn build-python Agent]
+        SpawnAgent3 --> Task_P3_1[P3_T1: Strip CLAUDECODE env in plan.py claude subprocess calls]
+        Task_P3_1 --> Task_P3_2[P3_T2: Fix os.execvp claude calls in orchestrate.py]
+        Task_P3_2 --> Phase3Complete[Fix claude spawn sites in plan.py and orchestrate.py Complete]
+    end
+
+    Phase3Complete --> Phase4
+
+    %% ========================================
+    %% PHASE 4: FIX CLAUDE SPAWN IN RALPH.PY TMUX CALL
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: P4_T1
+
+    subgraph P4_SG ["Fix claude spawn in ralph.py tmux call"]
+        Phase4[Enter Fix claude spawn in ralph.py tmux call] --> SpawnAgent4[Spawn build-python Agent]
+        SpawnAgent4 --> Task_P4_1[P4_T1: Strip CLAUDECODE env from ralph.py tmux new-session call]
+        Task_P4_1 --> Phase4Complete[Fix claude spawn in ralph.py tmux call Complete]
+    end
+
+    Phase4Complete --> Phase5
+
+    %% ========================================
+    %% PHASE 5: WRITE UNIT TESTS FOR GET_CLEAN_ENV AND CALL-SITE COVERAGE
+    %% ========================================
+    %% AGENT_ROUTING: test-builder agent with test-fix loop
+    %% LOOP_DEFINITION: test-fix-loop
+    %% MAX_ITERATIONS: 5
+
+    subgraph Testing5_SG ["Write unit tests for get_clean_env and call-site coverage (Test-Fix-Loop)"]
+        Phase5[Enter Write unit tests for get_clean_env and call-site coverage] --> SpawnTestBuilder5[Spawn test-builder Agent]
+        SpawnTestBuilder5 --> RunTests5[Run Tests]
+        RunTests5 --> TestsPassed5{Tests Passed?}
+
+        %% Test-Fix Loop: retry path
+        TestsPassed5 -- "No: Fix in Iteration" --> SpawnBuilderFix5[Spawn builder Agent for Fixes]
+        SpawnBuilderFix5 --> ApplyFixes5[Apply Implementation Fixes]
+        ApplyFixes5 --> RunTests5
+
+        %% Success path
+        TestsPassed5 -- "Yes: All Pass" --> Phase5Complete[Write unit tests for get_clean_env and call-site coverage Complete]
+    end
+
+    %% Escalation path for persistent test failures
+    TestsPassed5 -- "No: Escalate" --> CheckIterations5{Max Iterations Reached?}
+    CheckIterations5 -- "No" --> SpawnTestBuilder5
+    CheckIterations5 -- "Yes" --> EscalateTests5((Ask User: Test Failures Persist))
+
+
+    %% ========================================
+    %% FINALIZATION
+    %% ========================================
+    Phase5Complete --> UpdatePlanStatus[Update Plan Status: completed]
+    %% agentic plan move folder --plan <path>
+    UpdatePlanStatus --> ArchivePlan[Archive to docs/plans/completed/]
+    ArchivePlan --> End((End: Plan Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef entrypoint fill:#90EE90,stroke:#228B22
+    classDef exitpoint fill:#FFB6C1,stroke:#DC143C
+    classDef userpoint fill:#87CEEB,stroke:#4682B4
+    classDef keyaction fill:#FFD700,stroke:#DAA520
+    class Start entrypoint
+    class End exitpoint
+    class AskUser,EscalateTests5 userpoint

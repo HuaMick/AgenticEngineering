@@ -1,0 +1,155 @@
+%% =============================================================================
+%% GOAL: Execute plan tasks
+%% =============================================================================
+%% PROFILE: Orchestration-Fix issues in Ralph orchestration loop - question gate, routing, robustness
+%% INPUT_PATH: /home/code/AgenticEngineering/docs/plans/live/260221NE_fix_issues_in_ralph_orchestration_loop_ensuring_op/plan_build.yml
+%%
+%% PHASES:
+%%   P1: Question Gate Integration
+%%   P2: Open Question Routing and Visibility
+%%   P3: Loop Robustness Fixes
+%%   P4: Testing
+%%   P5: User Acceptance Testing
+%%
+%% AGENT_ROUTING: P1 -> build-python, P2 -> build-python, P3 -> build-python, P4 -> test-builder, P5 -> test-builder
+%% STATUS: P1=pending, P2=pending, P3=pending, P4=pending, P5=pending
+%% FEEDBACK_TRIGGERS: TEST_FAILURE -> test-fix-loop, BUILD_FAILURE -> escalate
+%% =============================================================================
+
+flowchart LR
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    LoadInputs --> ReviewInputs[Review All Listed Inputs]
+    ReviewInputs --> CheckInputs{All Inputs Found?}
+
+    CheckInputs -- "No: Missing" --> SearchInputs[Search for Missing Inputs]
+    SearchInputs --> Found{Found?}
+    Found -- "Yes: Update paths" --> UpdateRefs[Update References]
+    UpdateRefs --> ReviewInputs
+    Found -- "No: Stop" --> AskUser((Ask User for Clarification))
+
+    CheckInputs -- "Yes: Verified" --> Phase1
+
+    %% ========================================
+    %% PHASE 1: QUESTION GATE INTEGRATION
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: P1_T1, P1_T2, P1_T3
+
+    subgraph P1_SG ["Question Gate Integration"]
+        Phase1[Enter Question Gate Integration] --> SpawnAgent1[Spawn build-python Agent]
+        SpawnAgent1 --> Task_P1_1[P1_T1: Add _has_blocking_questions() method to RalphLoopService]
+        Task_P1_1 --> Task_P1_2[P1_T2: Integrate question gate into discover_plans()]
+        Task_P1_2 --> Task_P1_3[P1_T3: Update get_priority_queue() to include question-blocked plans]
+        Task_P1_3 --> Phase1Complete[Question Gate Integration Complete]
+    end
+
+    Phase1Complete --> Phase2
+
+    %% ========================================
+    %% PHASE 2: OPEN QUESTION ROUTING AND VISIBILITY
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: P2_T1, P2_T2
+
+    subgraph P2_SG ["Open Question Routing and Visibility"]
+        Phase2[Enter Open Question Routing and Visibility] --> SpawnAgent2[Spawn build-python Agent]
+        SpawnAgent2 --> Task_P2_1[P2_T1: Add question summary to ralph status output]
+        Task_P2_1 --> Task_P2_2[P2_T2: Add blocking_questions to ralph next output when plan is blocked]
+        Task_P2_2 --> Phase2Complete[Open Question Routing and Visibility Complete]
+    end
+
+    Phase2Complete --> Phase3
+
+    %% ========================================
+    %% PHASE 3: LOOP ROBUSTNESS FIXES
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: P3_T1, P3_T2, P3_T3
+
+    subgraph P3_SG ["Loop Robustness Fixes"]
+        Phase3[Enter Loop Robustness Fixes] --> SpawnAgent3[Spawn build-python Agent]
+        SpawnAgent3 --> Task_P3_1[P3_T1: Fix _get_plan_status_from_cli() JSON flag]
+        Task_P3_1 --> Task_P3_2[P3_T2: Fix empty plan (0 tasks) classification]
+        Task_P3_2 --> Task_P3_3[P3_T3: Enhance check_all_complete() to distinguish completion states]
+        Task_P3_3 --> Phase3Complete[Loop Robustness Fixes Complete]
+    end
+
+    Phase3Complete --> Phase4
+
+    %% ========================================
+    %% PHASE 4: TESTING
+    %% ========================================
+    %% AGENT_ROUTING: test-builder agent with test-fix loop
+    %% LOOP_DEFINITION: test-fix-loop
+    %% MAX_ITERATIONS: 5
+
+    subgraph Testing4_SG ["Testing (Test-Fix-Loop)"]
+        Phase4[Enter Testing] --> SpawnTestBuilder4[Spawn test-builder Agent]
+        SpawnTestBuilder4 --> RunTests4[Run Tests]
+        RunTests4 --> TestsPassed4{Tests Passed?}
+
+        %% Test-Fix Loop: retry path
+        TestsPassed4 -- "No: Fix in Iteration" --> SpawnBuilderFix4[Spawn builder Agent for Fixes]
+        SpawnBuilderFix4 --> ApplyFixes4[Apply Implementation Fixes]
+        ApplyFixes4 --> RunTests4
+
+        %% Success path
+        TestsPassed4 -- "Yes: All Pass" --> Phase4Complete[Testing Complete]
+    end
+
+    %% Escalation path for persistent test failures
+    TestsPassed4 -- "No: Escalate" --> CheckIterations4{Max Iterations Reached?}
+    CheckIterations4 -- "No" --> SpawnTestBuilder4
+    CheckIterations4 -- "Yes" --> EscalateTests4((Ask User: Test Failures Persist))
+
+    Phase4Complete --> Phase5
+
+    %% ========================================
+    %% PHASE 5: USER ACCEPTANCE TESTING
+    %% ========================================
+    %% AGENT_ROUTING: test-builder agent with test-fix loop
+    %% LOOP_DEFINITION: test-fix-loop
+    %% MAX_ITERATIONS: 5
+
+    subgraph Testing5_SG ["User Acceptance Testing (Test-Fix-Loop)"]
+        Phase5[Enter User Acceptance Testing] --> SpawnTestBuilder5[Spawn test-builder Agent]
+        SpawnTestBuilder5 --> RunTests5[Run Tests]
+        RunTests5 --> TestsPassed5{Tests Passed?}
+
+        %% Test-Fix Loop: retry path
+        TestsPassed5 -- "No: Fix in Iteration" --> SpawnBuilderFix5[Spawn builder Agent for Fixes]
+        SpawnBuilderFix5 --> ApplyFixes5[Apply Implementation Fixes]
+        ApplyFixes5 --> RunTests5
+
+        %% Success path
+        TestsPassed5 -- "Yes: All Pass" --> Phase5Complete[User Acceptance Testing Complete]
+    end
+
+    %% Escalation path for persistent test failures
+    TestsPassed5 -- "No: Escalate" --> CheckIterations5{Max Iterations Reached?}
+    CheckIterations5 -- "No" --> SpawnTestBuilder5
+    CheckIterations5 -- "Yes" --> EscalateTests5((Ask User: Test Failures Persist))
+
+
+    %% ========================================
+    %% FINALIZATION
+    %% ========================================
+    Phase5Complete --> UpdatePlanStatus[Update Plan Status: completed]
+    %% agentic plan move folder --plan <path>
+    UpdatePlanStatus --> ArchivePlan[Archive to docs/plans/completed/]
+    ArchivePlan --> End((End: Plan Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef entrypoint fill:#90EE90,stroke:#228B22
+    classDef exitpoint fill:#FFB6C1,stroke:#DC143C
+    classDef userpoint fill:#87CEEB,stroke:#4682B4
+    classDef keyaction fill:#FFD700,stroke:#DAA520
+    class Start entrypoint
+    class End exitpoint
+    class AskUser,EscalateTests4,EscalateTests5 userpoint
