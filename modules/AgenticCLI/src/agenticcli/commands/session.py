@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from agenticcli.utils.state_store import StateStore, is_process_running
+from agenticcli.utils.subprocess_utils import get_clean_env
 
 logger = logging.getLogger(__name__)
 
@@ -238,6 +239,45 @@ def _update_session_status(session_data: dict) -> dict:
     return session_data
 
 
+def _get_all_unified_sessions(type_filter: str | None = None):
+    """Get all sessions from the unified sessions store, optionally filtered by type.
+
+    All session types (sessions, loops, orchestrations) now reside in the
+    single 'sessions' StateStore. Records with no 'type' field are treated as
+    plain Claude Code sessions.
+
+    Args:
+        type_filter: Optional type to filter by. One of "session", "loop",
+            "orchestration". If None, returns all types.
+
+    Returns:
+        List of session dicts.
+    """
+    if type_filter:
+        if type_filter == "session":
+            # Plain sessions have no 'type' key or type == "session"
+            filter_fn = lambda r: r.get("type") in (None, "session")
+        else:
+            filter_fn = lambda r: r.get("type") == type_filter
+        return _store.list_all(filter_fn=filter_fn)
+    return _store.list_all()
+
+
+def _update_unified_session_status(session_data: dict) -> dict:
+    """Update session status based on process state, for any session type.
+
+    All records now live in the unified sessions store, so a single save
+    is always sufficient regardless of session type.
+
+    Args:
+        session_data: Session data dict.
+
+    Returns:
+        Updated session data dict.
+    """
+    return _update_session_status(session_data)
+
+
 def _spawn_diagnostic_planner(stuck_session: dict) -> str | None:
     """Spawn a diagnostic planner for a stuck session.
 
@@ -289,6 +329,7 @@ def _spawn_diagnostic_planner(stuck_session: dict) -> str | None:
             stdout=stdout_log,
             stderr=stderr_log,
             start_new_session=True,
+            env=get_clean_env(),
         )
     except (FileNotFoundError, OSError):
         return None
@@ -376,9 +417,20 @@ def _check_session_health(session: dict) -> dict:
     })
 
     # Signal 2: Log file size check
-    logs_dir = _get_logs_dir()
-    stdout_path = logs_dir / f"{session_id}.stdout.log"
-    stderr_path = logs_dir / f"{session_id}.stderr.log"
+    stdout_log_path = session.get("stdout_log")
+    stderr_log_path = session.get("stderr_log")
+    
+    if stdout_log_path and Path(stdout_log_path).exists():
+        stdout_path = Path(stdout_log_path)
+    else:
+        logs_dir = _get_logs_dir()
+        stdout_path = logs_dir / f"{session_id}.stdout.log"
+        
+    if stderr_log_path and Path(stderr_log_path).exists():
+        stderr_path = Path(stderr_log_path)
+    else:
+        logs_dir = _get_logs_dir()
+        stderr_path = logs_dir / f"{session_id}.stderr.log"
     stdout_bytes = stdout_path.stat().st_size if stdout_path.exists() else 0
     stderr_bytes = stderr_path.stat().st_size if stderr_path.exists() else 0
     total_bytes = stdout_bytes + stderr_bytes
@@ -411,7 +463,8 @@ def _check_session_health(session: dict) -> dict:
         else:
             minutes_since_write = 999
 
-    stale_threshold = 10  # minutes
+    # Higher stale threshold for orchestration loops (can take a long time per iteration)
+    stale_threshold = 30 if session.get("type") == "orchestration" else 10
     is_stale = status == "running" and minutes_since_write > stale_threshold
     signals.append({
         "name": "recent_activity",
@@ -419,8 +472,9 @@ def _check_session_health(session: dict) -> dict:
         "detail": f"Last activity: {int(minutes_since_write)}m ago",
     })
 
-    # Signal 4: tmux session existence (only for background sessions)
-    if session.get("background") and status == "running":
+    # Signal 4: tmux session existence (only for background Claude sessions)
+    is_claude_session = session.get("type", "session") == "session"
+    if session.get("background") and status == "running" and is_claude_session:
         tmux_exists = _check_tmux_session(session_id)
         if tmux_exists is not None:
             signals.append({
@@ -430,7 +484,9 @@ def _check_session_health(session: dict) -> dict:
             })
 
     # Overall health
-    healthy = pid_alive and (has_output or status != "running")
+    # Orchestration and loop types might not produce output immediately due to buffering
+    requires_output = is_claude_session and minutes_since_write >= 2
+    healthy = pid_alive and (has_output or not requires_output or status != "running")
     stale = is_stale
 
     return {
@@ -439,101 +495,6 @@ def _check_session_health(session: dict) -> dict:
         "stale": stale,
         "stale_minutes": int(minutes_since_write),
     }
-
-
-def cmd_dashboard(args, ctx=None):
-    """Display a live auto-refreshing dashboard of active sessions.
-
-    Shows a Rich.Live table that updates every N seconds with:
-    - Session ID (8-char), Status, Health, Age, Role/Description
-
-    Args:
-        args: Parsed command arguments with refresh interval.
-        ctx: Optional CLIContext.
-    """
-    from agenticcli.console import console
-    from rich.live import Live
-    from rich.table import Table
-
-    refresh_seconds = getattr(args, "refresh", 5)
-
-    def build_table() -> Table:
-        """Build the sessions dashboard table."""
-        table = Table(show_header=True, header_style="bold cyan", title="Active Sessions")
-        table.add_column("ID", style="yellow", width=10)
-        table.add_column("Status", width=12)
-        table.add_column("Health", width=8)
-        table.add_column("Age", style="dim", width=10)
-        table.add_column("Description", style="dim", no_wrap=False)
-
-        sessions = _store.list_all()
-
-        # Update status for all running sessions
-        for session in sessions:
-            _update_session_status(session)
-
-        # Filter to running/starting only
-        active_sessions = [s for s in sessions if s.get("status") in ("running", "starting")]
-
-        # Compute health for active sessions
-        health_data = {}
-        for session in active_sessions:
-            health_data[session["session_id"]] = _check_session_health(session)
-
-        status_colors = {
-            "running": "green",
-            "starting": "yellow",
-        }
-
-        if not active_sessions:
-            table.add_row("[dim]No active sessions[/dim]", "", "", "", "")
-            return table
-
-        for session in sorted(active_sessions, key=lambda s: s.get("started_at", ""), reverse=True):
-            session_id = session.get("session_id", "")[:8]
-            status = session.get("status", "unknown")
-            status_color = status_colors.get(status, "white")
-            age = _format_relative_time(session.get("started_at", ""))
-            prompt = session.get("prompt", "")
-
-            # Clean up prompt for display
-            prompt = prompt.replace("\n", " ").replace("\r", "")
-            if len(prompt) > 50:
-                prompt = prompt[:50] + "..."
-
-            # Health column
-            health = health_data.get(session.get("session_id", ""))
-            if health:
-                if health["stale"]:
-                    health_display = f"[yellow]STALE[/yellow]"
-                    status_display = f"[yellow]stale {health['stale_minutes']}m[/yellow]"
-                elif health["healthy"]:
-                    health_display = "[green]OK[/green]"
-                    status_display = f"[{status_color}]{status}[/{status_color}]"
-                else:
-                    health_display = "[red]FAIL[/red]"
-                    status_display = f"[{status_color}]{status}[/{status_color}]"
-            else:
-                health_display = "[dim]-[/dim]"
-                status_display = f"[{status_color}]{status}[/{status_color}]"
-
-            table.add_row(
-                session_id,
-                status_display,
-                health_display,
-                age,
-                prompt,
-            )
-
-        return table
-
-    try:
-        with Live(build_table(), console=console, refresh_per_second=1/refresh_seconds) as live:
-            while True:
-                time.sleep(refresh_seconds)
-                live.update(build_table())
-    except KeyboardInterrupt:
-        console.print("\n[dim]Dashboard stopped[/dim]")
 
 
 def handle(args, ctx=None):
@@ -555,10 +516,8 @@ def handle(args, ctx=None):
         cmd_health(args, ctx)
     elif args.session_command == "logs":
         cmd_logs(args, ctx)
-    elif args.session_command == "dashboard":
-        cmd_dashboard(args, ctx)
     else:
-        print("Usage: agentic session <spawn|list|stop|status|health|logs|dashboard>", file=sys.stderr)
+        print("Usage: agentic session <spawn|list|stop|status|health|logs>", file=sys.stderr)
         sys.exit(1)
 
 
@@ -784,68 +743,6 @@ def cmd_spawn(args, ctx=None):
     }
 
     try:
-        # --- Web Terminal Server Integration ---
-        # If AGENTIC_TERMINAL_URL is set, create terminal via the web server
-        # so the agent runs in a browser-visible PTY
-        terminal_url = os.environ.get("AGENTIC_TERMINAL_URL")
-        if terminal_url:
-            import urllib.request
-            import urllib.error
-
-            api_url = f"{terminal_url.rstrip('/')}/api/terminals"
-            payload = json.dumps({
-                "name": session_id[:12],
-                "cmd": " ".join(cmd),
-                "cwd": working_dir,
-                "role": getattr(args, "role", None),
-            }).encode()
-
-            try:
-                req = urllib.request.Request(
-                    api_url,
-                    data=payload,
-                    headers={"Content-Type": "application/json"},
-                    method="POST",
-                )
-                with urllib.request.urlopen(req, timeout=5) as resp:
-                    result = json.loads(resp.read().decode())
-
-                session_data["status"] = "running"
-                session_data["terminal_url"] = terminal_url
-                session_data["terminal_name"] = session_id[:12]
-                _store.save(session_data)
-
-                if is_json_output():
-                    print_json({
-                        "session_id": session_id,
-                        "status": "running",
-                        "terminal_url": terminal_url,
-                        "terminal_name": session_id[:12],
-                        "web_terminal": True,
-                        "estimated_tokens": prompt_tokens,
-                        "context_usage_percent": usage_percent,
-                    })
-                else:
-                    print_success(
-                        f"Session {session_id[:8]} created in web terminal at {terminal_url}"
-                    )
-                    console.print(
-                        f"[dim]Context usage: [{usage_color}]{usage_percent:.1f}%"
-                        f"[/{usage_color}] (~{prompt_tokens:,} tokens)[/dim]"
-                    )
-                return
-
-            except (urllib.error.URLError, OSError) as e:
-                # Server unreachable — fall through to local spawn
-                logger.warning(
-                    "Web terminal server at %s unreachable (%s), falling back to local spawn",
-                    terminal_url, e,
-                )
-                if not is_json_output():
-                    print_warning(
-                        f"Web terminal server unreachable ({e}), falling back to local spawn"
-                    )
-
         if background:
             # Background mode: use Popen and return immediately
             # Open log files for stdout and stderr
@@ -861,6 +758,7 @@ def cmd_spawn(args, ctx=None):
                     stdout=stdout_log,
                     stderr=stderr_log,
                     start_new_session=True,
+                    env=get_clean_env(),
                 )
             finally:
                 # Close file handles in parent process; child inherits the FDs
@@ -944,6 +842,7 @@ def cmd_spawn(args, ctx=None):
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
+                    env=get_clean_env(),
                 )
 
                 # Capture output
@@ -1022,9 +921,10 @@ def _format_relative_time(iso_str: str) -> str:
 
 
 def cmd_list(args, ctx=None):
-    """List Claude Code sessions.
+    """List Claude Code sessions, loops, and orchestrations.
 
     By default shows only running/starting sessions. Use --all to show all.
+    Use --type to filter by session type (session, loop, orchestration).
 
     Args:
         args: Parsed command arguments.
@@ -1032,11 +932,12 @@ def cmd_list(args, ctx=None):
     """
     from agenticcli.console import console, is_json_output, print_header, print_json
 
-    all_sessions = _store.list_all()
+    type_filter = getattr(args, "type", None)
+    all_sessions = _get_all_unified_sessions(type_filter=type_filter)
 
     # Update status for running sessions
     for session in all_sessions:
-        _update_session_status(session)
+        _update_unified_session_status(session)
 
     total_count = len(all_sessions)
 
@@ -1066,10 +967,11 @@ def cmd_list(args, ctx=None):
             "count": len(sessions),
             "total": total_count,
             "filtered": not show_all,
+            "type_filter": type_filter,
         })
         return
 
-    print_header("Claude Code Sessions")
+    print_header("Sessions")
 
     if not sessions:
         if show_all:
@@ -1085,6 +987,7 @@ def cmd_list(args, ctx=None):
 
     table = Table(show_header=True, header_style="bold cyan")
     table.add_column("ID", style="yellow", width=10)
+    table.add_column("Type", style="cyan", width=13)
     table.add_column("Status", width=10)
     table.add_column("Health", width=8)
     table.add_column("Age", style="dim", width=10)
@@ -1109,6 +1012,7 @@ def cmd_list(args, ctx=None):
         status = session.get("status", "unknown")
         status_color = status_colors.get(status, "white")
         age = _format_relative_time(session.get("started_at", ""))
+        session_type = session.get("type") or "session"
         prompt = session.get("prompt", "")
         # Clean up prompt for display: replace newlines, truncate to 60 chars
         prompt = prompt.replace("\n", " ").replace("\r", "")
@@ -1119,7 +1023,7 @@ def cmd_list(args, ctx=None):
         health = health_data.get(session.get("session_id", ""))
         if health:
             if health["stale"]:
-                health_display = f"[yellow]STALE[/yellow]"
+                health_display = "[yellow]STALE[/yellow]"
                 status_display = f"[yellow]running (stale {health['stale_minutes']}m)[/yellow]"
                 stale_count += 1
             elif health["healthy"]:
@@ -1134,6 +1038,7 @@ def cmd_list(args, ctx=None):
 
         table.add_row(
             session_id,
+            session_type,
             status_display,
             health_display,
             age,
@@ -1218,6 +1123,8 @@ def cmd_stop(args, ctx=None):
     force = getattr(args, "force", False)
 
     try:
+        if pid is None:
+            raise ProcessLookupError("No PID recorded for session")
         if force:
             os.kill(pid, signal.SIGKILL)
         else:
