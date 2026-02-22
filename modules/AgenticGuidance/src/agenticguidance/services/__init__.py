@@ -8,6 +8,7 @@ Each module provides a specific domain of functionality:
 - state: Process state registry and file locking
 - context: Plan resolution and role context loading
 - plan: Plan movement and archival workflows + CRUD operations (PlanService)
+- plan_repository: TinyDB-backed storage repository for plans and tasks
 - environment: Environment variable management
 - template: Jinja2 template rendering
 - preset: Task preset loading
@@ -53,6 +54,7 @@ from .plan import (
     TaskMoveResult,
     ValidationResult,
 )
+from .plan_repository import PlanRepository
 from .preset import (
     PresetLoadResult,
     TaskPresetWorkflow,
@@ -131,6 +133,7 @@ __all__ = [
     "TaskData",
     "TaskMoveResult",
     "ValidationResult",
+    "PlanRepository",
     # Preset services
     "PresetLoadResult",
     "TaskPresetWorkflow",
