@@ -3,7 +3,7 @@ worktree_path: /home/code/AgenticEngineering-plan-tinydb-migration
 branch: plan-tinydb-migration
 status: active
 priority: high
-context: 'Migrate the AgenticCLI PlanService from static YAML files to an embedded
+objective: 'Migrate the AgenticCLI PlanService from static YAML files to an embedded
   TinyDB local datastore.
 
 
@@ -48,136 +48,7 @@ context: 'Migrate the AgenticCLI PlanService from static YAML files to an embedd
   NEXT: Phase 1 - Foundation & Dependencies
 
   '
-related_plans:
-  orchestration: orchestration_migrate_planservice_to_tinydb.mmd
-inputs:
-- location: modules/AgenticGuidance/src/agenticguidance/services/plan.py
-  description: Current PlanService and PlanMovementWorkflow implementation
-- location: modules/AgenticGuidance/src/agenticguidance/services/task.py
-  description: Current TaskService implementation
-- location: modules/AgenticGuidance/src/agenticguidance/services/__init__.py
-  description: Service package exports
-- location: modules/AgenticCLI/src/agenticcli/commands/plan.py
-  description: CLI plan commands with 37+ direct YAML calls to migrate
-- location: modules/AgenticGuidance/src/agenticguidance/services/state.py
-  description: FileLock for concurrency control
-- location: modules/AgenticGuidance/pyproject.toml
-  description: AgenticGuidance dependencies
-affected_stories:
-- US-GD-120
-- US-GD-121
-- US-GD-122
-- US-GD-123
-- US-GD-124
-- US-GD-125
-- US-GD-126
-- US-GD-127
-- US-GD-132
-- US-GD-200
-- US-GD-201
-- US-GD-202
-- US-GD-203
-- US-GD-204
-- US-GD-205
-- US-GD-206
-story_updates_needed: true
-story_creation_tasks:
-- User stories US-GD-200 through US-GD-206 created at docs/userstories/AgenticGuidance/10_tinydb_migration.yml
-impacted_artifacts:
-- artifact_type: service
-  artifact_identifier: PlanRepository
-  impact_type: new
-  description: New TinyDB-backed repository for plan data access
-  breaking_change: false
-- artifact_type: service
-  artifact_identifier: PlanService
-  impact_type: behavior_change
-  description: PlanService delegates to PlanRepository instead of direct YAML I/O
-  breaking_change: false
-- artifact_type: service
-  artifact_identifier: TaskService
-  impact_type: behavior_change
-  description: TaskService delegates to PlanRepository for task operations
-  breaking_change: false
-- artifact_type: cli_command
-  artifact_identifier: agentic plan *
-  impact_type: behavior_change
-  description: All plan CLI commands use PlanRepository instead of direct YAML parsing
-  breaking_change: false
-- artifact_type: cli_command
-  artifact_identifier: agentic plan db sync
-  impact_type: new
-  description: New CLI command to sync TinyDB from YAML files
-  breaking_change: false
-- artifact_type: config
-  artifact_identifier: ~/.agentic/plans.db
-  impact_type: new
-  description: TinyDB database file for plan data
-  breaking_change: false
-open_questions:
-- id: plan-q-001
-  question: Should TinyDB database be per-project (in repo) or global (~/.agentic/plans.db)?
-  severity: high
-  status: answered
-  answer: Global at ~/.agentic/plans.db - plans span multiple worktrees and projects
-  answered_by: planner-build
-  context: 'Per-project would mean docs/plans/.plans.db in each repo, which keeps
-    data local
-
-    but creates issues with worktrees sharing the same plan data.
-
-    Global at ~/.agentic/ matches existing state_store.py pattern.
-
-    '
-- id: plan-q-002
-  question: Should YAML files still be written on every plan update, or only on explicit
-    sync/export?
-  severity: high
-  status: answered
-  answer: 'Dual-write: every mutation writes to both TinyDB and YAML for consistency'
-  answered_by: planner-build
-  context: 'YAML files are git-committed and used by agents reading plan files directly.
-
-    Dual-write ensures YAML and TinyDB stay in sync without explicit sync commands.
-
-    Performance cost is minimal since YAML writes are already happening.
-
-    '
-loop_structures:
-- id: loop_implementation
-  type: test-fix-loop
-  applies_to_phase: Phase 1-3 Implementation
-  trigger: After each implementation task completes
-  description: 'Each phase includes build-test-fix iteration to validate implementation
-
-    before proceeding to the next phase.
-
-    '
-  exit_criteria:
-    success: All unit tests pass for the implemented component
-    max_iterations: 5
-    escalation: Escalate to human with test failures and proposed fixes
-  participants:
-  - agent: build-python
-    role: Implements components
-  - agent: test-runner
-    role: Runs unit tests
-- id: loop_integration_validation
-  type: test-fix-loop
-  applies_to_phase: Phase 4 CLI Integration
-  trigger: After CLI refactor completes
-  description: 'Validates that all CLI plan commands work correctly with TinyDB backend.
-
-    '
-  exit_criteria:
-    success: All existing CLI tests pass with TinyDB backend
-    max_iterations: 5
-    escalation: Escalate to human with failing tests
-  participants:
-  - agent: build-python
-    role: Fixes integration issues
-  - agent: test-runner
-    role: Runs CLI test suite
+created: ''
 phases:
 - name: Phase 1 - Foundation & Dependencies
   execution: sequential
@@ -185,13 +56,13 @@ phases:
   tasks:
   - id: DB_001
     name: Add TinyDB dependency to AgenticGuidance
-    status: completed
-    agent: build-python
     description: 'Add tinydb>=4.8.0 to AgenticGuidance pyproject.toml dependencies.
 
       Run pip install to verify the dependency resolves correctly.
 
       '
+    status: completed
+    agent: build-python
     inputs:
     - modules/AgenticGuidance/pyproject.toml
     target_files:
@@ -203,16 +74,8 @@ phases:
       After editing, run: pip install -e modules/AgenticGuidance to verify.
 
       '
-    success_criteria:
-    - tinydb>=4.8.0 appears in pyproject.toml dependencies
-    - pip install -e modules/AgenticGuidance completes without errors
-    - python -c 'import tinydb; print(tinydb.__version__)' succeeds
   - id: DB_002
     name: Create PlanRepository class with TinyDB backend
-    status: completed
-    agent: build-python
-    depends_on:
-    - DB_001
     description: 'Create the PlanRepository class that wraps TinyDB for plan data
       storage.
 
@@ -229,6 +92,8 @@ phases:
       - CRUD operations returning existing dataclass types
 
       '
+    status: completed
+    agent: build-python
     inputs:
     - modules/AgenticGuidance/src/agenticguidance/services/plan.py
     - modules/AgenticGuidance/src/agenticguidance/services/task.py
@@ -266,22 +131,12 @@ phases:
       from the plan.py module. Do NOT create new data models.\n\nREFERENCE: The InMemorySessionRepository\
       \ pattern in\nmodules/legacy/MyAgents/projects/RemoteAgents/src/agent_remote/services/relay/infrastructure/in_memory_repository.py\n\
       provides a good template for the repository pattern.\n"
-    success_criteria:
-    - PlanRepository class created with all specified methods
-    - python -c 'from agenticguidance.services.plan_repository import PlanRepository'
-      succeeds
-    - PlanRepository initializes TinyDB at ~/.agentic/plans.db
-    - All methods return correct dataclass types
 - name: Phase 2 - Service Layer Integration
   execution: sequential
   description: Update PlanService and TaskService to delegate to PlanRepository
   tasks:
   - id: SV_001
     name: Update PlanService to use PlanRepository
-    status: pending
-    agent: build-python
-    depends_on:
-    - DB_002
     description: 'Modify PlanService to delegate read/write operations to PlanRepository
 
       while maintaining its existing public API. Implement dual-write strategy:
@@ -289,6 +144,8 @@ phases:
       writes go to both TinyDB and YAML files.
 
       '
+    status: pending
+    agent: build-python
     inputs:
     - modules/AgenticGuidance/src/agenticguidance/services/plan.py
     - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
@@ -311,23 +168,15 @@ phases:
       \ default (easy to disable for testing)\n\nBACKWARD COMPATIBILITY: If TinyDB\
       \ import fails (dependency not installed),\nset self._repository = None and\
       \ fall back to pure YAML.\n"
-    success_criteria:
-    - PlanService public API unchanged (same method signatures and return types)
-    - PlanService reads from TinyDB when available
-    - PlanService falls back to YAML when TinyDB record missing
-    - PlanService writes to both TinyDB and YAML on mutations
-    - Existing PlanService tests still pass
   - id: SV_002
     name: Update TaskService to use PlanRepository
-    status: pending
-    agent: build-python
-    depends_on:
-    - SV_001
     description: 'Modify TaskService to delegate task operations to PlanRepository
 
       while maintaining backward compatibility with YAML.
 
       '
+    status: pending
+    agent: build-python
     inputs:
     - modules/AgenticGuidance/src/agenticguidance/services/task.py
     - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
@@ -347,20 +196,13 @@ phases:
       5. Keep FileLock for YAML writes (TinyDB handles its own concurrency)
 
       '
-    success_criteria:
-    - TaskService public API unchanged
-    - Task CRUD operations use TinyDB when available
-    - Task status updates write to both TinyDB and YAML
-    - Existing TaskService tests still pass
   - id: SV_003
     name: Update services __init__.py exports
-    status: pending
-    agent: build-python
-    depends_on:
-    - SV_001
     description: 'Export PlanRepository from the services package __init__.py.
 
       '
+    status: pending
+    agent: build-python
     inputs:
     - modules/AgenticGuidance/src/agenticguidance/services/__init__.py
     - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
@@ -373,25 +215,20 @@ phases:
       2. Add to __all__ list under "# Plan services" section
 
       '
-    success_criteria:
-    - from agenticguidance.services import PlanRepository succeeds
-    - PlanRepository in __all__ list
 - name: Phase 3 - Data Migration & Sync
   execution: sequential
   description: Create CLI commands for data migration and sync operations
   tasks:
   - id: MI_001
     name: Implement auto-bootstrap from YAML
-    status: pending
-    agent: build-python
-    depends_on:
-    - SV_001
     description: 'Implement auto-bootstrap logic in PlanRepository that detects an
       empty database
 
       and automatically imports all existing YAML plans on first access.
 
       '
+    status: pending
+    agent: build-python
     inputs:
     - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
     - modules/AgenticGuidance/src/agenticguidance/services/plan.py
@@ -406,21 +243,14 @@ phases:
       \nThe import_all_yaml method should:\n- Scan live/, completed/, deferred/ directories\n\
       - For each plan folder, call import_from_yaml()\n- Track and return stats: {imported:\
       \ N, skipped: N, failed: N}\n"
-    success_criteria:
-    - Empty database triggers auto-import on first access
-    - All existing YAML plans imported successfully
-    - Import is idempotent (running twice doesn't duplicate)
-    - Stats returned showing import results
   - id: MI_002
     name: Add CLI db sync command
-    status: pending
-    agent: build-python
-    depends_on:
-    - MI_001
     description: 'Add ''agentic plan db sync'' CLI command for manual sync between
       TinyDB and YAML.
 
       '
+    status: pending
+    agent: build-python
     inputs:
     - modules/AgenticCLI/src/agenticcli/commands/plan.py
     - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
@@ -447,10 +277,6 @@ phases:
       4. Output results in JSON format when --json flag is set
 
       '
-    success_criteria:
-    - '''agentic plan db sync'' rebuilds TinyDB from YAML'
-    - '''agentic plan db status'' shows database statistics'
-    - Sync is idempotent and reports results
 - name: Phase 4 - CLI Layer Refactor
   execution: sequential
   description: 'Replace direct YAML reads/writes in plan.py CLI commands with PlanService/PlanRepository
@@ -462,15 +288,12 @@ phases:
   tasks:
   - id: CL_001
     name: Refactor plan list and status commands
-    status: pending
-    agent: build-python
-    depends_on:
-    - SV_001
-    - MI_001
     description: 'Replace direct YAML reads in cmd_list() and cmd_status() with PlanService
       calls.
 
       '
+    status: pending
+    agent: build-python
     inputs:
     - modules/AgenticCLI/src/agenticcli/commands/plan.py
     - modules/AgenticGuidance/src/agenticguidance/services/plan.py
@@ -485,21 +308,14 @@ phases:
       \ PlanService instance with repo_path detection\n3. Replace yaml reads with\
       \ service calls\n4. Keep output formatting unchanged\n5. Maintain JSON output\
       \ compatibility\n"
-    success_criteria:
-    - cmd_list() uses PlanService.list_plans()
-    - cmd_status() uses PlanService.get_plan()
-    - Output format unchanged for both commands
-    - JSON output (-j flag) unchanged
   - id: CL_002
     name: Refactor task CRUD commands
-    status: pending
-    agent: build-python
-    depends_on:
-    - CL_001
     description: 'Replace direct YAML reads/writes in task commands with PlanService/TaskService
       calls.
 
       '
+    status: pending
+    agent: build-python
     inputs:
     - modules/AgenticCLI/src/agenticcli/commands/plan.py
     - modules/AgenticGuidance/src/agenticguidance/services/plan.py
@@ -536,21 +352,14 @@ phases:
       3. Keep the auto-archive logic in cmd_task_complete()
 
       '
-    success_criteria:
-    - All task commands use PlanService/TaskService instead of direct YAML
-    - cmd_task_start and cmd_task_complete work correctly
-    - Auto-archive on all tasks complete still works
-    - _update_task_status() delegates to PlanRepository
   - id: CL_003
     name: Refactor remaining plan commands
-    status: pending
-    agent: build-python
-    depends_on:
-    - CL_002
     description: 'Replace YAML reads/writes in remaining plan commands: validate,
       phase, archive.
 
       '
+    status: pending
+    agent: build-python
     inputs:
     - modules/AgenticCLI/src/agenticcli/commands/plan.py
     - modules/AgenticGuidance/src/agenticguidance/services/plan.py
@@ -582,19 +391,3 @@ phases:
       - New plans are created via any path
 
       '
-    success_criteria:
-    - All remaining yaml.safe_load/dump calls in plan.py replaced
-    - Plan archive/unarchive syncs TinyDB status
-    - New plan creation writes to TinyDB
-    - Validation uses PlanService
-success_criteria:
-- TinyDB dependency added and importable in AgenticGuidance
-- PlanRepository class implements all CRUD operations for plans and tasks
-- PlanService delegates to PlanRepository with YAML fallback
-- All 37+ direct yaml.safe_load/dump calls in plan.py replaced with service calls
-- Auto-bootstrap populates TinyDB from existing YAML plans on first use
-- Dual-write ensures TinyDB and YAML stay in sync
-- All existing tests pass with TinyDB backend
-- '''agentic plan db sync'' command available for manual resync'
-- No behavioral regression in any plan CLI command
-- User stories US-GD-200 through US-GD-206 acceptance criteria met

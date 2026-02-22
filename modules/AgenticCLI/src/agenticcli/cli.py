@@ -1704,6 +1704,25 @@ def plan_stories_test(
     ))
 
 
+# --- plan db (nested sub-app) ---
+plan_db_app = typer.Typer(help="Manage plan TinyDB database", no_args_is_help=True)
+plan_app.add_typer(plan_db_app, name="db", hidden=True)
+
+
+@plan_db_app.command("sync")
+def plan_db_sync(
+    export: Annotated[bool, typer.Option("--export", help="Write TinyDB state to YAML (reverse sync)")] = False,
+):
+    """Rebuild TinyDB from YAML files or export TinyDB to YAML."""
+    _plan_handle(_ns(command="plan", plan_command="db", db_action="sync", json=_global["json"], debug=_global["debug"], export=export))
+
+
+@plan_db_app.command("status")
+def plan_db_status():
+    """Show TinyDB database statistics."""
+    _plan_handle(_ns(command="plan", plan_command="db", db_action="status", json=_global["json"], debug=_global["debug"]))
+
+
 # --- plan cancel (user-facing) ---
 @plan_app.command("cancel")
 def plan_cancel(
@@ -2005,6 +2024,25 @@ def agent_plan_stories_test(
         json=_global["json"], debug=_global["debug"],
         plan=plan, output=output, format=format,
     ))
+
+
+# --- agent plan db ---
+agent_plan_db_app = typer.Typer(help="Manage plan TinyDB database", no_args_is_help=True)
+agent_plan_app.add_typer(agent_plan_db_app, name="db")
+
+
+@agent_plan_db_app.command("sync")
+def agent_plan_db_sync(
+    export: Annotated[bool, typer.Option("--export", help="Write TinyDB state to YAML (reverse sync)")] = False,
+):
+    """Rebuild TinyDB from YAML files or export TinyDB to YAML."""
+    _plan_handle(_ns(command="plan", plan_command="db", db_action="sync", json=_global["json"], debug=_global["debug"], export=export))
+
+
+@agent_plan_db_app.command("status")
+def agent_plan_db_status():
+    """Show TinyDB database statistics."""
+    _plan_handle(_ns(command="plan", plan_command="db", db_action="status", json=_global["json"], debug=_global["debug"]))
 
 
 # --- agent plan direct commands (archive, unarchive, validate, scaffold, init, bootstrap) ---

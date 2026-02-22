@@ -44,15 +44,25 @@ class TaskService:
     with atomic file operations using FileLock.
     """
 
-    def __init__(self, plan_path: Path):
+    def __init__(self, plan_path: Path, use_tinydb: bool = True):
         """Initialize TaskService.
 
         Args:
             plan_path: Path to plan folder (e.g., docs/plans/live/260203TS_task_service/).
                        The service will look for plan_build.yml in this folder.
+            use_tinydb: If True, attempt to use TinyDB repository for reads/writes.
+                        Falls back to YAML if TinyDB is unavailable.
         """
         self.plan_path = plan_path
         self.plan_file = plan_path / "plan_build.yml"
+        self._repository = None
+        self._plan_folder_name = plan_path.name  # For TinyDB lookups
+        if use_tinydb:
+            try:
+                from .plan_repository import PlanRepository
+                self._repository = PlanRepository()
+            except Exception:
+                pass
 
     def _load_plan_file(self) -> dict:
         """Load plan YAML file.
@@ -126,10 +136,35 @@ class TaskService:
             completed_date=task_data.get("completed_date"),
         )
 
+    def _taskdata_to_task(self, td) -> Optional[Task]:
+        """Convert PlanRepository's TaskData to the Task dataclass.
+
+        Args:
+            td: TaskData instance from PlanRepository, or None.
+
+        Returns:
+            Task dataclass if td is not None, None otherwise.
+        """
+        if td is None:
+            return None
+        try:
+            status = TaskStatus(td.status) if td.status else TaskStatus.PENDING
+        except ValueError:
+            status = TaskStatus.PENDING
+        return Task(
+            id=td.id,
+            name=td.name,
+            description=td.description or "",
+            status=status,
+            agent=td.agent,
+        )
+
     def get_task(self, task_id: str) -> Optional[Task]:
         """Get a task by ID.
 
-        Searches in phases[].tasks[] first, then falls back to root-level tasks[].
+        Always reads from YAML to get full task details (inputs, target_files,
+        guidance, etc.) that TinyDB's TaskData doesn't carry.
+        Searches in phases[].tasks[] first, then root-level tasks[].
 
         Args:
             task_id: Task identifier to search for.
@@ -137,6 +172,7 @@ class TaskService:
         Returns:
             Task dataclass if found, None otherwise.
         """
+        # Always use YAML for get_task - needs full detail (inputs, guidance, etc.)
         try:
             data = self._load_plan_file()
         except (FileNotFoundError, yaml.YAMLError):
@@ -162,6 +198,7 @@ class TaskService:
     def list_tasks(self, status: Optional[TaskStatus] = None) -> list[Task]:
         """List all tasks, optionally filtered by status.
 
+        Tries TinyDB first if available, then falls back to YAML.
         Collects tasks from both phases[].tasks[] and root-level tasks[].
 
         Args:
@@ -170,6 +207,18 @@ class TaskService:
         Returns:
             List of Task dataclasses.
         """
+        # Try TinyDB first - only trust the result if the plan is confirmed in DB
+        # (an empty list may mean plan was never imported, not that it has no tasks)
+        if self._repository is not None:
+            try:
+                plan_in_db = self._repository.get_plan(self._plan_folder_name) is not None
+                if plan_in_db:
+                    status_filter = status.value if status is not None else None
+                    tdb_tasks = self._repository.get_tasks(self._plan_folder_name, status_filter)
+                    return [self._taskdata_to_task(td) for td in tdb_tasks]
+            except Exception:
+                pass
+
         try:
             data = self._load_plan_file()
         except (FileNotFoundError, yaml.YAMLError):
@@ -201,12 +250,22 @@ class TaskService:
     def get_current_task(self) -> Optional[Task]:
         """Get the current actionable task.
 
+        Tries TinyDB first if available, then falls back to YAML.
         Returns first task with status=in_progress. If none found,
         returns first task with status=pending.
 
         Returns:
             Task dataclass if found, None if no actionable tasks.
         """
+        # Try TinyDB first
+        if self._repository is not None:
+            try:
+                td = self._repository.get_current_task(self._plan_folder_name)
+                if td is not None:
+                    return self._taskdata_to_task(td)
+            except Exception:
+                pass
+
         try:
             data = self._load_plan_file()
         except (FileNotFoundError, yaml.YAMLError):
@@ -241,7 +300,10 @@ class TaskService:
         return in_progress_task or pending_task
 
     def update_task_status(self, task_id: str, status: TaskStatus) -> bool:
-        """Update task status with atomic file locking.
+        """Update task status with atomic file locking, and dual-write to TinyDB.
+
+        YAML is the source of truth and is always updated first. TinyDB is
+        updated after a successful YAML write; TinyDB failure is non-fatal.
 
         Args:
             task_id: Task identifier to update.
@@ -287,6 +349,14 @@ class TaskService:
                 # Save if task was found
                 if task_found:
                     self._save_plan_file(data)
+                    # Dual-write to TinyDB (non-fatal on failure)
+                    if self._repository is not None:
+                        try:
+                            self._repository.update_task_status(
+                                self._plan_folder_name, task_id, status.value
+                            )
+                        except Exception:
+                            pass
                     return True
 
                 return False

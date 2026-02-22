@@ -692,15 +692,24 @@ class PlanService:
         ...     print(validation.errors)
     """
 
-    def __init__(self, repo_path: Optional[Path] = None):
+    def __init__(self, repo_path: Optional[Path] = None, use_tinydb: bool = True):
         """Initialize plan service.
 
         Args:
             repo_path: Path to git repository. Defaults to auto-detected repo root.
+            use_tinydb: If True, attempt to use TinyDB-backed repository for
+                        faster queries with YAML fallback. Defaults to True.
         """
         self.repo_path = repo_path or self._find_repo_root()
         self.plans_base = self.repo_path / "docs" / "plans"
         self.git_checker = GitSafetyChecker(self.repo_path)
+        self._repository = None
+        if use_tinydb:
+            try:
+                from .plan_repository import PlanRepository
+                self._repository = PlanRepository(plans_base=self.plans_base)
+            except Exception:
+                pass  # Fall back to pure YAML
 
     @staticmethod
     def _find_repo_root(start: Optional[Path] = None) -> Path:
@@ -832,6 +841,23 @@ pending
         with open(plan_folder / "plan_build.yml", "w") as f:
             yaml.dump(plan_scaffold, f, default_flow_style=False, sort_keys=False)
 
+        # Dual-write: also insert into TinyDB repository if available
+        if self._repository is not None:
+            try:
+                self._repository.create_plan({
+                    "plan_folder_name": folder_name,
+                    "plan_folder": str(plan_folder),
+                    "name": plan_scaffold.get("name", folder_name),
+                    "worktree_path": plan_scaffold.get("worktree_path", ""),
+                    "branch": plan_scaffold.get("branch", ""),
+                    "status": plan_scaffold.get("status", "pending"),
+                    "priority": plan_scaffold.get("priority", "medium"),
+                    "objective": plan_scaffold.get("objective", ""),
+                    "created": plan_scaffold.get("created", ""),
+                })
+            except Exception:
+                pass  # TinyDB write failure is non-fatal
+
         return PlanCreateResult(
             plan_folder=plan_folder,
             plan_folder_name=folder_name,
@@ -854,6 +880,25 @@ pending
         Returns:
             PlanData with phases and tasks, or None if not found.
         """
+        # Try TinyDB first if repository is available
+        if self._repository is not None:
+            try:
+                tinydb_result = self._repository.get_plan(plan_id_or_path)
+                if tinydb_result is not None:
+                    # Validate the TinyDB result is within this service's plans_base
+                    # and that the folder actually exists (guards against stale DB entries
+                    # or DB bootstrapped from a different repo)
+                    result_folder = tinydb_result.plan_folder
+                    try:
+                        result_folder.relative_to(self.plans_base)
+                        is_under_plans_base = True
+                    except ValueError:
+                        is_under_plans_base = False
+                    if is_under_plans_base and result_folder.exists():
+                        return tinydb_result
+            except Exception:
+                pass  # Fall through to YAML
+
         # Resolve to plan folder
         plan_folder = self._resolve_plan_folder(plan_id_or_path)
         if not plan_folder or not plan_folder.exists():
@@ -902,7 +947,7 @@ pending
             )
             phases.append(phase_obj)
 
-        return PlanData(
+        result = PlanData(
             plan_folder=plan_folder,
             plan_folder_name=plan_folder.name,
             objective=plan_data.get("objective"),
@@ -911,6 +956,15 @@ pending
             phases=phases,
             tasks=all_tasks,
         )
+
+        # Auto-import to TinyDB when YAML hit but TinyDB missed
+        if self._repository is not None:
+            try:
+                self._repository.import_from_yaml(plan_folder)
+            except Exception:
+                pass  # Auto-import failure is non-fatal
+
+        return result
 
     def _resolve_plan_folder(self, plan_id_or_path: str) -> Optional[Path]:
         """Resolve plan identifier or path to actual plan folder.
@@ -956,6 +1010,26 @@ pending
         Returns:
             List of PlanMetadata objects sorted by folder name (newest first).
         """
+        # Try TinyDB first if repository is available
+        if self._repository is not None:
+            try:
+                tinydb_results = self._repository.list_plans(status=status)
+                if tinydb_results:
+                    # Filter to only results under this service's plans_base
+                    # (guards against DB bootstrapped from a different repo)
+                    filtered = []
+                    for meta in tinydb_results:
+                        try:
+                            meta.plan_folder.relative_to(self.plans_base)
+                            if meta.plan_folder.exists():
+                                filtered.append(meta)
+                        except ValueError:
+                            pass
+                    if filtered:
+                        return filtered
+            except Exception:
+                pass  # Fall through to YAML scan
+
         plans_dir = self.plans_base / status
         if not plans_dir.exists():
             return []
@@ -1081,6 +1155,16 @@ pending
                         plan_folder=str(plan_folder),
                     )
 
+        # Dual-write: also update TinyDB repository if available
+        if self._repository is not None:
+            try:
+                self._repository.update_plan(
+                    plan_folder.name,
+                    {"status": new_status},
+                )
+            except Exception:
+                pass  # TinyDB update failure is non-fatal
+
         return PlanUpdateResult(
             success=True,
             message=f"Updated status in {updated_count} file(s) from {old_status} to {new_status}",
@@ -1103,6 +1187,35 @@ pending
         Returns:
             List of TaskData objects.
         """
+        # Try TinyDB first if repository is available
+        if self._repository is not None:
+            try:
+                # Resolve plan folder name for TinyDB lookup
+                plan_folder = self._resolve_plan_folder(plan_id)
+                if plan_folder is not None:
+                    # Only use TinyDB if the folder lives under this service's plans_base
+                    # and TinyDB's stored plan_folder matches (guards against stale data)
+                    try:
+                        plan_folder.relative_to(self.plans_base)
+                        is_under_plans_base = True
+                    except ValueError:
+                        is_under_plans_base = False
+                    if is_under_plans_base and plan_folder.exists():
+                        # Verify TinyDB plan_folder matches actual resolved folder
+                        db_plan = self._repository.get_plan(plan_folder.name)
+                        db_folder_matches = (
+                            db_plan is not None
+                            and db_plan.plan_folder.resolve() == plan_folder.resolve()
+                        )
+                        if db_folder_matches:
+                            tinydb_tasks = self._repository.get_tasks(
+                                plan_folder.name, status_filter=status_filter
+                            )
+                            if tinydb_tasks:
+                                return tinydb_tasks
+            except Exception:
+                pass  # Fall through to YAML-based approach
+
         plan_data = self.get_plan(plan_id)
         if not plan_data:
             return []
