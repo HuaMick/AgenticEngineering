@@ -44,25 +44,36 @@ class TaskService:
     with atomic file operations using FileLock.
     """
 
-    def __init__(self, plan_path: Path, use_tinydb: bool = True):
+    def __init__(self, plan_path: Path, yaml_sync_enabled: bool = True):
         """Initialize TaskService.
+
+        TinyDB is the primary data store for all writes. YAML files are
+        optionally kept in sync for git visibility. If TinyDB is unavailable
+        (import failure), YAML serves as emergency fallback.
 
         Args:
             plan_path: Path to plan folder (e.g., docs/plans/live/260203TS_task_service/).
                        The service will look for plan_build.yml in this folder.
-            use_tinydb: If True, attempt to use TinyDB repository for reads/writes.
-                        Falls back to YAML if TinyDB is unavailable.
+            yaml_sync_enabled: If True, keep YAML files in sync with TinyDB
+                              after writes. Defaults to True.
         """
         self.plan_path = plan_path
         self.plan_file = plan_path / "plan_build.yml"
-        self._repository = None
+        self._yaml_sync_enabled = yaml_sync_enabled
         self._plan_folder_name = plan_path.name  # For TinyDB lookups
-        if use_tinydb:
-            try:
-                from .plan_repository import PlanRepository
-                self._repository = PlanRepository()
-            except Exception:
-                pass
+        self._repository = None
+        try:
+            from .plan_repository import PlanRepository
+            # Derive db_path from plan_path's repo root for test isolation
+            repo_root = plan_path
+            while repo_root != repo_root.parent:
+                if (repo_root / ".git").exists():
+                    break
+                repo_root = repo_root.parent
+            db_path = repo_root / ".agentic" / "plans.db"
+            self._repository = PlanRepository(db_path=db_path)
+        except Exception:
+            pass  # Emergency: fall back to pure YAML
 
     def _load_plan_file(self) -> dict:
         """Load plan YAML file.
@@ -300,10 +311,11 @@ class TaskService:
         return in_progress_task or pending_task
 
     def update_task_status(self, task_id: str, status: TaskStatus) -> bool:
-        """Update task status with atomic file locking, and dual-write to TinyDB.
+        """Update task status. TinyDB is primary, YAML sync is optional.
 
-        YAML is the source of truth and is always updated first. TinyDB is
-        updated after a successful YAML write; TinyDB failure is non-fatal.
+        Writes to TinyDB via PlanRepository first (which handles its own
+        FileLock). Optionally syncs YAML for git visibility. Falls back
+        to direct YAML writes only if TinyDB is unavailable.
 
         Args:
             task_id: Task identifier to update.
@@ -312,8 +324,33 @@ class TaskService:
         Returns:
             True if task was found and updated, False otherwise.
         """
+        # TinyDB-first: write via repository (handles its own locking)
+        if self._repository is not None:
+            try:
+                updated = self._repository.update_task_status(
+                    self._plan_folder_name, task_id, status.value
+                )
+                if not updated:
+                    return False
+                # Optionally sync to YAML for git visibility
+                if self._yaml_sync_enabled:
+                    try:
+                        self._repository.sync_to_yaml(self._plan_folder_name)
+                    except Exception:
+                        pass  # YAML sync failure is non-fatal
+                return True
+            except Exception:
+                pass  # Fall through to YAML emergency fallback
+
+        # Emergency YAML fallback (only when repository import failed)
+        return self._update_task_status_yaml(task_id, status)
+
+    def _update_task_status_yaml(self, task_id: str, status: TaskStatus) -> bool:
+        """Emergency YAML fallback for task status updates.
+
+        Used only when PlanRepository is unavailable (import failure at init).
+        """
         try:
-            # Acquire lock for atomic read-modify-write
             with FileLock(self.plan_file):
                 data = self._load_plan_file()
                 task_found = False
@@ -326,7 +363,6 @@ class TaskService:
                         for task_data in tasks:
                             if self._get_task_id(task_data) == task_id:
                                 task_data["status"] = status.value
-                                # Add completed_date if status is completed
                                 if status == TaskStatus.COMPLETED:
                                     task_data["completed_date"] = datetime.now().strftime("%Y-%m-%d")
                                 task_found = True
@@ -340,23 +376,13 @@ class TaskService:
                     for task_data in root_tasks:
                         if self._get_task_id(task_data) == task_id:
                             task_data["status"] = status.value
-                            # Add completed_date if status is completed
                             if status == TaskStatus.COMPLETED:
                                 task_data["completed_date"] = datetime.now().strftime("%Y-%m-%d")
                             task_found = True
                             break
 
-                # Save if task was found
                 if task_found:
                     self._save_plan_file(data)
-                    # Dual-write to TinyDB (non-fatal on failure)
-                    if self._repository is not None:
-                        try:
-                            self._repository.update_task_status(
-                                self._plan_folder_name, task_id, status.value
-                            )
-                        except Exception:
-                            pass
                     return True
 
                 return False

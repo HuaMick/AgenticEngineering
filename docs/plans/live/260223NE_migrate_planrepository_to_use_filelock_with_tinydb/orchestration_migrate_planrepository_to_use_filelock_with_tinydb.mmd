@@ -1,0 +1,108 @@
+%% =============================================================================
+%% GOAL: Make TinyDB the first-class planning datastore with filelock concurrency
+%% =============================================================================
+%% PROFILE: Orchestration-TinyDB-First Migration
+%% INPUT_PATH: /home/code/AgenticEngineering/docs/plans/live/260223NE_migrate_planrepository_to_use_filelock_with_tinydb/plan_build.yml
+%%
+%% PHASES:
+%%   P1: Phase 1 - FileLock Concurrency Protection
+%%   P2: Phase 2 - TinyDB as Primary Store
+%%   P3: Phase 3 - Eliminate Direct YAML Access from CLI
+%%   P4: Phase 4 - Testing & Validation
+%%
+%% AGENT_ROUTING: P1 -> build-python, P2 -> build-python, P3 -> build-python, P4 -> build-python
+%% STATUS: P1=completed, P2=completed, P3=completed, P4=completed
+%% FEEDBACK_TRIGGERS: TEST_FAILURE -> test-fix-loop, BUILD_FAILURE -> escalate
+%% MAX_ITERATIONS: 8
+%% =============================================================================
+
+flowchart LR
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    LoadInputs --> ReviewInputs[Review All Listed Inputs]
+    ReviewInputs --> CheckInputs{All Inputs Found?}
+
+    CheckInputs -- "No: Missing" --> SearchInputs[Search for Missing Inputs]
+    SearchInputs --> Found{Found?}
+    Found -- "Yes: Update paths" --> UpdateRefs[Update References]
+    UpdateRefs --> ReviewInputs
+    Found -- "No: Stop" --> AskUser((Ask User for Clarification))
+
+    CheckInputs -- "Yes: Verified" --> Phase1
+
+    %% ========================================
+    %% PHASE 1: FILELOCK CONCURRENCY PROTECTION
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: FL_001, FL_002
+
+    subgraph P1_SG ["Phase 1 - FileLock Concurrency Protection"]
+        Phase1[Enter Phase 1] --> SpawnAgent1[Spawn build-python Agent]
+        SpawnAgent1 --> Task_P1_1[FL_001: Add FileLock to PlanRepository write methods]
+        Task_P1_1 --> Task_P1_2[FL_002: Add FileLock unit tests]
+        Task_P1_2 --> Phase1Complete[Phase 1 Complete]
+    end
+
+    %% ========================================
+    %% PHASE 2: TINYDB AS PRIMARY STORE
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: PR_001, PR_002
+
+    subgraph P2_SG ["Phase 2 - TinyDB as Primary Store"]
+        Phase1Complete --> Phase2[Enter Phase 2]
+        Phase2 --> SpawnAgent2[Spawn build-python Agent]
+        SpawnAgent2 --> Task_P2_1[PR_001: Refactor PlanService to TinyDB-first]
+        Task_P2_1 --> Task_P2_2[PR_002: Update TaskService to use PlanRepository]
+        Task_P2_2 --> Phase2Complete[Phase 2 Complete]
+    end
+
+    %% ========================================
+    %% PHASE 3: ELIMINATE DIRECT YAML FROM CLI
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: CL_001, CL_002, CL_003
+
+    subgraph P3_SG ["Phase 3 - Eliminate Direct YAML Access from CLI"]
+        Phase2Complete --> Phase3[Enter Phase 3]
+        Phase3 --> SpawnAgent3[Spawn build-python Agent]
+        SpawnAgent3 --> Task_P3_1[CL_001: Replace YAML reads in plan discovery/listing]
+        Task_P3_1 --> Task_P3_2[CL_002: Replace YAML in task CRUD commands]
+        Task_P3_2 --> Task_P3_3[CL_003: Replace YAML in remaining commands]
+        Task_P3_3 --> Phase3Complete[Phase 3 Complete]
+    end
+
+    %% ========================================
+    %% PHASE 4: TESTING & VALIDATION
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: TV_001, TV_002
+
+    subgraph P4_SG ["Phase 4 - Testing & Validation"]
+        Phase3Complete --> Phase4[Enter Phase 4]
+        Phase4 --> SpawnAgent4[Spawn build-python Agent]
+        SpawnAgent4 --> Task_P4_1[TV_001: Update plan service tests]
+        Task_P4_1 --> Task_P4_2[TV_002: Run full test suite and fix regressions]
+        Task_P4_2 --> Phase4Complete[Phase 4 Complete]
+    end
+
+    %% ========================================
+    %% FINALIZATION
+    %% ========================================
+    Phase4Complete --> UpdatePlanStatus[Update Plan Status: completed]
+    UpdatePlanStatus --> ArchivePlan[Archive to docs/plans/completed/]
+    ArchivePlan --> End((End: Plan Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef entrypoint fill:#90EE90,stroke:#228B22
+    classDef exitpoint fill:#FFB6C1,stroke:#DC143C
+    classDef userpoint fill:#87CEEB,stroke:#4682B4
+    classDef keyaction fill:#FFD700,stroke:#DAA520
+    class Start entrypoint
+    class End exitpoint
+    class AskUser userpoint

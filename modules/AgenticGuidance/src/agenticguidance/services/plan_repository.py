@@ -12,6 +12,8 @@ from typing import Optional
 import yaml
 from tinydb import Query, TinyDB
 
+from .state import FileLock
+
 from .plan import (
     PlanCreateResult,
     PlanData,
@@ -49,6 +51,7 @@ class PlanRepository:
         self.db_path = db_path
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
+        self._lock = FileLock(self.db_path)
         self._db = TinyDB(str(self.db_path))
         self._plans = self._db.table("plans")
         self._tasks = self._db.table("tasks")
@@ -93,28 +96,29 @@ class PlanRepository:
                 message="plan_folder_name is required",
             )
 
-        Plan = Query()
-        if self._plans.search(Plan.plan_folder_name == plan_folder_name):
-            return PlanCreateResult(
-                plan_folder=Path(str(plan_folder)),
-                plan_folder_name=plan_folder_name,
-                success=False,
-                message=f"Plan already exists in DB: {plan_folder_name}",
-            )
+        with self._lock:
+            Plan = Query()
+            if self._plans.search(Plan.plan_folder_name == plan_folder_name):
+                return PlanCreateResult(
+                    plan_folder=Path(str(plan_folder)),
+                    plan_folder_name=plan_folder_name,
+                    success=False,
+                    message=f"Plan already exists in DB: {plan_folder_name}",
+                )
 
-        doc = {
-            "plan_folder_name": plan_folder_name,
-            "plan_folder": str(plan_folder),
-            "name": plan_data.get("name", plan_folder_name),
-            "worktree_path": plan_data.get("worktree_path", ""),
-            "branch": plan_data.get("branch", ""),
-            "status": plan_data.get("status", "pending"),
-            "priority": plan_data.get("priority", "medium"),
-            "objective": plan_data.get("objective", ""),
-            "created": plan_data.get("created", datetime.now().strftime("%Y-%m-%d")),
-            "context": plan_data.get("context", ""),
-        }
-        self._plans.insert(doc)
+            doc = {
+                "plan_folder_name": plan_folder_name,
+                "plan_folder": str(plan_folder),
+                "name": plan_data.get("name", plan_folder_name),
+                "worktree_path": plan_data.get("worktree_path", ""),
+                "branch": plan_data.get("branch", ""),
+                "status": plan_data.get("status", "pending"),
+                "priority": plan_data.get("priority", "medium"),
+                "objective": plan_data.get("objective", ""),
+                "created": plan_data.get("created", datetime.now().strftime("%Y-%m-%d")),
+                "context": plan_data.get("context", ""),
+            }
+            self._plans.insert(doc)
 
         return PlanCreateResult(
             plan_folder=Path(str(plan_folder)),
@@ -170,6 +174,7 @@ class PlanRepository:
                     name=phase_name,
                     description=pd.get("description"),
                     execution=pd.get("execution"),
+                    status=pd.get("status"),
                     tasks=tasks_by_phase.get(phase_name, []),
                 )
             )
@@ -231,16 +236,17 @@ class PlanRepository:
         Returns:
             PlanUpdateResult indicating success or failure.
         """
-        doc = self._find_plan_doc(plan_folder_name)
-        if not doc:
-            return PlanUpdateResult(
-                success=False,
-                message=f"Plan not found in DB: {plan_folder_name}",
-            )
+        with self._lock:
+            doc = self._find_plan_doc(plan_folder_name)
+            if not doc:
+                return PlanUpdateResult(
+                    success=False,
+                    message=f"Plan not found in DB: {plan_folder_name}",
+                )
 
-        old_status = doc.get("status")
-        Plan = Query()
-        self._plans.update(updates, Plan.plan_folder_name == doc["plan_folder_name"])
+            old_status = doc.get("status")
+            Plan = Query()
+            self._plans.update(updates, Plan.plan_folder_name == doc["plan_folder_name"])
 
         new_status = updates.get("status", old_status)
         return PlanUpdateResult(
@@ -260,23 +266,64 @@ class PlanRepository:
         Returns:
             PlanDeleteResult indicating success or failure.
         """
-        doc = self._find_plan_doc(plan_folder_name)
-        if not doc:
-            return PlanDeleteResult(
-                success=False,
-                message=f"Plan not found in DB: {plan_folder_name}",
-            )
+        with self._lock:
+            doc = self._find_plan_doc(plan_folder_name)
+            if not doc:
+                return PlanDeleteResult(
+                    success=False,
+                    message=f"Plan not found in DB: {plan_folder_name}",
+                )
 
-        actual_name = doc["plan_folder_name"]
-        Q = Query()
-        self._plans.remove(Q.plan_folder_name == actual_name)
-        self._tasks.remove(Q.plan_folder_name == actual_name)
-        self._phases.remove(Q.plan_folder_name == actual_name)
+            actual_name = doc["plan_folder_name"]
+            Q = Query()
+            self._plans.remove(Q.plan_folder_name == actual_name)
+            self._tasks.remove(Q.plan_folder_name == actual_name)
+            self._phases.remove(Q.plan_folder_name == actual_name)
 
         return PlanDeleteResult(
             success=True,
             message=f"Plan and associated data removed from DB: {actual_name}",
         )
+
+    def resync_plan_folder(self, plan_folder_name: str, new_folder: str) -> bool:
+        """Update plan_folder path and re-import tasks/phases from new location.
+
+        Called when a stale TinyDB path is detected (e.g. plan was resurrected
+        from completed/ back to live/).
+
+        Args:
+            plan_folder_name: Folder name identifying the plan.
+            new_folder: New filesystem path for the plan folder.
+
+        Returns:
+            True if the resync succeeded.
+        """
+        doc = self._find_plan_doc(plan_folder_name)
+        if not doc:
+            return False
+
+        new_path = Path(new_folder)
+        if not new_path.is_dir():
+            return False
+
+        # Update the plan_folder path
+        actual_name = doc["plan_folder_name"]
+        with self._lock:
+            Plan = Query()
+            self._plans.update(
+                {"plan_folder": str(new_path)},
+                Plan.plan_folder_name == actual_name,
+            )
+
+        # Re-import tasks and phases from the new location
+        try:
+            self.import_from_yaml(new_path)
+        except Exception:
+            logger.warning(
+                "resync_plan_folder: re-import failed for %s", actual_name, exc_info=True
+            )
+
+        return True
 
     # ------------------------------------------------------------------
     # Task CRUD
@@ -352,6 +399,8 @@ class PlanRepository:
     ) -> bool:
         """Update a task's status.
 
+        Automatically sets completed_date when status is "completed".
+
         Args:
             plan_folder_name: Plan folder name.
             task_id: Task identifier.
@@ -360,11 +409,15 @@ class PlanRepository:
         Returns:
             True if the task was found and updated.
         """
-        Task = Query()
-        updated = self._tasks.update(
-            {"status": new_status},
-            (Task.plan_folder_name == plan_folder_name) & (Task.task_id == task_id),
-        )
+        updates = {"status": new_status}
+        if new_status == "completed":
+            updates["completed_date"] = datetime.now().strftime("%Y-%m-%d")
+        with self._lock:
+            Task = Query()
+            updated = self._tasks.update(
+                updates,
+                (Task.plan_folder_name == plan_folder_name) & (Task.task_id == task_id),
+            )
         return len(updated) > 0
 
     def add_task(
@@ -384,27 +437,28 @@ class PlanRepository:
         if not task_id:
             return False
 
-        # Check for duplicates
-        Task = Query()
-        if self._tasks.search(
-            (Task.plan_folder_name == plan_folder_name) & (Task.task_id == task_id)
-        ):
-            return False
+        with self._lock:
+            # Check for duplicates
+            Task = Query()
+            if self._tasks.search(
+                (Task.plan_folder_name == plan_folder_name) & (Task.task_id == task_id)
+            ):
+                return False
 
-        doc = {
-            "plan_folder_name": plan_folder_name,
-            "phase_name": phase_name,
-            "task_id": task_id,
-            "name": task_data.get("name", ""),
-            "description": task_data.get("description", ""),
-            "status": task_data.get("status", "pending"),
-            "agent": task_data.get("agent"),
-            "inputs": task_data.get("inputs", []),
-            "target_files": task_data.get("target_files", []),
-            "guidance": task_data.get("guidance"),
-            "completed_date": task_data.get("completed_date"),
-        }
-        self._tasks.insert(doc)
+            doc = {
+                "plan_folder_name": plan_folder_name,
+                "phase_name": phase_name,
+                "task_id": task_id,
+                "name": task_data.get("name", ""),
+                "description": task_data.get("description", ""),
+                "status": task_data.get("status", "pending"),
+                "agent": task_data.get("agent"),
+                "inputs": task_data.get("inputs", []),
+                "target_files": task_data.get("target_files", []),
+                "guidance": task_data.get("guidance"),
+                "completed_date": task_data.get("completed_date"),
+            }
+            self._tasks.insert(doc)
         return True
 
     def get_current_task(self, plan_folder_name: str) -> Optional[TaskData]:
@@ -492,69 +546,70 @@ class PlanRepository:
         if not merged:
             return False
 
-        # ------ Upsert plan document ------
-        Plan = Query()
-        plan_doc = {
-            "plan_folder_name": plan_folder_name,
-            "plan_folder": str(plan_folder),
-            "name": merged.get("name", plan_folder_name),
-            "worktree_path": merged.get("worktree_path", ""),
-            "branch": merged.get("branch", ""),
-            "status": merged.get("status", "pending"),
-            "priority": merged.get("priority", "medium"),
-            "objective": merged.get("objective", merged.get("context", "")),
-            "created": merged.get("created", ""),
-            "context": merged.get("context", ""),
-        }
+        # ------ Upsert plan document, phases, and tasks under lock ------
+        with self._lock:
+            Plan = Query()
+            plan_doc = {
+                "plan_folder_name": plan_folder_name,
+                "plan_folder": str(plan_folder),
+                "name": merged.get("name", plan_folder_name),
+                "worktree_path": merged.get("worktree_path", ""),
+                "branch": merged.get("branch", ""),
+                "status": merged.get("status", "pending"),
+                "priority": merged.get("priority", "medium"),
+                "objective": merged.get("objective", merged.get("context", "")),
+                "created": merged.get("created", ""),
+                "context": merged.get("context", ""),
+            }
 
-        existing = self._plans.search(Plan.plan_folder_name == plan_folder_name)
-        if existing:
-            self._plans.update(plan_doc, Plan.plan_folder_name == plan_folder_name)
-        else:
-            self._plans.insert(plan_doc)
+            existing = self._plans.search(Plan.plan_folder_name == plan_folder_name)
+            if existing:
+                self._plans.update(plan_doc, Plan.plan_folder_name == plan_folder_name)
+            else:
+                self._plans.insert(plan_doc)
 
-        # ------ Upsert phases and tasks ------
-        # Remove old phases/tasks for this plan (idempotent reimport)
-        Q = Query()
-        self._phases.remove(Q.plan_folder_name == plan_folder_name)
-        self._tasks.remove(Q.plan_folder_name == plan_folder_name)
+            # Remove old phases/tasks for this plan (idempotent reimport)
+            Q = Query()
+            self._phases.remove(Q.plan_folder_name == plan_folder_name)
+            self._tasks.remove(Q.plan_folder_name == plan_folder_name)
 
-        phases_data = merged.get("phases", [])
-        for order, phase in enumerate(phases_data):
-            # Skip non-dict phases (legacy plans may have string entries)
-            if not isinstance(phase, dict):
-                continue
-            phase_name = phase.get("name", f"Phase {order + 1}")
-
-            self._phases.insert(
-                {
-                    "plan_folder_name": plan_folder_name,
-                    "phase_name": phase_name,
-                    "execution": phase.get("execution"),
-                    "description": phase.get("description"),
-                    "_order": order,
-                }
-            )
-
-            for task in phase.get("tasks", []):
-                task_id = task.get("id") or task.get("task_id", "")
-                if not task_id:
+            phases_data = merged.get("phases", [])
+            for order, phase in enumerate(phases_data):
+                # Skip non-dict phases (legacy plans may have string entries)
+                if not isinstance(phase, dict):
                     continue
-                self._tasks.insert(
+                phase_name = phase.get("name", f"Phase {order + 1}")
+
+                self._phases.insert(
                     {
                         "plan_folder_name": plan_folder_name,
                         "phase_name": phase_name,
-                        "task_id": task_id,
-                        "name": task.get("name", ""),
-                        "description": task.get("description", ""),
-                        "status": task.get("status", "pending"),
-                        "agent": task.get("agent"),
-                        "inputs": task.get("inputs", []),
-                        "target_files": task.get("target_files", []),
-                        "guidance": task.get("guidance"),
-                        "completed_date": task.get("completed_date"),
+                        "execution": phase.get("execution"),
+                        "description": phase.get("description"),
+                        "status": phase.get("status"),
+                        "_order": order,
                     }
                 )
+
+                for task in phase.get("tasks", []):
+                    task_id = task.get("id") or task.get("task_id", "")
+                    if not task_id:
+                        continue
+                    self._tasks.insert(
+                        {
+                            "plan_folder_name": plan_folder_name,
+                            "phase_name": phase_name,
+                            "task_id": task_id,
+                            "name": task.get("name", ""),
+                            "description": task.get("description", ""),
+                            "status": task.get("status", "pending"),
+                            "agent": task.get("agent"),
+                            "inputs": task.get("inputs", []),
+                            "target_files": task.get("target_files", []),
+                            "guidance": task.get("guidance"),
+                            "completed_date": task.get("completed_date"),
+                        }
+                    )
 
         return True
 

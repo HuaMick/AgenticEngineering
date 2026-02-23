@@ -717,9 +717,10 @@ class TestUpdatePlanStatus:
         result = service.update_plan_status("260203PS", "active")
 
         assert result.success is True
-        assert "2 file(s)" in result.message
+        assert result.old_status == "pending"
+        assert result.new_status == "active"
 
-        # Verify both files were updated
+        # Verify both YAML files were updated (via yaml_sync)
         with open(plan_folder / "plan_build.yml") as f:
             build_data = yaml.safe_load(f)
         assert build_data["status"] == "active"
@@ -910,9 +911,10 @@ class TestValidatePlanStructure:
         result = service.validate_plan_structure(plan_folder)
 
         assert result.valid is False
-        assert any("worktree_path" in e for e in result.errors)
         assert any("status" in e for e in result.errors)
         assert any("phases" in e for e in result.errors)
+        # worktree_path is optional - generates a warning, not an error
+        assert any("worktree_path" in w for w in result.warnings)
 
     def test_validate_plan_structure_invalid_status(self, tmp_path):
         """Test validate_plan_structure fails for invalid status value."""
@@ -1048,6 +1050,317 @@ class TestValidatePlanStructure:
 
         assert result.valid is False
         assert any("No plan_*.yml files" in e for e in result.errors)
+
+
+class TestValidateTaskNesting:
+    """Tests for task nesting validation in validate_plan_structure().
+
+    Validates that:
+    - Root-level tasks: key is rejected (tasks must be nested under phases[].tasks[])
+    - Phases without tasks: key generate warnings
+    - Blocking conditions (root tasks + no phases) are detected
+    - Valid plans with proper nesting still pass
+    """
+
+    def _make_plan(self, tmp_path, plan_data: dict) -> tuple:
+        """Helper to create a plan folder with given YAML data."""
+        repo_path = tmp_path / "repo"
+        repo_path.mkdir()
+        (repo_path / ".git").mkdir()
+
+        service = PlanService(repo_path=repo_path)
+
+        plan_folder = repo_path / "docs" / "plans" / "live" / "260223TU_test_nesting"
+        plan_folder.mkdir(parents=True)
+
+        with open(plan_folder / "plan_build.yml", "w") as f:
+            yaml.dump(plan_data, f, default_flow_style=False)
+
+        return service, plan_folder
+
+    # --- TU_001: Root-level tasks detection ---
+
+    def test_root_level_tasks_returns_error(self, tmp_path):
+        """Plan with root-level tasks: key must return validation error."""
+        service, plan_folder = self._make_plan(tmp_path, {
+            "name": "bad-plan",
+            "status": "active",
+            "tasks": [
+                {"id": "T1", "name": "orphan task", "status": "pending"},
+            ],
+        })
+
+        result = service.validate_plan_structure(plan_folder)
+
+        assert result.valid is False
+        root_level_errors = [e for e in result.errors if "root" in e.lower() and "task" in e.lower()]
+        assert len(root_level_errors) > 0, f"Expected root-level tasks error, got: {result.errors}"
+
+    def test_root_level_tasks_error_mentions_phases(self, tmp_path):
+        """Error message for root-level tasks must mention phases nesting."""
+        service, plan_folder = self._make_plan(tmp_path, {
+            "name": "bad-plan",
+            "status": "active",
+            "tasks": [
+                {"id": "T1", "name": "orphan task", "status": "pending"},
+            ],
+        })
+
+        result = service.validate_plan_structure(plan_folder)
+
+        assert result.valid is False
+        all_errors = " ".join(result.errors).lower()
+        assert "nested" in all_errors or "phases" in all_errors, (
+            f"Error should mention nesting under phases, got: {result.errors}"
+        )
+
+    def test_root_level_tasks_with_phases_returns_error(self, tmp_path):
+        """Plan with BOTH root-level tasks: AND phases: must return error."""
+        service, plan_folder = self._make_plan(tmp_path, {
+            "name": "bad-plan",
+            "status": "active",
+            "phases": [
+                {
+                    "name": "Phase 1",
+                    "tasks": [
+                        {"id": "T2", "name": "nested task", "status": "pending"},
+                    ],
+                },
+            ],
+            "tasks": [
+                {"id": "T1", "name": "orphan task", "status": "pending"},
+            ],
+        })
+
+        result = service.validate_plan_structure(plan_folder)
+
+        assert result.valid is False
+        root_level_errors = [e for e in result.errors if "root" in e.lower() and "task" in e.lower()]
+        assert len(root_level_errors) > 0, (
+            f"Expected root-level tasks error even with phases present, got: {result.errors}"
+        )
+
+    # --- TU_002: Phase without tasks detection ---
+
+    def test_phase_without_tasks_returns_warning(self, tmp_path):
+        """Plan with a phase that has no tasks: key must return warning."""
+        service, plan_folder = self._make_plan(tmp_path, {
+            "name": "partial-plan",
+            "status": "active",
+            "phases": [
+                {
+                    "name": "Phase with tasks",
+                    "tasks": [
+                        {"id": "T1", "name": "a task", "status": "pending"},
+                    ],
+                },
+                {
+                    "name": "Empty phase",
+                },
+            ],
+        })
+
+        result = service.validate_plan_structure(plan_folder)
+
+        empty_phase_warnings = [
+            w for w in result.warnings if "Empty phase" in w and "task" in w.lower()
+        ]
+        assert len(empty_phase_warnings) > 0, (
+            f"Expected warning about 'Empty phase' having no tasks, got warnings: {result.warnings}"
+        )
+
+    def test_phase_with_tasks_no_warning(self, tmp_path):
+        """Phase with tasks should NOT trigger a missing-tasks warning."""
+        service, plan_folder = self._make_plan(tmp_path, {
+            "name": "good-plan",
+            "status": "active",
+            "phases": [
+                {
+                    "name": "Phase with tasks",
+                    "tasks": [
+                        {"id": "T1", "name": "a task", "status": "pending",
+                         "description": "desc", "success_criteria": ["ok"]},
+                    ],
+                },
+            ],
+        })
+
+        result = service.validate_plan_structure(plan_folder)
+
+        no_tasks_warnings = [
+            w for w in result.warnings if "no tasks" in w.lower() or "has no task" in w.lower()
+        ]
+        assert len(no_tasks_warnings) == 0, (
+            f"Phase with tasks should not trigger warning, got: {no_tasks_warnings}"
+        )
+
+    def test_multiple_phases_mixed_tasks(self, tmp_path):
+        """Only phases without tasks should trigger warnings."""
+        service, plan_folder = self._make_plan(tmp_path, {
+            "name": "mixed-plan",
+            "status": "active",
+            "phases": [
+                {
+                    "name": "Good Phase",
+                    "tasks": [
+                        {"id": "T1", "name": "task", "status": "pending"},
+                    ],
+                },
+                {"name": "Empty Phase A"},
+                {
+                    "name": "Another Good Phase",
+                    "tasks": [
+                        {"id": "T2", "name": "task 2", "status": "pending"},
+                    ],
+                },
+                {"name": "Empty Phase B"},
+            ],
+        })
+
+        result = service.validate_plan_structure(plan_folder)
+
+        empty_warnings = [
+            w for w in result.warnings if "no tasks" in w.lower() or "has no task" in w.lower()
+        ]
+        assert len(empty_warnings) == 2, (
+            f"Expected 2 warnings for 2 empty phases, got {len(empty_warnings)}: {empty_warnings}"
+        )
+
+    # --- TU_003: Blocking condition (root tasks + no phases) ---
+
+    def test_root_tasks_no_phases_is_blocking(self, tmp_path):
+        """Plan with root-level tasks and NO phases key must be a blocking error."""
+        service, plan_folder = self._make_plan(tmp_path, {
+            "name": "flat-plan",
+            "status": "active",
+            "tasks": [
+                {"id": "T1", "name": "orphan", "status": "pending"},
+            ],
+        })
+
+        result = service.validate_plan_structure(plan_folder)
+
+        assert result.valid is False
+        all_errors = " ".join(result.errors).lower()
+        assert "task" in all_errors, f"Expected task-related error, got: {result.errors}"
+
+    def test_root_tasks_no_phases_valid_false(self, tmp_path):
+        """ValidationResult.valid must be False for flat plan with root tasks."""
+        service, plan_folder = self._make_plan(tmp_path, {
+            "name": "flat-plan",
+            "status": "active",
+            "tasks": [
+                {"id": "T1", "name": "orphan", "status": "pending"},
+            ],
+        })
+
+        result = service.validate_plan_structure(plan_folder)
+
+        assert result.valid is False, "Plan with root tasks and no phases must be invalid"
+        assert len(result.errors) > 0, "Must have at least one error"
+
+    # --- TU_004: Valid plans still pass (regression) ---
+
+    def test_valid_nested_tasks_pass(self, tmp_path):
+        """Plan with proper phases[].tasks[] nesting must pass validation."""
+        service, plan_folder = self._make_plan(tmp_path, {
+            "name": "good-plan",
+            "status": "active",
+            "phases": [
+                {
+                    "name": "Phase 1",
+                    "tasks": [
+                        {
+                            "id": "T1",
+                            "name": "proper task",
+                            "description": "Well-formed task",
+                            "status": "pending",
+                            "success_criteria": ["It works"],
+                        },
+                    ],
+                },
+            ],
+        })
+
+        result = service.validate_plan_structure(plan_folder)
+
+        assert result.valid is True, f"Valid plan should pass, errors: {result.errors}"
+        assert len(result.errors) == 0
+
+    def test_multiple_phases_with_tasks_pass(self, tmp_path):
+        """Plan with multiple phases each containing tasks must pass."""
+        service, plan_folder = self._make_plan(tmp_path, {
+            "name": "multi-phase-plan",
+            "status": "active",
+            "phases": [
+                {
+                    "name": "Phase 1",
+                    "tasks": [
+                        {"id": "T1", "name": "task 1", "description": "d1",
+                         "status": "pending", "success_criteria": ["ok"]},
+                        {"id": "T2", "name": "task 2", "description": "d2",
+                         "status": "pending", "success_criteria": ["ok"]},
+                    ],
+                },
+                {
+                    "name": "Phase 2",
+                    "tasks": [
+                        {"id": "T3", "name": "task 3", "description": "d3",
+                         "status": "pending", "success_criteria": ["ok"]},
+                    ],
+                },
+            ],
+        })
+
+        result = service.validate_plan_structure(plan_folder)
+
+        assert result.valid is True, f"Valid multi-phase plan should pass, errors: {result.errors}"
+        assert len(result.errors) == 0
+
+    def test_stub_templates_skipped(self, tmp_path):
+        """Stub templates with _template_status: stub should be skipped."""
+        repo_path = tmp_path / "repo"
+        repo_path.mkdir()
+        (repo_path / ".git").mkdir()
+
+        service = PlanService(repo_path=repo_path)
+
+        plan_folder = repo_path / "docs" / "plans" / "live" / "260223TU_test_stub"
+        plan_folder.mkdir(parents=True)
+
+        # Write a valid build plan
+        with open(plan_folder / "plan_build.yml", "w") as f:
+            yaml.dump({
+                "name": "stub-plan",
+                "status": "active",
+                "phases": [
+                    {
+                        "name": "Phase 1",
+                        "tasks": [
+                            {"id": "T1", "name": "task", "description": "d",
+                             "status": "pending", "success_criteria": ["ok"]},
+                        ],
+                    },
+                ],
+            }, f, default_flow_style=False)
+
+        # Write a stub template that has root-level tasks (should be skipped)
+        with open(plan_folder / "plan_test.yml", "w") as f:
+            yaml.dump({
+                "_template_status": "stub",
+                "name": "test-stub",
+                "status": "pending",
+                "tasks": [
+                    {"id": "T99", "name": "stub task"},
+                ],
+            }, f, default_flow_style=False)
+
+        result = service.validate_plan_structure(plan_folder)
+
+        root_errors = [e for e in result.errors if "root" in e.lower() and "task" in e.lower()]
+        assert len(root_errors) == 0, (
+            f"Stub template should be skipped, but got root-task errors: {root_errors}"
+        )
 
 
 class TestDryRunOperations:
