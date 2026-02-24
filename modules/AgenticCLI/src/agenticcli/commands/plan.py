@@ -152,11 +152,17 @@ def _get_phase_id(phase: dict) -> str:
     return phase.get("phase_id", "") or phase.get("id", "")
 
 
+def _get_repo():
+    """Get PlanRepository instance for TinyDB-backed plan access."""
+    from agenticguidance.services.plan_repository import PlanRepository
+    return PlanRepository()
+
+
 def is_plan_fully_completed(plan_folder: Path) -> bool:
     """Check if all tasks across all plan files are completed.
 
-    Reads all plan_*.yml files in the folder and checks if every task
-    has status "completed". Used to determine if a plan is ready for archival.
+    Tries PlanRepository (TinyDB) first for fast lookup, then falls back
+    to reading plan_*.yml files if TinyDB is unavailable.
 
     Args:
         plan_folder: Path to the plan folder containing plan_*.yml files.
@@ -172,6 +178,18 @@ def is_plan_fully_completed(plan_folder: Path) -> bool:
         - Mixed statuses across files: Returns False
         - YAML parse errors: Skips the file (counts as incomplete)
     """
+    # TinyDB path: fast lookup via PlanRepository
+    try:
+        repo = _get_repo()
+        if repo is not None:
+            # Only trust repo result if the plan actually has tasks in DB
+            counts = repo.get_task_counts(plan_folder.name)
+            if counts["total"] > 0:
+                return repo.check_all_tasks_complete(plan_folder.name)
+    except Exception:
+        pass  # Fall through to YAML
+
+    # YAML fallback
     yaml_files = list(plan_folder.glob("plan_*.yml"))
 
     # No plan files found - not completed
@@ -236,9 +254,8 @@ def has_pending_questions(plan_path: Path) -> bool:
 def _get_plan_branch(plan_path: Path) -> str | None:
     """Extract the branch name associated with a plan folder.
 
-    Checks plan YAML files for 'branch' or 'worktree_path' fields,
-    then falls back to matching the plan folder abbreviation against
-    the worktree registry.
+    Tries PlanRepository (TinyDB) first for fast lookup, then falls back
+    to reading YAML files and the worktree registry.
 
     Args:
         plan_path: Path to the plan folder.
@@ -246,7 +263,17 @@ def _get_plan_branch(plan_path: Path) -> str | None:
     Returns:
         Branch name string, or None if not determinable.
     """
-    # Try plan_build.yml first (most likely to have branch info)
+    # TinyDB path: fast lookup via PlanRepository
+    try:
+        repo = _get_repo()
+        if repo is not None:
+            branch = repo.get_plan_branch(plan_path.name)
+            if branch is not None:
+                return branch
+    except Exception:
+        pass  # Fall through to YAML
+
+    # YAML fallback: Try plan_build.yml first (most likely to have branch info)
     for yaml_name in ["plan_build.yml", "plan_teach.yml"]:
         yaml_file = plan_path / yaml_name
         if not yaml_file.exists():
@@ -477,14 +504,36 @@ def find_plan_folder(path: str | None = None) -> Path:
             from agenticguidance.services.plan_repository import PlanRepository
             repo = PlanRepository(auto_bootstrap=False)
             plan_data = repo.get_plan(search_name)
-            repo.close()
             if plan_data and plan_data.plan_folder.is_dir():
                 # Only accept if the plan folder belongs to this repo tree
                 try:
                     plan_data.plan_folder.relative_to(repo_root)
-                    return plan_data.plan_folder
                 except ValueError:
+                    repo.close()
                     pass  # Plan folder is outside this repo - fall through
+                else:
+                    resolved_folder = plan_data.plan_folder
+                    # Live-preference: if TinyDB points to completed/ but a
+                    # live/ version exists, prefer live/ and auto-correct TinyDB.
+                    if "/plans/completed/" in str(resolved_folder):
+                        live_path = Path(
+                            str(resolved_folder).replace(
+                                "/plans/completed/", "/plans/live/"
+                            )
+                        )
+                        if live_path.is_dir():
+                            resolved_folder = live_path
+                            try:
+                                repo.resync_plan_folder(
+                                    plan_data.plan_folder_name,
+                                    str(live_path),
+                                )
+                            except Exception:
+                                pass  # Non-fatal: TinyDB correction is best-effort
+                    repo.close()
+                    return resolved_folder
+            else:
+                repo.close()
         except Exception:
             pass
 
@@ -877,15 +926,44 @@ def cmd_new(args, ctx=None):
         if not is_json_output():
             print_info("[Step 4] Spawning builder agents...")
 
-        # Read plan_build.yml to get phases and tasks
-        plan_build_file = plan_folder / "plan_build.yml"
-        if not plan_build_file.exists():
-            if not is_json_output():
-                print_error("plan_build.yml not found - cannot spawn builders")
-        else:
+        # Read phases and tasks via PlanRepository (TinyDB-first)
+        plan_folder_name = plan_folder.name
+        phases = None
+        try:
+            repo = _get_repo()
+            plan_data_obj = repo.get_plan(plan_folder_name)
+            if (plan_data_obj and plan_data_obj.phases
+                    and plan_data_obj.plan_folder == plan_folder):
+                phases = [
+                    {
+                        "name": phase.name,
+                        "execution": phase.execution or "sequential",
+                        "tasks": [
+                            {"id": t.id, "name": t.name, "status": t.status or "pending"}
+                            for t in (phase.tasks or [])
+                        ],
+                    }
+                    for phase in plan_data_obj.phases
+                ]
+        except Exception:
+            pass
+
+        if phases is None:
+            # Fallback: read plan_build.yml directly
+            plan_build_file = plan_folder / "plan_build.yml"
+            if not plan_build_file.exists():
+                if not is_json_output():
+                    print_error("plan_build.yml not found - cannot spawn builders")
+                phases = []
+            else:
+                try:
+                    plan_data = yaml.safe_load(plan_build_file.read_text())
+                    phases = _get_phases_from_content(plan_data) if plan_data else []
+                except (yaml.YAMLError, Exception):
+                    phases = []
+
+        if phases:
             try:
-                plan_data = yaml.safe_load(plan_build_file.read_text())
-                phases = _get_phases_from_content(plan_data)
 
                 total_tasks = 0
                 spawned_sessions = []
@@ -966,34 +1044,13 @@ def cmd_new(args, ctx=None):
                     else:
                         print_warning("No tasks to spawn (all completed or no pending tasks)")
 
-                # Step 5: Check completion and auto-archive (Phase 4)
+                # Step 5: Check plan completion status
                 if not is_json_output():
                     print_info("[Step 5] Checking plan completion status...")
 
                 if is_plan_fully_completed(plan_folder):
-                    if has_pending_questions(plan_folder):
-                        if not is_json_output():
-                            print_warning("All tasks completed but unanswered questions remain. Skipping auto-archive.")
-                            print_warning("Answer questions with: agentic question list --plan " + plan_folder.name)
-                    else:
-                        if not is_json_output():
-                            print_success("All tasks completed!")
-                            print_info("Auto-archiving plan...")
-
-                        # Archive the plan
-                        archive_args = SimpleNamespace(path=str(plan_folder))
-                        try:
-                            # Call cmd_archive - it handles the move
-                            cmd_archive(archive_args)
-                            if not is_json_output():
-                                print_success("Plan archived to docs/plans/completed/")
-                            # Auto-cleanup: remove worktree if no more live plans
-                            _try_worktree_cleanup_after_archive(plan_folder)
-                        except Exception as e:
-                            if not is_json_output():
-                                print_warning(f"Auto-archive failed: {e}")
-                                print_warning("  You can archive manually with:")
-                                print_warning(f"  agentic plan archive {plan_folder}")
+                    if not is_json_output():
+                        print_success("All tasks completed!")
                 else:
                     if not is_json_output():
                         # Count remaining tasks
@@ -1009,9 +1066,6 @@ def cmd_new(args, ctx=None):
                             if len(remaining) > 3:
                                 print_info(f"    ... and {len(remaining) - 3} more")
 
-            except yaml.YAMLError as e:
-                if not is_json_output():
-                    print_error(f"Failed to parse plan_build.yml: {e}")
             except Exception as e:
                 if not is_json_output():
                     print_error(f"Failed to spawn builders: {e}")
@@ -1365,116 +1419,40 @@ def cmd_status(args):
     deferred_reason = None
     has_tasks = False
 
-    # Try PlanService for plan data and task counts
+    # Get plan data via PlanService (TinyDB-first)
     try:
         from agenticguidance.services.plan import PlanService
         plan_service = PlanService()
         plan_data_obj = plan_service.get_plan(str(plan_path))
-    except Exception:
-        plan_data_obj = None
+    except Exception as e:
+        print_error(f"Failed to load PlanService: {e}")
+        sys.exit(1)
 
-    if plan_data_obj is not None:
-        plan_status = plan_data_obj.status or "unknown"
-        tasks = plan_data_obj.tasks or []
-        total_pending = sum(1 for t in tasks if t.status == "pending")
-        total_in_progress = sum(1 for t in tasks if t.status == "in_progress")
-        total_completed = sum(1 for t in tasks if t.status == "completed")
-        has_tasks = len(tasks) > 0
+    if plan_data_obj is None:
+        print_error(f"Plan not found in repository: {plan_path.name}")
+        sys.exit(1)
 
-        # Build file_stats summary (aggregate all tasks under a single entry for display)
-        if has_tasks:
-            file_stats.append(
-                {
-                    "file": "(via PlanService)",
-                    "pending": total_pending,
-                    "in_progress": total_in_progress,
-                    "completed": total_completed,
-                }
-            )
+    plan_status = plan_data_obj.status or "unknown"
+    tasks = plan_data_obj.tasks or []
+    total_pending = sum(1 for t in tasks if t.status == "pending")
+    total_in_progress = sum(1 for t in tasks if t.status == "in_progress")
+    total_completed = sum(1 for t in tasks if t.status == "completed")
+    has_tasks = len(tasks) > 0
 
-        # For deferred_reason, still need to read YAML (PlanService doesn't track this)
-        if plan_status == "deferred":
-            for yaml_file in sorted(yaml_files):
-                try:
-                    content = yaml.safe_load(yaml_file.read_text())
-                    if content and "deferred_reason" in content:
-                        deferred_reason = content["deferred_reason"]
-                        break
-                    if content:
-                        plan_data_nested = content.get("plan", content.get("feature", {}))
-                        if "deferred_reason" in plan_data_nested:
-                            deferred_reason = plan_data_nested["deferred_reason"]
-                            break
-                except (yaml.YAMLError, Exception):
-                    continue
-    else:
-        # Fallback: existing YAML scanning logic
-        for yaml_file in sorted(yaml_files):
-            try:
-                content = yaml.safe_load(yaml_file.read_text())
-            except yaml.YAMLError as e:
-                file_stats.append({"file": yaml_file.name, "error": str(e)})
-                continue
+    # Build file_stats summary (aggregate all tasks under a single entry for display)
+    if has_tasks:
+        file_stats.append(
+            {
+                "file": "(via PlanService)",
+                "pending": total_pending,
+                "in_progress": total_in_progress,
+                "completed": total_completed,
+            }
+        )
 
-            if not content:
-                continue
-
-            # Extract plan status and deferred reason (EN-004)
-            if "status" in content:
-                plan_status = content["status"]
-                if plan_status == "deferred" and "deferred_reason" in content:
-                    deferred_reason = content["deferred_reason"]
-            else:
-                plan_data = content.get("plan", content.get("feature", {}))
-                if "status" in plan_data:
-                    plan_status = plan_data["status"]
-                if plan_status == "deferred" and "deferred_reason" in plan_data:
-                    deferred_reason = plan_data["deferred_reason"]
-
-            # Count tasks by status from phases
-            phases = _get_phases_from_content(content)
-            pending = 0
-            in_progress = 0
-            completed = 0
-
-            for phase in phases:
-                tasks = phase.get("tasks", [])
-                if tasks:
-                    has_tasks = True
-                for task in tasks:
-                    status = task.get("status", "pending")
-                    if status == "pending":
-                        pending += 1
-                    elif status == "in_progress":
-                        in_progress += 1
-                    elif status == "completed":
-                        completed += 1
-
-            # Legacy: implementation_steps
-            plan_data = content.get("plan", content.get("feature", {}))
-            steps = plan_data.get("implementation_steps", [])
-            for item in steps:
-                has_tasks = True
-                status = item.get("status", "pending")
-                if status == "pending":
-                    pending += 1
-                elif status == "in_progress":
-                    in_progress += 1
-                elif status == "completed":
-                    completed += 1
-
-            if pending + in_progress + completed > 0:
-                file_stats.append(
-                    {
-                        "file": yaml_file.name,
-                        "pending": pending,
-                        "in_progress": in_progress,
-                        "completed": completed,
-                    }
-                )
-                total_pending += pending
-                total_in_progress += in_progress
-                total_completed += completed
+    # Get deferred_reason from PlanData (TinyDB-backed)
+    if plan_status == "deferred":
+        deferred_reason = plan_data_obj.deferred_reason
 
     total = total_pending + total_in_progress + total_completed
     pct = (total_completed / total) * 100 if total > 0 else 0
@@ -1881,26 +1859,37 @@ def cmd_validate(args):
             mmd_phases = _parse_mmd_phases(mmd_content)
             mmd_tasks = _parse_mmd_tasks(mmd_content)
 
-            # Collect phases and tasks from YAML
+            # Collect phases and tasks from PlanRepository (TinyDB-first)
             yaml_phases = set()
             yaml_tasks = set()
 
-            for yaml_file in yaml_files:
-                try:
-                    content = yaml.safe_load(yaml_file.read_text())
-                    if not content:
+            try:
+                repo = _get_repo()
+                plan_data_obj = repo.get_plan(plan_path.name)
+                if (plan_data_obj and plan_data_obj.phases
+                        and plan_data_obj.plan_folder == plan_path):
+                    for phase in plan_data_obj.phases:
+                        for task in (phase.tasks or []):
+                            if task.id:
+                                yaml_tasks.add(task.id.upper())
+            except Exception:
+                # Fallback: read YAML files directly
+                for yaml_file in yaml_files:
+                    try:
+                        content = yaml.safe_load(yaml_file.read_text())
+                        if not content:
+                            continue
+                        phases = _get_phases_from_content(content)
+                        for phase in phases:
+                            phase_id = _get_phase_id(phase)
+                            if phase_id:
+                                yaml_phases.add(phase_id.upper())
+                            for task in phase.get("tasks", []):
+                                task_id = task.get("id") or task.get("task_id", "")
+                                if task_id:
+                                    yaml_tasks.add(task_id.upper())
+                    except yaml.YAMLError:
                         continue
-                    phases = _get_phases_from_content(content)
-                    for phase in phases:
-                        phase_id = _get_phase_id(phase)
-                        if phase_id:
-                            yaml_phases.add(phase_id.upper())
-                        for task in phase.get("tasks", []):
-                            task_id = task.get("id") or task.get("task_id", "")
-                            if task_id:
-                                yaml_tasks.add(task_id.upper())
-                except yaml.YAMLError:
-                    continue
 
             # Compare phases
             mmd_phase_set = set(p.upper() for p in mmd_phases)
@@ -2078,85 +2067,63 @@ def cmd_task_start(args):
 
 
 def cmd_task_complete(args):
-    """Mark a task as completed.
-
-    After marking the task complete, checks if all tasks in the plan are
-    completed and triggers auto-archival if so (unless --no-archive is set).
-    """
-    from agenticcli.console import print_info, print_success, print_warning
-
+    """Mark a task as completed."""
     task_id = args.task_id
     plan_path = find_plan_folder(args.plan)
-    no_archive = getattr(args, "no_archive", False)
 
     _update_task_status(plan_path, task_id, "completed")
     print(f"Task {task_id} marked as completed")
 
-    # Check if all tasks are completed and trigger auto-archival
-    if not no_archive and is_plan_fully_completed(plan_path):
-        if has_pending_questions(plan_path):
-            print_warning("All tasks completed but unanswered questions remain. Skipping auto-archive.")
-            print_warning("Answer questions with: agentic question list --plan " + plan_path.name)
-        else:
-            print_info("All tasks completed. Auto-archiving plan...")
-            try:
-                from agenticguidance.services import MoveResult, PlanMovementWorkflow
-
-                workflow = PlanMovementWorkflow(plan_path)
-                # Use silent=True for auto-archive: no prompts, skips git checks
-                result = workflow.archive_plan_folder(dry_run=False, silent=True)
-
-                if result.result == MoveResult.SUCCESS:
-                    print_success(result.message)
-                    # Auto-cleanup: remove worktree if no more live plans
-                    _try_worktree_cleanup_after_archive(plan_path)
-                else:
-                    # Archive failed but task update succeeded - don't fail the command
-                    print(f"Auto-archive skipped: {result.message}", file=sys.stderr)
-            except ImportError:
-                print("Auto-archive unavailable: PlanMovementWorkflow not found", file=sys.stderr)
-
 
 def _update_task_status(plan_path: Path, task_id: str, new_status: str):
-    """Update a task's status in plan files.
-
-    Searches for tasks in multiple locations:
-    1. Nested within phases[].tasks[] (standard plan structure)
-    2. Directly in phases/implementation_steps (legacy structure)
+    """Update a task's status. TinyDB-first, YAML sync for git visibility.
 
     Args:
         plan_path: Path to plan folder (flattened structure)
         task_id: Task ID to update
         new_status: New status value
     """
-    # Flattened structure: YAML files directly in plan_path
+    # TinyDB-first path
+    try:
+        repo = _get_repo()
+        if repo is not None:
+            plan_doc = repo.get_plan(plan_path.name)
+            folder_matches = (
+                plan_doc is not None
+                and plan_doc.plan_folder.resolve() == plan_path.resolve()
+            )
+            if folder_matches:
+                updated = repo.update_task_status(plan_path.name, task_id, new_status)
+                if updated:
+                    try:
+                        repo.sync_to_yaml(plan_path.name)
+                    except Exception:
+                        pass
+                    return
+    except Exception:
+        pass
+
+    # YAML fallback: direct file mutation
     for yaml_file in plan_path.glob("plan_*.yml"):
         content = yaml_file.read_text()
         data = yaml.safe_load(content)
         if not data:
             continue
 
-        # Look for the task in phases or implementation_steps
-        # Check both nested structure (data.plan.phases) and flat structure (data.phases)
         plan = data.get("plan", data.get("feature", {}))
         modified = False
 
         for key in ["phases", "implementation_steps"]:
-            # First check nested under plan/feature, then at top level
             items = plan.get(key, []) or data.get(key, [])
             for item in items:
-                # First check nested tasks within phases (standard structure)
                 nested_tasks = item.get("tasks", [])
                 for task in nested_tasks:
-                    # Check both "id" and "task_id" field names
                     if task.get("id") == task_id or task.get("task_id") == task_id:
                         task["status"] = new_status
                         modified = True
                         break
                 if modified:
                     break
-
-                # Fallback: check if the phase/item itself is the task (legacy structure)
                 if item.get("id") == task_id or item.get("task_id") == task_id:
                     item["status"] = new_status
                     modified = True
@@ -2165,19 +2132,8 @@ def _update_task_status(plan_path: Path, task_id: str, new_status: str):
                 break
 
         if modified:
-            # Write back
             with open(yaml_file, "w") as f:
                 yaml.dump(data, f, default_flow_style=False, sort_keys=False)
-
-            # Dual-write: also update TinyDB (non-fatal)
-            try:
-                from agenticguidance.services.plan_repository import PlanRepository
-                repo = PlanRepository(auto_bootstrap=False)
-                repo.update_task_status(plan_path.name, task_id, new_status)
-                repo.close()
-            except Exception:
-                pass  # TinyDB update is non-fatal
-
             return
 
     print(f"Error: Task {task_id} not found in plan files", file=sys.stderr)
@@ -2261,15 +2217,13 @@ def cmd_task_list(args, ctx=None):
     status_filter = getattr(args, "status", "all")
     verbose = getattr(args, "verbose", False)
 
-    # Try PlanRepository (TinyDB) first (skip for verbose mode - needs guidance/success_criteria)
+    # Try PlanRepository (TinyDB) first.
     # Only use TinyDB results when TinyDB has data for this plan AND the stored folder path matches
     # the actual plan_path (guards against stale data from temp/test plans with the same folder name).
     all_tasks = None
-    if not verbose:
-        try:
-            from agenticguidance.services.plan_repository import PlanRepository
-            repo = PlanRepository(auto_bootstrap=False)
-            # Verify TinyDB plan_folder matches actual plan_path to guard against stale data
+    try:
+        repo = _get_repo()
+        if repo is not None:
             plan_doc = repo.get_plan(plan_path.name)
             folder_matches = (
                 plan_doc is not None
@@ -2286,14 +2240,17 @@ def cmd_task_list(args, ctx=None):
                             "id": td.id,
                             "description": td.description or "",
                             "status": td.status or "pending",
-                            "phase_id": td.phase_name or "",  # Use phase_name as phase_id for display
+                            "phase_id": td.phase_name or "",
                             "phase_name": td.phase_name or "",
                             "source_file": "(via TinyDB)",
                         }
+                        if verbose:
+                            task_info["guidance"] = td.guidance or ""
+                            task_info["success_criteria"] = td.success_criteria or []
                         all_tasks.append(task_info)
             repo.close()
-        except Exception:
-            all_tasks = None
+    except Exception:
+        all_tasks = None
 
     if all_tasks is None:
         # Fallback: existing YAML scanning logic
@@ -2394,34 +2351,69 @@ def cmd_task_status(args, ctx=None):
     source_file = None
     phase_info = None
 
-    # Flattened structure: YAML files directly in plan_path
-    for yaml_file in plan_path.glob("plan_*.yml"):
-        try:
-            content = yaml.safe_load(yaml_file.read_text())
-        except yaml.YAMLError:
-            continue
-
-        if not content:
-            continue
-
-        phases = _get_phases_from_content(content)
-        for phase in phases:
-            tasks = phase.get("tasks", [])
-            for task in tasks:
-                # Check both "id" and "task_id" field names
-                if task.get("id") == task_id or task.get("task_id") == task_id:
-                    task_data = task
-                    source_file = yaml_file.name
-                    phase_info = {
-                        "phase_id": _get_phase_id(phase),
-                        "name": phase.get("name"),
-                        "status": phase.get("status"),
+    # Try PlanRepository (TinyDB) first
+    try:
+        repo = _get_repo()
+        if repo is not None:
+            plan_doc = repo.get_plan(plan_path.name)
+            folder_matches = (
+                plan_doc is not None
+                and plan_doc.plan_folder.resolve() == plan_path.resolve()
+            )
+            if folder_matches:
+                td = repo.get_task(plan_path.name, task_id)
+                if td is not None:
+                    task_data = {
+                        "id": td.id,
+                        "name": td.name or "",
+                        "description": td.description or "",
+                        "status": td.status or "pending",
+                        "inputs": td.inputs or [],
+                        "target_files": td.target_files or [],
+                        "guidance": td.guidance or "",
+                        "success_criteria": td.success_criteria or [],
                     }
+                    source_file = "(via TinyDB)"
+                    # Get phase info
+                    phase_name = td.phase_name or ""
+                    phase_obj = repo.get_phase(plan_path.name, phase_name) if phase_name else None
+                    phase_info = {
+                        "phase_id": phase_name,
+                        "name": phase_name,
+                        "status": phase_obj.status if phase_obj else None,
+                    }
+            repo.close()
+    except Exception:
+        task_data = None
+
+    # YAML fallback
+    if task_data is None:
+        for yaml_file in plan_path.glob("plan_*.yml"):
+            try:
+                content = yaml.safe_load(yaml_file.read_text())
+            except yaml.YAMLError:
+                continue
+
+            if not content:
+                continue
+
+            phases = _get_phases_from_content(content)
+            for phase in phases:
+                tasks = phase.get("tasks", [])
+                for task in tasks:
+                    if task.get("id") == task_id or task.get("task_id") == task_id:
+                        task_data = task
+                        source_file = yaml_file.name
+                        phase_info = {
+                            "phase_id": _get_phase_id(phase),
+                            "name": phase.get("name"),
+                            "status": phase.get("status"),
+                        }
+                        break
+                if task_data:
                     break
             if task_data:
                 break
-        if task_data:
-            break
 
     if not task_data:
         print_error(f"Task '{task_id}' not found")
@@ -2438,7 +2430,10 @@ def cmd_task_status(args, ctx=None):
 
         print_key_value("Description", task_data.get("description", "N/A"))
         print_key_value("Status", format_status(task_data.get("status", "pending")))
-        print_key_value("Phase", f"{phase_info['phase_id']} - {phase_info['name']}")
+        pid = phase_info['phase_id']
+        pname = phase_info['name']
+        phase_display = f"{pid} - {pname}" if pid and pid != pname else (pname or pid or "N/A")
+        print_key_value("Phase", phase_display)
         print_key_value("Source File", source_file)
 
         if task_data.get("inputs"):
@@ -2487,102 +2482,135 @@ def cmd_task_add(args, ctx=None):
     custom_id = getattr(args, "id", None)
     priority = getattr(args, "priority", "medium")
 
-    # Flattened structure: find plan_*.yml files directly in plan_path
-    target_file = None
-    for pattern in ["plan_build*.yml", "plan_*.yml"]:
-        files = list(plan_path.glob(pattern))
-        if files:
-            target_file = files[0]
-            break
-
-    if not target_file:
-        print_error("No plan_*.yml file found in plan directory")
-        sys.exit(1)
-
+    # TinyDB-first: try to add task via PlanRepository
+    tinydb_done = False
+    new_task_id = custom_id
+    phase_name_used = ""
     try:
-        content = yaml.safe_load(target_file.read_text())
-    except yaml.YAMLError as e:
-        print_error(f"Failed to parse {target_file.name}: {e}")
-        sys.exit(1)
-
-    if not content:
-        content = {"phases": []}
-
-    phases = _get_phases_from_content(content)
-
-    # Find target phase
-    target_phase = None
-    if phase_id:
-        for phase in phases:
-            if _get_phase_id(phase) == phase_id:
-                target_phase = phase
-                break
-        if not target_phase:
-            print_error(f"Phase '{phase_id}' not found")
-            sys.exit(1)
-    else:
-        if phases:
-            target_phase = phases[-1]  # Add to last phase
-        else:
-            # Create default phase
-            target_phase = {
-                "phase_id": "adhoc_01",
-                "name": "Ad-hoc Tasks",
-                "status": "pending",
-                "tasks": [],
-            }
-            phases.append(target_phase)
-            content["phases"] = phases
-
-    # Generate task ID
-    if custom_id:
-        new_task_id = custom_id
-    else:
-        existing_ids = [t.get("task_id", "") for t in target_phase.get("tasks", [])]
-        phase_prefix = _get_phase_id(target_phase) or "task"
-        task_num = len(existing_ids) + 1
-        new_task_id = f"{phase_prefix}_{task_num:03d}"
-
-    # Create task entry
-    new_task = {
-        "task_id": new_task_id,
-        "description": description,
-        "status": "pending",
-        "priority": priority,
-    }
-
-    if "tasks" not in target_phase:
-        target_phase["tasks"] = []
-    target_phase["tasks"].append(new_task)
-
-    # Write back
-    with open(target_file, "w") as f:
-        yaml.dump(content, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
-
-    # Dual-write: also add to TinyDB (non-fatal)
-    try:
-        from agenticguidance.services.plan_repository import PlanRepository
-        repo = PlanRepository(auto_bootstrap=False)
-        phase_name = target_phase.get("name", "")
-        repo.add_task(plan_path.name, phase_name, {
-            "id": new_task_id,
-            "name": description,
-            "description": description,
-            "status": "pending",
-        })
-        repo.close()
+        repo = _get_repo()
+        if repo is not None:
+            plan_doc = repo.get_plan(plan_path.name)
+            folder_matches = (
+                plan_doc is not None
+                and plan_doc.plan_folder.resolve() == plan_path.resolve()
+            )
+            if not folder_matches:
+                repo = None  # Skip TinyDB path
     except Exception:
-        pass  # TinyDB update is non-fatal
+        repo = None
+    try:
+        if repo is not None:
+            # Determine target phase
+            if phase_id:
+                phase_obj = repo.get_phase(plan_path.name, phase_id)
+                if phase_obj:
+                    phase_name_used = phase_obj.name
+                else:
+                    # Try matching by phase name
+                    phases = repo.list_phases(plan_path.name)
+                    for p in phases:
+                        if p.name == phase_id or (hasattr(p, 'phase_id') and getattr(p, 'phase_id', '') == phase_id):
+                            phase_name_used = p.name
+                            break
+                    if not phase_name_used:
+                        print_error(f"Phase '{phase_id}' not found")
+                        sys.exit(1)
+            else:
+                phases = repo.list_phases(plan_path.name)
+                if phases:
+                    phase_name_used = phases[-1].name
+                else:
+                    phase_name_used = "Ad-hoc Tasks"
+                    repo.add_phase(plan_path.name, {"name": phase_name_used, "status": "pending"})
+
+            # Generate task ID if not provided
+            if not new_task_id:
+                existing = repo.get_tasks(plan_path.name)
+                phase_prefix = phase_id or "task"
+                task_num = len(existing) + 1
+                new_task_id = f"{phase_prefix}_{task_num:03d}"
+
+            added = repo.add_task(plan_path.name, phase_name_used, {
+                "id": new_task_id,
+                "name": description,
+                "description": description,
+                "status": "pending",
+            })
+            if added:
+                tinydb_done = True
+                # Sync to YAML for git visibility
+                try:
+                    repo.sync_to_yaml(plan_path.name)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    # YAML fallback if TinyDB path failed
+    if not tinydb_done:
+        target_file = None
+        for pattern in ["plan_build*.yml", "plan_*.yml"]:
+            files = list(plan_path.glob(pattern))
+            if files:
+                target_file = files[0]
+                break
+
+        if not target_file:
+            print_error("No plan_*.yml file found in plan directory")
+            sys.exit(1)
+
+        try:
+            content = yaml.safe_load(target_file.read_text())
+        except yaml.YAMLError as e:
+            print_error(f"Failed to parse {target_file.name}: {e}")
+            sys.exit(1)
+
+        if not content:
+            content = {"phases": []}
+
+        phases = _get_phases_from_content(content)
+        target_phase = None
+        if phase_id:
+            for phase in phases:
+                if _get_phase_id(phase) == phase_id:
+                    target_phase = phase
+                    break
+            if not target_phase:
+                print_error(f"Phase '{phase_id}' not found")
+                sys.exit(1)
+        else:
+            if phases:
+                target_phase = phases[-1]
+            else:
+                target_phase = {"phase_id": "adhoc_01", "name": "Ad-hoc Tasks", "status": "pending", "tasks": []}
+                phases.append(target_phase)
+                content["phases"] = phases
+
+        if not new_task_id:
+            existing_ids = [t.get("task_id", "") for t in target_phase.get("tasks", [])]
+            phase_prefix = _get_phase_id(target_phase) or "task"
+            task_num = len(existing_ids) + 1
+            new_task_id = f"{phase_prefix}_{task_num:03d}"
+
+        new_task = {"task_id": new_task_id, "description": description, "status": "pending", "priority": priority}
+        if "tasks" not in target_phase:
+            target_phase["tasks"] = []
+        target_phase["tasks"].append(new_task)
+
+        with open(target_file, "w") as f:
+            yaml.dump(content, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+        phase_name_used = target_phase.get("name", "")
 
     if is_json_output():
         print_json({
             "task_id": new_task_id,
             "description": description,
-            "phase_id": target_phase.get("phase_id"),
-            "file": target_file.name,
+            "phase": phase_name_used,
+            "source": "TinyDB" if tinydb_done else "YAML",
         })
     else:
-        print_success(f"Added task '{new_task_id}' to {target_file.name}")
+        source = "TinyDB" if tinydb_done else "YAML"
+        print_success(f"Added task '{new_task_id}' to phase '{phase_name_used}' ({source})")
 
 
 def cmd_archive(args):
@@ -2621,12 +2649,11 @@ def cmd_archive(args):
 
     print(f"Archived plan to: {dest_dir}")
 
-    # Sync archive to TinyDB (non-fatal)
+    # TinyDB: archive plan (update status + path)
     try:
-        from agenticguidance.services.plan_repository import PlanRepository
-        repo = PlanRepository(auto_bootstrap=False)
-        repo.update_plan(plan_path.name, {"status": "completed", "plan_folder": str(dest_dir)})
-        repo.close()
+        repo = _get_repo()
+        if repo is not None:
+            repo.archive_plan(plan_path.name)
     except Exception:
         pass
 
@@ -2713,16 +2740,48 @@ def cmd_unarchive(args, ctx=None):
     dest_path = live_dir / source_path.name
 
     if dest_path.exists():
-        if is_json_output():
-            print_json({
-                "error": "Destination already exists",
-                "source": str(source_path),
-                "destination": str(dest_path),
-            })
+        if force:
+            # --force: live/ already exists, just remove the completed/ copy
+            # and update TinyDB to point to live/.
+            try:
+                shutil.rmtree(str(source_path))
+            except OSError as e:
+                if is_json_output():
+                    print_json({"error": f"Failed to remove completed copy: {e}"})
+                else:
+                    print_error(f"Failed to remove completed copy: {e}")
+                sys.exit(1)
+            # Update TinyDB to point to live/ (non-fatal)
+            try:
+                from agenticguidance.services.plan_repository import PlanRepository
+                repo = PlanRepository(auto_bootstrap=False)
+                repo.resync_plan_folder(source_path.name, str(dest_path))
+                repo.close()
+            except Exception:
+                pass
+            if is_json_output():
+                print_json({
+                    "result": "success",
+                    "action": "force_resync",
+                    "removed": str(source_path),
+                    "destination": str(dest_path),
+                    "plan_name": source_path.name,
+                })
+            else:
+                print_success(f"Removed completed copy and resynced to: {dest_path}")
+            return
         else:
-            print_error(f"Destination already exists: {dest_path}")
-            console.print("[dim]Remove or rename the existing folder first.[/dim]")
-        sys.exit(1)
+            if is_json_output():
+                print_json({
+                    "error": "Destination already exists",
+                    "source": str(source_path),
+                    "destination": str(dest_path),
+                    "hint": "Use --force to remove the completed/ copy and resync to live/",
+                })
+            else:
+                print_error(f"Destination already exists: {dest_path}")
+                console.print("[dim]Use --force to remove the completed/ copy and resync TinyDB to live/.[/dim]")
+            sys.exit(1)
 
     # Confirm unless --force is set
     if not force and not is_json_output():
@@ -2765,12 +2824,11 @@ def cmd_unarchive(args, ctx=None):
         except yaml.YAMLError:
             pass  # Non-fatal if metadata update fails
 
-    # Sync unarchive to TinyDB (non-fatal)
+    # TinyDB: unarchive plan (update status + path)
     try:
-        from agenticguidance.services.plan_repository import PlanRepository
-        repo = PlanRepository(auto_bootstrap=False)
-        repo.update_plan(source_path.name, {"status": "active", "plan_folder": str(dest_path)})
-        repo.close()
+        repo = _get_repo()
+        if repo is not None:
+            repo.unarchive_plan(source_path.name)
     except Exception:
         pass
 
@@ -2814,19 +2872,31 @@ def cmd_cancel(args, ctx=None):
 
     plan_folder = find_plan_folder(path)
 
-    # Load plan_build.yml
-    build_file = plan_folder / "plan_build.yml"
-    if not build_file.exists():
-        print_error(f"No plan_build.yml found in {plan_folder}")
-        sys.exit(1)
-
+    # Get current status (TinyDB-first, YAML fallback)
+    current_status = "unknown"
+    folder_matches = False
     try:
-        data = yaml.safe_load(build_file.read_text()) or {}
-    except yaml.YAMLError as e:
-        print_error(f"Failed to parse plan_build.yml: {e}")
-        sys.exit(1)
+        repo = _get_repo()
+        if repo is not None:
+            plan_data = repo.get_plan(plan_folder.name)
+            folder_matches = (
+                plan_data is not None
+                and plan_data.plan_folder.resolve() == plan_folder.resolve()
+            )
+            if folder_matches:
+                current_status = plan_data.status or "unknown"
+    except Exception:
+        pass
 
-    current_status = data.get("status", "unknown")
+    if current_status == "unknown":
+        build_file = plan_folder / "plan_build.yml"
+        if build_file.exists():
+            try:
+                data = yaml.safe_load(build_file.read_text()) or {}
+                current_status = data.get("status", "unknown")
+            except yaml.YAMLError:
+                pass
+
     if current_status == "cancelled":
         print_warning(f"Plan is already cancelled: {plan_folder.name}")
         return
@@ -2840,20 +2910,39 @@ def cmd_cancel(args, ctx=None):
             print("Aborted.")
             return
 
-    # Set status to cancelled
-    data["status"] = "cancelled"
-    data["cancelled_date"] = datetime.now().strftime("%Y-%m-%d")
-    with open(build_file, "w") as f:
-        yaml.dump(data, f, default_flow_style=False)
-
-    # Sync cancellation to TinyDB (non-fatal)
+    # TinyDB-first: cancel via PlanRepository
+    tinydb_done = False
     try:
-        from agenticguidance.services.plan_repository import PlanRepository
-        repo = PlanRepository(auto_bootstrap=False)
-        repo.update_plan(plan_folder.name, {"status": "cancelled"})
-        repo.close()
+        if folder_matches:
+            repo = _get_repo()
+        else:
+            repo = None
+        if repo is not None:
+            result = repo.cancel_plan(plan_folder.name)
+            if result.success:
+                tinydb_done = True
+                try:
+                    repo.sync_to_yaml(plan_folder.name)
+                except Exception:
+                    pass
     except Exception:
         pass
+
+    # YAML fallback
+    if not tinydb_done:
+        build_file = plan_folder / "plan_build.yml"
+        if not build_file.exists():
+            print_error(f"No plan_build.yml found in {plan_folder}")
+            sys.exit(1)
+        try:
+            data = yaml.safe_load(build_file.read_text()) or {}
+        except yaml.YAMLError as e:
+            print_error(f"Failed to parse plan_build.yml: {e}")
+            sys.exit(1)
+        data["status"] = "cancelled"
+        data["cancelled_date"] = datetime.now().strftime("%Y-%m-%d")
+        with open(build_file, "w") as f:
+            yaml.dump(data, f, default_flow_style=False)
 
     if is_json_output():
         print_json({
@@ -2903,172 +2992,74 @@ def cmd_list(args):
 
     plans_data = []
 
-    # Try PlanService first for plan data and task counts
+    # Get plan data via PlanService (TinyDB-first)
     try:
         from agenticguidance.services.plan import PlanService
         plan_service = PlanService()
         plan_metas = plan_service.list_plans(status="live")
-    except Exception:
-        plan_metas = None
+    except Exception as e:
+        print_error(f"Failed to load PlanService: {e}")
+        sys.exit(1)
 
-    if plan_metas is not None:
-        for meta in plan_metas:
-            plan_folder = meta.plan_folder
-            if not plan_folder.is_dir():
-                continue
+    for meta in plan_metas:
+        plan_folder = meta.plan_folder
+        if not plan_folder.is_dir():
+            continue
 
-            # Only include plans that have plan_*.yml files (skip empty scaffolds)
-            yaml_files = list(plan_folder.glob("plan_*.yml"))
-            if not yaml_files:
-                continue
+        # Only include plans that have plan_*.yml files (skip empty scaffolds)
+        yaml_files = list(plan_folder.glob("plan_*.yml"))
+        if not yaml_files:
+            continue
 
-            # Get task counts via PlanService
-            try:
-                plan_data_obj = plan_service.get_plan(str(plan_folder))
-                tasks = plan_data_obj.tasks if plan_data_obj else []
-            except Exception:
-                tasks = []
+        # Get task counts via PlanService
+        try:
+            plan_data_obj = plan_service.get_plan(str(plan_folder))
+            tasks = plan_data_obj.tasks if plan_data_obj else []
+        except Exception:
+            tasks = []
 
-            total_pending = sum(1 for t in tasks if t.status == "pending")
-            total_in_progress = sum(1 for t in tasks if t.status == "in_progress")
-            total_completed = sum(1 for t in tasks if t.status == "completed")
-            has_tasks = len(tasks) > 0
-            plan_status = meta.status or "unknown"
+        total_pending = sum(1 for t in tasks if t.status == "pending")
+        total_in_progress = sum(1 for t in tasks if t.status == "in_progress")
+        total_completed = sum(1 for t in tasks if t.status == "completed")
+        has_tasks = len(tasks) > 0
+        plan_status = meta.status or "unknown"
 
-            # EN-001: Filesystem check for orchestration (NOT in PlanService)
-            mmd_files = list(plan_folder.glob("orchestration_*.mmd"))
-            has_orchestration = len(mmd_files) > 0
+        # EN-001: Filesystem check for orchestration (NOT in PlanService)
+        mmd_files = list(plan_folder.glob("orchestration_*.mmd"))
+        has_orchestration = len(mmd_files) > 0
 
-            total = total_pending + total_in_progress + total_completed
+        total = total_pending + total_in_progress + total_completed
 
-            # EN-002: Determine action_required based on plan state
-            # Priority order matters - check from most blocking to least
-            if plan_status == "deferred":
-                action_required = "blocked"
-            elif not has_orchestration:
-                action_required = "needs_planning"
-            elif not has_tasks or total == 0:
-                action_required = "needs_planning"
-            elif total_pending > 0 or total_in_progress > 0:
-                action_required = "execute"
-            elif total_completed == total and total > 0:
-                action_required = "archive"
-            else:
-                action_required = "blocked"
+        # EN-002: Determine action_required based on plan state
+        # Priority order matters - check from most blocking to least
+        if plan_status == "deferred":
+            action_required = "blocked"
+        elif not has_orchestration:
+            action_required = "needs_planning"
+        elif not has_tasks or total == 0:
+            action_required = "needs_planning"
+        elif total_pending > 0 or total_in_progress > 0:
+            action_required = "execute"
+        elif total_completed == total and total > 0:
+            action_required = "archive"
+        else:
+            action_required = "blocked"
 
-            pct = (total_completed / total) * 100 if total > 0 else 0
+        pct = (total_completed / total) * 100 if total > 0 else 0
 
-            plans_data.append(
-                {
-                    "name": plan_folder.name,
-                    "status": plan_status,
-                    "has_orchestration": has_orchestration,
-                    "has_tasks": has_tasks,
-                    "action_required": action_required,
-                    "pending": total_pending,
-                    "in_progress": total_in_progress,
-                    "completed": total_completed,
-                    "progress_percent": round(pct, 1),
-                }
-            )
-    else:
-        # Fallback: existing YAML scanning logic
-        plan_folders = [d for d in sorted(plans_dir.iterdir()) if d.is_dir()]
-
-        for plan_folder in plan_folders:
-            # Flattened structure: plan_*.yml files directly in plan_folder
-            yaml_files = list(plan_folder.glob("plan_*.yml"))
-            if not yaml_files:
-                continue
-
-            # EN-001: Check for orchestration_*.mmd files
-            mmd_files = list(plan_folder.glob("orchestration_*.mmd"))
-            has_orchestration = len(mmd_files) > 0
-
-            # Count tasks across all files
-            total_pending = 0
-            total_in_progress = 0
-            total_completed = 0
-            plan_status = "unknown"
-            has_tasks = False
-
-            for yaml_file in yaml_files:
-                try:
-                    content = yaml.safe_load(yaml_file.read_text())
-                except yaml.YAMLError:
-                    continue
-
-                if not content:
-                    continue
-
-                # Extract plan status if available (check root level first, then nested)
-                if "status" in content:
-                    plan_status = content["status"]
-                else:
-                    plan_data = content.get("plan", content.get("feature", {}))
-                    if "status" in plan_data:
-                        plan_status = plan_data["status"]
-
-                # Count tasks from phases (check both root and nested locations)
-                phases = _get_phases_from_content(content)
-                for phase in phases:
-                    tasks = phase.get("tasks", [])
-                    if tasks:
-                        has_tasks = True
-                    for task in tasks:
-                        status = task.get("status", "pending")
-                        if status == "pending":
-                            total_pending += 1
-                        elif status == "in_progress":
-                            total_in_progress += 1
-                        elif status == "completed":
-                            total_completed += 1
-
-                # Legacy support: count phases/implementation_steps as tasks
-                plan_data = content.get("plan", content.get("feature", {}))
-                steps = plan_data.get("implementation_steps", [])
-                for item in steps:
-                    has_tasks = True
-                    status = item.get("status", "pending")
-                    if status == "pending":
-                        total_pending += 1
-                    elif status == "in_progress":
-                        total_in_progress += 1
-                    elif status == "completed":
-                        total_completed += 1
-
-            total = total_pending + total_in_progress + total_completed
-
-            # EN-002: Determine action_required based on plan state
-            # Priority order matters - check from most blocking to least
-            if plan_status == "deferred":
-                action_required = "blocked"
-            elif not has_orchestration:
-                action_required = "needs_planning"
-            elif not has_tasks or total == 0:
-                action_required = "needs_planning"
-            elif total_pending > 0 or total_in_progress > 0:
-                action_required = "execute"
-            elif total_completed == total and total > 0:
-                action_required = "archive"
-            else:
-                action_required = "blocked"
-
-            pct = (total_completed / total) * 100 if total > 0 else 0
-
-            plans_data.append(
-                {
-                    "name": plan_folder.name,
-                    "status": plan_status,
-                    "has_orchestration": has_orchestration,
-                    "has_tasks": has_tasks,
-                    "action_required": action_required,
-                    "pending": total_pending,
-                    "in_progress": total_in_progress,
-                    "completed": total_completed,
-                    "progress_percent": round(pct, 1),
-                }
-            )
+        plans_data.append(
+            {
+                "name": plan_folder.name,
+                "status": plan_status,
+                "has_orchestration": has_orchestration,
+                "has_tasks": has_tasks,
+                "action_required": action_required,
+                "pending": total_pending,
+                "in_progress": total_in_progress,
+                "completed": total_completed,
+                "progress_percent": round(pct, 1),
+            }
+        )
 
     if is_json_output():
         print_json({"plans": plans_data})
@@ -3220,9 +3211,6 @@ def cmd_task_update(args, ctx=None):
     Enables agents to persist progress without holding plan in context.
     Modifies EXISTING plan files created by planner agents.
 
-    After marking a task as completed, checks if all tasks in the plan are
-    completed and triggers auto-archival if so (unless --no-archive is set).
-
     Args:
         args: Parsed arguments with task_id, status, optional note.
         ctx: Optional CLIContext.
@@ -3239,91 +3227,119 @@ def cmd_task_update(args, ctx=None):
     task_id = args.task_id
     new_status = args.status
     note = getattr(args, "note", None)
-    no_archive = getattr(args, "no_archive", False)
     plan_path = find_plan_folder(getattr(args, "plan", None))
 
-    # Flattened structure: YAML files directly in plan_path
-    yaml_files = list(plan_path.glob("plan_*.yml"))
-    if not yaml_files:
-        print_error(f"No plan_*.yml files found in {plan_path}")
-        sys.exit(1)
-
-    # Find and update the task
+    # TinyDB-first: update task status via PlanRepository
     task_found = False
     updated_file = None
+    try:
+        repo = _get_repo()
+        if repo is not None:
+            plan_doc = repo.get_plan(plan_path.name)
+            folder_matches = (
+                plan_doc is not None
+                and plan_doc.plan_folder.resolve() == plan_path.resolve()
+            )
+            if not folder_matches:
+                repo = None  # Skip TinyDB path
+    except Exception:
+        repo = None
+    try:
+        if repo is not None:
+            # Check current status for transition validation
+            current_task = repo.get_task(plan_path.name, task_id)
+            if current_task is not None:
+                old_status = current_task.status or "pending"
 
-    for yaml_file in yaml_files:
-        try:
-            content = yaml.safe_load(yaml_file.read_text())
-        except yaml.YAMLError:
-            continue
+                valid_transitions = {
+                    "pending": ["in_progress", "blocked"],
+                    "in_progress": ["completed", "blocked", "pending"],
+                    "completed": ["pending", "in_progress"],
+                    "blocked": ["pending", "in_progress"],
+                }
 
-        if not content:
-            continue
+                if new_status not in valid_transitions.get(old_status, []) and old_status != new_status:
+                    if is_json_output():
+                        print_json({
+                            "error": f"Invalid transition from {old_status} to {new_status}",
+                            "task_id": task_id,
+                            "current_status": old_status,
+                        })
+                    else:
+                        print_warning(f"Status transition from '{old_status}' to '{new_status}' for task {task_id}")
 
-        # Look for the task in phases
-        phases = _get_phases_from_content(content)
-        for phase in phases:
-            tasks = phase.get("tasks", [])
-            for task in tasks:
-                # Match task by various ID field names
-                tid = task.get("id") or task.get("task_id") or ""
-                if tid == task_id:
-                    # Found the task - update status
-                    old_status = task.get("status", "pending")
-
-                    # Validate status transition
-                    valid_transitions = {
-                        "pending": ["in_progress", "blocked"],
-                        "in_progress": ["completed", "blocked", "pending"],
-                        "completed": ["pending", "in_progress"],  # Allow rollback
-                        "blocked": ["pending", "in_progress"],
-                    }
-
-                    if new_status not in valid_transitions.get(old_status, []) and old_status != new_status:
-                        if is_json_output():
-                            print_json({
-                                "error": f"Invalid transition from {old_status} to {new_status}",
-                                "task_id": task_id,
-                                "current_status": old_status,
-                            })
-                        else:
-                            print_warning(f"Status transition from '{old_status}' to '{new_status}' for task {task_id}")
-
-                    task["status"] = new_status
-
-                    # Add completion note if provided
-                    if note:
-                        task["completion_note"] = note
-
-                    # Add timestamp for completed tasks
-                    if new_status == "completed":
-                        task["completed_at"] = datetime.now().isoformat()
-
+                updated = repo.update_task_status(plan_path.name, task_id, new_status)
+                if updated:
                     task_found = True
-                    updated_file = yaml_file
+                    updated_file = "(via TinyDB)"
+                    # Sync to YAML for git visibility
+                    try:
+                        repo.sync_to_yaml(plan_path.name)
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+
+    # YAML fallback
+    if not task_found:
+        yaml_files = list(plan_path.glob("plan_*.yml"))
+        if not yaml_files:
+            print_error(f"No plan_*.yml files found in {plan_path}")
+            sys.exit(1)
+
+        for yaml_file in yaml_files:
+            try:
+                content = yaml.safe_load(yaml_file.read_text())
+            except yaml.YAMLError:
+                continue
+
+            if not content:
+                continue
+
+            phases = _get_phases_from_content(content)
+            for phase in phases:
+                tasks = phase.get("tasks", [])
+                for task in tasks:
+                    tid = task.get("id") or task.get("task_id") or ""
+                    if tid == task_id:
+                        old_status = task.get("status", "pending")
+
+                        valid_transitions = {
+                            "pending": ["in_progress", "blocked"],
+                            "in_progress": ["completed", "blocked", "pending"],
+                            "completed": ["pending", "in_progress"],
+                            "blocked": ["pending", "in_progress"],
+                        }
+
+                        if new_status not in valid_transitions.get(old_status, []) and old_status != new_status:
+                            if is_json_output():
+                                print_json({
+                                    "error": f"Invalid transition from {old_status} to {new_status}",
+                                    "task_id": task_id,
+                                    "current_status": old_status,
+                                })
+                            else:
+                                print_warning(f"Status transition from '{old_status}' to '{new_status}' for task {task_id}")
+
+                        task["status"] = new_status
+                        if note:
+                            task["completion_note"] = note
+                        if new_status == "completed":
+                            task["completed_at"] = datetime.now().isoformat()
+
+                        task_found = True
+                        updated_file = yaml_file
+                        break
+                if task_found:
                     break
+
             if task_found:
+                try:
+                    yaml_file.write_text(yaml.dump(content, default_flow_style=False, sort_keys=False))
+                except IOError as e:
+                    print_error(f"Failed to write {yaml_file}: {e}")
+                    sys.exit(1)
                 break
-
-        if task_found:
-            # Write back to file
-            try:
-                yaml_file.write_text(yaml.dump(content, default_flow_style=False, sort_keys=False))
-            except IOError as e:
-                print_error(f"Failed to write {yaml_file}: {e}")
-                sys.exit(1)
-
-            # Dual-write: re-import plan into TinyDB (non-fatal)
-            try:
-                from agenticguidance.services.plan_repository import PlanRepository
-                repo = PlanRepository(auto_bootstrap=False)
-                repo.import_from_yaml(plan_path)
-                repo.close()
-            except Exception:
-                pass  # TinyDB update is non-fatal
-
-            break
 
     if not task_found:
         if is_json_output():
@@ -3342,45 +3358,6 @@ def cmd_task_update(args, ctx=None):
         })
     else:
         print_success(f"Updated task {task_id} to '{new_status}'")
-
-    # Check if all tasks are completed and trigger auto-archival
-    if new_status == "completed" and not no_archive and is_plan_fully_completed(plan_path):
-        if has_pending_questions(plan_path):
-            print_warning("All tasks completed but unanswered questions remain. Skipping auto-archive.")
-            print_warning("Answer questions with: agentic question list --plan " + plan_path.name)
-            if is_json_output():
-                print_json({"auto_archive": False, "reason": "pending_questions"})
-        else:
-            if is_json_output():
-                # For JSON output, we'll add archive info to the response
-                pass  # Archival info will be printed separately
-            print_info("All tasks completed. Auto-archiving plan...")
-            try:
-                from agenticguidance.services import MoveResult, PlanMovementWorkflow
-
-                workflow = PlanMovementWorkflow(plan_path)
-                # Use silent=True for auto-archive: no prompts, skips git checks
-                result = workflow.archive_plan_folder(dry_run=False, silent=True)
-
-                if is_json_output():
-                    print_json({
-                        "auto_archive": True,
-                        "archive_result": result.result.value,
-                        "archive_message": result.message,
-                        "destination": getattr(result, "destination", None),
-                    })
-                if result.result == MoveResult.SUCCESS:
-                    if not is_json_output():
-                        print_success(result.message)
-                    # Auto-cleanup: remove worktree if no more live plans
-                    _try_worktree_cleanup_after_archive(plan_path)
-                else:
-                    if not is_json_output():
-                        # Archive failed but task update succeeded - don't fail the command
-                        print(f"Auto-archive skipped: {result.message}", file=sys.stderr)
-            except ImportError:
-                if not is_json_output():
-                    print("Auto-archive unavailable: PlanMovementWorkflow not found", file=sys.stderr)
 
 
 def cmd_task_current(args, ctx=None):
@@ -3405,88 +3382,99 @@ def cmd_task_current(args, ctx=None):
 
     plan_path = find_plan_folder(getattr(args, "plan", None))
 
-    # Try PlanRepository first to identify the current task ID.
-    # Validate the stored folder path matches actual plan_path to guard against stale data.
-    current_task_id_hint = None
-    try:
-        from agenticguidance.services.plan_repository import PlanRepository
-        repo = PlanRepository(auto_bootstrap=False)
-        plan_doc = repo.get_plan(plan_path.name)
-        folder_matches = (
-            plan_doc is not None
-            and plan_doc.plan_folder.resolve() == plan_path.resolve()
-        )
-        if folder_matches:
-            repo_task = repo.get_current_task(plan_path.name)
-            if repo_task:
-                current_task_id_hint = repo_task.id
-        repo.close()
-    except Exception:
-        current_task_id_hint = None
-
-    # Flattened structure: YAML files directly in plan_path
-    yaml_files = list(plan_path.glob("plan_*.yml"))
-    if not yaml_files:
-        print_error(f"No plan_*.yml files found in {plan_path}")
-        sys.exit(1)
-
-    # Collect all tasks with full details
-    all_tasks = []
-
-    for yaml_file in sorted(yaml_files):
-        try:
-            content = yaml.safe_load(yaml_file.read_text())
-        except yaml.YAMLError:
-            continue
-
-        if not content:
-            continue
-
-        phases = _get_phases_from_content(content)
-        for phase in phases:
-            phase_name = phase.get("name", "")
-            phase_id = _get_phase_id(phase)
-            tasks = phase.get("tasks", [])
-
-            for task in tasks:
-                task_info = {
-                    "id": task.get("id") or task.get("task_id", ""),
-                    "name": task.get("name", ""),
-                    "description": task.get("description", ""),
-                    "status": task.get("status", "pending"),
-                    "phase": phase_name,
-                    "phase_id": phase_id,
-                    "inputs": task.get("inputs", []),
-                    "target_files": task.get("target_files", []),
-                    "guidance": task.get("guidance", ""),
-                    "success_criteria": task.get("success_criteria", []),
-                    "agent_type": task.get("agent_type", ""),
-                    "source_file": yaml_file.name,
-                }
-                all_tasks.append(task_info)
-
-    # Find current task: prefer PlanRepository hint, then fall back to YAML scan
+    # Try PlanRepository (TinyDB) first for both current task and all-tasks stats.
     current_task = None
+    all_tasks = None
+    try:
+        repo = _get_repo()
+        if repo is not None:
+            plan_doc = repo.get_plan(plan_path.name)
+            folder_matches = (
+                plan_doc is not None
+                and plan_doc.plan_folder.resolve() == plan_path.resolve()
+            )
+            if folder_matches:
+                repo_task = repo.get_current_task(plan_path.name)
+                if repo_task is not None:
+                    current_task = {
+                        "id": repo_task.id,
+                        "name": repo_task.name or "",
+                        "description": repo_task.description or "",
+                        "status": repo_task.status or "pending",
+                        "phase": repo_task.phase_name or "",
+                        "phase_id": repo_task.phase_name or "",
+                        "inputs": repo_task.inputs or [],
+                        "target_files": repo_task.target_files or [],
+                        "guidance": repo_task.guidance or "",
+                        "success_criteria": repo_task.success_criteria or [],
+                        "agent_type": repo_task.agent or "",
+                        "source_file": "(via TinyDB)",
+                    }
+                # Get task counts for all-complete check
+                counts = repo.get_task_counts(plan_path.name)
+                all_tasks = counts  # Used for completion stats below
+            repo.close()
+    except Exception:
+        current_task = None
+        all_tasks = None
 
-    # If PlanRepository identified a current task, find it in the full YAML task list
-    if current_task_id_hint:
-        for task in all_tasks:
-            if task["id"] == current_task_id_hint:
-                current_task = task
-                break
+    # YAML fallback: scan plan files for full task details
+    if current_task is None and all_tasks is None:
+        yaml_files = list(plan_path.glob("plan_*.yml"))
+        if not yaml_files:
+            print_error(f"No plan_*.yml files found in {plan_path}")
+            sys.exit(1)
 
-    # Fallback: scan YAML tasks directly
-    if not current_task:
-        for task in all_tasks:
+        yaml_tasks = []
+        for yaml_file in sorted(yaml_files):
+            try:
+                content = yaml.safe_load(yaml_file.read_text())
+            except yaml.YAMLError:
+                continue
+
+            if not content:
+                continue
+
+            phases = _get_phases_from_content(content)
+            for phase in phases:
+                phase_name = phase.get("name", "")
+                phase_id = _get_phase_id(phase)
+                tasks = phase.get("tasks", [])
+
+                for task in tasks:
+                    task_info = {
+                        "id": task.get("id") or task.get("task_id", ""),
+                        "name": task.get("name", ""),
+                        "description": task.get("description", ""),
+                        "status": task.get("status", "pending"),
+                        "phase": phase_name,
+                        "phase_id": phase_id,
+                        "inputs": task.get("inputs", []),
+                        "target_files": task.get("target_files", []),
+                        "guidance": task.get("guidance", ""),
+                        "success_criteria": task.get("success_criteria", []),
+                        "agent_type": task.get("agent_type", ""),
+                        "source_file": yaml_file.name,
+                    }
+                    yaml_tasks.append(task_info)
+
+        # Find current task from YAML scan
+        for task in yaml_tasks:
             if task["status"] == "in_progress":
                 current_task = task
                 break
+        if not current_task:
+            for task in yaml_tasks:
+                if task["status"] == "pending":
+                    current_task = task
+                    break
 
-    if not current_task:
-        for task in all_tasks:
-            if task["status"] == "pending":
-                current_task = task
-                break
+        # Build completion stats from YAML tasks
+        completed_count = sum(1 for t in yaml_tasks if t["status"] == "completed")
+        all_tasks = {
+            "total": len(yaml_tasks),
+            "completed": completed_count,
+        }
 
     if is_json_output():
         if current_task:
@@ -3496,14 +3484,14 @@ def cmd_task_current(args, ctx=None):
                 "all_complete": False,
             })
         else:
-            # Check if all are completed
-            completed_count = sum(1 for t in all_tasks if t["status"] == "completed")
+            total = all_tasks.get("total", 0) if all_tasks else 0
+            completed = all_tasks.get("completed", 0) if all_tasks else 0
             print_json({
                 "plan_folder": plan_path.name,
                 "task": None,
-                "all_complete": completed_count == len(all_tasks),
-                "total_tasks": len(all_tasks),
-                "completed_tasks": completed_count,
+                "all_complete": total > 0 and completed == total,
+                "total_tasks": total,
+                "completed_tasks": completed,
             })
     else:
         print_header(f"Current Task - {plan_path.name}")
@@ -3536,8 +3524,9 @@ def cmd_task_current(args, ctx=None):
                 for sc in current_task["success_criteria"][:3]:
                     console.print(f"  - {sc}")
         else:
-            completed_count = sum(1 for t in all_tasks if t["status"] == "completed")
-            if completed_count == len(all_tasks) and all_tasks:
+            total = all_tasks.get("total", 0) if all_tasks else 0
+            completed = all_tasks.get("completed", 0) if all_tasks else 0
+            if total > 0 and completed == total:
                 console.print("[green]All tasks completed![/green]")
             else:
                 console.print("[dim]No tasks found or no pending tasks.[/dim]")
@@ -3565,88 +3554,103 @@ def cmd_phase_add(args, ctx=None):
     phase_description = getattr(args, "description", None) or ""
     plan_path = find_plan_folder(getattr(args, "plan", None))
 
-    # Target file is plan_build.yml
-    build_file = plan_path / "plan_build.yml"
-
-    # Load existing content or create new structure
-    if build_file.exists():
-        try:
-            content = yaml.safe_load(build_file.read_text())
-            if content is None:
-                content = {}
-        except yaml.YAMLError as e:
-            print_error(f"Failed to parse {build_file.name}: {e}")
-            sys.exit(1)
-    else:
-        print_error(f"plan_build.yml not found in {plan_path}")
-        print("Hint: Create a plan first with 'agentic plan init' or 'agentic plan scaffold'", file=sys.stderr)
-        sys.exit(1)
-
-    # Get or create phases list
-    # Support both root-level phases and nested under 'plan'
-    if "phases" in content:
-        phases = content["phases"]
-    elif "plan" in content and "phases" in content["plan"]:
-        phases = content["plan"]["phases"]
-    else:
-        # Create phases at root level
-        phases = []
-        content["phases"] = phases
-
-    # Check for duplicate phase ID
-    for existing_phase in phases:
-        existing_id = _get_phase_id(existing_phase)
-        if existing_id == phase_id:
-            print_error(f"Phase with ID '{phase_id}' already exists")
-            sys.exit(1)
-
-    # Create new phase entry
-    new_phase = {
-        "phase_id": phase_id,
-        "name": phase_name,
-        "status": "pending",
-        "tasks": [],
-    }
-
-    if phase_description:
-        new_phase["description"] = phase_description
-
-    # Add phase to list
-    phases.append(new_phase)
-
-    # Update the content (handle both structures)
-    if "plan" in content and "phases" in content["plan"]:
-        content["plan"]["phases"] = phases
-    else:
-        content["phases"] = phases
-
-    # Write back to file
+    # TinyDB-first: add phase via PlanRepository
+    tinydb_done = False
     try:
-        with open(build_file, "w") as f:
-            yaml.dump(content, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
-    except IOError as e:
-        print_error(f"Failed to write {build_file}: {e}")
-        sys.exit(1)
+        repo = _get_repo()
+        if repo is not None:
+            plan_doc = repo.get_plan(plan_path.name)
+            folder_matches = (
+                plan_doc is not None
+                and plan_doc.plan_folder.resolve() == plan_path.resolve()
+            )
+            if folder_matches:
+                # Check for duplicate
+                existing = repo.get_phase(plan_path.name, phase_name)
+                if existing:
+                    print_error(f"Phase with name '{phase_name}' already exists")
+                    sys.exit(1)
 
-    # Sync phase addition to TinyDB (non-fatal)
-    try:
-        from agenticguidance.services.plan_repository import PlanRepository
-        repo = PlanRepository(auto_bootstrap=False)
-        repo.import_from_yaml(plan_path)
-        repo.close()
+                added = repo.add_phase(plan_path.name, {
+                    "name": phase_name,
+                    "description": phase_description,
+                    "status": "pending",
+                })
+                if added:
+                    tinydb_done = True
+                    try:
+                        repo.sync_to_yaml(plan_path.name)
+                    except Exception:
+                        pass
     except Exception:
         pass
 
+    # YAML fallback
+    if not tinydb_done:
+        build_file = plan_path / "plan_build.yml"
+
+        if build_file.exists():
+            try:
+                content = yaml.safe_load(build_file.read_text())
+                if content is None:
+                    content = {}
+            except yaml.YAMLError as e:
+                print_error(f"Failed to parse {build_file.name}: {e}")
+                sys.exit(1)
+        else:
+            print_error(f"plan_build.yml not found in {plan_path}")
+            print("Hint: Create a plan first with 'agentic plan init' or 'agentic plan scaffold'", file=sys.stderr)
+            sys.exit(1)
+
+        if "phases" in content:
+            phases = content["phases"]
+        elif "plan" in content and "phases" in content["plan"]:
+            phases = content["plan"]["phases"]
+        else:
+            phases = []
+            content["phases"] = phases
+
+        for existing_phase in phases:
+            existing_id = _get_phase_id(existing_phase)
+            if existing_id == phase_id:
+                print_error(f"Phase with ID '{phase_id}' already exists")
+                sys.exit(1)
+
+        new_phase = {
+            "phase_id": phase_id,
+            "name": phase_name,
+            "status": "pending",
+            "tasks": [],
+        }
+        if phase_description:
+            new_phase["description"] = phase_description
+
+        phases.append(new_phase)
+
+        # Update the content (handle both structures)
+        if "plan" in content and "phases" in content["plan"]:
+            content["plan"]["phases"] = phases
+        else:
+            content["phases"] = phases
+
+        try:
+            with open(build_file, "w") as f:
+                yaml.dump(content, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+        except IOError as e:
+            print_error(f"Failed to write {build_file}: {e}")
+            sys.exit(1)
+
+    source = "TinyDB" if tinydb_done else "YAML"
     if is_json_output():
         print_json({
             "phase_id": phase_id,
             "name": phase_name,
             "description": phase_description,
-            "file": build_file.name,
+            "source": source,
             "plan_path": str(plan_path),
         })
     else:
-        print_success(f"Added phase '{phase_id}' ({phase_name}) to {build_file.name}")
+        print_success(f"Added phase '{phase_id}' ({phase_name}) to {plan_path.name} ({source})")
 
 
 def cmd_phase_list(args, ctx=None):
@@ -3671,47 +3675,73 @@ def cmd_phase_list(args, ctx=None):
 
     plan_path = find_plan_folder(getattr(args, "plan", None))
 
-    # Load plan_build.yml
-    build_file = plan_path / "plan_build.yml"
-    if not build_file.exists():
-        print_error(f"plan_build.yml not found in {plan_path}")
-        sys.exit(1)
-
+    # Try PlanRepository for phase data (TinyDB-first)
+    phases_data = None
     try:
-        content = yaml.safe_load(build_file.read_text())
-    except yaml.YAMLError as e:
-        print_error(f"Failed to parse {build_file.name}: {e}")
-        sys.exit(1)
+        repo = _get_repo()
+        plan_data_obj = repo.get_plan(plan_path.name)
+        if (plan_data_obj and plan_data_obj.phases
+                and plan_data_obj.plan_folder == plan_path):
+            phases_data = []
+            for i, phase in enumerate(plan_data_obj.phases):
+                phases_data.append({
+                    "id": f"P{i + 1}",
+                    "name": phase.name,
+                    "status": phase.status or "pending",
+                    "tasks": len(phase.tasks),
+                })
+    except Exception:
+        phases_data = None
 
-    if not content:
-        print_error(f"{build_file.name} is empty")
-        sys.exit(1)
+    if phases_data is None:
+        # Fallback: Load plan_build.yml directly
+        build_file = plan_path / "plan_build.yml"
+        if not build_file.exists():
+            print_error(f"plan_build.yml not found in {plan_path}")
+            sys.exit(1)
 
-    # Get phases from content
-    phases = _get_phases_from_content(content)
+        try:
+            content = yaml.safe_load(build_file.read_text())
+        except yaml.YAMLError as e:
+            print_error(f"Failed to parse {build_file.name}: {e}")
+            sys.exit(1)
 
-    if not phases:
+        if not content:
+            print_error(f"{build_file.name} is empty")
+            sys.exit(1)
+
+        # Get phases from content
+        phases = _get_phases_from_content(content)
+
+        if not phases:
+            if is_json_output():
+                print_json({"phases": [], "count": 0})
+            else:
+                console.print("[dim]No phases found in plan_build.yml[/dim]")
+            return
+
+        # Build phase data with task counts
+        phases_data = []
+        for phase in phases:
+            phase_id = _get_phase_id(phase)
+            phase_name = phase.get("name", "")
+            phase_status = phase.get("status", "pending")
+            tasks = phase.get("tasks", [])
+            task_count = len(tasks)
+
+            phases_data.append({
+                "id": phase_id,
+                "name": phase_name,
+                "status": phase_status,
+                "tasks": task_count,
+            })
+
+    if not phases_data:
         if is_json_output():
             print_json({"phases": [], "count": 0})
         else:
-            console.print("[dim]No phases found in plan_build.yml[/dim]")
+            console.print("[dim]No phases found[/dim]")
         return
-
-    # Build phase data with task counts
-    phases_data = []
-    for phase in phases:
-        phase_id = _get_phase_id(phase)
-        phase_name = phase.get("name", "")
-        phase_status = phase.get("status", "pending")
-        tasks = phase.get("tasks", [])
-        task_count = len(tasks)
-
-        phases_data.append({
-            "id": phase_id,
-            "name": phase_name,
-            "status": phase_status,
-            "tasks": task_count,
-        })
 
     if is_json_output():
         print_json({"phases": phases_data, "count": len(phases_data)})
@@ -3759,97 +3789,119 @@ def cmd_phase_update(args, ctx=None):
         print_error("At least one of --status or --name must be provided")
         sys.exit(1)
 
-    # Target file is plan_build.yml
-    build_file = plan_path / "plan_build.yml"
-
-    if not build_file.exists():
-        print_error(f"plan_build.yml not found in {plan_path}")
-        sys.exit(1)
-
-    # Load the YAML content
-    try:
-        content = yaml.safe_load(build_file.read_text())
-        if content is None:
-            content = {}
-    except yaml.YAMLError as e:
-        print_error(f"Failed to parse {build_file.name}: {e}")
-        sys.exit(1)
-
-    # Get phases list (support both root-level and nested under 'plan')
-    if "phases" in content:
-        phases = content["phases"]
-        phases_location = "root"
-    elif "plan" in content and "phases" in content["plan"]:
-        phases = content["plan"]["phases"]
-        phases_location = "nested"
-    else:
-        print_error("No phases found in plan_build.yml")
-        sys.exit(1)
-
-    # Find and update the phase
+    # TinyDB-first: update phase via PlanRepository
     phase_found = False
     old_status = None
     old_name = None
-
-    for phase in phases:
-        existing_id = _get_phase_id(phase)
-        if existing_id == phase_id:
-            phase_found = True
-            old_status = phase.get("status", "pending")
-            old_name = phase.get("name", "")
-
-            # Update status if provided
-            if new_status:
-                # Validate status transition
-                valid_transitions = {
-                    "pending": ["in_progress", "blocked"],
-                    "in_progress": ["completed", "blocked", "pending"],
-                    "completed": ["pending", "in_progress"],  # Allow rollback
-                    "blocked": ["pending", "in_progress"],
-                }
-
-                if new_status not in valid_transitions.get(old_status, []) and old_status != new_status:
-                    if not is_json_output():
-                        print_warning(f"Status transition from '{old_status}' to '{new_status}' for phase {phase_id}")
-
-                phase["status"] = new_status
-
-            # Update name if provided
-            if new_name:
-                phase["name"] = new_name
-
-            break
-
-    if not phase_found:
-        if is_json_output():
-            print_json({"error": f"Phase not found: {phase_id}"})
-        else:
-            print_error(f"Phase not found: {phase_id}")
-            print("Hint: Use 'agentic plan phase list' to see available phase IDs", file=sys.stderr)
-        sys.exit(1)
-
-    # Update content in correct location
-    if phases_location == "nested":
-        content["plan"]["phases"] = phases
-    else:
-        content["phases"] = phases
-
-    # Write back to file
     try:
-        with open(build_file, "w") as f:
-            yaml.dump(content, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
-    except IOError as e:
-        print_error(f"Failed to write {build_file}: {e}")
-        sys.exit(1)
+        repo = _get_repo()
+        if repo is not None:
+            plan_doc = repo.get_plan(plan_path.name)
+            folder_matches = (
+                plan_doc is not None
+                and plan_doc.plan_folder.resolve() == plan_path.resolve()
+            )
+            if not folder_matches:
+                repo = None  # Skip TinyDB path
+        if repo is not None:
+            phase_obj = repo.get_phase(plan_path.name, phase_id)
+            if phase_obj:
+                old_status = phase_obj.status or "pending"
+                old_name = phase_obj.name
 
-    # Sync phase update to TinyDB (non-fatal)
-    try:
-        from agenticguidance.services.plan_repository import PlanRepository
-        repo = PlanRepository(auto_bootstrap=False)
-        repo.import_from_yaml(plan_path)
-        repo.close()
+                updates = {}
+                if new_status:
+                    valid_transitions = {
+                        "pending": ["in_progress", "blocked"],
+                        "in_progress": ["completed", "blocked", "pending"],
+                        "completed": ["pending", "in_progress"],
+                        "blocked": ["pending", "in_progress"],
+                    }
+                    if new_status not in valid_transitions.get(old_status, []) and old_status != new_status:
+                        if not is_json_output():
+                            print_warning(f"Status transition from '{old_status}' to '{new_status}' for phase {phase_id}")
+                    updates["status"] = new_status
+
+                if new_name:
+                    updates["name"] = new_name
+
+                if updates:
+                    updated = repo.update_phase(plan_path.name, phase_id, updates)
+                    if updated:
+                        phase_found = True
+                        try:
+                            repo.sync_to_yaml(plan_path.name)
+                        except Exception:
+                            pass
     except Exception:
         pass
+
+    # YAML fallback
+    if not phase_found:
+        build_file = plan_path / "plan_build.yml"
+        if not build_file.exists():
+            print_error(f"plan_build.yml not found in {plan_path}")
+            sys.exit(1)
+
+        try:
+            content = yaml.safe_load(build_file.read_text())
+            if content is None:
+                content = {}
+        except yaml.YAMLError as e:
+            print_error(f"Failed to parse {build_file.name}: {e}")
+            sys.exit(1)
+
+        if "phases" in content:
+            phases = content["phases"]
+            phases_location = "root"
+        elif "plan" in content and "phases" in content["plan"]:
+            phases = content["plan"]["phases"]
+            phases_location = "nested"
+        else:
+            print_error("No phases found in plan_build.yml")
+            sys.exit(1)
+
+        for phase in phases:
+            existing_id = _get_phase_id(phase)
+            if existing_id == phase_id:
+                phase_found = True
+                old_status = phase.get("status", "pending")
+                old_name = phase.get("name", "")
+
+                if new_status:
+                    valid_transitions = {
+                        "pending": ["in_progress", "blocked"],
+                        "in_progress": ["completed", "blocked", "pending"],
+                        "completed": ["pending", "in_progress"],
+                        "blocked": ["pending", "in_progress"],
+                    }
+                    if new_status not in valid_transitions.get(old_status, []) and old_status != new_status:
+                        if not is_json_output():
+                            print_warning(f"Status transition from '{old_status}' to '{new_status}' for phase {phase_id}")
+                    phase["status"] = new_status
+                if new_name:
+                    phase["name"] = new_name
+                break
+
+        if not phase_found:
+            if is_json_output():
+                print_json({"error": f"Phase not found: {phase_id}"})
+            else:
+                print_error(f"Phase not found: {phase_id}")
+                print("Hint: Use 'agentic plan phase list' to see available phase IDs", file=sys.stderr)
+            sys.exit(1)
+        # YAML write-back (only in fallback path)
+        if phases_location == "nested":
+            content["plan"]["phases"] = phases
+        else:
+            content["phases"] = phases
+
+        try:
+            with open(build_file, "w") as f:
+                yaml.dump(content, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+        except IOError as e:
+            print_error(f"Failed to write {build_file}: {e}")
+            sys.exit(1)
 
     if is_json_output():
         result = {
@@ -4008,37 +4060,56 @@ def cmd_orchestration_generate(args, ctx=None):
     output_name = getattr(args, "output", None)
     force = getattr(args, "force", False)
 
-    # Gather all plan YAML files
-    yaml_files = list(plan_path.glob("plan_*.yml"))
-    if not yaml_files:
-        print_error(f"No plan_*.yml files found in {plan_path}")
-        sys.exit(1)
-
-    # Collect all phases from YAML files
+    # Collect all phases via PlanRepository (TinyDB-first)
     all_phases = []
     plan_name = None
     plan_objective = None
 
-    for yaml_file in sorted(yaml_files):
-        try:
-            content = yaml.safe_load(yaml_file.read_text())
-        except yaml.YAMLError as e:
-            print_warning(f"Skipping {yaml_file.name}: {e}")
-            continue
+    try:
+        repo = _get_repo()
+        plan_data_obj = repo.get_plan(plan_path.name)
+        if (plan_data_obj and plan_data_obj.phases
+                and plan_data_obj.plan_folder == plan_path):
+            plan_name = plan_data_obj.name or ""
+            plan_objective = plan_data_obj.objective or ""
+            for phase in plan_data_obj.phases:
+                all_phases.append({
+                    "name": phase.name,
+                    "status": phase.status,
+                    "execution": phase.execution,
+                    "tasks": [
+                        {"id": t.id, "task_id": t.id, "name": t.name, "status": t.status, "agent": t.agent}
+                        for t in (phase.tasks or [])
+                    ],
+                })
+    except Exception:
+        pass
 
-        if not content:
-            continue
+    if not all_phases:
+        # Fallback: read plan YAML files directly
+        yaml_files = list(plan_path.glob("plan_*.yml"))
+        if not yaml_files:
+            print_error(f"No plan_*.yml files found in {plan_path}")
+            sys.exit(1)
 
-        # Extract plan metadata from first file that has it
-        if not plan_name:
-            plan_name = content.get("name", "")
-        if not plan_objective:
-            plan_objective = content.get("objective", "")
+        for yaml_file in sorted(yaml_files):
+            try:
+                content = yaml.safe_load(yaml_file.read_text())
+            except yaml.YAMLError as e:
+                print_warning(f"Skipping {yaml_file.name}: {e}")
+                continue
 
-        # Collect phases
-        phases = _get_phases_from_content(content)
-        for phase in phases:
-            all_phases.append(phase)
+            if not content:
+                continue
+
+            if not plan_name:
+                plan_name = content.get("name", "")
+            if not plan_objective:
+                plan_objective = content.get("objective", "")
+
+            phases = _get_phases_from_content(content)
+            for phase in phases:
+                all_phases.append(phase)
 
     if not all_phases:
         print_error("No phases found in plan YAML files")
@@ -4260,12 +4331,6 @@ def cmd_orchestration_validate(args, ctx=None):
     if len(mmd_files) > 1:
         print_warning(f"Multiple MMD files found, using: {mmd_file.name}")
 
-    # Find plan YAML files
-    yaml_files = list(plan_path.glob("plan_*.yml"))
-    if not yaml_files:
-        print_error(f"No plan_*.yml files found in {plan_path}")
-        sys.exit(2)
-
     # Read MMD content
     try:
         mmd_content = mmd_file.read_text()
@@ -4273,41 +4338,69 @@ def cmd_orchestration_validate(args, ctx=None):
         print_error(f"Failed to read {mmd_file}: {e}")
         sys.exit(2)
 
-    # Collect all phases and tasks from YAML files
+    # Collect all phases and tasks via PlanRepository (TinyDB-first)
     yaml_phases = []
     yaml_tasks = []
     yaml_phase_ids = set()
+    yaml_files = list(plan_path.glob("plan_*.yml"))
 
-    for yaml_file in sorted(yaml_files):
-        try:
-            content = yaml.safe_load(yaml_file.read_text())
-        except yaml.YAMLError as e:
-            print_warning(f"Skipping {yaml_file.name}: YAML parse error - {e}")
-            continue
+    try:
+        repo = _get_repo()
+        plan_data_obj = repo.get_plan(plan_path.name)
+        if (plan_data_obj and plan_data_obj.phases
+                and plan_data_obj.plan_folder == plan_path):
+            source = "(via TinyDB)"
+            for phase in plan_data_obj.phases:
+                phase_name = phase.name or ""
+                # PhaseData doesn't carry explicit phase_id; downstream
+                # comparison only uses IDs when present
+                for task in (phase.tasks or []):
+                    if task.id:
+                        yaml_tasks.append({
+                            "id": task.id,
+                            "phase_id": "",
+                            "name": task.name or "",
+                            "source": source,
+                        })
+    except Exception:
+        pass
 
-        if not content:
-            continue
+    if not yaml_tasks:
+        # Fallback: read plan YAML files
+        if not yaml_files:
+            print_error(f"No plan_*.yml files found in {plan_path}")
+            sys.exit(2)
 
-        # Collect phases
-        phases = _get_phases_from_content(content)
-        for phase in phases:
-            phase_id = _get_phase_id(phase)
-            phase_name = phase.get("name", "")
-            if phase_id:
-                yaml_phases.append({"id": phase_id, "name": phase_name, "source": yaml_file.name})
-                yaml_phase_ids.add(phase_id)
+        for yaml_file in sorted(yaml_files):
+            try:
+                content = yaml.safe_load(yaml_file.read_text())
+            except yaml.YAMLError as e:
+                print_warning(f"Skipping {yaml_file.name}: YAML parse error - {e}")
+                continue
 
-            # Collect tasks from this phase
-            tasks = phase.get("tasks", [])
-            for task in tasks:
-                task_id = task.get("id") or task.get("task_id", "")
-                if task_id:
-                    yaml_tasks.append({
-                        "id": task_id,
-                        "phase_id": phase_id,
-                        "name": task.get("name", ""),
-                        "source": yaml_file.name,
-                    })
+            if not content:
+                continue
+
+            # Collect phases
+            phases = _get_phases_from_content(content)
+            for phase in phases:
+                phase_id = _get_phase_id(phase)
+                phase_name = phase.get("name", "")
+                if phase_id:
+                    yaml_phases.append({"id": phase_id, "name": phase_name, "source": yaml_file.name})
+                    yaml_phase_ids.add(phase_id)
+
+                # Collect tasks from this phase
+                tasks = phase.get("tasks", [])
+                for task in tasks:
+                    task_id = task.get("id") or task.get("task_id", "")
+                    if task_id:
+                        yaml_tasks.append({
+                            "id": task_id,
+                            "phase_id": phase_id,
+                            "name": task.get("name", ""),
+                            "source": yaml_file.name,
+                        })
 
     # Validation results
     errors = []

@@ -101,7 +101,7 @@ class TestPhaseAddToEmptyPlan:
     def test_phase_add_to_empty_plan(self, empty_plan, cli_runner):
         """Test adding a phase to a plan with no phases."""
         stdout, stderr, code = cli_runner(
-            ["plan", "phase", "add", "--id", "P1", "--name", "Initial Setup", "--plan", str(empty_plan)]
+            ["agent", "plan", "phase", "add", "--id", "P1", "--name", "Initial Setup", "--plan", str(empty_plan)]
         )
         assert code == 0
         assert "Added phase" in stdout
@@ -120,6 +120,7 @@ class TestPhaseAddToEmptyPlan:
         """Test adding a phase with a description."""
         stdout, stderr, code = cli_runner(
             [
+                "agent",
                 "plan",
                 "phase",
                 "add",
@@ -145,6 +146,7 @@ class TestPhaseAddToExistingPhases:
         """Test adding a new phase to a plan that already has phases."""
         stdout, stderr, code = cli_runner(
             [
+                "agent",
                 "plan",
                 "phase",
                 "add",
@@ -173,6 +175,7 @@ class TestPhaseAddToExistingPhases:
         """Test that adding a phase with an existing ID fails."""
         stdout, stderr, code = cli_runner(
             [
+                "agent",
                 "plan",
                 "phase",
                 "add",
@@ -194,6 +197,7 @@ class TestPhaseAddToExistingPhases:
         """Test adding phase to plan with nested 'plan' key structure."""
         stdout, stderr, code = cli_runner(
             [
+                "agent",
                 "plan",
                 "phase",
                 "add",
@@ -218,7 +222,7 @@ class TestPhaseListEmpty:
     def test_phase_list_empty(self, empty_plan, cli_runner):
         """Test listing phases on a plan with no phases."""
         stdout, stderr, code = cli_runner(
-            ["plan", "phase", "list", "--plan", str(empty_plan)]
+            ["agent", "plan", "phase", "list", "--plan", str(empty_plan)]
         )
         # Should succeed but show no phases message
         assert code == 0
@@ -231,7 +235,7 @@ class TestPhaseListWithPhases:
     def test_phase_list_with_phases(self, plan_with_phases, cli_runner):
         """Test listing phases shows all phase information."""
         stdout, stderr, code = cli_runner(
-            ["plan", "phase", "list", "--plan", str(plan_with_phases)]
+            ["agent", "plan", "phase", "list", "--plan", str(plan_with_phases)]
         )
         assert code == 0
         assert "P1" in stdout
@@ -242,7 +246,7 @@ class TestPhaseListWithPhases:
     def test_phase_list_shows_status(self, plan_with_phases, cli_runner):
         """Test that phase list shows status for each phase."""
         stdout, stderr, code = cli_runner(
-            ["plan", "phase", "list", "--plan", str(plan_with_phases)]
+            ["agent", "plan", "phase", "list", "--plan", str(plan_with_phases)]
         )
         assert code == 0
         # Status values should appear
@@ -251,7 +255,7 @@ class TestPhaseListWithPhases:
     def test_phase_list_shows_task_count(self, plan_with_phases, cli_runner):
         """Test that phase list shows task count for each phase."""
         stdout, stderr, code = cli_runner(
-            ["plan", "phase", "list", "--plan", str(plan_with_phases)]
+            ["agent", "plan", "phase", "list", "--plan", str(plan_with_phases)]
         )
         assert code == 0
         # Should show task counts (P1 has 1 task, P2 has 2 tasks)
@@ -262,7 +266,7 @@ class TestPhaseListWithPhases:
         import json
 
         stdout, stderr, code = cli_runner(
-            ["-j", "plan", "phase", "list", "--plan", str(plan_with_phases)]
+            ["-j", "agent", "plan", "phase", "list", "--plan", str(plan_with_phases)]
         )
         assert code == 0
         result = json.loads(stdout)
@@ -274,7 +278,7 @@ class TestPhaseListWithPhases:
     def test_phase_list_nested_structure(self, plan_with_nested_structure, cli_runner):
         """Test listing phases from nested 'plan' key structure."""
         stdout, stderr, code = cli_runner(
-            ["plan", "phase", "list", "--plan", str(plan_with_nested_structure)]
+            ["agent", "plan", "phase", "list", "--plan", str(plan_with_nested_structure)]
         )
         assert code == 0
         assert "NP1" in stdout
@@ -289,6 +293,7 @@ class TestPhaseUpdateStatus:
         # P1 is currently completed, update P2 from in_progress to completed
         stdout, stderr, code = cli_runner(
             [
+                "agent",
                 "plan",
                 "phase",
                 "update",
@@ -313,6 +318,7 @@ class TestPhaseUpdateStatus:
         """Test updating phase status to blocked."""
         stdout, stderr, code = cli_runner(
             [
+                "agent",
                 "plan",
                 "phase",
                 "update",
@@ -334,6 +340,7 @@ class TestPhaseUpdateStatus:
         """Test updating phase status back to pending (rollback)."""
         stdout, stderr, code = cli_runner(
             [
+                "agent",
                 "plan",
                 "phase",
                 "update",
@@ -359,6 +366,7 @@ class TestPhaseUpdateName:
         """Test updating just the phase name."""
         stdout, stderr, code = cli_runner(
             [
+                "agent",
                 "plan",
                 "phase",
                 "update",
@@ -383,6 +391,7 @@ class TestPhaseUpdateName:
         """Test updating both name and status together."""
         stdout, stderr, code = cli_runner(
             [
+                "agent",
                 "plan",
                 "phase",
                 "update",
@@ -411,6 +420,7 @@ class TestPhaseUpdateNotFound:
         """Test error when updating a non-existent phase."""
         stdout, stderr, code = cli_runner(
             [
+                "agent",
                 "plan",
                 "phase",
                 "update",
@@ -428,6 +438,7 @@ class TestPhaseUpdateNotFound:
         """Test error when neither status nor name is provided."""
         stdout, stderr, code = cli_runner(
             [
+                "agent",
                 "plan",
                 "phase",
                 "update",
@@ -443,6 +454,7 @@ class TestPhaseUpdateNotFound:
         """Test error when updating phase in plan with no phases."""
         stdout, stderr, code = cli_runner(
             [
+                "agent",
                 "plan",
                 "phase",
                 "update",
@@ -464,6 +476,7 @@ class TestPhaseUpdateNestedStructure:
         """Test updating status in nested structure."""
         stdout, stderr, code = cli_runner(
             [
+                "agent",
                 "plan",
                 "phase",
                 "update",
@@ -484,6 +497,7 @@ class TestPhaseUpdateNestedStructure:
         """Test updating name in nested structure."""
         stdout, stderr, code = cli_runner(
             [
+                "agent",
                 "plan",
                 "phase",
                 "update",
@@ -515,7 +529,7 @@ class TestPhaseAddEdgeCases:
                 yaml.dump({"name": "test"}, f)
 
             stdout, stderr, code = cli_runner(
-                ["plan", "phase", "add", "--id", "P1", "--name", "Test Phase", "--plan", str(plan_dir)]
+                ["agent", "plan", "phase", "add", "--id", "P1", "--name", "Test Phase", "--plan", str(plan_dir)]
             )
             assert code != 0
             assert "plan_build.yml not found" in stderr
@@ -524,6 +538,7 @@ class TestPhaseAddEdgeCases:
         """Test adding phase with special characters in ID."""
         stdout, stderr, code = cli_runner(
             [
+                "agent",
                 "plan",
                 "phase",
                 "add",
@@ -544,7 +559,7 @@ class TestPhaseAddEdgeCases:
         import json
 
         stdout, stderr, code = cli_runner(
-            ["-j", "plan", "phase", "add", "--id", "P1", "--name", "Test Phase", "--plan", str(empty_plan)]
+            ["-j", "agent", "plan", "phase", "add", "--id", "P1", "--name", "Test Phase", "--plan", str(empty_plan)]
         )
         assert code == 0
         result = json.loads(stdout)
@@ -567,7 +582,7 @@ class TestPhaseListEdgeCases:
                 yaml.dump({"name": "test"}, f)
 
             stdout, stderr, code = cli_runner(
-                ["plan", "phase", "list", "--plan", str(plan_dir)]
+                ["agent", "plan", "phase", "list", "--plan", str(plan_dir)]
             )
             assert code != 0
             assert "plan_build.yml not found" in stderr
@@ -581,7 +596,7 @@ class TestPhaseListEdgeCases:
             plan_file.write_text("")
 
             stdout, stderr, code = cli_runner(
-                ["plan", "phase", "list", "--plan", str(plan_dir)]
+                ["agent", "plan", "phase", "list", "--plan", str(plan_dir)]
             )
             assert code != 0
             assert "empty" in stderr.lower()
@@ -609,7 +624,7 @@ class TestPhaseListEdgeCases:
                 yaml.dump(plan_content, f, default_flow_style=False)
 
             stdout, stderr, code = cli_runner(
-                ["plan", "phase", "list", "--plan", str(plan_dir)]
+                ["agent", "plan", "phase", "list", "--plan", str(plan_dir)]
             )
             # Should succeed and show 0 tasks
             assert code == 0

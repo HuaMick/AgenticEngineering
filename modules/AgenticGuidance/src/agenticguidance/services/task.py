@@ -168,13 +168,16 @@ class TaskService:
             description=td.description or "",
             status=status,
             agent=td.agent,
+            inputs=td.inputs or [],
+            target_files=td.target_files or [],
+            guidance=td.guidance,
+            completed_date=td.completed_date,
         )
 
     def get_task(self, task_id: str) -> Optional[Task]:
         """Get a task by ID.
 
-        Always reads from YAML to get full task details (inputs, target_files,
-        guidance, etc.) that TinyDB's TaskData doesn't carry.
+        Reads from YAML to get full task details.
         Searches in phases[].tasks[] first, then root-level tasks[].
 
         Args:

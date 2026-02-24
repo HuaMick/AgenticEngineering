@@ -1,0 +1,116 @@
+%% =============================================================================
+%% GOAL: Make TinyDB the first-class planning datastore with filelock concurrency
+%% =============================================================================
+%% PROFILE: Orchestration-TinyDB-First Migration
+%% INPUT_PATH: /home/code/AgenticEngineering/docs/plans/live/260223NE_migrate_planrepository_to_use_filelock_with_tinydb/plan_build.yml
+%%
+%% PHASES:
+%%   P1: Phase 1 - FileLock Concurrency Protection
+%%   P2: Phase 2 - TinyDB as Primary Store
+%%   P3: Phase 3 - Expand PlanRepository & Dataclass API
+%%   P4: Phase 4 - Replace Plan-Data YAML Reads in CLI
+%%   P5: Phase 5 - Replace Plan-Data YAML Mutations in CLI
+%%   P6: Phase 6 - Testing, Cleanup & Validation
+%%
+%% AGENT_ROUTING: P1 -> build-python, P2 -> build-python, P3 -> build-python, P4 -> build-python, P5 -> build-python, P6 -> build-python
+%% STATUS: P1=completed, P2=completed, P3=completed, P4=completed, P5=completed, P6=completed
+%% FEEDBACK_TRIGGERS: TEST_FAILURE -> test-fix-loop, BUILD_FAILURE -> escalate
+%% MAX_ITERATIONS: 12
+%% =============================================================================
+
+flowchart LR
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    LoadInputs --> ReviewInputs[Review All Listed Inputs]
+    ReviewInputs --> CheckInputs{All Inputs Found?}
+
+    CheckInputs -- "No: Missing" --> SearchInputs[Search for Missing Inputs]
+    SearchInputs --> Found{Found?}
+    Found -- "Yes: Update paths" --> UpdateRefs[Update References]
+    UpdateRefs --> ReviewInputs
+    Found -- "No: Stop" --> AskUser((Ask User for Clarification))
+
+    CheckInputs -- "Yes: Verified" --> Phase3
+
+    %% ========================================
+    %% PHASE 3: EXPAND PLANREPOSITORY API
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: API_001, API_002, API_003, API_004
+
+    subgraph P3_SG ["Phase 3 - Expand PlanRepository & Dataclass API"]
+        Phase3[Enter Phase 3] --> SpawnAgent3[Spawn build-python Agent]
+        SpawnAgent3 --> Task_P3_1[API_001: Expand PlanData/TaskData/PlanMetadata fields]
+        Task_P3_1 --> Task_P3_2[API_002: Add phase CRUD to PlanRepository]
+        Task_P3_2 --> Task_P3_3[API_003: Add archive/unarchive/cancel operations]
+        Task_P3_3 --> Task_P3_4[API_004: Add helper query methods]
+        Task_P3_4 --> Phase3Complete[Phase 3 Complete]
+    end
+
+    %% ========================================
+    %% PHASE 4: REPLACE YAML READS IN CLI
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: RD_001, RD_002, RD_003
+
+    subgraph P4_SG ["Phase 4 - Replace Plan-Data YAML Reads in CLI"]
+        Phase3Complete --> Phase4[Enter Phase 4]
+        Phase4 --> SpawnAgent4[Spawn build-python Agent]
+        SpawnAgent4 --> Task_P4_1[RD_001: Replace reads in helpers + cmd_status]
+        Task_P4_1 --> Task_P4_2[RD_002: Replace reads in task query commands]
+        Task_P4_2 --> Task_P4_3[RD_003: Replace reads in validate/phase/orchestration]
+        Task_P4_3 --> Phase4Complete[Phase 4 Complete]
+    end
+
+    %% ========================================
+    %% PHASE 5: REPLACE YAML MUTATIONS IN CLI
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: MU_001, MU_002, MU_003, MU_004
+
+    subgraph P5_SG ["Phase 5 - Replace Plan-Data YAML Mutations in CLI"]
+        Phase4Complete --> Phase5[Enter Phase 5]
+        Phase5 --> SpawnAgent5[Spawn build-python Agent]
+        SpawnAgent5 --> Task_P5_1[MU_001: Replace task mutations]
+        Task_P5_1 --> Task_P5_2[MU_002: Replace phase mutations]
+        Task_P5_2 --> Task_P5_3[MU_003: Replace archive/unarchive/cancel mutations]
+        Task_P5_3 --> Task_P5_4[MU_004: Add TinyDB import after plan creation]
+        Task_P5_4 --> Phase5Complete[Phase 5 Complete]
+    end
+
+    %% ========================================
+    %% PHASE 6: TESTING & CLEANUP
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: TC_001, TC_002, TC_003
+
+    subgraph P6_SG ["Phase 6 - Testing, Cleanup & Validation"]
+        Phase5Complete --> Phase6[Enter Phase 6]
+        Phase6 --> SpawnAgent6[Spawn build-python Agent]
+        SpawnAgent6 --> Task_P6_1[TC_001: Fix pre-existing test failures]
+        Task_P6_1 --> Task_P6_2[TC_002: Run full suite + fix regressions]
+        Task_P6_2 --> Task_P6_3[TC_003: Audit zero plan-data YAML in CLI]
+        Task_P6_3 --> Phase6Complete[Phase 6 Complete]
+    end
+
+    %% ========================================
+    %% FINALIZATION
+    %% ========================================
+    Phase6Complete --> UpdatePlanStatus[Update Plan Status: completed]
+    UpdatePlanStatus --> ArchivePlan[Archive to docs/plans/completed/]
+    ArchivePlan --> End((End: Plan Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef entrypoint fill:#90EE90,stroke:#228B22
+    classDef exitpoint fill:#FFB6C1,stroke:#DC143C
+    classDef userpoint fill:#87CEEB,stroke:#4682B4
+    classDef keyaction fill:#FFD700,stroke:#DAA520
+    classDef completed fill:#D3D3D3,stroke:#808080
+    class Start entrypoint
+    class End exitpoint
+    class AskUser userpoint

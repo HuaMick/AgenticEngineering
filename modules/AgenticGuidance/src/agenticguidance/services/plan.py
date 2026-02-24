@@ -573,6 +573,13 @@ class PlanData:
     objective: Optional[str] = None
     status: Optional[str] = None
     branch: Optional[str] = None
+    name: Optional[str] = None
+    worktree_path: Optional[str] = None
+    priority: Optional[str] = None
+    context: Optional[str] = None
+    created: Optional[str] = None
+    deferred_reason: Optional[str] = None
+    cancelled_date: Optional[str] = None
     phases: list = None
     tasks: list = None
 
@@ -592,6 +599,10 @@ class PlanMetadata:
     objective: Optional[str] = None
     status: Optional[str] = None
     created: Optional[str] = None
+    name: Optional[str] = None
+    priority: Optional[str] = None
+    worktree_path: Optional[str] = None
+    branch: Optional[str] = None
 
 
 @dataclass
@@ -653,6 +664,17 @@ class TaskData:
     status: Optional[str] = None
     agent: Optional[str] = None
     phase_name: Optional[str] = None
+    inputs: list = None
+    target_files: list = None
+    guidance: Optional[str] = None
+    completed_date: Optional[str] = None
+    success_criteria: Optional[str] = None
+
+    def __post_init__(self):
+        if self.inputs is None:
+            self.inputs = []
+        if self.target_files is None:
+            self.target_files = []
 
 
 class PlanService:

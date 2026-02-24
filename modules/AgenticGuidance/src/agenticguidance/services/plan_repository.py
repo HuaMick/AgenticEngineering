@@ -161,6 +161,11 @@ class PlanRepository:
                 status=td.get("status"),
                 agent=td.get("agent"),
                 phase_name=td.get("phase_name"),
+                inputs=td.get("inputs", []),
+                target_files=td.get("target_files", []),
+                guidance=td.get("guidance"),
+                completed_date=td.get("completed_date"),
+                success_criteria=td.get("success_criteria"),
             )
             all_tasks.append(task_obj)
             phase_key = td.get("phase_name", "")
@@ -185,6 +190,13 @@ class PlanRepository:
             objective=doc.get("objective"),
             status=doc.get("status"),
             branch=doc.get("branch"),
+            name=doc.get("name"),
+            worktree_path=doc.get("worktree_path"),
+            priority=doc.get("priority"),
+            context=doc.get("context"),
+            created=doc.get("created"),
+            deferred_reason=doc.get("deferred_reason"),
+            cancelled_date=doc.get("cancelled_date"),
             phases=phases,
             tasks=all_tasks,
         )
@@ -220,6 +232,10 @@ class PlanRepository:
                     objective=doc.get("objective"),
                     status=doc.get("status"),
                     created=doc.get("created"),
+                    name=doc.get("name"),
+                    priority=doc.get("priority"),
+                    worktree_path=doc.get("worktree_path"),
+                    branch=doc.get("branch"),
                 )
             )
 
@@ -284,6 +300,108 @@ class PlanRepository:
             success=True,
             message=f"Plan and associated data removed from DB: {actual_name}",
         )
+
+    def archive_plan(
+        self, plan_folder_name: str, completed_date: Optional[str] = None
+    ) -> PlanUpdateResult:
+        """Archive a plan by marking it completed in the database.
+
+        Updates the plan status to "completed", adjusts the plan_folder path
+        from live/ to completed/, and records the completed_date.
+
+        Note: Filesystem operations (copying/moving folders) are the caller's
+        responsibility. This method only updates the database record.
+
+        Args:
+            plan_folder_name: Folder name identifying the plan.
+            completed_date: Date string (YYYY-MM-DD). Defaults to today.
+
+        Returns:
+            PlanUpdateResult indicating success or failure.
+        """
+        if completed_date is None:
+            completed_date = datetime.now().strftime("%Y-%m-%d")
+
+        doc = self._find_plan_doc(plan_folder_name)
+        if not doc:
+            return PlanUpdateResult(
+                success=False,
+                message=f"Plan not found in DB: {plan_folder_name}",
+            )
+
+        # Compute the completed/ path from the current plan_folder
+        current_folder = doc.get("plan_folder", "")
+        new_folder = current_folder.replace("/plans/live/", "/plans/completed/")
+
+        updates = {
+            "status": "completed",
+            "plan_folder": new_folder,
+            "completed_date": completed_date,
+        }
+        return self.update_plan(doc["plan_folder_name"], updates)
+
+    def unarchive_plan(self, plan_folder_name: str) -> PlanUpdateResult:
+        """Unarchive a plan by restoring it to active status.
+
+        Updates the plan status from "completed" back to "active", adjusts the
+        plan_folder path from completed/ to live/, and clears completed_date.
+
+        Note: Filesystem operations (moving folders) are the caller's
+        responsibility. This method only updates the database record.
+
+        Args:
+            plan_folder_name: Folder name identifying the plan.
+
+        Returns:
+            PlanUpdateResult indicating success or failure.
+        """
+        doc = self._find_plan_doc(plan_folder_name)
+        if not doc:
+            return PlanUpdateResult(
+                success=False,
+                message=f"Plan not found in DB: {plan_folder_name}",
+            )
+
+        # Compute the live/ path from the current plan_folder
+        current_folder = doc.get("plan_folder", "")
+        new_folder = current_folder.replace("/plans/completed/", "/plans/live/")
+
+        updates = {
+            "status": "active",
+            "plan_folder": new_folder,
+            "completed_date": "",
+        }
+        return self.update_plan(doc["plan_folder_name"], updates)
+
+    def cancel_plan(
+        self, plan_folder_name: str, reason: str = ""
+    ) -> PlanUpdateResult:
+        """Cancel a plan by marking it as cancelled in the database.
+
+        Updates the plan status to "cancelled", records the cancelled_date,
+        and optionally stores a cancellation reason.
+
+        Args:
+            plan_folder_name: Folder name identifying the plan.
+            reason: Optional reason for cancellation.
+
+        Returns:
+            PlanUpdateResult indicating success or failure.
+        """
+        doc = self._find_plan_doc(plan_folder_name)
+        if not doc:
+            return PlanUpdateResult(
+                success=False,
+                message=f"Plan not found in DB: {plan_folder_name}",
+            )
+
+        updates: dict = {
+            "status": "cancelled",
+            "cancelled_date": datetime.now().strftime("%Y-%m-%d"),
+        }
+        if reason:
+            updates["cancelled_reason"] = reason
+        return self.update_plan(doc["plan_folder_name"], updates)
 
     def resync_plan_folder(self, plan_folder_name: str, new_folder: str) -> bool:
         """Update plan_folder path and re-import tasks/phases from new location.
@@ -360,6 +478,11 @@ class PlanRepository:
                 status=d.get("status"),
                 agent=d.get("agent"),
                 phase_name=d.get("phase_name"),
+                inputs=d.get("inputs", []),
+                target_files=d.get("target_files", []),
+                guidance=d.get("guidance"),
+                completed_date=d.get("completed_date"),
+                success_criteria=d.get("success_criteria"),
             )
             for d in docs
         ]
@@ -392,6 +515,11 @@ class PlanRepository:
             status=d.get("status"),
             agent=d.get("agent"),
             phase_name=d.get("phase_name"),
+            inputs=d.get("inputs", []),
+            target_files=d.get("target_files", []),
+            guidance=d.get("guidance"),
+            completed_date=d.get("completed_date"),
+            success_criteria=d.get("success_criteria"),
         )
 
     def update_task_status(
@@ -457,6 +585,7 @@ class PlanRepository:
                 "target_files": task_data.get("target_files", []),
                 "guidance": task_data.get("guidance"),
                 "completed_date": task_data.get("completed_date"),
+                "success_criteria": task_data.get("success_criteria"),
             }
             self._tasks.insert(doc)
         return True
@@ -489,6 +618,11 @@ class PlanRepository:
                 status=d.get("status"),
                 agent=d.get("agent"),
                 phase_name=d.get("phase_name"),
+                inputs=d.get("inputs", []),
+                target_files=d.get("target_files", []),
+                guidance=d.get("guidance"),
+                completed_date=d.get("completed_date"),
+                success_criteria=d.get("success_criteria"),
             )
 
         # Fall back to first pending
@@ -505,9 +639,186 @@ class PlanRepository:
                 status=d.get("status"),
                 agent=d.get("agent"),
                 phase_name=d.get("phase_name"),
+                inputs=d.get("inputs", []),
+                target_files=d.get("target_files", []),
+                guidance=d.get("guidance"),
+                completed_date=d.get("completed_date"),
+                success_criteria=d.get("success_criteria"),
             )
 
         return None
+
+    # ------------------------------------------------------------------
+    # Query helpers
+    # ------------------------------------------------------------------
+
+    def check_all_tasks_complete(self, plan_folder_name: str) -> bool:
+        """Check whether every task for a plan has status "completed".
+
+        Args:
+            plan_folder_name: Folder name identifying the plan.
+
+        Returns:
+            True if all tasks are completed and at least one task exists.
+            False if no tasks exist or any task is not completed.
+        """
+        Task = Query()
+        all_tasks = self._tasks.search(Task.plan_folder_name == plan_folder_name)
+        if not all_tasks:
+            return False
+        return all(t.get("status") == "completed" for t in all_tasks)
+
+    def get_plan_branch(self, plan_folder_name: str) -> Optional[str]:
+        """Get the branch associated with a plan.
+
+        Args:
+            plan_folder_name: Folder name identifying the plan.
+
+        Returns:
+            Branch name string, or None if not set or is main/master.
+        """
+        doc = self._find_plan_doc(plan_folder_name)
+        if not doc:
+            return None
+
+        branch = doc.get("branch", "")
+        if not branch or branch.strip() in ("", "main", "master"):
+            return None
+        return branch.strip()
+
+    def get_task_counts(self, plan_folder_name: str) -> dict:
+        """Get task status counts for a plan.
+
+        Args:
+            plan_folder_name: Folder name identifying the plan.
+
+        Returns:
+            Dict with keys: pending, in_progress, completed, total.
+        """
+        Task = Query()
+        all_tasks = self._tasks.search(Task.plan_folder_name == plan_folder_name)
+
+        counts = {"pending": 0, "in_progress": 0, "completed": 0, "total": 0}
+        for t in all_tasks:
+            status = t.get("status", "pending")
+            if status in counts:
+                counts[status] += 1
+            counts["total"] += 1
+        return counts
+
+    # ------------------------------------------------------------------
+    # Phase CRUD
+    # ------------------------------------------------------------------
+
+    def add_phase(self, plan_folder_name: str, phase_data: dict) -> bool:
+        """Add a new phase to the database.
+
+        Args:
+            plan_folder_name: Plan folder name.
+            phase_data: Phase fields. Must include 'name'.
+
+        Returns:
+            True if inserted successfully, False if name missing or duplicate.
+        """
+        phase_name = phase_data.get("name", "")
+        if not phase_name:
+            return False
+
+        with self._lock:
+            Phase = Query()
+            existing = self._phases.search(
+                (Phase.plan_folder_name == plan_folder_name)
+                & (Phase.phase_name == phase_name)
+            )
+            if existing:
+                return False
+
+            # Determine order: one past the current max
+            all_phases = self._phases.search(Phase.plan_folder_name == plan_folder_name)
+            max_order = max((p.get("_order", 0) for p in all_phases), default=-1)
+
+            self._phases.insert({
+                "plan_folder_name": plan_folder_name,
+                "phase_name": phase_name,
+                "execution": phase_data.get("execution", "sequential"),
+                "description": phase_data.get("description", ""),
+                "status": phase_data.get("status", "pending"),
+                "_order": max_order + 1,
+            })
+        return True
+
+    def update_phase(
+        self, plan_folder_name: str, phase_name: str, updates: dict
+    ) -> bool:
+        """Update fields on an existing phase document.
+
+        Args:
+            plan_folder_name: Plan folder name.
+            phase_name: Name of the phase to update.
+            updates: Dictionary of fields to update.
+
+        Returns:
+            True if the phase was found and updated.
+        """
+        with self._lock:
+            Phase = Query()
+            updated = self._phases.update(
+                updates,
+                (Phase.plan_folder_name == plan_folder_name)
+                & (Phase.phase_name == phase_name),
+            )
+        return len(updated) > 0
+
+    def list_phases(self, plan_folder_name: str) -> list[PhaseData]:
+        """Return all phases for a plan, sorted by _order.
+
+        Args:
+            plan_folder_name: Plan folder name.
+
+        Returns:
+            List of PhaseData objects sorted by insertion order.
+        """
+        Phase = Query()
+        docs = self._phases.search(Phase.plan_folder_name == plan_folder_name)
+        docs.sort(key=lambda d: d.get("_order", 0))
+
+        return [
+            PhaseData(
+                name=d.get("phase_name", ""),
+                description=d.get("description"),
+                execution=d.get("execution"),
+                status=d.get("status"),
+            )
+            for d in docs
+        ]
+
+    def get_phase(
+        self, plan_folder_name: str, phase_name: str
+    ) -> Optional[PhaseData]:
+        """Get a single phase by name.
+
+        Args:
+            plan_folder_name: Plan folder name.
+            phase_name: Phase name to look up.
+
+        Returns:
+            PhaseData if found, None otherwise.
+        """
+        Phase = Query()
+        docs = self._phases.search(
+            (Phase.plan_folder_name == plan_folder_name)
+            & (Phase.phase_name == phase_name)
+        )
+        if not docs:
+            return None
+
+        d = docs[0]
+        return PhaseData(
+            name=d.get("phase_name", ""),
+            description=d.get("description"),
+            execution=d.get("execution"),
+            status=d.get("status"),
+        )
 
     # ------------------------------------------------------------------
     # Import / Export
@@ -608,6 +919,7 @@ class PlanRepository:
                             "target_files": task.get("target_files", []),
                             "guidance": task.get("guidance"),
                             "completed_date": task.get("completed_date"),
+                            "success_criteria": task.get("success_criteria"),
                         }
                     )
 
@@ -651,7 +963,7 @@ class PlanRepository:
                 "agent": td.get("agent"),
             }
             # Only include non-None optional fields
-            for key in ("inputs", "target_files", "guidance", "completed_date"):
+            for key in ("inputs", "target_files", "guidance", "completed_date", "success_criteria"):
                 val = td.get(key)
                 if val:
                     task_dict[key] = val
@@ -678,6 +990,11 @@ class PlanRepository:
             "created": doc.get("created", ""),
             "phases": phases_out,
         }
+        # Only include optional plan fields when they have values
+        for key in ("context", "deferred_reason", "cancelled_date"):
+            val = doc.get(key)
+            if val:
+                plan_out[key] = val
 
         out_file = output_folder / "plan_build.yml"
         try:

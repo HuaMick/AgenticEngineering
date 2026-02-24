@@ -1,4 +1,4 @@
-"""Tests for the orchestration workflow and runner."""
+"""Tests for the orchestration workflow and PlanningRunner."""
 
 import json
 import subprocess
@@ -212,131 +212,28 @@ class TestOrchestrationWorkflow:
 
         assert result["agent_routing"] == {"phase-1": "build-python"}
 
-    def test_spawn_execution_agent_calls_subprocess(self, monkeypatch):
-        """spawn_execution_agent calls subprocess with correct args."""
-        from agenticcli.workflows.orchestration import OrchestrationWorkflow
-
-        calls = []
-
-        def mock_run(cmd, **kwargs):
-            calls.append(cmd)
-            return subprocess.CompletedProcess(
-                cmd, 0,
-                stdout=json.dumps({"session_id": "test-session-123"}),
-                stderr=""
-            )
-
-        monkeypatch.setattr(subprocess, "run", mock_run)
-
-        workflow = OrchestrationWorkflow()
-        session_id = workflow.spawn_execution_agent("my_plan", "phase-1", "build-python")
-
-        assert session_id == "test-session-123"
-        assert len(calls) == 1
-        assert "agentic" in calls[0]
-        assert "session" in calls[0]
-        assert "spawn" in calls[0]
-        assert "--role" in calls[0]
-        assert "build-python" in calls[0]
-        assert "--plan" in calls[0]
-        assert "my_plan" in calls[0]
-
-    def test_spawn_execution_agent_returns_none_on_failure(self, monkeypatch):
-        """spawn_execution_agent returns None when subprocess fails."""
-        from agenticcli.workflows.orchestration import OrchestrationWorkflow
-
-        def mock_run(cmd, **kwargs):
-            return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="error")
-
-        monkeypatch.setattr(subprocess, "run", mock_run)
-
-        workflow = OrchestrationWorkflow()
-        result = workflow.spawn_execution_agent("my_plan", "phase-1", "build-python")
-
-        assert result is None
-
-    def test_archive_plan_calls_subprocess(self, monkeypatch):
-        """archive_plan calls subprocess with correct args."""
-        from agenticcli.workflows.orchestration import OrchestrationWorkflow
-
-        calls = []
-
-        def mock_run(cmd, **kwargs):
-            calls.append(cmd)
-            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
-
-        monkeypatch.setattr(subprocess, "run", mock_run)
-
-        workflow = OrchestrationWorkflow()
-        result = workflow.archive_plan("my_plan")
-
-        assert result is True
-        assert len(calls) == 1
-        assert "agentic" in calls[0]
-        assert "plan" in calls[0]
-        assert "archive" in calls[0]
-        assert "my_plan" in calls[0]
-
-    def test_archive_plan_returns_false_on_failure(self, monkeypatch):
-        """archive_plan returns False when subprocess fails."""
-        from agenticcli.workflows.orchestration import OrchestrationWorkflow
-
-        def mock_run(cmd, **kwargs):
-            return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="error")
-
-        monkeypatch.setattr(subprocess, "run", mock_run)
-
-        workflow = OrchestrationWorkflow()
-        result = workflow.archive_plan("my_plan")
-
-        assert result is False
-
 
 # ---------------------------------------------------------------------------
-# OrchestrationRunner tests
+# PlanningRunner tests
 # ---------------------------------------------------------------------------
 
 
-class TestOrchestrationRunner:
-    """Test OrchestrationRunner class."""
+class TestPlanningRunner:
+    """Test PlanningRunner class."""
 
     def test_run_single_plan_success(self, tmp_path, monkeypatch):
         """run() succeeds for single plan with all phases passing."""
-        from agenticcli.workflows.orchestration import OrchestrationRunner, OrchestrationWorkflow
+        from agenticcli.workflows.orchestration import PlanningRunner, OrchestrationWorkflow
 
-        # Create mock workflow
+        # Create mock workflow with plans_dir that exists
+        plans_dir = tmp_path / "docs" / "plans" / "live"
+        plans_dir.mkdir(parents=True)
         workflow = MagicMock(spec=OrchestrationWorkflow)
         workflow.working_dir = str(tmp_path)
+        workflow.plans_dir = plans_dir
         workflow.run_health_check.return_value = None
-        workflow.load_mmd.return_value = """
-%% AGENT_ROUTING: phase-1 -> build-python
-%% STATUS: phase-1=pending
-%% PHASES:
-%%   1. phase-1 - Build
-"""
-        workflow.parse_routing.return_value = {
-            "agent_routing": {"phase-1": "build-python"},
-            "status": {"phase-1": "pending"},
-            "feedback_triggers": {},
-            "phases": [{"id": "phase-1", "description": "Build"}],
-        }
-        workflow.spawn_execution_agent.return_value = "session-123"
-        workflow.archive_plan.return_value = True
+        workflow.discover_plans_needing_orchestration.return_value = []
 
-        # Mock subprocess for session status checks
-        def mock_run(cmd, **kwargs):
-            if "status" in cmd:
-                return subprocess.CompletedProcess(
-                    cmd, 0,
-                    stdout=json.dumps({"status": "completed"}),
-                    stderr=""
-                )
-            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
-
-        monkeypatch.setattr(subprocess, "run", mock_run)
-        monkeypatch.setattr("time.sleep", lambda x: None)  # Speed up test
-
-        # Mock PlannerLoopRunner
         with patch("agenticcli.workflows.orchestration.PlannerLoopRunner") as MockRunner:
             mock_planner_runner = MagicMock()
             mock_planner_runner.run.return_value = True
@@ -347,7 +244,7 @@ class TestOrchestrationRunner:
             }
             MockRunner.return_value = mock_planner_runner
 
-            runner = OrchestrationRunner(workflow=workflow, plan_folder="test_plan")
+            runner = PlanningRunner(workflow=workflow, plan_folder="test_plan")
             result = runner.run(max_iterations=10)
 
             assert result is True
@@ -356,37 +253,15 @@ class TestOrchestrationRunner:
 
     def test_run_discovery_mode(self, tmp_path, monkeypatch):
         """run() discovers and processes multiple plans when no --plan flag."""
-        from agenticcli.workflows.orchestration import OrchestrationRunner, OrchestrationWorkflow
+        from agenticcli.workflows.orchestration import PlanningRunner, OrchestrationWorkflow
 
+        plans_dir = tmp_path / "docs" / "plans" / "live"
+        plans_dir.mkdir(parents=True)
         workflow = MagicMock(spec=OrchestrationWorkflow)
         workflow.working_dir = str(tmp_path)
+        workflow.plans_dir = plans_dir
         workflow.run_health_check.return_value = None
         workflow.discover_plans_needing_orchestration.return_value = ["plan_a", "plan_b"]
-        workflow.load_mmd.return_value = """
-%% AGENT_ROUTING: phase-1 -> build-python
-%% PHASES:
-%%   1. phase-1 - Build
-"""
-        workflow.parse_routing.return_value = {
-            "agent_routing": {"phase-1": "build-python"},
-            "status": {},
-            "feedback_triggers": {},
-            "phases": [{"id": "phase-1", "description": "Build"}],
-        }
-        workflow.spawn_execution_agent.return_value = "session-123"
-        workflow.archive_plan.return_value = True
-
-        def mock_run(cmd, **kwargs):
-            if "status" in cmd:
-                return subprocess.CompletedProcess(
-                    cmd, 0,
-                    stdout=json.dumps({"status": "completed"}),
-                    stderr=""
-                )
-            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
-
-        monkeypatch.setattr(subprocess, "run", mock_run)
-        monkeypatch.setattr("time.sleep", lambda x: None)
 
         with patch("agenticcli.workflows.orchestration.PlannerLoopRunner") as MockRunner:
             mock_planner_runner = MagicMock()
@@ -394,194 +269,91 @@ class TestOrchestrationRunner:
             mock_planner_runner.state = {"iteration": 1, "plans_processed": [], "errors": []}
             MockRunner.return_value = mock_planner_runner
 
-            runner = OrchestrationRunner(workflow=workflow, plan_folder=None)
+            runner = PlanningRunner(workflow=workflow, plan_folder=None)
             result = runner.run()
 
             assert result is True
             assert len(runner.state["plans_processed"]) == 2
 
-    def test_phase_retry_on_failure(self, tmp_path, monkeypatch):
-        """_execute_phase retries on failure up to max_phase_retries."""
-        from agenticcli.workflows.orchestration import OrchestrationRunner, OrchestrationWorkflow
+    def test_no_plans_returns_true(self, tmp_path, monkeypatch):
+        """run() returns True immediately when no plans need orchestration."""
+        from agenticcli.workflows.orchestration import PlanningRunner, OrchestrationWorkflow
 
+        plans_dir = tmp_path / "docs" / "plans" / "live"
+        plans_dir.mkdir(parents=True)
         workflow = MagicMock(spec=OrchestrationWorkflow)
         workflow.working_dir = str(tmp_path)
+        workflow.plans_dir = plans_dir
         workflow.run_health_check.return_value = None
-        workflow.load_mmd.return_value = """
-%% AGENT_ROUTING: phase-1 -> build-python
-%% PHASES:
-%%   1. phase-1 - Build
-"""
-        workflow.parse_routing.return_value = {
-            "agent_routing": {"phase-1": "build-python"},
-            "status": {},
-            "feedback_triggers": {},
-            "phases": [{"id": "phase-1", "description": "Build"}],
-        }
-        workflow.archive_plan.return_value = True
+        workflow.discover_plans_needing_orchestration.return_value = []
 
-        # First two calls fail, third succeeds
-        call_count = [0]
+        runner = PlanningRunner(workflow=workflow, plan_folder=None)
+        result = runner.run()
 
-        def spawn_side_effect(*args, **kwargs):
-            call_count[0] += 1
-            if call_count[0] <= 2:
-                return None  # Fail
-            return "session-123"  # Success
+        assert result is True
 
-        workflow.spawn_execution_agent.side_effect = spawn_side_effect
+    def test_health_check_failure_returns_false(self, tmp_path):
+        """run() returns False when health check fails."""
+        from agenticcli.workflows.orchestration import PlanningRunner, OrchestrationWorkflow
 
-        def mock_run(cmd, **kwargs):
-            if "status" in cmd:
-                return subprocess.CompletedProcess(
-                    cmd, 0,
-                    stdout=json.dumps({"status": "completed"}),
-                    stderr=""
-                )
-            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+        workflow = MagicMock(spec=OrchestrationWorkflow)
+        workflow.run_health_check.side_effect = RuntimeError("Health check failed")
 
-        monkeypatch.setattr(subprocess, "run", mock_run)
-        monkeypatch.setattr("time.sleep", lambda x: None)
+        runner = PlanningRunner(workflow=workflow)
+        result = runner.run()
+
+        assert result is False
+        assert len(runner.state["errors"]) > 0
+
+    def test_planner_runner_failure_tracked(self, tmp_path):
+        """Plans that fail planning are added to plans_failed."""
+        from agenticcli.workflows.orchestration import PlanningRunner, OrchestrationWorkflow
+
+        plans_dir = tmp_path / "docs" / "plans" / "live"
+        plans_dir.mkdir(parents=True)
+        workflow = MagicMock(spec=OrchestrationWorkflow)
+        workflow.working_dir = str(tmp_path)
+        workflow.plans_dir = plans_dir
+        workflow.run_health_check.return_value = None
+        workflow.discover_plans_needing_orchestration.return_value = ["bad_plan"]
 
         with patch("agenticcli.workflows.orchestration.PlannerLoopRunner") as MockRunner:
             mock_planner_runner = MagicMock()
-            mock_planner_runner.run.return_value = True
-            mock_planner_runner.state = {"iteration": 1, "plans_processed": [], "errors": []}
+            mock_planner_runner.run.return_value = False
+            mock_planner_runner.state = {
+                "iteration": 1,
+                "plans_processed": [],
+                "errors": [{"error": "Planning failed"}],
+            }
             MockRunner.return_value = mock_planner_runner
 
-            runner = OrchestrationRunner(workflow=workflow, plan_folder="test_plan")
-            result = runner.run(max_phase_retries=2)
-
-            assert result is True
-            assert call_count[0] == 3  # Two failures + one success
-
-    def test_max_retries_respected(self, tmp_path, monkeypatch):
-        """Phase execution fails after max_phase_retries."""
-        from agenticcli.workflows.orchestration import OrchestrationRunner, OrchestrationWorkflow
-
-        workflow = MagicMock(spec=OrchestrationWorkflow)
-        workflow.working_dir = str(tmp_path)
-        workflow.run_health_check.return_value = None
-        workflow.load_mmd.return_value = """
-%% AGENT_ROUTING: phase-1 -> build-python
-%% PHASES:
-%%   1. phase-1 - Build
-"""
-        workflow.parse_routing.return_value = {
-            "agent_routing": {"phase-1": "build-python"},
-            "status": {},
-            "feedback_triggers": {},
-            "phases": [{"id": "phase-1", "description": "Build"}],
-        }
-        workflow.spawn_execution_agent.return_value = None  # Always fail
-        workflow.archive_plan.return_value = True
-
-        monkeypatch.setattr("time.sleep", lambda x: None)
-
-        with patch("agenticcli.workflows.orchestration.PlannerLoopRunner") as MockRunner:
-            mock_planner_runner = MagicMock()
-            mock_planner_runner.run.return_value = True
-            mock_planner_runner.state = {"iteration": 1, "plans_processed": [], "errors": []}
-            MockRunner.return_value = mock_planner_runner
-
-            runner = OrchestrationRunner(workflow=workflow, plan_folder="test_plan")
-            result = runner.run(max_phase_retries=1)
+            runner = PlanningRunner(workflow=workflow, plan_folder=None)
+            result = runner.run()
 
             assert result is False
-            assert "test_plan" in runner.state["plans_failed"]
-            assert len(runner.state["errors"]) > 0
+            assert "bad_plan" in runner.state["plans_failed"]
 
-    def test_state_tracking_updates(self, tmp_path, monkeypatch):
-        """State dict updates correctly throughout lifecycle."""
-        from agenticcli.workflows.orchestration import OrchestrationRunner, OrchestrationWorkflow
+    def test_exception_in_planner_runner_tracked(self, tmp_path):
+        """Exceptions raised by PlannerLoopRunner are caught and tracked."""
+        from agenticcli.workflows.orchestration import PlanningRunner, OrchestrationWorkflow
 
+        plans_dir = tmp_path / "docs" / "plans" / "live"
+        plans_dir.mkdir(parents=True)
         workflow = MagicMock(spec=OrchestrationWorkflow)
         workflow.working_dir = str(tmp_path)
+        workflow.plans_dir = plans_dir
         workflow.run_health_check.return_value = None
-        workflow.load_mmd.return_value = """
-%% AGENT_ROUTING: phase-1 -> build-python, phase-2 -> test-runner
-%% PHASES:
-%%   1. phase-1 - Build
-%%   2. phase-2 - Test
-"""
-        workflow.parse_routing.return_value = {
-            "agent_routing": {"phase-1": "build-python", "phase-2": "test-runner"},
-            "status": {},
-            "feedback_triggers": {},
-            "phases": [
-                {"id": "phase-1", "description": "Build"},
-                {"id": "phase-2", "description": "Test"},
-            ],
-        }
-        workflow.spawn_execution_agent.return_value = "session-123"
-        workflow.archive_plan.return_value = True
-
-        def mock_run(cmd, **kwargs):
-            if "status" in cmd:
-                return subprocess.CompletedProcess(
-                    cmd, 0,
-                    stdout=json.dumps({"status": "completed"}),
-                    stderr=""
-                )
-            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
-
-        monkeypatch.setattr(subprocess, "run", mock_run)
-        monkeypatch.setattr("time.sleep", lambda x: None)
+        workflow.discover_plans_needing_orchestration.return_value = ["crash_plan"]
 
         with patch("agenticcli.workflows.orchestration.PlannerLoopRunner") as MockRunner:
             mock_planner_runner = MagicMock()
-            mock_planner_runner.run.return_value = True
-            mock_planner_runner.state = {"iteration": 1, "plans_processed": [], "errors": []}
+            mock_planner_runner.run.side_effect = RuntimeError("Unexpected crash")
+            mock_planner_runner.state = {"errors": []}
             MockRunner.return_value = mock_planner_runner
 
-            runner = OrchestrationRunner(workflow=workflow, plan_folder="test_plan")
-            runner.run()
+            runner = PlanningRunner(workflow=workflow, plan_folder=None)
+            result = runner.run()
 
-            # Check execution results tracking
-            assert "test_plan" in runner.state["execution_results"]
-            assert runner.state["execution_results"]["test_plan"]["phase-1"] == "success"
-            assert runner.state["execution_results"]["test_plan"]["phase-2"] == "success"
-
-    def test_archives_on_success(self, tmp_path, monkeypatch):
-        """archive_plan is called after successful execution."""
-        from agenticcli.workflows.orchestration import OrchestrationRunner, OrchestrationWorkflow
-
-        workflow = MagicMock(spec=OrchestrationWorkflow)
-        workflow.working_dir = str(tmp_path)
-        workflow.run_health_check.return_value = None
-        workflow.load_mmd.return_value = """
-%% AGENT_ROUTING: phase-1 -> build-python
-%% PHASES:
-%%   1. phase-1 - Build
-"""
-        workflow.parse_routing.return_value = {
-            "agent_routing": {"phase-1": "build-python"},
-            "status": {},
-            "feedback_triggers": {},
-            "phases": [{"id": "phase-1", "description": "Build"}],
-        }
-        workflow.spawn_execution_agent.return_value = "session-123"
-        workflow.archive_plan.return_value = True
-
-        def mock_run(cmd, **kwargs):
-            if "status" in cmd:
-                return subprocess.CompletedProcess(
-                    cmd, 0,
-                    stdout=json.dumps({"status": "completed"}),
-                    stderr=""
-                )
-            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
-
-        monkeypatch.setattr(subprocess, "run", mock_run)
-        monkeypatch.setattr("time.sleep", lambda x: None)
-
-        with patch("agenticcli.workflows.orchestration.PlannerLoopRunner") as MockRunner:
-            mock_planner_runner = MagicMock()
-            mock_planner_runner.run.return_value = True
-            mock_planner_runner.state = {"iteration": 1, "plans_processed": [], "errors": []}
-            MockRunner.return_value = mock_planner_runner
-
-            runner = OrchestrationRunner(workflow=workflow, plan_folder="test_plan")
-            runner.run()
-
-            workflow.archive_plan.assert_called_once_with("test_plan")
+            assert result is False
+            assert "crash_plan" in runner.state["plans_failed"]
+            assert any("Unexpected crash" in str(e) for e in runner.state["errors"])
